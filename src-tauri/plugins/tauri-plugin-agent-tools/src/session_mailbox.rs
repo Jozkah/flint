@@ -206,6 +206,10 @@ pub struct SessionRecord {
     pub updated_at: i64,
     #[serde(default)]
     pub deleted: bool,
+    /// The run is stopped on a tool-approval prompt the user has not answered.
+    /// Only meaningful while running; every run start or end clears it.
+    #[serde(default)]
+    pub waiting_approval: bool,
 }
 
 fn default_true() -> bool {
@@ -221,6 +225,9 @@ pub struct SessionSummary {
     pub status: SessionStatus,
     pub folder: Option<String>,
     pub accepts_messages: bool,
+    /// Running, but stopped on an approval prompt. A message sent now is
+    /// delivered at the next step boundary, which waits for the user.
+    pub waiting_approval: bool,
     /// Epoch ms of the session's last registry change (a run starting or
     /// ending, a rename): the closest thing to "last active" the mailbox knows.
     pub last_activity: i64,
@@ -651,6 +658,7 @@ impl Mailbox {
                     epoch: None,
                     updated_at: now,
                     deleted: false,
+                    waiting_approval: false,
                 };
                 registry.insert(session_id.to_string(), record.clone());
                 record
@@ -717,6 +725,7 @@ impl Mailbox {
     pub fn set_status(&self, session_id: &str, running: bool, run_id: Option<&str>) -> Result<()> {
         self.with_live_record(session_id, |record, now, epoch| {
             if running {
+                record.waiting_approval = false;
                 record.status = SessionStatus::Running;
                 record.run_id = run_id.map(str::to_string);
                 record.heartbeat_at = Some(now);
@@ -730,11 +739,36 @@ impl Mailbox {
                     return;
                 }
                 record.status = SessionStatus::Idle;
+                record.waiting_approval = false;
                 record.run_id = None;
                 record.heartbeat_at = None;
                 record.epoch = None;
             }
             record.updated_at = now;
+        })
+    }
+
+    /// The run began or stopped waiting on a tool-approval prompt. Ignored for
+    /// a session that is not running (nothing can be waiting) and for a run
+    /// other than the recorded one.
+    pub fn set_waiting_approval(
+        &self,
+        session_id: &str,
+        run_id: Option<&str>,
+        waiting: bool,
+    ) -> Result<()> {
+        self.with_live_record(session_id, |record, now, _| {
+            let other_run = matches!(
+                (run_id, record.run_id.as_deref()),
+                (Some(given), Some(current)) if given != current
+            );
+            if record.status != SessionStatus::Running || other_run {
+                return;
+            }
+            if record.waiting_approval != waiting {
+                record.waiting_approval = waiting;
+                record.updated_at = now;
+            }
         })
     }
 
@@ -773,6 +807,7 @@ impl Mailbox {
                 epoch: None,
                 updated_at: now,
                 deleted: true,
+                waiting_approval: false,
             });
         record.deleted = true;
         record.status = SessionStatus::Idle;
@@ -898,6 +933,8 @@ impl Mailbox {
                 status: self.status_of(r),
                 folder: r.folder.clone(),
                 accepts_messages: r.accepts_messages,
+                waiting_approval: self.status_of(r) == SessionStatus::Running
+                    && r.waiting_approval,
                 last_activity: r.updated_at,
             })
             .collect();
@@ -1511,7 +1548,7 @@ pub async fn run_tool(
                 "sessions": sessions.iter().map(|s| serde_json::json!({
                     "id": s.id,
                     "display_name": s.display_name,
-                    "status": s.status,
+                    "status": if s.waiting_approval { serde_json::json!("waiting_approval") } else { serde_json::json!(s.status) },
                     "folder": s.folder,
                     "accepts_messages": s.accepts_messages,
                     "last_activity": s.last_activity,

@@ -256,6 +256,17 @@ export const sessionMailbox = {
   heartbeat: (input: { sessionId: string; runId: string }) =>
     call<null>('mailbox_session_heartbeat', input),
 
+  /**
+   * The run is stopped on a tool-approval prompt (or resumed from one). Shown
+   * to other sessions as `waiting_approval` in list_sessions.
+   */
+  setWaiting: (input: { sessionId: string; runId?: string; waiting: boolean }) =>
+    call<null>('mailbox_session_waiting', {
+      sessionId: input.sessionId,
+      runId: input.runId ?? null,
+      waiting: input.waiting,
+    }),
+
   /** Marks deleted; an unknown id gets a tombstone. */
   remove: (sessionId: string) =>
     call<null>('mailbox_session_remove', { sessionId }),
