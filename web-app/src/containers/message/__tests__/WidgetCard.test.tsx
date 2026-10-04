@@ -23,6 +23,7 @@ const openUrl = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/lib/browserOpen', () => ({ openInBrowser: (u: string) => openUrl(u) }))
 
 import { WidgetCard } from '../WidgetCard'
+import { LOAD_AFTER_READY_GRACE_MS } from '../WidgetFrame'
 import { WidgetHostContext } from '@/lib/visualize/hostContext'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { MAX_WIDGET_CODE_CHARS } from '@/lib/visualize/constants'
@@ -173,13 +174,31 @@ describe('WidgetCard', () => {
   })
 
   it('drops a frame that navigates itself after it announced the shell', () => {
+    vi.useFakeTimers()
+    try {
+      render(<WidgetCard part={part()} messageId="m" />)
+      fireEvent.load(screen.getByTestId('widget-frame'))
+      expect(screen.queryByTestId('widget-stalled')).toBeNull()
+      fromFrame({ flint: 1, op: 'ready' })
+      act(() => vi.advanceTimersByTime(LOAD_AFTER_READY_GRACE_MS + 100))
+      fireEvent.load(screen.getByTestId('widget-frame'))
+      expect(screen.getByTestId('widget-stalled')).toBeInTheDocument()
+      expect(screen.queryByTestId('widget-frame')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps a widget whose shell finishes loading just after it announced itself', () => {
+    // The shell posts `ready` from an inline script while its own document is
+    // still loading; in WebView2 the frame's `load` followed 3 ms later and the
+    // widget was dropped as "navigated away", every time.
     render(<WidgetCard part={part()} messageId="m" />)
     fireEvent.load(screen.getByTestId('widget-frame'))
-    expect(screen.queryByTestId('widget-stalled')).toBeNull()
     fromFrame({ flint: 1, op: 'ready' })
     fireEvent.load(screen.getByTestId('widget-frame'))
-    expect(screen.getByTestId('widget-stalled')).toBeInTheDocument()
-    expect(screen.queryByTestId('widget-frame')).toBeNull()
+    expect(screen.queryByTestId('widget-stalled')).toBeNull()
+    expect(screen.getByTestId('widget-frame')).toBeInTheDocument()
   })
 
   it('replaces a frame that stops sending its heartbeat, and re-runs on request', () => {
