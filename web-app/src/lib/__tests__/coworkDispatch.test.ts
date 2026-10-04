@@ -1,3 +1,4 @@
+import { clearNotices, takeNotices } from '@/lib/coworkRunNotices'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { executeAgentTool } = vi.hoisted(() => ({ executeAgentTool: vi.fn() }))
@@ -666,6 +667,35 @@ describe('what holds a session in place while it works', () => {
       gate.resolve({ output: 'the answer' })
       expect((await waiting).output).toBe('the answer')
       expect(tasks.status('c1')?.state).toBe('done')
+    })
+
+    it('pushes a short notice to the parent when the child finishes or fails', async () => {
+      clearNotices('s1')
+      const tasks = new BackgroundTasks()
+      await dispatchCoworkTool(
+        call('task', { subagent_name: 'r', description: 'd', background: true }),
+        ctx({ tasks, onTask: async () => ({ output: 'found  it\nhere' }) })
+      )
+      await tasks.settleAll()
+      const [first] = takeNotices('s1')
+      expect(first).toContain("Background subagent 'r' (task_id=c1) finished")
+      expect(first).toContain('found it here')
+      expect(first).toContain('await_task')
+
+      await dispatchCoworkTool(
+        { ...call('task', { subagent_name: 'r', description: 'd', background: true }), toolCallId: 'c2' },
+        ctx({ tasks, onTask: async () => ({ output: 'boom', isError: true }) })
+      )
+      await tasks.settleAll()
+      expect(takeNotices('s1')[0]).toContain('failed')
+
+      // A stop the user asked for is not news.
+      await dispatchCoworkTool(
+        { ...call('task', { subagent_name: 'r', description: 'd', background: true }), toolCallId: 'c3' },
+        ctx({ tasks, onTask: async () => ({ output: '(cancelled)', isError: true }) })
+      )
+      await tasks.settleAll()
+      expect(takeNotices('s1')).toEqual([])
     })
 
     it('holds the subagent slot until the child is done, not until the call returns', async () => {

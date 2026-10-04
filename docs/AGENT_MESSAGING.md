@@ -105,4 +105,17 @@ the answer returns to the child as the tool result.
   session cancels the wait.
 - Questions and notices live in memory and end with the app.
 
-Not covered yet: pushed completion notices for background subagents.
+### Completion notices
+
+Nothing needs polling:
+
+- A background subagent that finishes or fails leaves a one-line notice
+  (name, task_id, short preview) that reaches the parent agent at its next step
+  boundary, as a fenced "Flint notice" message that is information only. The
+  full answer is still read with `await_task`. A stop the user asked for is not
+  announced. Notices for a deleted session are dropped.
+- A session that answers an earlier fire-and-forget `send_message` (or asks
+  something back) arrives as a mailbox message: at the next step boundary when
+  the sender is running, or by waking it when it is idle, with the usual
+  "from <title>" card. A run that handled a message and ended without replying
+  has its final answer sent back automatically.
