@@ -1,3 +1,4 @@
+import { pushNotice } from '@/lib/coworkRunNotices'
 import {
   ANSWER_SUBAGENT_TOOL_NAME,
   answerSubagent,
@@ -593,7 +594,7 @@ export async function routeDelegationTool(
   ctx: Pick<
     DispatchContext,
     'tasks' | 'onTask' | 'onTeam' | 'trackSubagent' | 'cancelChild'
-  >,
+  > & { sessionId?: string },
   signal?: AbortSignal
 ): Promise<ToolOutcome> {
   const { toolName } = call
@@ -632,7 +633,26 @@ export async function routeDelegationTool(
         name,
         async () => {
           try {
-            return await ctx.onTask(id, call.input)
+            const done = await ctx.onTask(id, call.input)
+            // Pushed to the parent at its next step boundary, so it need not
+            // poll `task_status`. A stop the user asked for is not news.
+            if (ctx.sessionId && !(done.isError && /cancelled/i.test(done.output))) {
+              const preview = done.output.replace(/\s+/g, ' ').slice(0, 160)
+              pushNotice(
+                ctx.sessionId,
+                `Background subagent '${name}' (task_id=${id}) ${done.isError ? 'failed' : 'finished'}: "${preview}". ` +
+                  'Read the full answer with await_task.'
+              )
+            }
+            return done
+          } catch (e) {
+            if (ctx.sessionId) {
+              pushNotice(
+                ctx.sessionId,
+                `Background subagent '${name}' (task_id=${id}) failed to run.`
+              )
+            }
+            throw e
           } finally {
             childDone?.()
           }
