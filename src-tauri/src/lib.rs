@@ -621,10 +621,16 @@ pub fn build_app() -> tauri::App {
     // Flint would make the test binary the second instance and it would forward
     // its argv and exit before the embedded WebDriver server ever bound.
     #[cfg(all(desktop, not(feature = "cowork-smoke"), not(feature = "e2e")))]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
-        println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
-        // when defining deep link schemes at runtime, you must also check `argv` here
-    }));
+    // Debug builds only: `FLINT_ALLOW_MULTI_INSTANCE` lets a QA build run beside the
+    // user's own Flint (and beside other QA builds) instead of forwarding its argv.
+    let builder = if cfg!(debug_assertions) && std::env::var_os("FLINT_ALLOW_MULTI_INSTANCE").is_some() {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
+            println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
+            // when defining deep link schemes at runtime, you must also check `argv` here
+        }))
+    };
 
     // #135: HTML previews are served from their own scheme so they carry
     // their own CSP instead of inheriting the app's through `about:srcdoc`.

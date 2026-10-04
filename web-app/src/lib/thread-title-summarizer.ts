@@ -5,6 +5,8 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { resolveThreadModelSelection } from '@/hooks/useConversationPane'
 import { BACKGROUND_SLOT_ID } from '@/constants/models'
 import { isEngineProviderName } from '@/lib/engineModels'
+import { useGeneralSetting } from '@/hooks/useGeneralSetting'
+import { resolveFallbackChain, shouldFallback } from '@/lib/fallbackChain'
 
 const MAX_TITLE_WORDS = 10
 const MAX_PROMPT_LENGTH = 1500
@@ -217,6 +219,13 @@ export async function summarizeConversation(
     : clean
 }
 
+/** The call is background work: it never holds a chat for longer than this. */
+const UTILITY_TIMEOUT_MS = 30_000
+/** The chosen model plus at most this many fallbacks. */
+const UTILITY_MAX_FALLBACKS = 2
+
+type Candidate = { selectedProvider: string; selectedModel: { id: string } }
+
 async function runUtilityText(
   kind: 'title' | 'summary',
   prompt: string,
@@ -233,7 +242,7 @@ async function runUtilityText(
       ? resolveThreadModelSelection(session)
       : useModelProvider.getState()
     const { selectedModel, selectedProvider } = selection
-    const { getProviderByName } = useModelProvider.getState()
+    const { getProviderByName, providers } = useModelProvider.getState()
     if (!selectedModel || !selectedProvider) {
       console.warn('[ThreadTitle] No model/provider selected')
       return null
@@ -242,45 +251,98 @@ async function runUtilityText(
     // MLX models often emit reasoning that can't be reliably suppressed; fall back to default title.
     if (selectedProvider === 'mlx') return null
 
-    const provider = getProviderByName(selectedProvider)
-    if (!provider) {
+    if (!getProviderByName(selectedProvider)) {
       console.warn('[ThreadTitle] Provider not found:', selectedProvider)
       return null
     }
 
-    // Pin to the reserved background slot so this call can never evict a chat
-    // request's KV cache. It is a fixed index, not one derived from the
-    // "Parallel Sequences" setting: upstream wraps an out-of-range id_slot
-    // modulo the slot count instead of rejecting it, so a pin computed from the
-    // provider-level value silently landed back on slot 0 whenever the emitted
-    // count disagreed -- which a per-model `parallel` override does.
-    const params: Record<string, unknown> = {}
-    if (selectedProvider === 'llamacpp') {
-      params.chat_template_kwargs = { enable_thinking: false }
-      params.id_slot = BACKGROUND_SLOT_ID
-    }
-    const model = await ModelFactory.createModel(
-      selectedModel.id,
-      provider,
-      params
+    // The chosen model first, then the user's fallback chain, as chat does
+    // (`shouldFallback`: only a failure another model could fix). A hover
+    // summary never leaves the machine, so its chain is local engines only.
+    const chain = resolveFallbackChain(
+      useGeneralSetting.getState().fallbackModels,
+      { provider: selectedProvider, modelId: selectedModel.id },
+      providers ?? []
     )
+      .filter(
+        (c) =>
+          c.selectedProvider !== 'mlx' &&
+          (kind !== 'summary' || isEngineProviderName(c.selectedProvider))
+      )
+      .slice(0, UTILITY_MAX_FALLBACKS)
+    const candidates: Candidate[] = [
+      { selectedProvider, selectedModel },
+      ...chain,
+    ]
 
-    // A hidden utility agent (AH-208): no tools, not shown, always recorded.
-    // Neither the transcript nor the title is logged -- both are the user's
-    // conversation, and the webview console is written to the app log.
-    const text = await runUtilityAgent({
-      kind,
-      session,
-      model,
-      modelId: selectedModel.id,
-      messages: [{ role: 'user', content: prompt }],
-      maxOutputTokens,
+    // Never held open by a model that does not answer.
+    const signal = AbortSignal.any([
       abortSignal,
-    })
-    return text
+      AbortSignal.timeout(UTILITY_TIMEOUT_MS),
+    ])
+
+    for (let i = 0; i < candidates.length; i++) {
+      const { selectedProvider: providerId, selectedModel: modelInfo } =
+        candidates[i]
+      try {
+        const provider = getProviderByName(providerId)
+        if (!provider) {
+          if (i === candidates.length - 1) return null
+          continue
+        }
+        // Pin to the reserved background slot so this call can never evict a chat
+        // request's KV cache. It is a fixed index, not one derived from the
+        // "Parallel Sequences" setting: upstream wraps an out-of-range id_slot
+        // modulo the slot count instead of rejecting it, so a pin computed from the
+        // provider-level value silently landed back on slot 0 whenever the emitted
+        // count disagreed -- which a per-model `parallel` override does.
+        const params: Record<string, unknown> = {}
+        if (providerId === 'llamacpp') {
+          params.chat_template_kwargs = { enable_thinking: false }
+          params.id_slot = BACKGROUND_SLOT_ID
+        }
+        const model = await ModelFactory.createModel(
+          modelInfo.id,
+          provider,
+          params
+        )
+
+        // A hidden utility agent (AH-208): no tools, not shown, always recorded.
+        // Neither the transcript nor the title is logged -- both are the user's
+        // conversation, and the webview console is written to the app log.
+        return await runUtilityAgent({
+          kind,
+          session,
+          model,
+          modelId: modelInfo.id,
+          messages: [{ role: 'user', content: prompt }],
+          maxOutputTokens,
+          abortSignal: signal,
+          // One attempt per model: the next model in the chain is the retry.
+          maxRetries: 0,
+        })
+      } catch (error) {
+        if (abortSignal.aborted) return ABORTED
+        const last = i === candidates.length - 1
+        if (
+          last ||
+          signal.aborted ||
+          !shouldFallback(
+            error,
+            false,
+            providerId !== candidates[i + 1].selectedProvider
+          )
+        ) {
+          throw error
+        }
+      }
+    }
+    return null
   } catch (error) {
     // Silently swallow abort errors -- this is expected when the user sends a new message
-    if ((error as Error).name === 'AbortError') return ABORTED
+    if (abortSignal.aborted && (error as Error).name === 'AbortError') {
+      return ABORTED
+    }
     console.error(
       '[ThreadTitle] Failed to generate title:',
       (error as Error).name
