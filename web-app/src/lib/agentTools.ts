@@ -120,6 +120,14 @@ export const AGENT_TOOL_NAMES = new Set([
   // The clipboard and opening a project file on screen. Asked about every time.
   'clipboard',
   'open_path',
+  // A PowerShell script outside the sandbox. Asked about every time, script shown.
+  'host_powershell',
+  // winget (changes asked, looking free), a command in WSL or over SSH (asked every
+  // time), and a desktop notification.
+  'host_package',
+  'host_wsl',
+  'host_ssh',
+  'notify_user',
 ])
 
 // Keyed by what the answer depends on. One module-level list shared by chat
@@ -410,7 +418,32 @@ export async function approveBrowserTool(
 const HOST_ACTION_NAME = 'host_action'
 const HOST_BUILD_NAME = 'host_build'
 /** Every call is put to the user: they change this computer or read something private. */
-const HOST_ASKED = new Set([HOST_ACTION_NAME, HOST_BUILD_NAME, 'clipboard', 'open_path'])
+const HOST_ASKED = new Set([
+  HOST_ACTION_NAME,
+  HOST_BUILD_NAME,
+  'host_powershell',
+  'host_package',
+  'host_wsl',
+  'host_ssh',
+  'clipboard',
+  'open_path',
+])
+/** winget is asked about only when it changes a program; looking is free. */
+const hostCallNeedsAsking = (toolName: string, input: unknown): boolean =>
+  toolName !== 'host_package' ||
+  ['install', 'upgrade', 'uninstall'].includes(
+    String((input as Record<string, unknown> | null)?.action)
+  )
+/** What the question says it is about, by tool. */
+const HOST_CONTEXT: Record<string, string> = {
+  [HOST_BUILD_NAME]: 'Build',
+  host_powershell: 'PowerShell on this computer',
+  host_package: 'Programs on this computer',
+  host_wsl: 'Command in WSL',
+  host_ssh: 'Command over SSH',
+  clipboard: 'Clipboard',
+  open_path: 'Open on screen',
+}
 
 /** One row of a `host_query` answer, or none. */
 async function hostQueryRows(
@@ -440,6 +473,28 @@ export async function describeHostAction(
       return `Replace the clipboard with ${text.length} characters: "${first}${text.length > 60 ? '...' : ''}"`
     }
     return 'Read the text on the clipboard'
+  }
+  if (toolName === 'host_package') {
+    const verb = String(a.action ?? '')
+    const label = verb ? verb[0].toUpperCase() + verb.slice(1) : 'Change'
+    return `${label} ${String(a.id ?? '')} with winget`
+  }
+  if (toolName === 'host_wsl' || toolName === 'host_ssh') {
+    const command = String(a.command ?? '').trim()
+    const where =
+      toolName === 'host_ssh'
+        ? `on ${String(a.host ?? '')}${a.port ? ` port ${String(a.port)}` : ''} over SSH`
+        : `in WSL (${typeof a.distro === 'string' && a.distro ? a.distro : 'the default distribution'})`
+    return `Run this ${where}:\n${
+      command.length > 1500 ? `${command.slice(0, 1500)}\n[... ${command.length - 1500} more characters]` : command
+    }`
+  }
+  if (toolName === 'host_powershell') {
+    const script = String(a.script ?? '').trim()
+    const where = typeof a.cwd === 'string' && a.cwd ? a.cwd : 'the project folder'
+    return `Run this script as you, outside the sandbox, in ${where}:\n${
+      script.length > 1500 ? `${script.slice(0, 1500)}\n[... ${script.length - 1500} more characters]` : script
+    }`
   }
   if (toolName === 'open_path') {
     return a.reveal === true
@@ -490,14 +545,7 @@ export async function approveHostAction(
     return `${toolName} was not run: the user must approve it every time, and nobody is available to ask. Tell the user what you wanted to do.`
   }
   const what = await describeHostAction(input, threadId, toolName)
-  const context =
-    toolName === HOST_BUILD_NAME
-      ? `Build: ${what}`
-      : toolName === 'clipboard'
-        ? `Clipboard: ${what}`
-        : toolName === 'open_path'
-          ? `Open on screen: ${what}`
-          : `Change this computer: ${what}`
+  const context = `${HOST_CONTEXT[toolName] ?? 'Change this computer'}: ${what}`
   const ok = options.approve
     ? await options.approve({ context, alwaysAsk: true, input })
     : await useToolApprovalRequests
@@ -614,7 +662,7 @@ export async function executeAgentTool(
     const inputError = agentToolInputError(toolName, input)
     if (inputError) return { error: inputError }
 
-    if (HOST_ASKED.has(toolName)) {
+    if (HOST_ASKED.has(toolName) && hostCallNeedsAsking(toolName, input)) {
       // The id the question is asked under is the id the backend is told, so
       // its guard can see that a person answered.
       const callId = options.callId ?? `${toolName}-${Date.now()}`

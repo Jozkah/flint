@@ -586,6 +586,34 @@ pub fn resolve_decision(
             Err(_) => Decision::Allow,
         };
     }
+    // winget: looking is free, changing a program is asked about every time.
+    if tool.name == "host_package" {
+        return match crate::tools::host_package::plan(args) {
+            Ok(plan) if plan.verb.changes() => Decision::Prompt(PromptKind::Ask),
+            Ok(_) | Err(_) => Decision::Allow,
+        };
+    }
+    // A command in a Linux distribution, or on another machine, is as
+    // powerful as a script: asked about every time.
+    if tool.name == "host_wsl" {
+        return match crate::tools::host_wsl::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    if tool.name == "host_ssh" {
+        return match crate::tools::host_ssh::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // A script runs with the user's own rights, so it is asked about every time.
+    if tool.name == "host_powershell" {
+        return match crate::tools::host_powershell::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
     // The interactive browser is classified per call (tools/browser_tool.rs):
     // looking at a page the run already opened runs; acting on it is gated
     // like a write; opening an address and running script in the page are
@@ -865,6 +893,18 @@ mod tests {
         assert_eq!(simple("clipboard", json!({"action": "clear"})), Decision::Allow);
         assert_eq!(simple("open_path", json!({"path": "docs/a.pdf"})), ask);
         assert_eq!(simple("open_path", json!({})), Decision::Allow);
+        assert_eq!(simple("host_powershell", json!({"script": "Get-Date"})), ask);
+        assert_eq!(simple("host_powershell", json!({"script": "  "})), Decision::Allow);
+        // winget: looking is free, each change is asked about.
+        assert_eq!(simple("host_package", json!({"action": "list"})), Decision::Allow);
+        assert_eq!(simple("host_package", json!({"action": "outdated"})), Decision::Allow);
+        assert_eq!(simple("host_package", json!({"action": "install", "id": "Git.Git"})), ask);
+        assert_eq!(simple("host_package", json!({"action": "uninstall", "id": "Git.Git"})), ask);
+        assert_eq!(simple("host_package", json!({"action": "upgrade"})), Decision::Allow);
+        assert_eq!(simple("host_wsl", json!({"command": "uname -a"})), ask);
+        assert_eq!(simple("host_wsl", json!({"command": ""})), Decision::Allow);
+        assert_eq!(simple("host_ssh", json!({"host": "devbox", "command": "uptime"})), ask);
+        assert_eq!(simple("host_ssh", json!({"host": "-oProxyCommand=x", "command": "uptime"})), Decision::Allow);
         // A call the planner refuses reaches the handler, which refuses it.
         assert_eq!(decide(&plain, json!({"action": "start_program", "name": "calc"})), Decision::Allow);
         assert_eq!(decide(&plain, json!({"action": "stop_service", "name": "RpcSs"})), Decision::Allow);

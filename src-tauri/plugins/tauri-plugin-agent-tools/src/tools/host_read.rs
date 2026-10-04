@@ -38,6 +38,12 @@ pub const QUERIES: &[&str] = &[
     "network",
     "updates",
     "battery",
+    "windows",
+    "devices",
+    "disk_health",
+    "firewall",
+    "env_names",
+    "printers",
 ];
 
 /// A value name that is never shown, whatever key it sits in.
@@ -153,6 +159,38 @@ const BATTERY: &str = r#"
 $b=@(Get-CimInstance Win32_Battery | Select-Object Name,@{n='ChargePercent';e={$_.EstimatedChargeRemaining}},@{n='Status';e={switch([int]$_.BatteryStatus){1{'Discharging'}2{'On AC'}3{'Fully charged'}4{'Low'}5{'Critical'}6{'Charging'}7{'Charging, high'}8{'Charging, low'}9{'Charging, critical'}default{'Unknown'}}}},@{n='MinutesRemaining';e={ if($_.EstimatedRunTime -lt 71582788){$_.EstimatedRunTime}else{$null} }})
 $plan=(powercfg /getactivescheme) -join ' '
 [pscustomobject]@{HasBattery=($b.Count -gt 0);Batteries=$b;PowerPlan=$plan} | ConvertTo-Json -Compress -Depth 4
+"#;
+
+const WINDOWS: &str = r#"
+$m=[int]$env:HQ_MAX
+@(Get-Process | Where-Object { $_.MainWindowTitle } | Sort-Object ProcessName | Select-Object -First $m Id,ProcessName,MainWindowTitle) | ConvertTo-Json -Compress -Depth 3
+"#;
+
+const DEVICES: &str = r#"
+$m=[int]$env:HQ_MAX
+@(Get-CimInstance Win32_PnPEntity | Where-Object { $_.ConfigManagerErrorCode -ne 0 } | Select-Object -First $m Name,PNPClass,Status,@{n='ErrorCode';e={$_.ConfigManagerErrorCode}}) | ConvertTo-Json -Compress -Depth 3
+"#;
+
+const DISK_HEALTH: &str = r#"
+$disks=@(Get-PhysicalDisk | Select-Object FriendlyName,MediaType,@{n='SizeGB';e={[math]::Round($_.Size/1GB)}},@{n='Health';e={"$($_.HealthStatus)"}},@{n='Operational';e={"$($_.OperationalStatus)"}})
+$rel=@()
+try { $rel=@(Get-PhysicalDisk | ForEach-Object { $c=$_ | Get-StorageReliabilityCounter -ErrorAction Stop; [pscustomobject]@{Disk=$_.FriendlyName;TemperatureC=$c.Temperature;WearPercent=$c.Wear;PowerOnHours=$c.PowerOnHours;ReadErrors=$c.ReadErrorsTotal;WriteErrors=$c.WriteErrorsTotal} }) } catch {}
+[pscustomobject]@{Disks=$disks;Reliability=$rel} | ConvertTo-Json -Compress -Depth 4
+"#;
+
+const FIREWALL: &str = r#"
+$n=$env:HQ_NAME; $m=[int]$env:HQ_MAX
+$profiles=@(Get-NetFirewallProfile | Select-Object Name,@{n='Enabled';e={"$($_.Enabled)"}},@{n='DefaultInbound';e={"$($_.DefaultInboundAction)"}},@{n='DefaultOutbound';e={"$($_.DefaultOutboundAction)"}})
+$rules=@(Get-NetFirewallRule -Enabled True -Action Allow -Direction Inbound | Where-Object { -not $n -or $_.DisplayName -like "*$n*" } | Select-Object -First $m DisplayName,@{n='Profile';e={"$($_.Profile)"}})
+[pscustomobject]@{Profiles=$profiles;InboundAllowRules=$rules} | ConvertTo-Json -Compress -Depth 4
+"#;
+
+const ENV_NAMES: &str = r#"
+[pscustomobject]@{User=@([Environment]::GetEnvironmentVariables('User').Keys | Sort-Object);Machine=@([Environment]::GetEnvironmentVariables('Machine').Keys | Sort-Object)} | ConvertTo-Json -Compress -Depth 3
+"#;
+
+const PRINTERS: &str = r#"
+@(Get-Printer | Select-Object Name,DriverName,PortName,@{n='Status';e={"$($_.PrinterStatus)"}},Type) | ConvertTo-Json -Compress -Depth 3
 "#;
 
 /// What to run for a query: the script, and the environment it reads.
@@ -299,6 +337,15 @@ pub fn plan(args: &Value) -> Result<Plan, String> {
         "network" => NETWORK,
         "updates" => UPDATES,
         "battery" => BATTERY,
+        "windows" => WINDOWS,
+        "devices" => DEVICES,
+        "disk_health" => DISK_HEALTH,
+        "firewall" => {
+            env.push(("HQ_NAME", name_filter(args)?.unwrap_or_default()));
+            FIREWALL
+        }
+        "env_names" => ENV_NAMES,
+        "printers" => PRINTERS,
         other => {
             return Err(format!(
                 "ERROR: host_query has no query '{other}'. Use one of {}.",
@@ -308,6 +355,42 @@ pub fn plan(args: &Value) -> Result<Plan, String> {
     };
     let timeout_secs = if query == "updates" { 90 } else { TIMEOUT_SECS };
     Ok(Plan { script, env, timeout_secs })
+}
+
+/// How a captured process ended without an answer.
+pub(crate) enum CaptureError {
+    Timeout,
+    NotFound,
+    Io(String),
+}
+
+pub(crate) struct Captured {
+    pub code: Option<i32>,
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// Run a command to the end: stdin closed, both outputs captured, killed if it
+/// outlives `timeout` or if the call is dropped, and no console window.
+pub(crate) async fn capture(mut cmd: tokio::process::Command, timeout: Duration) -> Result<Captured, CaptureError> {
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    match tokio::time::timeout(timeout, cmd.output()).await {
+        Err(_) => Err(CaptureError::Timeout),
+        Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => Err(CaptureError::NotFound),
+        Ok(Err(e)) => Err(CaptureError::Io(e.to_string())),
+        Ok(Ok(out)) => Ok(Captured {
+            code: out.status.code(),
+            success: out.status.success(),
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        }),
+    }
 }
 
 /// A script that writes UTF-8. PowerShell writes to a pipe in the console's

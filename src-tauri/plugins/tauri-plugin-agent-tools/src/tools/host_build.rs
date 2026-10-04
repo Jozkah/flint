@@ -41,6 +41,10 @@ pub enum Program {
     Npm,
     Pnpm,
     Yarn,
+    Make,
+    Cmake,
+    Uv,
+    Bun,
 }
 
 impl Program {
@@ -56,6 +60,10 @@ impl Program {
             "npm" => Program::Npm,
             "pnpm" => Program::Pnpm,
             "yarn" => Program::Yarn,
+            "make" => Program::Make,
+            "cmake" => Program::Cmake,
+            "uv" => Program::Uv,
+            "bun" => Program::Bun,
             _ => return None,
         })
     }
@@ -72,6 +80,10 @@ impl Program {
             Program::Npm => "npm",
             Program::Pnpm => "pnpm",
             Program::Yarn => "yarn",
+            Program::Make => "make",
+            Program::Cmake => "cmake",
+            Program::Uv => "uv",
+            Program::Bun => "bun",
         }
     }
 
@@ -101,6 +113,10 @@ impl Program {
             (Program::Npm, true) => "npm.cmd",
             (Program::Pnpm, true) => "pnpm.cmd",
             (Program::Yarn, true) => "yarn.cmd",
+            (Program::Make, true) => "make.exe",
+            (Program::Cmake, true) => "cmake.exe",
+            (Program::Uv, true) => "uv.exe",
+            (Program::Bun, true) => "bun.exe",
             (Program::Gradle, false) => "gradle",
             (Program::Mvn, false) => "mvn",
             (Program::Go, false) => "go",
@@ -108,6 +124,10 @@ impl Program {
             (Program::Npm, false) => "npm",
             (Program::Pnpm, false) => "pnpm",
             (Program::Yarn, false) => "yarn",
+            (Program::Make, false) => "make",
+            (Program::Cmake, false) => "cmake",
+            (Program::Uv, false) => "uv",
+            (Program::Bun, false) => "bun",
             _ => "dotnet",
         }
     }
@@ -135,7 +155,7 @@ pub fn plan(args: &Value) -> Result<Plan, String> {
         .get("program")
         .and_then(Value::as_str)
         .and_then(Program::parse)
-        .ok_or("ERROR: host_build needs a 'program': gradle, gradlew, mvn, mvnw, dotnet, go, cargo, npm, pnpm or yarn.")?;
+        .ok_or("ERROR: host_build needs a 'program': gradle, gradlew, mvn, mvnw, dotnet, go, cargo, npm, pnpm, yarn, make, cmake, uv or bun.")?;
     let list = match args.get("args") {
         None | Some(Value::Null) => Vec::new(),
         Some(Value::Array(items)) => items.clone(),
@@ -191,7 +211,7 @@ pub fn resolve_cwd(raw: Option<&str>, roots: &Roots) -> Result<PathBuf, String> 
 
 /// The head and the tail of a long build log: the start says what ran, the end
 /// says whether it worked.
-fn trimmed(text: &str) -> String {
+pub(crate) fn trimmed(text: &str) -> String {
     let text = text.trim();
     if text.len() <= HEAD_BYTES + TAIL_BYTES {
         return text.to_string();
@@ -292,7 +312,7 @@ mod tests {
 
     #[test]
     fn only_the_listed_programs_run() {
-        for p in ["gradle", "gradlew", "mvn", "mvnw", "dotnet", "go", "cargo", "npm", "pnpm", "yarn"] {
+        for p in ["gradle", "gradlew", "mvn", "mvnw", "dotnet", "go", "cargo", "npm", "pnpm", "yarn", "make", "cmake", "uv", "bun"] {
             assert!(plan(&json!({ "program": p })).is_ok(), "{p}");
         }
         for p in ["bash", "cmd", "powershell", "npx", "java", "gradle.bat", "../gradlew", "node", ""] {
