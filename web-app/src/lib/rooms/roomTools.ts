@@ -31,6 +31,9 @@ import {
   executeWebTool,
 } from '@/lib/webSearchTool'
 import type { RoomToolActivity, RoomToolContext } from './callError'
+import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
+import { executeVisualizeTool, visualizeSchemas } from '@/lib/visualize/tools'
+import { READ_ME_TOOL } from '@/lib/visualize/constants'
 
 /** The read-only built-in file tools a room participant may use. */
 export const ROOM_READ_TOOLS = ['read', 'ls', 'find', 'grep'] as const
@@ -185,6 +188,30 @@ export async function buildRoomTools(
       inputSchema: jsonSchema(WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>),
       execute: webRun('web_fetch'),
     } as Tool
+  }
+
+  // Inline widgets: the card in the room transcript draws them from the
+  // recorded call, so the participant only needs the two tools.
+  if (useVisualizeConfig.getState().enabled) {
+    for (const schema of visualizeSchemas()) {
+      const name = schema.function.name
+      tools[name] = {
+        description: schema.function.description,
+        inputSchema: jsonSchema(schema.function.parameters),
+        execute: async (input: unknown) => {
+          const r = executeVisualizeTool(name, input, ctx.roomId)
+          const output = r.error !== undefined ? `ERROR: ${r.error}` : (r.content ?? '')
+          onActivity?.({
+            name,
+            ok: r.error === undefined,
+            args: input,
+            // The guide is for the model; the transcript keeps a short note.
+            output: name === READ_ME_TOOL ? 'Design guide loaded.' : capOutput(output),
+          })
+          return output
+        },
+      } as Tool
+    }
   }
 
   // skill_read: loads a global skill's full body on demand (progressive

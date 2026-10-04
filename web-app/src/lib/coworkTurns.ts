@@ -2,6 +2,8 @@
 import type { UIMessage } from 'ai'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { reasoningPartsFromText } from '@/lib/messages'
+import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
+import { partialWidgetArgs } from '@/lib/visualize/code'
 
 /**
  * Adapts the code screen's flat `CoworkTurn[]` transcript into the AI SDK
@@ -61,6 +63,8 @@ export function assistantAnchorId(
 export function isHideableToolTurn(turn: CoworkTurn): boolean {
   if (turn.role !== 'tool') return false
   if (turn.isError) return false
+  // A widget is content for the user, not activity to fold away.
+  if (turn.name === SHOW_WIDGET_TOOL) return false
   if (turn.toolState) return turn.toolState === 'succeeded'
   // Turns written before the state field existed: a finished call with no
   // error is a success.
@@ -243,14 +247,25 @@ export function coworkTurnsToUIMessages(
     // tool turn -> a `tool-<name>` part on the current assistant message.
     const name = turn.name ?? 'tool'
     const running = turn.status === 'running'
+    // A widget still being written: its arguments are the raw JSON read so
+    // far, so the card can paint it as it grows.
+    const streamingWidget =
+      running &&
+      name === SHOW_WIDGET_TOOL &&
+      (turn.args === null || turn.args === undefined) &&
+      !!turn.argsLive
     const part: any = {
       type: `tool-${name}`,
       toolCallId: turn.callId ?? `code-tool-${i}`,
       // #321: a call saved before its arguments arrived is replayed with an
       // empty object, never without `input`: providers reject a tool call
       // with no arguments, and every later request would fail the same way.
-      input: turn.args ?? {},
-      state: running
+      input: streamingWidget
+        ? partialWidgetArgs(turn.argsLive ?? '')
+        : (turn.args ?? {}),
+      state: streamingWidget
+        ? 'input-streaming'
+        : running
         ? 'input-available'
         : turn.isError
           ? 'output-error'
