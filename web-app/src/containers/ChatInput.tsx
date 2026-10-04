@@ -3087,6 +3087,13 @@ const ChatInput = memo(function ChatInput({
                         ? (id) =>
                             useMessageQueue.getState().steerNow(queueId, id)
                         : undefined,
+                    // Already steering and the run still works: stop the
+                    // run (steering stays queued, not held) and the end-of-run
+                    // sender hands it over first, as the immediate next turn.
+                    onSteerNow:
+                      (isStreaming || threadBusy) && msg.steer && !msg.held
+                        ? () => stopStreaming(currentThreadId ?? '')
+                        : undefined,
                     onMoveUp:
                       index > 0
                         ? (id) =>

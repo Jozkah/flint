@@ -175,6 +175,7 @@ import {
   notifyToolBatch,
 } from '@/lib/agentTools'
 import { browserCallOptions } from '@/lib/browserAgent'
+import { hostCallOptions } from '@/lib/hostAsked'
 import { closeBrowserSession } from '@/lib/browserTool'
 import {
   VISUALIZE_TOOL_NAMES,
@@ -1082,6 +1083,9 @@ export function ThreadConversation({
                   // The browser tools ask the user themselves, and the question
                   // has to sit under this call's card to be answerable there.
                   ...browserCallOptions(toolName, toolCall.toolCallId),
+                  // The host tools ask too, and their question has to carry
+                  // this call's id to appear under its card.
+                  ...hostCallOptions(toolName, toolCall.toolCallId),
                   taskLabel:
                     useThreads.getState().threads[threadId]?.title ||
                     'This conversation',

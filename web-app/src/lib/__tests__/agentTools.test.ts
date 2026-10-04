@@ -67,6 +67,16 @@ describe('agentTools', () => {
     getJanDataFolder.mockReset().mockResolvedValue('/data')
   })
 
+  it('shows every character of host commands and clipboard writes before approval', async () => {
+    const { describeHostAction } = await import('../agentTools')
+    const tail = 'DANGEROUS_TAIL'
+    const long = 'x'.repeat(1600) + tail
+    expect(await describeHostAction({ script: long }, 'thread', 'host_powershell')).toContain(long)
+    expect(await describeHostAction({ command: long, host: 'example.org' }, 'thread', 'host_ssh')).toContain(long)
+    expect(await describeHostAction({ command: long }, 'thread', 'host_wsl')).toContain(long)
+    expect(await describeHostAction({ action: 'write', text: long }, 'thread', 'clipboard')).toContain(long)
+  })
+
   /// The list depends on the folder it was computed for. One module-level
   /// cache shared by chat and Cowork let whichever surface asked first decide
   /// the tool set for every later caller -- a folderless chat's answer served

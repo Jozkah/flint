@@ -11,7 +11,10 @@ export const Conversation = memo(({ className, ...props }: ConversationProps) =>
   <StickToBottom
     className={cn('relative flex-1 overflow-y-hidden', className)}
     initial="instant"
-    resize="smooth"
+    // Instant: a smooth spring trails content that grows many times a second
+    // (streaming text, tool cards opening and closing) and then catches up in
+    // jumps, so the view bounced up and down instead of holding the bottom.
+    resize="instant"
     role="log"
     {...props}
   />

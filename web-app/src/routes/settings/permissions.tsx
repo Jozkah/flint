@@ -13,7 +13,7 @@ import {
 import { FolderAccessCard } from '@/containers/FolderAccessCard'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { useToolApproval } from '@/hooks/useToolApproval'
+import { useToolApproval, type PermissionMode } from '@/hooks/useToolApproval'
 import { useThreads } from '@/hooks/useThreads'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { getServiceHub } from '@/hooks/useServiceHub'
@@ -123,7 +123,9 @@ function PermissionsSettings() {
   const invalidatedServers = useToolApproval((s) => s.invalidatedServers)
   const allowAll = useToolApproval((s) => s.allowAllMCPPermissions)
   const revokeToolForThread = useToolApproval((s) => s.revokeToolForThread)
-  const revokeMcpToolForThread = useToolApproval((s) => s.revokeMcpToolForThread)
+  const revokeMcpToolForThread = useToolApproval(
+    (s) => s.revokeMcpToolForThread
+  )
   const revokeToolEverywhere = useToolApproval((s) => s.revokeToolEverywhere)
   const revokeServerTrust = useToolApproval((s) => s.revokeServerTrust)
   const revokeAllowAll = useToolApproval((s) => s.revokeAllowAllMCPPermissions)
@@ -143,6 +145,8 @@ function PermissionsSettings() {
   const [busyServer, setBusyServer] = useState<string | null>(null)
 
   const [history, setHistory] = useState<PermissionAuditRecord[] | null>(null)
+  const permissionMode = useToolApproval((s) => s.permissionMode)
+  const setPermissionMode = useToolApproval((s) => s.setPermissionMode)
   const [historyError, setHistoryError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -228,7 +232,8 @@ function PermissionsSettings() {
       let state: GrantState = 'current'
       if (entry) {
         if (entry.currentFingerprint === null) state = 'missing'
-        else if (entry.currentFingerprint !== entry.fingerprint) state = 'changed'
+        else if (entry.currentFingerprint !== entry.fingerprint)
+          state = 'changed'
       }
       if (state === 'current' && grant) {
         if (!fingerprints) state = entry ? state : 'unknown'
@@ -328,6 +333,41 @@ function PermissionsSettings() {
         {/* 0. How long an auto-approved run goes before checking in */}
         <AutoApproveLimitCard />
 
+        <Card
+          anchor="settings-permissions-mode"
+          title={t('permissions:settings.permissionMode')}
+          description={t('permissions:settings.permissionModeDesc')}
+        >
+          <label htmlFor="tool-permission-mode" className="text-sm font-medium">
+            {t('permissions:settings.approvalBehavior')}
+          </label>
+          <select
+            id="tool-permission-mode"
+            className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            value={permissionMode}
+            onChange={(event) => {
+              const mode = event.target.value as PermissionMode
+              if (
+                mode === 'bypass' &&
+                  !window.confirm(t('permissions:settings.bypassConfirm'))
+              )
+                return
+              setPermissionMode(mode)
+            }}
+          >
+            <option value="ask">{t('permissions:settings.modeAsk')}</option>
+            <option value="auto-approve">
+              {t('permissions:settings.modeAuto')}
+            </option>
+            <option value="bypass">
+              {t('permissions:settings.modeBypass')}
+            </option>
+          </select>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t('permissions:settings.modeDetails')}
+          </p>
+        </Card>
+
         {/* 1. Allowed in one conversation */}
         <Card
           anchor="settings-permissions-conversations"
@@ -422,7 +462,9 @@ function PermissionsSettings() {
           }
         >
           {approvedToolsGlobal.length === 0 ? (
-            <p className={EMPTY}>{t('permissions:settings.noToolsEverywhere')}</p>
+            <p className={EMPTY}>
+              {t('permissions:settings.noToolsEverywhere')}
+            </p>
           ) : (
             <ul className="flex flex-col">
               {approvedToolsGlobal.map((tool) => (
@@ -462,7 +504,9 @@ function PermissionsSettings() {
             </InlineError>
           )}
           {servers.length === 0 ? (
-            <p className={EMPTY}>{t('permissions:settings.noTrustedServers')}</p>
+            <p className={EMPTY}>
+              {t('permissions:settings.noTrustedServers')}
+            </p>
           ) : (
             <ul className="flex flex-col">
               {servers.map((server) => (
@@ -640,9 +684,7 @@ function PermissionsSettings() {
               })}
             </p>
           ) : history && history.length === 0 ? (
-            <p className={EMPTY}>
-              {t('permissions:settings.historyEmpty')}
-            </p>
+            <p className={EMPTY}>{t('permissions:settings.historyEmpty')}</p>
           ) : history === null ? (
             <p className={EMPTY} aria-busy>
               {t('permissions:settings.loading')}
@@ -680,13 +722,19 @@ function PermissionsSettings() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(historyExpanded ? history : history.slice(0, HISTORY_PREVIEW)).map((record, index) => (
+                  {(historyExpanded
+                    ? history
+                    : history.slice(0, HISTORY_PREVIEW)
+                  ).map((record, index) => (
                     <tr
                       key={`${record.at}-${record.call}-${index}`}
                       className="border-b border-dashed border-border last:border-b-0"
                     >
                       <td className="px-0.5 py-2 align-middle whitespace-nowrap">
-                        <time dateTime={record.at} className="font-mono text-xs text-foreground">
+                        <time
+                          dateTime={record.at}
+                          className="font-mono text-xs text-foreground"
+                        >
                           {formatWhen(record.at)}
                         </time>
                       </td>
@@ -725,7 +773,9 @@ function PermissionsSettings() {
                 >
                   {historyExpanded
                     ? t('permissions:settings.historyShowFewer')
-                    : t('permissions:settings.historyShowAll', { count: history.length })}
+                    : t('permissions:settings.historyShowAll', {
+                        count: history.length,
+                      })}
                 </Button>
               )}
             </div>

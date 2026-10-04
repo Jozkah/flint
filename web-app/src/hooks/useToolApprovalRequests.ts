@@ -148,6 +148,7 @@ type ToolApprovalRequestsState = {
   refusals: Record<string, ApprovalRefusal>
   approvedFingerprints: Record<string, string>
   answeredByPrompt: Record<string, true>
+  bypassedCalls: Record<string, true>
   allowedOnceCommands: Record<string, string[]>
   temporaryGitThreads: Record<string, true>
 
@@ -189,6 +190,39 @@ function bashDestructiveReason(
       ? [label]
       : [])
   return destructiveCommandReason(command, roots)
+}
+
+/** Calls that cannot safely be inferred from a generic tool approval. */
+function sensitiveCall(
+  toolName: string,
+  serverName: string | undefined,
+  input: unknown
+): boolean {
+  if (/^(?:bash|browser_(?:click|type|press|select))$/.test(toolName))
+    return true
+  if (
+    /(?:^|_)(?:approve|grant|permission|create|update|modify|delete|remove|kill|stop|uninstall|shutdown|reboot|format|drop|merge|send|transfer|purchase|payment|publish|deploy|push|execute|exec|run|shell|terminal|upload|move|rename|replace|install)(?:_|$)/i.test(
+      toolName
+    )
+  )
+    return true
+  const action =
+    input && typeof input === 'object' && !Array.isArray(input)
+      ? (input as Record<string, unknown>).action
+      : undefined
+  if (
+    typeof action === 'string' &&
+    /^(?:create|update|modify|delete|remove|kill|stop|uninstall|shutdown|reboot|format|drop|merge|send|transfer|purchase|payment|publish|deploy|push|execute|exec|run|upload|move|rename|replace|install)$/i.test(
+      action
+    )
+  )
+    return true
+  return (
+    !!serverName &&
+    !/^(?:list|get|read|search|find|fetch|query|inspect|describe|status|view|preview)(?:_|$)/i.test(
+      toolName
+    )
+  )
 }
 
 /** A configured remote's name, not a URL or a path (`.`, `..`, `a/b`, `host:x`). */
@@ -281,6 +315,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
     refusals: {},
     approvedFingerprints: {},
     answeredByPrompt: {},
+    bypassedCalls: {},
     allowedOnceCommands: {},
     temporaryGitThreads: {},
 
@@ -306,6 +341,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           return
         }
         const settings = useToolApproval.getState()
+        const permissionMode = settings.permissionMode ?? 'ask'
         const approve = () => {
           if (serverName && serverFingerprint) {
             set((s) => ({
@@ -336,6 +372,36 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               ? `${toolName} approves commands on ${serverName} itself. Only you can approve them, so it is asked about every time.`
               : undefined)
 
+        if (
+          permissionMode === 'auto-approve' &&
+          sensitiveCall(toolName, serverName, context?.input)
+        ) {
+          alwaysAsk = true
+          taskContext ??=
+            'Sensitive tool call: review its action before allowing it.'
+        }
+
+        if (permissionMode === 'bypass') {
+          context?.onDecision?.('allow-once')
+          set((s) => ({
+            bypassedCalls: remember(s.bypassedCalls, [[toolCallId, true]]),
+          }))
+          approve()
+          return
+        }
+
+        if (permissionMode === 'auto-approve' && !alwaysAsk) {
+          const streakKey = context?.autoApproveStreak ?? threadId
+          const limit = useAutoApproveLimit.getState().limit
+          if (!noteAutoApproved(streakKey, limit)) {
+            approve()
+            return
+          }
+          alwaysAsk = true
+          taskContext = autoApprovePauseReason(limit)
+          resetAutoApproveStreak(streakKey)
+        }
+
         // A caller forces the prompt for every remote Git call, and this grant
         // exists to skip exactly that one. It never skips the prompts that are
         // about the tool itself (always-ask tools, self-approval, a destructive
@@ -344,6 +410,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         const temporaryGitKey =
           context?.autoApproveStreak ?? `git-temporary:${threadId}`
         const temporaryGitApproved =
+          !(permissionMode === 'auto-approve' && alwaysAsk) &&
           !ALWAYS_ASK_TOOLS.has(toolName) &&
           !selfApproval &&
           destructive === null &&
@@ -657,8 +724,10 @@ export function wasCommandAllowedOnce(
   return key !== null && !!state.allowedOnceCommands[threadId]?.includes(key)
 }
 
-export function approvalSourceFor(toolCallId: string): 'prompted' | 'auto' {
-  return useToolApprovalRequests.getState().answeredByPrompt[toolCallId]
-    ? 'prompted'
-    : 'auto'
+export function approvalSourceFor(
+  toolCallId: string
+): 'prompted' | 'auto' | 'bypass' {
+  const state = useToolApprovalRequests.getState()
+  if (state.bypassedCalls[toolCallId]) return 'bypass'
+  return state.answeredByPrompt[toolCallId] ? 'prompted' : 'auto'
 }

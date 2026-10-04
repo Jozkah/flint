@@ -32,13 +32,18 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 
 type AdvertisedTools = Awaited<ReturnType<typeof advertisedToolSchemas>>
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { useToolApproval } from '@/hooks/useToolApproval'
 import { errorText } from '@/lib/errorText'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 import { runAccessRequest } from '@/lib/accessRequests'
 import { listPluginsForModel } from '@/lib/pluginInventory'
 import { runOpenInBrowser } from '@/lib/browserOpen'
 import { runGenerateImage } from '@/lib/generateImageTool'
-import { putToolScreenshot, SCREENSHOT_RESULT_NOTE } from '@/lib/toolScreenshots'
+import { HOST_ASKED, hostCallNeedsAsking } from '@/lib/hostAsked'
+import {
+  putToolScreenshot,
+  SCREENSHOT_RESULT_NOTE,
+} from '@/lib/toolScreenshots'
 import {
   BROWSER_TOOL_NAME,
   browserAlwaysAsks,
@@ -177,7 +182,10 @@ export async function getSandboxToolchains(): Promise<ToolchainReport | null> {
   try {
     return (await sandboxToolchains()) ?? null
   } catch (e) {
-    console.warn('[agentTools] Failed to probe sandbox toolchains:', messageOf(e))
+    console.warn(
+      '[agentTools] Failed to probe sandbox toolchains:',
+      messageOf(e)
+    )
     return null
   }
 }
@@ -390,8 +398,13 @@ export async function approveBrowserTool(
 ): Promise<string | null> {
   const cls = browserCallClass(input)
   if (cls === 'read') return null
-  const alwaysAsk = browserAlwaysAsks(cls)
-  if (options.unattended) {
+  const alwaysAsk =
+    browserAlwaysAsks(cls) ||
+    useToolApproval.getState().permissionMode === 'auto-approve'
+  if (
+    options.unattended &&
+    useToolApproval.getState().permissionMode !== 'bypass'
+  ) {
     return alwaysAsk
       ? `browser ${cls} was not run: it must be approved by the user every time, and nobody is available to ask. Ask the user to open the page, or to run this in a mode that asks.`
       : null
@@ -403,37 +416,27 @@ export async function approveBrowserTool(
     ? await options.approve({ context, alwaysAsk, input: shown })
     : await useToolApprovalRequests
         .getState()
-        .requestApproval(options.callId ?? '', BROWSER_TOOL_NAME, threadId, undefined, {
-          input: shown,
-          alwaysAsk,
-          taskContext: context,
-          signal: options.signal,
-          origin: options.origin,
-          destructiveChecked: true,
-          autoApproveStreak: alwaysAsk ? undefined : threadId,
-        })
+        .requestApproval(
+          options.callId ?? '',
+          BROWSER_TOOL_NAME,
+          threadId,
+          undefined,
+          {
+            input: shown,
+            alwaysAsk,
+            taskContext: context,
+            signal: options.signal,
+            origin: options.origin,
+            destructiveChecked: true,
+            autoApproveStreak: alwaysAsk ? undefined : threadId,
+          }
+        )
   return ok ? null : 'The user declined this browser action.'
 }
 
 const HOST_ACTION_NAME = 'host_action'
 const HOST_BUILD_NAME = 'host_build'
 /** Every call is put to the user: they change this computer or read something private. */
-const HOST_ASKED = new Set([
-  HOST_ACTION_NAME,
-  HOST_BUILD_NAME,
-  'host_powershell',
-  'host_package',
-  'host_wsl',
-  'host_ssh',
-  'clipboard',
-  'open_path',
-])
-/** winget is asked about only when it changes a program; looking is free. */
-const hostCallNeedsAsking = (toolName: string, input: unknown): boolean =>
-  toolName !== 'host_package' ||
-  ['install', 'upgrade', 'uninstall'].includes(
-    String((input as Record<string, unknown> | null)?.action)
-  )
 /** What the question says it is about, by tool. */
 const HOST_CONTEXT: Record<string, string> = {
   [HOST_BUILD_NAME]: 'Build',
@@ -465,12 +468,14 @@ export async function describeHostAction(
   threadId: string,
   toolName: string = HOST_ACTION_NAME
 ): Promise<string> {
-  const a = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+  const a = (input && typeof input === 'object' ? input : {}) as Record<
+    string,
+    unknown
+  >
   if (toolName === 'clipboard') {
     if (a.action === 'write') {
       const text = String(a.text ?? '')
-      const first = text.slice(0, 60).replace(/[\r\n]+/g, ' ')
-      return `Replace the clipboard with ${text.length} characters: "${first}${text.length > 60 ? '...' : ''}"`
+      return `Replace the clipboard with ${[...text].length} characters:\n${text}`
     }
     return 'Read the text on the clipboard'
   }
@@ -480,21 +485,18 @@ export async function describeHostAction(
     return `${label} ${String(a.id ?? '')} with winget`
   }
   if (toolName === 'host_wsl' || toolName === 'host_ssh') {
-    const command = String(a.command ?? '').trim()
+    const command = String(a.command ?? '')
     const where =
       toolName === 'host_ssh'
         ? `on ${String(a.host ?? '')}${a.port ? ` port ${String(a.port)}` : ''} over SSH`
         : `in WSL (${typeof a.distro === 'string' && a.distro ? a.distro : 'the default distribution'})`
-    return `Run this ${where}:\n${
-      command.length > 1500 ? `${command.slice(0, 1500)}\n[... ${command.length - 1500} more characters]` : command
-    }`
+    return `Run this ${where}:\n${command}`
   }
   if (toolName === 'host_powershell') {
-    const script = String(a.script ?? '').trim()
-    const where = typeof a.cwd === 'string' && a.cwd ? a.cwd : 'the project folder'
-    return `Run this script as you, outside the sandbox, in ${where}:\n${
-      script.length > 1500 ? `${script.slice(0, 1500)}\n[... ${script.length - 1500} more characters]` : script
-    }`
+    const script = String(a.script ?? '')
+    const where =
+      typeof a.cwd === 'string' && a.cwd ? a.cwd : 'the project folder'
+    return `Run this script as you, outside the sandbox, in ${where}:\n${script}`
   }
   if (toolName === 'open_path') {
     return a.reveal === true
@@ -506,11 +508,16 @@ export async function describeHostAction(
     const command = [a.program, ...words]
       .map((w) => (/\s/.test(w) ? `"${w}"` : w))
       .join(' ')
-    const where = typeof a.cwd === 'string' && a.cwd ? ` in ${a.cwd}` : ' in the project folder'
+    const where =
+      typeof a.cwd === 'string' && a.cwd
+        ? ` in ${a.cwd}`
+        : ' in the project folder'
     return `Run \`${command}\`${where}, outside the sandbox (it runs the project's own build scripts)`
   }
   if (a.action === 'kill_process') {
-    const row = (await hostQueryRows({ query: 'processes', pid: a.pid }, threadId))[0]
+    const row = (
+      await hostQueryRows({ query: 'processes', pid: a.pid }, threadId)
+    )[0]
     const who = row
       ? `${String(row.ProcessName)}${row.Path ? ` (${String(row.Path)})` : ''}`
       : 'no process with that number is running'
@@ -522,7 +529,9 @@ export async function describeHostAction(
     (r) => String(r.Name).toLowerCase() === name.toLowerCase()
   )
   const label = verb ? verb[0].toUpperCase() + verb.slice(1) : 'Change'
-  const detail = row ? ` (${String(row.DisplayName)}, now ${String(row.Status)})` : ''
+  const detail = row
+    ? ` (${String(row.DisplayName)}, now ${String(row.Status)})`
+    : ''
   return `${label} service ${name}${detail}`
 }
 
@@ -541,7 +550,10 @@ export async function approveHostAction(
   options: AgentToolOptions,
   toolName: string = HOST_ACTION_NAME
 ): Promise<string | null> {
-  if (options.unattended) {
+  if (
+    options.unattended &&
+    useToolApproval.getState().permissionMode !== 'bypass'
+  ) {
     return `${toolName} was not run: the user must approve it every time, and nobody is available to ask. Tell the user what you wanted to do.`
   }
   const what = await describeHostAction(input, threadId, toolName)
@@ -667,7 +679,12 @@ export async function executeAgentTool(
       // its guard can see that a person answered.
       const callId = options.callId ?? `${toolName}-${Date.now()}`
       options = { ...options, callId }
-      const declined = await approveHostAction(input, threadId, options, toolName)
+      const declined = await approveHostAction(
+        input,
+        threadId,
+        options,
+        toolName
+      )
       if (declined) return { error: declined }
     }
 

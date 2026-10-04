@@ -1262,7 +1262,7 @@ export async function executeTool(
 }
 
 /** See `executeTool`'s `approval`. */
-export type ApprovalSource = 'prompted' | 'auto'
+export type ApprovalSource = 'prompted' | 'auto' | 'bypass'
 
 /**
  * Run a failed `bash` call again outside the sandbox, after the user approved

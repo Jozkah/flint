@@ -100,6 +100,7 @@ beforeEach(() => {
     approvedToolsGlobal: ['web_fetch'],
     invalidatedServers: [],
     allowAllMCPPermissions: false,
+    permissionMode: 'ask',
   })
 })
 
@@ -294,6 +295,22 @@ describe('Permissions settings', () => {
     render(<Page />)
     await user.click(screen.getByText('permissions:settings.revokeAll'))
     expect(useToolApproval.getState().allowAllMCPPermissions).toBe(false)
+  })
+
+  it('offers safe auto approval and confirms session bypass', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<Page />)
+    const mode = screen.getByRole('combobox', { name: 'permissions:settings.approvalBehavior' })
+    await user.selectOptions(mode, 'auto-approve')
+    expect(useToolApproval.getState().permissionMode).toBe('auto-approve')
+    await user.selectOptions(mode, 'bypass')
+    expect(confirm).toHaveBeenCalled()
+    expect(useToolApproval.getState().permissionMode).toBe('auto-approve')
+    confirm.mockReturnValue(true)
+    await user.selectOptions(mode, 'bypass')
+    expect(useToolApproval.getState().permissionMode).toBe('bypass')
+    confirm.mockRestore()
   })
 
   it('shows recent decisions from the audit log', async () => {

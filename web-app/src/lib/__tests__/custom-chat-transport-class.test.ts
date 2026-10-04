@@ -174,6 +174,7 @@ describe('CustomChatTransport', () => {
       const text = transport.buildAgentToolsSystemInstruction()
       expect(text).toContain('call request_access with the narrowest absolute path')
       expect(text).toContain(SHELL_ROUTING_GUIDANCE)
+      expect(text).toContain('host_powershell')
       // The inventory does not depend on the agent tools being on.
       useAgentToolsConfig.setState({ agentToolsEnabled: false })
       const prompt = (
@@ -181,6 +182,7 @@ describe('CustomChatTransport', () => {
       ).buildSystemPrompt([])
       expect(prompt).toContain('Enabled Flint plugins: caveman (skills: caveman)')
       expect(prompt).toContain('never search the filesystem for plugin settings')
+      expect(prompt).toContain('enable Agent Tools in Settings')
     } finally {
       setCachedPluginInventory(null)
     }

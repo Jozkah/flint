@@ -11,6 +11,7 @@ import {
   runAccessRequest,
   useAccessRequests,
 } from '../accessRequests'
+import { useToolApproval } from '@/hooks/useToolApproval'
 
 const PREPARED = {
   status: 'ok',
@@ -64,10 +65,25 @@ async function answerNext(decision: 'session' | 'always' | 'deny') {
 describe('runAccessRequest', () => {
   let detach: () => void
   beforeEach(() => {
+    useToolApproval.setState({ permissionMode: 'ask' })
     invoke.mockReset()
     backend()
     useAccessRequests.setState({ queue: [], presenters: 0 })
     detach = useAccessRequests.getState().attachPresenter()
+  })
+
+  it('grants a prepared path without a prompt in bypass mode', async () => {
+    useToolApproval.setState({ permissionMode: 'bypass' })
+    const out = JSON.parse(
+      await runAccessRequest(
+        { path: 'D:\\projects\\notes', reason: 'read notes' },
+        't1',
+        opts
+      )
+    )
+    expect(out.status).toBe('granted')
+    expect(useAccessRequests.getState().queue).toHaveLength(0)
+    expect(calls('access_grant')).toHaveLength(1)
   })
 
   it('shows the resolved scope, grants for the session on approval, and tells the model to retry', async () => {
@@ -187,10 +203,16 @@ describe('runAccessRequest', () => {
 
   it('refuses an unknown mode and a missing reason without prompting', async () => {
     const bad = JSON.parse(
-      await runAccessRequest({ path: 'D:\\p', reason: 'r', access_mode: 'admin' }, 't1', opts)
+      await runAccessRequest(
+        { path: 'D:\\p', reason: 'r', access_mode: 'admin' },
+        't1',
+        opts
+      )
     )
     expect(bad.code).toBe('invalid_mode')
-    const noReason = JSON.parse(await runAccessRequest({ path: 'D:\\p' }, 't1', opts))
+    const noReason = JSON.parse(
+      await runAccessRequest({ path: 'D:\\p' }, 't1', opts)
+    )
     expect(noReason.code).toBe('missing_reason')
     expect(calls('access_prepare')).toHaveLength(0)
   })

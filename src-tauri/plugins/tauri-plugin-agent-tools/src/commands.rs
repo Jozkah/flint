@@ -104,6 +104,7 @@ pub struct ToolResult {
 pub enum ApprovalSource {
     Prompted,
     Auto,
+    Bypass,
 }
 
 /// Everything `execute_tool_inner` needs to run a call again, kept by an
@@ -1334,7 +1335,7 @@ async fn execute_tool_inner(
         // A project `ask` rule is the renderer's blind spot, so it still refuses.
         Decision::Prompt(PromptKind::Ask)
             if name == "browser"
-                && approval == Some(ApprovalSource::Prompted)
+                && matches!(approval, Some(ApprovalSource::Prompted | ApprovalSource::Bypass))
                 && permissions
                     .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
                     .is_none() => {}
@@ -1344,7 +1345,7 @@ async fn execute_tool_inner(
         // blind spot, so it still refuses.
         Decision::Prompt(PromptKind::Ask)
             if crate::tools::is_always_ask(&name)
-                && approval == Some(ApprovalSource::Prompted)
+                && matches!(approval, Some(ApprovalSource::Prompted | ApprovalSource::Bypass))
                 && permissions
                     .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
                     .is_none() => {}
@@ -2083,6 +2084,10 @@ fn recorded_outcome(
                 Outcome::Allow,
                 "allowed without asking (mode or standing grant)".to_string(),
             )),
+            ApprovalSource::Bypass => Some((
+                Outcome::Allow,
+                "allowed without asking (bypass permissions mode)".to_string(),
+            )),
         },
         _ => None,
     }
@@ -2455,7 +2460,7 @@ mod tests {
         let root = data.join("ws");
         let write = lookup("write").unwrap();
         let args = json!({"path": "a.txt", "content": "x"});
-        for approval in [Some(ApprovalSource::Prompted), Some(ApprovalSource::Auto), None] {
+        for approval in [Some(ApprovalSource::Prompted), Some(ApprovalSource::Auto), Some(ApprovalSource::Bypass), None] {
             record_permission_decision(
                 &data,
                 "s1",
@@ -2467,13 +2472,15 @@ mod tests {
             );
         }
         let all = crate::audit::read_all(&data);
-        assert_eq!(all.len(), 3, "{all:?}");
+        assert_eq!(all.len(), 4, "{all:?}");
         assert_eq!(all[0].decision, crate::audit::Outcome::Granted);
         assert_eq!(all[0].reason, "approved in the prompt");
         assert_eq!(all[1].decision, crate::audit::Outcome::Allow);
         assert!(all[1].reason.contains("without asking"), "{}", all[1].reason);
-        assert_eq!(all[2].decision, crate::audit::Outcome::Prompt);
-        assert_eq!(all[2].reason, "prompt:Write");
+        assert_eq!(all[2].decision, crate::audit::Outcome::Allow);
+        assert!(all[2].reason.contains("bypass permissions"), "{}", all[2].reason);
+        assert_eq!(all[3].decision, crate::audit::Outcome::Prompt);
+        assert_eq!(all[3].reason, "prompt:Write");
         let _ = std::fs::remove_dir_all(&data);
     }
 
