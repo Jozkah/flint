@@ -193,6 +193,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::mailbox_session_register,
             commands::mailbox_session_status,
             commands::mailbox_session_heartbeat,
+            commands::mailbox_session_waiting,
             commands::mailbox_session_remove,
             commands::mailbox_session_revive,
             commands::mailbox_take_for_delivery,
