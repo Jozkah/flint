@@ -875,15 +875,38 @@ fn pairing_url_carries_code_and_name_in_the_fragment() {
     );
 }
 
+/// The phone app is looked up when a phone asks. Deciding once at start left an
+/// install whose files arrived a moment later (an update replacing them)
+/// serving the placeholder until the next restart.
 #[test]
-fn phone_app_dir_prefers_the_bundled_resources_folder() {
-    use super::commands::phone_app_dir;
+fn phone_app_is_found_when_it_appears_after_start() {
+    use super::commands::phone_app_dirs;
     let tmp = tempfile::tempdir().unwrap();
-    assert_eq!(phone_app_dir(tmp.path()), tmp.path().join("mobile"));
-    let nested = tmp.path().join("resources").join("mobile");
-    std::fs::create_dir_all(&nested).unwrap();
-    std::fs::write(nested.join("index.html"), "<!doctype html>").unwrap();
-    assert_eq!(phone_app_dir(tmp.path()), nested);
+    let dirs = phone_app_dirs(&[tmp.path().to_path_buf(), tmp.path().to_path_buf()]);
+    assert_eq!(
+        dirs,
+        vec![tmp.path().join("resources").join("mobile"), tmp.path().join("mobile")]
+    );
+    let hub = RemoteHub::new(
+        RemoteConfig::default(),
+        DeviceStore::in_memory(),
+        Arc::new(Recorder::default()),
+        None,
+    )
+    .with_static_dirs(dirs.clone());
+    assert_eq!(hub.phone_app_root(), None);
+    assert_eq!(hub.phone_app_candidates(), dirs);
+    // The flat layout, then the bundled one, which wins.
+    std::fs::create_dir_all(&dirs[1]).unwrap();
+    std::fs::write(dirs[1].join("index.html"), "<!doctype html>").unwrap();
+    assert_eq!(hub.phone_app_root(), Some(&dirs[1]));
+    std::fs::create_dir_all(&dirs[0]).unwrap();
+    std::fs::write(dirs[0].join("index.html"), "<!doctype html>").unwrap();
+    assert_eq!(hub.phone_app_root(), Some(&dirs[0]));
+    // Gone again (an update in progress): the placeholder, not a stale path.
+    std::fs::remove_file(dirs[0].join("index.html")).unwrap();
+    std::fs::remove_file(dirs[1].join("index.html")).unwrap();
+    assert_eq!(hub.phone_app_root(), None);
 }
 
 #[test]

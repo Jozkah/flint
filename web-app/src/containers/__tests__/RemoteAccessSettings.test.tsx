@@ -120,6 +120,20 @@ describe('RemoteAccessSettings', () => {
     await waitFor(() => expect(api.calls.at(-1)?.customHost).toBeNull())
   })
 
+  it('says so when this install has no phone app, and where it looked', async () => {
+    const api = makeApi(status({ phoneApp: false, phoneAppPaths: ['/opt/flint/resources/mobile'] }))
+    render(<RemoteAccessSettings api={api} />)
+    const note = await screen.findByTestId('remote-no-phone-app')
+    expect(note).toHaveTextContent('remote:noPhoneApp')
+    expect(note).toHaveTextContent('/opt/flint/resources/mobile')
+  })
+
+  it('says nothing about the phone app when it is there, or the backend is older', async () => {
+    render(<RemoteAccessSettings api={makeApi(status({ phoneApp: true }))} />)
+    await screen.findByTestId('remote-detected')
+    expect(screen.queryByTestId('remote-no-phone-app')).toBeNull()
+  })
+
   it('removes a paired phone', async () => {
     const api = makeApi(status())
     render(<RemoteAccessSettings api={api} />)

@@ -670,11 +670,7 @@ async fn serve_static(hub: &RemoteHub, rel: &str) -> Resp {
             )))
             .expect("static response parts are valid")
     };
-    let Some(root) = hub
-        .static_dir
-        .as_ref()
-        .filter(|d| d.join("index.html").is_file())
-    else {
+    let Some(root) = hub.phone_app_root() else {
         return match static_files::sanitize(rel) {
             Ok(_) => placeholder(),
             Err(_) => error(StatusCode::FORBIDDEN, "forbidden", "Forbidden"),
