@@ -35,6 +35,12 @@ import {
 import type { SubagentDefinition } from '@/lib/coworkSubagentRegistry'
 import { countToolCalls } from '@/lib/coworkTasks'
 import {
+  ASK_PARENT_TOOL_NAME,
+  askParent,
+  askParentTool,
+  renderAnswerForChild,
+} from '@/lib/coworkSubagentQuestions'
+import {
   recallSubagent,
   rememberSubagent,
   resumeHint,
@@ -251,6 +257,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     }
     // The child's own trace, for a surface with no transcript lane of its own.
     let localTurns: CoworkTurn[] = []
+    const askable = req.background === true && parentTaskId === undefined
     try {
       const setup = env.setup(resolved, destination)
       const child = await runSubagent({
@@ -270,7 +277,26 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         sessionTokens: 0,
         ...(env.tokenLimit?.() !== undefined ? { tokenLimit: env.tokenLimit() } : {}),
         ...(env.maxSteps ? { maxSteps: env.maxSteps } : {}),
-        dispatch: setup.dispatch,
+        // A background child may ask its parent; a foreground one cannot, the
+        // parent being blocked in the call that started it.
+        ...(askable ? { extraTools: { [ASK_PARENT_TOOL_NAME]: askParentTool } } : {}),
+        dispatch: askable
+          ? async (call, toolSignal) => {
+              if (call.toolName !== ASK_PARENT_TOOL_NAME) {
+                return setup.dispatch(call, toolSignal)
+              }
+              const asked = await askParent({
+                sessionId: env.sessionId,
+                taskId: callId,
+                agentName: resolved.name,
+                question: (call.input as { question?: unknown } | null)?.question,
+                signal: toolSignal ?? childAbort.signal,
+              })
+              return asked.status === 'answered'
+                ? { output: renderAnswerForChild(asked.answer) }
+                : { output: asked.message, isError: asked.status === 'refused' }
+            }
+          : setup.dispatch,
         events: {
           onQueued: (waiting) => {
             // The dispatching call's item says it is waiting for a slot, in

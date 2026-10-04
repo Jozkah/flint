@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { ANSWER_SUBAGENT_TOOL_NAME } from '@/lib/coworkSubagentQuestions'
 import {
   convertToModelMessages,
   streamText,
@@ -126,6 +127,8 @@ const WITHHELD_FROM_SUBAGENTS = new Set<string>([
   // Cross-session messaging speaks for the session, not for an errand: a child
   // must not discover, message or wait on other sessions.
   ...SESSION_MESSAGING_TOOL_NAMES,
+  // Answering is the parent's side of `ask_parent`.
+  ANSWER_SUBAGENT_TOOL_NAME,
 ])
 
 export type SubagentRequest = {
@@ -375,6 +378,8 @@ export type RunSubagentOptions = {
    * appended to it as the next user message instead of starting a fresh brief.
    */
   history?: UIMessage[]
+  /** Tools only this child gets, beyond the parent's (`ask_parent`). */
+  extraTools?: Record<string, Tool>
   /** The parent's model instance. Reused so no second load happens. */
   model: LanguageModel
   /**
@@ -529,7 +534,10 @@ export async function runSubagent(
     }
     events.onStart()
 
-    const tools = subagentTools(opts.parentTools, resolved.allowedTools)
+    const tools = {
+      ...subagentTools(opts.parentTools, resolved.allowedTools),
+      ...(opts.extraTools ?? {}),
+    }
     const baseSystem = buildSubagentSystemPrompt(resolved.systemPrompt, {
       availableTools: Object.keys(tools),
       workspacePath: opts.system.workspacePath,
