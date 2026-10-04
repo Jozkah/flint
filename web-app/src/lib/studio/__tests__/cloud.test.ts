@@ -19,6 +19,7 @@ import {
   bytesToBase64,
   cloudKey,
   cloudTargets,
+  customCloudTargets,
   describeCloudFailure,
   fitCloudSize,
   generateCloudImages,
@@ -223,5 +224,49 @@ describe('isPublicHttpsUrl', () => {
 
   it('drops such an address from a provider answer', () => {
     expect(readCloudAnswer({ data: [{ url: 'https://127.0.0.1/x.png' }] }).pictures).toEqual([])
+  })
+})
+
+describe('custom server targets', () => {
+  const server = {
+    active: true,
+    provider: 'v100',
+    displayName: 'V100',
+    base_url: 'http://v100:8560/v1',
+    models: [{ id: 'qwen-image-2.1' }, { id: 'qwen3-8b' }, { id: 'bge-image-embed', embedding: true }],
+  }
+
+  it('offers only the picture models of a user-run provider', () => {
+    const targets = customCloudTargets([server])
+    expect(targets.map((t) => t.key)).toEqual(['v100/qwen-image-2.1'])
+    expect(targets[0].provider.label).toBe('V100')
+  })
+
+  it('skips inactive, endpoint-less, anthropic and built-in hosted providers', () => {
+    expect(customCloudTargets([{ ...server, active: false }])).toEqual([])
+    expect(customCloudTargets([{ ...server, base_url: '' }])).toEqual([])
+    expect(customCloudTargets([{ ...server, api_type: 'anthropic' as const }])).toEqual([])
+    expect(customCloudTargets([{ ...server, provider: 'openai' }])).toEqual([])
+  })
+
+  it('asks in the plain OpenAI shape and needs no API key', async () => {
+    const target = customCloudTargets([server])[0]
+    const body = buildCloudBody(target.provider, target.model, { prompt: 'a cat', width: 1024, height: 768, count: 2 })
+    expect(body).toMatchObject({ model: 'qwen-image-2.1', n: 2, size: '1024x768', response_format: 'b64_json' })
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ data: [{ b64_json: 'AAAA' }] }),
+    })) as unknown as typeof fetch
+    await generateCloudImages(
+      target,
+      { base_url: server.base_url, api_key: '' },
+      { prompt: 'a cat', width: 1024, height: 768, count: 1 },
+      new AbortController().signal,
+      fetchImpl
+    )
+    const [url, init] = (fetchImpl as unknown as { mock: { calls: [string, { headers: Record<string, string> }][] } }).mock.calls[0]
+    expect(url).toBe('http://v100:8560/v1/images/generations')
+    expect(init.headers.Authorization).toBeUndefined()
   })
 })

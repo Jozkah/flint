@@ -29,6 +29,8 @@ export type CloudImageProvider = {
   limits: { maxEdge: number; minArea: number; maxArea: number }
   /** What to ask for the picture in: base64 is kept without a second download. */
   format: Record<string, string>
+  /** A server the user runs themselves, which may need no API key. */
+  keyless?: boolean
 }
 
 export const CLOUD_IMAGE_PROVIDERS: CloudImageProvider[] = [
@@ -92,6 +94,45 @@ export function cloudTargets(configured: ReadonlySet<string>): CloudTarget[] {
   return CLOUD_IMAGE_PROVIDERS.filter((p) => configured.has(p.provider)).flatMap((provider) =>
     provider.models.map((model) => ({ key: cloudKey(provider.provider, model.id), provider, model }))
   )
+}
+
+/** Model ids a self-hosted OpenAI-compatible server uses for a picture model. */
+const IMAGE_MODEL_ID = /image|flux|diffusion|sdxl|dall-?e|imagen|(?:^|[^a-z])wan(?:[^a-z]|$)/i
+
+/**
+ * Picture models on the user's own OpenAI-compatible providers (a server they
+ * run, not one of the four hosted services above). Offered when the provider
+ * is active, has an endpoint, and lists a model whose name says it makes
+ * pictures. They are asked in the plain OpenAI shape: `size` in pixels and
+ * base64 back.
+ */
+export function customCloudTargets(
+  providers: ReadonlyArray<
+    Pick<ProviderObject, 'active' | 'provider' | 'displayName' | 'base_url' | 'api_type' | 'models'>
+  >
+): CloudTarget[] {
+  const hosted = new Set(CLOUD_IMAGE_PROVIDERS.map((p) => p.provider))
+  return providers
+    .filter((p) => p.active && p.base_url?.trim() && p.api_type !== 'anthropic' && !hosted.has(p.provider))
+    .flatMap((p) => {
+      const provider: CloudImageProvider = {
+        provider: p.provider,
+        label: p.displayName || p.provider,
+        models: [],
+        maxCount: 4,
+        size: 'pixels',
+        limits: { maxEdge: 2048, minArea: 0, maxArea: 2048 * 2048 },
+        format: { response_format: 'b64_json' },
+        keyless: true,
+      }
+      return (p.models ?? [])
+        .filter((m) => !m.embedding && IMAGE_MODEL_ID.test(`${m.id} ${m.name ?? ''}`))
+        .map((m) => ({
+          key: cloudKey(p.provider, m.id),
+          provider,
+          model: { id: m.id, name: m.displayName || m.name || m.id },
+        }))
+    })
 }
 
 export function targetFor(key: string, configured: ReadonlySet<string>): CloudTarget | undefined {
@@ -263,12 +304,12 @@ export async function generateCloudImages(
   const url = imagesUrl(settings.base_url)
   const key = providerRemoteApiKeyChain(settings)[0]
   if (!url) throw new Error(`${target.provider.label} has no endpoint set. Check it in Providers.`)
-  if (!key) throw new Error(`${target.provider.label} has no API key. Add one in Providers.`)
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${key}`,
+  if (!key && !target.provider.keyless) {
+    throw new Error(`${target.provider.label} has no API key. Add one in Providers.`)
   }
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (key) headers.Authorization = `Bearer ${key}`
   applyCustomHeaders(headers, settings)
 
   const response = await fetchImpl(url, {
