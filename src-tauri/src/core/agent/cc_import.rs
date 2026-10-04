@@ -77,7 +77,7 @@ pub struct CcImportResult {
 
 #[cfg(not(test))]
 fn cc_home() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".claude"))
+    crate::core::app::commands::jan_home_dir().map(|h| h.join(".claude"))
 }
 
 #[cfg(test)]

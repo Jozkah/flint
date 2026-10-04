@@ -115,6 +115,7 @@ describe('sessionMailbox', () => {
       sessionId: 'S2',
       displayName: 'T',
       folder: null,
+      acceptsMessages: null,
     })
     await sessionMailbox.claim('S2', ['m1'])
     expect(invoke).toHaveBeenLastCalledWith('plugin:agent-tools|mailbox_claim', {
