@@ -36,7 +36,8 @@ pub fn engine_dir<R: Runtime>(app: &tauri::AppHandle<R>, backend: Backend) -> Pa
 
 /// Where the engine runs, if one is installed: the first backend that has it.
 pub fn installed_backend<R: Runtime>(app: &tauri::AppHandle<R>) -> Option<Backend> {
-    catalog::available_backends().iter().copied()
+    [Backend::Cuda12, Backend::Vulkan, Backend::Cpu].into_iter()
+        .filter(|b| catalog::available_backends().contains(b))
         .find(|b| engine_dir(app, *b).join(SERVER_EXE).is_file() && engine_dir(app, *b).join("install.json").is_file())
 }
 
