@@ -69,6 +69,40 @@ describe('uploads', () => {
 })
 
 describe('composer chips and inserts', () => {
+  it('offers steering separately from queueing while a run is active', async () => {
+    useFixtures()
+    const onSend = vi.fn(async () => true)
+    const onSteer = vi.fn(async () => true)
+    render(<Composer placeholder="Ask" running allowWhileRunning onSend={onSend} onSteer={onSteer} plus={{ for: 'chat', id: 'c1' }} />)
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Change direction' } })
+    fireEvent.click(screen.getByLabelText('Steer active run'))
+    await waitFor(() => expect(onSteer).toHaveBeenCalledWith('Change direction'))
+    expect(onSend).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByLabelText('Message')).toHaveValue(''))
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Do this later' } })
+    fireEvent.click(screen.getByLabelText('Queue Message'))
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('Do this later'))
+  })
+
+  it('keeps an unaccepted steering message and hides steering while idle', async () => {
+    useFixtures()
+    const onSteer = vi.fn(async () => false)
+    const view = render(<Composer placeholder="Ask" running allowWhileRunning onSend={() => true} onSteer={onSteer} />)
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Keep this' } })
+    fireEvent.click(screen.getByLabelText('Steer active run'))
+    await waitFor(() => expect(onSteer).toHaveBeenCalledWith('Keep this'))
+    expect(screen.getByLabelText('Message')).toHaveValue('Keep this')
+    view.rerender(<Composer placeholder="Ask" onSend={() => true} onSteer={onSteer} />)
+    expect(screen.queryByLabelText('Steer active run')).toBeNull()
+  })
+
+  it('does not offer attachment steering while a run is active', () => {
+    useFixtures()
+    addDeskFile('chat:c1', 'README.md')
+    render(<Composer placeholder="Ask" running allowWhileRunning onSend={() => true} onSteer={() => true} plus={{ for: 'chat', id: 'c1' }} />)
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Read it' } })
+    expect(screen.getByLabelText('Steer active run')).toBeDisabled()
+  })
   it('shows chips with remove, and inserts @ references at the cursor', async () => {
     useFixtures()
     addDeskFile('cowork:w1', 'README.md')

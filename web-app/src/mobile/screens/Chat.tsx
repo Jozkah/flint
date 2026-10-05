@@ -220,6 +220,7 @@ export default function Chat({ id }: { id: string }) {
         stopFor={{ kind: 'chat', id }}
         allowWhileRunning
         onSend={async (text) => (await sendMessage('chat.send', { id, text })) !== undefined}
+        onSteer={async (text) => (await sendMessage('chat.send', { id, text, steer: true })) !== undefined}
       />
       <div className="runrow">
         {det?.effort && (

@@ -9,6 +9,7 @@ import {
   resolveCompactionWindow,
 } from '@/lib/compactionWindowSource'
 import { listedWindow } from '@/lib/listedWindows'
+import { assertEstimatedContextFits, cappedContextWindow, ContextEstimate } from '@/lib/contextEstimate'
 import {
   appendSessionContext,
   runCcContextHooks,
@@ -378,11 +379,10 @@ export function effectiveContextWindow(
   liveContextTokens: number | undefined,
   contextShiftEnabled: boolean
 ): number {
-  return contextShiftEnabled &&
-    typeof liveContextTokens === 'number' &&
-    liveContextTokens > 0
-    ? liveContextTokens
-    : configuredContextTokens
+  const configured = usableContextValue(configuredContextTokens)
+  const live = contextShiftEnabled ? usableContextValue(liveContextTokens) : null
+  // A runtime window constrains the user's cap; it never enlarges it.
+  return cappedContextWindow(configured, live) ?? 0
 }
 
 
@@ -975,6 +975,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * this off so a request is never compacted twice.
    */
   protected compactsAtThreshold = true
+  private contextEstimate = new ContextEstimate()
   /** A compaction this request made, announced on its reply's metadata. */
   private announcedCompaction: CompactionRecord | null = null
   /**
@@ -2865,12 +2866,27 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
 
     let effectiveMessages = messagesToConvert
+    const estimateKey = `${provider?.base_url ?? providerId}:${modelId}`
+    const estimateRatio = this.contextEstimate.ratio(estimateKey)
+    const estimatedWindow = Math.floor(maxContextTokens / estimateRatio)
+    const toolSchemaTokens =
+      Object.keys(this.tools).length > 0 &&
+      (selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools)
+        ? Object.entries(this.tools).reduce((total, [name, tool]) =>
+            total + estimateTokens(JSON.stringify({
+              name,
+              description: (tool as { description?: string }).description,
+              inputSchema: (tool as { inputSchema?: unknown }).inputSchema,
+            })) + 4, 0)
+        : 0
     if (maxContextTokens > 0) {
       const contextConfig: ContextManagerConfig = {
-        maxContextTokens,
+        // History is measured in estimated tokens; the user's cap and reply
+        // reserve are real tokens. Convert both using the measured ratio.
+        maxContextTokens: estimatedWindow,
         // The reserve is headroom kept free; a model's own output cap, when
         // larger, still wins.
-        maxOutputTokens: outputHeadroom(maxContextTokens, maxOutputTokens ?? 2048, compaction),
+        maxOutputTokens: Math.ceil(outputHeadroom(maxContextTokens, maxOutputTokens ?? 2048, compaction) / estimateRatio),
         autoCompact: !!autoCompact,
       }
 
@@ -2882,8 +2898,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       const screenshotTokens = (selectedModel?.capabilities?.includes('vision') ?? false)
         ? screenshotsToAttach(messagesToConvert) * SCREENSHOT_TOKEN_ESTIMATE
         : 0
+      // Tool definitions are sent on every request, independently of history.
+      // Reserving only the system text lets large MCP catalogs bypass the cap.
       const systemPromptTokens =
         (effectiveSystem ? estimateTokens(effectiveSystem) + 4 : 0) +
+        (ccContext.promptSubmit.length ? estimateTokens(ccContext.promptSubmit.join('\n')) + 8 : 0) +
+        (this.continueFromContent ? estimateTokens(
+          (this.continueFromContent.text ?? '') + (this.continueFromContent.reasoning ?? '')
+        ) + 4 : 0) +
+        toolSchemaTokens +
         screenshotTokens
       this.announcedCompaction = this.carriedCompaction
       if (
@@ -2895,10 +2918,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           threadId,
           messagesToConvert,
           {
-            window: maxContextTokens,
+            window: estimatedWindow,
             trimReserveTokens:
               contextConfig.maxOutputTokens +
-              contextSafetyMargin(maxContextTokens),
+              contextSafetyMargin(estimatedWindow),
             systemPromptTokens,
             keepRecent: compaction.keepRecent || DEFAULT_KEEP_RECENT,
             summaryMaxTokens: compaction.summaryMaxTokens,
@@ -3034,6 +3057,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         ]
       : baseMessages
 
+    const dispatchedEstimate = estimateHistoryTokens(effectiveMessages) +
+      (requestSystem ? estimateTokens(requestSystem) + 4 : 0) + toolSchemaTokens +
+      (continueContent ? estimateTokens((continueContent.text ?? '') + (continueContent.reasoning ?? '')) : 0)
+    // The trimmer preserves a newest message even when that one message is
+    // larger than the budget. Refuse that payload instead of silently sending
+    // it past the chosen cap. Overflow recovery may compact it once more.
+    assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens,
+      outputHeadroom(maxContextTokens, maxOutputTokens && maxOutputTokens > 0 ? maxOutputTokens : 2048, compaction))
+
     // Include tools only if we have tools loaded AND model supports them
     const hasTools = Object.keys(this.tools).length > 0
     const modelSupportsTools = selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools
@@ -3084,7 +3116,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       tools: shouldEnableTools ? this.tools : undefined,
       toolChoice: shouldEnableTools ? this.toolChoiceForStep() : undefined,
       system: requestSystem,
-      ...(maxOutputTokens !== undefined ? { maxTokens: maxOutputTokens } : {}),
+      ...(maxOutputTokens !== undefined && maxOutputTokens > 0 ? { maxOutputTokens } : {}),
       ...(reasoningProviderOptions
         ? { providerOptions: reasoningProviderOptions }
         : {}),
@@ -3216,6 +3248,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             finishReason: string
           }
           const usage = usageCollector.total(finishPart.totalUsage)
+          this.contextEstimate.observe(estimateKey, dispatchedEstimate, usage.inputTokens)
           const durationMs = streamStartTime ? Date.now() - streamStartTime : 0
 
           // Only for the speed figure; the stored usage keeps an unreported
