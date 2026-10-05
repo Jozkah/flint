@@ -266,7 +266,7 @@ pub async fn load<R: Runtime>(
     offload: Offload,
 ) -> Result<ResidentInfo, String> {
     if !engine::platform_supported() {
-        return Err("Image generation is available on Windows for now.".to_string());
+        return Err("Local image generation needs Windows x64 or Linux x64.".to_string());
     }
     let def = catalog::model(model_id).ok_or_else(|| format!("Unknown model {model_id}."))?;
     let backend = engine::installed_backend(app)
@@ -302,6 +302,7 @@ pub async fn load<R: Runtime>(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    engine::configure_library_path(&mut command, &dir);
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let mut child = command

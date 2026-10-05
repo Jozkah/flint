@@ -65,6 +65,7 @@ pub struct ModelStatus {
 #[serde(rename_all = "camelCase")]
 pub struct Status {
     pub supported: bool,
+    pub engine_builds: Vec<&'static str>,
     pub engine_tag: &'static str,
     pub engine_backend: Option<Backend>,
     pub models: Vec<ModelStatus>,
@@ -85,6 +86,7 @@ pub async fn diffusion_status<R: Runtime>(app: tauri::AppHandle<R>) -> Result<St
         .collect();
     Ok(Status {
         supported: engine::platform_supported(),
+        engine_builds: catalog::available_backends().iter().map(|b| b.id()).collect(),
         engine_tag: catalog::ENGINE_TAG,
         engine_backend: engine::installed_backend(&app),
         models,
@@ -114,7 +116,7 @@ pub async fn diffusion_download_model<R: Runtime>(
     token: Option<String>,
 ) -> Result<(), String> {
     if !engine::platform_supported() {
-        return Err("Local image and video generation is available on Windows only for now.".to_string());
+        return Err("Local image and video generation needs Windows x64 or Linux x64.".to_string());
     }
     let def = catalog::model(&model_id).ok_or_else(|| format!("Unknown model {model_id}."))?;
     for (index, file) in def.files.iter().enumerate() {
@@ -345,7 +347,7 @@ pub async fn diffusion_add_custom_model<R: Runtime>(
     params: AddCustomModel,
 ) -> Result<ModelStatus, String> {
     if !engine::platform_supported() {
-        return Err("Local image and video generation is available on Windows only for now.".to_string());
+        return Err("Local image and video generation needs Windows x64 or Linux x64.".to_string());
     }
     let AddCustomModel { repo, filename, family, display_name, license, token } = params;
     custom::family(&family).ok_or("That model family is not supported.")?;

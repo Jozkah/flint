@@ -47,6 +47,7 @@ export type StudioLora = { name: string; multiplier: number }
 
 export type StudioStatus = {
   supported: boolean
+  engineBuilds?: EngineBuild[]
   engineTag: string
   engineBackend: 'vulkan' | 'cuda12' | 'cpu' | null
   models: StudioModel[]
@@ -93,7 +94,7 @@ export type StudioFamily = {
   companionBytes: number
 }
 
-export type EngineBuild = 'win-vulkan-x64' | 'win-cuda12-x64' | 'win-cpu-x64'
+export type EngineBuild = 'win-vulkan-x64' | 'win-cuda12-x64' | 'win-cpu-x64' | 'linux-vulkan-x64' | 'linux-cpu-x64'
 
 export const studioApi = {
   status: () => invoke<StudioStatus>('diffusion_status'),
