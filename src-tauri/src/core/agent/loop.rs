@@ -6,6 +6,7 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 // Agent upstream traffic runs on `genai`, which is built against reqwest 0.13;
@@ -42,6 +43,24 @@ const MAX_CONSECUTIVE_BROKEN_TOOL_TURNS: usize = 15;
 /// arguments), or consecutive turns whose every tool call failed, after which
 /// the run is considered stuck and the user is asked for guidance.
 pub(crate) const STUCK_TURN_LIMIT: usize = 3;
+
+/// A stalled local read or web request must not hold the entire tool batch open.
+const READ_ONLY_TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
+
+async fn bounded_read_only_call<F: Future<Output = ToolOutcome>>(
+    call: F,
+    id: String,
+    name: String,
+    timeout: std::time::Duration,
+) -> ToolOutcome {
+    match tokio::time::timeout(timeout, call).await {
+        Ok(outcome) => outcome,
+        Err(_) => ToolOutcome::plain(
+            id,
+            format!("ERROR: {name} timed out after {} seconds", timeout.as_secs()),
+        ),
+    }
+}
 
 /// Why the loop decided the model is stuck.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3977,25 +3996,31 @@ impl CompositeToolInvoker {
                 // Reads run concurrently, so each needs its own token under the
                 // run's scope rather than sharing one.
                 let registered = self.call_token(&id);
-                read_futures.push(async move {
-                    let ctx = ToolContext::new(&root, &store, &enabled)
-                        .with_network(allow_network)
-                        .with_home_readonly(allow_home_read)
-                        .with_sandbox(sandbox)
-                        .with_scratch_root(&scratch)
-                        .with_user_skills(user_skills.as_deref())
-                        .with_cancel(registered.token().clone());
-                    // Held until the future completes, then dropped, which
-                    // deregisters it.
-                    let _registered = registered;
-                    let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
-                    let text = tauri_plugin_agent_tools::tools::call_shape::explain(tool.name, &args, text);
-                    ToolOutcome {
-                        diff,
-                        images: images.unwrap_or_default(),
-                        ..ToolOutcome::plain(id, text)
-                    }
-                });
+                let timeout_id = id.clone();
+                read_futures.push(bounded_read_only_call(
+                    async move {
+                        let ctx = ToolContext::new(&root, &store, &enabled)
+                            .with_network(allow_network)
+                            .with_home_readonly(allow_home_read)
+                            .with_sandbox(sandbox)
+                            .with_scratch_root(&scratch)
+                            .with_user_skills(user_skills.as_deref())
+                            .with_cancel(registered.token().clone());
+                        // Held until the future completes, then dropped, which
+                        // deregisters it.
+                        let _registered = registered;
+                        let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
+                        let text = tauri_plugin_agent_tools::tools::call_shape::explain(tool.name, &args, text);
+                        ToolOutcome {
+                            diff,
+                            images: images.unwrap_or_default(),
+                            ..ToolOutcome::plain(id, text)
+                        }
+                    },
+                    timeout_id,
+                    name.to_string(),
+                    READ_ONLY_TOOL_TIMEOUT,
+                ));
                 continue;
             }
             let (text, diff, images) = match decision {
@@ -13267,6 +13292,26 @@ mod tests {
         assert!(out[1].content.contains("BBB"), "got: {}", out[1].content);
         assert!(out[2].content.contains("CCC"), "got: {}", out[2].content);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn stalled_read_only_call_returns_error_without_holding_other_calls() {
+        let stalled = bounded_read_only_call(
+            std::future::pending::<ToolOutcome>(),
+            "stalled".into(),
+            "read".into(),
+            std::time::Duration::from_millis(20),
+        );
+        let finished = bounded_read_only_call(
+            async { ToolOutcome::plain("finished".into(), "contents".into()) },
+            "finished".into(),
+            "read".into(),
+            std::time::Duration::from_millis(20),
+        );
+        let (stalled, finished) = tokio::join!(stalled, finished);
+        assert_eq!(stalled.id, "stalled");
+        assert!(stalled.content.starts_with("ERROR: read timed out"));
+        assert_eq!(finished.content, "contents");
     }
 
     #[tokio::test]

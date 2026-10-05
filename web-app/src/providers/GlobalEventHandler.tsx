@@ -27,7 +27,8 @@ export function GlobalEventHandler() {
   useSessionStopRequests()
 
   // Probe hardware on mount so Hub fit-status renders before the user
-  // visits Settings → Hardware. Re-detect on visibility return (post-sleep, #6447).
+  // visits Settings → Hardware. Linux re-detects after visibility returns
+  // because its GPU driver may not be ready after sleep (#6447).
   useEffect(() => {
     if (!isPlatformTauri()) return
 
@@ -53,6 +54,9 @@ export function GlobalEventHandler() {
       }
     }
 
+    // Alt-Tab can fire visibilitychange on Windows. Re-detecting GPUs for
+    // every focus switch needlessly calls native graphics drivers.
+    if (!IS_LINUX) return
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [serviceHub, setHardwareData])
