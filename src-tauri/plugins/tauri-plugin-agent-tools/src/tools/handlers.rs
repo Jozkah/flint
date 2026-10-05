@@ -6407,6 +6407,7 @@ on_failure = \"warn\"
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::tools::gate::NetworkPolicy::open(),
             &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
@@ -6437,6 +6438,7 @@ on_failure = \"warn\"
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::tools::gate::NetworkPolicy::open(),
             &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
@@ -8678,6 +8680,7 @@ on_failure = \"warn\"
 
     /// The Cowork proposal card is filed under the proposing chat's id, so an
     /// agent-made proposal must list with `source_session_id` == its session.
+    #[cfg(feature = "tauri")]
     #[tokio::test]
     async fn a_proposed_memory_lists_under_the_session_that_proposed_it() {
         let root = unique_root();

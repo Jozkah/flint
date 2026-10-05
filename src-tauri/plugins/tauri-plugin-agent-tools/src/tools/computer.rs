@@ -63,6 +63,10 @@ pub fn plan(args: &Value) -> Result<Action, String> {
     }
 }
 
+#[cfg(target_os = "linux")]
+#[path = "computer_wayland.rs"]
+mod wayland;
+
 static INPUT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub async fn run(args: &Value) -> (String, Option<Vec<ImageContentPart>>) {
@@ -79,7 +83,7 @@ pub async fn run(args: &Value) -> (String, Option<Vec<ImageContentPart>>) {
             #[cfg(target_os = "macos")]
             let note = macos::capture_note(width, height);
             #[cfg(not(target_os = "macos"))]
-            let note = format!("Captured desktop at {width} × {height} pixels. Screenshot origin is screen (0,0); input uses these pixel coordinates. Windows captures the primary display, Linux the X11 root. Verify the target before acting.");
+            let note = format!("Captured desktop at {width} × {height} pixels. Screenshot origin is screen (0,0); input uses these pixel coordinates. Windows captures the primary display; Linux captures the X11 root or portal-selected desktop. On scaled Wayland desktops use compositor logical coordinates for input. Verify the target before acting.");
             let image = ImageContentPart { name: "desktop.png".into(), data_url: format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)) };
             (note, Some(vec![image]))
         }
@@ -122,7 +126,7 @@ fn linux_command(action: &Action, capture: &std::path::Path) -> (String, Vec<Str
 #[cfg(target_os = "linux")]
 async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> {
     if std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland") || std::env::var_os("WAYLAND_DISPLAY").is_some() {
-        return Err("Wayland desktop control is not supported yet. Use an X11 session; XWayland cannot control native Wayland apps.".into());
+        return wayland::perform(action).await;
     }
     if std::env::var_os("DISPLAY").is_none() { return Err("no graphical X11 display is available".into()); }
     let dir = tempfile::tempdir().map_err(|e| e.to_string())?;

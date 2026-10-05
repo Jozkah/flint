@@ -21,7 +21,10 @@ The tool supports:
 Typing, shortcuts and scrolling restore focus to the target after the approval
 UI brings Flint forward. Clicking a target is part of the action and appears in
 its approval description. Text is passed as data, never as executable script.
-Calls are serialized to prevent simultaneous pointer/keyboard operations.
+Calls are serialized to prevent simultaneous pointer/keyboard operations. On
+Wayland, typing pastes through wl-copy and replaces the clipboard with the typed
+text; the approval description says so. Set the ydotool virtual pointer to flat
+acceleration for accurate coordinates and account for compositor display scaling.
 
 Capture the screen, identify a target, act, then capture again to check the
 result. Screenshots return image content to vision-capable models. A text-only
@@ -35,7 +38,7 @@ No automatic action can identify an input reliably from a description alone.
 | Windows | user32 SendInput / SetCursorPos | System.Drawing | Built-in Windows PowerShell. Elevated apps and the secure desktop can refuse input. |
 | macOS | CoreGraphics | screencapture | Allow Flint in Accessibility for input and Screen Recording for screenshots. Screenshot results report the conversion from image pixels to logical screen coordinates. Shortcut letter key codes use US keyboard positions. |
 | Linux X11 | xdotool | ImageMagick import | Install `xdotool` and ImageMagick; a graphical DISPLAY must be available. On Arch: `sudo pacman -S xdotool imagemagick`. |
-| Linux Wayland | Unavailable | Unavailable | Refused explicitly: XWayland input cannot reliably operate native Wayland applications. A compositor/portal input backend is future work. |
+| Linux Wayland | ydotool 1.x | XDG desktop screenshot portal | Install and configure ydotoold with uinput access and an accessible YDOTOOL_SOCKET; install wl-clipboard for Unicode text paste, plus xdg-desktop-portal and the backend for the compositor. Flint starts no privileged daemon. |
 
 Windows and macOS screenshots cover the primary display; Linux covers the X11
 root. Dragging, held input, selecting secondary displays and window discovery

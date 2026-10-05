@@ -478,7 +478,7 @@ export async function describeHostAction(
   if (toolName === 'computer') {
     const target = `screen (${String(a.x)}, ${String(a.y)})`
     if (a.action === 'screenshot') return 'Capture the primary desktop display (the X11 root on Linux)'
-    if (a.action === 'type') return `Click ${target} and ${a.replace === true ? 'replace the field with' : 'type'} this text:\n${String(a.text ?? '')}`
+    if (a.action === 'type') return `Click ${target} and ${a.replace === true ? 'replace the field with' : 'type'} this text (on Wayland this also replaces the clipboard):\n${String(a.text ?? '')}`
     if (a.action === 'key') return `Click ${target} and press ${Array.isArray(a.keys) ? a.keys.join(' + ') : ''}`
     if (a.action === 'scroll') return `Click ${target} and scroll ${String(a.amount)} wheel steps (positive down)`
     return `${a.action === 'move' ? 'Move the pointer to' : `${a.count === 2 ? 'Double-click' : 'Click'} with the ${String(a.button ?? 'left')} button at`} ${target}`
