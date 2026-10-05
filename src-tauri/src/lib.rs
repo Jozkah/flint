@@ -45,6 +45,8 @@ macro_rules! invoke_commands_with_extras {
         core::diffusion::commands::diffusion_unload,
         core::diffusion::commands::diffusion_generate_image,
         core::diffusion::commands::diffusion_generate_video,
+        core::diffusion::commands::diffusion_list_loras,
+        core::diffusion::commands::diffusion_import_lora,
         core::diffusion::commands::diffusion_cancel,
         core::diffusion::commands::diffusion_gallery,
         core::diffusion::commands::diffusion_delete,
