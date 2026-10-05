@@ -43,6 +43,13 @@ describe('estimateTokens', () => {
 })
 
 describe('estimateMessageTokens', () => {
+  it('counts reasoning that is replayed with an assistant message', () => {
+    const msg: UIMessage = {
+      id: 'reasoning', role: 'assistant',
+      parts: [{ type: 'reasoning', text: 'x'.repeat(70_000) }],
+    }
+    expect(estimateMessageTokens(msg)).toBe(20_004)
+  })
   it('should estimate tokens for a simple text message', () => {
     const msg = makeMessage('1', 'user', 'Hello world')
     const tokens = estimateMessageTokens(msg)

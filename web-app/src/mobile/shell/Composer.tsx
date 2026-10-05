@@ -43,6 +43,7 @@ export function Composer({
   seed,
   stopFor,
   allowWhileRunning,
+  onSteer,
 }: {
   /** While running, typed text can still be sent (it queues on the
    * computer); Stop shows when the box is empty. */
@@ -59,6 +60,8 @@ export function Composer({
   /** A run is going: the send button becomes Stop… */
   running?: boolean
   onSend: (text: string) => Promise<boolean | void> | boolean | void
+  /** Deliver text at the active run's next step instead of queueing it. */
+  onSteer?: (text: string) => Promise<boolean | void> | boolean | void
   /** Above the text box (a room's "To" chips). */
   top?: ReactNode
   label?: string
@@ -106,14 +109,24 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [insert?.n])
 
-  const send = async () => {
+  const [sending, setSending] = useState(false)
+  const sendingRef = useRef(false)
+  const send = async (steer = false) => {
     const v = text.trim()
-    if (!v && !hasFiles) return
-    const sent = await onSend(v)
-    // Keep what was typed unless the computer took it.
-    if (sent) {
-      setText('')
-      requestAnimationFrame(grow)
+    if (sendingRef.current || (running && !allowWhileRunning)) return
+    if ((!v && !hasFiles) || (steer && (!running || !onSteer || hasFiles))) return
+    sendingRef.current = true
+    setSending(true)
+    try {
+      const sent = await (steer && onSteer ? onSteer(v) : onSend(v))
+      // Keep newer text typed while the request was in flight.
+      if (sent) {
+        setText((current) => current === text ? '' : current)
+        requestAnimationFrame(grow)
+      }
+    } finally {
+      sendingRef.current = false
+      setSending(false)
     }
   }
 
@@ -135,7 +148,7 @@ export function Composer({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
-              void send()
+              void send((e.ctrlKey || e.metaKey) && !!onSteer && !!running)
             }
           }}
         />
@@ -174,6 +187,18 @@ export function Composer({
               }, words)
             }
           />
+          {running && allowWhileRunning && onSteer && (
+            <button
+              type="button"
+              className="btn ghost"
+              aria-label="Steer active run"
+              title={hasFiles ? 'Send files after the current run finishes' : 'Send at the next step'}
+              disabled={sending || !text.trim() || hasFiles}
+              onClick={() => void send(true)}
+            >
+              <I n="steer" size={16} />Steer
+            </button>
+          )}
           {running && !(allowWhileRunning && (text.trim() || hasFiles)) ? (
             <button type="button" className="send stop" onClick={() => openSheet('stop', stopFor)} aria-label="Stop…">
               <I n="sq" />
@@ -182,8 +207,9 @@ export function Composer({
             <button
               type="button"
               className={`send${text.trim() || hasFiles ? '' : ' off'}`}
+              disabled={sending || (!text.trim() && !hasFiles)}
               onClick={() => void send()}
-              aria-label="Send Message"
+              aria-label={running && allowWhileRunning ? 'Queue Message' : 'Send Message'}
             >
               <I n="up" />
             </button>

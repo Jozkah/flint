@@ -14,6 +14,9 @@ import { fetchServerWindow } from '@/lib/serverWindow'
 import { useContextBreakdown } from './useContextBreakdown'
 import { useModelProvider } from './useModelProvider'
 import { useAppState } from './useAppState'
+import { useThreads } from './useThreads'
+import { useAssistant } from './useAssistant'
+import { cappedContextWindow } from '@/lib/contextEstimate'
 import {
   finalizeTokenUsage,
   readTokenUsage,
@@ -131,6 +134,11 @@ export const useTokensCount = (
   const modelId = isLocalProvider ? selectedModel?.id : undefined
 
   const threadId = source?.threadId ?? messages[0]?.thread_id
+  const threadCap = useThreads((s) => threadId
+    ? s.threads[threadId]?.assistants?.[0]?.parameters?.max_context_tokens
+    : undefined)
+  const assistantCap = useAssistant((s) => s.currentAssistant?.parameters?.max_context_tokens)
+  const contextCap = usableContextValue(threadId ? threadCap : assistantCap)
   // Populated per-chunk while a llama.cpp turn is streaming (timings_per_token);
   // cleared on stream start/finish/error, so its presence means "live now".
   const liveStats = useAppState((s) =>
@@ -261,11 +269,11 @@ export const useTokensCount = (
         // or its server was found to run with (kept across restarts and a
         // server that does not answer). A model with none of those keeps no
         // window rather than a guessed one.
-        maxTokens:
+        maxTokens: cappedContextWindow(contextCap,
           usableContextValue(sourceOverflow?.contextTokens) ??
           readCapabilityField(selectedModel, CONTEXT_FIELDS) ??
           usableContextValue(rememberedWindow) ??
-          undefined,
+          undefined),
         isOverflow: sourceOverflow != null,
         loading: false,
         isNearLimit: false,
@@ -297,12 +305,12 @@ export const useTokensCount = (
     // it renders as `0 / 0` and reads as a model with no room at all.
     // An engine that has unloaded the model after sitting idle answers no
     // props: the window it last ran with, then the one configured, stand in.
-    const maxTokens =
+    const maxTokens = cappedContextWindow(contextCap,
       usableContextValue(overflow?.contextTokens) ??
       usableContextValue(modelProps?.nCtx) ??
       usableContextValue(rememberedWindow) ??
       configuredCtxLen ??
-      undefined
+      undefined)
     const percentage = maxTokens ? (tokenCount / maxTokens) * 100 : undefined
     const isNearLimit = overflow != null || (percentage ? percentage > 85 : false)
 
@@ -350,6 +358,7 @@ export const useTokensCount = (
     getProviderByName,
     selectedModel,
     configuredCtxLen,
+    contextCap,
     rememberedWindow,
   ])
 

@@ -90,7 +90,7 @@ export function deriveToolOutputCap(
 function messageToText(message: UIMessage): string {
   const parts: string[] = []
   for (const part of message.parts) {
-    if (part.type === 'text') {
+    if (part.type === 'text' || part.type === 'reasoning') {
       parts.push(part.text)
     } else if (part.type === 'dynamic-tool' || part.type.startsWith('tool-')) {
       // An image in a tool result is a fixed cost, not its base64 length.
