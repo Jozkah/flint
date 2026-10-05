@@ -56,11 +56,13 @@ jobs:
             ref="$GITHUB_SHA"
             slot="$(TZ=Europe/Lisbon date +%Y%m%d-%H)"
             tag="nightly-$slot"
-            previous="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 100 \
-              --json tagName,isPrerelease --jq '[.[] | select(.isPrerelease and (.tagName | startswith("nightly-"))) | .tagName][0] // empty')"
-            if [ -z "$previous" ]; then
-              previous="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
-                --limit 1 --json tagName --jq '.[0].tagName')"
+            # Keep nightly notes cumulative since the latest stable release.
+            # Comparing with a previous nightly would hide unreleased changes.
+            baseline="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+              --limit 1 --json tagName --jq '.[0].tagName // empty')"
+            if [ -z "$baseline" ]; then
+              echo "Cannot generate nightly notes without a stable release baseline" >&2
+              exit 1
             fi
             if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               echo "Reusing existing nightly release $tag"
@@ -68,8 +70,8 @@ jobs:
               gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
                 --target "$GITHUB_SHA" --draft --prerelease --latest=false \
                 --title "Flint nightly $(TZ=Europe/Lisbon date +%Y-%m-%d\ %H:00) Lisbon" \
-                --generate-notes --notes-start-tag "$previous" \
-                --notes "Unsigned desktop bundles built from $GITHUB_SHA. Changes since $previous."
+                --generate-notes --notes-start-tag "$baseline" \
+                --notes "Unsigned desktop bundles built from $GITHUB_SHA. Changes since $baseline (not included in the stable release)."
             fi
           else
             tag="$INPUT_TAG"
