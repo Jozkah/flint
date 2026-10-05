@@ -474,6 +474,28 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "computer",
+                "description": "Use the host desktop's keyboard and mouse, or take a desktop screenshot. Every call requires approval. First capture the screen, identify the target, act, then capture again to verify. Windows/macOS capture the primary display; Linux captures the X11 root. Move/click/type/key/scroll require screen x,y coordinates. Type, key and scroll click that target before sending input, restoring app focus after approval; click a neutral focusable spot for shortcuts and scrolling. Type inserts literal Unicode text (replace=true selects all in the target field first); key sends one key with optional modifiers. Never guess coordinates. macOS requires Accessibility/Screen Recording permissions and uses logical points (divide Retina image pixels by display scale). Linux X11 needs xdotool and ImageMagick. Wayland capture uses the desktop portal; input requires ydotool 1.x with its user-configured daemon. Wayland text entry uses wl-copy and replaces the clipboard with the typed text. This controls apps on the desktop host, including when requested from remote mobile.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "action": { "type": "string", "enum": ["screenshot", "move", "click", "type", "key", "scroll"] },
+                        "x": { "type": "integer", "minimum": -32768, "maximum": 32767 },
+                        "y": { "type": "integer", "minimum": -32768, "maximum": 32767 },
+                        "button": { "type": "string", "enum": ["left", "right", "middle"], "description": "click only; default left." },
+                        "count": { "type": "integer", "minimum": 1, "maximum": 2, "description": "click only; default 1, use 2 for double-click." },
+                        "text": { "type": "string", "maxLength": 12000, "description": "type only: literal text to insert in the field at x,y." },
+                        "replace": { "type": "boolean", "description": "type only: select all in the target field before typing; default false inserts at the clicked caret." },
+                        "keys": { "type": "array", "minItems": 1, "maxItems": 5, "items": { "type": "string" }, "description": "key only: optional ctrl/alt/shift/meta modifiers followed by one letter, digit, enter, tab, escape, backspace, delete, space, up/down/left/right, home/end/pageup/pagedown. Example: [ctrl,a]. On macOS meta is Command." },
+                        "amount": { "type": "integer", "minimum": -20, "maximum": 20, "description": "scroll only: nonzero wheel steps, positive down and negative up, at x,y after focusing the target." }
+                    },
+                    "required": ["action"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "clipboard",
                 "description": "Read the text on the user's clipboard, or replace it. Both are asked about every time, and the user sees which. Use read when they say they copied something for you; use write to hand them text to paste (a command, a snippet, a message) instead of asking them to select it. Text only. The sandboxed `bash` has no clipboard. Windows only.",
                 "parameters": {
@@ -810,7 +832,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 54);
+        assert_eq!(schemas.len(), 55);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

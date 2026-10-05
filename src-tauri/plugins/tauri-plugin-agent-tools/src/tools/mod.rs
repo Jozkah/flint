@@ -24,6 +24,7 @@ pub mod host_ssh;
 pub mod host_wsl;
 pub mod notify_user;
 pub mod clipboard;
+pub mod computer;
 pub mod open_path;
 pub mod docker_tool;
 pub mod host_read;
@@ -692,6 +693,8 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Write,
         path_args: &[],
     },
+    // Native keyboard, mouse and desktop capture, approved as a host action.
+    BuiltinTool { name: "computer", capability: Capability::Write, path_args: &[] },
     // Open a project file or folder on screen, or show it in Explorer. Asked
     // about every time; the handler confines the path and refuses programs.
     BuiltinTool {
@@ -934,7 +937,7 @@ pub fn is_host_tool(name: &str) -> bool {
 pub fn is_always_ask(name: &str) -> bool {
     matches!(
         name,
-        "host_action" | "host_build" | "host_powershell" | "host_package" | "host_wsl" | "host_ssh" | "clipboard" | "open_path"
+        "host_action" | "host_build" | "host_powershell" | "host_package" | "host_wsl" | "host_ssh" | "clipboard" | "open_path" | "computer"
     )
 }
 
@@ -1016,7 +1019,7 @@ mod tests {
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
         // + browser, the interactive confined browser.
-        assert_eq!(BUILTIN_TOOLS.len(), 54);
+        assert_eq!(BUILTIN_TOOLS.len(), 55);
     }
 
     #[test]
