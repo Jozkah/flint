@@ -46,6 +46,7 @@ export const PLAN_DENIED_TOOLS = new Set([
   'write',
   'edit',
   'bash',
+  'computer',
   'memory_write',
   'skill_write',
   'task',

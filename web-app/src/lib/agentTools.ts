@@ -125,6 +125,7 @@ export const AGENT_TOOL_NAMES = new Set([
   'host_build',
   // The clipboard and opening a project file on screen. Asked about every time.
   'clipboard',
+  'computer',
   'open_path',
   // A PowerShell script outside the sandbox. Asked about every time, script shown.
   'host_powershell',
@@ -446,6 +447,7 @@ const HOST_CONTEXT: Record<string, string> = {
   host_wsl: 'Command in WSL',
   host_ssh: 'Command over SSH',
   clipboard: 'Clipboard',
+  computer: 'Keyboard and mouse',
   open_path: 'Open on screen',
 }
 
@@ -473,6 +475,14 @@ export async function describeHostAction(
     string,
     unknown
   >
+  if (toolName === 'computer') {
+    const target = `screen (${String(a.x)}, ${String(a.y)})`
+    if (a.action === 'screenshot') return 'Capture the primary desktop display (the X11 root on Linux)'
+    if (a.action === 'type') return `Click ${target} and ${a.replace === true ? 'replace the field with' : 'type'} this text:\n${String(a.text ?? '')}`
+    if (a.action === 'key') return `Click ${target} and press ${Array.isArray(a.keys) ? a.keys.join(' + ') : ''}`
+    if (a.action === 'scroll') return `Click ${target} and scroll ${String(a.amount)} wheel steps (positive down)`
+    return `${a.action === 'move' ? 'Move the pointer to' : `${a.count === 2 ? 'Double-click' : 'Click'} with the ${String(a.button ?? 'left')} button at`} ${target}`
+  }
   if (toolName === 'clipboard') {
     if (a.action === 'write') {
       const text = String(a.text ?? '')

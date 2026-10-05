@@ -9,6 +9,14 @@ describe('host tool questions', () => {
     expect(hostCallOptions('host_powershell', 'abc')).toEqual({ callId: 'abc' })
   })
 
+  it('requires approval under the desktop tool call card for input and capture', () => {
+    expect(HOST_ASKED.has('computer')).toBe(true)
+    for (const action of ['screenshot', 'click', 'type', 'key', 'scroll', 'move']) {
+      expect(hostCallNeedsAsking('computer', { action })).toBe(true)
+      expect(hostCallOptions('computer', 'desktop-call')).toEqual({ callId: 'desktop-call' })
+    }
+  })
+
   it('leaves every other tool alone', () => {
     for (const tool of ['read', 'write', 'bash', 'web_fetch', 'host_query', 'docker', 'windows_events']) {
       expect(hostCallOptions(tool, 'call-1')).toEqual({})

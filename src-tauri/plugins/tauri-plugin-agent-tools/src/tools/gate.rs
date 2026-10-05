@@ -574,6 +574,12 @@ pub fn resolve_decision(
     }
     // The clipboard holds what a person copied a moment ago, and `open_path`
     // starts a program on their screen: both asked about every time.
+    if tool.name == "computer" {
+        return match crate::tools::computer::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
     if tool.name == "clipboard" {
         return match crate::tools::clipboard::plan(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
@@ -959,6 +965,22 @@ mod tests {
             with(&deny, json!({"args": ["status"]}), &grants),
             Decision::HardDeny(DenyReason::Policy)
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn desktop_input_and_capture_require_host_approval() {
+        let root = unique_root();
+        let plain = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let grants = SessionGrants::default();
+        let simple = |tool: &str, args: serde_json::Value| resolve_decision(
+            lookup(tool).unwrap(), &args, &root, None, &[], &plain, &grants,
+            true, &crate::subject::Subject::MainAgent,
+        );
+        for args in [json!({"action":"screenshot"}), json!({"action":"type","x":30,"y":40,"text":"Hello"}), json!({"action":"click","x":30,"y":40})] {
+            assert_eq!(simple("computer", args), Decision::Prompt(PromptKind::Ask));
+        }
+        assert_eq!(simple("computer", json!({"action":"key","keys":["not-a-key"]})), Decision::Allow);
         let _ = std::fs::remove_dir_all(&root);
     }
 
