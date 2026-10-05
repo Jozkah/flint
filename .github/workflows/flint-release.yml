@@ -1,38 +1,24 @@
 name: Flint Release
 
-# Builds the unsigned Flint desktop bundles on GitHub-hosted runners and
-# attaches them to an existing GitHub release. The release itself (title,
-# notes) is created by hand; this workflow never creates or edits one.
-#
-# A push to main is a release too: the tag named by the app version in
-# src-tauri/tauri.conf.json (v0.9.0 while that is the version) is moved to the
-# pushed commit and rebuilt, so the rolling release follows main without a
-# manual retag. Pushes that only touch documentation or the website are
-# skipped; the tag catches up on the next push that changes the app.
+# Scheduled runs build an unsigned prerelease from main. Manual runs attach
+# bundles to an existing release. Stable release tags never move automatically.
 on:
+  schedule:
+    - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
       tag:
         description: 'Existing release tag to build and upload to (e.g. v0.9.0)'
         required: true
-        default: 'v0.9.0'
       optimize:
         description: 'Full size optimization (fat LTO, one codegen unit): much slower to build, slightly smaller binary. Off by default.'
         type: boolean
         default: false
-  push:
-    tags: ['v*']
-    branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'website/**'
 
-# One group for every trigger: a push to main and a manual retag both upload to
-# the same release, so the newer run has to cancel the older one.
+# Only one nightly draft can exist for a given UTC day.
 concurrency:
-  group: flint-release
-  cancel-in-progress: true
+  group: flint-release-${{ github.event_name == 'schedule' && 'nightly' || github.event.inputs.tag }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -50,52 +36,49 @@ env:
   CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ inputs.optimize && 'z' || 's' }}
 
 jobs:
-  # Fail in seconds rather than after an hour of compiling when the tag has no
-  # release to attach to.
-  check-release:
-    name: Check the release exists
+  prepare:
+    name: Prepare release
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.tag.outputs.tag }}
+      tag: ${{ steps.release.outputs.tag }}
     steps:
-      - name: Check out the pushed commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
-
-      # A branch push names no tag, so it takes the one for the app version.
-      - name: Resolve the tag
-        id: tag
+      - name: Create nightly draft or check existing release
+        id: release
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_TYPE" = branch ]; then
-            tag="v$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            day="$(date -u +%Y%m%d)"
+            tag="nightly-$day"
+            previous="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 100 \
+              --json tagName,isPrerelease --jq '[.[] | select(.isPrerelease and (.tagName | startswith("nightly-"))) | .tagName][0] // empty')"
+            if [ -z "$previous" ]; then
+              previous="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+                --limit 1 --json tagName --jq '.[0].tagName')"
+            fi
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Reusing existing nightly release $tag"
+            else
+              gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+                --target "$GITHUB_SHA" --draft --prerelease --latest=false \
+                --title "Flint nightly $(date -u +%Y-%m-%d)" \
+                --generate-notes --notes-start-tag "$previous" \
+                --notes "Unsigned desktop bundles built from $GITHUB_SHA. Changes since $previous."
+            fi
           else
-            tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+            tag="$INPUT_TAG"
+            gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "TAG=$tag" >> "$GITHUB_ENV"
-
-      - name: Look up the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft
-
-      # Through the API rather than `git push`: a ref moved with GITHUB_TOKEN
-      # starts no second run of this workflow, which is what keeps a push to
-      # main at one build instead of two.
-      - name: Move the tag to the pushed commit
-        if: github.event_name == 'push' && github.ref_type == 'branch'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG" -f sha="$GITHUB_SHA" -F force=true
 
   build:
     name: Build (${{ matrix.name }})
-    needs: check-release
+    needs: prepare
     runs-on: ${{ matrix.os }}
     timeout-minutes: 240
     env:
-      TAG: ${{ needs.check-release.outputs.tag }}
+      TAG: ${{ needs.prepare.outputs.tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -264,3 +247,18 @@ jobs:
           name: engine-build-log-${{ matrix.name }}
           path: src-tauri/target/engine-build.log
           if-no-files-found: ignore
+
+  publish-nightly:
+    name: Publish nightly prerelease
+    if: github.event_name == 'schedule'
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish complete nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          release_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .id)"
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            -F draft=false -F prerelease=true -f make_latest=false
