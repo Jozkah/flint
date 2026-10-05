@@ -152,6 +152,7 @@ pub async fn generate(body: &Value) -> Result<Value, ApiError> {
             count: Some(parsed.count),
             seed: parsed.seed,
             steps: None,
+            lora: Vec::new(),
         },
     )
     .await
@@ -360,6 +361,7 @@ pub async fn create_video(body: &Value) -> Result<Value, ApiError> {
         frames: Some(frames_for_seconds(parsed.seconds, fps)),
         seed: parsed.seed,
         steps: None,
+        lora: Vec::new(),
     };
     let job_id = id.clone();
     tokio::spawn(async move {

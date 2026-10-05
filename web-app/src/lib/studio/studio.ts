@@ -43,6 +43,8 @@ export type StudioModel = {
 
 export type StudioResident = { model_id: string; kind: StudioKind; busy: boolean }
 
+export type StudioLora = { name: string; multiplier: number }
+
 export type StudioStatus = {
   supported: boolean
   engineTag: string
@@ -63,6 +65,7 @@ export type Recipe = {
   batchSeed: number
   modelId: string
   modelName: string
+  lora?: StudioLora[]
   frames: number | null
   fps: number | null
   createdAtMs: number
@@ -101,6 +104,8 @@ export const studioApi = {
   load: (modelId: string, offload?: 'none' | 'group' | 'model') =>
     invoke<StudioResident>('diffusion_load', { modelId, offload: offload ?? null }),
   unload: () => invoke<void>('diffusion_unload'),
+  listLoras: () => invoke<string[]>('diffusion_list_loras'),
+  importLora: (path: string) => invoke<string>('diffusion_import_lora', { path }),
   generateImage: (params: {
     model: string
     prompt: string
@@ -110,6 +115,7 @@ export const studioApi = {
     count?: number
     seed?: number
     steps?: number
+    lora?: StudioLora[]
   }) => invoke<Generated>('diffusion_generate_image', { params }),
   generateVideo: (params: {
     model: string
@@ -120,6 +126,7 @@ export const studioApi = {
     frames?: number
     seed?: number
     steps?: number
+    lora?: StudioLora[]
   }) => invoke<Generated>('diffusion_generate_video', { params }),
   cancel: () => invoke<void>('diffusion_cancel'),
   gallery: (kind: StudioKind) => invoke<GalleryItem[]>('diffusion_gallery', { kind }),

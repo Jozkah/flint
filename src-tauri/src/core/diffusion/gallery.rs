@@ -27,10 +27,18 @@ pub struct Recipe {
     pub batch_seed: u32,
     pub model_id: String,
     pub model_name: String,
+    #[serde(default)]
+    pub lora: Vec<LoraRecipe>,
     pub frames: Option<u32>,
     pub fps: Option<u32>,
     pub created_at_ms: u64,
     pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LoraRecipe {
+    pub name: String,
+    pub multiplier: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -275,6 +283,7 @@ mod tests {
             batch_seed: 7,
             model_id: "z-image-turbo".into(),
             model_name: "Z-Image Turbo".into(),
+            lora: Vec::new(),
             frames: None,
             fps: None,
             created_at_ms: at,
