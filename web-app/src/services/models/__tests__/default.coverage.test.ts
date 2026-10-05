@@ -214,10 +214,9 @@ describe('DefaultModelsService - coverage supplement', () => {
 
   // ── pullModel with no engine ──
   describe('pullModel', () => {
-    it('returns undefined when no engine', async () => {
+    it('refuses to mark a model installed when no engine is available', async () => {
       mockEngineManager.get.mockReturnValueOnce(undefined)
-      const result = await svc.pullModel('id1', '/path')
-      expect(result).toBeUndefined()
+      await expect(svc.pullModel('id1', '/path')).rejects.toThrow('llama.cpp engine is not available')
     })
   })
 })

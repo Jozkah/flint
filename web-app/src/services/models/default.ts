@@ -60,7 +60,9 @@ export class DefaultModelsService implements ModelsService {
     specDraftPath?: string,
     specDraftKind?: SpecDraftKind
   ): Promise<void> {
-    return this.getEngine()?.import(id, {
+    const engine = this.getEngine()
+    if (!engine) throw new Error('The llama.cpp engine is not available. Restart Flint and retry installing the downloaded model.')
+    return engine.import(id, {
       modelPath,
       mmprojPath,
       modelSha256,

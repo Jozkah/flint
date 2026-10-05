@@ -113,6 +113,9 @@ pub async fn diffusion_download_model<R: Runtime>(
     model_id: String,
     token: Option<String>,
 ) -> Result<(), String> {
+    if !engine::platform_supported() {
+        return Err("Local image and video generation is available on Windows only for now.".to_string());
+    }
     let def = catalog::model(&model_id).ok_or_else(|| format!("Unknown model {model_id}."))?;
     for (index, file) in def.files.iter().enumerate() {
         if std::fs::metadata(runtime::model_file_path(&app, file))
@@ -341,6 +344,9 @@ pub async fn diffusion_add_custom_model<R: Runtime>(
     app: tauri::AppHandle<R>,
     params: AddCustomModel,
 ) -> Result<ModelStatus, String> {
+    if !engine::platform_supported() {
+        return Err("Local image and video generation is available on Windows only for now.".to_string());
+    }
     let AddCustomModel { repo, filename, family, display_name, license, token } = params;
     custom::family(&family).ok_or("That model family is not supported.")?;
     let files = crate::core::huggingface::huggingface_model_files(repo.clone(), token).await?;

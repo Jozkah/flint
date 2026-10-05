@@ -1780,6 +1780,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     // opts.modelPath: URL to the model file
     // opts.mmprojPath: URL to the mmproj file
 
+    const janDataFolderPath = await getJanDataFolderPath()
+
     /**
      * Resolve a model file that must already exist.
      *
@@ -1793,8 +1795,12 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
             'Point the import at a file already on this machine.'
         )
       }
-      if (!(await fs.existsSync(path)))
-        throw new Error(`File not found: ${path}`)
+      // The Hugging Face downloader returns a path relative to the data
+      // folder. Checking that string directly looks in the process working
+      // directory (notably / on a Linux desktop launch).
+      const fullPath = await joinPath([janDataFolderPath, path])
+      if (!(await fs.existsSync(fullPath)))
+        throw new Error(`File not found: ${fullPath}`)
       return path
     }
 
@@ -1812,7 +1818,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
 
     // Validate GGUF files
-    const janDataFolderPath = await getJanDataFolderPath()
     const fullModelPath = await joinPath([janDataFolderPath, modelPath])
     let isEmbedding = false
     let mtpLayers = 0

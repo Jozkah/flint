@@ -130,6 +130,10 @@ export function StudioDiscover({
   }
 
   const add = async (model: HuggingFaceModel, file: HuggingFaceFile) => {
+    if (!status?.supported) {
+      toast.error('Local image generation is available on Windows only for now.')
+      return
+    }
     const chosen = family[model.id]
     if (!chosen) return toast.error('Pick what kind of model this is first.')
     setAdding(`${model.id}/${file.name}`)
@@ -160,6 +164,11 @@ export function StudioDiscover({
   return (
     <main className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
+        {status && !status.supported && (
+          <div role="status" className="rounded-xl border border-border bg-muted px-4 py-3 text-sm">
+            Local image and video models require Windows for now. They cannot be installed or run in Studio on this system.
+          </div>
+        )}
         <p className="text-[13px] text-secondary-foreground">
           Picture models in the GGUF format that Studio can run. Pick a weights
           file and what kind of model it is; the text encoder and VAE it needs
@@ -316,7 +325,11 @@ export function StudioDiscover({
                                 {file.name}
                               </div>
                             </div>
-                            {isAdded ? (
+                            {status && !status.supported ? (
+                              <Button size="sm" variant="outline" disabled>
+                                Requires Windows
+                              </Button>
+                            ) : isAdded ? (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -327,7 +340,7 @@ export function StudioDiscover({
                             ) : (
                               <Button
                                 size="sm"
-                                disabled={adding === key || !family[model.id]}
+                                disabled={adding === key || !family[model.id] || !status?.supported}
                                 onClick={() => void add(model, file)}
                               >
                                 <Plus className="size-3.5" />
