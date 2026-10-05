@@ -509,7 +509,7 @@ export async function dispatchCoworkTool(
     call,
     { session: ctx.sessionId, run: '', ...(ctx.activity ?? {}) },
     signal,
-    () => routeCoworkTool(call, ctx, signal)
+    () => boundedToolCall(call, ctx, signal)
   )
   // A hint rides on the result the model is about to read, so it is read.
   const hint = ctx.nudge?.observe(call.toolName)
@@ -524,6 +524,50 @@ export async function dispatchCoworkTool(
     }
   }
   return outcome
+}
+
+const READ_ONLY_TIMEOUT_MS = 45_000
+const BOUNDED_READ_TOOLS = new Set([
+  'read', 'ls', 'find', 'grep', 'web_search', 'web_fetch',
+])
+
+/** Stop waiting when the run stops; bound reads that can otherwise hold a turn forever. */
+function boundedToolCall(
+  call: PendingToolCall,
+  ctx: DispatchContext,
+  signal?: AbortSignal
+): Promise<ToolOutcome> {
+  if (signal?.aborted) {
+    return Promise.resolve({ output: 'Tool stopped before it returned.', isError: true })
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (outcome: ToolOutcome) => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      signal?.removeEventListener('abort', stop)
+      resolve(outcome)
+    }
+    const stop = () => finish({ output: 'Tool stopped before it returned.', isError: true })
+    const timer = BOUNDED_READ_TOOLS.has(call.toolName)
+      ? setTimeout(
+          () => finish({
+            output: `ERROR: ${call.toolName} timed out after 45 seconds`,
+            isError: true,
+          }),
+          READ_ONLY_TIMEOUT_MS
+        )
+      : undefined
+    signal?.addEventListener('abort', stop, { once: true })
+    void routeCoworkTool(call, ctx, signal).then(finish, (error) => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      signal?.removeEventListener('abort', stop)
+      reject(error)
+    })
+  })
 }
 
 /** Resolves `false` as soon as `signal` aborts, whatever `answer` does. */

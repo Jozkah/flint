@@ -41,6 +41,29 @@ describe('dispatchCoworkTool', () => {
     executeAgentTool.mockResolvedValue({ content: 'ok' })
   })
 
+  it('returns when Stop aborts a tool whose backend never replies', async () => {
+    executeAgentTool.mockImplementationOnce(() => new Promise(() => {}))
+    const controller = new AbortController()
+    const pending = dispatchCoworkTool(call('read', { path: 'a' }), ctx(), controller.signal)
+    controller.abort('cancelled')
+    await expect(pending).resolves.toMatchObject({ output: 'Tool stopped before it returned.', isError: true })
+  })
+
+  it('times out a read whose backend never replies', async () => {
+    vi.useFakeTimers()
+    try {
+      executeAgentTool.mockImplementationOnce(() => new Promise(() => {}))
+      const pending = dispatchCoworkTool(call('read', { path: 'a' }), ctx())
+      await vi.advanceTimersByTimeAsync(45_000)
+      await expect(pending).resolves.toMatchObject({
+        output: 'ERROR: read timed out after 45 seconds',
+        isError: true,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   // The trailing 'session' is load-bearing: under the default 'thread' scope a
   // session's files land where the thread sweep's keep-list can never mention
   // them, and the sweep deletes the only copy of the agent's work.

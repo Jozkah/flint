@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
@@ -82,6 +82,12 @@ describe('CoworkStopMenu', () => {
     expect(screen.getByTestId('stop-all')).toBeInTheDocument()
   })
 
+  it('opens from a direct click even without pointer-down handling', async () => {
+    mount()
+    fireEvent.click(screen.getByTestId('cowork-stop'))
+    expect(await screen.findByTestId('cowork-stop-menu')).toBeVisible()
+  })
+
   it('stops only the current run, through the run-scoped command', async () => {
     const user = userEvent.setup()
     mount()
@@ -109,17 +115,17 @@ describe('CoworkStopMenu', () => {
     expect(onStop).not.toHaveBeenCalled()
   })
 
-  it('stops this session once confirmed', async () => {
+  it('stops all sessions once confirmed', async () => {
     const user = userEvent.setup()
     mount()
     await user.click(screen.getByTestId('cowork-stop'))
     await user.click(await screen.findByTestId('stop-all'))
     await user.click(await screen.findByTestId('stop-all-confirmed'))
 
-    await waitFor(() => expect(onStop).toHaveBeenCalledWith({ session: 's1' }))
+    await waitFor(() => expect(onStop).toHaveBeenCalledWith({}))
     expect(onStop).toHaveBeenCalledTimes(1)
-    expect(onStopCurrent).toHaveBeenCalledTimes(1)
-    expect(onStopAll).not.toHaveBeenCalled()
+    expect(onStopCurrent).not.toHaveBeenCalled()
+    expect(onStopAll).toHaveBeenCalledTimes(1)
   })
 
   it('reports surviving processes instead of claiming success', async () => {
