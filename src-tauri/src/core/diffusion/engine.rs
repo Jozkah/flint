@@ -6,6 +6,8 @@
 //! unpacked, and started once to see that it runs, before it is trusted.
 
 use super::catalog::{self, Backend, EngineAsset};
+use super::installation::unzip;
+pub use super::installation::configure_library_path;
 use crate::core::app::commands::get_jan_data_folder_path;
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -16,9 +18,9 @@ use tokio::io::AsyncWriteExt;
 
 pub const SERVER_EXE: &str = if cfg!(windows) { "sd-server.exe" } else { "sd-server" };
 
-/// Image generation ships for Windows first.
+/// Native engine availability is determined by the pinned platform catalog.
 pub fn platform_supported() -> bool {
-    cfg!(windows)
+    !catalog::available_backends().is_empty()
 }
 
 pub fn diffusion_root<R: Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
@@ -34,8 +36,7 @@ pub fn engine_dir<R: Runtime>(app: &tauri::AppHandle<R>, backend: Backend) -> Pa
 
 /// Where the engine runs, if one is installed: the first backend that has it.
 pub fn installed_backend<R: Runtime>(app: &tauri::AppHandle<R>) -> Option<Backend> {
-    [Backend::Cuda12, Backend::Vulkan, Backend::Cpu]
-        .into_iter()
+    catalog::available_backends().iter().copied()
         .find(|b| engine_dir(app, *b).join(SERVER_EXE).is_file() && engine_dir(app, *b).join("install.json").is_file())
 }
 
@@ -107,30 +108,6 @@ async fn download_asset<R: Runtime>(
     Ok(())
 }
 
-/// Unpack a zip into `dest`. Every entry is checked to stay inside it.
-fn unzip(archive: &Path, dest: &Path) -> Result<(), String> {
-    let file = std::fs::File::open(archive).map_err(|e| format!("Could not open the archive: {e}"))?;
-    let mut zip = zip::ZipArchive::new(file).map_err(|e| format!("The archive is damaged: {e}"))?;
-    for i in 0..zip.len() {
-        let mut entry = zip.by_index(i).map_err(|e| format!("The archive is damaged: {e}"))?;
-        // `enclosed_name` refuses absolute paths and `..`.
-        let Some(relative) = entry.enclosed_name().map(|p| p.to_path_buf()) else {
-            return Err("The archive holds a path outside its folder.".to_string());
-        };
-        let out = dest.join(&relative);
-        if entry.is_dir() {
-            std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-            continue;
-        }
-        if let Some(parent) = out.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-        let mut target = std::fs::File::create(&out).map_err(|e| format!("Could not unpack {}: {e}", relative.display()))?;
-        std::io::copy(&mut entry, &mut target).map_err(|e| format!("Could not unpack {}: {e}", relative.display()))?;
-    }
-    Ok(())
-}
-
 /// Whether the engine's `--help` output says it is the engine.
 pub fn looks_like_engine(help: &str) -> bool {
     let lower = help.to_ascii_lowercase();
@@ -151,6 +128,7 @@ async fn probe(dir: &Path) -> Result<(), String> {
         }
         let mut command = tokio::process::Command::new(&exe);
         command.arg("--help").current_dir(dir).kill_on_drop(true);
+        configure_library_path(&mut command, dir);
         #[cfg(windows)]
         command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         match tokio::time::timeout(std::time::Duration::from_secs(120), command.output()).await {
@@ -175,8 +153,9 @@ async fn probe(dir: &Path) -> Result<(), String> {
 /// Download, check, unpack and test the engine for `backend`.
 pub async fn install<R: Runtime>(app: &tauri::AppHandle<R>, backend: Backend) -> Result<PathBuf, String> {
     if !platform_supported() {
-        return Err("Image generation is available on Windows for now.".to_string());
+        return Err("Local image generation needs Windows x64 or Linux x64.".to_string());
     }
+    if !catalog::available_backends().contains(&backend) { return Err("This engine backend is not available on this platform.".into()); }
     let dir = engine_dir(app, backend);
     let staging = diffusion_root(app).join("downloads");
     tokio::fs::create_dir_all(&staging).await.map_err(|e| e.to_string())?;
@@ -185,7 +164,7 @@ pub async fn install<R: Runtime>(app: &tauri::AppHandle<R>, backend: Backend) ->
     tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
 
     let mut assets = vec![catalog::engine_asset(backend)];
-    if backend == Backend::Cuda12 {
+    if cfg!(windows) && backend == Backend::Cuda12 {
         assets.push(catalog::cuda_runtime_asset());
     }
     let result = async {

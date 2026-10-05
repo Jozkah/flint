@@ -23,16 +23,27 @@ pub enum Backend {
 impl Backend {
     pub fn id(self) -> &'static str {
         match self {
-            Backend::Vulkan => "win-vulkan-x64",
+            Backend::Vulkan => if cfg!(target_os = "linux") { "linux-vulkan-x64" } else { "win-vulkan-x64" },
             Backend::Cuda12 => "win-cuda12-x64",
-            Backend::Cpu => "win-cpu-x64",
+            Backend::Cpu => if cfg!(target_os = "linux") { "linux-cpu-x64" } else { "win-cpu-x64" },
         }
     }
 
     pub fn from_id(id: &str) -> Option<Backend> {
-        [Backend::Vulkan, Backend::Cuda12, Backend::Cpu]
-            .into_iter()
+        available_backends()
+            .iter().copied()
             .find(|b| b.id() == id)
+    }
+}
+
+/// Only advertise builds for which the pinned release supplies a native binary.
+pub fn available_backends() -> &'static [Backend] {
+    if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        &[Backend::Vulkan, Backend::Cpu]
+    } else if cfg!(all(windows, target_arch = "x86_64")) {
+        &[Backend::Vulkan, Backend::Cuda12, Backend::Cpu]
+    } else {
+        &[]
     }
 }
 
@@ -45,6 +56,13 @@ pub struct EngineAsset {
 
 /// The archive for `backend`.
 pub fn engine_asset(backend: Backend) -> EngineAsset {
+    if cfg!(target_os = "linux") {
+        match backend {
+            Backend::Vulkan => return EngineAsset { name: "sd-master-137f740-bin-Linux-Ubuntu-24.04-x86_64-vulkan.zip", size: 38_475_898, sha256: "4b65cfa5e7d4ced8fe43185b314bcba994413655e6273c78aeaaaaeab2ecec0f" },
+            Backend::Cpu => return EngineAsset { name: "sd-master-137f740-bin-Linux-Ubuntu-24.04-x86_64.zip", size: 25_352_606, sha256: "a09fde8b640c4f209f29e0db5f9cfcadc7f249bc9d57ace34d2d93cf2fbc465b" },
+            Backend::Cuda12 => {}, // Not advertised or installable on Linux.
+        }
+    }
     match backend {
         Backend::Vulkan => EngineAsset {
             name: "sd-master-137f740-bin-win-vulkan-x64.zip",
@@ -271,7 +289,7 @@ mod tests {
         let url = engine_url(&engine_asset(Backend::Vulkan));
         assert_eq!(
             url,
-            "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-883-137f740/sd-master-137f740-bin-win-vulkan-x64.zip"
+            format!("https://github.com/leejet/stable-diffusion.cpp/releases/download/{ENGINE_TAG}/{}", engine_asset(Backend::Vulkan).name)
         );
     }
 
@@ -297,7 +315,13 @@ mod tests {
         assert_eq!(Z_IMAGE_TURBO.total_bytes(), 5_017_613_376 + 335_304_388 + 2_497_281_120);
         assert_eq!(model("wan2.2-ti2v-5b").map(|m| m.display_name), Some("Wan 2.2 TI2V 5B"));
         assert!(model("nope").is_none());
-        assert_eq!(Backend::from_id("win-cuda12-x64"), Some(Backend::Cuda12));
+        assert_eq!(Backend::from_id("win-cuda12-x64"), if cfg!(windows) { Some(Backend::Cuda12) } else { None });
+        for backend in available_backends() { assert_eq!(Backend::from_id(backend.id()), Some(*backend)); }
+        #[cfg(target_os = "linux")] {
+            assert_eq!(Backend::from_id("linux-vulkan-x64"), Some(Backend::Vulkan));
+            assert_eq!(Backend::from_id("win-cpu-x64"), None);
+            assert!(engine_asset(Backend::Vulkan).name.contains("Linux"));
+        }
         assert_eq!(Backend::from_id("win-rocm"), None);
     }
 }

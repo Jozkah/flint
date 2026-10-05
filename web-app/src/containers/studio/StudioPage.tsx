@@ -101,6 +101,8 @@ import {
 } from '@/lib/studio/studio'
 
 const BUILDS: Array<{ id: EngineBuild; label: string; note: string }> = [
+  { id: 'linux-vulkan-x64', label: 'Any graphics card', note: 'About 38 MB. NVIDIA, AMD or Intel with a Vulkan driver.' },
+  { id: 'linux-cpu-x64', label: 'No graphics card', note: 'About 25 MB. Very slow.' },
   {
     id: 'win-vulkan-x64',
     label: 'Any graphics card',
@@ -383,7 +385,9 @@ function EngineSetup() {
   const status = useStudio((s) => s.status)
   const installing = useStudio((s) => s.installing)
   const install = useStudio((s) => s.installEngine)
-  const [build, setBuild] = useState<EngineBuild>('win-vulkan-x64')
+  const builds = BUILDS.filter((b) => (status?.engineBuilds ?? ['win-vulkan-x64', 'win-cuda12-x64', 'win-cpu-x64']).includes(b.id))
+  const [selected, setBuild] = useState<EngineBuild | null>(null)
+  const build = builds.find((b) => b.id === selected)?.id ?? builds[0]?.id
   if (!status) return null
   if (!status.supported) {
     return (
@@ -391,8 +395,7 @@ function EngineSetup() {
         <FrameHeader title="Not available on this system yet" />
         <FrameBody className="p-3.5">
           <p className="text-[13px] text-muted-foreground">
-            Image and video generation works on Windows for now. It is not built
-            for this system yet.
+            Local image and video generation currently requires Windows x64 or Linux x64.
           </p>
         </FrameBody>
       </Frame>
@@ -412,7 +415,7 @@ function EngineSetup() {
           its published checksum, and runs only while you generate.
         </p>
         <div className="grid gap-2 sm:grid-cols-3">
-          {BUILDS.map((b) => (
+          {builds.map((b) => (
             <button
               key={b.id}
               type="button"
@@ -439,7 +442,7 @@ function EngineSetup() {
           </div>
         )}
         <div>
-          <Button disabled={!!installing} onClick={() => void install(build)}>
+          <Button disabled={!!installing || !build} onClick={() => { if (build) void install(build) }}>
             {installing ? 'Installing…' : 'Download and install'}
           </Button>
         </div>

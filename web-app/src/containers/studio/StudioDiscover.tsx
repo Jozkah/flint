@@ -131,7 +131,7 @@ export function StudioDiscover({
 
   const add = async (model: HuggingFaceModel, file: HuggingFaceFile) => {
     if (!status?.supported) {
-      toast.error('Local image generation is available on Windows only for now.')
+      toast.error('Local image generation needs Windows x64 or Linux x64.')
       return
     }
     const chosen = family[model.id]
@@ -166,7 +166,7 @@ export function StudioDiscover({
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
         {status && !status.supported && (
           <div role="status" className="rounded-xl border border-border bg-muted px-4 py-3 text-sm">
-            Local image and video models require Windows for now. They cannot be installed or run in Studio on this system.
+            Local image and video models require Windows x64 or Linux x64. This architecture is not supported yet.
           </div>
         )}
         <p className="text-[13px] text-secondary-foreground">
@@ -327,7 +327,7 @@ export function StudioDiscover({
                             </div>
                             {status && !status.supported ? (
                               <Button size="sm" variant="outline" disabled>
-                                Requires Windows
+                                Unsupported system
                               </Button>
                             ) : isAdded ? (
                               <Button
