@@ -2376,7 +2376,26 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return new ReadableStream<UIMessageChunk>({
       async pull(controller) {
         for (;;) {
-          const { done, value } = await source.read()
+          let next: ReadableStreamReadResult<UIMessageChunk>
+          try {
+            next = await source.read()
+          } catch (error) {
+            // Some providers reject the reader instead of emitting an error
+            // chunk. Use the same one-time recovery for either representation.
+            if (sawContent || retried || !(await refusedForLength(error))) {
+              controller.error(error)
+              return
+            }
+            retried = true
+            try {
+              source = (await resend(error)).getReader()
+            } catch (retryError) {
+              controller.error(retryError)
+              return
+            }
+            continue
+          }
+          const { done, value } = next
           if (done) {
             controller.close()
             return
@@ -2870,7 +2889,6 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       if (
         autoCompact &&
         compaction.strategy === 'summarize' &&
-        !contextShiftEnabled &&
         this.compactsAtThreshold
       ) {
         effectiveMessages = await this.compactAtThreshold(

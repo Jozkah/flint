@@ -388,6 +388,22 @@ describe('ChatInput', () => {
     resetAll()
   })
 
+  it('keeps focus in a parameter input as the chat finishes streaming', async () => {
+    const view = renderInput({ chatStatus: 'streaming' })
+    const parameter = document.createElement('input')
+    document.body.appendChild(parameter)
+    try {
+      parameter.focus()
+      view.rerender(<ChatInput chatStatus="ready" />)
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25))
+      })
+      expect(parameter).toHaveFocus()
+    } finally {
+      parameter.remove()
+    }
+  })
+
   it('renders the textarea with placeholder and send button', () => {
     renderInput()
     const ta = getTextarea()

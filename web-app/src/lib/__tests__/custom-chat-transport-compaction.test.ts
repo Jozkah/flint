@@ -275,6 +275,32 @@ describe('compact once and resend when the provider refuses for length', () => {
     expect(t.script).toHaveLength(1)
   })
 
+  it('recovers when reading the response throws a context error', async () => {
+    t.script = [
+      async () => new ReadableStream<UIMessageChunk>({
+        start(controller) { controller.error(new Error(overflow)) },
+      }),
+      async () => streamOf(reply),
+    ]
+    expect(await drain(await t.sendMessages(options()))).toEqual(reply)
+    expect(t.retryWindows).toEqual([null, { learnedWindow: 20000 }])
+  })
+
+  it('does not retry a reader failure after reply content', async () => {
+    let at = 0
+    t.script = [
+      async () => new ReadableStream<UIMessageChunk>({
+        pull(controller) {
+          if (at < 3) controller.enqueue(reply[at++])
+          else controller.error(new Error(overflow))
+        },
+      }),
+      async () => streamOf(reply),
+    ]
+    await expect(drain(await t.sendMessages(options()))).rejects.toThrow(overflow)
+    expect(t.retryWindows).toHaveLength(1)
+  })
+
   it('leaves other failures alone', async () => {
     t.script = [async () => streamOf(refusal('Overloaded')), async () => streamOf(reply)]
     const out = await drain(await t.sendMessages(options()))
