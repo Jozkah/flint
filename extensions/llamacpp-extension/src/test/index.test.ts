@@ -219,6 +219,37 @@ describe('llamacpp_extension', () => {
   })
 
   describe('import', () => {
+    it('installs a downloaded file outside the process working directory', async () => {
+      vi.mocked(getJanDataFolderPath).mockResolvedValue('/home/user/.flint')
+      vi.mocked(joinPath).mockImplementation(async (parts) => parts.reduce(
+        (base, part) => part.startsWith('/') ? part : `${base}/${part}`
+      ))
+      const path = 'downloads/huggingface/owner/repo/model.gguf'
+      const fullPath = `/home/user/.flint/${path}`
+      vi.mocked(fs.existsSync).mockImplementation(async (candidate) => candidate === fullPath)
+      vi.mocked(fs.fileStat).mockResolvedValue({ size: 1000, isDirectory: false })
+      vi.mocked(readGgufMetadata).mockResolvedValue({
+        version: 3, tensor_count: 1, metadata: { 'general.architecture': 'llama' },
+      })
+      vi.spyOn(extension as unknown as { refreshEnginePreset(): Promise<void> }, 'refreshEnginePreset')
+        .mockResolvedValue(undefined)
+      await extension.import('owner/repo-model', { modelPath: path })
+      expect(readGgufMetadata).toHaveBeenCalledWith(fullPath)
+      expect(invoke).toHaveBeenCalledWith('write_yaml', expect.objectContaining({
+        data: expect.objectContaining({ model_path: path }),
+      }))
+    })
+
+    it('checks downloaded GGUF paths under the data folder, not the working directory', async () => {
+      vi.mocked(getJanDataFolderPath).mockResolvedValue('/home/user/.flint')
+      vi.mocked(joinPath).mockImplementation(async (parts) => parts.join('/'))
+      vi.mocked(fs.existsSync).mockResolvedValue(false)
+      const path = 'downloads/huggingface/owner/repo/model.gguf'
+      await expect(extension.import('owner/repo-model', { modelPath: path }))
+        .rejects.toThrow(`File not found: /home/user/.flint/${path}`)
+      expect(fs.existsSync).toHaveBeenCalledWith(`/home/user/.flint/${path}`)
+      expect(fs.existsSync).not.toHaveBeenCalledWith(path)
+    })
     it('should throw error for invalid modelId', async () => {
       await expect(extension.import('invalid/model/../id', { modelPath: '/path/to/model' }))
         .rejects.toThrow('Invalid modelId')
