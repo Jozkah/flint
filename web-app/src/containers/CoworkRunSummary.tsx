@@ -654,6 +654,16 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                 {visibleUnresolved.map((item, index) => (
                   <li key={index} className="break-words text-foreground">
                     {unresolvedText(t, item)}
+                    {item.kind === 'stop' && item.message ? (
+                      <div className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
+                        {item.message}
+                      </div>
+                    ) : null}
+                    {item.kind === 'failed' && item.detail ? (
+                      <div className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
+                        {item.detail}
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>
