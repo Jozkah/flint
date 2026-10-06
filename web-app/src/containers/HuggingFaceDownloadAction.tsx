@@ -144,7 +144,7 @@ export function HuggingFaceDownloadAction({
   if (task && ['downloading', 'queued', 'verifying', 'importing'].includes(task.status)) {
     const percent = Math.round(task.progress * 100)
     return (
-      <div className={cn('flex min-w-0 items-center gap-2', compact ? 'w-40' : 'w-56', className)}>
+      <div className={cn('flex min-w-0 items-center gap-2', compact ? 'w-44' : 'w-56', className)}>
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
             <span className="truncate">
@@ -154,6 +154,9 @@ export function HuggingFaceDownloadAction({
                   ? 'Verifying…'
                   : `${percent}%`}
             </span>
+            {compact && task.status === 'downloading' && Boolean(task.bytesPerSecond) && (
+              <span className="shrink-0 tabular-nums">{formatModelBytes(task.bytesPerSecond as number)}/s</span>
+            )}
             {!compact && task.total && (
               <span className="shrink-0 tabular-nums">
                 {formatModelBytes(task.downloaded)} / {formatModelBytes(task.total)}
@@ -195,20 +198,25 @@ export function HuggingFaceDownloadAction({
 
   if (task?.status === 'error') {
     return (
-      <div className={cn('flex items-center gap-2', className)} title={task.error}>
-        <Button variant="outline" size="sm" onClick={() => void retryHuggingFaceBundle(bundleId)}>
+      <div className={cn('flex max-w-72 items-center gap-2', className)} title={task.error}>
+        <span className="min-w-0 line-clamp-2 text-right text-xs text-destructive">
+          Download failed{task.error ? `: ${task.error}` : ''}
+        </span>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={() => void retryHuggingFaceBundle(bundleId)}>
           <RotateCcw className="size-3.5" /> Retry
         </Button>
-        {!compact && <span className="max-w-48 truncate text-xs text-destructive">{task.error}</span>}
       </div>
     )
   }
 
-  if (installed && !updateAvailable) {
+  if (task?.status === 'complete' || (installed && !updateAvailable)) {
     return (
-      <Button size="sm" onClick={useModel} className={className}>
-        <Check className="size-3.5" /> New Chat
-      </Button>
+      <div className={cn('flex items-center gap-2', className)}>
+        <span className="flex items-center gap-1 text-xs text-emerald-500">
+          <Check className="size-3.5" /> Installed
+        </span>
+        <Button size="sm" onClick={useModel}>New Chat</Button>
+      </div>
     )
   }
 
