@@ -126,7 +126,14 @@ export function PermissionRequestDetails({
               <dt className="text-muted-foreground">
                 {t('permissions:request.reason')}
               </dt>
-              <dd className="min-w-0 break-words">{request.reason}</dd>
+              <dd className="min-w-0 break-words">
+                {request.reason}
+                {request.script && (
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-code-bg p-2 font-mono text-xs">
+                    <code>{request.script}</code>
+                  </pre>
+                )}
+              </dd>
             </>
           )}
           {request.consequences.length > 0 && (
@@ -190,6 +197,11 @@ export function PermissionRequestDetails({
           </dt>
           <dd className="min-w-0 break-words text-foreground">
             {request.reason}
+            {request.script && (
+              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-code-bg p-2 font-mono text-xs">
+                <code>{request.script}</code>
+              </pre>
+            )}
           </dd>
         </dl>
       )}

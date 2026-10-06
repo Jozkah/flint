@@ -91,6 +91,8 @@ export type PermissionRequestDescription = {
   /** Paths, command, URL or server, sanitized and truncated. */
   resources: string[]
   reason?: string
+  /** PowerShell script, shown as code instead of crammed into Why. */
+  script?: string
   /** Chips such as "Reaches GitHub" or "Destructive". */
   badges?: PermissionBadge[]
   /** The stronger warning shown above the answers for a destructive call. */
@@ -757,7 +759,13 @@ export function describePermissionRequest(
   // as the "why" so the user decides with it in front of them.
   const stated =
     toolName === STOP_SESSION_TOOL_NAME ? str(args.reason) : req.taskContext
-  const reason = stated?.trim() ? sanitizeResource(stated, 300) : undefined
+  const powershell = toolName === 'host_powershell' ? str(args.script) : undefined
+  const reason = powershell
+    ? sanitizeResource(
+        `Run PowerShell as you, outside the sandbox, in ${str(args.cwd) || 'the project folder'}.`,
+        300
+      )
+    : stated?.trim() ? sanitizeResource(stated, 300) : undefined
 
   return {
     category,
@@ -765,6 +773,7 @@ export function describePermissionRequest(
     action: actionFor(category, toolName, args, resources, serverName, workspace),
     resources,
     ...(reason ? { reason } : {}),
+    ...(powershell ? { script: truncate(redactSecrets(powershell.trim()), 4000) } : {}),
     ...(category === 'git' ? gitExtras(args) : {}),
     ...(serverName && isSelfApprovalTool(toolName)
       ? {
