@@ -60,7 +60,9 @@ export class DefaultModelsService implements ModelsService {
     specDraftPath?: string,
     specDraftKind?: SpecDraftKind
   ): Promise<void> {
-    return this.getEngine()?.import(id, {
+    const engine = this.getEngine()
+    if (!engine) throw new Error('Model engine is not available on this system.')
+    return engine.import(id, {
       modelPath,
       mmprojPath,
       modelSha256,
