@@ -68,7 +68,7 @@ export function StudioSettingsSheet() {
     <>
       <Grab />
       <h3>{img ? 'Image' : 'Video'} settings</h3>
-      {s && !s.supported && <p className="sh">Studio is not available on this system yet. It runs on Windows for now.</p>}
+      {s && !s.supported && <p className="sh">Studio is not available on this system yet.</p>}
       {s?.supported && s.models.filter((m) => m.kind === kind).map((m) => <ModelRow key={m.id} m={m} s={s} />)}
       {sizes.length > 0 && (
         <>

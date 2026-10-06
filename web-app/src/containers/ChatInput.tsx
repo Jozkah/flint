@@ -5,6 +5,7 @@ import { currentDescriber } from '@/lib/imageDescription'
 import { ImageViewer } from '@/components/ImageViewer'
 import { needsWeb } from '@/lib/needsWeb'
 import TextareaAutosize from 'react-textarea-autosize'
+import { RichComposerEditor, type RichComposerHandle } from '@/containers/RichComposerEditor'
 import { cn, formatBytes, getModelDisplayName } from '@/lib/utils'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useThreads } from '@/hooks/useThreads'
@@ -382,6 +383,14 @@ const ChatInput = memo(function ChatInput({
   slashBuiltins,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const richComposerRef = useRef<RichComposerHandle>(null)
+  const [richFormatting, setRichFormatting] = useState(true)
+  const richFormattingRef = useRef(richFormatting)
+  richFormattingRef.current = richFormatting
+  const focusComposer = useCallback(() => {
+    if (richFormattingRef.current) richComposerRef.current?.focus()
+    else textareaRef.current?.focus()
+  }, [])
   const [isFocused, setIsFocused] = useState(false)
   // The control row is absolutely positioned at the bottom of the composer, so
   // the composer must reserve exactly as much space as the row occupies. The
@@ -688,7 +697,7 @@ const ChatInput = memo(function ChatInput({
       filePickerCursorPos.current = null
 
       // Focus back on textarea
-      setTimeout(() => textareaRef.current?.focus(), 0)
+      setTimeout(() => focusComposer(), 0)
     },
     [prompt, setPrompt]
   )
@@ -733,7 +742,7 @@ const ChatInput = memo(function ChatInput({
           aliases: useReferenceAliases.getState().list(workingDir),
         })
       )
-      setTimeout(() => textareaRef.current?.focus(), 0)
+      setTimeout(() => focusComposer(), 0)
     },
     [aliasDraft, workingDir, filePickerQuery, referenceSkills, referenceAgents]
   )
@@ -741,7 +750,7 @@ const ChatInput = memo(function ChatInput({
   const handleAliasCancel = useCallback(() => {
     setAliasDraft(null)
     setAliasError(null)
-    setTimeout(() => textareaRef.current?.focus(), 0)
+    setTimeout(() => focusComposer(), 0)
   }, [])
 
   // Resolve @path references in the prompt text, returning the resolved content
@@ -1364,9 +1373,7 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when component mounts
   useEffect(() => {
-    if (takeFocus && textareaRef.current) {
-      textareaRef.current.focus()
-    }
+    if (takeFocus) setTimeout(focusComposer, 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1378,9 +1385,7 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when thread changes
   useEffect(() => {
-    if (takeFocus && textareaRef.current) {
-      textareaRef.current.focus()
-    }
+    if (takeFocus) setTimeout(focusComposer, 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentThreadId])
 
@@ -1392,7 +1397,7 @@ const ChatInput = memo(function ChatInput({
     const timer = setTimeout(() => {
       const active = document.activeElement
       if (!active || active === document.body || active === textareaRef.current) {
-        textareaRef.current?.focus()
+        focusComposer()
       }
     }, 10)
     return () => clearTimeout(timer)
@@ -2182,9 +2187,7 @@ const ChatInput = memo(function ChatInput({
       }
     }
 
-    if (textareaRef.current) {
-      textareaRef.current.focus()
-    }
+    focusComposer()
   }
 
   const decodeAudioDuration = (dataUrl: string): Promise<number | undefined> =>
@@ -2307,7 +2310,7 @@ const ChatInput = memo(function ChatInput({
       void processAudioFiles(Array.from(files))
       if (audioInputRef.current) audioInputRef.current.value = ''
     }
-    if (textareaRef.current) textareaRef.current.focus()
+    focusComposer()
   }
 
   const openAudioPicker = useCallback(async () => {
@@ -2345,7 +2348,7 @@ const ChatInput = memo(function ChatInput({
       } catch (error) {
         console.error('Failed to open audio dialog:', error)
       }
-      if (textareaRef.current) textareaRef.current.focus()
+      focusComposer()
     } else {
       audioInputRef.current?.click()
     }
@@ -2446,7 +2449,7 @@ const ChatInput = memo(function ChatInput({
       void processVideoFiles(Array.from(files))
       if (videoInputRef.current) videoInputRef.current.value = ''
     }
-    if (textareaRef.current) textareaRef.current.focus()
+    focusComposer()
   }
 
   const openVideoPicker = useCallback(async () => {
@@ -2485,7 +2488,7 @@ const ChatInput = memo(function ChatInput({
       } catch (error) {
         console.error('Failed to open video dialog:', error)
       }
-      if (textareaRef.current) textareaRef.current.focus()
+      focusComposer()
     } else {
       videoInputRef.current?.click()
     }
@@ -2551,9 +2554,7 @@ const ChatInput = memo(function ChatInput({
         console.error('Failed to open file dialog:', error)
       }
 
-      if (textareaRef.current) {
-        textareaRef.current.focus()
-      }
+      focusComposer()
     } else {
       // Fallback to input click for web
       fileInputRef.current?.click()
@@ -3076,7 +3077,7 @@ const ChatInput = memo(function ChatInput({
                       // Put the text back in the input for editing, remove from queue
                       setPrompt(queued.text)
                       removeQueuedMessage(queued.id)
-                      textareaRef.current?.focus()
+                      focusComposer()
                     },
                     onRemove: removeQueuedMessage,
                     // A held message (its run failed or was stopped) waits
@@ -3122,12 +3123,67 @@ const ChatInput = memo(function ChatInput({
                   onActiveChange={slashCommands.setActiveIndex}
                   onSelect={(item) => {
                     setPrompt(slashCommands.pick(item))
-                    textareaRef.current?.focus()
+                    focusComposer()
                   }}
                 />
               </div>
             )}
-            <TextareaAutosize
+            <div className="flex justify-end px-3 pt-1">
+              <button
+                type="button"
+                className="text-[11px] text-muted-foreground hover:text-foreground"
+                onClick={() => setRichFormatting((value) => !value)}
+                aria-label={richFormatting ? 'Use plain text editor' : 'Use rich text editor'}
+              >
+                {richFormatting ? 'Plain text' : 'Rich text'}
+              </button>
+            </div>
+            {richFormatting ? (
+              <RichComposerEditor
+                ref={richComposerRef}
+                value={prompt}
+                onChange={(markdown) => {
+                  filePickerCursorPos.current = /(?<![A-Za-z0-9_])@[\w./:-]*$/.test(markdown)
+                    ? markdown.length
+                    : null
+                  handlePromptChange(markdown)
+                  slashCommands.onTextChange(markdown)
+                }}
+                onSend={(markdown, steer) => {
+                  if (!ingestingAny && (markdown.trim() || hasSendableMedia)) {
+                    void handleSendMessage(markdown, { steer })
+                  }
+                }}
+                onPaste={handlePaste}
+                onKeyDownCapture={(event) => {
+                  if (event.nativeEvent.isComposing) return
+                  if (slashCommands.open) {
+                    const selection = slashCommands.onKeyDown(event)
+                    if (typeof selection === 'string') setPrompt(selection)
+                    if (event.defaultPrevented) return
+                  }
+                  if (filePickerOpen && !aliasDraft) {
+                    const count = filePickerEntries.length
+                    const active = filePickerEntries[Math.min(referenceActive, count - 1)]
+                    if (count > 0 && event.key === 'ArrowDown') {
+                      event.preventDefault()
+                      setReferenceActive((index) => (index + 1) % count)
+                    } else if (count > 0 && event.key === 'ArrowUp') {
+                      event.preventDefault()
+                      setReferenceActive((index) => (index - 1 + count) % count)
+                    } else if (active && (event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
+                      event.preventDefault()
+                      handleFilePickerSelect(active)
+                    } else if (event.key === 'Escape') {
+                      event.preventDefault()
+                      handleFilePickerClose()
+                    }
+                  }
+                }}
+                placeholder={t('common:placeholder.chatInput')}
+                className={className}
+              />
+            ) : <TextareaAutosize
               dir="auto"
               ref={textareaRef}
               minRows={2}
@@ -3279,7 +3335,7 @@ const ChatInput = memo(function ChatInput({
                 rows < maxRows && 'scrollbar-hide',
                 className
               )}
-            />
+            />}
             {/* @path file reference picker popover */}
             {/* Shown wherever a folder is attached -- Cowork included, which
                 is not "agent mode" -- because that folder is all it offers. */}

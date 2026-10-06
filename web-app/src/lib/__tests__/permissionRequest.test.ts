@@ -339,6 +339,16 @@ describe('git tool prompts', () => {
       .toBe('permissions:scope.allowSimilarExplanation')
   })
 
+  it('shows PowerShell command as code beside a short Why', () => {
+    const req = describePermissionRequest({
+      toolName: 'host_powershell',
+      input: { script: '$file = "notes.txt"\nGet-Content $file', cwd: 'C:\\work' },
+      taskContext: 'PowerShell on this computer: Run this script as you: ...',
+    })
+    expect(req.reason).toBe('Run PowerShell as you, outside the sandbox, in C:\\work.')
+    expect(req.script).toBe('$file = "notes.txt"\nGet-Content $file')
+  })
+
   it('explains clipboard read and offers narrow conversation and global grants', () => {
     const read = describePermissionRequest({ toolName: 'clipboard', input: { action: 'read' }, alwaysAsk: true })
     expect(read.action.key).toBe('permissions:action.readClipboard')
