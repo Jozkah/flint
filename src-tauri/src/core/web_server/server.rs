@@ -20,6 +20,7 @@ use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
 
 use super::auth::AuthStore;
+use super::data;
 use super::static_files::{self, StaticError};
 
 type Resp = Response<Full<Bytes>>;
@@ -31,6 +32,7 @@ const LOGIN_FAILURE_LIMIT: usize = 10;
 pub struct Options {
     pub bind: SocketAddr,
     pub assets: PathBuf,
+    pub data_folder: PathBuf,
     pub auth_file: PathBuf,
     /// Exact DNS name exposed by a private-network HTTPS proxy.
     pub public_host: Option<String>,
@@ -39,6 +41,7 @@ pub struct Options {
 struct State {
     auth: Mutex<AuthStore>,
     assets: PathBuf,
+    data_folder: PathBuf,
     hosts: HashSet<String>,
     public_host: Option<String>,
     login_failures: Mutex<VecDeque<Instant>>,
@@ -85,6 +88,16 @@ fn reply(status: StatusCode, content_type: &'static str, body: impl Into<Bytes>)
 
 fn text(status: StatusCode, body: &'static str) -> Resp {
     reply(status, "text/plain; charset=utf-8", body)
+}
+
+fn json(value: &impl serde::Serialize) -> Resp {
+    match serde_json::to_vec(value) {
+        Ok(body) => reply(StatusCode::OK, "application/json", body),
+        Err(_) => text(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Could not serialize response",
+        ),
+    }
 }
 
 fn session_cookie(headers: &hyper::HeaderMap) -> Option<&str> {
@@ -233,6 +246,40 @@ async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
             return response;
         }
     }
+    if method == Method::GET && path == "/api/v1/threads" {
+        let root = state.data_folder.clone();
+        return match tokio::task::spawn_blocking(move || data::threads(&root)).await {
+            Ok(Ok(threads)) => json(&threads),
+            _ => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not list threads"),
+        };
+    }
+    if method == Method::GET {
+        if let Some(rest) = path.strip_prefix("/api/v1/threads/") {
+            let (id, want_messages) = match rest.split_once('/') {
+                Some((id, "messages")) => (id, true),
+                None => (rest, false),
+                _ => return text(StatusCode::NOT_FOUND, "Unknown API route"),
+            };
+            if crate::core::threads::utils::validate_thread_id(id).is_err() {
+                return text(StatusCode::BAD_REQUEST, "Invalid thread id");
+            }
+            let id = id.to_owned();
+            let root = state.data_folder.clone();
+            return match tokio::task::spawn_blocking(move || {
+                if want_messages {
+                    data::messages(&root, &id).map(serde_json::Value::Array)
+                } else {
+                    data::thread(&root, &id)
+                }
+            })
+            .await
+            {
+                Ok(Ok(value)) => json(&value),
+                Ok(Err(_)) => text(StatusCode::NOT_FOUND, "Thread not found"),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not read thread"),
+            };
+        }
+    }
     if path.starts_with("/api/") {
         return text(StatusCode::NOT_FOUND, "Unknown API route");
     }
@@ -292,6 +339,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
     let state = Arc::new(State {
         auth: Mutex::new(auth),
         assets: options.assets,
+        data_folder: options.data_folder,
         hosts,
         public_host: options.public_host.map(|host| host.to_ascii_lowercase()),
         login_failures: Mutex::new(VecDeque::new()),
@@ -351,6 +399,7 @@ mod tests {
         let state = State {
             auth: Mutex::new(auth),
             assets: dir.path().to_path_buf(),
+            data_folder: dir.path().to_path_buf(),
             hosts: HashSet::from(["localhost:1340".to_string()]),
             public_host: None,
             login_failures: Mutex::new(VecDeque::new()),
@@ -375,6 +424,7 @@ mod tests {
         let error = serve(Options {
             bind: "0.0.0.0:0".parse().unwrap(),
             assets: dir.path().to_path_buf(),
+            data_folder: dir.path().to_path_buf(),
             auth_file: dir.path().join("auth.json"),
             public_host: None,
         })

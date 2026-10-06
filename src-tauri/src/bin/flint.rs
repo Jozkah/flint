@@ -1371,13 +1371,13 @@ async fn run() {
                     .and_then(|exe| exe.parent().map(|dir| dir.join("web")))
                     .unwrap_or_else(|| std::path::PathBuf::from("web"))
             });
-            let auth_file = app_lib::core::app::commands::resolve_jan_data_folder()
-                .join("web-server")
-                .join("auth.json");
+            let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
+            let auth_file = data_folder.join("web-server").join("auth.json");
             if let Err(error) = app_lib::core::web_server::server::serve(
                 app_lib::core::web_server::server::Options {
                     bind: listen,
                     assets,
+                    data_folder,
                     auth_file,
                     public_host,
                 },
