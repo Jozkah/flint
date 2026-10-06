@@ -72,11 +72,15 @@ describe('coworkWindow', () => {
   it('keeps a discovered window whatever was accepted before', () => {
     expect(
       coworkWindow({
-        userSet: 0,
+        userSet: 200000,
         capabilities: { contextTokens: 32768, source: 'local-runtime' },
         acceptedPrompt: 78814,
       })
     ).toBe(32768)
+    expect(coworkWindow({
+      userSet: 200000,
+      capabilities: { contextTokens: 262144, source: 'server' },
+    })).toBe(262144)
     expect(coworkWindow({ capabilities: null })).toBeNull()
   })
 })

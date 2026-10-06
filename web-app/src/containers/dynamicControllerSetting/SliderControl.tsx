@@ -101,7 +101,7 @@ export function SliderControl({
           </span>
         </div>
         <Input
-          className={`w-16 h-7 shrink-0 rounded-md border px-2 text-right text-xs tabular-nums ${
+          className={`w-16 h-8 shrink-0 rounded-md border px-2 text-right text-xs tabular-nums ${
             isExceedingMax
               ? 'border-destructive text-destructive'
               : 'text-foreground'
