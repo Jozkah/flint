@@ -223,7 +223,7 @@ impl OperationInProgress {
     pub fn notice(&self) -> String {
         let op = self.operation;
         format!(
-            "The checkout has a {op} in progress; this worktree starts from HEAD's commit \
+            "The checkout has a {op} in progress; this worktree starts from the selected base commit \
              and does not carry the {op}, its conflicts or the checkout's uncommitted changes."
         )
     }
@@ -554,6 +554,28 @@ pub fn ensure(
     ensure_with(repo, worktrees_root, session_id, &EnsureOptions::default())
 }
 
+/// Resolve the repository's local default branch without contacting a remote.
+/// A remote HEAD points at its branch name; the local branch is the merge
+/// target, so it must exist before we choose it.
+fn default_branch(repo: &Path) -> Result<String, String> {
+    let remote_default = run(repo, &["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
+        .ok()
+        .and_then(|name| name.strip_prefix("origin/").map(str::to_string));
+    if let Some(name) = remote_default {
+        if run(repo, &["rev-parse", "--verify", &format!("refs/heads/{name}^{{commit}}")]).is_ok() {
+            return Ok(name);
+        }
+        return Err(format!("The default branch {name} is not available locally. Check it out before creating a Cowork worktree."));
+    }
+    let configured = run(repo, &["config", "--get", "init.defaultBranch"]).ok();
+    for name in configured.into_iter().chain(["main".into(), "master".into()]) {
+        if run(repo, &["rev-parse", "--verify", &format!("refs/heads/{name}^{{commit}}")]).is_ok() {
+            return Ok(name);
+        }
+    }
+    Err("Could not find a local default branch. Create or check out main/master, or choose a base branch explicitly.".into())
+}
+
 /// How a new worktree is named and what it starts from.
 #[derive(Debug, Clone, Default)]
 pub struct EnsureOptions {
@@ -629,7 +651,7 @@ pub fn ensure_with(
 
     // A worktree is built from a commit, so a merge, rebase, cherry-pick or
     // revert stopped in the checkout does not come along -- and does not need
-    // to: the worktree is a separate checkout of HEAD's commit, and the
+    // to: the worktree is a separate checkout of the base commit, and the
     // operation stays exactly where it was. That is said on the record rather
     // than refused, so the session can start while the user finishes the
     // operation in their own checkout.
@@ -656,10 +678,9 @@ pub fn ensure_with(
             (sha, local.then(|| base.to_string()))
         }
         _ => {
-            let sha = run(repo, &["rev-parse", "HEAD"]).map_err(|_| {
-                "this repository has no commits yet, so there is nothing to branch from".to_string()
-            })?;
-            (sha, current_branch(repo))
+            let base = default_branch(repo)?;
+            let sha = run(repo, &["rev-parse", "--verify", &format!("refs/heads/{base}^{{commit}}")])?;
+            (sha, Some(base))
         }
     };
     let branch_exists = run(
@@ -1924,6 +1945,22 @@ mod tests {
             },
         )
         .is_err());
+    }
+
+    #[test]
+    fn a_new_worktree_starts_from_default_branch_even_when_checkout_is_on_old_topic() {
+        let f = fixture();
+        let main = run(&f.repo, &["rev-parse", "main"]).unwrap();
+        git_in(&f.repo, &["checkout", "-q", "-b", "old-topic"]);
+        std::fs::write(f.repo.join("old-topic.txt"), "old").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "old topic"]);
+
+        let record = ensure(&f.repo, &f.worktrees, "fresh-session").unwrap();
+        assert_eq!(record.base_branch.as_deref(), Some("main"));
+        assert_eq!(record.base_sha, main);
+        assert!(!PathBuf::from(&record.path).join("old-topic.txt").exists());
+        assert_eq!(current_branch(&f.repo).as_deref(), Some("old-topic"));
     }
 
     #[test]
