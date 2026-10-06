@@ -205,7 +205,7 @@ pub const Z_IMAGE_TURBO: ModelDef = ModelDef {
         height: 1024,
     },
     video: None,
-    min_side: 256,
+    min_side: 16,
     max_side: 2048,
 };
 
@@ -246,7 +246,7 @@ pub const WAN_22_TI2V_5B: ModelDef = ModelDef {
         height: 480,
     },
     video: Some(VideoDefaults { fps: 24, frames: 121, min_frames: 5, max_frames: 241 }),
-    min_side: 256,
+    min_side: 16,
     max_side: 1280,
 };
 

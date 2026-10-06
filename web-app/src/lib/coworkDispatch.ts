@@ -1127,6 +1127,7 @@ async function routeCoworkTool(
         undoRun: ctx.activity?.run,
         // And the call, so what its command uses is kept against both (AH-174).
         callId: call.toolCallId,
+        ...(ctx.mode === 'bypass' ? { approvalSource: 'bypass' as const } : {}),
         // And who is making it, so every change it journals names its agent
         // (AH-110) -- the primary agent, a named subagent, or a role.
         actor: actorFor(ctx.activity),

@@ -560,6 +560,7 @@ export async function approveHostAction(
   options: AgentToolOptions,
   toolName: string = HOST_ACTION_NAME
 ): Promise<string | null> {
+  if (options.approvalSource === 'bypass') return null
   const similar = similarToolCall(toolName, input)
   const approval = useToolApproval.getState()
   if (
@@ -613,6 +614,8 @@ export async function approveHostAction(
  * one place that still knows the order is the adapter below.
  */
 export type AgentToolOptions = {
+  /** Cowork's run mode determines the audit source for this call. */
+  approvalSource?: ApprovalSource
   /**
    * A project folder to attach read-only. Rust validates it and refuses one
    * that overlaps the workspace or the Flint data folder, rather than silently
@@ -736,6 +739,7 @@ export async function executeAgentTool(
       return {
         content: await runAccessRequest(input, threadId, {
           dataFolder,
+          bypass: options.approvalSource === 'bypass',
           scope: options.scope,
           signal: options.signal,
           taskLabel: options.taskLabel,
@@ -924,7 +928,7 @@ async function runStreaming(
  * record: an allowed edit used to be logged as an open "prompt:Write".
  */
 const approvalOf = (options: AgentToolOptions): ApprovalSource | undefined =>
-  options.callId ? approvalSourceFor(options.callId) : undefined
+  options.approvalSource ?? (options.callId ? approvalSourceFor(options.callId) : undefined)
 
 /** The extra folders as the binding takes them: absent when there are none. */
 const extraProjectsOf = (options: AgentToolOptions): string[] | undefined =>

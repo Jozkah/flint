@@ -86,6 +86,18 @@ describe('runAccessRequest', () => {
     expect(calls('access_grant')).toHaveLength(1)
   })
 
+  it('uses Cowork bypass even when global approval mode asks', async () => {
+    const out = JSON.parse(
+      await runAccessRequest(
+        { path: 'D:\\projects\\notes', reason: 'read notes' },
+        't1',
+        { ...opts, bypass: true }
+      )
+    )
+    expect(out.status).toBe('granted')
+    expect(useAccessRequests.getState().queue).toHaveLength(0)
+  })
+
   it('shows the resolved scope, grants for the session on approval, and tells the model to retry', async () => {
     const run = runAccessRequest(
       { path: 'D:\\projects\\notes', reason: 'read the todo list' },

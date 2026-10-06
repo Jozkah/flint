@@ -130,7 +130,7 @@ pub const FAMILIES: &[Family] = &[
             width: 1024,
             height: 1024,
         },
-        min_side: 256,
+        min_side: 16,
         max_side: 2048,
     },
     Family {
@@ -147,7 +147,7 @@ pub const FAMILIES: &[Family] = &[
             width: 1024,
             height: 1024,
         },
-        min_side: 256,
+        min_side: 16,
         max_side: 2048,
     },
     Family {
@@ -164,7 +164,7 @@ pub const FAMILIES: &[Family] = &[
             width: 1024,
             height: 1024,
         },
-        min_side: 256,
+        min_side: 16,
         max_side: 2048,
     },
     Family {
@@ -181,7 +181,7 @@ pub const FAMILIES: &[Family] = &[
             width: 1024,
             height: 1024,
         },
-        min_side: 256,
+        min_side: 16,
         max_side: 2048,
     },
 ];

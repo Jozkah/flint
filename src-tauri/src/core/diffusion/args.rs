@@ -444,6 +444,7 @@ mod tests {
     #[test]
     fn sizes_must_be_in_range_and_a_multiple_of_sixteen() {
         assert_eq!(size_problem(1024, 1024, 256, 2048), None);
+        assert_eq!(size_problem(16, 32, 16, 2048), None);
         assert!(size_problem(255, 1024, 256, 2048).unwrap().contains("width"));
         assert!(size_problem(1024, 2064, 256, 2048).unwrap().contains("height"));
         assert!(size_problem(1000, 1024, 256, 2048).unwrap().contains("multiple of 16"));

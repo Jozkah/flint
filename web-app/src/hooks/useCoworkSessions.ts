@@ -8,6 +8,7 @@ import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
+import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
@@ -632,7 +633,13 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // Attaching, switching and detaching all land here, so the code panel is
       // pruned in the same update: a tab from the old project must never be
       // left to re-resolve its relative path inside the new one.
-      setFolder: (id, folder) =>
+      setFolder: (id, folder) => {
+        const current = get().sessions.find((session) => session.id === id)
+        if (current && current.folder !== folder) {
+          // Session records are keyed by id. Never carry previous folder's
+          // checkout into a newly attached project.
+          useCoworkWorktrees.getState().forget(id)
+        }
         set((s) => ({
           sessions: s.sessions.map((x) =>
             x.id === id
@@ -681,7 +688,8 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
                 }
               : x
           ),
-        })),
+        }))
+      },
 
       // Changing which folders are attached withdraws the access agreed for the
       // old set, as changing the primary does: a grant covers the folders it
