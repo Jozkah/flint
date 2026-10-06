@@ -46,6 +46,17 @@ describe('the run summary the application writes', () => {
     expect(region()).toHaveTextContent('notes.md')
   })
 
+  it('opens the file name itself in the result list', async () => {
+    const onOpenPath = vi.fn()
+    render(<CoworkRunSummary
+      summary={{ ...empty, janWrites: [{ destination: 'repository', paths: ['print_checklist.html'] }] }}
+      onOpenPath={onOpenPath}
+      canOpenPath={() => true}
+    />)
+    await userEvent.click(screen.getByRole('button', { name: 'print_checklist.html' }))
+    expect(onOpenPath).toHaveBeenCalledWith('print_checklist.html')
+  })
+
   // The distinction the whole ledger exists to preserve.
   // Only the session's own writes are listed. Files that were already
   // changed, or changed by something else, are not its work.

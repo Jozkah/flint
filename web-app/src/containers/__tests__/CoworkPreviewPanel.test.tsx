@@ -86,6 +86,13 @@ describe('CoworkPreviewPanel', () => {
     expect(frame.srcdoc).toContain('<h1>Report</h1>')
   })
 
+  it('keeps HTML preview visible when browser verification is available', async () => {
+    respondWith('<h1>Report</h1>')
+    render(<CoworkPreviewPanel root={ROOT} path="report.html" onClose={vi.fn()} verify={<div data-testid="verify-form" />} />)
+    expect(await screen.findByTitle('report.html')).toBeInTheDocument()
+    expect(screen.getByTestId('verify-form').closest('details')).not.toHaveAttribute('open')
+  })
+
   it('runs no scripts for an svg', async () => {
     respondWith('<svg><rect /></svg>')
     view('logo.svg')

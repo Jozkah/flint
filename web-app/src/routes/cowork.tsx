@@ -68,7 +68,7 @@ import {
   MessageSquare,
   PanelRight,
 } from 'lucide-react'
-import { basenameOf, resolveInRoot } from '@/lib/coworkPreview'
+import { basenameOf, previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
 import { codePathExists } from '@/lib/codePathExists'
 import { readTextBounded } from '@/lib/boundedRead'
 import { Frame, FrameBody } from '@/components/ui/frame'
@@ -1278,6 +1278,7 @@ export function CoworkPage() {
   const [lastPreviewPath, setLastPreviewPath] = useState<string | undefined>(
     undefined
   )
+  const [lastPreviewRoot, setLastPreviewRoot] = useState<string | undefined>(undefined)
   /** Open a tab in the Code panel. `sandbox` marks paths under the session
    * workspace (agent artifacts) rather than the attached project. */
   const openCode = useCallback(
@@ -1324,6 +1325,20 @@ export function CoworkPage() {
   )
   const openToolPath = useCallback(
     (path: string, options?: CodeOpenOptions) => {
+      if (!shouldOpenInCode(path) && previewKindFor(path) !== 'file') {
+        const absolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(path)
+        const root = absolute
+          ? [treeRoot, workspacePath, ...extraFolders].find(
+              (candidate) => candidate && resolveInRoot(candidate, path)
+            )
+          : relativeIsProject ? treeRoot : workspacePath
+        if (root) {
+          setLastPreviewPath(path)
+          setLastPreviewRoot(root)
+          setRail({ kind: 'preview', path, root })
+        }
+        return
+      }
       const resolved = resolveToolPath(path)
       // The tree the Code panel browses, so the tab is not born detached in a
       // managed session.
@@ -1334,11 +1349,20 @@ export function CoworkPage() {
         openCode(sandboxTab(resolved.rel, session.id), options)
       }
     },
-    [resolveToolPath, treeRoot, openCode, session?.id]
+    [resolveToolPath, treeRoot, workspacePath, extraFolders, relativeIsProject, openCode, session?.id, setRail]
   )
   /** Why a path cannot be opened, for its tooltip. */
   const checkToolPath = useCallback(
     (path: string): CodePathCheck => {
+      if (previewKindFor(path) !== 'file') {
+        const absolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(path)
+        const root = absolute
+          ? [treeRoot, workspacePath, ...extraFolders].find(
+              (candidate) => candidate && resolveInRoot(candidate, path)
+            )
+          : relativeIsProject ? treeRoot : workspacePath
+        return root ? { ok: true } : { ok: false, reason: t('common:preview.outside') }
+      }
       const resolved = resolveToolPath(path)
       return resolved.kind === 'unresolved'
         ? {
@@ -1347,7 +1371,7 @@ export function CoworkPage() {
           }
         : { ok: true }
     },
-    [resolveToolPath, t]
+    [resolveToolPath, treeRoot, workspacePath, extraFolders, relativeIsProject, t]
   )
   /** Does a clicked path's file exist? Only a definite "not found" is false. */
   const toolPathExists = useCallback(
@@ -1501,10 +1525,11 @@ export function CoworkPage() {
         openCode(artifactTab(path, session.id))
       } else {
         setLastPreviewPath(path)
-        setRail({ kind: 'preview', path })
+        setLastPreviewRoot(workspacePath ?? undefined)
+        setRail({ kind: 'preview', path, root: workspacePath ?? undefined })
       }
     },
-    [openCode, session?.id, setRail]
+    [openCode, session?.id, setRail, workspacePath]
   )
 
   // The rail toolbar's four mutually-exclusive modes map onto the rail state
@@ -1520,9 +1545,9 @@ export function CoworkPage() {
         setRail(null)
         return
       }
-      setRail(kind === 'preview' ? { kind, path: lastPreviewPath } : { kind })
+      setRail(kind === 'preview' ? { kind, path: lastPreviewPath, root: lastPreviewRoot } : { kind })
     },
-    [lastPreviewPath, rail?.kind, setRail]
+    [lastPreviewPath, lastPreviewRoot, rail?.kind, setRail]
   )
   /** The toolbar's semantic mode for the currently open rail, or null. */
   const activeRail: RailMode | null =
@@ -2770,6 +2795,7 @@ export function CoworkPage() {
     )
     const handle = beginRun(sid, runId, controller)
     useCoworkRun.getState().startRun(sid, runId)
+    useBrowserVerify.getState().clearReports(sid)
     // AH-005: the run's first canonical event, recorded where the run is
     // claimed so a run stopped during preparation still has a start and an
     // end. The title is the user's own words, so it is content: a
@@ -5025,9 +5051,10 @@ export function CoworkPage() {
     if (!pendingPreview || !session?.id) return
     if (pendingPreview.sessionId !== session.id) return
     setLastPreviewPath(pendingPreview.path)
-    setRail({ kind: 'preview', path: pendingPreview.path })
+    setLastPreviewRoot(workspacePath ?? undefined)
+    setRail({ kind: 'preview', path: pendingPreview.path, root: workspacePath ?? undefined })
     useCoworkRun.getState().clearPendingPreview()
-  }, [pendingPreview, session?.id, setRail])
+  }, [pendingPreview, session?.id, setRail, workspacePath])
 
   // The file-activity view parks a request the same way, for a path it wants
   // shown but cannot open itself. Consumed once.
@@ -5892,7 +5919,7 @@ export function CoworkPage() {
                       <CoworkRunSummary
                         outcome={runOutcome}
                         browserChecks={browserReports}
-                        canOpenPath={shouldOpenInCode}
+                        canOpenPath={(path) => shouldOpenInCode(path) || previewKindFor(path) !== 'file'}
                         onOpenPath={
                           runOutcome.resultLocation.destination ===
                             'repository' && treeRoot
@@ -6268,7 +6295,7 @@ export function CoworkPage() {
           >
         {rail?.kind === 'preview' && (
           <CoworkPreviewPanel
-            root={workspacePath}
+            root={rail.root ?? workspacePath}
             path={rail.path}
             onClose={closeRail}
             verify={session?.id ? <BrowserVerifyPanel sessionId={session.id} /> : undefined}

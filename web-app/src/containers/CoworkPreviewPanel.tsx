@@ -228,7 +228,12 @@ export function CoworkPreviewPanel({ root, path, onClose, verify }: Props) {
     >
       {verify ? (
         <div className="flex h-full min-h-0 flex-col">
-          {verify}
+          <details className="max-h-1/2 shrink-0 overflow-auto border-b border-border">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-medium">
+              {t('common:browserVerify.title')}
+            </summary>
+            {verify}
+          </details>
           <div className="min-h-0 flex-1">
             <PreviewBody state={state} allowNetwork={allowNetwork} />
           </div>

@@ -14,6 +14,7 @@
 // or junctions; the real boundary would be a Rust command that canonicalizes.
 
 import { isSourcePath } from '@/lib/coworkCode'
+import { previewKindFor } from '@/lib/coworkPreview'
 
 /** URL-fragment prefix carrying an inline-code path through markdown. */
 export const PATH_HREF_PREFIX = '#coworkpath-'
@@ -131,7 +132,7 @@ export function parseInlinePath(value: string): InlinePath | null {
 
   // Relative: must be a source file. Bare names also need to look like a file.
   if (body.startsWith('~') || /^\.\.?$/.test(body)) return null
-  if (!isSourcePath(norm.path)) return null
+  if (!isSourcePath(norm.path) && previewKindFor(norm.path) === 'file') return null
   if (!hasSlash) {
     if (NOT_A_FILE.test(norm.path)) return null
     const name = norm.path
@@ -193,7 +194,7 @@ export function classifyPath(
 ): PathAction {
   if (!parsed.absolute) {
     // Resolved by the Code panel against the project/sandbox when clicked.
-    return ctx.canOpenInCode && isSourcePath(parsed.path)
+    return ctx.canOpenInCode && (isSourcePath(parsed.path) || previewKindFor(parsed.path) !== 'file')
       ? { kind: 'code', path: parsed.path }
       : { kind: 'none' }
   }
@@ -201,7 +202,7 @@ export function classifyPath(
   if (isExecutablePath(parsed.path)) {
     return { kind: 'reveal', path: toOsPath(parsed.path) }
   }
-  if (ctx.canOpenInCode && isSourcePath(parsed.path)) {
+  if (ctx.canOpenInCode && (isSourcePath(parsed.path) || previewKindFor(parsed.path) !== 'file')) {
     return { kind: 'code', path: parsed.path }
   }
   return { kind: 'open', path: toOsPath(parsed.path) }

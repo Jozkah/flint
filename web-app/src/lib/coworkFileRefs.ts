@@ -125,6 +125,23 @@ export function hasFileRef(text: string): boolean {
   return parseFileRefs(text).some((s) => s.type === 'ref')
 }
 
+/** File names in ordinary output text, without requiring an @ prefix. */
+export function parseBareFilePaths(text: string): Array<{ type: 'text' | 'path'; text: string }> {
+  const result: Array<{ type: 'text' | 'path'; text: string }> = []
+  const pattern = /(?<![A-Za-z0-9_.@/:])([A-Za-z0-9_.\\/-]+\.[A-Za-z][A-Za-z0-9]{0,9}(?::\d+(?:-\d+)?)?)(?![A-Za-z0-9_/])/g
+  let cursor = 0
+  for (const match of text.matchAll(pattern)) {
+    const path = match[1]
+    if (!parseInlinePath(path)) continue
+    const start = match.index ?? 0
+    if (start > cursor) result.push({ type: 'text', text: text.slice(cursor, start) })
+    result.push({ type: 'path', text: path })
+    cursor = start + path.length
+  }
+  if (cursor < text.length) result.push({ type: 'text', text: text.slice(cursor) })
+  return result
+}
+
 // ---------------------------------------------------------------------------
 // Markdown (mdast) plugin — turn detected references into link nodes carrying
 // the ref in data-* attributes (not the href, so URL sanitization can't strip
@@ -171,16 +188,16 @@ function transform(node: MdNode): void {
   for (const child of node.children) {
     if (child.type === 'text' && typeof child.value === 'string') {
       const segments = parseFileRefs(child.value)
-      if (segments.every((s) => s.type === 'text')) {
-        next.push(child)
-        continue
-      }
       for (const seg of segments) {
-        next.push(
-          seg.type === 'text'
-            ? { type: 'text', value: seg.text }
-            : refNode(seg.ref)
-        )
+        if (seg.type === 'ref') {
+          next.push(refNode(seg.ref))
+        } else {
+          for (const part of parseBareFilePaths(seg.text)) {
+            next.push(part.type === 'path'
+              ? { type: 'link', url: pathHref(part.text), children: [{ type: 'text', value: part.text }] }
+              : { type: 'text', value: part.text })
+          }
+        }
       }
     } else if (
       child.type === 'inlineCode' &&
