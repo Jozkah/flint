@@ -266,7 +266,7 @@ pub async fn load<R: Runtime>(
     offload: Offload,
 ) -> Result<ResidentInfo, String> {
     if !engine::platform_supported() {
-        return Err("Image generation is available on Windows for now.".to_string());
+        return Err("Local image generation needs Windows x64 or Linux x64.".to_string());
     }
     let def = catalog::model(model_id).ok_or_else(|| format!("Unknown model {model_id}."))?;
     let backend = engine::installed_backend(app)
@@ -287,9 +287,13 @@ pub async fn load<R: Runtime>(
 
     let dir = engine::engine_dir(app, backend);
     let scratch = engine::diffusion_root(app).join("scratch");
+    let lora_dir = engine::diffusion_root(app).join("loras");
     std::fs::create_dir_all(&scratch).map_err(|e| format!("Could not create the scratch folder: {e}"))?;
+    std::fs::create_dir_all(&lora_dir).map_err(|e| format!("Could not create the LoRA folder: {e}"))?;
     let port = free_port()?;
-    let argv = build_server_args(&files, port, &scratch, offload, None, &[]);
+    let argv = build_server_args(&files, port, &scratch, offload, None, &[
+        "--lora-model-dir".to_string(), lora_dir.to_string_lossy().into_owned(),
+    ]);
 
     let mut command = Command::new(dir.join(engine::SERVER_EXE));
     command
@@ -298,6 +302,7 @@ pub async fn load<R: Runtime>(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    engine::configure_library_path(&mut command, &dir);
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let mut child = command
@@ -409,6 +414,34 @@ pub struct ImageParams {
     pub seed: Option<u32>,
     #[serde(default)]
     pub steps: Option<u32>,
+    #[serde(default)]
+    pub lora: Vec<LoraChoice>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoraChoice {
+    pub name: String,
+    pub multiplier: f64,
+}
+
+fn resolve_loras<R: Runtime>(app: &tauri::AppHandle<R>, choices: &[LoraChoice]) -> Result<Vec<(String, f64)>, String> {
+    let dir = engine::diffusion_root(app).join("loras");
+    choices.iter().map(|choice| {
+        let name = std::path::Path::new(&choice.name);
+        if name.file_name().and_then(|n| n.to_str()) != Some(choice.name.as_str())
+            || !choice.name.to_ascii_lowercase().ends_with(".safetensors") {
+            return Err("Choose an imported LoRA adapter.".to_string());
+        }
+        if !choice.multiplier.is_finite() || !(0.0..=2.0).contains(&choice.multiplier) {
+            return Err("LoRA strength must be between 0 and 2.".to_string());
+        }
+        let path = dir.join(&choice.name);
+        if !path.is_file() {
+            return Err(format!("LoRA adapter {} is missing.", choice.name));
+        }
+        // sd-server resolves relative LoRA names against --lora-model-dir.
+        Ok((choice.name.clone(), choice.multiplier))
+    }).collect()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -427,6 +460,8 @@ pub struct VideoParams {
     pub seed: Option<u32>,
     #[serde(default)]
     pub steps: Option<u32>,
+    #[serde(default)]
+    pub lora: Vec<LoraChoice>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -636,6 +671,7 @@ pub async fn generate_image<R: Runtime>(
         batch: count,
         seed,
         sampling,
+        lora: resolve_loras(app, &params.lora)?,
     };
     let started = Instant::now();
     let (job_id, result) = run_job_with_fallback(
@@ -684,6 +720,7 @@ pub async fn generate_image<R: Runtime>(
             batch_seed: seed,
             model_id: def.id.to_string(),
             model_name: def.display_name.to_string(),
+            lora: params.lora.iter().map(|l| gallery::LoraRecipe { name: l.name.clone(), multiplier: l.multiplier }).collect(),
             frames: None,
             fps: None,
             created_at_ms: gallery::now_ms(),
@@ -735,6 +772,7 @@ pub async fn generate_video<R: Runtime>(
         fps: video.fps,
         seed,
         sampling,
+        lora: resolve_loras(app, &params.lora)?,
     };
     let started = Instant::now();
     let (job_id, result) = run_job_with_fallback(app, def.id, "/sdcpp/v1/vid_gen", build_vid_gen_request(&request), steps, 1).await?;
@@ -761,6 +799,7 @@ pub async fn generate_video<R: Runtime>(
         batch_seed: seed,
         model_id: def.id.to_string(),
         model_name: def.display_name.to_string(),
+        lora: params.lora.iter().map(|l| gallery::LoraRecipe { name: l.name.clone(), multiplier: l.multiplier }).collect(),
         frames: result["frame_count"].as_u64().map(|n| n as u32).or(Some(frames)),
         fps: result["fps"].as_u64().map(|n| n as u32).or(Some(video.fps)),
         created_at_ms: gallery::now_ms(),

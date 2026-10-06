@@ -84,3 +84,6 @@ windows-sys = { version = "0.60.2", features = [
   "Win32_UI_Shell",
 ] }
 
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "=0.11.1", default-features = false, features = ["tokio"] }

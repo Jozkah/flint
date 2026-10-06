@@ -215,6 +215,7 @@ export default function Cowork({ id }: { id: string }) {
         stopFor={{ kind: 'cowork', id }}
         allowWhileRunning
         onSend={async (text) => (await sendMessage('cowork.send', { id, text })) !== undefined}
+        onSteer={async (text) => (await sendMessage('cowork.send', { id, text, steer: true })) !== undefined}
       />
       <div className="runrow">
         <button type="button" className={`rq${d?.mode === 'auto' ? ' amber' : ''}`} onClick={() => openSheet('mode', { id, value: d?.mode })}>

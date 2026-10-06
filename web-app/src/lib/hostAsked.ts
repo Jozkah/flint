@@ -12,6 +12,7 @@ export const HOST_ASKED = new Set([
   'host_wsl',
   'host_ssh',
   'clipboard',
+  'computer',
   'open_path',
 ])
 

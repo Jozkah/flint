@@ -558,6 +558,7 @@ pub async fn execute_builtin(
             "read" => read_or_list(args, ctx).await,
             "screenshot" => screenshot(args, project_root, scratch, ctx.read_roots).await,
             "browser" => crate::tools::browser_tool::run(args, ctx).await,
+            "computer" => crate::tools::computer::run(args).await,
             _ => (execute_text(tool, args, ctx).await, None),
         }
     };
@@ -654,6 +655,7 @@ pub(crate) async fn execute_text(
         "host_action" => crate::tools::host_action::host_action(args).await,
         "host_build" => crate::tools::host_build::run(args, ctx).await,
         "clipboard" => crate::tools::clipboard::clipboard(args).await,
+        "computer" => crate::tools::computer::run(args).await.0,
         "open_path" => crate::tools::open_path::run(args, ctx).await,
         "host_powershell" => crate::tools::host_powershell::run(args, ctx).await,
         "host_package" => crate::tools::host_package::host_package(args).await,
@@ -939,7 +941,7 @@ pub async fn execute_builtin_with_diff(
         }
         // Tools that can hand the model an image. `screenshot` and `browser`
         // were missing here, so their pictures were dropped on this path.
-        "read" | "screenshot" | "browser" => {
+        "read" | "screenshot" | "browser" | "computer" => {
             let (content, images) = execute_builtin(tool, args, ctx).await;
             (content, None, images)
         }
@@ -6405,6 +6407,7 @@ on_failure = \"warn\"
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::tools::gate::NetworkPolicy::open(),
             &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
@@ -6435,6 +6438,7 @@ on_failure = \"warn\"
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::tools::gate::NetworkPolicy::open(),
             &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
@@ -8676,6 +8680,7 @@ on_failure = \"warn\"
 
     /// The Cowork proposal card is filed under the proposing chat's id, so an
     /// agent-made proposal must list with `source_session_id` == its session.
+    #[cfg(feature = "tauri")]
     #[tokio::test]
     async fn a_proposed_memory_lists_under_the_session_that_proposed_it() {
         let root = unique_root();

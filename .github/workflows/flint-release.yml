@@ -4,7 +4,8 @@ name: Flint Release
 # bundles to an existing release. Stable release tags never move automatically.
 on:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 0,12 * * *'
+      timezone: Europe/Lisbon
   workflow_dispatch:
     inputs:
       tag:
@@ -15,7 +16,7 @@ on:
         type: boolean
         default: false
 
-# Only one nightly draft can exist for a given UTC day.
+# Serialize release uploads; midnight and noon get separate Lisbon-time tags.
 concurrency:
   group: flint-release-${{ github.event_name == 'schedule' && 'nightly' || github.event.inputs.tag }}
   cancel-in-progress: false
@@ -41,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
+      ref: ${{ steps.release.outputs.ref }}
     steps:
       - name: Create nightly draft or check existing release
         id: release
@@ -49,28 +51,35 @@ jobs:
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = schedule ]; then
-            day="$(date -u +%Y%m%d)"
-            tag="nightly-$day"
-            previous="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 100 \
-              --json tagName,isPrerelease --jq '[.[] | select(.isPrerelease and (.tagName | startswith("nightly-"))) | .tagName][0] // empty')"
-            if [ -z "$previous" ]; then
-              previous="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
-                --limit 1 --json tagName --jq '.[0].tagName')"
+            # A draft release does not create its Git tag until publication.
+            # Build the event's immutable main commit, not the pending tag.
+            ref="$GITHUB_SHA"
+            slot="$(TZ=Europe/Lisbon date +%Y%m%d-%H)"
+            tag="nightly-$slot"
+            # Keep nightly notes cumulative since the latest stable release.
+            # Comparing with a previous nightly would hide unreleased changes.
+            baseline="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+              --limit 1 --json tagName --jq '.[0].tagName // empty')"
+            if [ -z "$baseline" ]; then
+              echo "Cannot generate nightly notes without a stable release baseline" >&2
+              exit 1
             fi
             if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               echo "Reusing existing nightly release $tag"
             else
               gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
                 --target "$GITHUB_SHA" --draft --prerelease --latest=false \
-                --title "Flint nightly $(date -u +%Y-%m-%d)" \
-                --generate-notes --notes-start-tag "$previous" \
-                --notes "Unsigned desktop bundles built from $GITHUB_SHA. Changes since $previous."
+                --title "Flint nightly $(TZ=Europe/Lisbon date +%Y-%m-%d\ %H:00) Lisbon" \
+                --generate-notes --notes-start-tag "$baseline" \
+                --notes "Unsigned desktop bundles built from $GITHUB_SHA. Changes since $baseline (not included in the stable release)."
             fi
           else
             tag="$INPUT_TAG"
+            ref="$tag"
             gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build (${{ matrix.name }})
@@ -106,10 +115,10 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Check out the tag
+      - name: Check out the release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ needs.prepare.outputs.ref }}
 
       # The Makefile recipes are bash and make; the hosted Windows image has
       # Git Bash but not always make.
@@ -259,6 +268,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
-          release_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .id)"
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
-            -F draft=false -F prerelease=true -f make_latest=false
+          # The CLI also finds draft releases; the by-tag REST endpoint is
+          # intended for published releases.
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --draft=false --prerelease --latest=false

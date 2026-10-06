@@ -1386,12 +1386,16 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when streaming content finishes
   useEffect(() => {
-    if (takeFocus && chatStatus !== 'submitted' && textareaRef.current) {
-      // Small delay to ensure UI has updated
-      setTimeout(() => {
+    if (!takeFocus || chatStatus !== 'ready') return
+    // A status update must not steal focus from a parameter input or menu.
+    // Radix dismisses the sampler when focus moves outside its content.
+    const timer = setTimeout(() => {
+      const active = document.activeElement
+      if (!active || active === document.body || active === textareaRef.current) {
         textareaRef.current?.focus()
-      }, 10)
-    }
+      }
+    }, 10)
+    return () => clearTimeout(timer)
   }, [chatStatus, takeFocus])
 
   const stopStreaming = useCallback(

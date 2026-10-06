@@ -61,7 +61,7 @@ export class DefaultModelsService implements ModelsService {
     specDraftKind?: SpecDraftKind
   ): Promise<void> {
     const engine = this.getEngine()
-    if (!engine) throw new Error('Model engine is not available on this system.')
+    if (!engine) throw new Error('The llama.cpp engine is not available. Restart Flint and retry installing the downloaded model.')
     return engine.import(id, {
       modelPath,
       mmprojPath,

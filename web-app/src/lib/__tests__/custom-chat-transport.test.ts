@@ -46,6 +46,16 @@ describe('effectiveContextWindow', () => {
     expect(effectiveContextWindow(0, 12_288, true)).toBe(12_288)
     expect(effectiveContextWindow(8_192, 12_288, false)).toBe(8_192)
   })
+
+  it('keeps a 200k user cap when the live engine has a 240k window', () => {
+    expect(effectiveContextWindow(200_000, 240_000, true)).toBe(200_000)
+  })
+
+  it('uses a smaller live window and rejects invalid sizes', () => {
+    expect(effectiveContextWindow(200_000, 128_000, true)).toBe(128_000)
+    expect(effectiveContextWindow(200_000, Infinity, true)).toBe(200_000)
+    expect(effectiveContextWindow(NaN, 240_000, true)).toBe(240_000)
+  })
 })
 
 
