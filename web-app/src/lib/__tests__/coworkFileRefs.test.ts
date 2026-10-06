@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  parseBareFilePaths,
   isSafeRefPath,
   parseFileRefs,
   hasFileRef,
@@ -11,6 +12,23 @@ import {
 
 const refs = (text: string) =>
   parseFileRefs(text).filter((s): s is Extract<RefSegment, { type: 'ref' }> => s.type === 'ref')
+
+describe('bare file paths in output', () => {
+  it('finds HTML and source files while leaving URLs and prose alone', () => {
+    const paths = parseBareFilePaths('Changed print_checklist.html and src/app.ts. Open https://example.com/a.ts or Node.js.')
+      .filter((part) => part.type === 'path')
+      .map((part) => part.text)
+    expect(paths).toEqual(['print_checklist.html', 'src/app.ts'])
+  })
+
+  it('links file names in markdown text without requiring @', () => {
+    const tree = { type: 'root', children: [{ type: 'paragraph', children: [
+      { type: 'text', value: 'Changed print_checklist.html' },
+    ] }] }
+    remarkFileRefs()(tree)
+    expect(tree.children[0].children.some((node) => node.type === 'link')).toBe(true)
+  })
+})
 
 describe('isSafeRefPath', () => {
   it('accepts relative source-like paths', () => {
@@ -168,9 +186,11 @@ describe('remarkFileRefs inline-code paths', () => {
     for (const v of ['npm install', 'v1.2.3', 'e.g.', 'foo.bar()']) {
       expect(run([{ type: 'inlineCode', value: v }])[0].type, v).toBe('inlineCode')
     }
-    // A path-looking word in prose is not touched.
+    // A file named in prose becomes a link.
     expect(run([{ type: 'text', value: 'edit src/a.ts now' }])).toEqual([
-      { type: 'text', value: 'edit src/a.ts now' },
+      { type: 'text', value: 'edit ' },
+      { type: 'link', url: '#coworkpath-src%2Fa.ts', children: [{ type: 'text', value: 'src/a.ts' }] },
+      { type: 'text', value: ' now' },
     ])
   })
 

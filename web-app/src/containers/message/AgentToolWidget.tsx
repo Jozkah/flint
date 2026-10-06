@@ -34,6 +34,9 @@ import {
   toolTargetIsPath,
 } from '@/lib/codeOpen'
 import { OpenablePath } from './OpenablePath'
+import { InlinePathLink } from './InlinePathLink'
+import { parseBareFilePaths } from '@/lib/coworkFileRefs'
+import { pathHref } from '@/lib/pathOpen'
 import { ChangeDiff } from '@/components/ChangeDiff'
 import { TermOutput } from '@/components/TermOutput'
 import { parseAnsi, stripAnsi, type AnsiStyle } from '@/lib/ansi'
@@ -45,9 +48,13 @@ const asText = (output: unknown): string =>
       ? (output as { content: string }).content
       : ''
 
-const OutputBlock = ({ children }: { children: React.ReactNode }) => (
+const OutputBlock = ({ children }: { children: string }) => (
   <pre className="m-0 max-h-56 overflow-auto whitespace-pre-wrap wrap-break-word rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs leading-normal text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
-    {children}
+    {parseBareFilePaths(children).map((part, index) =>
+      part.type === 'path' ? (
+        <InlinePathLink key={index} href={pathHref(part.text)}>{part.text}</InlinePathLink>
+      ) : <span key={index}>{part.text}</span>
+    )}
   </pre>
 )
 

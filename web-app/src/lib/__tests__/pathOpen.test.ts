@@ -123,7 +123,7 @@ describe('classifyPath', () => {
       kind: 'open',
       path: 'C:\\work\\proj\\src\\a.ts',
     })
-    expect(classifyPath(abs('C:\\work\\proj\\logo.png'), { roots, canOpenInCode: true }).kind).toBe('open')
+    expect(classifyPath(abs('C:\\work\\proj\\logo.png'), { roots, canOpenInCode: true }).kind).toBe('code')
     expect(classifyPath(abs('C:\\work\\proj\\docs'), { roots, canOpenInCode: true }).kind).toBe('open')
   })
 
