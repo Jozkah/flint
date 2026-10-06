@@ -3,6 +3,8 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ThreadMessage } from '@janhq/core'
 import { useTokensCount } from '../useTokensCount'
 import { useContextBreakdown } from '../useContextBreakdown'
+import { useAssistant } from '../useAssistant'
+import { useThreads } from '../useThreads'
 
 const h = vi.hoisted(() => ({ fetchWindow: vi.fn() }))
 vi.mock('@/lib/serverWindow', () => ({ fetchServerWindow: h.fetchWindow }))
@@ -41,6 +43,10 @@ describe('the window of a custom server', () => {
     h.fetchWindow.mockReset()
     state.baseUrl = 'http://127.0.0.1:8081/v1'
     act(() => {
+      useAssistant.setState({ currentAssistant: undefined })
+      useThreads.setState({ threads: {} })
+    })
+    act(() => {
       useContextBreakdown.setState({
         byId: {},
         windowById: {},
@@ -61,6 +67,33 @@ describe('the window of a custom server', () => {
     const { result } = renderHook(() => useTokensCount([reply]))
     await waitFor(() => expect(result.current.maxTokens).toBe(500_000))
     expect(useContextBreakdown.getState().windowById['thread-1']).toBe(500_000)
+  })
+
+  it('uses the server window for a session outside chat threads', async () => {
+    act(() => useAssistant.setState({
+      currentAssistant: { id: 'flint', parameters: { max_context_tokens: 200_000 } } as Assistant,
+    }))
+    h.fetchWindow.mockResolvedValue(262_144)
+    const { result } = renderHook(() => useTokensCount([], { threadId: 'cowork-session' }))
+    await waitFor(() => expect(h.fetchWindow).toHaveBeenCalled())
+    await waitFor(() => expect(result.current.maxTokens).toBe(262_144))
+  })
+
+  it('uses the server window for a chat thread', async () => {
+    act(() => {
+      useAssistant.setState({
+        currentAssistant: { id: 'other', parameters: { max_context_tokens: 100_000 } } as Assistant,
+      })
+      useThreads.setState({ threads: {
+        'thread-1': { id: 'thread-1', assistants: [
+          { id: 'flint', parameters: { max_context_tokens: 200_000 } },
+        ] } as Thread,
+      } })
+    })
+    h.fetchWindow.mockResolvedValue(262_144)
+    const { result } = renderHook(() => useTokensCount([reply]))
+    await waitFor(() => expect(h.fetchWindow).toHaveBeenCalled())
+    await waitFor(() => expect(result.current.maxTokens).toBe(262_144))
   })
 
   it('shows the window kept from earlier before the server has answered', () => {

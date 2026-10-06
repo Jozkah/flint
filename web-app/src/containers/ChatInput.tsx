@@ -3416,7 +3416,7 @@ const ChatInput = memo(function ChatInput({
                     <>
                 <AssistantSwitcher
                   assistants={assistants}
-                  currentThread={currentThread}
+                  currentThread={slashSurface === 'cowork' ? undefined : currentThread}
                   selectedAssistantId={selectedAssistantId}
                   setSelectedAssistantId={setSelectedAssistantId}
                         updateCurrentThreadAssistant={
@@ -3428,7 +3428,7 @@ const ChatInput = memo(function ChatInput({
                   modelId={selectedModel?.id}
                   assistantSwitcher={{
                     assistants,
-                    currentThread,
+                    currentThread: slashSurface === 'cowork' ? undefined : currentThread,
                     selectedAssistantId,
                     setSelectedAssistantId,
                     updateCurrentThreadAssistant,

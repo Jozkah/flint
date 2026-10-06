@@ -556,8 +556,7 @@ const configuredContextTokens = (
   acceptedPrompt?: number | null
 ): number | null =>
   coworkWindow({
-    // The user's Max Context Tokens is a decision about this window, the
-    // same one Chat honours; a bundled family guess is not.
+    // Use this only when the provider has not reported its own window.
     userSet:
       useAssistant.getState().currentAssistant?.parameters?.max_context_tokens,
     capabilities: caps,
