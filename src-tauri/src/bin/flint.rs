@@ -211,6 +211,21 @@ impl ResumeRunArgs {
 /// lives under the non-interactive `cli` fallback.
 #[derive(Subcommand)]
 enum Commands {
+    /// Run the production browser server without a desktop session
+    Serve {
+        /// Loopback address; use a private-network HTTPS proxy for remote access
+        #[arg(long, default_value = "127.0.0.1:1340")]
+        listen: std::net::SocketAddr,
+        /// Directory containing the production web bundle
+        #[arg(long)]
+        assets_dir: Option<std::path::PathBuf>,
+        /// Shared Flint data directory
+        #[arg(long)]
+        data_dir: Option<std::path::PathBuf>,
+        /// Exact DNS name used by the private-network HTTPS proxy
+        #[arg(long)]
+        public_host: Option<String>,
+    },
     /// Non-interactive CLI: launch agents, run headless agent tasks, manage models and threads
     #[command(display_order = 1)]
     Cli {
@@ -1346,6 +1361,31 @@ async fn run() {
     };
 
     match command {
+        Commands::Serve { listen, assets_dir, data_dir, public_host } => {
+            if let Some(data_dir) = data_dir {
+                std::env::set_var("JAN_DATA_FOLDER", data_dir);
+            }
+            let assets = assets_dir.unwrap_or_else(|| {
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|exe| exe.parent().map(|dir| dir.join("web")))
+                    .unwrap_or_else(|| std::path::PathBuf::from("web"))
+            });
+            let auth_file = app_lib::core::app::commands::resolve_jan_data_folder()
+                .join("web-server")
+                .join("auth.json");
+            if let Err(error) = app_lib::core::web_server::server::serve(
+                app_lib::core::web_server::server::Options {
+                    bind: listen,
+                    assets,
+                    auth_file,
+                    public_host,
+                },
+            ).await {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+        }
         Commands::Cli { cmd } => handle_cli(cmd).await,
         Commands::Login { paste_token } => {
             if let Err(e) = app_lib::core::cli::login::run_login(paste_token).await {

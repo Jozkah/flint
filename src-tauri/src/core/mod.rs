@@ -57,6 +57,8 @@ pub mod state;
 #[cfg(not(feature = "cli"))]
 pub mod system;
 pub mod threads;
+#[cfg(feature = "cli")]
+pub mod web_server;
 // Native child-webview web preview; desktop-only like preview.
 #[cfg(not(feature = "cli"))]
 pub mod web_preview;
