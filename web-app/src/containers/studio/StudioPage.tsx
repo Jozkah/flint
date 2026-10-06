@@ -510,7 +510,7 @@ function CustomSize({
         </button>
       </div>
       <p className="text-xs leading-snug text-muted-foreground">
-        Multiples of 16, from {limits.min} to {limits.max} pixels.
+        Multiples of 16, up to {limits.max} pixels.
         {kind === 'video'
           ? ' Big clips need a lot of memory.'
           : ' Big pictures need more memory and time.'}

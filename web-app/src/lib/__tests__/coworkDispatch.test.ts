@@ -1189,6 +1189,9 @@ describe('dispatchCoworkTool: destructive commands and auto-approve limit', () =
     expect(onApprove).not.toHaveBeenCalled()
     expect(executeAgentTool).toHaveBeenCalled()
     expect(out.isError).not.toBe(true)
+    expect(vi.mocked(executeAgentTool).mock.calls.at(-1)?.[3]).toMatchObject({
+      approvalSource: 'bypass',
+    })
   })
 
   it('does not ask for an ordinary command in autonomous mode', async () => {

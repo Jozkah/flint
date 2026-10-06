@@ -1138,7 +1138,6 @@ pub fn read_for_model_with_user(
         match read_in_layer(project, &config.enabled, name)? {
             LayerRead::Found(raw) => return Ok(raw),
             LayerRead::Hidden => return Err(not_found()),
-            LayerRead::Missing if name.contains(':') => return Err(not_found()),
             LayerRead::Missing => {}
         }
     }
@@ -2307,14 +2306,16 @@ mod tests {
         write(&store, "personal", "store personal").unwrap();
         write(&store, "off", "store off").unwrap();
         write(&store, "deploy", "store deploy").unwrap();
+        plugin_skill(&store, "ecc", "orch-change-feature", "store orchestration");
 
         let listed = names(&catalog_for_model(Some(&project), &store, &[]));
-        assert_eq!(listed, vec!["deploy", "release:prepare", "flint", "personal"]);
+        assert_eq!(listed, vec!["deploy", "release:prepare", "flint", "personal", "ecc:orch-change-feature"]);
 
         let read = |name: &str| read_for_model(Some(&project), &store, &[], name);
         assert_eq!(read("deploy").unwrap(), "project deploy");
         assert_eq!(read("release:prepare").unwrap(), "prep");
         assert_eq!(read("personal").unwrap(), "store personal");
+        assert_eq!(read("ecc:orch-change-feature").unwrap(), "store orchestration");
         // Disabled in the project: not replaced by the store's same-named copy.
         assert!(read("off").is_err());
         // A disabled plugin's skill is unreadable in every spelling.

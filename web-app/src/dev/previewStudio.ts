@@ -45,7 +45,7 @@ export function seedStudioAnswers() {
     files: files.map((size, i) => ({ role: 'diffusion_model', repo: 'example/repo', filename: `file-${i}.gguf`, size, sha256: '' })),
     defaults: { steps: kind === 'video' ? 30 : 8, cfg_scale: 1, sample_method: null, flow_shift: null, width: 1024, height: 1024 },
     video: kind === 'video' ? { fps: 24, frames: 121, min_frames: 5, max_frames: 241 } : null,
-    min_side: 256,
+    min_side: 16,
     max_side: kind === 'video' ? 1280 : 2048,
     installed: kind === 'image',
     totalBytes: files.reduce((a, b) => a + b, 0),
@@ -80,9 +80,9 @@ export function seedStudioAnswers() {
       : []
   )
   answer('diffusion_families', () => [
-    { id: 'z-image', label: 'Z-Image', description: 'A fast model.', hints: [], minSide: 256, maxSide: 2048, companionBytes: 2_832_585_508 },
-    { id: 'qwen-image', label: 'Qwen-Image', description: 'Strong at text in pictures.', hints: [], minSide: 256, maxSide: 2048, companionBytes: 4_936_878_758 },
-    { id: 'flux1', label: 'FLUX.1', description: 'FLUX.1 dev or schnell.', hints: [], minSide: 256, maxSide: 2048, companionBytes: 3_477_572_612 },
+    { id: 'z-image', label: 'Z-Image', description: 'A fast model.', hints: [], minSide: 16, maxSide: 2048, companionBytes: 2_832_585_508 },
+    { id: 'qwen-image', label: 'Qwen-Image', description: 'Strong at text in pictures.', hints: [], minSide: 16, maxSide: 2048, companionBytes: 4_936_878_758 },
+    { id: 'flux1', label: 'FLUX.1', description: 'FLUX.1 dev or schnell.', hints: [], minSide: 16, maxSide: 2048, companionBytes: 3_477_572_612 },
   ])
   answer('diffusion_guess_family', () => 'qwen-image')
   answer('plugin:event|listen', () => 1)

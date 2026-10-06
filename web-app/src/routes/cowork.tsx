@@ -4913,7 +4913,9 @@ export function CoworkPage() {
   // Mail released for an idle session in view (Automatic wake-ups) becomes
   // ready without `running` or the session changing, so the count is watched.
   const readyCount = useMessageQueue((s) =>
-    session?.id ? s.getQueue(session.id).filter((m) => !m.held).length : 0
+    !running && session?.id
+      ? s.getQueue(session.id).filter((m) => !m.held).length
+      : 0
   )
   const idleDrainRef = useRef(false)
   useEffect(() => {

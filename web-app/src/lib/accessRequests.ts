@@ -214,6 +214,7 @@ function result(status: string, fields: Record<string, unknown>): string {
 
 export type RunAccessRequestOptions = {
   dataFolder: string
+  bypass?: boolean
   scope?: WorkspaceScope
   taskLabel?: string
   origin?: string
@@ -277,7 +278,7 @@ export async function runAccessRequest(
   }
 
   const decision =
-    useToolApproval.getState().permissionMode === 'bypass'
+    (opts.bypass || useToolApproval.getState().permissionMode === 'bypass')
       ? 'session'
       : await useAccessRequests.getState().ask(
           {

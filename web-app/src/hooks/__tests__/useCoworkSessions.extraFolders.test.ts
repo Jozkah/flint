@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 
 const session = (id: string) =>
   ({
@@ -20,6 +21,7 @@ const get = () => useCoworkSessions.getState().sessions[0]
 describe('a session’s extra folders', () => {
   beforeEach(() => {
     useCoworkSessions.setState({ sessions: [session('A')], currentId: 'A' })
+    useCoworkWorktrees.setState({ bySession: {} })
   })
 
   it('are added beside the primary, which stays the folder', () => {
@@ -51,5 +53,11 @@ describe('a session’s extra folders', () => {
     store.setFolder('A', '/repo/b')
     expect(get().folder).toBe('/repo/b')
     expect(get().extraFolders).toEqual([])
+  })
+
+  it('forgets previous project worktree when primary folder changes', () => {
+    useCoworkWorktrees.setState({ bySession: { A: { path: '/old-worktree' } as never } })
+    useCoworkSessions.getState().setFolder('A', '/repo/b')
+    expect(useCoworkWorktrees.getState().recordFor('A')).toBeUndefined()
   })
 })
