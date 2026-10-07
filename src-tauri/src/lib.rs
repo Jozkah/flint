@@ -871,6 +871,23 @@ pub fn build_app() -> tauri::App {
                     ])
                     .build(),
             )?;
+            for (level, text) in crash_notes {
+                log::log!(level, "{text}");
+            }
+            // The Windows window is created hidden and shown here, at the place
+            // it was last left, so it never paints at the default spot and then
+            // jumps. See core::window_state.
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                core::window_state::restore_and_show(&window, &data_folder);
+                core::window_state::install(&window, data_folder);
+                suppress_beforeunload_dialog(&window);
+            }
+            // Remote access: off unless the user turned it on; if so the
+            // listener starts now, with the settings they left.
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            core::remote::commands::init(app.handle());
             // A Jan up to 0.8.4 leaves its llama-server router running across an
             // in-app update; that version cannot be fixed, so reap it here.
             #[cfg(not(any(target_os = "ios", target_os = "android")))]
@@ -1078,4 +1095,30 @@ pub fn run_app(app: tauri::App) {
             });
         }
     });
+}
+
+/// The setup block is easy to lose in a merge with the upstream app, and losing
+/// it fails silently: a Windows window that is created hidden and never shown,
+/// remote access that never starts, a previous crash that is never logged.
+#[cfg(test)]
+mod startup_guard_tests {
+    const SOURCE: &str = include_str!("lib.rs");
+
+    #[test]
+    fn setup_shows_the_window_and_starts_the_services_it_always_did() {
+        for call in [
+            "core::window_state::restore_and_show(",
+            "core::window_state::install(",
+            "suppress_beforeunload_dialog(&window);",
+            "core::remote::commands::init(app.handle());",
+            "for (level, text) in crash_notes {",
+        ] {
+            // The test's own list contains each string once; the setup block
+            // must supply a second occurrence.
+            assert!(
+                SOURCE.matches(call).count() >= 2,
+                "startup no longer runs `{call}`"
+            );
+        }
+    }
 }
