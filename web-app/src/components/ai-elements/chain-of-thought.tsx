@@ -6,14 +6,12 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
+import { StatusMark } from '@/components/ui/status-mark'
 import {
   SparklesIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  CheckCircle2Icon,
-  CircleIcon,
-  Loader2Icon,
   SearchIcon,
   ExternalLinkIcon,
 } from 'lucide-react'
@@ -368,13 +366,15 @@ export type ChainOfThoughtStepProps = ComponentProps<'div'> & {
   status: ChainOfThoughtStepStatus
 }
 
+// The step in progress is activity: ink and a spinner, never the accent.
 const statusIcons: Record<ChainOfThoughtStepStatus, ReactNode> = {
-  complete: <CheckCircle2Icon className="size-4 text-success shrink-0" />,
-  // The step in progress is activity: ink and a spinner, never the accent.
+  complete: <StatusMark status="done" size={16} />,
   active: (
-    <Loader2Icon className="size-4 text-muted-foreground motion-safe:animate-spin shrink-0" />
+    <StatusMark status="running" size={16} className="text-muted-foreground" />
   ),
-  pending: <CircleIcon className="size-4 text-muted-foreground shrink-0" />,
+  pending: (
+    <StatusMark status="pending" size={16} className="text-muted-foreground" />
+  ),
 }
 
 export const ChainOfThoughtStep = memo(

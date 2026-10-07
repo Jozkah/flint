@@ -8,6 +8,7 @@ import { ago } from '../ui/format'
 import { client, openSheet, toast } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { archiveChanged } from '../state/archive'
+import { SwipeRow } from '../ui/swipe-row'
 
 type Filter = 'all' | ArchiveKindWire
 
@@ -57,19 +58,62 @@ function useLongPress(open: () => void) {
   }
 }
 
+async function runArchive(
+  method: 'archive.restore' | 'archive.purge',
+  item: ArchiveItemWire,
+  ok: string
+): Promise<boolean> {
+  try {
+    await client().rpc(method, { key: item.key })
+    toast(ok)
+    return true
+  } catch (e) {
+    // A refused purge says why (a Cowork session with unmerged work).
+    toast(e instanceof Error ? e.message : 'That did not work')
+    return false
+  } finally {
+    archiveChanged()
+  }
+}
+
 function Row({ item }: { item: ArchiveItemWire }) {
   const press = useLongPress(() => openSheet('archivemenu', { item }))
   const kind = FILTERS.find((f) => f.id === item.kind)?.label ?? item.kind
+  const name = item.title || 'Untitled'
   return (
-    <button type="button" className="row" data-testid="archive-row" {...press}>
-      <I n="clock" />
-      <span className="tx">
-        <b>{item.title || 'Untitled'}</b>
-        <small>
-          {kind} · {ago(item.archivedAt)} · {formatBytes(item.sizeBytes)}
-        </small>
-      </span>
-    </button>
+    <SwipeRow
+      toggleLabel={`Actions for ${name}`}
+      secondary={{
+        label: 'Restore',
+        icon: <I n="refresh" />,
+        onSelect: () => void runArchive('archive.restore', item, 'Restored'),
+      }}
+      primary={{
+        label: 'Delete',
+        icon: <I n="trash" />,
+        confirm: () =>
+          window.confirm(
+            `Delete “${item.title || 'this item'}” permanently? This can’t be undone.`
+          ),
+        onCommit: () =>
+          runArchive('archive.purge', item, 'Deleted permanently'),
+      }}
+    >
+      <button
+        type="button"
+        className="row"
+        data-testid="archive-row"
+        {...press}
+      >
+        <I n="clock" />
+        <span className="tx">
+          <b>{name}</b>
+          <small>
+            {kind} · {ago(item.archivedAt)} · {formatBytes(item.sizeBytes)}
+          </small>
+        </span>
+      </button>
+    </SwipeRow>
   )
 }
 
@@ -102,7 +146,10 @@ export default function Archive() {
       <div className="scroll">
         <div className="ph">
           <h2>Archive</h2>
-          <p>Deleted items wait here. Press and hold one to restore it or delete it permanently.</p>
+          <p>
+            Deleted items wait here. Swipe one left, or press and hold it, to
+            restore it or delete it permanently.
+          </p>
         </div>
         <Pills items={FILTERS} value={filter} onChange={setFilter} />
         {loading && !data && <Loading />}

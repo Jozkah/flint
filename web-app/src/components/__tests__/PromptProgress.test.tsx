@@ -169,3 +169,27 @@ describe('PromptProgress', () => {
     expect(loader?.classList.contains('animate-spin')).toBe(true)
   })
 })
+
+describe('PromptProgress loaded state', () => {
+  it('holds a Loaded in card briefly after the load ends', async () => {
+    vi.useFakeTimers()
+    const { act } = await import('@testing-library/react')
+    let loading = true
+    mockUseAppState.mockImplementation((selector) =>
+      selector({ promptProgress: undefined, loadingModel: loading })
+    )
+    const { rerender } = render(<PromptProgress />)
+    act(() => {
+      vi.advanceTimersByTime(3000)
+    })
+    loading = false
+    rerender(<PromptProgress />)
+    expect(screen.getByText('Loaded in')).toBeInTheDocument()
+    expect(screen.getByTestId('model-loader-elapsed')).toHaveTextContent('3s')
+    act(() => {
+      vi.advanceTimersByTime(1300)
+    })
+    expect(screen.queryByText('Loaded in')).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+})

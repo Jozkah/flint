@@ -64,6 +64,7 @@ import { getLastUsedModel } from '@/utils/getModelToStart'
 import { resolveReplyModel } from '@/lib/resolveReplyModel'
 import { fitImageFileToLimit } from '@/lib/imageResize'
 import { VoiceInputButton } from '@/containers/VoiceInputButton'
+import { DropRim } from '@/components/ui/drop-rim'
 import {
   useConversationModel,
   type ModelSelection,
@@ -2899,7 +2900,8 @@ const ChatInput = memo(function ChatInput({
               // A clear focus: a stronger edge, a soft ring, and the box lifts.
               isFocused &&
                 'border-border-strong shadow-[0_0_0_3px_color-mix(in_oklab,var(--ring)_18%,transparent),0_12px_30px_-12px_rgba(0,0,0,.25)] motion-safe:-translate-y-0.5',
-              isDragOver && 'border-acc ring-3 ring-ring/30 bg-acc-tint'
+              // The dashed rim below draws the edge while files are dragged over.
+              isDragOver && 'border-transparent'
             )}
             data-drop-zone="true"
             onDragEnter={handleDragEnter}
@@ -2907,6 +2909,7 @@ const ChatInput = memo(function ChatInput({
             onDragOver={handleDragOver}
             onDrop={handleDrop}
           >
+            <DropRim active={isDragOver} />
             {attachments.length > 0 && (
               <div className="flex flex-col gap-2 p-2 pb-0">
                 {/* Attachments as chips: a thumbnail or kind icon, the name,

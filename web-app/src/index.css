@@ -16,6 +16,11 @@
 @import '@/styles/font.css';
 @import '@/styles/tokens.css';
 @import '@/styles/markdown.css';
+@import '@/styles/motion-chat.css';
+@import '@/styles/motion-voice.css';
+@import '@/styles/motion-controls.css';
+@import '@/styles/motion-media.css';
+@import '@/styles/motion-status.css';
 @source '../node_modules/streamdown/dist/**/*.js';
 
 @custom-variant dark (&:is(.dark *));

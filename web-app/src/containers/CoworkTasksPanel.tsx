@@ -4,6 +4,7 @@ import { useTeamControls } from '@/hooks/useTeamControls'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, ChevronDown, Copy, Loader2, Square } from 'lucide-react'
 import { TOOL_CARD_CLASS, ToolKindTile } from '@/components/ToolKindTile'
+import { StatusMark } from '@/components/ui/status-mark'
 import { cn } from '@/lib/utils'
 import { WorkStatus, type WorkState } from '@/containers/StatusChip'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -420,10 +421,10 @@ function WorkflowSection({
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
             {live ? (
-              <Loader2
+              <StatusMark
+                status="running"
                 size={15}
-                aria-hidden
-                className="shrink-0 text-secondary-foreground motion-safe:animate-spin"
+                className="text-secondary-foreground"
               />
             ) : null}
             <span

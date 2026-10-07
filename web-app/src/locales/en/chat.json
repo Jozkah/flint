@@ -45,6 +45,7 @@
   },
   "actions": {
     "copy": "Copy",
+    "copied": "Copied",
     "regenerate": "Regenerate response",
     "continue": "Continue generating",
     "delete": "Delete",
