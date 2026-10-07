@@ -8,37 +8,84 @@ import tar from 'tar'
 import { copySync } from 'cpx'
 import { assertSafeTarEntry, assertSafeZipEntry } from './archive-extract-guard.mjs'
 import { execFileSync } from 'child_process'
+import crypto from 'crypto'
+import { readFileSync } from 'fs'
 
-function download(url, dest) {
+const MAX_REDIRECTS = 5
+
+function download(url, dest, redirectsLeft = MAX_REDIRECTS) {
   return new Promise((resolve, reject) => {
     console.log(`Downloading ${url} to ${dest}`)
-    const file = fs.createWriteStream(dest)
-    https
-      .get(url, (response) => {
+    let parsed
+    try {
+      parsed = new URL(url)
+    } catch {
+      reject(new Error(`Invalid URL '${url}'`))
+      return
+    }
+    if (parsed.protocol !== 'https:') {
+      reject(new Error(`Refusing non-https URL '${url}'`))
+      return
+    }
+    let req
+    try {
+      req = https.get(parsed, (response) => {
         console.log(`Response status code: ${response.statusCode}`)
         if (
           response.statusCode >= 300 &&
           response.statusCode < 400 &&
           response.headers.location
         ) {
-          // Handle redirect
-          const redirectURL = response.headers.location
-          console.log(`Redirecting to ${redirectURL}`)
-          download(redirectURL, dest).then(resolve, reject) // Recursive call
+          response.resume()
+          if (redirectsLeft <= 0) {
+            reject(new Error(`Too many redirects fetching '${url}'`))
+            return
+          }
+          let next
+          try {
+            next = new URL(response.headers.location, parsed).toString()
+          } catch {
+            reject(new Error(`Bad redirect from '${url}'`))
+            return
+          }
+          console.log(`Redirecting to ${next}`)
+          download(next, dest, redirectsLeft - 1).then(resolve, reject)
           return
         } else if (response.statusCode !== 200) {
-          reject(`Failed to get '${url}' (${response.statusCode})`)
+          response.resume()
+          reject(new Error(`Failed to get '${url}' (${response.statusCode})`))
           return
         }
+        const file = fs.createWriteStream(dest)
+        const fail = (err) => {
+          file.destroy()
+          fs.unlink(dest, () => reject(err))
+        }
+        file.on('error', fail)
+        response.on('error', fail)
+        file.on('finish', () => file.close(() => resolve()))
         response.pipe(file)
-        file.on('finish', () => {
-          file.close(resolve)
-        })
       })
-      .on('error', (err) => {
-        fs.unlink(dest, () => reject(err.message))
-      })
+    } catch (err) {
+      reject(err)
+      return
+    }
+    req.on('error', (err) => fs.unlink(dest, () => reject(err)))
   })
+}
+
+function sha256File(filePath) {
+  return crypto.createHash('sha256').update(readFileSync(filePath)).digest('hex')
+}
+
+function assertSha256(filePath, expected) {
+  const actual = sha256File(filePath)
+  if (actual !== String(expected).toLowerCase()) {
+    fs.rmSync(filePath, { force: true })
+    throw new Error(
+      `sha256 mismatch for ${filePath}: expected ${expected}, got ${actual}`
+    )
+  }
 }
 
 async function validateZipArchive(filePath, targetDir) {
@@ -71,85 +118,23 @@ async function decompress(filePath, targetDir) {
   }
 }
 
-async function getJson(url, headers = {}) {
-  return new Promise((resolve, reject) => {
-    const opts = new URL(url)
-    opts.headers = {
-      'User-Agent': 'jan-app',
-      'Accept': 'application/vnd.github+json',
-      ...headers,
-    }
-    https
-      .get(opts, (res) => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          return getJson(res.headers.location, headers).then(resolve, reject)
-        }
-        if (res.statusCode !== 200) {
-          reject(new Error(`GET ${url} failed with status ${res.statusCode}`))
-          return
-        }
-        let data = ''
-        res.on('data', (chunk) => (data += chunk))
-        res.on('end', () => {
-          try {
-            resolve(JSON.parse(data))
-          } catch (e) {
-            reject(e)
-          }
-        })
-      })
-      .on('error', reject)
-  })
-}
-
-function matchSqliteVecAsset(assets, platform, arch) {
-  const osHints =
-    platform === 'darwin'
-      ? ['darwin', 'macos', 'apple-darwin']
-      : platform === 'win32'
-        ? ['windows', 'win', 'msvc']
-        : ['linux']
-
-  const archHints = arch === 'arm64' ? ['arm64', 'aarch64'] : ['x86_64', 'x64', 'amd64']
-  // The two fallbacks below drop the arch hint, so without this an arch with no
-  // asset takes another one's: windows-arm64 has no sqlite-vec build, and would
-  // otherwise land the windows-x86_64 dll, which then fails to load at runtime
-  // and silently costs ANN acceleration. Skipping the extension entirely is the
-  // supported outcome -- the caller falls back to linear search.
-  const foreignArchHints =
-    arch === 'arm64'
-      ? ['x86_64', 'x64', 'amd64', 'i686']
-      : ['arm64', 'aarch64', 'armv7']
-  const extHints = ['zip', 'tar.gz']
-
-  const lc = (s) => s.toLowerCase()
-  const candidates = assets
-    .filter((a) => a && a.browser_download_url && a.name)
-    .map((a) => ({ name: lc(a.name), url: a.browser_download_url }))
-    .filter((c) => !foreignArchHints.some((h) => c.name.includes(h)))
-
-  // Prefer exact OS + arch matches
-  let matches = candidates.filter((c) => osHints.some((o) => c.name.includes(o)) && archHints.some((h) => c.name.includes(h)) && extHints.some((e) => c.name.endsWith(e)))
-  if (matches.length) return matches[0].url
-  // Fallback: OS only. Safe because foreign architectures are already filtered
-  // out above, so this can only relax the arch *spelling*, not the arch.
-  matches = candidates.filter((c) => osHints.some((o) => c.name.includes(o)) && extHints.some((e) => c.name.endsWith(e)))
-  if (matches.length) return matches[0].url
-  // No OS-only-last-resort: it could fire solely when nothing matches this OS,
-  // which means there is no build for the platform, and any archive it picked
-  // would be for a different one. Returning null skips the optional extension.
-  return null
-}
-
-async function fetchLatestSqliteVecUrl(platform, arch) {
-  try {
-    const rel = await getJson('https://api.github.com/repos/asg017/sqlite-vec/releases/latest')
-    const url = matchSqliteVecAsset(rel.assets || [], platform, arch)
-    return url
-  } catch (e) {
-    console.log('Failed to query sqlite-vec latest release:', e.message)
-    return null
+// sqlite-vec is pinned to a tag with a sha256 per platform (sqlite-vec-manifest.json).
+// SQLVEC_URL / JAN_SQLITE_VEC_URL override the URL; SQLVEC_SHA256 must then
+// supply the expected hash, since an override has no pinned entry.
+function resolveSqliteVec(platform, arch) {
+  const override = process.env.SQLVEC_URL || process.env.JAN_SQLITE_VEC_URL
+  if (override) {
+    const sha256 = process.env.SQLVEC_SHA256
+    if (!sha256) throw new Error('SQLVEC_URL override requires SQLVEC_SHA256')
+    return { url: override, sha256 }
   }
+  const manifest = JSON.parse(
+    fs.readFileSync(new URL('./sqlite-vec-manifest.json', import.meta.url), 'utf8')
+  )
+  const entry = manifest.assets[`${platform}-${arch}`]
+  // No asset for this platform (e.g. windows-arm64): skip, linear fallback applies.
+  if (!entry) return null
+  return { url: `${manifest.baseUrl}/${entry.name}`, sha256: entry.sha256 }
 }
 
 function getPlatformArch() {
@@ -398,11 +383,8 @@ async function main() {
     if (fs.existsSync(targetLibPath)) {
       console.log(`sqlite-vec already present at ${targetLibPath}`)
     } else {
-      let sqlvecUrl = await fetchLatestSqliteVecUrl(platform, os.arch())
-      // Allow override via env if needed
-      if ((process.env.SQLVEC_URL || process.env.JAN_SQLITE_VEC_URL) && !sqlvecUrl) {
-        sqlvecUrl = process.env.SQLVEC_URL || process.env.JAN_SQLITE_VEC_URL
-      }
+      const pinned = resolveSqliteVec(platform, os.arch())
+      const sqlvecUrl = pinned?.url
       if (!sqlvecUrl) {
         console.log('Could not determine sqlite-vec download URL; skipping (linear fallback will be used).')
       } else {
@@ -411,6 +393,7 @@ async function main() {
         const guessedExt = sqlvecUrl.endsWith('.zip') ? '.zip' : sqlvecUrl.endsWith('.tar.gz') ? '.tar.gz' : ''
         const archivePath = sqlvecArchive + guessedExt
         await download(sqlvecUrl, archivePath)
+        assertSha256(archivePath, pinned.sha256)
         if (!guessedExt) {
           console.log('Unknown archive type for sqlite-vec; expecting .zip or .tar.gz')
         } else {

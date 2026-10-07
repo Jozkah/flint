@@ -21,12 +21,12 @@ function registeredCommands(): Set<string> {
   const build = readFileSync(join(PLUGIN, 'build.rs'), 'utf8')
   const list = build.match(/const COMMANDS: &\[&str\] = &\[([\s\S]*?)\];/)
   if (!list) throw new Error('COMMANDS not found in build.rs')
-  return new Set(Array.from(list[1].matchAll(/"([a-z_]+)"/g), (m) => m[1]))
+  return new Set(Array.from(list[1].matchAll(/"([a-z0-9_]+)"/g), (m) => m[1]))
 }
 
 function invokedCommands(): string[] {
   const guest = readFileSync(join(PLUGIN, 'guest-js', 'index.ts'), 'utf8')
-  return Array.from(guest.matchAll(/plugin:llamacpp\|([a-z_]+)/g), (m) => m[1])
+  return Array.from(guest.matchAll(/plugin:llamacpp\|([a-z0-9_]+)/g), (m) => m[1])
 }
 
 describe('llamacpp guest-js commands', () => {

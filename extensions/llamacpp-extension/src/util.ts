@@ -399,3 +399,22 @@ export function modelFileProblem(file: {
   }
   return null
 }
+
+/**
+ * Throws when a computed file digest differs from the one the import was
+ * given. Case and surrounding whitespace do not matter; a blank expected
+ * value means nothing was supplied and is not checked.
+ */
+export function assertSha256Matches(
+  label: string,
+  expected: string | undefined,
+  actual: string
+): void {
+  const want = expected?.trim().toLowerCase()
+  if (!want) return
+  if (want !== actual.trim().toLowerCase()) {
+    throw new Error(
+      `SHA-256 mismatch for the ${label} file: expected ${want}, got ${actual.toLowerCase()}. The file is corrupt or not the one requested.`
+    )
+  }
+}
