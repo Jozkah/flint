@@ -67,6 +67,7 @@ dependencies = [
  "sha2",
  "sqlx",
  "syntect",
+ "sysinfo",
  "tar",
  "tauri",
  "tauri-build",
