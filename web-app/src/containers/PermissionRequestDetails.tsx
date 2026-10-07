@@ -126,13 +126,18 @@ export function PermissionRequestDetails({
               <dt className="text-muted-foreground">
                 {t('permissions:request.reason')}
               </dt>
-              <dd className="min-w-0 break-words">
-                {request.reason}
-                {request.script && (
-                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-code-bg p-2 font-mono text-xs">
-                    <code>{request.script}</code>
-                  </pre>
-                )}
+              <dd className="min-w-0 break-words">{request.reason}</dd>
+            </>
+          )}
+          {request.script && (
+            <>
+              <dt className="text-muted-foreground">
+                {t('permissions:request.script')}
+              </dt>
+              <dd className="min-w-0">
+                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs leading-[19px] shadow-[inset_0_0_0_0.8px_var(--border)]">
+                  <code>{request.script}</code>
+                </pre>
               </dd>
             </>
           )}
@@ -197,13 +202,17 @@ export function PermissionRequestDetails({
           </dt>
           <dd className="min-w-0 break-words text-foreground">
             {request.reason}
-            {request.script && (
-              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-code-bg p-2 font-mono text-xs">
-                <code>{request.script}</code>
-              </pre>
-            )}
           </dd>
         </dl>
+      )}
+
+      {request.script && (
+        <div className="space-y-1">
+          <h4 className={LABEL}>{t('permissions:request.script')}</h4>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
+            <code>{request.script}</code>
+          </pre>
+        </div>
       )}
 
       {request.consequences.length > 0 && (
