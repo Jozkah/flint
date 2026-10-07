@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
-const workflow = readFileSync(new URL('../.github/workflows/flint-release.yml', import.meta.url), 'utf8')
+const workflow = readFileSync(new URL('../.github/workflows/flint-release.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const prepare = workflow.split('        run: |\n')[1].split('\n  build:')[0]
   .split('\n').map((line) => line.slice(10)).join('\n')
 const publish = workflow.split('  publish-nightly:')[1].split('        run: |\n')[1]
