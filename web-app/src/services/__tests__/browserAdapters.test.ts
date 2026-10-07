@@ -5,6 +5,8 @@ import { BrowserMessagesService } from '../messages/browser'
 import { BrowserProjectsService } from '../projects/browser'
 import { BrowserAssistantsService } from '../assistants/browser'
 import { BrowserMCPService } from '../mcp/browser'
+import { BrowserRAGService } from '../rag/browser'
+import { BrowserUploadsService, uploadFile } from '../uploads/browser'
 import type { ThreadMessage } from '@janhq/core'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -78,5 +80,25 @@ describe('headless browser adapters', () => {
     await mcp.activateMCPServer('my server', { command: 'x' } as never, { start: false })
     expect(fetch.mock.calls[2][0]).toBe('/api/v1/mcp/servers/my%20server/activate')
     expect(JSON.parse(fetch.mock.calls[2][1].body).start).toBe(false)
+  })
+
+  it('uploads a picked file and parses it on the server', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 201, redirected: false, json: async () => ({ id: 'a'.repeat(32), name: 'n.txt', size: 2, path: '/srv/uploads/x/n.txt' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, redirected: false, json: async () => ({ text: 'hello' }) })
+    vi.stubGlobal('fetch', fetch)
+    const stored = await uploadFile(new File(['hi'], 'my notes.txt'))
+    expect(stored.path).toBe('/srv/uploads/x/n.txt')
+    expect(fetch.mock.calls[0][0]).toBe('/api/v1/uploads?name=my%20notes.txt')
+    expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'POST' })
+    expect(await new BrowserRAGService().parseDocument(stored.path, 'txt')).toBe('hello')
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ path: '/srv/uploads/x/n.txt', type: 'txt' })
+  })
+
+  it('says why embedding ingestion is unavailable', async () => {
+    const uploads = new BrowserUploadsService()
+    await expect(uploads.ingestFileAttachment('t', { type: 'document', name: 'a' } as never)).rejects.toThrow(/inline/)
+    await expect(uploads.ingestFileAttachmentForProject('p', { type: 'document', name: 'a' } as never)).rejects.toThrow(/inline/)
   })
 })

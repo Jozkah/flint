@@ -25,6 +25,7 @@ use super::data;
 use super::mcp;
 use super::provider;
 use super::resources;
+use super::uploads;
 use super::static_files::{self, StaticError};
 
 pub(super) type Resp = Response<UnsyncBoxBody<Bytes, std::convert::Infallible>>;
@@ -663,6 +664,43 @@ async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
     }
     if path == "/api/v1/provider/cancel" && method == Method::POST {
         return provider::cancel(req).await;
+    }
+    if path == "/api/v1/uploads" && method == Method::POST {
+        let name = query_param(req.uri().query(), "name").unwrap_or_default();
+        let body = match Limited::new(req.into_body(), uploads::MAX_UPLOAD_BYTES).collect().await {
+            Ok(body) => body.to_bytes(),
+            Err(_) => return text(StatusCode::PAYLOAD_TOO_LARGE, "File too large"),
+        };
+        let root = state.data_folder.clone();
+        return match tokio::task::spawn_blocking(move || uploads::store(&root, &name, &body)).await {
+            Ok(Ok(stored)) => json_created(&stored),
+            _ => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not store upload"),
+        };
+    }
+    if path == "/api/v1/uploads/parse" && method == Method::POST {
+        let body = match read_json(req).await {
+            Ok(body) => body,
+            Err(response) => return response,
+        };
+        let (Some(file), kind) = (str_field(&body, "path"), str_field(&body, "type").unwrap_or("")) else {
+            return text(StatusCode::BAD_REQUEST, "path is required");
+        };
+        let (root, file, kind) = (state.data_folder.clone(), file.to_owned(), kind.to_owned());
+        return match tokio::task::spawn_blocking(move || uploads::parse(&root, &file, &kind)).await {
+            Ok(Ok(parsed)) => json(&serde_json::json!({ "text": parsed })),
+            Ok(Err(message)) => reply(StatusCode::UNPROCESSABLE_ENTITY, "text/plain; charset=utf-8", message),
+            Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Parser failed"),
+        };
+    }
+    if let Some(id) = path.strip_prefix("/api/v1/uploads/") {
+        if method == Method::DELETE {
+            let (root, id) = (state.data_folder.clone(), id.to_owned());
+            return match tokio::task::spawn_blocking(move || uploads::delete(&root, &id)).await {
+                Ok(Ok(())) => no_content(),
+                Ok(Err(_)) => text(StatusCode::BAD_REQUEST, "Invalid upload id"),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete upload"),
+            };
+        }
     }
     if let Some(rest) = path.strip_prefix("/api/v1/mcp/") {
         return mcp_route(&state, &method, rest, req).await;
