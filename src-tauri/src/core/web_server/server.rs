@@ -23,6 +23,7 @@ use tokio::net::TcpListener;
 use super::auth::AuthStore;
 use super::data;
 use super::engine;
+use super::events;
 use super::files;
 use super::mcp;
 use super::provider;
@@ -69,6 +70,7 @@ struct State {
     allowed_origins: HashSet<String>,
     engine: engine::Supervisor,
     settings: settings::Store,
+    events: events::Bus,
 }
 
 fn login_blocked(failures: &mut VecDeque<Instant>) -> bool {
@@ -697,7 +699,7 @@ async fn rpc_route(state: &State, command: &str, args: serde_json::Value) -> Res
                 return text(StatusCode::BAD_REQUEST, "modelId is required");
             };
             let embedding = args.get("isEmbedding").and_then(serde_json::Value::as_bool).unwrap_or(false);
-            let sink = tauri_plugin_llamacpp::commands::NoProgress;
+            let sink = state.events.clone();
             // The plugin's own error type, serialized as the desktop app sends it.
             match tauri_plugin_llamacpp::commands::load_model(&sink, &state.engine.state, model.to_owned(), embedding).await {
                 Ok(session) => json(&session),
@@ -1061,6 +1063,9 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
             _ => {}
         }
     }
+    if path == "/api/v1/events" && method == Method::GET {
+        return events::stream(&state.events);
+    }
     if path == "/api/v1/provider/stream" && method == Method::POST {
         return provider::stream(req).await;
     }
@@ -1237,6 +1242,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
     }
     let (auth, bootstrap) = AuthStore::open(options.auth_file)?;
     let settings_store = settings::Store::new(&options.data_folder);
+    let bus = events::Bus::new();
     let state = Arc::new(State {
         auth: Mutex::new(auth),
         assets: options.assets,
@@ -1246,7 +1252,8 @@ pub async fn serve(options: Options) -> io::Result<()> {
         login_failures: Mutex::new(VecDeque::new()),
         mcp: mcp::Host::new(options.allow_mcp_stdio),
         allowed_origins: options.allowed_origins.iter().map(|o| o.to_ascii_lowercase()).collect(),
-        engine: engine::Supervisor::new(options.llama_worker.clone()),
+        engine: engine::Supervisor::new(options.llama_worker.clone(), bus.clone()),
+        events: bus,
         settings: settings_store,
     });
     eprintln!(
@@ -1318,8 +1325,9 @@ mod tests {
             login_failures: Mutex::new(VecDeque::new()),
             mcp: mcp::Host::new(false),
             allowed_origins: HashSet::new(),
-            engine: engine::Supervisor::new(None),
+            engine: engine::Supervisor::new(None, events::Bus::new()),
             settings: settings::Store::new(dir.path()),
+            events: events::Bus::new(),
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(
@@ -1419,8 +1427,9 @@ mod tests {
             login_failures: Mutex::new(VecDeque::new()),
             mcp: mcp::Host::new(false),
             allowed_origins: HashSet::from(["http://tauri.localhost".to_string()]),
-            engine: engine::Supervisor::new(None),
+            engine: engine::Supervisor::new(None, events::Bus::new()),
             settings: settings::Store::new(dir.path()),
+            events: events::Bus::new(),
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(header::ORIGIN, HeaderValue::from_static("http://Tauri.localhost"));

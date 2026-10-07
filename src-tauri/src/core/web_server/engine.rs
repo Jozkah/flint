@@ -48,14 +48,16 @@ pub struct Supervisor {
     pub state: LlamacppState,
     fault: Arc<StdMutex<Option<String>>>,
     exe: Option<PathBuf>,
+    bus: super::events::Bus,
 }
 
 impl Supervisor {
-    pub fn new(exe: Option<PathBuf>) -> Self {
+    pub fn new(exe: Option<PathBuf>, bus: super::events::Bus) -> Self {
         Self {
             state: LlamacppState::new(),
             fault: Arc::new(StdMutex::new(None)),
             exe,
+            bus,
         }
     }
 }
@@ -141,8 +143,10 @@ pub async fn start(
     let exe = resolve_exe(supervisor)?;
     *supervisor.fault.lock().unwrap() = None;
     let fault = supervisor.fault.clone();
+    let bus = supervisor.bus.clone();
     let on_fault: worker::FaultCallback = Arc::new(move |kind, line| {
         eprintln!("flint-llama-worker fault ({kind:?}): {line}");
+        bus.publish(kind.event_name(), &line);
         *fault.lock().unwrap() = Some(line);
     });
     let key = worker_key();
@@ -275,7 +279,7 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let preset = data.path().join("p.ini");
         std::fs::write(&preset, "[*]\n").unwrap();
-        let supervisor = Supervisor::new(Some(data.path().join("no-such-worker")));
+        let supervisor = Supervisor::new(Some(data.path().join("no-such-worker")), super::super::events::Bus::new());
         let error = start(
             &supervisor,
             data.path(),

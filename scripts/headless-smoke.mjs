@@ -39,6 +39,7 @@ const freePort = () =>
 
 // A stand-in for the engine's model-router HTTP surface.
 const modelState = new Map([['m1', 'unloaded']])
+const sseClients = new Set()
 const engineMock = createServer((req, res) => {
   const chunks = []
   req.on('data', (c) => chunks.push(c))
@@ -48,13 +49,25 @@ const engineMock = createServer((req, res) => {
       res.writeHead(status, { 'content-type': 'application/json' })
       res.end(JSON.stringify(value))
     }
+    if (req.method === 'GET' && req.url === '/models/sse') {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      res.write([': subscribed', '', ''].join('\n'))
+      sseClients.add(res)
+      res.on('close', () => sseClients.delete(res))
+      return
+    }
     if (req.method === 'GET' && req.url === '/models') {
       return send(200, { data: [...modelState].map(([id, value]) => ({ id, status: { value } })) })
     }
     if (req.method === 'POST' && req.url === '/models/load') {
       if (body.model === 'bad') return send(400, { error: { message: 'unable to load model' } })
-      modelState.set(body.model, 'loaded')
-      return send(200, { success: true })
+      const progress = { event: 'status_change', model: body.model, data: { status: 'loading', progress: { value: 0.5, current: 'text_model', stages: ['text_model'] } } }
+      for (const client of sseClients) client.write([`data: ${JSON.stringify(progress)}`, '', ''].join('\n'))
+      // A real load takes a while; the progress feed is only read while it runs.
+      return setTimeout(() => {
+        modelState.set(body.model, 'loaded')
+        send(200, { success: true })
+      }, 300)
     }
     if (req.method === 'POST' && req.url === '/models/unload') {
       modelState.set(body.model, 'unloaded')
@@ -218,9 +231,27 @@ try {
   check('rpc starts the engine with the plugin argument names', viaRpc.port === enginePort && viaRpc.api_key?.length === 64)
   // Model sessions and GGUF inspection against the mock engine
   const sessionEngine = await (await rpc('plugin:llamacpp|start_engine', { presetPath: preset, modelsMax: 1, slotCacheMib: 0, envs: {} })).json()
+  check('event stream needs a sign-in', (await json('/api/v1/events')).status === 303)
+  const events = await fetch(`${base}/api/v1/events`, { headers: { authorization: auth.authorization } })
+  check('event stream opens', events.status === 200 && (events.headers.get('content-type') ?? '').includes('text/event-stream'))
+  const reader = events.body.getReader()
+  const progressSeen = (async () => {
+    const decoder = new TextDecoder()
+    let seen = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) return null
+      seen += decoder.decode(value, { stream: true })
+      const match = seen.match(/data: (\{"event":"llamacpp-model-load-progress".*\})/)
+      if (match) return JSON.parse(match[1])
+    }
+  })()
   const loaded = await rpc('plugin:llamacpp|load_llama_model', { modelId: 'm1', isEmbedding: false })
   const loadedSession = await loaded.json()
   check('rpc loads a model and returns the session', loaded.status === 200 && loadedSession.model_id === 'm1' && loadedSession.port === enginePort && loadedSession.api_key === sessionEngine.api_key)
+  const progressEvent = await Promise.race([progressSeen, sleep(5000).then(() => null)])
+  check('model load progress reaches the event stream', progressEvent?.payload?.model === 'm1' && progressEvent.payload.value === 0.5, JSON.stringify(progressEvent))
+  await reader.cancel()
   check('rpc lists loaded models', (await (await rpc('plugin:llamacpp|get_loaded_models')).json()).join() === 'm1')
   check('rpc finds a session by model', (await (await rpc('plugin:llamacpp|find_session_by_model', { modelId: 'm1' })).json())?.model_id === 'm1')
   check('rpc finds no session for an unloaded model', (await (await rpc('plugin:llamacpp|find_session_by_model', { modelId: 'other' })).json()) === null)
