@@ -40,6 +40,8 @@ impl ChunkSink for LineSink {
     }
 }
 
+const KEEPALIVE: std::time::Duration = std::time::Duration::from_secs(15);
+
 fn valid_url(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
@@ -56,10 +58,25 @@ pub async fn stream(req: Request<Incoming>) -> Resp {
         return text(StatusCode::BAD_REQUEST, "Provider URL must be http or https");
     }
     let (tx, rx) = mpsc::unbounded_channel::<Bytes>();
+    let keepalive = tx.downgrade();
     let sink = LineSink {
         tx,
         stream_id: request.stream_id.clone(),
     };
+    // A line every few seconds keeps proxies and phone radios from dropping a
+    // stream that is only waiting on the model. The ticker holds a weak sender,
+    // so it ends with the stream instead of keeping it open.
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(KEEPALIVE);
+        tick.tick().await;
+        loop {
+            tick.tick().await;
+            let Some(tx) = keepalive.upgrade() else { break };
+            if tx.send(Bytes::from_static(b"{\"kind\":\"ping\"}\n")).is_err() {
+                break;
+            }
+        }
+    });
     tokio::spawn(async move {
         // Failures are reported to the browser as an `error` chunk by the
         // transport; the returned error only repeats it.

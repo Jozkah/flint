@@ -45,6 +45,12 @@ pub struct Options {
     /// Allow browser sessions to add and start stdio MCP servers (runs programs
     /// on this machine).
     pub allow_mcp_stdio: bool,
+    /// Extra exact `host[:port]` values accepted in the Host header; required
+    /// when binding beyond loopback.
+    pub allowed_hosts: Vec<String>,
+    /// Exact origins (`https://host[:port]`) that may call the API from another
+    /// origin with a bearer token. Never a wildcard.
+    pub allowed_origins: Vec<String>,
 }
 
 struct State {
@@ -55,6 +61,7 @@ struct State {
     public_host: Option<String>,
     login_failures: Mutex<VecDeque<Instant>>,
     mcp: mcp::Host,
+    allowed_origins: HashSet<String>,
 }
 
 fn login_blocked(failures: &mut VecDeque<Instant>) -> bool {
@@ -173,6 +180,80 @@ fn same_origin(state: &State, headers: &hyper::HeaderMap) -> bool {
             && state.public_host.as_deref() != Some(host);
     }
     false
+}
+
+/// `host` or `host:port`, where host is a DNS name, an IPv4 literal or a
+/// bracketed IPv6 literal. No scheme, path or wildcard.
+fn valid_host_entry(entry: &str) -> bool {
+    if entry.is_empty() || entry.len() > 260 {
+        return false;
+    }
+    let (host, port) = if let Some(rest) = entry.strip_prefix('[') {
+        let Some((inner, after)) = rest.split_once(']') else {
+            return false;
+        };
+        if inner.parse::<std::net::Ipv6Addr>().is_err() {
+            return false;
+        }
+        (format!("[{inner}]"), after.strip_prefix(':'))
+    } else {
+        match entry.rsplit_once(':') {
+            Some((host, port)) => (host.to_string(), Some(port)),
+            None => (entry.to_string(), None),
+        }
+    };
+    let port_ok = port.is_none_or(|p| !p.is_empty() && p.len() <= 5 && p.bytes().all(|c| c.is_ascii_digit()));
+    port_ok && (host.starts_with('[') || valid_dns_name(&host))
+}
+
+/// `http(s)://host[:port]` and nothing else.
+fn valid_origin_entry(origin: &str) -> bool {
+    origin
+        .strip_prefix("https://")
+        .or_else(|| origin.strip_prefix("http://"))
+        .is_some_and(valid_host_entry)
+}
+
+fn bearer_token(headers: &hyper::HeaderMap) -> Option<&str> {
+    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+    let (scheme, token) = value.split_once(' ')?;
+    (scheme.eq_ignore_ascii_case("bearer")
+        && token.len() == 64
+        && token.bytes().all(|c| c.is_ascii_hexdigit()))
+    .then_some(token)
+}
+
+fn cors_origin(state: &State, headers: &hyper::HeaderMap) -> Option<String> {
+    let origin = headers.get(header::ORIGIN)?.to_str().ok()?.to_ascii_lowercase();
+    state.allowed_origins.contains(&origin).then_some(origin)
+}
+
+fn with_cors(mut response: Resp, origin: Option<&str>) -> Resp {
+    if let Some(origin) = origin.and_then(|o| HeaderValue::from_str(o).ok()) {
+        let headers = response.headers_mut();
+        headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        headers.append(header::VARY, HeaderValue::from_static("Origin"));
+    }
+    response
+}
+
+fn preflight(origin: &str) -> Resp {
+    let mut response = reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new());
+    let headers = response.headers_mut();
+    if let Ok(value) = HeaderValue::from_str(origin) {
+        headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, value);
+    }
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET, HEAD, POST, PUT, DELETE"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("authorization, content-type"),
+    );
+    headers.insert(header::ACCESS_CONTROL_MAX_AGE, HeaderValue::from_static("600"));
+    headers.append(header::VARY, HeaderValue::from_static("Origin"));
+    response
 }
 
 fn no_content() -> Resp {
@@ -472,16 +553,72 @@ async fn mcp_route(state: &State, method: &Method, rest: &str, req: Request<Inco
     }
 }
 
+/// Sign in for a client that is not a browser page (a native shell): the same
+/// administrator credential, the same hashed session store and the same
+/// attempt limit as the cookie flow, but the session comes back as JSON to be
+/// sent in an `Authorization: Bearer` header.
+async fn token_sign_in(state: &State, req: Request<Incoming>) -> Resp {
+    if login_blocked(&mut state.login_failures.lock().unwrap()) {
+        return text(StatusCode::TOO_MANY_REQUESTS, "Too many sign-in attempts");
+    }
+    let body = match Limited::new(req.into_body(), MAX_LOGIN_BODY).collect().await {
+        Ok(body) => body.to_bytes(),
+        Err(_) => return text(StatusCode::PAYLOAD_TOO_LARGE, "Request too large"),
+    };
+    let credential = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|value| value.get("credential").and_then(serde_json::Value::as_str).map(str::to_owned))
+        .filter(|token| token.len() == 64 && token.bytes().all(|c| c.is_ascii_hexdigit()));
+    let Some(credential) = credential else {
+        return text(StatusCode::BAD_REQUEST, "Invalid credential format");
+    };
+    let result = state.auth.lock().unwrap().sign_in(&credential);
+    match result {
+        Ok(Some(session)) => json(&serde_json::json!({
+            "token": session,
+            "expiresIn": 43200,
+        })),
+        Ok(None) => {
+            state.login_failures.lock().unwrap().push_back(Instant::now());
+            text(StatusCode::UNAUTHORIZED, "Invalid credential")
+        }
+        Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not save session"),
+    }
+}
+
 async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
     if !host_allowed(&state, req.headers()) {
         return text(StatusCode::MISDIRECTED_REQUEST, "Unknown host");
     }
+    let cors = cors_origin(&state, req.headers());
+    if req.method() == Method::OPTIONS {
+        return match &cors {
+            Some(origin) if req.headers().contains_key(header::ACCESS_CONTROL_REQUEST_METHOD) => {
+                preflight(origin)
+            }
+            _ => text(StatusCode::FORBIDDEN, "Cross-origin requests are not allowed"),
+        };
+    }
+    with_cors(route_inner(state, req).await, cors.as_deref())
+}
+
+async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
     if path == "/healthz" && method == Method::GET {
         return text(StatusCode::OK, "ok");
     }
-    if method != Method::GET && method != Method::HEAD && !same_origin(&state, req.headers()) {
+    // A bearer token is sent on purpose, never added by the browser, so a
+    // request carrying one cannot be a cross-site forgery and needs no Origin.
+    let has_bearer = bearer_token(req.headers()).is_some();
+    if path == "/api/v1/token" && method == Method::POST {
+        return token_sign_in(&state, req).await;
+    }
+    if method != Method::GET
+        && method != Method::HEAD
+        && !has_bearer
+        && !same_origin(&state, req.headers())
+    {
         return text(StatusCode::FORBIDDEN, "Invalid origin");
     }
     if path == "/login" && method == Method::GET {
@@ -538,10 +675,17 @@ async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
             Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not save session"),
         };
     }
-    let session = session_cookie(req.headers());
+    // An Authorization header decides on its own: a bad token is never
+    // rescued by a cookie that happens to ride along.
+    let presented_bearer = req.headers().contains_key(header::AUTHORIZATION);
+    let session = if presented_bearer {
+        bearer_token(req.headers())
+    } else {
+        session_cookie(req.headers())
+    };
     let authorized = session.is_some_and(|token| state.auth.lock().unwrap().authorize(token));
     if !authorized {
-        if method == Method::GET || method == Method::HEAD {
+        if !presented_bearer && (method == Method::GET || method == Method::HEAD) {
             let mut response = reply(
                 StatusCode::SEE_OTHER,
                 "text/plain; charset=utf-8",
@@ -774,10 +918,23 @@ async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
 const LOGIN_HTML: &str = r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flint sign in</title></head><body><main><h1>Flint</h1><form action="/api/v1/session" method="post"><label>Administrator credential <input name="credential" type="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form></main></body></html>"#;
 
 pub async fn serve(options: Options) -> io::Result<()> {
-    if !options.bind.ip().is_loopback() {
+    let loopback = options.bind.ip().is_loopback();
+    if !loopback && options.allowed_hosts.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "headless server must bind loopback; use a private-network HTTPS proxy",
+            "binding beyond loopback needs at least one --allowed-host (the exact Host the clients use)",
+        ));
+    }
+    if let Some(bad) = options.allowed_hosts.iter().find(|h| !valid_host_entry(h)) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("--allowed-host {bad:?} must be host or host:port, with no scheme or wildcard"),
+        ));
+    }
+    if let Some(bad) = options.allowed_origins.iter().find(|o| !valid_origin_entry(o)) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("--allowed-origin {bad:?} must be http(s)://host[:port], with no wildcard"),
         ));
     }
     if !options.assets.join("index.html").is_file() {
@@ -802,6 +959,9 @@ pub async fn serve(options: Options) -> io::Result<()> {
         }
         hosts.insert(host.to_ascii_lowercase());
     }
+    for host in &options.allowed_hosts {
+        hosts.insert(host.to_ascii_lowercase());
+    }
     let (auth, bootstrap) = AuthStore::open(options.auth_file)?;
     let state = Arc::new(State {
         auth: Mutex::new(auth),
@@ -811,11 +971,17 @@ pub async fn serve(options: Options) -> io::Result<()> {
         public_host: options.public_host.map(|host| host.to_ascii_lowercase()),
         login_failures: Mutex::new(VecDeque::new()),
         mcp: mcp::Host::new(options.allow_mcp_stdio),
+        allowed_origins: options.allowed_origins.iter().map(|o| o.to_ascii_lowercase()).collect(),
     });
     eprintln!(
         "Flint web server listening on http://{}",
         listener.local_addr()?
     );
+    if !loopback {
+        eprintln!(
+            "Warning: listening beyond loopback. Sessions travel in the clear unless a TLS proxy fronts this server."
+        );
+    }
     if let Some(credential) = bootstrap {
         eprintln!("First-run administrator credential: {credential}");
         eprintln!("Store this credential securely; it is shown only once.");
@@ -825,7 +991,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
             accepted = listener.accept() => accepted?,
             _ = tokio::signal::ctrl_c() => break,
         };
-        if !peer.ip().is_loopback() {
+        if loopback && !peer.ip().is_loopback() {
             continue;
         }
         let state = state.clone();
@@ -872,6 +1038,7 @@ mod tests {
             public_host: None,
             login_failures: Mutex::new(VecDeque::new()),
             mcp: mcp::Host::new(false),
+            allowed_origins: HashSet::new(),
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(
@@ -887,7 +1054,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn non_loopback_bind_is_rejected() {
+    async fn non_loopback_bind_needs_an_allowed_host() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("index.html"), "ok").unwrap();
         let error = serve(Options {
@@ -897,10 +1064,92 @@ mod tests {
             auth_file: dir.path().join("auth.json"),
             public_host: None,
             allow_mcp_stdio: false,
+            allowed_hosts: Vec::new(),
+            allowed_origins: Vec::new(),
         })
         .await
         .unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn host_and_origin_entries_are_exact() {
+        for good in ["phone.tail1234.ts.net", "192.168.1.5:1340", "localhost", "[fd7a::1]:1340"] {
+            assert!(valid_host_entry(good), "{good}");
+        }
+        for bad in ["", "*", "*.example.com", "http://x", "a/b", "a:b", "host:", "a b", "[nope]:1"] {
+            assert!(!valid_host_entry(bad), "{bad}");
+        }
+        assert!(valid_origin_entry("https://app.example.com"));
+        assert!(valid_origin_entry("http://tauri.localhost"));
+        for bad in ["*", "null", "https://*", "tauri://localhost", "https://a.b/path", "https://"] {
+            assert!(!valid_origin_entry(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn bearer_tokens_are_exact_hex_and_only_that_scheme() {
+        let mut headers = hyper::HeaderMap::new();
+        let token = "ab".repeat(32);
+        headers.insert(header::AUTHORIZATION, HeaderValue::from_str(&format!("Bearer {token}")).unwrap());
+        assert_eq!(bearer_token(&headers), Some(token.as_str()));
+        headers.insert(header::AUTHORIZATION, HeaderValue::from_str(&format!("bearer {token}")).unwrap());
+        assert!(bearer_token(&headers).is_some());
+        for bad in ["Basic abc", "Bearer short", &format!("Bearer {}g", "a".repeat(63)), &token] {
+            headers.insert(header::AUTHORIZATION, HeaderValue::from_str(bad).unwrap());
+            assert!(bearer_token(&headers).is_none(), "{bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn serving_beyond_loopback_needs_hosts_and_valid_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "ok").unwrap();
+        let options = |hosts: Vec<&str>, origins: Vec<&str>| Options {
+            bind: "0.0.0.0:0".parse().unwrap(),
+            assets: dir.path().to_path_buf(),
+            data_folder: dir.path().to_path_buf(),
+            auth_file: dir.path().join("auth.json"),
+            public_host: None,
+            allow_mcp_stdio: false,
+            allowed_hosts: hosts.into_iter().map(String::from).collect(),
+            allowed_origins: origins.into_iter().map(String::from).collect(),
+        };
+        let none = serve(options(vec![], vec![])).await.unwrap_err();
+        assert!(none.to_string().contains("--allowed-host"));
+        let wildcard = serve(options(vec!["*"], vec![])).await.unwrap_err();
+        assert!(wildcard.to_string().contains("--allowed-host"));
+        let origin = serve(options(vec!["phone.example"], vec!["*"])).await.unwrap_err();
+        assert!(origin.to_string().contains("--allowed-origin"));
+    }
+
+    #[test]
+    fn cors_applies_only_to_listed_origins() {
+        let dir = tempfile::tempdir().unwrap();
+        let (auth, _) = AuthStore::open(dir.path().join("auth.json")).unwrap();
+        let state = State {
+            auth: Mutex::new(auth),
+            assets: dir.path().to_path_buf(),
+            data_folder: dir.path().to_path_buf(),
+            hosts: HashSet::new(),
+            public_host: None,
+            login_failures: Mutex::new(VecDeque::new()),
+            mcp: mcp::Host::new(false),
+            allowed_origins: HashSet::from(["http://tauri.localhost".to_string()]),
+        };
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert(header::ORIGIN, HeaderValue::from_static("http://Tauri.localhost"));
+        assert_eq!(cors_origin(&state, &headers).as_deref(), Some("http://tauri.localhost"));
+        headers.insert(header::ORIGIN, HeaderValue::from_static("http://evil.example"));
+        assert!(cors_origin(&state, &headers).is_none());
+        let response = with_cors(text(StatusCode::OK, "x"), Some("http://tauri.localhost"));
+        assert_eq!(
+            response.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).unwrap(),
+            "http://tauri.localhost"
+        );
+        assert!(response.headers().get(header::ACCESS_CONTROL_ALLOW_CREDENTIALS).is_none());
+        let none = with_cors(text(StatusCode::OK, "x"), None);
+        assert!(none.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
     }
 
     #[test]

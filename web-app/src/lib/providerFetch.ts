@@ -210,7 +210,11 @@ async function streamViaServer(
     while (newline >= 0) {
       const line = buffered.slice(0, newline).trim()
       buffered = buffered.slice(newline + 1)
-      if (line) onChunk(JSON.parse(line) as StreamChunk)
+      if (line) {
+        const chunk = JSON.parse(line) as StreamChunk | { kind: 'ping' }
+        // Keepalive only: it exists so idle connections are not dropped.
+        if (chunk.kind !== 'ping') onChunk(chunk)
+      }
       newline = buffered.indexOf(LINE_BREAK)
     }
   }

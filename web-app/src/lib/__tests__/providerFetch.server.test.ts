@@ -72,4 +72,25 @@ describe('provider transport through the Flint server', () => {
     )
     await expect(providerFetch('https://down.example.com/v1/models')).rejects.toThrow('no route to host')
   })
+
+  it('ignores keepalive lines', async () => {
+    enableServerTransport()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        redirected: false,
+        body: ndjsonBody([
+          encode({ kind: 'ping' }),
+          encode({ kind: 'head', status: 200, statusText: 'OK', headers: {}, peer: null, snapshot: null }),
+          encode({ kind: 'ping' }),
+          encode({ kind: 'data', b64: b64('x') }),
+          encode({ kind: 'end' }),
+        ]),
+      })
+    )
+    const response = await providerFetch('https://api.example.com/v1/models')
+    expect(await response.text()).toBe('x')
+  })
 })

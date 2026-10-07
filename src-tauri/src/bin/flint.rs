@@ -214,7 +214,7 @@ enum Commands {
     /// Run the production browser server without a desktop session
     Serve {
         /// Loopback address; use a private-network HTTPS proxy for remote access
-        #[arg(long, default_value = "127.0.0.1:1340")]
+        #[arg(long, visible_alias = "bind", default_value = "127.0.0.1:1340")]
         listen: std::net::SocketAddr,
         /// Directory containing the production web bundle
         #[arg(long)]
@@ -229,6 +229,15 @@ enum Commands {
         /// on this machine); http and sse servers are always allowed
         #[arg(long)]
         allow_mcp_stdio: bool,
+        /// Exact host[:port] clients use to reach this server; repeatable.
+        /// Required when --listen/--bind is beyond loopback
+        #[arg(long = "allowed-host")]
+        allowed_hosts: Vec<String>,
+        /// Exact origin (http(s)://host[:port]) allowed to call the API
+        /// cross-origin with a bearer token, such as a native app shell;
+        /// repeatable, never a wildcard
+        #[arg(long = "allowed-origin")]
+        allowed_origins: Vec<String>,
     },
     /// Non-interactive CLI: launch agents, run headless agent tasks, manage models and threads
     #[command(display_order = 1)]
@@ -1365,7 +1374,7 @@ async fn run() {
     };
 
     match command {
-        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio } => {
+        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, allowed_hosts, allowed_origins } => {
             if let Some(data_dir) = data_dir {
                 std::env::set_var("JAN_DATA_FOLDER", data_dir);
             }
@@ -1385,6 +1394,8 @@ async fn run() {
                     auth_file,
                     public_host,
                     allow_mcp_stdio,
+                    allowed_hosts,
+                    allowed_origins,
                 },
             ).await {
                 eprintln!("Error: {error}");
