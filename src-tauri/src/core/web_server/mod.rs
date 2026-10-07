@@ -8,6 +8,7 @@ pub mod mcp;
 pub mod provider;
 pub mod resources;
 pub mod server;
+pub mod settings;
 pub mod uploads;
 #[path = "../remote/static_files.rs"]
 pub mod static_files;

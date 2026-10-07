@@ -4,7 +4,8 @@ import {
   buildBootAppearance,
   writeBootAppearance,
 } from '../bootAppearance'
-import html from '../../../index.html?raw'
+// The boot script is a file of its own so a strict script-src can serve it.
+import html from '../../../public/boot-appearance.js?raw'
 
 describe('bootAppearance', () => {
   beforeEach(() => localStorage.clear())
@@ -46,7 +47,7 @@ describe('bootAppearance', () => {
     expect(snap.theme).toBe('auto')
   })
 
-  it('stores the snapshot under the key index.html reads', () => {
+  it('stores the snapshot under the key the boot script reads', () => {
     const snap = buildBootAppearance({
       theme: 'light',
       isDark: false,

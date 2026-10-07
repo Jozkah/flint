@@ -169,6 +169,38 @@ const LINE_BREAK = String.fromCharCode(10)
 
 export function enableServerTransport(): void {
   serverTransport = true
+  routeLoopbackThroughServer()
+}
+
+let loopbackRouted = false
+
+/**
+ * Extensions talk to the local inference worker with plain `fetch` on
+ * `http://localhost:<port>`. In a browser that address is the browser's own
+ * machine, not the server's, so such calls go through the server's transport,
+ * which dials the server's loopback. Relative URLs and the page's own origin
+ * are left alone.
+ */
+function routeLoopbackThroughServer(): void {
+  if (loopbackRouted || typeof globalThis.fetch !== 'function') return
+  loopbackRouted = true
+  const original = globalThis.fetch.bind(globalThis)
+  const loopback = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    try {
+      const raw = input instanceof Request ? input.url : String(input)
+      if (/^https?:\/\//i.test(raw)) {
+        const url = new URL(raw)
+        const here = globalThis.location
+        if (loopback.has(url.hostname) && !(here && url.host === here.host)) {
+          return providerFetch(input, init)
+        }
+      }
+    } catch {
+      // Not a URL we can judge; let the platform handle it.
+    }
+    return original(input, init)
+  }) as typeof globalThis.fetch
 }
 
 /** Whether provider requests can use the canonical transport at all. */

@@ -27,6 +27,7 @@ use super::files;
 use super::mcp;
 use super::provider;
 use super::resources;
+use super::settings;
 use super::uploads;
 use super::static_files::{self, StaticError};
 
@@ -67,6 +68,7 @@ struct State {
     mcp: mcp::Host,
     allowed_origins: HashSet<String>,
     engine: engine::Supervisor,
+    settings: settings::Store,
 }
 
 fn login_blocked(failures: &mut VecDeque<Instant>) -> bool {
@@ -638,7 +640,19 @@ async fn rpc_route(state: &State, command: &str, args: serde_json::Value) -> Res
             Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
         };
     }
+    if settings::handles(command) {
+        return match settings::call(&state.settings, command, &args) {
+            Ok(value) => json(&value),
+            Err(message) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
+        };
+    }
     match command {
+        "plugin:hardware|get_system_info" => {
+            blocking(|| Ok(tauri_plugin_hardware::get_system_info())).await
+        }
+        "plugin:hardware|get_system_usage" => {
+            blocking(|| Ok(tauri_plugin_hardware::sample_system_usage())).await
+        }
         "plugin:llamacpp|get_engine_info" => json(&engine::info(&state.engine).await),
         "plugin:llamacpp|get_engine_version" => json(&engine::version()),
         "plugin:llamacpp|stop_engine" => {
@@ -1075,6 +1089,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
         hosts.insert(host.to_ascii_lowercase());
     }
     let (auth, bootstrap) = AuthStore::open(options.auth_file)?;
+    let settings_store = settings::Store::new(&options.data_folder);
     let state = Arc::new(State {
         auth: Mutex::new(auth),
         assets: options.assets,
@@ -1085,6 +1100,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
         mcp: mcp::Host::new(options.allow_mcp_stdio),
         allowed_origins: options.allowed_origins.iter().map(|o| o.to_ascii_lowercase()).collect(),
         engine: engine::Supervisor::new(options.llama_worker.clone()),
+        settings: settings_store,
     });
     eprintln!(
         "Flint web server listening on http://{}",
@@ -1156,6 +1172,7 @@ mod tests {
             mcp: mcp::Host::new(false),
             allowed_origins: HashSet::new(),
             engine: engine::Supervisor::new(None),
+            settings: settings::Store::new(dir.path()),
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(
@@ -1256,6 +1273,7 @@ mod tests {
             mcp: mcp::Host::new(false),
             allowed_origins: HashSet::from(["http://tauri.localhost".to_string()]),
             engine: engine::Supervisor::new(None),
+            settings: settings::Store::new(dir.path()),
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(header::ORIGIN, HeaderValue::from_static("http://Tauri.localhost"));
