@@ -766,6 +766,29 @@ describe('a change tool withheld by a read-only turn', () => {
   })
 })
 
+describe('failed tool diagnostics', () => {
+  it('keeps a short, redacted error alongside the failed command', () => {
+    const outcome = deriveRunOutcome(input({
+      stoppedBy: 'loop',
+      turns: [
+        user(),
+        bash('Get-Item G:\\SteamLibrary', {
+          toolState: 'failed',
+          isError: true,
+          result: 'Access is denied. token=secret123',
+        }),
+      ],
+    }))
+    expect(outcome.unresolved).toContainEqual({
+      kind: 'failed',
+      tool: 'bash',
+      target: 'Get-Item G:\\SteamLibrary',
+      detail: expect.stringContaining('Access is denied'),
+    })
+    expect(JSON.stringify(outcome.unresolved)).not.toContain('secret123')
+  })
+})
+
 describe('the request Continue sends', () => {
   it('names each unresolved step so the next run retries it', () => {
     const text = continueRequest([

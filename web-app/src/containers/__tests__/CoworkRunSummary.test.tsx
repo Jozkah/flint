@@ -226,9 +226,31 @@ describe('the outcome of a run', () => {
 
   it('opens on its own for a run that did not finish', () => {
     render(
-      <CoworkRunSummary outcome={deriveRunOutcome(base({ stoppedBy: 'loop' }))} />
+      <CoworkRunSummary outcome={deriveRunOutcome(base({ stoppedBy: 'loop', errorText: 'bash failed 3 times' }))} />
     )
     expect(region().querySelector('details')).toHaveAttribute('open')
+    expect(region()).toHaveTextContent('bash failed 3 times')
+  })
+
+  it('shows reason for a failed tool call in an unfinished run', () => {
+    render(
+      <CoworkRunSummary
+        outcome={deriveRunOutcome(base({
+          stoppedBy: 'loop',
+          turns: [user, {
+            role: 'tool',
+            content: '',
+            name: 'bash',
+            args: { command: 'Get-Item G:\\SteamLibrary' },
+            result: 'Access is denied',
+            status: 'done',
+            toolState: 'failed',
+            isError: true,
+          }],
+        }))}
+      />
+    )
+    expect(region()).toHaveTextContent('Access is denied')
   })
 
   it('says the work a stopped run did was kept', () => {

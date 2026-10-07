@@ -27,6 +27,7 @@ import {
 } from '@/lib/coworkOrigins'
 import { parseBashOutput } from '@/lib/toolPresentation'
 import { PLAN_DENIED_TOOLS } from '@/lib/coworkTools'
+import { redactSecrets } from '@/lib/redact'
 
 export type RunStatus =
   | 'completed'
@@ -135,7 +136,7 @@ export type UnresolvedItem =
   /** A tool call cancelled before it finished. */
   | { kind: 'cancelled'; tool: string; target: string }
   /** A tool call that failed or timed out. Checks are reported separately. */
-  | { kind: 'failed'; tool: string; target: string }
+  | { kind: 'failed'; tool: string; target: string; detail?: string }
   /** A tool call still waiting or running when the run ended. */
   | { kind: 'interrupted'; tool: string; target: string }
   /** An observed check that did not pass. */
@@ -577,7 +578,9 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
     unresolved.push({
       kind: 'stop',
       reason: stopReason,
-      ...(input.errorText?.trim() ? { message: input.errorText.trim() } : {}),
+      ...(input.errorText?.trim()
+        ? { message: redactSecrets(input.errorText.trim()).slice(0, 300) }
+        : {}),
     })
   }
   for (const turn of toolTurns) {
@@ -597,8 +600,17 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
     else if (
       (phase === 'failed' || phase === 'timed-out' || phase === 'done-error') &&
       !checkCalls.has(turn)
-    )
-      unresolved.push({ kind: 'failed', tool, target })
+    ) {
+      const failure = turn.result?.trim() || turn.content?.trim()
+      unresolved.push({
+        kind: 'failed',
+        tool,
+        target,
+        ...(failure
+          ? { detail: redactSecrets(failure.replace(/\s+/g, ' ')).slice(0, 300) }
+          : {}),
+      })
+    }
   }
   for (const check of checks) {
     if (check.outcome === 'failed')
