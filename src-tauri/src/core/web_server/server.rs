@@ -23,6 +23,7 @@ use tokio::net::TcpListener;
 use super::auth::AuthStore;
 use super::data;
 use super::engine;
+use super::files;
 use super::mcp;
 use super::provider;
 use super::resources;
@@ -625,6 +626,63 @@ async fn token_sign_in(state: &State, req: Request<Incoming>) -> Resp {
     }
 }
 
+/// The Tauri commands the app's extensions call, answered for a browser.
+/// Anything not listed is refused, so a command added to the desktop app does
+/// not become reachable from a browser by accident.
+async fn rpc_route(state: &State, command: &str, args: serde_json::Value) -> Resp {
+    if files::handles(command) {
+        let (root, command) = (state.data_folder.clone(), command.to_owned());
+        return match tokio::task::spawn_blocking(move || files::call(&root, &command, &args)).await {
+            Ok(Ok(value)) => json(&value),
+            Ok(Err(message)) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
+            Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
+        };
+    }
+    match command {
+        "plugin:llamacpp|get_engine_info" => json(&engine::info(&state.engine).await),
+        "plugin:llamacpp|get_engine_version" => json(&engine::version()),
+        "plugin:llamacpp|stop_engine" => {
+            engine::stop(&state.engine, false).await;
+            json(&serde_json::Value::Null)
+        }
+        "plugin:llamacpp|force_stop_engine" => {
+            engine::stop(&state.engine, true).await;
+            json(&serde_json::Value::Null)
+        }
+        "plugin:llamacpp|engine_devices" => match engine::devices(&state.engine).await {
+            Ok(devices) => json(&devices),
+            Err(message) => reply(StatusCode::BAD_GATEWAY, "text/plain; charset=utf-8", message),
+        },
+        "plugin:llamacpp|start_engine" => {
+            // The plugin's own argument names, so its guest API works unchanged.
+            let request = engine::StartRequest {
+                preset_path: str_field(&args, "presetPath").unwrap_or_default().to_owned(),
+                models_max: args.get("modelsMax").and_then(serde_json::Value::as_u64).unwrap_or(1) as u32,
+                slot_cache_mib: args.get("slotCacheMib").and_then(serde_json::Value::as_u64).unwrap_or(0),
+                envs: args
+                    .get("envs")
+                    .and_then(serde_json::Value::as_object)
+                    .map(|map| {
+                        map.iter()
+                            .filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_owned())))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            };
+            match engine::start(&state.engine, &state.data_folder, request).await {
+                Ok(info) => json(&serde_json::json!({
+                    "port": info.port,
+                    "api_key": info.api_key,
+                    "pid": info.pid,
+                    "models": info.models,
+                })),
+                Err(message) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
+            }
+        }
+        _ => text(StatusCode::NOT_FOUND, "Unknown command"),
+    }
+}
+
 async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
     if !host_allowed(&state, req.headers()) {
         return text(StatusCode::MISDIRECTED_REQUEST, "Unknown host");
@@ -884,6 +942,19 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
                 Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete upload"),
             };
         }
+    }
+    if let Some(command) = path.strip_prefix("/api/v1/rpc/") {
+        if method != Method::POST {
+            return text(StatusCode::METHOD_NOT_ALLOWED, "Method not allowed");
+        }
+        let Some(command) = percent_decode(command) else {
+            return text(StatusCode::BAD_REQUEST, "Invalid command");
+        };
+        let args = match read_json(req).await {
+            Ok(args) => args,
+            Err(response) => return response,
+        };
+        return rpc_route(&state, &command, args).await;
     }
     if let Some(rest) = path.strip_prefix("/api/v1/mcp/") {
         return mcp_route(&state, &method, rest, req).await;

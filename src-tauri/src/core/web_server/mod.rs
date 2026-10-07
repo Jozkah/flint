@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod data;
 pub mod engine;
+pub mod files;
 pub mod mcp;
 pub mod provider;
 pub mod resources;

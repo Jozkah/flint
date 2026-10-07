@@ -40,6 +40,11 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        // The browser build has no Tauri bridge: extension and plugin calls to
+        // `invoke` are answered by the Flint server instead.
+        ...(process.env.IS_WEB_APP === 'true'
+          ? { '@tauri-apps/api/core': path.resolve(__dirname, './src/lib/tauriBridgeShim.ts') }
+          : {}),
         '@janhq/assistant-extension': path.resolve(__dirname, '../extensions/assistant-extension/dist/index.js'),
         '@janhq/conversational-extension': path.resolve(__dirname, '../extensions/conversational-extension/dist/index.js'),
         '@janhq/llamacpp-extension': path.resolve(__dirname, '../extensions/llamacpp-extension/dist/index.js'),

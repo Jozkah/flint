@@ -1,6 +1,8 @@
 import { CoreRoutes, APIRoutes } from '@janhq/core'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { isPlatformTauri } from '@/lib/platform'
+import { hasProviderTransport } from '@/lib/providerFetch'
+import { invoke as serverInvoke } from '@tauri-apps/api/core'
 import type { InvokeArgs } from '@/services/core/types'
 
 export const AppRoutes = [
@@ -117,6 +119,13 @@ export const APIs = {
           }
 
           return getServiceHub().core().invoke(command, args)
+        } else if (hasProviderTransport()) {
+          // Served by `flint serve`: the server answers the file calls.
+          const command = proxy.route.replace(/([A-Z])/g, '_$1').toLowerCase()
+          return serverInvoke(command, args).catch((error: unknown) => {
+            console.warn(`API call '${proxy.route}' failed on the server`, error)
+            return null
+          })
         } else {
           // For Web platform, provide fallback implementations
           console.warn(`API call '${proxy.route}' not supported in web environment`, args)

@@ -167,6 +167,19 @@ try {
   check('engine stops', (await engine('stop')).status === 204 && (await (await json('/api/v1/engine/info', { headers: auth })).json()) === null)
   check('engine version', typeof (await (await json('/api/v1/engine/version', { headers: auth })).json()).tag === 'string')
 
+  // File and engine calls an extension makes (the Tauri bridge stand-in)
+  const rpc = (command, body) => json(`/api/v1/rpc/${encodeURIComponent(command)}`, { method: 'POST', headers: auth, body: JSON.stringify(body ?? {}) })
+  const note = join(data, 'models', 'm1', 'note.txt')
+  check('rpc mkdir', (await rpc('mkdir', { args: [join(data, 'models', 'm1')] })).status === 200)
+  check('rpc write and read', (await rpc('write_file_sync', { args: [note, 'hi'] })).status === 200 && (await (await rpc('read_file_sync', { args: [note] })).json()) === 'hi')
+  check('rpc yaml round trip', (await rpc('write_yaml', { data: { name: 'm1' }, savePath: join(data, 'models', 'm1', 'model.yml') })).status === 200 && (await (await rpc('read_yaml', { path: join(data, 'models', 'm1', 'model.yml') })).json()).name === 'm1')
+  check('rpc file:// paths resolve inside the data folder', (await (await rpc('exists_sync', { args: ['file://models/m1/note.txt'] })).json()) === true)
+  check('rpc refuses a path outside the data folder', (await rpc('read_file_sync', { args: [join(data, '..', 'x.txt')] })).status === 400)
+  check('rpc refuses an unknown command', (await rpc('factory_reset')).status === 404)
+  const viaRpc = await (await rpc('plugin:llamacpp|start_engine', { presetPath: preset, modelsMax: 1, slotCacheMib: 0, envs: {} })).json()
+  check('rpc starts the engine with the plugin argument names', viaRpc.port === 4242 && viaRpc.api_key?.length === 64)
+  check('rpc stops the engine', (await rpc('plugin:llamacpp|stop_engine')).status === 200 && (await (await rpc('plugin:llamacpp|get_engine_info')).json()) === null)
+
   check('sign-out ends the token', (await json('/api/v1/session', { method: 'DELETE', headers: auth })).status === 204 && (await json('/api/v1/projects', { headers: auth })).status === 401)
   console.log(`\n${checks.length} checks passed`)
 } catch (error) {
