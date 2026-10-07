@@ -7,12 +7,13 @@ import { respondPrompt } from '../state/app'
 import { useLive } from '../state/live'
 import { usePhonePermissions } from './hooks'
 import { ResolvedLine } from './live'
+import { t } from '../i18n'
 
 const HEAD: Record<RemotePrompt['kind'], string> = {
-  access: 'Access needed',
-  domain: 'Site access needed',
-  conflict: 'Team tasks overlap',
-  context: 'Out of context',
+  access: t('prompt.access'),
+  domain: t('prompt.domain'),
+  conflict: t('prompt.conflict'),
+  context: t('prompt.context'),
 }
 
 export function PromptCard({ p }: { p: RemotePrompt }) {
@@ -23,7 +24,7 @@ export function PromptCard({ p }: { p: RemotePrompt }) {
     <div className="ap2" data-testid="prompt-card" data-prompt-kind={p.kind}>
       <div className="aph">
         <span>{HEAD[p.kind]}</span>
-        {p.origin && <span className="apfrom">from {p.origin}</span>}
+        {p.origin && <span className="apfrom">{t('common.from', { origin: p.origin })}</span>}
       </div>
       <div className="apt">{p.title}</div>
       {p.detail && <div className="apcmd">{p.detail}</div>}
@@ -42,7 +43,7 @@ export function PromptCard({ p }: { p: RemotePrompt }) {
             </button>
           ))
         ) : (
-          <span className="apnote">Answer this on the computer</span>
+          <span className="apnote">{t('approval.answerOnComputer')}</span>
         )}
       </div>
     </div>

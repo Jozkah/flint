@@ -8,6 +8,7 @@ import type { RemoteAsk, RemoteAskAnswer } from '@/lib/remote/protocol'
 import { respondAsk } from '../state/app'
 import { useLive } from '../state/live'
 import { ResolvedLine } from './live'
+import { t } from '../i18n'
 
 export function AskCard({ a }: { a: RemoteAsk }) {
   const resolved = useLive((s) => s.resolved[a.requestId])
@@ -65,7 +66,7 @@ export function AskCard({ a }: { a: RemoteAsk }) {
   return (
     <div className="ap2 ask" data-testid="ask-card">
       <div className="aph">
-        <span>Flint has a question</span>
+        <span>{t('notifications.question')}</span>
         {a.questions.length > 1 && (
           <span className="aptool">
             {index + 1}/{a.questions.length}
@@ -79,9 +80,9 @@ export function AskCard({ a }: { a: RemoteAsk }) {
             <div key={pi}>
               {phase.name.trim() && <b>{phase.name}</b>}
               <ol>
-                {phase.tasks.map((t, ti) => (
-                  <li key={ti} className={t.done ? 'done' : undefined}>
-                    {t.content}
+                {phase.tasks.map((task, ti) => (
+                  <li key={ti} className={task.done ? 'done' : undefined}>
+                    {task.content}
                   </li>
                 ))}
               </ol>
@@ -106,7 +107,7 @@ export function AskCard({ a }: { a: RemoteAsk }) {
               <span className="tx">
                 <b>
                   {o.label}
-                  {q.recommended === i && <em>Recommended</em>}
+                  {q.recommended === i && <em>{t('ask.recommended')}</em>}
                 </b>
                 {o.description && <small>{o.description}</small>}
               </span>
@@ -123,7 +124,7 @@ export function AskCard({ a }: { a: RemoteAsk }) {
         >
           <span className={`askmark${q.multi ? ' multi' : ''}`} aria-hidden />
           <span className="tx">
-            <b>Something else</b>
+            <b>{t('ask.somethingElse')}</b>
           </span>
         </button>
         {writing && (
@@ -131,25 +132,25 @@ export function AskCard({ a }: { a: RemoteAsk }) {
             className="askown"
             rows={2}
             autoFocus
-            aria-label="Your answer"
-            placeholder="Type your answer"
+            aria-label={t('ask.yourAnswer')}
+            placeholder={t('ask.typeAnswer')}
             value={text[q.id] ?? ''}
-            onChange={(e) => setText((t) => ({ ...t, [q.id]: e.target.value }))}
+            onChange={(e) => setText((prev) => ({ ...prev, [q.id]: e.target.value }))}
           />
         )}
       </div>
       <div className="apf">
         <button type="button" className="btn ghost" disabled={busy} onClick={() => void send(null)}>
-          Skip
+          {t('ask.skip')}
         </button>
         <span style={{ flex: 1 }} />
         {index > 0 && (
           <button type="button" className="btn" disabled={busy} onClick={() => setIndex(index - 1)}>
-            Back
+            {t('ask.back')}
           </button>
         )}
         <button type="button" className="btn pri" disabled={busy || !answered(q.id)} onClick={submit} data-testid="ask-submit">
-          {last ? 'Send answer' : 'Continue'}
+          {last ? t('ask.send') : t('ask.continue')}
         </button>
       </div>
     </div>

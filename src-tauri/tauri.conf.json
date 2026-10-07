@@ -30,7 +30,7 @@
         "img-src": "'self' asset: http://asset.localhost blob: data: https:",
         "media-src": "'self' asset: http://asset.localhost blob: data: https:",
         "style-src": "'unsafe-inline' 'self' https://fonts.googleapis.com",
-        "script-src": "'self' 'unsafe-eval' asset: $APPDATA/**.* http://asset.localhost"
+        "script-src": "'self' 'wasm-unsafe-eval' asset: http://asset.localhost"
       },
       "dangerousDisableAssetCspModification": [
         "style-src"
@@ -38,9 +38,19 @@
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "requireLiteralLeadingDot": false,
+          "requireLiteralLeadingDot": true,
           "allow": [
-            "**/*"
+            "$APPDATA/**",
+            "$APPLOCALDATA/**",
+            "$APPCACHE/**",
+            "$HOME/**",
+            "$DESKTOP/**",
+            "$DOCUMENT/**",
+            "$DOWNLOAD/**",
+            "$PICTURE/**",
+            "$VIDEO/**",
+            "$AUDIO/**",
+            "$TEMP/**"
           ]
         }
       }

@@ -9,6 +9,7 @@ import { guessDeviceName } from '../ui/format'
 import type { RemoteClient } from '../api/client'
 import { RemoteCallError } from '../api/client'
 import type { PairingStore } from '../api/storage'
+import { t } from '../i18n'
 
 const POLL_MS = 1500
 
@@ -36,7 +37,7 @@ export function Pairing({
   const [name, setName] = useState(guessDeviceName)
   const [phase, setPhase] = useState<Phase>({ step: 'name' })
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const who = computer ? `“${computer}”` : 'your computer'
+  const who = computer ? t('pairing.who', { computer }) : t('common.yourComputer')
 
   useEffect(
     () => () => {
@@ -78,9 +79,9 @@ export function Pairing({
         } else if (s.status === 'pending') {
           pollRef.current = setTimeout(poll, pollMs)
         } else if (s.status === 'rejected') {
-          setPhase({ step: 'failed', message: `Pairing was declined on ${who}.` })
+          setPhase({ step: 'failed', message: t('pairing.declined', { who }) })
         } else {
-          setPhase({ step: 'failed', message: 'The pairing code expired. Show a new QR code on the computer and scan it again.' })
+          setPhase({ step: 'failed', message: t('pairing.expired') })
         }
       }
       pollRef.current = setTimeout(poll, pollMs)
@@ -89,10 +90,10 @@ export function Pairing({
         step: 'failed',
         message:
           e instanceof RemoteCallError && e.code === 'invalid_code'
-            ? 'This pairing code is wrong, expired or already used. Show a new QR code on the computer.'
+            ? t('pairing.invalidCode')
             : e instanceof RemoteCallError
               ? e.message
-              : "Can't reach your computer.",
+              : t('pairing.unreachable'),
       })
     }
   }
@@ -103,28 +104,28 @@ export function Pairing({
       <div id="views">
         <div className="top">
           <div className="crumb" style={{ paddingLeft: 10 }}>
-            <b>Connect to Flint</b>
+            <b>{t('pairing.connect')}</b>
           </div>
         </div>
         <div className="pair" data-testid="pairing">
           <FlintMark size={56} />
           <div>
-            <b style={{ fontSize: 18 }}>Pair with {who}?</b>
+            <b style={{ fontSize: 18 }}>{t('pairing.title', { who })}</b>
             <p className="muted" style={{ margin: '6px 0 0', fontSize: 13.5 }}>
               {number
-                ? 'Check that this number matches the one on your computer, then confirm there.'
-                : 'Name this phone, then confirm on your computer.'}
+                ? t('pairing.checkNumber')
+                : t('pairing.nameFirst')}
             </p>
           </div>
           {number && (
-            <div className="code6" data-testid="confirm-number" aria-label={`Confirmation number ${number.split('').join(' ')}`}>
+            <div className="code6" data-testid="confirm-number" aria-label={t('pairing.confirmationNumber', { number: number.split('').join(' ') })}>
               {number.slice(0, 3)} {number.slice(3)}
             </div>
           )}
           {phase.step === 'name' || phase.step === 'sending' ? (
             <>
               <label className="field">
-                Name this phone
+                {t('pairing.nameLabel')}
                 <input
                   value={name}
                   maxLength={64}
@@ -134,13 +135,13 @@ export function Pairing({
                 />
               </label>
               <button type="button" className="btn pri big" disabled={phase.step === 'sending'} onClick={() => void start()}>
-                {phase.step === 'sending' ? 'Sending…' : 'Pair'}
+                {phase.step === 'sending' ? t('pairing.sending') : t('pairing.pair')}
               </button>
             </>
           ) : phase.step === 'waiting' ? (
             <span className="muted" style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }} role="status">
               <I n="loader" spin size={14} />
-              Waiting for you to confirm on the computer…
+              {t('pairing.waiting')}
             </span>
           ) : (
             <>
@@ -148,12 +149,12 @@ export function Pairing({
                 {phase.message}
               </p>
               <button type="button" className="btn big" onClick={() => setPhase({ step: 'name' })}>
-                Try again
+                {t('common.tryAgain')}
               </button>
             </>
           )}
           <span className="muted" style={{ fontSize: 12 }}>
-            You can remove this phone any time in Settings › Remote access on your computer.
+            {t('pairing.removeHint')}
           </span>
         </div>
       </div>
@@ -168,15 +169,14 @@ export function Unpaired() {
         <div className="pair" data-testid="unpaired">
           <FlintMark size={56} />
           <div>
-            <b style={{ fontSize: 18 }}>This phone isn't paired</b>
+            <b style={{ fontSize: 18 }}>{t('pairing.unpairedTitle')}</b>
             <p className="muted" style={{ margin: '6px 0 0', fontSize: 13.5 }}>
-              It may have been removed on the computer. To connect, open Flint on your computer, go to Settings › Remote access, choose
-              Pair a phone and scan the QR code with this phone's camera.
+              {t('pairing.unpairedBody')}
             </p>
           </div>
           <button type="button" className="btn big" onClick={() => location.reload()}>
             <I n="refresh" />
-            Check again
+            {t('pairing.checkAgain')}
           </button>
         </div>
       </div>

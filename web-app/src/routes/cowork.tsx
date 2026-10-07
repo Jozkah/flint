@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
+import { toAssetUrl } from '@/lib/assetPath'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { switchedFromOf } from '@/lib/assistantSwitch'
 import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
@@ -1385,10 +1386,9 @@ export function CoworkPage() {
         sandboxMissing: async (rel) => {
           const abs = workspacePath ? resolveInRoot(workspacePath, rel) : null
           if (!abs) return false
-          const read = await readTextBounded(
-            serviceHub.core().convertFileSrc(abs),
-            { maxBytes: 4096 }
-          )
+          const read = await readTextBounded(await toAssetUrl(abs), {
+            maxBytes: 4096,
+          })
           return read.status === 'missing'
         },
       }),

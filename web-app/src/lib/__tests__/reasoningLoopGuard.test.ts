@@ -36,6 +36,14 @@ describe('ReasoningLoopGuard', () => {
     expect(guard.add('yes yes yes yes yes ')).toBe(false)
   })
 
+  it('keeps working after a long unbroken run, and still sees a later loop', () => {
+    const guard = new ReasoningLoopGuard()
+    for (let i = 0; i < 50; i++) {
+      expect(guard.add(String(i).repeat(1500))).toBe(false)
+    }
+    expect(guard.add(' ' + 'alpha beta gamma '.repeat(20))).toBe(true)
+  })
+
   it('allows reasoning with changing content', () => {
     const guard = new ReasoningLoopGuard()
     for (let i = 0; i < 100; i++) {

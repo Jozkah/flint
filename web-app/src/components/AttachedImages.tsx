@@ -1,4 +1,5 @@
 import { Maximize2 } from 'lucide-react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import type { ViewerImage } from '@/components/ImageViewer'
 
@@ -16,6 +17,7 @@ export function AttachedImages({
   onOpen: (index: number) => void
   className?: string
 }) {
+  const { t } = useTranslation()
   if (images.length === 0) return null
   const single = images.length === 1
   return (
@@ -33,7 +35,7 @@ export function AttachedImages({
           key={`${i}-${image.url.slice(-24)}`}
           type="button"
           onClick={() => onOpen(i)}
-          aria-label={`Open ${image.name ?? `image ${i + 1}`}`}
+          aria-label={t('common:attachedImages.open', { name: image.name ?? t('common:attachedImages.imageN', { n: i + 1 }) })}
           title={image.name}
           className={cn(
             'group/image relative overflow-hidden rounded-xl border border-border bg-muted/40 shadow-sm',
@@ -43,7 +45,7 @@ export function AttachedImages({
         >
           <img
             src={image.url}
-            alt={image.name ?? `Attached image ${i + 1}`}
+            alt={image.name ?? t('common:attachedImages.attachedN', { n: i + 1 })}
             loading="lazy"
             draggable={false}
             className={cn(

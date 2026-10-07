@@ -4,7 +4,14 @@
 // needs the computer anyway.
 
 import { idbGet, TOKEN_KEY } from '../api/idb'
-import { notificationFor, openApp, planClick, respondFromNotification, RESULT_TEXT } from './logic'
+import { LANGUAGE_KEY, setLanguage } from '../i18n'
+import { notificationFor, openApp, planClick, respondFromNotification, resultText } from './logic'
+
+/** The worker has no localStorage: the page mirrors its language into
+ * IndexedDB (main.tsx). Without a mirror the worker uses the browser's. */
+async function loadLanguage() {
+  setLanguage(await idbGet<string>(LANGUAGE_KEY))
+}
 
 // Worker types, declared here rather than with `lib: webworker`, which
 // would clash with the DOM types the rest of the app compiles against.
@@ -33,8 +40,13 @@ self.addEventListener('push', (e) => {
   } catch {
     raw = null
   }
-  const n = notificationFor(raw)
-  e.waitUntil(self.registration.showNotification(n.title, n.options))
+  e.waitUntil(
+    (async () => {
+      await loadLanguage()
+      const n = notificationFor(raw)
+      await self.registration.showNotification(n.title, n.options)
+    })()
+  )
 })
 
 self.addEventListener('notificationclick', (e) => {
@@ -50,8 +62,9 @@ self.addEventListener('notificationclick', (e) => {
         origin,
       })
       if (r !== 'answered') {
+        await loadLanguage()
         await self.registration.showNotification('Flint', {
-          body: RESULT_TEXT[r],
+          body: resultText(r),
           tag: `approval-${plan.requestId}`,
           data: { url: plan.url, category: 'test', title: 'Flint', body: '', tag: '' },
         })

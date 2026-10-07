@@ -8,6 +8,7 @@ import { PromptCard } from '../ui/PromptCard'
 import { go, openSheet, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { routeFor, useSessions } from '../state/sessions'
+import { t } from '../i18n'
 
 const ICON: Record<string, [IconId, string]> = {
   approval: ['shield', 'var(--tk-appr)'],
@@ -19,7 +20,7 @@ const ICON: Record<string, [IconId, string]> = {
 export default function Notifications() {
   const [filter, setFilter] = useState<'all' | 'approval' | 'run' | 'room'>('all')
   const notices = useApp((s) => s.notices)
-  const computer = useApp((s) => s.computerName) ?? 'Your computer'
+  const computer = useApp((s) => s.computerName) ?? t('common.yourComputerCap')
   const { data } = useRpc('approvals.list', {})
   const { sessions } = useSessions()
   const approvals = data?.approvals ?? []
@@ -30,9 +31,9 @@ export default function Notifications() {
     <>
       <TopBack
         crumb={computer}
-        title="Notifications"
+        title={t('notifications.title')}
         action={
-          <button type="button" className="ib" onClick={() => openSheet('notifset')} aria-label="Notification settings">
+          <button type="button" className="ib" onClick={() => openSheet('notifset')} aria-label={t('notifications.settings')}>
             <I n="sliders" />
           </button>
         }
@@ -40,10 +41,10 @@ export default function Notifications() {
       <div className="scroll">
         <Pills
           items={[
-            { id: 'all', label: 'All' },
-            { id: 'approval', label: 'Approvals' },
-            { id: 'run', label: 'Runs' },
-            { id: 'room', label: 'Rooms' },
+            { id: 'all', label: t('notifications.filters.all') },
+            { id: 'approval', label: t('notifications.filters.approval') },
+            { id: 'run', label: t('notifications.filters.run') },
+            { id: 'room', label: t('notifications.filters.room') },
           ]}
           value={filter}
           onChange={setFilter}
@@ -64,7 +65,7 @@ export default function Notifications() {
               </span>
               <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <b style={{ fontWeight: 600, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
-                  Flint has a question
+                  {t('notifications.question')}
                   {a.requestedAt && (
                     <small className="subtle" style={{ fontWeight: 400, fontSize: 11 }}>
                       {ago(a.requestedAt)}
@@ -88,7 +89,7 @@ export default function Notifications() {
                 </span>
                 <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <b style={{ fontWeight: 600, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
-                    Approval waiting
+                    {t('notifications.approval')}
                     {a.requestedAt && (
                       <small className="subtle" style={{ fontWeight: 400, fontSize: 11 }}>
                         {ago(a.requestedAt)}
@@ -101,13 +102,13 @@ export default function Notifications() {
                   </span>
                   <span style={{ display: 'flex', gap: 6, marginTop: 2 }}>
                     <button type="button" className="btn sm dan" onClick={() => void respond(a, 'deny')}>
-                      Deny
+                      {t('common.deny')}
                     </button>
                     <button type="button" className="btn sm pri" onClick={() => void respond(a, 'allow')}>
-                      Allow once
+                      {t('common.allowOnce')}
                     </button>
                     <button type="button" className="btn sm" onClick={() => go(routeFor(a.threadId, sessions))}>
-                      Open
+                      {t('common.open')}
                     </button>
                   </span>
                 </span>
@@ -144,7 +145,7 @@ export default function Notifications() {
         })}
         {approvals.length === 0 && shown.length === 0 && (
           <Empty icon={<I n="bell" size={20} />}>
-            Nothing new. Approvals, finished runs and rooms waiting for you show up here while Flint is open on this phone.
+            {t('notifications.empty')}
           </Empty>
         )}
       </div>

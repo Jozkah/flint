@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { useAssetUrl } from '@/lib/assetPath'
 import {
   ArrowLeftRight,
   Box,
@@ -524,6 +524,7 @@ function CustomSize({
 
 /** A small look at a result, for the strip under the prompt and for the gallery. */
 function Thumb({ item, className }: { item: GalleryItem; className?: string }) {
+  const convertFileSrc = useAssetUrl()
   const src = convertFileSrc(item.path)
   return item.kind === 'video' ? (
     <video
@@ -557,6 +558,7 @@ export function VideoDialog({
   item: GalleryItem | null
   onClose: () => void
 }) {
+  const convertFileSrc = useAssetUrl()
   const remove = useStudio((s) => s.remove)
   const archiveOn = useArchiveEnabled()
   if (!item) return null
@@ -1136,6 +1138,7 @@ function PromptPanel({
   targets: CloudTarget[]
   onRemix: (item: GalleryItem) => void
 }) {
+  const convertFileSrc = useAssetUrl()
   const hosted = targets.find((t) => t.key === form.cloud)
   const providerSettings = useModelProvider((s) =>
     hosted ? s.providers.find((p) => p.provider === hosted.provider.provider) : undefined
@@ -1882,6 +1885,7 @@ function GenerationsPanel({
 }
 
 export function StudioPage() {
+  const convertFileSrc = useAssetUrl()
   const status = useStudio((s) => s.status)
   const error = useStudio((s) => s.error)
   const refresh = useStudio((s) => s.refresh)
@@ -1984,7 +1988,7 @@ export function StudioPage() {
             name: `studio-${g.recipe.seed}`,
           }))
         : [],
-    [shown, kind]
+    [shown, kind, convertFileSrc]
   )
 
   return (

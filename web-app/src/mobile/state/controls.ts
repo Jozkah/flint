@@ -2,6 +2,7 @@
 import type { NotificationPrefs, SessionKind } from '@/lib/remote/protocol'
 import { act, client, closeSheet, go, toast } from './app'
 import { invalidate } from './rpc'
+import { t } from '../i18n'
 
 export const DEFAULT_NOTIFY: NotificationPrefs = { approvals: true, runFinished: true, roomTurns: true, errors: true }
 
@@ -17,11 +18,11 @@ export function roomAct(props: { id?: unknown }, action: 'pause' | 'resume' | 's
 export async function forkFrom(id: string, messageId?: string) {
   try {
     const r = await client().rpc('chat.fork', { id, ...(messageId ? { messageId } : {}) })
-    toast('Forked into a new chat.')
+    toast(t('controls.forked'))
     invalidate(['sessions.list'])
     go({ name: 'chat', id: r.id })
   } catch (e) {
-    toast(e instanceof Error ? e.message : 'Could not fork this chat')
+    toast(e instanceof Error ? e.message : t('controls.forkFailed'))
   }
 }
 
@@ -29,23 +30,23 @@ export async function forkFrom(id: string, messageId?: string) {
 export async function stepVersion(id: string, messageId: string, dir: -1 | 1): Promise<boolean> {
   try {
     const { ok } = await client().rpc('thread.branch.select', { id, messageId, dir })
-    if (!ok) toast('Wait for the reply to finish, then try again.')
+    if (!ok) toast(t('controls.waitThenRetry'))
     else invalidate(['thread.messages', 'chat.details', 'sessions.list'])
     return ok
   } catch (e) {
-    toast(e instanceof Error ? e.message : 'Could not switch versions.')
+    toast(e instanceof Error ? e.message : t('controls.switchFailed'))
     return false
   }
 }
 
 /** Regenerate title, in the desktop's words for each result. */
 export async function regenerateTitleOf(kind: SessionKind, id: string) {
-  toast('Naming the chat…')
+  toast(t('controls.naming'))
   try {
     const { result } = await client().rpc('title.regenerate', { kind, id })
-    toast(result === 'done' ? 'Title updated.' : result === 'empty' ? 'Nothing to name yet.' : result === 'busy' ? 'Wait for the reply to finish.' : 'Could not regenerate the title.')
+    toast(result === 'done' ? t('controls.titleUpdated') : result === 'empty' ? t('controls.nothingToName') : result === 'busy' ? t('controls.waitReply') : t('controls.titleFailed'))
     invalidate(['sessions.list', 'rooms.get', 'cowork.get'])
   } catch (e) {
-    toast(e instanceof Error ? e.message : 'Could not regenerate the title.')
+    toast(e instanceof Error ? e.message : t('controls.titleFailed'))
   }
 }

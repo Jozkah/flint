@@ -1,3 +1,4 @@
+pub mod asset_scope;
 pub mod commands;
 pub mod export_file;
 pub mod group_folders;

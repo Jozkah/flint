@@ -1,6 +1,7 @@
 import type { SessionKind, SessionSummary } from '@/lib/remote/protocol'
 import { useRpc } from './rpc'
 import type { Route } from './router'
+import { t } from '../i18n'
 
 export const SESSIONS_PARAMS = { limit: 200 } as const
 
@@ -35,6 +36,6 @@ export function routeFor(id: string, sessions: SessionSummary[]): Route {
 /** How the phone reaches the computer, from the address it was opened at. */
 export function reachLabel(host: string = globalThis.location?.hostname ?? ''): string {
   if (/\.ts\.net$/i.test(host) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host)) return 'Tailscale'
-  if (host === 'localhost' || host.startsWith('127.')) return 'This computer'
-  return 'Local network'
+  if (host === 'localhost' || host.startsWith('127.')) return t('sessions.thisComputer')
+  return t('sessions.localNetwork')
 }

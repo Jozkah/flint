@@ -7,8 +7,7 @@ import type { ChangedFile, CoworkActivity, CoworkChanges } from '@/lib/remote/pr
 import { Empty } from './bits'
 import { I } from './icons'
 import { openDrawer, openSheet, toast } from '../state/app'
-
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+import { t } from '../i18n'
 
 function totals(files: ChangedFile[]) {
   return {
@@ -40,7 +39,7 @@ export function Diff({ text }: { text: string }) {
 /** The bars above the composer. */
 export function ChangeBars({ c }: { c: CoworkChanges }) {
   const [more, setMore] = useState(false)
-  const t = totals(c.files)
+  const tot = totals(c.files)
   const pr = c.pr
   const extra = pr && (pr.conflicts || pr.checks.failed > 0)
   return (
@@ -48,12 +47,12 @@ export function ChangeBars({ c }: { c: CoworkChanges }) {
       {c.files.length > 0 && (
         <div className="frame bar1">
           <I n="file" />
-          <b>{plural(c.files.length, 'file')} ready for review</b>
-          <span className="add">+{t.additions}</span>
-          <span className="del">−{t.deletions}</span>
+          <b>{t('changes.filesReady', { count: c.files.length })}</b>
+          <span className="add">+{tot.additions}</span>
+          <span className="del">−{tot.deletions}</span>
           <span className="sp" />
           <button type="button" className="btn sm" onClick={() => openDrawer('right', 'changes')}>
-            Review changes
+            {t('changes.review')}
           </button>
         </div>
       )}
@@ -61,17 +60,17 @@ export function ChangeBars({ c }: { c: CoworkChanges }) {
         <div className="frame bar1" style={{ flexWrap: 'wrap' }}>
           <I n="branch" />
           <b className="mono" style={{ fontSize: 12 }}>
-            {c.worktree.branch ?? 'Working copy'}
+            {c.worktree.branch ?? t('changes.workingCopy')}
           </b>
           <span className="sp" />
-          <button type="button" className="btn sm ghost" aria-label="Worktree" onClick={() => openSheet('worktree', { path: c.worktree?.path, branch: c.worktree?.branch })}>
+          <button type="button" className="btn sm ghost" aria-label={t('changes.worktree')} onClick={() => openSheet('worktree', { path: c.worktree?.path, branch: c.worktree?.branch })}>
             <I n="more" />
           </button>
         </div>
       )}
       {pr && extra && !more && (
         <button type="button" className="morebars" onClick={() => setMore(true)}>
-          Show 1 more · {pr.conflicts ? 'Conflicts' : 'CI'}
+          {t('changes.showMore', { what: pr.conflicts ? t('changes.conflicts') : 'CI' })}
         </button>
       )}
       {pr && (!extra || more) && (
@@ -83,14 +82,14 @@ export function ChangeBars({ c }: { c: CoworkChanges }) {
           </span>
           <span className="sp" />
           {pr.conflicts && (
-            <button type="button" className="chip err" onClick={() => toast('Resolve the conflicts from the computer')}>
+            <button type="button" className="chip err" onClick={() => toast(t('changes.resolveOnComputer'))}>
               <span className="d" />
-              Conflicts
+              {t('changes.conflicts')}
             </button>
           )}
           <span className={`chip ${pr.checks.failed ? 'err' : pr.checks.pending ? 'warn' : 'ok'}`}>
             <span className="d" />
-            CI {pr.checks.failed ? `${pr.checks.failed} failed` : pr.checks.pending ? 'running' : 'passed'}
+            {pr.checks.failed ? t('changes.ciFailed', { count: pr.checks.failed }) : pr.checks.pending ? t('changes.ciRunning') : t('changes.ciPassed')}
           </span>
         </div>
       )}
@@ -104,14 +103,14 @@ export function WhatChanged({ c }: { c: CoworkChanges }) {
   return (
     <details className="wcline" data-testid="what-changed">
       <summary>
-        <b title="Recorded by Flint, not written by the model.">What changed</b>
+        <b title={t('changes.recordedBy')}>{t('changes.whatChanged')}</b>
         <span className="muted">{c.summary}</span>
         <I n="chev" size={13} style={{ marginLeft: 'auto', color: 'var(--subtle-foreground)' }} />
       </summary>
       <div className="frame wc" style={{ margin: '8px 0 0' }}>
         <div className="sec" style={{ borderTop: 0 }}>
-          <span className="lbl">Where the result is</span>
-          {c.worktree ? 'In a separate worktree Flint manages, not in your checkout.' : c.applyOnDesktop ? 'In a review copy; apply it to the folder on the computer.' : 'In the folder.'}
+          <span className="lbl">{t('changes.whereResult')}</span>
+          {c.worktree ? t('changes.inWorktree') : c.applyOnDesktop ? t('changes.inReviewCopy') : t('changes.inFolder')}
           {c.files.map((f) => (
             <div key={f.path} className="fl">
               <span>{f.path}</span>
@@ -128,11 +127,11 @@ export function WhatChanged({ c }: { c: CoworkChanges }) {
 
 export function ChangesList({ c }: { c: CoworkChanges }) {
   const [open, setOpen] = useState<string | null>(null)
-  if (!c.files.length) return <Empty>No changes yet.</Empty>
+  if (!c.files.length) return <Empty>{t('changes.none')}</Empty>
   return (
     <>
       <div className="lbl">
-        Cowork output · {c.worktree ? 'Session worktree' : c.applyOnDesktop ? 'Review copy' : 'Folder'}
+        {t('changes.output', { where: c.worktree ? t('changes.sessionWorktree') : c.applyOnDesktop ? t('changes.reviewCopy') : t('changes.folder') })}
       </div>
       <div className="card2" style={{ padding: 0, overflow: 'hidden' }} data-testid="changes-list">
         {c.files.map((f) => (
@@ -152,7 +151,7 @@ export function ChangesList({ c }: { c: CoworkChanges }) {
             </button>
             {open === f.path && (
               <div style={{ padding: '0 12px 10px' }}>
-                <small className="muted">By {f.source}</small>
+                <small className="muted">{t('changes.by', { source: f.source })}</small>
                 {f.hunks.map((h, i) => (
                   <Diff key={i} text={h} />
                 ))}
@@ -163,7 +162,7 @@ export function ChangesList({ c }: { c: CoworkChanges }) {
       </div>
       {c.applyOnDesktop && (
         <p className="sh" style={{ margin: '8px 0 0' }}>
-          Applying these to the folder is done on the computer, where you can see each file first.
+          {t('changes.applyOnComputer')}
         </p>
       )}
     </>
@@ -171,19 +170,19 @@ export function ChangesList({ c }: { c: CoworkChanges }) {
 }
 
 const STATUS: Record<string, [string, string]> = {
-  running: ['warn live', 'Running'],
-  queued: ['', 'Queued'],
-  done: ['ok', 'Finished'],
-  failed: ['err', 'Failed'],
-  awaiting: ['warn', 'Waiting for approval'],
+  running: ['warn live', t('changes.status.running')],
+  queued: ['', t('changes.status.queued')],
+  done: ['ok', t('changes.status.done')],
+  failed: ['err', t('changes.status.failed')],
+  awaiting: ['warn', t('changes.status.awaiting')],
 }
 
 export function ActivityList({ a }: { a: CoworkActivity }) {
   const rows = [
-    ...a.subagents.map((s) => ({ id: s.id, kind: 'Agent', title: s.name, sub: `${plural(s.steps, 'tool call')}`, status: s.status as string })),
+    ...a.subagents.map((s) => ({ id: s.id, kind: 'Agent', title: s.name, sub: t('changes.toolCalls', { count: s.steps }), status: s.status as string })),
     ...a.commands.map((c) => ({ id: c.id, kind: 'Command', title: c.command, sub: '', status: c.status as string })),
   ]
-  if (!rows.length) return <Empty>No subagents or commands in this session yet.</Empty>
+  if (!rows.length) return <Empty>{t('changes.noActivity')}</Empty>
   const running = rows.filter((r) => r.status === 'running' || r.status === 'queued' || r.status === 'awaiting')
   const finished = rows.filter((r) => !running.includes(r))
   const row = (r: (typeof rows)[number]) => {
@@ -195,7 +194,7 @@ export function ActivityList({ a }: { a: CoworkActivity }) {
             {r.title}
           </b>
           <small className="muted">
-            {r.kind}
+            {r.kind === 'Command' ? t('changes.command') : t('changes.agent')}
             {r.sub ? ` · ${r.sub}` : ''}
           </small>
         </span>
@@ -208,9 +207,9 @@ export function ActivityList({ a }: { a: CoworkActivity }) {
   }
   return (
     <div data-testid="activity-list">
-      {running.length > 0 && <div className="lbl">Running ({running.length})</div>}
+      {running.length > 0 && <div className="lbl">{t('changes.runningCount', { count: running.length })}</div>}
       {running.map(row)}
-      {finished.length > 0 && <div className="lbl">Finished ({finished.length})</div>}
+      {finished.length > 0 && <div className="lbl">{t('changes.finishedCount', { count: finished.length })}</div>}
       {finished.map(row)}
     </div>
   )

@@ -1,4 +1,5 @@
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
+import { toAssetUrl } from '@/lib/assetPath'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { currentDescriber } from '@/lib/imageDescription'
@@ -392,6 +393,17 @@ const ChatInput = memo(function ChatInput({
     if (richFormattingRef.current) richComposerRef.current?.focus()
     else textareaRef.current?.focus()
   }, [])
+  // Taking focus on mount or a thread change must not pull it out of another
+  // field the person is already typing in (a parameter input, a dialog).
+  const focusComposerUnlessTyping = useCallback(() => {
+    const active = document.activeElement
+    const typing =
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      (active instanceof HTMLElement && active.isContentEditable)
+    if (typing && active !== textareaRef.current) return
+    focusComposer()
+  }, [focusComposer])
   const [isFocused, setIsFocused] = useState(false)
   // The control row is absolutely positioned at the bottom of the composer, so
   // the composer must reserve exactly as much space as the row occupies. The
@@ -1374,7 +1386,9 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when component mounts
   useEffect(() => {
-    if (takeFocus) setTimeout(focusComposer, 0)
+    if (!takeFocus) return
+    const timer = setTimeout(focusComposerUnlessTyping, 0)
+    return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1386,7 +1400,9 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when thread changes
   useEffect(() => {
-    if (takeFocus) setTimeout(focusComposer, 0)
+    if (!takeFocus) return
+    const timer = setTimeout(focusComposerUnlessTyping, 0)
+    return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentThreadId])
 
@@ -2326,8 +2342,7 @@ const ChatInput = memo(function ChatInput({
           const files: File[] = []
           for (const path of paths) {
             try {
-              const { convertFileSrc } = await import('@tauri-apps/api/core')
-              const fileUrl = convertFileSrc(path)
+              const fileUrl = await toAssetUrl(path)
               const response = await fetch(fileUrl)
               if (!response.ok) throw new Error(response.statusText)
               const blob = await response.blob()
@@ -2465,8 +2480,7 @@ const ChatInput = memo(function ChatInput({
           const files: File[] = []
           for (const path of paths) {
             try {
-              const { convertFileSrc } = await import('@tauri-apps/api/core')
-              const fileUrl = convertFileSrc(path)
+              const fileUrl = await toAssetUrl(path)
               const response = await fetch(fileUrl)
               if (!response.ok) throw new Error(response.statusText)
               const blob = await response.blob()
@@ -2515,9 +2529,8 @@ const ChatInput = memo(function ChatInput({
 
           for (const path of paths) {
             try {
-              // Use Tauri's convertFileSrc to create a valid URL for the file
-              const { convertFileSrc } = await import('@tauri-apps/api/core')
-              const fileUrl = convertFileSrc(path)
+              // Grant asset access (paths outside the static scope), then build the URL
+              const fileUrl = await toAssetUrl(path)
 
               // Fetch the file as blob
               const response = await fetch(fileUrl)

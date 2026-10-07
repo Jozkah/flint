@@ -11,8 +11,8 @@ import {
 } from '@/lib/coworkMode'
 
 describe('what each mode permits', () => {
-  it('offers exactly the three modes, least permissive first', () => {
-    expect(COWORK_MODES).toEqual(['review', 'ask', 'auto'])
+  it('offers exactly the four modes, least permissive first', () => {
+    expect(COWORK_MODES).toEqual(['review', 'ask', 'auto', 'bypass'])
   })
 
   it('makes only review read-only', () => {

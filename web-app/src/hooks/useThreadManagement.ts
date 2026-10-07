@@ -72,24 +72,27 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
           (thread) => home.memberships[thread.id]?.groupId === id || thread.metadata?.project?.id === id
         )
 
-        // Delete threads from backend first
         const serviceHub = getServiceHub()
         // The project record is archived with the ids of its threads, so a
         // restore can put the threads back into a project of the same name.
         const folder = get().folders.find((f) => f.id === id)
+        // One thread at a time: the store follows each backend delete, so a
+        // failure part-way leaves the store, the backend and the project
+        // record agreeing about which threads are gone.
+        const removed: string[] = []
         for (const thread of projectThreads) {
           if (permanent) await serviceHub.threads().deleteThread(thread.id, true)
           else await serviceHub.threads().deleteThread(thread.id)
-        }
-        for (const thread of projectThreads) {
           if (permanent) threadsState.deleteThread(thread.id, true)
           else threadsState.deleteThread(thread.id)
+          removed.push(thread.id)
         }
+        // Reached only when every thread went; a throw above keeps the project.
         if (!permanent && folder && (await archiveEnabled())) {
           try {
             await archiveApi.put('project', id, folder.name, {
               folder,
-              threadIds: projectThreads.map((t) => t.id),
+              threadIds: removed,
             })
           } catch (e) {
             console.warn('[Projects] Failed to archive the project record:', e)
@@ -109,8 +112,19 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
   },
 }))
 
-export const useThreadManagement = () => {
-  const store = useThreadManagementStore()
+export function useThreadManagement(): ThreadManagementState
+export function useThreadManagement<T>(
+  selector: (state: ThreadManagementState) => T
+): T
+export function useThreadManagement<T>(
+  selector?: (state: ThreadManagementState) => T
+) {
+  // With a selector the caller re-renders only when its slice changes.
+  const store = useThreadManagementStore(
+    (selector ?? ((s: ThreadManagementState) => s)) as (
+      state: ThreadManagementState
+    ) => T | ThreadManagementState
+  )
 
   // Load projects from service on mount
   useEffect(() => {

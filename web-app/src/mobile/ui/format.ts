@@ -1,5 +1,6 @@
 // Formatting helpers shared by the phone's screens.
 import type { RemoteToolStep, RoomDetail } from '@/lib/remote/protocol'
+import { t } from '../i18n'
 
 export const asset = (path: string) => `${import.meta.env.BASE_URL}${path}`
 export const MARK = asset('images/flint-mark.png')
@@ -7,14 +8,14 @@ export const MARK = asset('images/flint-mark.png')
 /** "3 minutes ago", "Yesterday", "12 Sep". */
 export function ago(ms: number, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - ms) / 1000))
-  if (s < 45) return 'just now'
+  if (s < 45) return t('format.justNow')
   const m = Math.round(s / 60)
-  if (m < 60) return `${m} min ago`
+  if (m < 60) return t('format.minAgo', { n: m })
   const h = Math.round(m / 60)
-  if (h < 24) return `${h} h ago`
+  if (h < 24) return t('format.hoursAgo', { n: h })
   const d = Math.round(h / 24)
-  if (d === 1) return 'Yesterday'
-  if (d < 7) return `${d} days ago`
+  if (d === 1) return t('format.yesterday')
+  if (d < 7) return t('format.daysAgo', { n: d })
   return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
 
@@ -34,7 +35,7 @@ export function duration(ms: number): string {
 }
 
 export function greet(h = new Date().getHours()) {
-  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
+  return h < 12 ? t('format.goodMorning') : h < 18 ? t('format.goodAfternoon') : t('format.goodEvening')
 }
 
 /** Participant colours in a room, by position (the design's RC). */
@@ -48,10 +49,10 @@ export function speakerColor(room: RoomDetail, participantId: string) {
 
 /** "Used read", "bash failed", as the desktop's timeline words it. */
 export function toolLabel(s: RemoteToolStep): string {
-  if (s.status === 'awaiting') return `Awaiting approval: ${s.name}`
-  if (s.status === 'failed') return `${s.name} failed`
-  if (s.status === 'running') return `Running ${s.name}...`
-  return `Used ${s.name}`
+  if (s.status === 'awaiting') return t('format.awaitingApproval', { name: s.name })
+  if (s.status === 'failed') return t('format.failed', { name: s.name })
+  if (s.status === 'running') return t('format.running', { name: s.name })
+  return t('format.used', { name: s.name })
 }
 
 /** A readable default name for this phone. */
@@ -60,8 +61,8 @@ export function guessDeviceName(ua: string = globalThis.navigator?.userAgent ?? 
   if (/iPad/.test(ua)) return 'iPad'
   const android = ua.match(/Android [\d.]+; ([^;)]+?)(?: Build|\))/)
   if (android?.[1] && !/^K$/.test(android[1].trim())) return android[1].trim()
-  if (/Android/.test(ua)) return 'Android phone'
-  return 'Phone'
+  if (/Android/.test(ua)) return t('format.androidPhone')
+  return t('format.phone')
 }
 
 /** How full a context window is, 0-100; 0 when the window is not known. */

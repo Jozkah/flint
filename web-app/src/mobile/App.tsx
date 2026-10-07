@@ -8,6 +8,7 @@ import { app, socket, syncRouteFromHash, useApp } from './state/app'
 import { clearRpcCache } from './state/rpc'
 import { readPairingFragment } from './state/router'
 import { checkPairing } from './state/pairing'
+import { t } from './i18n'
 
 export function App({ client, store }: { client: RemoteClient; store: PairingStore }) {
   const auth = useApp((s) => s.auth)
@@ -64,7 +65,7 @@ export function App({ client, store }: { client: RemoteClient; store: PairingSto
       <div className="app">
         <div className="splash" role="status">
           <FlintMark />
-          <span className="muted">Connecting to your computer…</span>
+          <span className="muted">{t('app.connecting')}</span>
         </div>
       </div>
     )

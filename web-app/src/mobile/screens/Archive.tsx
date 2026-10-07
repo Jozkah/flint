@@ -8,18 +8,19 @@ import { ago } from '../ui/format'
 import { client, openSheet, toast } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { archiveChanged } from '../state/archive'
+import { t } from '../i18n'
 import { SwipeRow } from '../ui/swipe-row'
 
 type Filter = 'all' | ArchiveKindWire
 
 const FILTERS = [
-  { id: 'all', label: 'All' },
-  { id: 'thread', label: 'Chats' },
-  { id: 'room', label: 'Rooms' },
-  { id: 'cowork', label: 'Cowork' },
-  { id: 'project', label: 'Projects' },
-  { id: 'assistant', label: 'Assistants' },
-  { id: 'studio', label: 'Studio' },
+  { id: 'all', label: t('archive.filters.all') },
+  { id: 'thread', label: t('archive.filters.thread') },
+  { id: 'room', label: t('archive.filters.room') },
+  { id: 'cowork', label: t('archive.filters.cowork') },
+  { id: 'project', label: t('archive.filters.project') },
+  { id: 'assistant', label: t('archive.filters.assistant') },
+  { id: 'studio', label: t('archive.filters.studio') },
 ] as const
 
 const LONG_PRESS_MS = 550
@@ -126,13 +127,13 @@ export default function Archive() {
   const items = (data?.items ?? []).filter((i) => filter === 'all' || i.kind === filter)
 
   const empty = async () => {
-    if (!window.confirm('Delete everything in the archive permanently? This can’t be undone.')) return
+    if (!window.confirm(t('archive.confirmEmpty'))) return
     setBusy(true)
     try {
       const r = await client().rpc('archive.empty', filter === 'all' ? {} : { kind: filter })
-      toast(r.blocked.length ? `Deleted ${r.purged}. ${r.blocked[0].title}: ${r.blocked[0].reason}` : `Deleted ${r.purged}`)
+      toast(r.blocked.length ? t('archive.deletedBlocked', { count: r.purged, title: r.blocked[0].title, reason: r.blocked[0].reason }) : t('archive.deleted', { count: r.purged }))
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'That did not work')
+      toast(e instanceof Error ? e.message : t('common.didNotWork'))
     } finally {
       setBusy(false)
       archiveChanged()
@@ -142,7 +143,7 @@ export default function Archive() {
   const days = data?.retentionDays ?? 30
   return (
     <>
-      <TopMain crumb="Workspace" title="Archive" />
+      <TopMain crumb={t('common.workspace')} title={t('archive.title')} />
       <div className="scroll">
         <div className="ph">
           <h2>Archive</h2>
@@ -157,7 +158,7 @@ export default function Archive() {
         {data && (
           <div className="frame" data-testid="archive-list">
             {items.length === 0 ? (
-              <Empty icon={<I n="clock" size={20} />}>Nothing in the archive.</Empty>
+              <Empty icon={<I n="clock" size={20} />}>{t('archive.empty')}</Empty>
             ) : (
               items.map((i) => <Row key={i.key} item={i} />)
             )}
@@ -167,11 +168,11 @@ export default function Archive() {
           <>
             <p className="sh" data-testid="archive-retention">
               {days > 0
-                ? `Archived items are deleted for good after ${days} days.`
-                : 'Archived items stay until you delete them.'}
+                ? t('archive.retention', { count: days })
+                : t('archive.retentionForever')}
             </p>
             <button type="button" className="btn dan big" disabled={busy || items.length === 0} onClick={() => void empty()}>
-              Empty archive
+              {t('archive.emptyAction')}
             </button>
           </>
         )}

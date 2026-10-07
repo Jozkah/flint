@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Download, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 
 export type ViewerImage = { url: string; name?: string }
 
@@ -36,10 +37,12 @@ export function ImageViewer({
   onIndexChange: (index: number) => void
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const [zoom, setZoom] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const image = images[index]
 
   const reset = useCallback(() => {
@@ -63,8 +66,43 @@ export function ImageViewer({
   )
 
   useEffect(() => {
+    // Hand focus back to whatever opened the viewer once it closes.
+    const opener = document.activeElement as HTMLElement | null
     closeRef.current?.focus()
+    return () => {
+      if (opener && opener.isConnected) opener.focus()
+    }
+  }, [])
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        // Keep Tab inside the dialog: it is modal.
+        const nodes = dialogRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled])'
+        )
+        if (!nodes || nodes.length === 0) return
+        const first = nodes[0]
+        const last = nodes[nodes.length - 1]
+        const active = document.activeElement
+        if (e.shiftKey && (active === first || !dialogRef.current?.contains(active))) {
+          last.focus()
+          e.preventDefault()
+        } else if (!e.shiftKey && (active === last || !dialogRef.current?.contains(active))) {
+          first.focus()
+          e.preventDefault()
+        }
+        return
+      }
+      // Shortcuts must not steal keys typed into a field behind the viewer.
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.isContentEditable ||
+          /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+      ) {
+        return
+      }
       if (e.key === 'Escape') onClose()
       else if (e.key === 'ArrowLeft') step(-1)
       else if (e.key === 'ArrowRight') step(1)
@@ -85,9 +123,13 @@ export function ImageViewer({
 
   return createPortal(
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-label={image.name ?? `Image ${index + 1} of ${images.length}`}
+      aria-label={
+        image.name ??
+        t('common:imageViewer.imageNOfM', { n: index + 1, total: images.length })
+      }
       data-testid="image-viewer"
       className="fixed inset-0 z-[200] flex flex-col bg-black/85 backdrop-blur-sm"
       onClick={onClose}
@@ -97,33 +139,33 @@ export function ImageViewer({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="min-w-0">
-          <div className="truncate font-medium">{image.name ?? `Image ${index + 1}`}</div>
+          <div className="truncate font-medium">{image.name ?? t('common:imageViewer.imageN', { n: index + 1 })}</div>
           {images.length > 1 && (
             <div className="text-xs text-white/70">
-              {index + 1} of {images.length}
+              {t('common:imageViewer.nOfM', { n: index + 1, total: images.length })}
             </div>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" className={toolButton} onClick={() => zoomBy(0.8)} aria-label="Zoom out" disabled={zoom <= MIN_ZOOM}>
+          <button type="button" className={toolButton} onClick={() => zoomBy(0.8)} aria-label={t('common:imageViewer.zoomOut')} disabled={zoom <= MIN_ZOOM}>
             <ZoomOut className="size-4" />
           </button>
           <span className="w-10 text-center text-xs tabular-nums text-white/80" data-testid="viewer-zoom">
             {Math.round(zoom * 100)}%
           </span>
-          <button type="button" className={toolButton} onClick={() => zoomBy(1.25)} aria-label="Zoom in" disabled={zoom >= MAX_ZOOM}>
+          <button type="button" className={toolButton} onClick={() => zoomBy(1.25)} aria-label={t('common:imageViewer.zoomIn')} disabled={zoom >= MAX_ZOOM}>
             <ZoomIn className="size-4" />
           </button>
           <a
             className={toolButton}
             href={image.url}
             download={downloadNameOf(image, index)}
-            aria-label="Save image"
-            title="Save image"
+            aria-label={t('common:imageViewer.save')}
+            title={t('common:imageViewer.save')}
           >
             <Download className="size-4" />
           </a>
-          <button ref={closeRef} type="button" className={toolButton} onClick={onClose} aria-label="Close">
+          <button ref={closeRef} type="button" className={toolButton} onClick={onClose} aria-label={t('common:imageViewer.close')}>
             <X className="size-4" />
           </button>
         </div>
@@ -141,14 +183,14 @@ export function ImageViewer({
               e.stopPropagation()
               step(-1)
             }}
-            aria-label="Previous image"
+            aria-label={t('common:imageViewer.previous')}
           >
             <ChevronLeft className="size-5" />
           </button>
         )}
         <img
           src={image.url}
-          alt={image.name ?? `Image ${index + 1}`}
+          alt={image.name ?? t('common:imageViewer.imageN', { n: index + 1 })}
           draggable={false}
           className={cn(
             'max-h-full max-w-full select-none rounded-lg object-contain shadow-2xl',
@@ -185,7 +227,7 @@ export function ImageViewer({
               e.stopPropagation()
               step(1)
             }}
-            aria-label="Next image"
+            aria-label={t('common:imageViewer.next')}
           >
             <ChevronRight className="size-5" />
           </button>

@@ -5,6 +5,7 @@ import { compact } from './format'
 import { I } from './icons'
 import { Kv } from './bits'
 import { openSheet } from '../state/app'
+import { t } from '../i18n'
 
 const tps = (n: number) => `${n.toFixed(1)} t/s`
 
@@ -13,8 +14,8 @@ export function ReplyRow({ meta }: { meta?: ReplyMeta }) {
   if (!meta) return null
   const facts = [
     meta.tokensPerSecond ? tps(meta.tokensPerSecond) : null,
-    meta.outputTokens ? `${meta.outputTokens.toLocaleString()} tokens` : null,
-    meta.cache === 'reused' ? 'cached' : null,
+    meta.outputTokens ? t('reply.tokens', { count: meta.outputTokens.toLocaleString() }) : null,
+    meta.cache === 'reused' ? t('reply.cached') : null,
   ].filter(Boolean)
   const skills = meta.skills ?? []
   if (!facts.length && !skills.length) return null
@@ -28,7 +29,7 @@ export function ReplyRow({ meta }: { meta?: ReplyMeta }) {
       )}
       {skills.length > 0 && (
         <button type="button" className="muted" onClick={() => openSheet('skillsused', { skills })}>
-          Used {skills.length} {skills.length === 1 ? 'skill' : 'skills'}
+          {t('reply.skills', { count: skills.length })}
         </button>
       )}
     </div>
@@ -46,7 +47,7 @@ export function ContextCard({
   speed?: ChatDetails['speed']
   onCompact?: () => void
 }) {
-  if (!c) return <div className="cwc"><b>Context window</b><span className="muted">Nothing sent yet.</span></div>
+  if (!c) return <div className="cwc"><b>{t('reply.context')}</b><span className="muted">{t('reply.nothingSent')}</span></div>
   const win = c.windowTokens && c.windowTokens > 0 ? c.windowTokens : null
   const whole = win ? Math.max(win, c.usedTokens) : Math.max(c.usedTokens, 1)
   const buffer = win && c.autoCompactOn ? c.buffer : 0
@@ -60,7 +61,7 @@ export function ContextCard({
   return (
     <div className="cwc" data-testid="context-card">
       <div className="kv">
-        <b style={{ color: 'var(--foreground)' }}>Context window</b>
+        <b style={{ color: 'var(--foreground)' }}>{t('reply.context')}</b>
         <span>
           {compact(c.usedTokens)}
           {win ? ` / ${compact(win)} (${Math.round(pct(c.usedTokens))}%)` : ''}
@@ -72,10 +73,10 @@ export function ContextCard({
         {win && <i style={{ flex: 1, background: '#3f3f46' }} />}
       </div>
       <div className="kv">
-        <span>{until !== null ? `${compact(until)} until auto-compact` : c.autoCompactOn ? '' : 'Auto-compact is off'}</span>
+        <span>{until !== null ? t('reply.untilCompact', { count: compact(until) }) : c.autoCompactOn ? '' : t('reply.compactOff')}</span>
         {onCompact && (
           <button type="button" className="btn sm" onClick={onCompact}>
-            Compact session
+            {t('reply.compact')}
           </button>
         )}
       </div>
@@ -89,14 +90,14 @@ export function ContextCard({
           </div>
         ))}
         {buffer > 0 && (
-          <div><span className="sq" style={{ background: '#71717a' }} />Autocompact buffer<span className="muted" style={{ marginLeft: 'auto' }}>{compact(buffer)}</span><span className="muted" style={{ width: 40, textAlign: 'right' }}>{share(buffer)}</span></div>
+          <div><span className="sq" style={{ background: '#71717a' }} />{t('reply.buffer')}<span className="muted" style={{ marginLeft: 'auto' }}>{compact(buffer)}</span><span className="muted" style={{ width: 40, textAlign: 'right' }}>{share(buffer)}</span></div>
         )}
         {win && (
-          <div><span className="sq" style={{ background: '#3f3f46' }} />Free space<span className="muted" style={{ marginLeft: 'auto' }}>{compact(free)}</span><span className="muted" style={{ width: 40, textAlign: 'right' }}>{share(free)}</span></div>
+          <div><span className="sq" style={{ background: '#3f3f46' }} />{t('reply.free')}<span className="muted" style={{ marginLeft: 'auto' }}>{compact(free)}</span><span className="muted" style={{ width: 40, textAlign: 'right' }}>{share(free)}</span></div>
         )}
       </div>
-      {speed?.last ? <Kv k="Last reply" v={tps(speed.last)} /> : null}
-      {speed?.average ? <Kv k="Avg. speed" v={tps(speed.average)} /> : null}
+      {speed?.last ? <Kv k={t('reply.last')} v={tps(speed.last)} /> : null}
+      {speed?.average ? <Kv k={t('reply.average')} v={tps(speed.average)} /> : null}
     </div>
   )
 }

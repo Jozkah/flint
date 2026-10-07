@@ -9,6 +9,7 @@ import { ContextCard } from '../ui/reply'
 import { act, app, client, closeAll, openSheet, toast, useApp } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
 import { insertIntoComposer } from '../state/attachments'
+import { t } from '../i18n'
 
 const SECTION_ICON: Record<string, IconId> = {
   model: 'cube',
@@ -41,15 +42,15 @@ export function ChatUsing({ id }: { id: string }) {
   const tools = useRpc('tools.list', {})
   const [tab, setTab] = useState<'using' | 'files'>('using')
   const [more, setMore] = useState<Record<string, boolean>>({})
-  if (!data) return error ? <Empty>{error.message}</Empty> : <Empty>Loading…</Empty>
+  if (!data) return error ? <Empty>{error.message}</Empty> : <Empty>{t('common.loading')}</Empty>
   const c = data.context
   const pct = c?.windowTokens ? Math.min(100, (c.usedTokens / c.windowTokens) * 100) : 0
   return (
     <>
       <Pills
         items={[
-          { id: 'using', label: 'What Flint is using' },
-          { id: 'files', label: `Files (${data.files.length})` },
+          { id: 'using', label: t('rightpanel.using') },
+          { id: 'files', label: t('panels.files', { count: data.files.length }) },
         ]}
         value={tab}
         onChange={setTab}
@@ -58,13 +59,13 @@ export function ChatUsing({ id }: { id: string }) {
         data.files.length ? (
           <div className="card2">{data.files.map((f) => <Kv key={f.name} k={<span className="mono">{f.name}</span>} v={f.state} />)}</div>
         ) : (
-          <Empty>No files in this conversation.</Empty>
+          <Empty>{t('panels.noFiles')}</Empty>
         )
       ) : (
         <>
-          <Card icon="gauge" title="Context" right={c ? `${compact(c.usedTokens)}${c.windowTokens ? ` of ${compact(c.windowTokens)}` : ''}` : undefined}>
+          <Card icon="gauge" title={t('rightpanel.context')} right={c ? `${compact(c.usedTokens)}${c.windowTokens ? ` ${t('panels.of', { total: compact(c.windowTokens) })}` : ''}` : undefined}>
             <div className="meter"><i style={{ width: `${pct}%` }} /></div>
-            <small className="muted">{c?.autoCompactOn ? 'Auto-compacts before the window fills' : 'Auto-compact is off'}</small>
+            <small className="muted">{c?.autoCompactOn ? t('panels.autoCompacts') : t('reply.compactOff')}</small>
           </Card>
           {data.sections
             .filter((s) => s.id !== 'payload')
@@ -72,13 +73,13 @@ export function ChatUsing({ id }: { id: string }) {
               const shown = more[s.id] ? s.items : s.items.slice(0, PREVIEW)
               return (
                 <Card key={s.id} icon={SECTION_ICON[s.id] ?? 'info'} title={s.title}>
-                  {s.items.length === 0 && <small className="muted">{s.empty ?? 'Nothing here.'}</small>}
+                  {s.items.length === 0 && <small className="muted">{s.empty ?? t('settings.nothingHere')}</small>}
                   {shown.map((item, i) => (
                     <Kv key={`${item.label}-${i}`} k={<span className={s.id === 'tools' || s.id === 'attachments' ? 'mono' : undefined}>{item.label}{item.detail ? ` · ${item.detail}` : ''}</span>} v={item.state} />
                   ))}
                   {s.items.length > PREVIEW && (
                     <button type="button" className="btn sm ghost" style={{ alignSelf: 'flex-start' }} onClick={() => setMore((m) => ({ ...m, [s.id]: !m[s.id] }))}>
-                      {more[s.id] ? 'Show fewer' : `Show all (${s.items.length})`}
+                      {more[s.id] ? t('panels.showFewer') : t('panels.showAll', { count: s.items.length })}
                     </button>
                   )}
                   {s.id === 'tools' &&
@@ -86,10 +87,10 @@ export function ChatUsing({ id }: { id: string }) {
                       const server = tools.data?.servers.find((x) => x.name === name)
                       return (
                         <div key={name} className="mcpoff" data-testid="server-off">
-                          <b>{name} is off</b>
-                          <span>You mentioned it, but it isn&apos;t running, so its tools aren&apos;t available to this reply.</span>
-                          <button type="button" className="btn sm" disabled title="Turning servers on needs the computer" onClick={() => toast(`Turn ${server?.name ?? name} on from the computer.`)}>
-                            Enable on the computer
+                          <b>{t('panels.serverOff', { name })}</b>
+                          <span>{t('panels.serverOffBody')}</span>
+                          <button type="button" className="btn sm" disabled title={t('panels.enableTitle')} onClick={() => toast(t('panels.turnOn', { name: server?.name ?? name }))}>
+                            {t('panels.enable')}
                           </button>
                         </div>
                       )
@@ -98,9 +99,9 @@ export function ChatUsing({ id }: { id: string }) {
               )
             })}
           {data.lastRequest && (
-            <Card icon="clock" title="Last request">
-              <Kv k="Tokens" v={`${(data.lastRequest.inputTokens ?? 0).toLocaleString()} in · ${(data.lastRequest.outputTokens ?? 0).toLocaleString()} out`} />
-              {data.lastRequest.cachedInputTokens !== undefined && <Kv k="Prompt cache" v={data.lastRequest.cachedInputTokens > 0 ? 'Cache reused' : 'Not reused'} />}
+            <Card icon="clock" title={t('panels.lastRequest')}>
+              <Kv k={t('rightpanel.tokens')} v={t('panels.inOut', { input: (data.lastRequest.inputTokens ?? 0).toLocaleString(), output: (data.lastRequest.outputTokens ?? 0).toLocaleString() })} />
+              {data.lastRequest.cachedInputTokens !== undefined && <Kv k={t('panels.promptCache')} v={data.lastRequest.cachedInputTokens > 0 ? t('panels.cacheReused') : t('panels.notReused')} />}
             </Card>
           )}
         </>
@@ -119,7 +120,7 @@ export function ChatUsage({ id }: { id: string }) {
         data?.canCompact
           ? () => {
               app.set((s) => ({ compacting: { ...s.compacting, [id]: true } }))
-              void act('chat.compact', { id }, 'Compacting the conversation…')
+              void act('chat.compact', { id }, t('cowork.compacting'))
             }
           : undefined
       }
@@ -147,11 +148,11 @@ function highlight(line: string): ReactNode[] {
 }
 
 const FILE_NOTE: Record<Exclude<CoworkFileResult['status'], 'ready'>, string> = {
-  oversized: 'This file is too large to show.',
-  binary: 'This is a binary file.',
-  sensitive: 'This file may hold secrets; open it on the computer.',
-  denied: 'This file is outside what the session may read.',
-  missing: 'This file could not be read.',
+  oversized: t('panels.file.oversized'),
+  binary: t('panels.file.binary'),
+  sensitive: t('panels.file.sensitive'),
+  denied: t('panels.file.denied'),
+  missing: t('panels.file.missing'),
 }
 
 /** CoworkCodePanel, read-only: explorer, open-file tabs, the path toolbar,
@@ -177,15 +178,15 @@ export function CodeTab({ id }: { id: string }) {
   }
   const pick = (n: number) => setSel((cur) => (!cur ? [n, n] : cur[0] === cur[1] && n > cur[0] ? [cur[0], n] : [n, n]))
   const range = sel ? (sel[0] === sel[1] ? `L${sel[0]}` : `L${sel[0]}–${sel[1]}`) : null
-  const copy = (text: string, done: string) => void navigator.clipboard?.writeText(text).then(() => toast(done), () => toast('Copy failed'))
+  const copy = (text: string, done: string) => void navigator.clipboard?.writeText(text).then(() => toast(done), () => toast(t('common.copyFailed')))
   return (
     <>
       <div className="kv" style={{ fontSize: 12 }}>
         <button type="button" className="btn sm" onClick={() => openSheet('files', { id })}>
           <I n="tree" size={13} />
-          Project explorer
+          {t('panels.explorer')}
         </button>
-        <span className="muted">{state.open.length} open</span>
+        <span className="muted">{t('panels.openCount', { count: state.open.length })}</span>
       </div>
       {state.open.length > 0 && (
         <div className="ctabs" role="tablist">
@@ -193,7 +194,7 @@ export function CodeTab({ id }: { id: string }) {
             <span key={p} role="tab" aria-selected={p === active} className={`ctab${p === active ? ' on' : ''}`} onClick={() => setCode(state.open, p)}>
               {p.split('/').pop()}
               {touched.has(p) && <span className="mdot">M</span>}
-              <button type="button" className="ib" style={{ width: 18, height: 18 }} aria-label={`Close ${p}`} onClick={(e) => { e.stopPropagation(); close(p) }}>
+              <button type="button" className="ib" style={{ width: 18, height: 18 }} aria-label={t('panels.closeFile', { path: p })} onClick={(e) => { e.stopPropagation(); close(p) }}>
                 <I n="x" size={11} />
               </button>
             </span>
@@ -202,7 +203,7 @@ export function CodeTab({ id }: { id: string }) {
       )}
       {!active && (
         <>
-          <Empty icon={<I n="code" size={18} />}>Open a file from the explorer or from the session&apos;s changes.</Empty>
+          <Empty icon={<I n="code" size={18} />}>{t('panels.openFile')}</Empty>
           {(changes.data?.files ?? []).map((x) => (
             <button key={x.path} type="button" className="row" onClick={() => setCode(state.open.includes(x.path) ? state.open : [...state.open, x.path], x.path)}>
               <span className="tx"><b className="mono" style={{ fontSize: 12 }}>{x.path}</b></span>
@@ -216,20 +217,20 @@ export function CodeTab({ id }: { id: string }) {
         <>
           <div className="ctool">
             <span className="mono">{active}</span>
-            <button type="button" className="ib" aria-label="Toggle word wrap" aria-pressed={wrap} onClick={() => setWrap((w) => !w)}><I n="wrap" size={14} /></button>
-            <button type="button" className="ib" aria-label="Copy code" onClick={() => copy(f?.content ?? '', 'Copied')}><I n="copy" size={14} /></button>
+            <button type="button" className="ib" aria-label={t('panels.wrap')} aria-pressed={wrap} onClick={() => setWrap((w) => !w)}><I n="wrap" size={14} /></button>
+            <button type="button" className="ib" aria-label={t('panels.copyCode')} onClick={() => copy(f?.content ?? '', t('common.copied'))}><I n="copy" size={14} /></button>
           </div>
           {stale && (
             <div className="stale">
-              The agent changed this file since you opened it.
-              <button type="button" className="btn sm" onClick={() => setSeen((m) => ({ ...m, [active]: f?.content ?? '' }))}>Reload</button>
+              {t('panels.stale')}
+              <button type="button" className="btn sm" onClick={() => setSeen((m) => ({ ...m, [active]: f?.content ?? '' }))}>{t('panels.reload')}</button>
             </div>
           )}
-          {file.loading && !f && <Empty>Loading…</Empty>}
+          {file.loading && !f && <Empty>{t('common.loading')}</Empty>}
           {file.error && <Empty>{file.error.message}</Empty>}
           {f && f.status !== 'ready' && <Empty>{FILE_NOTE[f.status]}</Empty>}
           {f && f.status === 'ready' && (
-            <div className={`code${wrap ? ' wrap' : ''}`} data-testid="code-view" aria-label={`${active} · ${f.language}`}>
+            <div className={`code${wrap ? ' wrap' : ''}`} data-testid="code-view" aria-label={t('panels.codeLabel', { path: active, language: f.language })}>
               {(stale ? (seen[active] ?? '').split('\n') : lines).map((text, i) => {
                 const n = i + 1
                 const mark = stale ? undefined : f.changed[n]
@@ -245,11 +246,11 @@ export function CodeTab({ id }: { id: string }) {
             </div>
           )}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button type="button" className="btn sm" disabled={!range} onClick={() => { if (sel) { insertIntoComposer(`cowork:${id}`, codeRefToken(active, sel[0], sel[1])); toast(`Added ${range} to the message`) } closeAll() }} data-testid="code-add-to-chat">
-              Add to chat{range ? ` (${range})` : ''}
+            <button type="button" className="btn sm" disabled={!range} onClick={() => { if (sel) { insertIntoComposer(`cowork:${id}`, codeRefToken(active, sel[0], sel[1])); toast(t('panels.added', { range: range ?? '' })) } closeAll() }} data-testid="code-add-to-chat">
+              {t('panels.addToChat')}{range ? ` (${range})` : ''}
             </button>
-            <button type="button" className="btn sm" onClick={() => copy(active, 'Copied')}>Copy relative path</button>
-            <button type="button" className="btn sm ghost" onClick={() => invalidate(['cowork.file'])}>Refresh</button>
+            <button type="button" className="btn sm" onClick={() => copy(active, t('common.copied'))}>{t('panels.copyPath')}</button>
+            <button type="button" className="btn sm ghost" onClick={() => invalidate(['cowork.file'])}>{t('system.refresh')}</button>
           </div>
         </>
       )}
@@ -272,7 +273,7 @@ export function LivePreview({ id, url }: { id: string; url: string }) {
     client()
       .rpc('preview.ticket', { id })
       .then((r) => on && setSrc(r.path))
-      .catch((e: unknown) => on && setFailed(e instanceof Error ? e.message : 'Not available'))
+      .catch((e: unknown) => on && setFailed(e instanceof Error ? e.message : t('panels.notAvailable')))
     return () => {
       on = false
     }
@@ -281,16 +282,16 @@ export function LivePreview({ id, url }: { id: string; url: string }) {
     <>
       <div className="ptool">
         <span className="mono muted" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{url}</span>
-        <button type="button" className="ib" aria-label="Reload" onClick={() => setNonce((n) => n + 1)}><I n="rotate" size={14} /></button>
+        <button type="button" className="ib" aria-label={t('panels.reloadLabel')} onClick={() => setNonce((n) => n + 1)}><I n="rotate" size={14} /></button>
       </div>
       {failed ? (
-        <Empty icon={<I n="monitor" size={18} />}>{failed}. The live app runs on the computer; open it there.</Empty>
+        <Empty icon={<I n="monitor" size={18} />}>{t('panels.liveFailed', { reason: failed })}</Empty>
       ) : src ? (
         <div className="pframe">
-          <iframe key={`${src}-${nonce}`} title="Live preview" src={src} sandbox="allow-scripts allow-forms allow-popups" data-testid="live-frame" />
+          <iframe key={`${src}-${nonce}`} title={t('panels.livePreview')} src={src} sandbox="allow-scripts allow-forms allow-popups" data-testid="live-frame" />
         </div>
       ) : (
-        <Empty>Loading…</Empty>
+        <Empty>{t('common.loading')}</Empty>
       )}
     </>
   )
@@ -301,39 +302,39 @@ export function PreviewTab({ id }: { id: string }) {
   const [nonce, setNonce] = useState(0)
   const [mode, setMode] = useState<'live' | 'files'>('live')
   const { data, error, loading } = useRpc('cowork.preview', path ? { id, path } : { id })
-  if (loading && !data) return <Empty>Loading…</Empty>
+  if (loading && !data) return <Empty>{t('common.loading')}</Empty>
   if (error && !data) return <Empty>{error.message}</Empty>
   if (data?.live && (mode === 'live' || !data.path)) {
     return <>
-      {data.path && <Pills items={[{ id: 'live', label: 'Live app' }, { id: 'files', label: 'Files' }]} value={mode} onChange={setMode} />}
+      {data.path && <Pills items={[{ id: 'live', label: t('panels.liveApp') }, { id: 'files', label: t('panels.filesTab') }]} value={mode} onChange={setMode} />}
       <LivePreview id={id} url={data.live.url} />
     </>
   }
-  if (!data?.path) return <Empty icon={<I n="eye" size={18} />}>Nothing to preview yet. Pages, SVGs and documents the session makes show here.</Empty>
+  if (!data?.path) return <Empty icon={<I n="eye" size={18} />}>{t('panels.nothingToPreview')}</Empty>
   const srcDoc = data.kind === 'html' || data.kind === 'svg' ? data.content : null
   return (
     <>
-      {data.live && <Pills items={[{ id: 'live', label: 'Live app' }, { id: 'files', label: 'Files' }]} value={mode} onChange={setMode} />}
+      {data.live && <Pills items={[{ id: 'live', label: t('panels.liveApp') }, { id: 'files', label: t('panels.filesTab') }]} value={mode} onChange={setMode} />}
       <div className="ptool">
         {data.artifacts.length > 1 ? (
-          <select aria-label="Preview file" value={data.path} onChange={(e) => setPath(e.target.value)} style={{ flex: 1, minWidth: 0 }}>
+          <select aria-label={t('panels.previewFile')} value={data.path} onChange={(e) => setPath(e.target.value)} style={{ flex: 1, minWidth: 0 }}>
             {data.artifacts.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         ) : (
           <span className="mono muted">{data.path}</span>
         )}
-        <button type="button" className="ib" aria-label="Reload" onClick={() => { setNonce((n) => n + 1); invalidate(['cowork.preview']) }}><I n="rotate" size={14} /></button>
-        <button type="button" className="ib" aria-label="Copy path" onClick={() => void navigator.clipboard?.writeText(data.path ?? '').then(() => toast('Path copied'), () => toast('Copy failed'))}><I n="copy" size={14} /></button>
+        <button type="button" className="ib" aria-label={t('panels.reloadLabel')} onClick={() => { setNonce((n) => n + 1); invalidate(['cowork.preview']) }}><I n="rotate" size={14} /></button>
+        <button type="button" className="ib" aria-label={t('panels.copyPathLabel')} onClick={() => void navigator.clipboard?.writeText(data.path ?? '').then(() => toast(t('panels.pathCopied')), () => toast(t('common.copyFailed')))}><I n="copy" size={14} /></button>
       </div>
       {srcDoc ? (
         <div className="pframe">
           {/* No scripts' network and no same-origin: the page cannot reach the phone's session. */}
-          <iframe key={nonce} title={`Preview of ${data.path}`} sandbox="allow-scripts" srcDoc={srcDoc} data-testid="preview-frame" />
+          <iframe key={nonce} title={t('panels.previewOf', { path: data.path })} sandbox="allow-scripts" srcDoc={srcDoc} data-testid="preview-frame" />
         </div>
       ) : data.content !== null ? (
         <div className="card2"><pre className="cmd" style={{ margin: 0, maxHeight: 360, overflow: 'auto' }}>{data.content}</pre></div>
       ) : (
-        <Empty icon={<I n="monitor" size={18} />}>{data.note ?? 'Open this preview on the computer.'}</Empty>
+        <Empty icon={<I n="monitor" size={18} />}>{data.note ?? t('panels.openOnComputer')}</Empty>
       )}
     </>
   )

@@ -16,24 +16,25 @@ import { pendingFor, prunePending, useLive } from '../state/live'
 import { useFollow, useStickToBottom } from '../ui/hooks'
 import { useEffect, useState } from 'react'
 import { contextPct } from '../ui/format'
+import { t } from '../i18n'
 
 const STATUS: Record<SessionStatus, string> = {
-  running: 'Running',
-  waiting: 'Waiting for you',
-  idle: 'Cowork',
-  paused: 'Paused',
-  done: 'Completed',
+  running: t('cowork.status.running'),
+  waiting: t('cowork.status.waiting'),
+  idle: t('cowork.status.idle'),
+  paused: t('cowork.status.paused'),
+  done: t('cowork.status.done'),
 }
 
 /** How the last run ended, in the words of the desktop's notices. */
 const ENDING: Record<NonNullable<CoworkDetail['ending']>['by'], string> = {
-  steps: 'Stopped at the step limit',
-  tokens: 'Stopped: out of token budget or context',
-  error: 'The run failed',
-  deadline: 'Stopped at its time limit',
-  timeout: 'Stopped: the model took too long',
-  loop: 'Stopped: it was repeating itself',
-  interrupted: 'Flint was closed in the middle of this turn',
+  steps: t('cowork.ending.steps'),
+  tokens: t('cowork.ending.tokens'),
+  error: t('cowork.ending.error'),
+  deadline: t('cowork.ending.deadline'),
+  timeout: t('cowork.ending.timeout'),
+  loop: t('cowork.ending.loop'),
+  interrupted: t('cowork.ending.interrupted'),
 }
 
 export default function Cowork({ id }: { id: string }) {
@@ -57,7 +58,7 @@ export default function Cowork({ id }: { id: string }) {
       setOlder((cur) => [...page.messages.filter((m) => !cur.some((c) => c.id === m.id)), ...cur])
       setOlderStart(page.start)
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Could not load earlier messages')
+      toast(e instanceof Error ? e.message : t('chat.loadEarlierFailed'))
     }
   }
   const mine = (approvals.data?.approvals ?? []).filter((a) => a.threadId === id)
@@ -92,7 +93,7 @@ export default function Cowork({ id }: { id: string }) {
   const models = useRpc('models.list', {})
   const modelName = d?.model
     ? (models.data?.models.find((m) => m.id === d.model?.id && m.provider === d.model.provider)?.name ?? d.model.id)
-    : 'Model'
+    : t('chat.model')
 
   return (
     <>
@@ -102,10 +103,10 @@ export default function Cowork({ id }: { id: string }) {
             {d && d.status !== 'idle' && d.status !== 'done' && (
               <span className={`sd ${d.status === 'waiting' ? 'wait' : 'run'}`} style={{ width: 6, height: 6 }} />
             )}
-            {d ? (d.status === 'idle' ? 'Cowork' : `${STATUS[d.status]} · Cowork`) : 'Cowork'}
+            {d ? (d.status === 'idle' ? t('cowork.crumb') : t('cowork.crumbStatus', { status: STATUS[d.status] })) : t('cowork.crumb')}
           </>
         }
-        title={d?.title || 'Cowork session'}
+        title={d?.title || t('cowork.untitled')}
         menu={() => openSheet('sessmenu', { id, title: d?.title })}
       />
       <div className="subbar">
@@ -118,22 +119,22 @@ export default function Cowork({ id }: { id: string }) {
         )}
         <button type="button" className="chip" onClick={() => openDrawer('right', 'timeline')}>
           <I n="activity" size={13} />
-          Activity {stepCount > 0 ? stepCount : ''}
+          {t('cowork.activity')} {stepCount > 0 ? stepCount : ''}
         </button>
         <button type="button" className="chip" onClick={() => openDrawer('right', 'changes')}>
           <I n="plus" size={12} />
-          Changes
+          {t('cowork.changes')}
         </button>
       </div>
       <div className="scroll" ref={ref} data-testid="cowork-scroll">
         {(detail.loading || msgs.loading) && !msgs.data && <Loading />}
         {detail.error && !d && <Empty>{detail.error.message}</Empty>}
         {msgs.data && messages.length === 0 && pending.length === 0 && !stream && questions.length === 0 && (
-          <Empty>Nothing in this session yet.</Empty>
+          <Empty>{t('cowork.empty')}</Empty>
         )}
         {earlier > 0 && (
           <button type="button" className="btn ghost" style={{ alignSelf: 'center', margin: '4px 0 12px' }} onClick={() => void showEarlier()}>
-            Show {earlier} earlier {earlier === 1 ? 'message' : 'messages'}
+            {t('cowork.showEarlier', { count: earlier })}
           </button>
         )}
         {messages.map((m) => {
@@ -173,7 +174,7 @@ export default function Cowork({ id }: { id: string }) {
         {compacting && (
           <div className="compacting" role="status">
             <I n="loader" spin size={14} />
-            Compacting the conversation…
+            {t('cowork.compacting')}
           </div>
         )}
         {d?.ending && !running && (
@@ -185,9 +186,9 @@ export default function Cowork({ id }: { id: string }) {
             <button
               type="button"
               className="btn sm pri"
-              onClick={() => void sendMessage('cowork.send', { id, text: 'Continue.', resume: true })}
+              onClick={() => void sendMessage('cowork.send', { id, text: t('cowork.continueMessage'), resume: true })}
             >
-              {d.ending.by === 'steps' || d.ending.by === 'tokens' || d.ending.by === 'interrupted' ? 'Keep going' : 'Try again'}
+              {d.ending.by === 'steps' || d.ending.by === 'tokens' || d.ending.by === 'interrupted' ? t('cowork.keepGoing') : t('cowork.tryAgain')}
             </button>
           </div>
         )}
@@ -197,18 +198,18 @@ export default function Cowork({ id }: { id: string }) {
       {todos.length > 0 && (
         <div className="plan" role="button" data-tool-kind="todo" onClick={() => openDrawer('right', 'progress')}>
           <I n="todo" size={14} style={{ color: 'var(--tk)' }} />
-          <span>Progress</span>
+          <span>{t('cowork.progress')}</span>
           <span className="pb">
             <i style={{ width: `${(done / todos.length) * 100}%` }} />
           </span>
           <span className="muted">
-            {done} of {todos.length} done
+            {t('cowork.progressCount', { done, total: todos.length })}
           </span>
         </div>
       )}
       <QueueBar items={queue.data?.items ?? []} />
       <Composer
-        placeholder="Ask me anything..."
+        placeholder={t('chat.placeholder')}
         plus={{ for: 'cowork', id }}
         ctx={{ pct: contextPct(detail.data?.context), for: 'cowork', id }}
         running={running}
@@ -226,7 +227,7 @@ export default function Cowork({ id }: { id: string }) {
         </button>
         <button type="button" className="rq" onClick={() => openSheet('profile', { id })}>
           <I n="wand" size={13} />
-          Auto
+          {t('chat.auto')}
         </button>
         <button type="button" className="rq rm2" onClick={() => openSheet('model', { for: 'cowork', id })}>
           <span>{modelName}</span>

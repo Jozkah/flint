@@ -56,6 +56,7 @@ macro_rules! invoke_commands_with_extras {
         core::diffusion::commands::diffusion_guess_family,
         core::diffusion::commands::diffusion_add_custom_model,
         core::diffusion::commands::diffusion_remove_custom_model,
+        core::filesystem::asset_scope::allow_asset_path,
         core::filesystem::commands::join_path,
         core::filesystem::commands::mkdir,
         core::filesystem::commands::exists_sync,

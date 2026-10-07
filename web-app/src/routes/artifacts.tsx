@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useAssetUrl } from '@/lib/assetPath'
 import {
   memo,
   useCallback,
@@ -369,10 +370,7 @@ function ArtifactsPage() {
   const thisWeek = rows.filter((r) => r.updated && now - r.updated < WEEK_MS)
   const sized = rows.filter((r) => r.bytes)
   const diskBytes = sized.reduce((sum, r) => sum + (r.bytes ?? 0), 0)
-  const convertFileSrc = useCallback(
-    (p: string) => serviceHub.core().convertFileSrc(p),
-    [serviceHub]
-  )
+  const convertFileSrc = useAssetUrl()
   const htmlPage = t('engine:library.htmlPage')
 
   return (

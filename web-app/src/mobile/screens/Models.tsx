@@ -6,6 +6,7 @@ import { Avatar, Empty, Loading, Pills } from '../ui/bits'
 import { go, useApp } from '../state/app'
 import { I } from '../ui/icons'
 import { invalidate, useRpc } from '../state/rpc'
+import { t } from '../i18n'
 
 function ProviderTile({ provider }: { provider: string }) {
   const logo = providerLogo(provider)
@@ -22,8 +23,16 @@ const ACTIVE = ['queued', 'downloading', 'verifying', 'importing']
 function usePoll(keys: string[], on: boolean) {
   useEffect(() => {
     if (!on) return
-    const t = setInterval(() => invalidate(keys), 1500)
-    return () => clearInterval(t)
+    // A hidden page re-reads nothing; it catches up as soon as it is shown.
+    const tick = () => {
+      if (document.visibilityState !== 'hidden') invalidate(keys)
+    }
+    const timer = setInterval(tick, 1500)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', tick)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on, keys.join()])
 }
@@ -31,18 +40,18 @@ function usePoll(keys: string[], on: boolean) {
 const bytes = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`)
 
 /** A download's progress with its speed and time left (#55/#87). */
-export function DownloadCard({ t }: { t: DownloadTaskWire }) {
-  const pct = Math.round(t.progress * 100)
-  const left = t.total && t.bytesPerSecond ? Math.max(0, (t.total - t.downloaded) / t.bytesPerSecond) : null
-  const word = t.status === 'importing' ? 'Installing…' : t.status === 'verifying' ? 'Verifying…' : t.status === 'error' ? 'Failed' : t.status === 'paused' ? 'Paused' : `${pct}%`
+export function DownloadCard({ task }: { task: DownloadTaskWire }) {
+  const pct = Math.round(task.progress * 100)
+  const left = task.total && task.bytesPerSecond ? Math.max(0, (task.total - task.downloaded) / task.bytesPerSecond) : null
+  const word = task.status === 'importing' ? t('models.installing') : task.status === 'verifying' ? t('models.verifying') : task.status === 'error' ? t('models.failed') : task.status === 'paused' ? t('models.paused') : `${pct}%`
   return (
     <div className="frame" style={{ padding: '10px 12px', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="download-card">
-      <div className="kv"><b style={{ color: 'var(--foreground)' }}>{t.label}</b><span>{word}</span></div>
+      <div className="kv"><b style={{ color: 'var(--foreground)' }}>{task.label}</b><span>{word}</span></div>
       <div className="meter"><i style={{ width: `${pct}%` }} /></div>
       <small className="muted">
-        {t.total ? `${bytes(t.downloaded)} of ${bytes(t.total)}` : bytes(t.downloaded)}
-        {t.bytesPerSecond ? ` · ${(t.bytesPerSecond / 1e6).toFixed(1)} MB/s` : ''}
-        {left !== null ? ` · ${left < 60 ? `${Math.ceil(left)} s` : `${Math.ceil(left / 60)} min`} left` : ''}
+        {task.total ? t('models.ofTotal', { done: bytes(task.downloaded), total: bytes(task.total) }) : bytes(task.downloaded)}
+        {task.bytesPerSecond ? ` · ${(task.bytesPerSecond / 1e6).toFixed(1)} MB/s` : ''}
+        {left !== null ? ` · ${left < 60 ? t('models.leftSeconds', { n: Math.ceil(left) }) : t('models.leftMinutes', { n: Math.ceil(left / 60) })}` : ''}
       </small>
     </div>
   )
@@ -52,8 +61,8 @@ export default function Models() {
   const { data, loading } = useRpc('models.list', {})
   const status = useRpc('status', {})
   const downloads = useRpc('models.downloads', {})
-  usePoll(['models.downloads'], (downloads.data?.tasks ?? []).some((t) => ACTIVE.includes(t.status)))
-  const computer = useApp((s) => s.computerName) ?? 'your computer'
+  usePoll(['models.downloads'], (downloads.data?.tasks ?? []).some((task) => ACTIVE.includes(task.status)))
+  const computer = useApp((s) => s.computerName) ?? t('common.yourComputer')
   const [filter, setFilter] = useState<'all' | 'local' | 'remote'>('all')
   const models = data?.models ?? []
   const providers = new Map<string, RemoteModel[]>()
@@ -61,23 +70,23 @@ export default function Models() {
   const shown = models.filter((m) => (filter === 'all' ? true : filter === 'local' ? m.local : !m.local))
   return (
     <>
-      <TopMain crumb="Engine" title="Models" />
+      <TopMain crumb={t('models.crumb')} title={t('models.title')} />
       <div className="scroll">
         <div className="ph">
-          <h2>Models</h2>
+          <h2>{t('models.title')}</h2>
           <p>
-            {models.length} available · {status.data?.modelsLoaded ?? 0} loaded on {computer}
+            {t('models.summary', { available: models.length, loaded: status.data?.modelsLoaded ?? 0, computer })}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           <button type="button" className="btn pri" style={{ flex: 1 }} onClick={() => go({ name: 'hf' })}>
             <I n="dl" size={14} />
-            Browse Hugging Face
+            {t('models.browseHf')}
           </button>
         </div>
-        {(downloads.data?.tasks ?? []).filter((t) => !['complete', 'cancelled'].includes(t.status)).map((t) => <DownloadCard key={t.id} t={t} />)}
+        {(downloads.data?.tasks ?? []).filter((task) => !['complete', 'cancelled'].includes(task.status)).map((task) => <DownloadCard key={task.id} task={task} />)}
         {loading && !data && <Loading />}
-        {providers.size > 0 && <div className="ssec">Providers</div>}
+        {providers.size > 0 && <div className="ssec">{t('models.providers')}</div>}
         <div className="pgrid">
           {[...providers.entries()].map(([p, list]) => (
             <div key={p} className="pcard">
@@ -86,27 +95,27 @@ export default function Models() {
               </div>
               <b>{list[0].providerName ?? p}</b>
               <small>
-                {list[0].local ? 'On this computer' : 'Remote'} · {list.length} {list.length === 1 ? 'model' : 'models'}
+                {list[0].local ? t('models.onThisComputer') : t('models.remote')} · {t('models.count', { count: list.length })}
               </small>
               <span className="chip ok" style={{ alignSelf: 'flex-start' }}>
                 <span className="d" />
-                {list.some((m) => m.loaded) ? 'Running' : 'Connected'}
+                {list.some((m) => m.loaded) ? t('models.running') : t('models.connected')}
               </span>
             </div>
           ))}
         </div>
-        <div className="ssec">Installed models</div>
+        <div className="ssec">{t('models.installed')}</div>
         <Pills
           items={[
-            { id: 'all', label: 'All' },
-            { id: 'local', label: 'Local' },
-            { id: 'remote', label: 'Remote' },
+            { id: 'all', label: t('models.filters.all') },
+            { id: 'local', label: t('models.filters.local') },
+            { id: 'remote', label: t('models.filters.remote') },
           ]}
           value={filter}
           onChange={setFilter}
         />
         {data && shown.length === 0 ? (
-          <Empty>No models here.</Empty>
+          <Empty>{t('models.empty')}</Empty>
         ) : (
           <div className="frame">
             {shown.map((m) => (
@@ -120,7 +129,7 @@ export default function Models() {
                 </span>
                 <span className={`chip${m.loaded ? ' ok' : ''}`}>
                   <span className="d" />
-                  {m.loaded ? 'Loaded' : m.local ? 'Ready' : 'Cloud'}
+                  {m.loaded ? t('models.loaded') : m.local ? t('models.ready') : t('models.cloud')}
                 </span>
               </div>
             ))}

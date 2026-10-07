@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { toAssetUrl } from '@/lib/assetPath'
 import {
   Check,
   ChevronDown,
@@ -517,10 +518,9 @@ export function CoworkCodePanel({
         readAborts.current.get(id)?.abort()
         const controller = new AbortController()
         readAborts.current.set(id, controller)
-        const read = await readTextBounded(
-          getServiceHub().core().convertFileSrc(abs),
-          { signal: controller.signal }
-        )
+        const read = await readTextBounded(await toAssetUrl(abs), {
+          signal: controller.signal,
+        })
         if (readAborts.current.get(id) === controller) {
           readAborts.current.delete(id)
         }
@@ -983,9 +983,9 @@ export function CoworkCodePanel({
     if (!abs) return
     let alive = true
     const controller = new AbortController()
-    void readTextBounded(getServiceHub().core().convertFileSrc(abs), {
-      signal: controller.signal,
-    }).then((read) => {
+    void toAssetUrl(abs)
+      .then((url) => readTextBounded(url, { signal: controller.signal }))
+      .then((read) => {
       if (alive) setAgentCopyText(read.status === 'ready' ? toLf(read.content) : null)
     })
     return () => {

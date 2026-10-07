@@ -10,6 +10,7 @@ import {
   type RemoteMethods,
 } from '@/lib/remote/protocol'
 import type { PairingStore } from './storage'
+import { t } from '../i18n'
 
 /** A failed call. `code` is the server's or the desktop's error code, or
  * `network` / `unauthorized` from the client itself. */
@@ -93,8 +94,8 @@ export class RemoteClient {
         ...(abort ? { signal: abort.signal } : {}),
       })
     } catch {
-      if (timedOut) throw new RemoteCallError('timeout', "Your computer didn't answer in time")
-      throw new RemoteCallError('network', "Can't reach your computer")
+      if (timedOut) throw new RemoteCallError('timeout', t('app.timeout'))
+      throw new RemoteCallError('network', t('app.cantReach'))
     } finally {
       clearTimeout(timer)
     }
@@ -107,7 +108,7 @@ export class RemoteClient {
     if (res.status === 401 && auth) throw this.unauthorized()
     if (!res.ok) {
       const err = (body as { error?: { code?: string; message?: string } } | null)?.error
-      throw new RemoteCallError(err?.code ?? 'http', err?.message ?? `Request failed (${res.status})`, res.status)
+      throw new RemoteCallError(err?.code ?? 'http', err?.message ?? t('api.requestFailed', { status: res.status }), res.status)
     }
     return body as T
   }
@@ -118,7 +119,7 @@ export class RemoteClient {
       this.store.clear()
       this.onUnauthorized?.()
     }
-    return new RemoteCallError('unauthorized', "This phone isn't paired", 401)
+    return new RemoteCallError('unauthorized', t('pairing.unpairedTitle'), 401)
   }
 
   /** Calls a method on the desktop window. Throws RemoteCallError with the

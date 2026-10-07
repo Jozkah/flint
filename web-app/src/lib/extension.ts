@@ -1,4 +1,5 @@
 import { AIEngine, BaseExtension, ExtensionTypeEnum } from '@janhq/core'
+import { toAssetUrl } from '@/lib/assetPath'
 
 import { getServiceHub } from '@/hooks/useServiceHub'
 
@@ -211,7 +212,7 @@ export class ExtensionManager {
     
     // Import class for Tauri extensions
     const extensionUrl = extension.url
-    await import(/* @vite-ignore */ getServiceHub().core().convertFileSrc(extensionUrl)).then(
+    await import(/* @vite-ignore */ await toAssetUrl(extensionUrl)).then(
       (extensionClass) => {
         // Register class if it has a default export
         if (
