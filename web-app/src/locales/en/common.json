@@ -1438,7 +1438,11 @@
   },
   "drop": {
     "openInCode": "Drop to open — read-only",
-    "attachToMessage": "Drop to attach to your message"
+    "attachToMessage": "Drop to attach to your message",
+    "releaseToAttach": "Release to attach"
+  },
+  "voicePill": {
+    "cancel": "Cancel"
   },
   "coworkMode": {
     "label": "What Flint may do",
@@ -2266,5 +2270,15 @@
   },
   "decisionScopeShowFull": "Show full",
   "decisionScopeHide": "Hide full",
-  "decisionScopeCopy": "Copy"
+  "decisionScopeCopy": "Copy",
+  "motionMedia": {
+    "queued": "Queued",
+    "generating": "Generating",
+    "refining": "Refining",
+    "ready": "Ready",
+    "failed": "Failed",
+    "stop": "Stop",
+    "retry": "Retry",
+    "downloading": "Downloading…"
+  }
 }

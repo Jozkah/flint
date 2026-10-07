@@ -102,9 +102,19 @@ describe('phone screens (mocked RPC)', () => {
     expect(within(card).getByText('git push -u origin flint/radar-retry && gh pr create --fill')).toBeInTheDocument()
     expect(screen.getAllByText('3 of 5 done').length).toBeGreaterThan(0)
     client.rpc.mockImplementationOnce(async () => ({ status: 'answered' }))
-    fireEvent.click(within(card).getByRole('button', { name: 'Allow once' }))
-    expect((await screen.findAllByText('Allowed once · from this phone', {}, T)).length).toBeGreaterThan(0)
-    expect(client.rpc).toHaveBeenCalledWith('approvals.respond', { requestId: 'ap1', decision: 'allow', scope: 'once' })
+    fireEvent.keyDown(
+      within(card).getByRole('slider', { name: 'Allow once' }),
+      { key: 'End' }
+    )
+    expect(
+      (await screen.findAllByText('Allowed once · from this phone', {}, T))
+        .length
+    ).toBeGreaterThan(0)
+    expect(client.rpc).toHaveBeenCalledWith('approvals.respond', {
+      requestId: 'ap1',
+      decision: 'allow',
+      scope: 'once',
+    })
   })
 
   it('Room shows usage, the speaker and the discussion', async () => {

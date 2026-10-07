@@ -35,6 +35,7 @@ import { HuggingFaceAvatar } from '@/containers/HuggingFaceAvatar'
 import { Segmented } from '@/components/ui/segmented'
 import { StudioDiscover } from '@/containers/studio/StudioDiscover'
 import { cn } from '@/lib/utils'
+import { useSpotlight } from '@/hooks/useSpotlight'
 import { HuggingFaceDownloadAction } from '@/containers/HuggingFaceDownloadAction'
 import { route } from '@/constants/routes'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -135,6 +136,7 @@ const MODALITY_PILLS: Array<{
 ]
 
 function ModelDiscoverRoute() {
+  const spotlight = useSpotlight()
   const navigate = useNavigate()
   const token = useGeneralSetting((state) => state.huggingfaceToken)
   const { hardware, devices } = useFitContext()
@@ -647,7 +649,13 @@ function ModelDiscoverRoute() {
                     className="absolute left-0 top-0 w-full pb-3"
                     style={{ transform: `translateY(${virtualItem.start}px)` }}
                   >
-                    <div className="overflow-hidden rounded-2xl border-[0.8px] border-border bg-card shadow-sm transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-lift">
+                    <div
+                      onPointerMove={spotlight.onPointerMove}
+                      className={cn(
+                        'overflow-hidden rounded-2xl border-[0.8px] border-border bg-card shadow-sm transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-lift',
+                        spotlight.className
+                      )}
+                    >
                       <div className="flex flex-col gap-4 p-4 md:flex-row md:items-start md:justify-between">
                         <button
                           type="button"

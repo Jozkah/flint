@@ -4,6 +4,7 @@
 import { useState } from 'react'
 import type { PushPrefs } from '@/lib/remote/protocol'
 import { Grp, IRow } from '../ui/ios'
+import { BellSwitch } from '../ui/bell-switch'
 import { act, describeError, toast } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
 import { DEFAULT_PUSH, disablePush, enablePush, minToTime, pushSupport, supportText, timeToMin, withOffset, type PushSupport } from '../state/push'
@@ -50,11 +51,18 @@ export default function PushSettings({ support = pushSupport() }: { support?: Pu
         cap="Push notifications"
         foot={why ?? 'Sent by your computer straight to this phone’s push service, only while Flint is not open here. Payloads are encrypted and carry no message text.'}
       >
-        <IRow
+        <BellSwitch
           label="Notify this phone"
-          sw={on}
-          sub={data && !data.available ? 'Not set up on the computer' : undefined}
-          onClick={why || busy || (data && !data.available) ? undefined : () => void toggle()}
+          on={on}
+          busy={busy}
+          sub={
+            data && !data.available ? 'Not set up on the computer' : undefined
+          }
+          onClick={
+            why || busy || (data && !data.available)
+              ? undefined
+              : () => void toggle()
+          }
           testId="push-toggle"
         />
         {on && <IRow label="Send a test notification" onClick={() => void act('push.test', {}, 'Test sent')} testId="push-test" />}
