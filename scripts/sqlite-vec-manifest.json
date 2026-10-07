@@ -1,0 +1,11 @@
+{
+  "tag": "v0.1.9",
+  "baseUrl": "https://github.com/asg017/sqlite-vec/releases/download/v0.1.9",
+  "assets": {
+    "linux-arm64": { "name": "sqlite-vec-0.1.9-loadable-linux-aarch64.tar.gz", "sha256": "ea03d39541e478fab5974253c461e1cb5d77742f69e40cf96e3fad5bc309a37c" },
+    "linux-x64": { "name": "sqlite-vec-0.1.9-loadable-linux-x86_64.tar.gz", "sha256": "b959baa1d8dc88861b1edb337b8587178cdcb12d60b4998f9d10b6a82052d5d7" },
+    "darwin-arm64": { "name": "sqlite-vec-0.1.9-loadable-macos-aarch64.tar.gz", "sha256": "8282126333399ddfe98bbbcc7a1936e7252625aac49df056a98be602e46bfd29" },
+    "darwin-x64": { "name": "sqlite-vec-0.1.9-loadable-macos-x86_64.tar.gz", "sha256": "53ad76e400786515e2edcaed2f01271dda846316390b761fadbd2dcf56aa4713" },
+    "win32-x64": { "name": "sqlite-vec-0.1.9-loadable-windows-x86_64.tar.gz", "sha256": "51581189d52066b4dfc6631f6d7a3eab7dedc2260656ab09ca97ab3fb8165983" }
+  }
+}

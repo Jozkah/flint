@@ -270,6 +270,8 @@ export default class mlx_extension extends AIEngine {
     isEmbedding: boolean = false,
     bypassAutoUnload: boolean = false
   ): Promise<SessionInfo> {
+    if (!isValidModelId(modelId))
+      throw new Error(`Invalid model ID: ${modelId}`)
     const loadedModels = await this.getLoadedModels()
 
     // Auto-unload other models if needed
@@ -398,7 +400,8 @@ export default class mlx_extension extends AIEngine {
 
     if (isAlive) {
       try {
-        await fetch(`http://localhost:${sessionInfo.port}/health`)
+        const res = await fetch(`http://localhost:${sessionInfo.port}/health`)
+        if (!res.ok) throw new Error(`health check returned ${res.status}`)
       } catch (e) {
         // Best-effort cleanup: unload() rejects when the session is already
         // gone, and that rejection must not escape as an unhandled one.

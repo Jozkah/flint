@@ -85,43 +85,27 @@ export default class VectorDBExt extends VectorDBExtension {
   }
 
   async ingestFileForProject(projectId: string, file: VectorDBFileInput, opts: VectorDBIngestOptions): Promise<AttachmentFileInfo> {
-    // First, parse the document and get embeddings to determine dimension
-    const text = await ragApi.parseDocument(file.path, file.type || 'application/octet-stream')
-    const chunks = await this.chunkText(text, opts.chunkSize, opts.chunkOverlap)
-
-    // Get embeddings to determine dimension - use a default if no chunks
-    let dimension = 0
-    if (chunks.length > 0) {
-      const embeddings = await embedTexts(chunks)
-      dimension = embeddings[0]?.length || 0
-    }
-
-    // Ensure collection exists (use default dimension 384 if no embeddings yet)
-    const collectionDimension = dimension > 0 ? dimension : 384
-    await this.createCollectionForProject(projectId, collectionDimension)
-
-    // Now check for duplicates
+    // Reject a duplicate before the costly parse and embedding work. A missing
+    // collection has no attachments yet.
     const existingFiles = await vecdb.listAttachments(this.collectionForProject(projectId)).catch(() => [])
     const duplicate = existingFiles.find((f: any) => f.name === file.name && f.path === file.path)
     if (duplicate) {
       throw new Error(`File '${file.name}' has already been attached to this project`)
     }
 
+    const text = await ragApi.parseDocument(file.path, file.type || 'application/octet-stream')
+    const chunks = await this.chunkText(text, opts.chunkSize, opts.chunkOverlap)
+
     if (!chunks.length) {
-      const fi = await vecdb.createFile(this.collectionForProject(projectId), file)
-      return fi
+      await this.createCollectionForProject(projectId, 384)
+      return await vecdb.createFile(this.collectionForProject(projectId), file)
     }
 
-    // Re-embed if we got dimension from createCollection
+    // Embed once; the first result gives the collection dimension.
     const embeddings = await embedTexts(chunks)
-    const finalDimension = embeddings[0]?.length || 0
-    if (finalDimension <= 0) throw new Error('Embedding dimension not available')
-
-    // Ensure collection has correct dimension
-    if (finalDimension !== collectionDimension) {
-      await this.deleteCollectionForProject(projectId)
-      await this.createCollectionForProject(projectId, finalDimension)
-    }
+    const dimension = embeddings[0]?.length || 0
+    if (dimension <= 0) throw new Error('Embedding dimension not available')
+    await this.createCollectionForProject(projectId, dimension)
 
     const fi = await vecdb.createFile(this.collectionForProject(projectId), file)
     await vecdb.insertChunks(

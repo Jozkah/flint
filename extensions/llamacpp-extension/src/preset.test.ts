@@ -1017,3 +1017,43 @@ describe('generatePreset extra_args', () => {
     expect(global.trimEnd().endsWith('rope-scaling = yarn')).toBe(true)
   })
 })
+
+describe('extraArgsToIni negative values and blocking', () => {
+  it('keeps negative numbers as values', () => {
+    expect(
+      extraArgsToIni('--seed -1 --temp -0.5 --n-gpu-layers -1').lines
+    ).toEqual(['seed = -1', 'temp = -0.5', 'n-gpu-layers = -1'])
+  })
+
+  it('still treats a following long flag as a new flag', () => {
+    expect(extraArgsToIni('--no-warmup --threads 4 --mlock').lines).toEqual([
+      'no-warmup = true',
+      'threads = 4',
+      'mlock = true',
+    ])
+  })
+
+  it('blocks sibling model and download options', () => {
+    const keys = [
+      'hf-repo-draft',
+      'hf-repo-v',
+      'hf-file-v',
+      'mmproj-url',
+      'mmproj',
+      'model-draft',
+      'model-vocoder',
+      'no-webui',
+      'no-models-autoload',
+    ]
+    const out = extraArgsToIni(keys.map((k) => `--${k} x`).join(' '))
+    expect(out.lines).toEqual([])
+    expect(out.skipped).toHaveLength(keys.length)
+  })
+
+  it('allows safe options', () => {
+    const keys = ['alias', 'threads', 'ctx-size', 'mmproj-offload', 'no-mmproj-offload', 'rope-scaling', 'flash-attn']
+    const out = extraArgsToIni(keys.map((k) => `--${k} 1`).join(' '))
+    expect(out.skipped).toEqual([])
+    expect(out.lines).toHaveLength(keys.length)
+  })
+})
