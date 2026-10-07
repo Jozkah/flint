@@ -22,6 +22,7 @@ use tokio::net::TcpListener;
 
 use super::auth::AuthStore;
 use super::data;
+use super::engine;
 use super::mcp;
 use super::provider;
 use super::resources;
@@ -51,6 +52,8 @@ pub struct Options {
     /// Exact origins (`https://host[:port]`) that may call the API from another
     /// origin with a bearer token. Never a wildcard.
     pub allowed_origins: Vec<String>,
+    /// The `flint-llama-worker` binary to supervise for local inference.
+    pub llama_worker: Option<PathBuf>,
 }
 
 struct State {
@@ -62,6 +65,7 @@ struct State {
     login_failures: Mutex<VecDeque<Instant>>,
     mcp: mcp::Host,
     allowed_origins: HashSet<String>,
+    engine: engine::Supervisor,
 }
 
 fn login_blocked(failures: &mut VecDeque<Instant>) -> bool {
@@ -348,6 +352,33 @@ async fn resource_route(
                 Ok(()) => no_content(),
                 Err(_) => text(StatusCode::BAD_REQUEST, "Invalid values"),
             }
+        }
+        (Method::GET, "/api/v1/engine/info") => json(&engine::info(&state.engine).await),
+        (Method::GET, "/api/v1/engine/version") => json(&engine::version()),
+        (Method::GET, "/api/v1/engine/devices") => match engine::devices(&state.engine).await {
+            Ok(devices) => json(&devices),
+            Err(message) => reply(StatusCode::BAD_GATEWAY, "text/plain; charset=utf-8", message),
+        },
+        (Method::POST, "/api/v1/engine/start") => {
+            let body = match read_json_value(req).await {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
+            let Ok(request) = serde_json::from_value::<engine::StartRequest>(body) else {
+                return text(StatusCode::BAD_REQUEST, "Invalid engine request");
+            };
+            match engine::start(&state.engine, &state.data_folder, request).await {
+                Ok(info) => json(&info),
+                Err(message) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
+            }
+        }
+        (Method::POST, "/api/v1/engine/stop") => {
+            engine::stop(&state.engine, false).await;
+            no_content()
+        }
+        (Method::POST, "/api/v1/engine/force-stop") => {
+            engine::stop(&state.engine, true).await;
+            no_content()
         }
         (Method::GET, "/api/v1/hardware/info") => {
             blocking(|| Ok(tauri_plugin_hardware::get_system_info())).await
@@ -861,6 +892,7 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
         || path.starts_with("/api/v1/assistants")
         || path.starts_with("/api/v1/hardware")
         || path == "/api/v1/app/info"
+        || path.starts_with("/api/v1/engine/")
         || path.starts_with("/api/v1/provider-keys/")
         || path == "/api/v1/secret-values"
     {
@@ -981,6 +1013,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
         login_failures: Mutex::new(VecDeque::new()),
         mcp: mcp::Host::new(options.allow_mcp_stdio),
         allowed_origins: options.allowed_origins.iter().map(|o| o.to_ascii_lowercase()).collect(),
+        engine: engine::Supervisor::new(options.llama_worker.clone()),
     });
     eprintln!(
         "Flint web server listening on http://{}",
@@ -998,7 +1031,10 @@ pub async fn serve(options: Options) -> io::Result<()> {
     loop {
         let (socket, peer) = tokio::select! {
             accepted = listener.accept() => accepted?,
-            _ = tokio::signal::ctrl_c() => break,
+            _ = tokio::signal::ctrl_c() => {
+                engine::stop(&state.engine, false).await;
+                break;
+            }
         };
         if loopback && !peer.ip().is_loopback() {
             continue;
@@ -1048,6 +1084,7 @@ mod tests {
             login_failures: Mutex::new(VecDeque::new()),
             mcp: mcp::Host::new(false),
             allowed_origins: HashSet::new(),
+            engine: engine::Supervisor::new(None),
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(
@@ -1075,6 +1112,7 @@ mod tests {
             allow_mcp_stdio: false,
             allowed_hosts: Vec::new(),
             allowed_origins: Vec::new(),
+            llama_worker: None,
         })
         .await
         .unwrap_err();
@@ -1123,6 +1161,7 @@ mod tests {
             allow_mcp_stdio: false,
             allowed_hosts: hosts.into_iter().map(String::from).collect(),
             allowed_origins: origins.into_iter().map(String::from).collect(),
+            llama_worker: None,
         };
         let none = serve(options(vec![], vec![])).await.unwrap_err();
         assert!(none.to_string().contains("--allowed-host"));
@@ -1145,6 +1184,7 @@ mod tests {
             login_failures: Mutex::new(VecDeque::new()),
             mcp: mcp::Host::new(false),
             allowed_origins: HashSet::from(["http://tauri.localhost".to_string()]),
+            engine: engine::Supervisor::new(None),
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(header::ORIGIN, HeaderValue::from_static("http://Tauri.localhost"));

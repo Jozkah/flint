@@ -238,6 +238,10 @@ enum Commands {
         /// repeatable, never a wildcard
         #[arg(long = "allowed-origin")]
         allowed_origins: Vec<String>,
+        /// The flint-llama-worker binary that runs local models (defaults to
+        /// FLINT_LLAMA_WORKER_BIN, then the file beside this executable)
+        #[arg(long)]
+        llama_worker: Option<std::path::PathBuf>,
     },
     /// Non-interactive CLI: launch agents, run headless agent tasks, manage models and threads
     #[command(display_order = 1)]
@@ -1374,7 +1378,7 @@ async fn run() {
     };
 
     match command {
-        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, allowed_hosts, allowed_origins } => {
+        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, allowed_hosts, allowed_origins, llama_worker } => {
             if let Some(data_dir) = data_dir {
                 std::env::set_var("JAN_DATA_FOLDER", data_dir);
             }
@@ -1396,6 +1400,7 @@ async fn run() {
                     allow_mcp_stdio,
                     allowed_hosts,
                     allowed_origins,
+                    llama_worker,
                 },
             ).await {
                 eprintln!("Error: {error}");

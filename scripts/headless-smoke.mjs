@@ -9,7 +9,7 @@
 
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -47,11 +47,22 @@ await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve))
 const upstreamPort = upstream.address().port
 
 const data = mkdtempSync(join(tmpdir(), 'flint-smoke-'))
+// A stand-in for flint-llama-worker: prints the handshake, then waits for its
+// stdin to close, which is how the real worker is told to stop.
+const fakeWorker = join(data, process.platform === 'win32' ? 'fake-worker.cmd' : 'fake-worker.sh')
+const handshake = '{"port":4242,"pid":4242,"models":["m1"]}'
+writeFileSync(
+  fakeWorker,
+  process.platform === 'win32'
+    ? ['@echo off', `echo ${handshake}`, 'more >nul', ''].join('\r\n')
+    : ['#!/bin/sh', `echo '${handshake}'`, 'cat >/dev/null', ''].join('\n')
+)
+chmodSync(fakeWorker, 0o755)
 const port = await freePort()
 const base = `http://127.0.0.1:${port}`
 const server = spawn(
   binary,
-  ['serve', '--listen', `127.0.0.1:${port}`, '--assets-dir', assets, '--data-dir', data],
+  ['serve', '--listen', `127.0.0.1:${port}`, '--assets-dir', assets, '--data-dir', data, '--llama-worker', fakeWorker],
   { stdio: ['ignore', 'pipe', 'pipe'] }
 )
 let log = ''
@@ -140,6 +151,21 @@ try {
     body: JSON.stringify({ config: { command: 'node', args: ['-e', '0'], env: {} }, start: true }),
   })
   check('stdio MCP refused without the flag', mcp.status === 400 && /allow-mcp-stdio/.test(await mcp.text()))
+
+  // Local engine supervision (fake worker)
+  const preset = join(data, 'router.preset.ini')
+  writeFileSync(preset, ['[*]', ''].join('\n'))
+  const engine = (path, body) => json(`/api/v1/engine/${path}`, { method: 'POST', headers: auth, body: JSON.stringify(body ?? {}) })
+  check('engine preset outside the data folder refused', (await engine('start', { presetPath: join(tmpdir(), 'nope.ini') })).status === 400)
+  check('engine env cannot redirect code', (await engine('start', { presetPath: preset, envs: { LD_PRELOAD: 'x' } })).status === 400)
+  check('engine reports stopped before start', (await (await json('/api/v1/engine/info', { headers: auth })).json()) === null)
+  const started = await (await engine('start', { presetPath: preset, modelsMax: 1 })).json()
+  check('engine starts and reports port, key and models', started.port === 4242 && started.apiKey?.length === 64 && started.models[0] === 'm1')
+  const again = await (await engine('start', { presetPath: preset })).json()
+  check('a second start is idempotent', again.apiKey === started.apiKey)
+  check('engine info reports it running', (await (await json('/api/v1/engine/info', { headers: auth })).json())?.pid === 4242)
+  check('engine stops', (await engine('stop')).status === 204 && (await (await json('/api/v1/engine/info', { headers: auth })).json()) === null)
+  check('engine version', typeof (await (await json('/api/v1/engine/version', { headers: auth })).json()).tag === 'string')
 
   check('sign-out ends the token', (await json('/api/v1/session', { method: 'DELETE', headers: auth })).status === 204 && (await json('/api/v1/projects', { headers: auth })).status === 401)
   console.log(`\n${checks.length} checks passed`)

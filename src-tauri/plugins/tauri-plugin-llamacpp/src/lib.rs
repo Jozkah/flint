@@ -1,22 +1,31 @@
+#[cfg(feature = "tauri")]
 use std::sync::Arc;
 
+#[cfg(feature = "tauri")]
 use tauri::{
     plugin::{Builder, TauriPlugin},
     Manager, Runtime,
 };
 
+#[cfg(feature = "tauri")]
 pub mod cleanup;
+#[cfg(feature = "tauri")]
 mod commands;
 mod compat_env;
 pub mod engine;
+#[cfg(feature = "tauri")]
 mod error;
+#[cfg(feature = "tauri")]
 mod gguf;
 mod process;
 pub mod state;
+#[cfg(feature = "tauri")]
 pub use cleanup::cleanup_llama_processes;
+#[cfg(feature = "tauri")]
 pub use engine::commands::try_graceful_stop_engine;
 pub use state::LlamacppState;
 
+#[cfg(feature = "tauri")]
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("llamacpp")
         .invoke_handler(tauri::generate_handler![
@@ -47,7 +56,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .build()
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tauri"))]
 mod permission_tests {
     /// A command reaches the frontend only if it is BOTH in `generate_handler!`
     /// and in `build.rs`'s `COMMANDS` (which generates its permission). Missing
