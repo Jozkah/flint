@@ -100,7 +100,8 @@ fn is_jan_router(proc: &ProcInfo, llamacpp_dir: &str) -> bool {
 
 /// A Jan process, judged by name: `Jan`, `jan`, `Jan.exe`, `Jan-Desktop.exe`.
 fn is_jan(name: &str) -> bool {
-    name.to_ascii_lowercase().contains("jan")
+    let name = name.to_ascii_lowercase();
+    name.contains("jan") || name.contains("flint")
 }
 
 /// Whether `parent` could really be the parent of `child`: a parent cannot have

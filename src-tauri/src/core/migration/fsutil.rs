@@ -18,6 +18,55 @@ pub fn is_linked_dir(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) && path.is_dir()
 }
 
+/// The first directory link found under `root` (not following links), if any.
+/// Copying skips such links, so a Move that removed the source would lose
+/// whatever they point to unless the caller refuses first.
+pub fn find_linked_dir(root: &Path) -> Option<std::path::PathBuf> {
+    if is_linked_dir(root) {
+        return Some(root.to_path_buf());
+    }
+    if !root.is_dir() {
+        return None;
+    }
+    let rd = fs::read_dir(root).ok()?;
+    for entry in rd.flatten() {
+        let child = entry.path();
+        if is_linked_dir(&child) {
+            return Some(child);
+        }
+        if child.is_dir() {
+            if let Some(found) = find_linked_dir(&child) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+/// Canonicalize `p` even when it does not exist yet: the deepest existing
+/// ancestor is resolved and the missing tail appended.
+pub fn canonical_or_lexical(p: &Path) -> std::path::PathBuf {
+    if let Ok(c) = p.canonicalize() {
+        return c;
+    }
+    let mut tail = Vec::new();
+    let mut cur = p;
+    while let Some(parent) = cur.parent() {
+        if let Some(name) = cur.file_name() {
+            tail.push(name.to_os_string());
+        }
+        if let Ok(c) = parent.canonicalize() {
+            let mut out = c;
+            for part in tail.iter().rev() {
+                out.push(part);
+            }
+            return out;
+        }
+        cur = parent;
+    }
+    p.to_path_buf()
+}
+
 /// Total size in bytes of a file or directory tree. Missing paths are 0.
 /// Unreadable entries are skipped rather than aborting the walk.
 pub fn size_of(path: &Path) -> u64 {

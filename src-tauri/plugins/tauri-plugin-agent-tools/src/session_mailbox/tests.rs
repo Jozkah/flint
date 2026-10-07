@@ -1325,3 +1325,27 @@ fn waiting_approval_shows_only_while_running_and_clears_with_the_run() {
     mb.set_status("b", true, Some("r2")).unwrap();
     assert!(!mb.list_sessions("a").unwrap()[0].waiting_approval);
 }
+
+#[test]
+fn windows_reserved_ids_are_rejected() {
+    for bad in ["CON", "con", "Nul", "aux.txt", "COM1", "lpt9", "prn.log", "abc."] {
+        assert!(!valid_id(bad), "{bad} should be rejected");
+    }
+    for ok in ["com0", "COM10", "console", "lpt", "session-1", "a.b"] {
+        assert!(valid_id(ok), "{ok} should be accepted");
+    }
+}
+
+#[test]
+fn ids_differing_only_by_case_do_not_share_a_mailbox() {
+    let fx = Fixture::new("case_ids");
+    let mb = Mailbox::open(&fx.data);
+    mb.register("01HABCDEF", "upper", fx.folder()).unwrap();
+    assert_eq!(
+        code_of(mb.register("01habcdef", "lower", fx.folder())),
+        code::INVALID_SESSION_ID
+    );
+    // The same id again is an upsert, and an unrelated id still registers.
+    mb.register("01HABCDEF", "upper", fx.folder()).unwrap();
+    mb.register("01HZZZ", "other", fx.folder()).unwrap();
+}

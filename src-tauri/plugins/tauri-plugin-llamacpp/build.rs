@@ -43,6 +43,7 @@ const COMMANDS: &[&str] = &[
     "read_gguf_metadata",
     "find_gguf_tensors",
     "is_model_supported",
+    "sha256_file",
 ];
 
 fn main() {

@@ -1744,15 +1744,16 @@ mod tests {
     }
 
     /// A stopped operation in the checkout no longer blocks a worktree: it is
-    /// built from HEAD's commit, clean, and the record says what it did not
+    /// built from the default branch's commit (HEAD is detached mid-rebase and
+    /// is not the base), clean, and the record says what it did not
     /// carry. The operation in the checkout is left exactly where it was.
     fn assert_created_despite(f: &Fixture, op: &str, session: &str) {
         let stopped = operation_in_progress(&f.repo).expect("operation detected");
         assert_eq!(stopped.operation, op);
         assert_eq!(stopped.unresolved, vec!["a.txt".to_string()]);
-        let head = run(&f.repo, &["rev-parse", "HEAD"]).unwrap();
-        let record = ensure(&f.repo, &f.worktrees, session).expect("created from HEAD");
-        assert_eq!(record.base_sha, head);
+        let base = run(&f.repo, &["rev-parse", "refs/heads/main"]).unwrap();
+        let record = ensure(&f.repo, &f.worktrees, session).expect("created from main");
+        assert_eq!(record.base_sha, base);
         assert!(
             record
                 .notes

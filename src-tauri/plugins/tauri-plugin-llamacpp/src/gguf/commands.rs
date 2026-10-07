@@ -6,6 +6,77 @@ use crate::gguf::types::ModelSupportStatus;
 use std::fs;
 use tauri_plugin_hardware::{get_system_info, SystemInfo};
 
+/// Streaming SHA-256 of a file as lowercase hex. Fixed 1 MiB buffer, so a
+/// multi-GB gguf never sits in memory.
+pub fn sha256_file_hex(path: &std::path::Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
+}
+
+/// SHA-256 of a local file, hashed off the async runtime.
+#[tauri::command]
+pub async fn sha256_file(path: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        sha256_file_hex(std::path::Path::new(&path))
+            .map_err(|e| format!("Failed to hash {path}: {e}"))
+    })
+    .await
+    .map_err(|e| format!("Hash task failed: {e}"))?
+}
+
+#[cfg(test)]
+mod sha256_tests {
+    use super::*;
+
+    #[test]
+    fn hashes_known_vector_and_empty_file() {
+        let dir = std::env::temp_dir().join(format!("flint-sha-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("abc.bin");
+        fs::write(&f, b"abc").unwrap();
+        assert_eq!(
+            sha256_file_hex(&f).unwrap(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        let e = dir.join("empty.bin");
+        fs::write(&e, b"").unwrap();
+        assert_eq!(
+            sha256_file_hex(&e).unwrap(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert!(sha256_file_hex(&dir.join("missing")).is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn hashes_file_larger_than_buffer() {
+        let dir = std::env::temp_dir().join(format!("flint-sha-big-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("big.bin");
+        let data = vec![7u8; (1 << 20) * 2 + 13];
+        fs::write(&f, &data).unwrap();
+        use sha2::{Digest, Sha256};
+        let want: String = Sha256::digest(&data).iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(sha256_file_hex(&f).unwrap(), want);
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
 /// Read GGUF metadata from a model file
 #[tauri::command]
 pub async fn read_gguf_metadata(path: String) -> Result<GgufMetadata, String> {

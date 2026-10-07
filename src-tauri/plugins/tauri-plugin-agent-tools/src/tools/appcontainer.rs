@@ -1087,7 +1087,7 @@ mod win {
         CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
         InitializeProcThreadAttributeList, UpdateProcThreadAttribute, WaitForSingleObject,
         CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
-        LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
+        LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
         PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES, STARTUPINFOEXW,
     };
 
@@ -1980,6 +1980,35 @@ mod win {
         (handles[0], handles[1], handles[2])
     }
 
+    /// The valid, distinct handles of `candidates`, in order. The kernel rejects
+    /// an `INVALID_HANDLE_VALUE`, a null, or a repeat in a handle list.
+    fn unique_valid_handles(candidates: &[HANDLE]) -> Vec<HANDLE> {
+        let mut out: Vec<HANDLE> = Vec::with_capacity(candidates.len());
+        for &h in candidates {
+            if !h.is_null() && h != INVALID_HANDLE_VALUE && !out.contains(&h) {
+                out.push(h);
+            }
+        }
+        out
+    }
+
+    #[cfg(test)]
+    mod handle_list_tests {
+        use super::*;
+
+        #[test]
+        fn handle_list_keeps_only_valid_distinct_handles() {
+            let a = 4usize as HANDLE;
+            let b = 8usize as HANDLE;
+            assert_eq!(unique_valid_handles(&[a, b, a]), vec![a, b]);
+            assert_eq!(
+                unique_valid_handles(&[INVALID_HANDLE_VALUE, std::ptr::null_mut(), b]),
+                vec![b]
+            );
+            assert!(unique_valid_handles(&[INVALID_HANDLE_VALUE; 3]).is_empty());
+        }
+    }
+
     /// Put this process in a kill-on-close job, so the shell -- created inside the
     /// job by inheritance -- dies whenever the helper does. `kill_on_drop` and
     /// `kill_tree` reach the helper, not the extra process layer it adds, so
@@ -2245,15 +2274,26 @@ mod win {
             Reserved: 0,
         };
 
+        // Only the three std handles may be inherited. With `bInheritHandles`
+        // set and no handle list, the child would receive every inheritable
+        // handle this process holds (pipes to other children, log files).
+        // Distinct and valid only: a repeated or invalid entry makes the
+        // attribute update fail.
+        let (stdin, stdout, stderr) = inheritable_std_handles();
+        let mut inherited = unique_valid_handles(&[stdin, stdout, stderr]);
+        let attribute_count: u32 = if inherited.is_empty() { 1 } else { 2 };
+
         // Two calls: the first only reports the size, the second initializes the
         // buffer we just allocated for it.
         let mut size: usize = 0;
         unsafe {
-            InitializeProcThreadAttributeList(std::ptr::null_mut(), 1, 0, &mut size);
+            InitializeProcThreadAttributeList(std::ptr::null_mut(), attribute_count, 0, &mut size);
         }
         let mut attribute_buffer = vec![0u8; size];
         let attributes = attribute_buffer.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
-        if unsafe { InitializeProcThreadAttributeList(attributes, 1, 0, &mut size) } == 0 {
+        if unsafe { InitializeProcThreadAttributeList(attributes, attribute_count, 0, &mut size) }
+            == 0
+        {
             return Err(LaunchFailure::new(
                 Stage::SandboxPolicy,
                 "InitializeProcThreadAttributeList",
@@ -2287,7 +2327,31 @@ mod win {
             .with_code(code));
         }
 
-        let (stdin, stdout, stderr) = inheritable_std_handles();
+        if !inherited.is_empty() {
+            let listed = unsafe {
+                UpdateProcThreadAttribute(
+                    attributes,
+                    0,
+                    PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+                    inherited.as_mut_ptr() as *const c_void,
+                    inherited.len() * std::mem::size_of::<HANDLE>(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            };
+            if listed == 0 {
+                let message = last_error();
+                let code = last_error_code();
+                unsafe { DeleteProcThreadAttributeList(attributes) };
+                return Err(LaunchFailure::new(
+                    Stage::SandboxPolicy,
+                    "UpdateProcThreadAttribute",
+                    format!("could not restrict inherited handles: {message}"),
+                )
+                .with_code(code));
+            }
+        }
+
         let mut startup: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
         startup.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
         startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
@@ -2312,7 +2376,9 @@ mod win {
                 line.as_mut_ptr(),
                 std::ptr::null(),
                 std::ptr::null(),
-                1,
+                // Inheritance is on only to let the listed std handles through;
+                // with nothing to pass there is nothing to inherit.
+                i32::from(!inherited.is_empty()),
                 // CREATE_NO_WINDOW keeps the confined shell from flashing a
                 // console window: std handles are already redirected to pipes,
                 // so the child never needs a visible console of its own.

@@ -596,6 +596,15 @@ async fn execute(
     let work = async move {
         use jan_process::CommandConsole;
         let mut cmd = tokio::process::Command::new(shell.program.clone());
+        // A hook gets the same minimal environment as the `bash` tool, never
+        // the host's: a provider key or `SSH_AUTH_SOCK` in the app's
+        // environment must not reach a script a repository chose.
+        cmd.env_clear();
+        for key in crate::tools::proc::SANDBOX_ENV_ALLOW {
+            if let Some(val) = std::env::var_os(key) {
+                cmd.env(key, val);
+            }
+        }
         cmd.args(shell.args.clone())
             .arg(&command)
             .current_dir(&root)
@@ -1239,6 +1248,28 @@ mod tests {
         assert!(decision.allowed());
         let seen = std::fs::read_to_string(&out).unwrap_or_default();
         assert!(seen.contains("pre-tool bash"), "{seen:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The host's secrets stay out of a hook's environment.
+    #[tokio::test]
+    async fn a_hook_does_not_inherit_the_host_environment() {
+        let root = dir("env-secret");
+        let out = root.join("secret.txt");
+        let out_path = out.display().to_string().replace('\\', "/");
+        // A unique name no other test reads.
+        std::env::set_var("FLINT_TEST_HOOK_SECRET", "hunter2");
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"pre-tool\"\ncommand = \"echo \\\"[$FLINT_TEST_HOOK_SECRET]\\\" > '{out_path}'\"\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let decision = run(&hooks, Event::PreTool, Some("bash"), &ctx(&root)).await;
+        assert!(decision.allowed());
+        let seen = std::fs::read_to_string(&out).unwrap_or_default();
+        assert!(!seen.contains("hunter2"), "{seen:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -1334,6 +1334,21 @@ impl KillOutcome {
     }
 }
 
+/// Kill the tree of a child this process still holds.
+///
+/// A pid alone can be recycled once its process is reaped, and `killpg` on a
+/// recycled pid would signal an unrelated group. A held, unreaped `Child`
+/// pins its pid (a zombie keeps it reserved), so this checks `try_wait` first:
+/// a child that already exited is `Gone` and nothing is signalled. Prefer this
+/// to [`kill_tree`] wherever the `Child` is at hand.
+pub fn kill_tree_child(child: &mut std::process::Child) -> KillOutcome {
+    match child.try_wait() {
+        Ok(Some(_)) => KillOutcome::Gone,
+        Ok(None) => kill_tree(child.id()),
+        Err(e) => KillOutcome::Failed(e.to_string()),
+    }
+}
+
 /// Kill the process `pid` and every descendant it spawned.
 ///
 /// Unix: the pid is also its process-group id (see [`spawn`]), so the group is
@@ -1937,6 +1952,20 @@ mod windows_tests {
         }
         assert!(gone, "the grandchild outlived the tree kill");
         drop(root);
+    }
+
+    /// An already-reaped child is never signalled through its stale pid.
+    #[test]
+    fn kill_tree_child_does_not_signal_an_exited_child() {
+        #[cfg(windows)]
+        let mut c = std::process::Command::new("cmd");
+        #[cfg(windows)]
+        c.args(["/C", "exit 0"]);
+        #[cfg(not(windows))]
+        let mut c = std::process::Command::new("true");
+        let mut child = c.spawn().unwrap();
+        child.wait().unwrap();
+        assert_eq!(kill_tree_child(&mut child), KillOutcome::Gone);
     }
 
     /// A pid no process has is not a failure: there was nothing left to kill.

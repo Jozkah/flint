@@ -338,9 +338,23 @@ fn valid_id(id: &str) -> bool {
         && id.len() <= MAX_ID_LEN
         && id != "."
         && id != ".."
+        // Windows drops a trailing dot, so `a.` and `a` would be one file.
+        && !id.ends_with('.')
+        && !is_windows_reserved(id)
         && id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
+/// Device names Windows reserves, with or without an extension (`CON.txt`),
+/// in any case. Rejected on every platform so an id is portable.
+fn is_windows_reserved(id: &str) -> bool {
+    let stem = id.split('.').next().unwrap_or(id).to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|p| {
+            stem.strip_prefix(p)
+                .is_some_and(|n| n.len() == 1 && matches!(n.as_bytes()[0], b'1'..=b'9'))
+        })
 }
 
 fn check_session_id(id: &str) -> Result<()> {
@@ -646,6 +660,19 @@ impl Mailbox {
                 existing.clone()
             }
             None => {
+                // Ids become file names. Thread ids are upper-case ULIDs, so
+                // case cannot be refused outright, but on a case-insensitive
+                // filesystem `ABC` and `abc` would share one inbox: a new id
+                // that differs from a known one only by case is refused.
+                if registry
+                    .keys()
+                    .any(|k| k != session_id && k.eq_ignore_ascii_case(session_id))
+                {
+                    return Err(MailboxError::new(
+                        code::INVALID_SESSION_ID,
+                        "session id differs from an existing session id only by letter case",
+                    ));
+                }
                 let record = SessionRecord {
                     id: session_id.to_string(),
                     display_name: name,

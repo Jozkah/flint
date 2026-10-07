@@ -19,7 +19,8 @@
 //!   trailing slash dropped, query parameter *names* only (sorted), no
 //!   fragment, and user info reduced to a marker
 //! * `cwd`, when present
-//! * environment variable *names* (sorted)
+//! * environment variable *names* (sorted), plus a digest of the *values* of
+//!   code-bearing names only (NODE_OPTIONS, LD_*, PATH, PYTHON*, ...)
 //! * header *names* (lowercased, sorted)
 //! * whether Jan imported the server from a repository, and the confinement it
 //!   runs under (workspace, repository, writable repository, attached read
@@ -30,7 +31,7 @@
 //!
 //! * the server name -- trust keys on name *and* fingerprint separately, so a
 //!   rename is caught by the name and an edit by the fingerprint
-//! * environment variable values, header values, URL query values and URL
+//! * other environment variable values, header values, URL query values and URL
 //!   user info -- these are where secrets live, and rotating a token is not a
 //!   different program
 //! * presentation and runtime switches: `active`, `description`,
@@ -120,7 +121,7 @@ pub fn identity_material(config: &Value) -> Value {
             })
         });
 
-    json!({
+    let mut material = json!({
         "v": IDENTITY_VERSION,
         "transport": transport,
         "command": command,
@@ -131,7 +132,67 @@ pub fn identity_material(config: &Value) -> Value {
         "headers": key_names(obj.get("headers"), true),
         "imported": obj.get("janImported").and_then(Value::as_bool).unwrap_or(false),
         "confinement": confinement,
-    })
+    });
+    // Values of names that change what code a launched program loads or runs
+    // are part of the identity (as digests, never the value itself). Added
+    // only when present so definitions without them keep their fingerprint.
+    let code_env = code_bearing_env_digests(obj.get("env"));
+    if !code_env.is_empty() {
+        material["codeEnv"] = Value::Object(code_env);
+    }
+    material
+}
+
+/// Whether an environment variable name steers which code a process loads or
+/// runs (loader, interpreter or shell start-up hooks, search path).
+fn is_code_bearing_env(name: &str) -> bool {
+    let n = name.trim().to_ascii_uppercase();
+    const EXACT: &[&str] = &[
+        "PATH",
+        "PATHEXT",
+        "BASH_ENV",
+        "ENV",
+        "IFS",
+        "SHELL",
+        "COMSPEC",
+        "PROMPT_COMMAND",
+        "CLASSPATH",
+        "JAVA_TOOL_OPTIONS",
+        "JDK_JAVA_OPTIONS",
+        "_JAVA_OPTIONS",
+        "RUBYOPT",
+        "RUBYLIB",
+        "PERL5OPT",
+        "PERL5LIB",
+        "GIT_SSH_COMMAND",
+        "GIT_EXEC_PATH",
+        "GCONV_PATH",
+        "DOTNET_STARTUP_HOOKS",
+    ];
+    const PREFIX: &[&str] = &["LD_", "DYLD_", "PYTHON", "NODE_"];
+    EXACT.contains(&n.as_str()) || PREFIX.iter().any(|p| n.starts_with(p))
+}
+
+fn code_bearing_env_digests(env: Option<&Value>) -> serde_json::Map<String, Value> {
+    let mut out = serde_json::Map::new();
+    if let Some(map) = env.and_then(Value::as_object) {
+        for (key, value) in map {
+            if !is_code_bearing_env(key) {
+                continue;
+            }
+            let text = match value {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            let digest = Sha256::digest(text.as_bytes());
+            let mut hex = String::with_capacity(digest.len() * 2);
+            for byte in digest {
+                hex.push_str(&format!("{byte:02x}"));
+            }
+            out.insert(key.trim().to_string(), Value::String(hex));
+        }
+    }
+    out
 }
 
 /// `sha256:<hex>` of [`identity_material`].
@@ -200,13 +261,24 @@ fn sorted_names(value: Option<&Value>, lowercase: bool) -> Vec<String> {
 /// Normalize an endpoint so two spellings of the same URL agree, without
 /// keeping anything that is a credential.
 ///
-/// Hand-rolled rather than adding a URL crate for one function. Anything that
-/// does not look like `scheme://authority...` is kept trimmed as written, which
-/// is the conservative answer: an unusual spelling can only make a fingerprint
+/// The input is first parsed with the `url` crate, so authority splitting
+/// follows the same rules a client uses (a backslash ends the authority for
+/// special schemes: `https://evil.com\@good.com/x` is host `evil.com`, not a
+/// userinfo spelling of `good.com`). The parsed form is then reduced by hand to
+/// drop credentials and query values. Anything that does not parse as
+/// `scheme://authority...` is kept trimmed as written, which is the
+/// conservative answer: an unusual spelling can only make a fingerprint
 /// differ, never make two different endpoints match.
 pub fn normalize_url(raw: &str) -> String {
     let raw = raw.trim();
-    let Some((scheme, rest)) = raw.split_once("://") else {
+    if !raw.contains("://") {
+        return raw.to_string();
+    }
+    let Ok(parsed) = url::Url::parse(raw) else {
+        return raw.to_string();
+    };
+    let parsed = parsed.as_str();
+    let Some((scheme, rest)) = parsed.split_once("://") else {
         return raw.to_string();
     };
     let scheme = scheme.to_ascii_lowercase();
@@ -320,6 +392,16 @@ mod tests {
     }
 
     #[test]
+    fn changing_a_code_bearing_env_value_changes_the_fingerprint() {
+        let mut a = stdio();
+        a["env"]["NODE_OPTIONS"] = json!("--max-old-space-size=512");
+        let mut b = stdio();
+        b["env"]["NODE_OPTIONS"] = json!("--require /tmp/evil.js");
+        assert_ne!(fingerprint(&a), fingerprint(&b));
+        assert_eq!(fingerprint(&a), fingerprint(&a.clone()));
+    }
+
+    #[test]
     fn changing_a_header_or_env_name_changes_the_fingerprint() {
         let renamed = json!({
             "type": "http",
@@ -419,6 +501,25 @@ mod tests {
         assert_ne!(
             normalize_url("https://mcp.example.com:8443/v1"),
             normalize_url("https://mcp.example.com/v1")
+        );
+    }
+
+    #[test]
+    fn backslash_cannot_smuggle_a_userinfo_spelling() {
+        let real = normalize_url("https://u:p@good.com/x");
+        assert_eq!(real, "https://[userinfo]@good.com/x");
+        for evil in [
+            "https://evil.com\\@good.com/x",
+            "https://evil.com\\u:p@good.com/x",
+            "http://evil.com/\\@good.com/x",
+        ] {
+            let n = normalize_url(evil);
+            assert_ne!(n, real, "{evil}");
+            assert!(n.starts_with("http://evil.com") || n.starts_with("https://evil.com"), "{n}");
+        }
+        assert_eq!(
+            normalize_url("https://evil.com\\@good.com/x"),
+            "https://evil.com/@good.com/x"
         );
     }
 }
