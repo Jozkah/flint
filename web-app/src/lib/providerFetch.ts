@@ -1,4 +1,5 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
+import { isServerTransport, setServerTransport } from '@/lib/serverTransportFlag'
 
 /**
  * The one way the web app talks to an OpenAI-compatible provider.
@@ -164,11 +165,10 @@ export type EndpointDiagnostics = {
  * Set when the page is served by `flint serve`: provider requests then go
  * through the server's copy of the transport instead of the Tauri bridge.
  */
-let serverTransport = false
 const LINE_BREAK = String.fromCharCode(10)
 
 export function enableServerTransport(): void {
-  serverTransport = true
+  setServerTransport(true)
   routeLoopbackThroughServer()
 }
 
@@ -205,7 +205,7 @@ function routeLoopbackThroughServer(): void {
 
 /** Whether provider requests can use the canonical transport at all. */
 export function hasProviderTransport(): boolean {
-  return serverTransport || hasTauriRuntime()
+  return isServerTransport() || hasTauriRuntime()
 }
 
 /**
@@ -383,7 +383,7 @@ export const providerFetch: typeof globalThis.fetch = async (
   const stop = () => {
     if (stopped) return
     stopped = true
-    if (serverTransport && !hasTauriRuntime()) {
+    if (isServerTransport() && !hasTauriRuntime()) {
       void fetch('/api/v1/provider/cancel', {
         method: 'POST',
         credentials: 'same-origin',
@@ -524,7 +524,7 @@ export const providerFetch: typeof globalThis.fetch = async (
       }
     }
 
-    if (serverTransport && !hasTauriRuntime()) {
+    if (isServerTransport() && !hasTauriRuntime()) {
       const abort = new AbortController()
       // Ending the local body (consumer released it) also ends the HTTP read.
       void streamViaServer(payload, onChunk, abort.signal)
