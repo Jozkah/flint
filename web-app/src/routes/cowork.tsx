@@ -1417,6 +1417,29 @@ export function CoworkPage() {
       ),
     [workspacePath, treeRoot, folder, extraFolders]
   )
+  /**
+   * A path in the run summary: the Code panel or preview where one can show
+   * it, otherwise the system's default app, so no listed file is a dead label.
+   */
+  const openSummaryPath = useCallback(
+    (path: string) => {
+      if (shouldOpenInCode(path) || previewKindFor(path) !== 'file') {
+        openToolPath(path)
+        return
+      }
+      const absolute = absoluteChangePath(path, 'session', {
+        treeRoot,
+        workspacePath,
+        resolved: resolveToolPath(path),
+      })
+      if (!absolute) return
+      void serviceHub
+        .opener()
+        .openPath(absolute, pathLinkRoots)
+        .catch((e) => toast.error(errorText(e)))
+    },
+    [openToolPath, treeRoot, workspacePath, resolveToolPath, serviceHub, pathLinkRoots]
+  )
   /** Show a changed file in Changes. */
   const openToolDiff = useCallback(
     (path: string) => setRail({ kind: 'diff', focusPath: path }),
@@ -5920,14 +5943,14 @@ export function CoworkPage() {
                       <CoworkRunSummary
                         outcome={runOutcome}
                         browserChecks={browserReports}
-                        canOpenPath={(path) => shouldOpenInCode(path) || previewKindFor(path) !== 'file'}
+                        canOpenPath={() => true}
                         onOpenPath={
                           runOutcome.resultLocation.destination ===
                             'repository' && treeRoot
-                            ? (path) => openToolPath(`${treeRoot}/${path}`)
+                            ? (path) => openSummaryPath(`${treeRoot}/${path}`)
                             : runOutcome.resultLocation.destination ===
                                 'sandbox'
-                              ? openToolPath
+                              ? openSummaryPath
                               : undefined
                         }
                         onReviewChanges={() => openRail({ kind: 'diff' })}

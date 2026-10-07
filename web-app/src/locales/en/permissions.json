@@ -85,6 +85,7 @@
     "title": "Permission request",
     "affects": "Affects",
     "reason": "Why",
+    "script": "Script",
     "consequences": "What allowing it means",
     "chooseScope": "Choose how far this permission goes",
     "technicalDetails": "Technical details",

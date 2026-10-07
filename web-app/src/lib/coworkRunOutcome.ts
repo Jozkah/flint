@@ -587,6 +587,21 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
     const phase = phaseOf(turn)
     const tool = turn.name ?? ''
     const target = targetOf(turn)
+    // A later success on the same tool and target answers an earlier refusal,
+    // failure or cancellation: the run recovered, so it is not a loose end.
+    if ((phase === 'succeeded' || phase === 'done-ok') && target) {
+      for (let i = unresolved.length - 1; i >= 0; i -= 1) {
+        const item = unresolved[i]
+        if (
+          item.kind !== 'stop' &&
+          item.kind !== 'check-failed' &&
+          item.tool === tool &&
+          item.target === target
+        )
+          unresolved.splice(i, 1)
+      }
+      continue
+    }
     if (
       withheldAsReadOnly(turn) &&
       (phase === 'refused' || phase === 'failed' || phase === 'done-error')
