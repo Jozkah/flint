@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod data;
+pub mod resources;
 pub mod server;
 #[path = "../remote/static_files.rs"]
 pub mod static_files;

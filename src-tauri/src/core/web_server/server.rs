@@ -21,6 +21,7 @@ use tokio::net::TcpListener;
 
 use super::auth::AuthStore;
 use super::data;
+use super::resources;
 use super::static_files::{self, StaticError};
 
 type Resp = Response<Full<Bytes>>;
@@ -110,6 +111,14 @@ fn json_created(value: &impl serde::Serialize) -> Resp {
 }
 
 async fn read_json(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
+    let value = read_json_value(req).await?;
+    if !value.is_object() {
+        return Err(text(StatusCode::BAD_REQUEST, "Expected JSON object"));
+    }
+    Ok(value)
+}
+
+async fn read_json_value(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
     let is_json = req.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.split(';').next().is_some_and(|kind| kind.trim().eq_ignore_ascii_case("application/json")));
     if !is_json {
@@ -119,9 +128,6 @@ async fn read_json(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
         .map_err(|_| text(StatusCode::PAYLOAD_TOO_LARGE, "Request too large"))?.to_bytes();
     let value: serde_json::Value = serde_json::from_slice(&body)
         .map_err(|_| text(StatusCode::BAD_REQUEST, "Invalid JSON"))?;
-    if !value.is_object() {
-        return Err(text(StatusCode::BAD_REQUEST, "Expected JSON object"));
-    }
     Ok(value)
 }
 
@@ -159,6 +165,79 @@ fn same_origin(state: &State, headers: &hyper::HeaderMap) -> bool {
             && state.public_host.as_deref() != Some(host);
     }
     false
+}
+
+fn no_content() -> Resp {
+    reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new())
+}
+
+async fn blocking<T: serde::Serialize + Send + 'static>(
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Resp {
+    match tokio::task::spawn_blocking(work).await {
+        Ok(Ok(value)) => json(&value),
+        _ => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
+    }
+}
+
+async fn resource_route(
+    state: &State,
+    method: &Method,
+    path: &str,
+    req: Request<Incoming>,
+) -> Resp {
+    let root = state.data_folder.clone();
+    match (method.clone(), path) {
+        (Method::GET, "/api/v1/projects") => blocking(move || resources::projects(&root)).await,
+        (Method::PUT, "/api/v1/projects") => {
+            let value = match read_json_value(req).await {
+                Ok(value) => value,
+                Err(response) => return response,
+            };
+            match tokio::task::spawn_blocking(move || resources::set_projects(&root, value)).await {
+                Ok(Ok(())) => no_content(),
+                Ok(Err(_)) => text(StatusCode::BAD_REQUEST, "Invalid projects"),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not save projects"),
+            }
+        }
+        (Method::GET, "/api/v1/assistants") => {
+            blocking(move || resources::assistants(&root)).await
+        }
+        (Method::POST, "/api/v1/assistants") => {
+            let value = match read_json(req).await {
+                Ok(value) => value,
+                Err(response) => return response,
+            };
+            match tokio::task::spawn_blocking(move || resources::create_assistant(&root, value))
+                .await
+            {
+                Ok(Ok(())) => no_content(),
+                Ok(Err(_)) => text(StatusCode::BAD_REQUEST, "Invalid assistant"),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not save assistant"),
+            }
+        }
+        (Method::DELETE, p) if p.starts_with("/api/v1/assistants/") => {
+            let id = p["/api/v1/assistants/".len()..].to_owned();
+            match tokio::task::spawn_blocking(move || resources::delete_assistant(&root, &id))
+                .await
+            {
+                Ok(Ok(())) => no_content(),
+                Ok(Err(_)) => text(StatusCode::BAD_REQUEST, "Invalid assistant id"),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete assistant"),
+            }
+        }
+        (Method::GET, "/api/v1/hardware/info") => {
+            blocking(|| Ok(tauri_plugin_hardware::get_system_info())).await
+        }
+        (Method::GET, "/api/v1/hardware/snapshot") => {
+            blocking(|| Ok(tauri_plugin_hardware::snapshot::get_system_snapshot())).await
+        }
+        (Method::POST, "/api/v1/hardware/refresh") => {
+            tauri_plugin_hardware::invalidate_system_info();
+            no_content()
+        }
+        _ => text(StatusCode::NOT_FOUND, "Unknown API route"),
+    }
 }
 
 async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
@@ -347,6 +426,12 @@ async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
             }
             _ => {}
         }
+    }
+    if path.starts_with("/api/v1/projects")
+        || path.starts_with("/api/v1/assistants")
+        || path.starts_with("/api/v1/hardware")
+    {
+        return resource_route(&state, &method, &path, req).await;
     }
     if method == Method::GET && path == "/api/v1/threads" {
         let root = state.data_folder.clone();

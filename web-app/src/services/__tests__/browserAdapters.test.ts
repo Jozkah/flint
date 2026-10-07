@@ -2,6 +2,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BrowserThreadsService } from '../threads/browser'
 import { BrowserMessagesService } from '../messages/browser'
+import { BrowserProjectsService } from '../projects/browser'
+import { BrowserAssistantsService } from '../assistants/browser'
 import type { ThreadMessage } from '@janhq/core'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -36,6 +38,28 @@ describe('headless browser adapters', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       })
+    )
+  })
+
+  it('stores projects as one list on the server', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, redirected: false, json: async () => [{ id: 'a', name: 'A', updated_at: 1 }] })
+      .mockResolvedValueOnce({ ok: true, status: 204, redirected: false })
+    vi.stubGlobal('fetch', fetch)
+    await new BrowserProjectsService().deleteProject('a')
+    const [url, init] = fetch.mock.calls[1]
+    expect(url).toBe('/api/v1/projects')
+    expect(init).toMatchObject({ method: 'PUT', body: '[]' })
+  })
+
+  it('addresses assistants by encoded id', async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 204, redirected: false })
+    vi.stubGlobal('fetch', fetch)
+    await new BrowserAssistantsService().deleteAssistant({ id: 'a b' } as never)
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/assistants/a%20b',
+      expect.objectContaining({ method: 'DELETE', credentials: 'same-origin' })
     )
   })
 })
