@@ -97,6 +97,7 @@ macro_rules! invoke_commands_with_extras {
         core::server::provider_secrets::get_secret,
         // System commands
         core::system::commands::relaunch,
+        core::system::shutdown::shutdown_for_update,
         core::system::commands::open_app_directory,
         core::system::commands::factory_reset,
         core::system::commands::take_pending_webdata_reset,
@@ -887,6 +888,19 @@ pub fn build_app() -> tauri::App {
             // listener starts now, with the settings they left.
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             core::remote::commands::init(app.handle());
+            // A Jan up to 0.8.4 leaves its llama-server router running across an
+            // in-app update; that version cannot be fixed, so reap it here.
+            #[cfg(not(any(target_os = "ios", target_os = "android")))]
+            {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                tauri::async_runtime::spawn_blocking(move || {
+                    let killed = core::system::orphans::sweep_orphaned_engines(&data_folder);
+                    if killed > 0 {
+                        log::warn!("Reaped {killed} engine process(es) left by a previous Jan");
+                    }
+                });
+            }
+
             // Start migration
             let mut store_path = get_jan_data_folder_path(app.handle().clone());
             store_path.push("store.json");
@@ -1074,41 +1088,37 @@ pub fn run_app(app: tauri::App) {
 
             // Run cleanup synchronously and WAIT for it to complete
             tokio::task::block_in_place(|| {
-                tauri::async_runtime::block_on(async {
-                    use crate::core::mcp::helpers::background_cleanup_mcp_servers;
-                    use tauri_plugin_llamacpp::cleanup_llama_processes;
-
-                    let state = app_handle.state::<AppState>();
-
-                    // Increase timeout to 10 seconds and log if it times out
-                    let cleanup_future = background_cleanup_mcp_servers(&app_handle, &state);
-                    match tokio::time::timeout(tokio::time::Duration::from_secs(10), cleanup_future)
-                        .await
-                    {
-                        Ok(_) => log::info!("MCP cleanup completed successfully"),
-                        Err(_) => log::warn!("MCP cleanup timed out after 10 seconds"),
-                    }
-
-                    if let Err(e) = cleanup_llama_processes(app_handle.clone()).await {
-                        log::warn!("Failed to shut down the llama.cpp engine: {}", e);
-                    } else {
-                        log::info!("llama.cpp engine shut down successfully");
-                    }
-
-                    #[cfg(target_os = "macos")]
-                    {
-                        use tauri_plugin_mlx::cleanup_mlx_processes;
-                        if let Err(e) = cleanup_mlx_processes(app_handle.clone()).await {
-                            log::warn!("Failed to cleanup MLX processes: {}", e);
-                        } else {
-                            log::info!("MLX processes cleaned up successfully");
-                        }
-                    }
-
-                    log::info!("App cleanup completed");
-                    core::crash_trace::mark_clean_exit(&get_jan_data_folder_path(app_handle.clone()));
-                });
+                tauri::async_runtime::block_on(core::system::shutdown::shutdown_cleanup(
+                    &app_handle,
+                ));
+                core::crash_trace::mark_clean_exit(&get_jan_data_folder_path(app_handle.clone()));
             });
         }
     });
+}
+
+/// The setup block is easy to lose in a merge with the upstream app, and losing
+/// it fails silently: a Windows window that is created hidden and never shown,
+/// remote access that never starts, a previous crash that is never logged.
+#[cfg(test)]
+mod startup_guard_tests {
+    const SOURCE: &str = include_str!("lib.rs");
+
+    #[test]
+    fn setup_shows_the_window_and_starts_the_services_it_always_did() {
+        for call in [
+            "core::window_state::restore_and_show(",
+            "core::window_state::install(",
+            "suppress_beforeunload_dialog(&window);",
+            "core::remote::commands::init(app.handle());",
+            "for (level, text) in crash_notes {",
+        ] {
+            // The test's own list contains each string once; the setup block
+            // must supply a second occurrence.
+            assert!(
+                SOURCE.matches(call).count() >= 2,
+                "startup no longer runs `{call}`"
+            );
+        }
+    }
 }

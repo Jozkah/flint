@@ -212,6 +212,12 @@ export type ObservedCall = {
   error?: string
   path?: string
   after?: string
+  /**
+   * What a successful call returned, when known. The same call that returns
+   * something new each time is polling a changing thing (a log, a build, a
+   * page loading), not repeating itself.
+   */
+  result?: string
   depth?: number
 }
 
@@ -462,10 +468,16 @@ export function detectLoop(calls: ObservedCall[]): LoopVerdict {
   if (tinyReads) return tinyReads
 
   const exact = new Map<string, number>()
+  const lastResult = new Map<string, string>()
   const failures = new Map<string, number>()
   for (const call of calls) {
     const key = canonicalKey(call)
-    const seen = (exact.get(key) ?? 0) + 1
+    let seen = (exact.get(key) ?? 0) + 1
+    if (call.failed === false && call.result !== undefined) {
+      // A success that answers differently than the last one is progress.
+      if (lastResult.has(key) && lastResult.get(key) !== call.result) seen = 1
+      lastResult.set(key, call.result)
+    }
     exact.set(key, seen)
     if (seen >= REPEAT_LIMIT) {
       const spellings = new Set(
