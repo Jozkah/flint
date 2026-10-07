@@ -90,6 +90,7 @@ target-windows-final/
 
 # Generated planning / handoff / session docs (not source-of-truth)
 docs/superpowers/
+docs/specs/agent-loop-steering.md
 docs/AGENT_HARNESS_ARCHITECTURE.md
 docs/AGENT_HARNESS_FEATURE_REGISTRY.md
 docs/AGENT_HARNESS_ROADMAP.md
