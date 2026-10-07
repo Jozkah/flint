@@ -37,6 +37,38 @@ const freePort = () =>
     })
   })
 
+// A stand-in for the engine's model-router HTTP surface.
+const modelState = new Map([['m1', 'unloaded']])
+const engineMock = createServer((req, res) => {
+  const chunks = []
+  req.on('data', (c) => chunks.push(c))
+  req.on('end', () => {
+    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString() || '{}') : {}
+    const send = (status, value) => {
+      res.writeHead(status, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(value))
+    }
+    if (req.method === 'GET' && req.url === '/models') {
+      return send(200, { data: [...modelState].map(([id, value]) => ({ id, status: { value } })) })
+    }
+    if (req.method === 'POST' && req.url === '/models/load') {
+      if (body.model === 'bad') return send(400, { error: { message: 'unable to load model' } })
+      modelState.set(body.model, 'loaded')
+      return send(200, { success: true })
+    }
+    if (req.method === 'POST' && req.url === '/models/unload') {
+      modelState.set(body.model, 'unloaded')
+      return send(200, { success: true })
+    }
+    if (req.method === 'POST' && req.url === '/models/reload') {
+      return send(200, { added: [], changed: ['m1'], removed: [], kept: [], models_max: 1 })
+    }
+    send(404, { error: { message: 'not found' } })
+  })
+})
+await new Promise((resolve) => engineMock.listen(0, '127.0.0.1', resolve))
+const enginePort = engineMock.address().port
+
 const upstream = createServer((req, res) => {
   req.resume()
   res.writeHead(200, { 'content-type': 'text/event-stream' })
@@ -50,7 +82,7 @@ const data = mkdtempSync(join(tmpdir(), 'flint-smoke-'))
 // A stand-in for flint-llama-worker: prints the handshake, then waits for its
 // stdin to close, which is how the real worker is told to stop.
 const fakeWorker = join(data, process.platform === 'win32' ? 'fake-worker.cmd' : 'fake-worker.sh')
-const handshake = '{"port":4242,"pid":4242,"models":["m1"]}'
+const handshake = `{"port":${enginePort},"pid":4242,"models":["m1"]}`
 writeFileSync(
   fakeWorker,
   process.platform === 'win32'
@@ -72,6 +104,7 @@ server.stderr.on('data', (chunk) => (log += chunk))
 const stop = () => {
   server.kill()
   upstream.close()
+  engineMock.close()
   try {
     rmSync(data, { recursive: true, force: true })
   } catch {
@@ -160,7 +193,7 @@ try {
   check('engine env cannot redirect code', (await engine('start', { presetPath: preset, envs: { LD_PRELOAD: 'x' } })).status === 400)
   check('engine reports stopped before start', (await (await json('/api/v1/engine/info', { headers: auth })).json()) === null)
   const started = await (await engine('start', { presetPath: preset, modelsMax: 1 })).json()
-  check('engine starts and reports port, key and models', started.port === 4242 && started.apiKey?.length === 64 && started.models[0] === 'm1')
+  check('engine starts and reports port, key and models', started.port === enginePort && started.apiKey?.length === 64 && started.models[0] === 'm1')
   const again = await (await engine('start', { presetPath: preset })).json()
   check('a second start is idempotent', again.apiKey === started.apiKey)
   check('engine info reports it running', (await (await json('/api/v1/engine/info', { headers: auth })).json())?.pid === 4242)
@@ -182,7 +215,35 @@ try {
   check('rpc hardware for the extension', (await (await rpc('plugin:hardware|get_system_info')).json()).cpu !== undefined)
   check('rpc refuses an unknown command', (await rpc('factory_reset')).status === 404)
   const viaRpc = await (await rpc('plugin:llamacpp|start_engine', { presetPath: preset, modelsMax: 1, slotCacheMib: 0, envs: {} })).json()
-  check('rpc starts the engine with the plugin argument names', viaRpc.port === 4242 && viaRpc.api_key?.length === 64)
+  check('rpc starts the engine with the plugin argument names', viaRpc.port === enginePort && viaRpc.api_key?.length === 64)
+  // Model sessions and GGUF inspection against the mock engine
+  const sessionEngine = await (await rpc('plugin:llamacpp|start_engine', { presetPath: preset, modelsMax: 1, slotCacheMib: 0, envs: {} })).json()
+  const loaded = await rpc('plugin:llamacpp|load_llama_model', { modelId: 'm1', isEmbedding: false })
+  const loadedSession = await loaded.json()
+  check('rpc loads a model and returns the session', loaded.status === 200 && loadedSession.model_id === 'm1' && loadedSession.port === enginePort && loadedSession.api_key === sessionEngine.api_key)
+  check('rpc lists loaded models', (await (await rpc('plugin:llamacpp|get_loaded_models')).json()).join() === 'm1')
+  check('rpc finds a session by model', (await (await rpc('plugin:llamacpp|find_session_by_model', { modelId: 'm1' })).json())?.model_id === 'm1')
+  check('rpc finds no session for an unloaded model', (await (await rpc('plugin:llamacpp|find_session_by_model', { modelId: 'other' })).json()) === null)
+  const refused = await rpc('plugin:llamacpp|load_llama_model', { modelId: 'bad', isEmbedding: false })
+  check('rpc passes a refused load on as the plugin error object', refused.status === 502 && typeof (await refused.json()).message === 'string')
+  check('rpc unloads', (await (await rpc('plugin:llamacpp|unload_llama_model', { modelId: 'm1' })).json()).success === true && (await (await rpc('plugin:llamacpp|get_loaded_models')).json()).length === 0)
+  check('rpc reloads the preset', (await (await rpc('plugin:llamacpp|reload_engine_models', { presetPath: preset, modelsMax: 1 })).json()).changed[0] === 'm1')
+  check('rpc refuses a preset outside the data folder', (await rpc('plugin:llamacpp|reload_engine_models', { presetPath: join(tmpdir(), 'x.ini') })).status === 400)
+  const gguf = join(tmpdir(), `flint-smoke-${process.pid}.gguf`)
+  const str = (text) => { const b = Buffer.from(text); const n = Buffer.alloc(8); n.writeBigUInt64LE(BigInt(b.length)); return Buffer.concat([n, b]) }
+  const header = Buffer.alloc(24)
+  header.write('GGUF'); header.writeUInt32LE(3, 4); header.writeBigUInt64LE(0n, 8); header.writeBigUInt64LE(1n, 16)
+  const kind = Buffer.alloc(4); kind.writeUInt32LE(8)
+  writeFileSync(gguf, Buffer.concat([header, str('general.architecture'), kind, str('llama')]))
+  const meta = await rpc('plugin:llamacpp|read_gguf_metadata', { path: gguf })
+  check('rpc reads gguf metadata from a .gguf file outside the data folder', meta.status === 200 && JSON.stringify(await meta.json()).includes('llama'))
+  check('rpc refuses a non-gguf path outside the data folder', (await rpc('plugin:llamacpp|read_gguf_metadata', { path: join(tmpdir(), 'x.txt') })).status === 400)
+  check('rpc refuses a remote model path', (await rpc('plugin:llamacpp|read_gguf_metadata', { path: 'https://example.com/m.gguf' })).status === 400)
+  const tensors = await rpc('plugin:llamacpp|find_gguf_tensors', { path: gguf, names: ['a'] })
+  check('rpc reports which tensors a gguf holds', tensors.status === 200 && (await tensors.json()).length === 0)
+  rmSync(gguf, { force: true })
+  check('rpc derives an api key', typeof (await (await rpc('plugin:llamacpp|generate_api_key', { modelId: 'm1', apiSecret: 's' })).json()) === 'string')
+
   check('rpc stops the engine', (await rpc('plugin:llamacpp|stop_engine')).status === 200 && (await (await rpc('plugin:llamacpp|get_engine_info')).json()) === null)
 
   check('sign-out ends the token', (await json('/api/v1/session', { method: 'DELETE', headers: auth })).status === 204 && (await json('/api/v1/projects', { headers: auth })).status === 401)

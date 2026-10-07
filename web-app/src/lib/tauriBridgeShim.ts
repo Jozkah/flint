@@ -37,7 +37,16 @@ export async function invoke<T = unknown>(command: string, args?: InvokeArgs): P
     throw new Error('Sign in required')
   }
   if (!response.ok) {
-    throw new Error((await response.text()) || `${command} failed (${response.status})`)
+    const body = await response.text()
+    // Tauri rejects with the command's own error value. The plugin's errors are
+    // objects, which callers inspect, so a JSON object body is passed on as is.
+    try {
+      const parsed = JSON.parse(body)
+      if (parsed && typeof parsed === 'object') throw parsed
+    } catch (error) {
+      if (error && typeof error === 'object' && !(error instanceof SyntaxError)) throw error
+    }
+    throw new Error(body || `${command} failed (${response.status})`)
   }
   const text = await response.text()
   return (text ? JSON.parse(text) : undefined) as T

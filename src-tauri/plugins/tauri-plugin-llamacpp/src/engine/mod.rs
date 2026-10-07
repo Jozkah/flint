@@ -14,7 +14,6 @@
 
 use std::fmt;
 
-#[cfg(feature = "tauri")]
 pub mod commands;
 pub mod events;
 pub mod http;

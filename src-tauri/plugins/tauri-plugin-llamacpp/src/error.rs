@@ -220,6 +220,7 @@ pub enum ServerError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[cfg(feature = "tauri")]
     #[error("Tauri error: {0}")]
     Tauri(#[from] tauri::Error),
 
@@ -240,6 +241,7 @@ impl serde::Serialize for ServerError {
                 "An input/output error occurred.".into(),
                 Some(e.to_string()),
             ),
+            #[cfg(feature = "tauri")]
             ServerError::Tauri(e) => LlamacppError::new(
                 ErrorCode::InternalError,
                 "An internal application error occurred.".into(),

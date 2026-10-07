@@ -32,6 +32,21 @@ describe('browser stand-in for the Tauri bridge', () => {
     expect(await invoke('mkdir', { args: ['x'] })).toBeUndefined()
   })
 
+  it('rejects with the plugin error object when the server sends one', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        redirected: false,
+        text: async () => '{"code":"MODEL_LOAD_FAILED","message":"Model m failed to load"}',
+      })
+    )
+    await expect(invoke('plugin:llamacpp|load_llama_model', { modelId: 'm' })).rejects.toMatchObject({
+      code: 'MODEL_LOAD_FAILED',
+    })
+  })
+
   it('has no native pieces to offer', () => {
     expect(isTauri()).toBe(false)
     expect(convertFileSrc('/a/b')).toBe('/a/b')

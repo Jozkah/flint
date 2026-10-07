@@ -9,14 +9,11 @@ use tauri::{
 
 #[cfg(feature = "tauri")]
 pub mod cleanup;
-#[cfg(feature = "tauri")]
-mod commands;
+pub mod commands;
 mod compat_env;
 pub mod engine;
-#[cfg(feature = "tauri")]
-mod error;
-#[cfg(feature = "tauri")]
-mod gguf;
+pub mod error;
+pub mod gguf;
 mod process;
 pub mod state;
 #[cfg(feature = "tauri")]

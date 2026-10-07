@@ -1,8 +1,10 @@
 use base64::{engine::general_purpose, Engine as _};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use std::sync::Arc;
 use std::time::Duration;
+#[cfg(feature = "tauri")]
+use std::sync::Arc as TauriArc;
+#[cfg(feature = "tauri")]
 use tauri::{Emitter, Manager, Runtime, State};
 
 use crate::error::{ErrorCode, LlamacppError, ServerError, ServerResult};
@@ -21,15 +23,33 @@ struct ModelRequestBody<'a> {
     model: &'a str,
 }
 
+/// Where model load progress goes. The desktop app emits it as a Tauri event;
+/// `flint serve` has no event bus to emit on, so it passes a sink that drops it.
+pub trait ProgressSink: Clone + Send + Sync + 'static {
+    fn load_progress(&self, payload: LoadProgressPayload);
+}
+
+/// A sink for callers with nobody to tell.
+#[derive(Clone, Copy, Default)]
+pub struct NoProgress;
+
+impl ProgressSink for NoProgress {
+    fn load_progress(&self, _payload: LoadProgressPayload) {}
+}
+
+#[cfg(feature = "tauri")]
+impl<R: Runtime> ProgressSink for tauri::AppHandle<R> {
+    fn load_progress(&self, payload: LoadProgressPayload) {
+        let _ = self.emit("llamacpp-model-load-progress", payload);
+    }
+}
+
 /// The loopback endpoint every model-lifecycle command talks to.
 ///
 /// One place resolves the worker, so `load_llama_model`, `unload_llama_model`,
 /// `ensure_session_ready`, `find_session_by_model`, `get_loaded_models` and the
 /// health probes all reach it the same way.
-async fn engine_endpoint<R: Runtime>(
-    app_handle: &tauri::AppHandle<R>,
-) -> Result<(u16, String, u32), String> {
-    let state: State<Arc<LlamacppState>> = app_handle.state();
+async fn engine_endpoint(state: &LlamacppState) -> Result<(u16, String, u32), String> {
     let guard = state.engine.lock().await;
     let h = guard
         .as_ref()
@@ -165,8 +185,8 @@ fn parse_load_status_change(block: &str, model_id: &str) -> Option<LoadStatusCha
 /// immediately without emitting anything - the UI already has a workaround,
 /// falling back to its plain "Loading model..." spinner (`loadingModel`,
 /// entirely unaffected by this listener) in `PromptProgress.tsx`.
-fn spawn_load_progress_listener<R: Runtime>(
-    app_handle: tauri::AppHandle<R>,
+fn spawn_load_progress_listener<S: ProgressSink>(
+    sink: S,
     port: u16,
     api_key: String,
     model_id: String,
@@ -220,7 +240,7 @@ fn spawn_load_progress_listener<R: Runtime>(
             while let Some(pos) = buf.find("\n\n") {
                 let event_block: String = buf.drain(..pos + 2).collect();
                 if let Some(payload) = parse_load_progress_event(&event_block, &model_id) {
-                    let _ = app_handle.emit("llamacpp-model-load-progress", payload);
+                    sink.load_progress(payload);
                 }
                 match parse_load_status_change(&event_block, &model_id) {
                     Some(LoadStatusChange::Loading) => saw_loading = true,
@@ -269,8 +289,8 @@ fn load_rejection_error(status: u16, body: &str) -> LlamacppError {
 /// backend without the endpoint costs nothing noticeable.
 const SUBSCRIBE_TIMEOUT: Duration = Duration::from_secs(2);
 
-async fn post_load<R: Runtime>(
-    app_handle: &tauri::AppHandle<R>,
+async fn post_load<S: ProgressSink>(
+    sink: &S,
     port: u16,
     api_key: &str,
     model_id: &str,
@@ -282,7 +302,7 @@ async fn post_load<R: Runtime>(
     let (fail_tx, fail_rx) = tokio::sync::oneshot::channel();
     let (subscribed_tx, subscribed_rx) = tokio::sync::oneshot::channel();
     let progress_task = spawn_load_progress_listener(
-        app_handle.clone(),
+        sink.clone(),
         port,
         api_key.to_string(),
         model_id.to_string(),
@@ -609,16 +629,16 @@ async fn engine_loaded_model_ids(port: u16, api_key: &str) -> Result<Vec<String>
     Ok(ids)
 }
 
-#[tauri::command]
-pub async fn load_llama_model<R: Runtime>(
-    app_handle: tauri::AppHandle<R>,
+pub async fn load_model<S: ProgressSink>(
+    sink: &S,
+    state: &LlamacppState,
     model_id: String,
     is_embedding: bool,
 ) -> ServerResult<SessionInfo> {
-    let (port, api_key, pid) = engine_endpoint(&app_handle)
+    let (port, api_key, pid) = engine_endpoint(state)
         .await
         .map_err(ServerError::InvalidArgument)?;
-    post_load(&app_handle, port, &api_key, &model_id).await?;
+    post_load(sink, port, &api_key, &model_id).await?;
     Ok(SessionInfo {
         pid: pid as i32,
         port: port as i32,
@@ -628,12 +648,8 @@ pub async fn load_llama_model<R: Runtime>(
     })
 }
 
-#[tauri::command]
-pub async fn unload_llama_model<R: Runtime>(
-    app_handle: tauri::AppHandle<R>,
-    model_id: String,
-) -> ServerResult<UnloadResult> {
-    let (port, api_key, _pid) = engine_endpoint(&app_handle)
+pub async fn unload_model(state: &LlamacppState, model_id: String) -> ServerResult<UnloadResult> {
+    let (port, api_key, _pid) = engine_endpoint(state)
         .await
         .map_err(ServerError::InvalidArgument)?;
     match post_unload(port, &api_key, &model_id).await {
@@ -642,7 +658,7 @@ pub async fn unload_llama_model<R: Runtime>(
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn generate_api_key(model_id: String, api_secret: String) -> Result<String, String> {
     let mut mac = HmacSha256::new_from_slice(api_secret.as_bytes())
         .map_err(|e| format!("Invalid key length: {}", e))?;
@@ -653,14 +669,14 @@ pub fn generate_api_key(model_id: String, api_secret: String) -> Result<String, 
     Ok(hash)
 }
 
-#[tauri::command]
-pub async fn ensure_session_ready<R: Runtime>(
-    app_handle: tauri::AppHandle<R>,
+pub async fn ensure_session<S: ProgressSink>(
+    sink: &S,
+    state: &LlamacppState,
     model_id: String,
     is_embedding: bool,
 ) -> Result<SessionInfo, String> {
-    let (port, api_key, pid) = engine_endpoint(&app_handle).await?;
-    post_load(&app_handle, port, &api_key, &model_id)
+    let (port, api_key, pid) = engine_endpoint(state).await?;
+    post_load(sink, port, &api_key, &model_id)
         .await
         .map_err(|e| e.to_string())?;
     Ok(SessionInfo {
@@ -672,12 +688,11 @@ pub async fn ensure_session_ready<R: Runtime>(
     })
 }
 
-#[tauri::command]
-pub async fn find_session_by_model<R: Runtime>(
-    app_handle: tauri::AppHandle<R>,
+pub async fn find_session(
+    state: &LlamacppState,
     model_id: String,
 ) -> Result<Option<SessionInfo>, String> {
-    let (port, api_key, pid) = match engine_endpoint(&app_handle).await {
+    let (port, api_key, pid) = match engine_endpoint(state).await {
         Ok(v) => v,
         Err(_) => return Ok(None),
     };
@@ -695,15 +710,63 @@ pub async fn find_session_by_model<R: Runtime>(
     }
 }
 
-#[tauri::command]
-pub async fn get_loaded_models<R: Runtime>(
-    app_handle: tauri::AppHandle<R>,
-) -> Result<Vec<String>, String> {
-    let (port, api_key, _pid) = match engine_endpoint(&app_handle).await {
+pub async fn loaded_models(state: &LlamacppState) -> Result<Vec<String>, String> {
+    let (port, api_key, _pid) = match engine_endpoint(state).await {
         Ok(v) => v,
         Err(_) => return Ok(Vec::new()),
     };
     engine_loaded_model_ids(port, &api_key).await
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn load_llama_model<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    model_id: String,
+    is_embedding: bool,
+) -> ServerResult<SessionInfo> {
+    let state: State<TauriArc<LlamacppState>> = app_handle.state();
+    load_model(&app_handle, &**state, model_id, is_embedding).await
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn unload_llama_model<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    model_id: String,
+) -> ServerResult<UnloadResult> {
+    let state: State<TauriArc<LlamacppState>> = app_handle.state();
+    unload_model(&**state, model_id).await
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn ensure_session_ready<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    model_id: String,
+    is_embedding: bool,
+) -> Result<SessionInfo, String> {
+    let state: State<TauriArc<LlamacppState>> = app_handle.state();
+    ensure_session(&app_handle, &**state, model_id, is_embedding).await
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn find_session_by_model<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    model_id: String,
+) -> Result<Option<SessionInfo>, String> {
+    let state: State<TauriArc<LlamacppState>> = app_handle.state();
+    find_session(&**state, model_id).await
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn get_loaded_models<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+) -> Result<Vec<String>, String> {
+    let state: State<TauriArc<LlamacppState>> = app_handle.state();
+    loaded_models(&**state).await
 }
 
 #[cfg(test)]

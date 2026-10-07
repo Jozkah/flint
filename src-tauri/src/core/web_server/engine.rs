@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 
 use serde::{Deserialize, Serialize};
 use tauri_plugin_llamacpp::engine::worker::{self, WorkerHandle};
-use tokio::sync::Mutex;
+use tauri_plugin_llamacpp::LlamacppState;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,7 +43,9 @@ fn one() -> u32 {
 }
 
 pub struct Supervisor {
-    worker: Mutex<Option<WorkerHandle>>,
+    /// The same state the desktop plugin keeps: its model-session calls work
+    /// on it directly.
+    pub state: LlamacppState,
     fault: Arc<StdMutex<Option<String>>>,
     exe: Option<PathBuf>,
 }
@@ -51,7 +53,7 @@ pub struct Supervisor {
 impl Supervisor {
     pub fn new(exe: Option<PathBuf>) -> Self {
         Self {
-            worker: Mutex::new(None),
+            state: LlamacppState::new(),
             fault: Arc::new(StdMutex::new(None)),
             exe,
         }
@@ -127,7 +129,7 @@ pub async fn start(
     data_folder: &Path,
     request: StartRequest,
 ) -> Result<Info, String> {
-    let mut guard = supervisor.worker.lock().await;
+    let mut guard = supervisor.state.engine.lock().await;
     if let Some(existing) = guard.as_mut() {
         if existing.exited().is_none() {
             return Ok(info_of(existing, &supervisor.fault));
@@ -174,7 +176,7 @@ fn info_of(handle: &WorkerHandle, fault: &StdMutex<Option<String>>) -> Info {
 /// The running worker, or `None`. A worker that died is dropped here so it is
 /// never reported live against a closed port.
 pub async fn info(supervisor: &Supervisor) -> Option<Info> {
-    let mut guard = supervisor.worker.lock().await;
+    let mut guard = supervisor.state.engine.lock().await;
     if let Some(handle) = guard.as_mut() {
         if handle.exited().is_some() {
             *guard = None;
@@ -185,7 +187,7 @@ pub async fn info(supervisor: &Supervisor) -> Option<Info> {
 }
 
 pub async fn stop(supervisor: &Supervisor, force: bool) {
-    let handle = supervisor.worker.lock().await.take();
+    let handle = supervisor.state.engine.lock().await.take();
     if let Some(handle) = handle {
         if force {
             handle.kill().await;
