@@ -44,6 +44,11 @@ import {
 } from 'ai'
 import { repairToolArgs } from './toolCallRepair'
 import { streamCutOff } from './streamFinish'
+import {
+  createIdleWatchdog,
+  STREAM_IDLE_TIMEOUT_MS,
+  streamIdleMessage,
+} from './streamIdle'
 import { ReasoningLoopGuard } from './reasoningLoopGuard'
 import { recordMemoryUses } from './memoryUses'
 import { getServiceHub, useServiceStore } from '@/hooks/useServiceHub'
@@ -3150,10 +3155,17 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     useAppState.getState().updateLiveTokenStats(undefined)
     useAppState.getState().updateThreadLiveTokenStats(threadId, undefined)
 
+    // One signal for the request: the user's Stop, or the idle watchdog below
+    // ending a stream that went silent, so the server stops working on it too.
+    const requestAbort = new AbortController()
+    const forwardStop = () => requestAbort.abort(options.abortSignal?.reason)
+    if (options.abortSignal?.aborted) forwardStop()
+    else options.abortSignal?.addEventListener('abort', forwardStop, { once: true })
+
     const result = streamText({
       model: this.model,
       messages: modelMessages,
-      abortSignal: options.abortSignal,
+      abortSignal: requestAbort.signal,
       // Hosted providers keep the SDK's two backoff retries for transient
       // 429/5xx; local servers fail at once (see isLocalChatServer).
       maxRetries: isLocalChatServer(providerId, provider.base_url) ? 0 : 2,
@@ -3512,15 +3524,30 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       : uiStream
 
     const reasoningGuard = new ReasoningLoopGuard()
+    let idle: ReturnType<typeof createIdleWatchdog> | undefined
+    const endIdle = () => {
+      idle?.stop()
+      options.abortSignal?.removeEventListener('abort', forwardStop)
+    }
     return finalStream.pipeThrough(
       new TransformStream<UIMessageChunk, UIMessageChunk>({
+        start(controller) {
+          idle = createIdleWatchdog(STREAM_IDLE_TIMEOUT_MS, () => {
+            requestAbort.abort(new Error(streamIdleMessage(STREAM_IDLE_TIMEOUT_MS)))
+            controller.error(new Error(streamIdleMessage(STREAM_IDLE_TIMEOUT_MS)))
+          })
+        },
         transform(chunk, controller) {
+          idle?.touch()
           if (chunk.type === 'reasoning-delta' && reasoningGuard.add(chunk.delta)) {
+            endIdle()
             controller.error(new Error('Reasoning stopped after repeating the same text. Try a different model or a lower thinking budget.'))
             return
           }
+          if (chunk.type === 'finish' || chunk.type === 'error' || chunk.type === 'abort') endIdle()
           controller.enqueue(chunk)
         },
+        flush: endIdle,
       })
     )
   }
