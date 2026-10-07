@@ -48,7 +48,8 @@
     "regenerate": "Buat ulang jawaban",
     "continue": "Lanjutkan pembuatan",
     "delete": "Hapus",
-    "fork": "Cabangkan obrolan dari sini"
+    "fork": "Cabangkan obrolan dari sini",
+    "copied": "Disalin"
   },
   "done": "Done",
   "webSources": "{{count}} sumber",

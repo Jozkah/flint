@@ -48,7 +48,8 @@
     "regenerate": "Yanıtı yeniden üret",
     "continue": "Üretmeye devam et",
     "delete": "Sil",
-    "fork": "Sohbeti buradan dallandır"
+    "fork": "Sohbeti buradan dallandır",
+    "copied": "Kopyalandı"
   },
   "done": "Bitti",
   "webSources": "{{count}} kaynak",

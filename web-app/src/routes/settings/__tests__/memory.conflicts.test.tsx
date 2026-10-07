@@ -51,7 +51,14 @@ vi.mock('@/hooks/useMemoryConversations', () => ({
 vi.mock('@/hooks/useServiceHub', () => ({
   getServiceHub: () => ({ app: () => ({ getJanDataFolder: async () => '/data' }) }),
 }))
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    custom: vi.fn(),
+    dismiss: vi.fn(),
+  },
+}))
 
 import { Route } from '../memory'
 

@@ -1436,7 +1436,8 @@
   },
   "drop": {
     "openInCode": "놓아서 열기 — 읽기 전용",
-    "attachToMessage": "놓아서 메시지에 첨부"
+    "attachToMessage": "놓아서 메시지에 첨부",
+    "releaseToAttach": "놓아서 첨부"
   },
   "coworkMode": {
     "label": "Flint가 할 수 있는 작업",
@@ -2421,5 +2422,18 @@
     }
   },
   "openclaw": "OpenClaw",
-  "openclawAgent": "OpenClaw 에이전트"
+  "openclawAgent": "OpenClaw 에이전트",
+  "voicePill": {
+    "cancel": "취소"
+  },
+  "motionMedia": {
+    "queued": "대기 중",
+    "generating": "생성 중",
+    "refining": "다듬는 중",
+    "ready": "완료",
+    "failed": "실패",
+    "stop": "중지",
+    "retry": "다시 시도",
+    "downloading": "다운로드 중…"
+  }
 }

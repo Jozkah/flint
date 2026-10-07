@@ -1436,7 +1436,8 @@
   },
   "drop": {
     "openInCode": "ドロップして開く — 読み取り専用",
-    "attachToMessage": "ドロップしてメッセージに添付"
+    "attachToMessage": "ドロップしてメッセージに添付",
+    "releaseToAttach": "ドロップして添付"
   },
   "coworkMode": {
     "label": "Flint に許可する操作",
@@ -2419,5 +2420,18 @@
       "tokenUsage": "トークン使用量",
       "tokenUsageSr": "トークン使用量 {{value}}"
     }
+  },
+  "voicePill": {
+    "cancel": "キャンセル"
+  },
+  "motionMedia": {
+    "queued": "待機中",
+    "generating": "生成中",
+    "refining": "調整中",
+    "ready": "完了",
+    "failed": "失敗",
+    "stop": "停止",
+    "retry": "再試行",
+    "downloading": "ダウンロード中…"
   }
 }

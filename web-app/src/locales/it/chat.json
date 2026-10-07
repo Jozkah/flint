@@ -48,7 +48,8 @@
     "regenerate": "Rigenera risposta",
     "continue": "Continua a generare",
     "delete": "Elimina",
-    "fork": "Crea una diramazione della chat da qui"
+    "fork": "Crea una diramazione della chat da qui",
+    "copied": "Copiato"
   },
   "done": "Fatto",
   "webSources": "{{count}} fonte/i",

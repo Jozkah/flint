@@ -1463,7 +1463,8 @@
   },
   "drop": {
     "openInCode": "Rilascia per aprire — sola lettura",
-    "attachToMessage": "Rilascia per allegare al messaggio"
+    "attachToMessage": "Rilascia per allegare al messaggio",
+    "releaseToAttach": "Rilascia per allegare"
   },
   "coworkMode": {
     "label": "Cosa può fare Flint",
@@ -2469,5 +2470,18 @@
       "tokenUsageSr": "Uso dei token {{value}}"
     }
   },
-  "connectors": "Connettori"
+  "connectors": "Connettori",
+  "voicePill": {
+    "cancel": "Annulla"
+  },
+  "motionMedia": {
+    "queued": "In coda",
+    "generating": "Generazione",
+    "refining": "Rifinitura",
+    "ready": "Pronto",
+    "failed": "Non riuscito",
+    "stop": "Interrompi",
+    "retry": "Riprova",
+    "downloading": "Download in corso…"
+  }
 }

@@ -48,7 +48,8 @@
     "regenerate": "응답 다시 생성",
     "continue": "계속 생성",
     "delete": "삭제",
-    "fork": "여기서 채팅 분기"
+    "fork": "여기서 채팅 분기",
+    "copied": "복사됨"
   },
   "done": "Done",
   "webSources": "출처 {{count}}개",

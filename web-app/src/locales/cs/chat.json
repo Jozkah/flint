@@ -48,7 +48,8 @@
     "regenerate": "Vygenerovat odpověď znovu",
     "continue": "Pokračovat v generování",
     "delete": "Smazat",
-    "fork": "Rozvětvit chat odsud"
+    "fork": "Rozvětvit chat odsud",
+    "copied": "Zkopírováno"
   },
   "done": "Done",
   "webSources": "Zdroje: {{count}}",

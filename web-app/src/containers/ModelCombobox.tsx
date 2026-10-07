@@ -1,32 +1,69 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import {
+  useState,
+  useMemo,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, Loader2, RefreshCw, TriangleAlert } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  Loader2,
+  RefreshCw,
+  TriangleAlert,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
+
+const MENU_MAX_HEIGHT = 300
+const MENU_EXIT_MS = 120
+const ROW_ESTIMATE = 32
+
+type DropdownPosition = {
+  top: number
+  left: number
+  width: number
+  // Where the menu sits relative to the field; it flips above when the
+  // space below is too small.
+  side: 'bottom' | 'top'
+}
 
 // Hook for the dropdown position
 function useDropdownPosition(
   open: boolean,
-  containerRef: React.RefObject<HTMLDivElement | null>
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  itemCount: number
 ) {
-  const [dropdownPosition, setDropdownPosition] = useState({
+  const [dropdownPosition, setDropdownPosition] = useState<DropdownPosition>({
     top: 0,
     left: 0,
     width: 0,
+    side: 'bottom',
   })
 
   const updateDropdownPosition = useCallback(() => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect()
+      const needed = Math.min(
+        MENU_MAX_HEIGHT,
+        Math.max(ROW_ESTIMATE * 2, itemCount * ROW_ESTIMATE + 10)
+      )
+      const below = window.innerHeight - rect.bottom
+      const flip = below < needed + 8 && rect.top > below
       setDropdownPosition({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
+        // Fixed positioning: a flipped menu hangs from the field's top edge.
+        top: flip ? rect.top - 4 : rect.bottom + 4,
+        left: rect.left,
         width: rect.width,
+        side: flip ? 'top' : 'bottom',
       })
     }
-  }, [containerRef])
+  }, [containerRef, itemCount])
 
   // Update the position when the dropdown opens
   useEffect(() => {
@@ -105,43 +142,104 @@ const EmptySection = ({
   </div>
 )
 
+// The matched part of a model id is shown bold.
+const MatchedText = ({ text, query }: { text: string; query: string }) => {
+  const needle = query.trim().toLowerCase()
+  const at = needle ? text.toLowerCase().indexOf(needle) : -1
+  if (at < 0) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, at)}
+      <strong className="font-semibold">
+        {text.slice(at, at + needle.length)}
+      </strong>
+      {text.slice(at + needle.length)}
+    </>
+  )
+}
+
 const ModelsList = ({
   filteredModels,
   value,
+  query,
   highlightedIndex,
   onModelSelect,
   onHighlight,
 }: {
   filteredModels: string[]
   value: string
+  query: string
   highlightedIndex: number
   onModelSelect: (model: string) => void
   onHighlight: (index: number) => void
-}) => (
-  <>
-    {filteredModels.map((model, index) => (
-      <div
-        key={model}
-        data-model={model}
-        onClick={(e) => {
-          e.stopPropagation()
-          onModelSelect(model)
-        }}
-        onMouseEnter={() => onHighlight(index)}
-        className={cn(
-          'relative mx-1.5 flex min-h-8 cursor-pointer items-center rounded-md px-2 py-1 pointer-coarse:min-h-11',
-          // Keyboard or pointer position: a neutral fill.
-          highlightedIndex === index && 'bg-accent',
-          // The chosen model: the same fill and the 2px accent rail.
-          value === model &&
-            'bg-accent font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-acc'
-        )}
-      >
-        <span className="truncate text-sm text-foreground">{model}</span>
-      </div>
-    ))}
-  </>
-)
+}) => {
+  const listRef = useRef<HTMLDivElement>(null)
+  const prevIndex = useRef(-1)
+  const [pill, setPill] = useState({ y: 0, h: 0, jump: true })
+
+  // One highlight pill glides to the row under the keyboard or pointer.
+  useLayoutEffect(() => {
+    if (highlightedIndex < 0) {
+      prevIndex.current = -1
+      return
+    }
+    const row =
+      listRef.current?.querySelectorAll<HTMLElement>('[data-model]')[
+        highlightedIndex
+      ]
+    if (!row) return
+    setPill({
+      y: row.offsetTop,
+      h: row.offsetHeight,
+      jump: prevIndex.current < 0,
+    })
+    prevIndex.current = highlightedIndex
+  }, [highlightedIndex, filteredModels])
+
+  return (
+    <div ref={listRef} role="listbox" className="relative">
+      <span
+        aria-hidden
+        data-slot="model-pill"
+        data-jump={pill.jump ? '' : undefined}
+        data-visible={highlightedIndex >= 0 ? '' : undefined}
+        className="flint-combo-pill pointer-events-none absolute inset-x-1.5 top-0 rounded-md bg-accent"
+        style={{ height: pill.h, transform: `translateY(${pill.y}px)` }}
+      />
+      {filteredModels.map((model, index) => (
+        <div
+          key={model}
+          role="option"
+          aria-selected={value === model}
+          data-model={model}
+          data-highlighted={highlightedIndex === index ? '' : undefined}
+          onClick={(e) => {
+            e.stopPropagation()
+            onModelSelect(model)
+          }}
+          onMouseEnter={() => onHighlight(index)}
+          className={cn(
+            'relative z-10 mx-1.5 flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 py-1 pointer-coarse:min-h-11',
+            // The chosen model: the 2px accent rail and a tick.
+            value === model &&
+              'font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-acc'
+          )}
+        >
+          <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+            <MatchedText text={model} query={query} />
+          </span>
+          {value === model && (
+            <Check
+              className="size-3.5 shrink-0 text-foreground"
+              aria-hidden
+              data-slot="model-tick"
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 // Custom hook for keyboard navigation
 function useKeyboardNavigation(
@@ -290,15 +388,34 @@ export function ModelCombobox({
     onOpenChange?.(open)
   }, [open, onOpenChange])
 
-  // Hook for the dropdown position
-  const { dropdownPosition } = useDropdownPosition(open, containerRef)
-
   // Optimized model filtering
   const filteredModels = useMemo(() => {
     if (!inputValue.trim()) return models
     const searchValue = inputValue.toLowerCase()
     return models.filter((model) => model.toLowerCase().includes(searchValue))
   }, [models, inputValue])
+
+  // Hook for the dropdown position
+  const { dropdownPosition } = useDropdownPosition(
+    open,
+    containerRef,
+    filteredModels.length
+  )
+
+  // Keep the menu mounted while it plays its exit
+  const reduceMotion = useInterfaceSettings((st) => st.reduceMotion)
+  const [present, setPresent] = useState(false)
+  useEffect(() => {
+    if (open) {
+      setPresent(true)
+      return
+    }
+    const timer = setTimeout(
+      () => setPresent(false),
+      reduceMotion ? 0 : MENU_EXIT_MS
+    )
+    return () => clearTimeout(timer)
+  }, [open, reduceMotion])
 
   // Reset highlighted index when filtered models change
   useEffect(() => {
@@ -449,14 +566,18 @@ export function ModelCombobox({
         </div>
 
         {/* Custom dropdown rendered as portal */}
-        {open &&
+        {(open || present) &&
           dropdownPosition.width > 0 &&
           createPortal(
             <div
               ref={dropdownRef}
-              className="fixed z-9999 max-h-[300px] overflow-y-auto rounded-md border border-border-strong bg-popover py-1 shadow-pop motion-safe:animate-in motion-safe:fade-in-0"
+              className="flint-combo-menu fixed z-9999 max-h-[300px] overflow-y-auto rounded-md border border-border-strong bg-popover py-1 shadow-pop"
+              data-state={open ? 'open' : 'closed'}
+              data-side={dropdownPosition.side}
               style={{
                 top: dropdownPosition.top,
+                translate:
+                  dropdownPosition.side === 'top' ? '0 -100%' : undefined,
                 left: dropdownPosition.left,
                 width: dropdownPosition.width,
                 minWidth: dropdownPosition.width,
@@ -482,6 +603,7 @@ export function ModelCombobox({
                   <ModelsList
                     filteredModels={filteredModels}
                     value={value}
+                    query={inputValue}
                     highlightedIndex={highlightedIndex}
                     onModelSelect={handleModelSelect}
                     onHighlight={setHighlightedIndex}

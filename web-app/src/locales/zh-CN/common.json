@@ -1438,7 +1438,8 @@
   },
   "drop": {
     "openInCode": "拖放以打开 — 只读",
-    "attachToMessage": "拖放以附加到你的消息"
+    "attachToMessage": "拖放以附加到你的消息",
+    "releaseToAttach": "松开以附加"
   },
   "coworkMode": {
     "label": "Flint 可以做什么",
@@ -2424,5 +2425,18 @@
       "tokenUsage": "Token 用量",
       "tokenUsageSr": "Token 用量 {{value}}"
     }
+  },
+  "voicePill": {
+    "cancel": "取消"
+  },
+  "motionMedia": {
+    "queued": "排队中",
+    "generating": "生成中",
+    "refining": "优化中",
+    "ready": "已就绪",
+    "failed": "失败",
+    "stop": "停止",
+    "retry": "重试",
+    "downloading": "正在下载…"
   }
 }

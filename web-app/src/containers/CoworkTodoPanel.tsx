@@ -1,37 +1,26 @@
 import { useState } from 'react'
-import { Check, ChevronDown, Loader2, Minus } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import type { TodoList, TodoStatus } from '@/types/coworkSession'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
+import { StatusMark, type StatusMarkState } from '@/components/ui/status-mark'
 import { cleanTaskLabel } from '@/lib/todoLabels'
 
-/** Status dot: filled when resolved, hollow while still open. */
+const TODO_MARK: Record<TodoStatus, StatusMarkState> = {
+  pending: 'pending',
+  in_progress: 'running',
+  completed: 'done',
+  abandoned: 'cancelled',
+}
+
+/** Status mark: ring that morphs between open, running, done and dropped. */
 function StatusDot({ status }: { status: TodoStatus }) {
-  const base = 'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full'
-  if (status === 'completed') {
-    return (
-      <span className={cn(base, 'bg-success-tint text-success')}>
-        <Check size={11} strokeWidth={3} aria-hidden />
-      </span>
-    )
-  }
-  if (status === 'abandoned') {
-    return (
-      <span className={cn(base, 'bg-border-strong text-fg-2')}>
-        <Minus size={11} strokeWidth={3} />
-      </span>
-    )
-  }
-  if (status === 'in_progress') {
-    // In progress is work, not selection, so it is never the accent.
-    return (
-      <span className={cn(base, 'text-fg-2')}>
-        <Loader2 size={13} className="motion-safe:animate-spin" aria-hidden />
-      </span>
-    )
-  }
-  return <span className={cn(base, 'border-[1.5px] border-border-strong')} />
+  return (
+    <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center text-fg-2">
+      <StatusMark status={TODO_MARK[status]} size={16} />
+    </span>
+  )
 }
 
 /**

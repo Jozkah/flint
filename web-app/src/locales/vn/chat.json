@@ -48,7 +48,8 @@
     "regenerate": "Tạo lại câu trả lời",
     "continue": "Tiếp tục tạo",
     "delete": "Xóa",
-    "fork": "Tách nhánh cuộc trò chuyện từ đây"
+    "fork": "Tách nhánh cuộc trò chuyện từ đây",
+    "copied": "Đã sao chép"
   },
   "done": "Done",
   "webSources": "{{count}} nguồn",

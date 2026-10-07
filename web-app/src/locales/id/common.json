@@ -1415,7 +1415,8 @@
   },
   "drop": {
     "openInCode": "Jatuhkan untuk membuka — hanya-baca",
-    "attachToMessage": "Jatuhkan untuk melampirkan ke pesan Anda"
+    "attachToMessage": "Jatuhkan untuk melampirkan ke pesan Anda",
+    "releaseToAttach": "Lepaskan untuk melampirkan"
   },
   "coworkMode": {
     "label": "Yang boleh dilakukan Flint",
@@ -2381,5 +2382,18 @@
       "tokenUsage": "Penggunaan token",
       "tokenUsageSr": "Penggunaan token {{value}}"
     }
+  },
+  "voicePill": {
+    "cancel": "Batal"
+  },
+  "motionMedia": {
+    "queued": "Mengantre",
+    "generating": "Membuat",
+    "refining": "Menyempurnakan",
+    "ready": "Siap",
+    "failed": "Gagal",
+    "stop": "Berhenti",
+    "retry": "Coba lagi",
+    "downloading": "Mengunduh…"
   }
 }

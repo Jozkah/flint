@@ -48,7 +48,8 @@
     "regenerate": "重新生成回复",
     "continue": "继续生成",
     "delete": "删除",
-    "fork": "从此处分叉对话"
+    "fork": "从此处分叉对话",
+    "copied": "已复制"
   },
   "done": "Done",
   "webSources": "{{count}} 个来源",

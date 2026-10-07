@@ -48,7 +48,8 @@
     "regenerate": "Régénérer la réponse",
     "continue": "Continuer la génération",
     "delete": "Supprimer",
-    "fork": "Créer une branche du chat à partir d'ici"
+    "fork": "Créer une branche du chat à partir d'ici",
+    "copied": "Copié"
   },
   "done": "Done",
   "webSources": "{{count}} source(s)",

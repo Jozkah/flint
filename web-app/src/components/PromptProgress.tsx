@@ -6,6 +6,31 @@ import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { useEffect, useRef, useState } from 'react'
 import { formatElapsed, type RunStatus } from '@/lib/runStatus'
+import { ModelLoader } from '@/containers/loaders/ModelLoader'
+
+const LOADED_HOLD_MS = 1200
+
+/**
+ * When a model load ends, how long it took, for about a second, then null.
+ * Derived from the loading flag alone, so no store logic is involved.
+ */
+function useLoadedFor(loading: boolean | undefined): number | null {
+  const startedAt = useRef<number | null>(null)
+  const [loadedMs, setLoadedMs] = useState<number | null>(null)
+  useEffect(() => {
+    if (loading) {
+      startedAt.current = Date.now()
+      setLoadedMs(null)
+      return
+    }
+    if (startedAt.current === null) return
+    setLoadedMs(Date.now() - startedAt.current)
+    startedAt.current = null
+    const id = setTimeout(() => setLoadedMs(null), LOADED_HOLD_MS)
+    return () => clearTimeout(id)
+  }, [loading])
+  return loadedMs
+}
 
 /**
  * Milliseconds since `key` last changed, re-rendering once a second while
@@ -80,6 +105,12 @@ export function PromptProgress({
   // Callers driving their own activity label (e.g. tool-call traces) pass
   // hideIdle to suppress the redundant generic "Working…" fallback.
   const elapsed = usePhaseElapsed(status?.key, !!status)
+  const loadedMs = useLoadedFor(loadingModel)
+  if (loadedMs !== null && !loadingModel) {
+    return (
+      <ModelLoader status="done" elapsedMs={loadedMs} className="min-w-56" />
+    )
+  }
   if (hideIdle && !loadingModel && !showReading && !status) {
     return null
   }

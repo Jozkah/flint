@@ -1436,7 +1436,8 @@
   },
   "drop": {
     "openInCode": "Açmak için bırakın — salt okunur",
-    "attachToMessage": "Mesajınıza eklemek için bırakın"
+    "attachToMessage": "Mesajınıza eklemek için bırakın",
+    "releaseToAttach": "Eklemek için bırakın"
   },
   "coworkMode": {
     "label": "Flint'in yapabilecekleri",
@@ -2422,5 +2423,18 @@
       "tokenUsage": "Token kullanımı",
       "tokenUsageSr": "Token kullanımı {{value}}"
     }
+  },
+  "voicePill": {
+    "cancel": "İptal"
+  },
+  "motionMedia": {
+    "queued": "Sırada",
+    "generating": "Oluşturuluyor",
+    "refining": "İyileştiriliyor",
+    "ready": "Hazır",
+    "failed": "Başarısız",
+    "stop": "Durdur",
+    "retry": "Yeniden dene",
+    "downloading": "İndiriliyor…"
   }
 }

@@ -1438,7 +1438,8 @@
   },
   "drop": {
     "openInCode": "Thả để mở — chỉ đọc",
-    "attachToMessage": "Thả để đính kèm vào tin nhắn của bạn"
+    "attachToMessage": "Thả để đính kèm vào tin nhắn của bạn",
+    "releaseToAttach": "Thả để đính kèm"
   },
   "coworkMode": {
     "label": "Flint được phép làm gì",
@@ -2424,5 +2425,18 @@
       "tokenUsage": "Mức dùng token",
       "tokenUsageSr": "Mức dùng token {{value}}"
     }
+  },
+  "voicePill": {
+    "cancel": "Hủy"
+  },
+  "motionMedia": {
+    "queued": "Đang chờ",
+    "generating": "Đang tạo",
+    "refining": "Đang tinh chỉnh",
+    "ready": "Sẵn sàng",
+    "failed": "Thất bại",
+    "stop": "Dừng",
+    "retry": "Thử lại",
+    "downloading": "Đang tải xuống…"
   }
 }

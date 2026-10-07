@@ -1463,7 +1463,8 @@
   },
   "drop": {
     "openInCode": "Suelta para abrir: solo lectura",
-    "attachToMessage": "Suelta para adjuntar a tu mensaje"
+    "attachToMessage": "Suelta para adjuntar a tu mensaje",
+    "releaseToAttach": "Suelta para adjuntar"
   },
   "coworkMode": {
     "label": "Qué puede hacer Flint",
@@ -2470,5 +2471,18 @@
     }
   },
   "openclaw": "OpenClaw",
-  "openclawAgent": "Agente OpenClaw"
+  "openclawAgent": "Agente OpenClaw",
+  "voicePill": {
+    "cancel": "Cancelar"
+  },
+  "motionMedia": {
+    "queued": "En cola",
+    "generating": "Generando",
+    "refining": "Refinando",
+    "ready": "Listo",
+    "failed": "Falló",
+    "stop": "Detener",
+    "retry": "Reintentar",
+    "downloading": "Descargando…"
+  }
 }

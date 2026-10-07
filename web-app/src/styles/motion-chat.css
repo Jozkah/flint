@@ -1,0 +1,192 @@
+/* motion-chat: keyframes and helpers for the animation polish pass (owned by one change set) */
+
+/* Loading status card: label blur crossfade + state pop */
+@keyframes pp-swap {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+}
+html:not(.reduce-motion) .pp-swap {
+  animation: pp-swap 0.35s var(--expo) both;
+}
+html:not(.reduce-motion) .pp-state {
+  animation: fade-in 0.3s var(--expo) both;
+}
+
+/* Skeleton light sweep */
+@keyframes sk-sweep {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -130% 0;
+  }
+}
+html:not(.reduce-motion) .sk-sweep {
+  background-image: linear-gradient(
+    100deg,
+    var(--sk) 30%,
+    color-mix(in srgb, var(--foreground) 9%, var(--sk)) 50%,
+    var(--sk) 70%
+  );
+  background-size: 250% 100%;
+  animation: sk-sweep 1.5s linear infinite;
+}
+
+/* Copy pill: drawn check + growing label */
+.cp-pill {
+  transition:
+    background-color 220ms var(--expo),
+    color 220ms var(--expo),
+    transform 150ms var(--expo);
+}
+.cp-pill:active {
+  transform: scale(0.96);
+}
+.cp-pill[data-copied] {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+}
+.cp-ic {
+  position: relative;
+  display: grid;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.cp-ic svg {
+  grid-area: 1 / 1;
+  width: 14px;
+  height: 14px;
+  transition:
+    opacity 200ms var(--expo),
+    transform 280ms var(--expo);
+}
+.cp-ic .ck {
+  opacity: 0;
+  transform: scale(0.4) rotate(-30deg);
+}
+.cp-ic .ck path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 300ms var(--expo) 80ms;
+}
+.cp-pill[data-copied] .cp-ic .cs {
+  opacity: 0;
+  transform: scale(0.4) rotate(20deg);
+}
+.cp-pill[data-copied] .cp-ic .ck {
+  opacity: 1;
+  transform: none;
+}
+.cp-pill[data-copied] .cp-ic .ck path {
+  stroke-dashoffset: 0;
+}
+.cp-lbl {
+  display: grid;
+  grid-template-columns: 0fr;
+  transition: grid-template-columns 320ms var(--expo);
+}
+.cp-pill[data-copied] .cp-lbl {
+  grid-template-columns: 1fr;
+}
+.cp-in {
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  padding-left: 0;
+  transition:
+    opacity 200ms ease,
+    padding 320ms var(--expo);
+}
+.cp-pill[data-copied] .cp-in {
+  opacity: 1;
+  padding-left: 6px;
+  padding-right: 2px;
+}
+html.reduce-motion .cp-lbl,
+html.reduce-motion .cp-in,
+html.reduce-motion .cp-ic svg,
+html.reduce-motion .cp-ic .ck path {
+  transition: none;
+}
+
+/* Empty state tile: float, ripple ring, orbiting dots */
+.es-tile {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 220ms var(--expo);
+}
+.es-orb {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+  opacity: 0.55;
+}
+.es-orb-b {
+  width: 3px;
+  height: 3px;
+  opacity: 0.35;
+}
+@keyframes es-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -4px;
+  }
+}
+@keyframes es-ring {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.85);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+@keyframes es-orbit {
+  from {
+    transform: rotate(0) translateX(30px);
+  }
+  to {
+    transform: rotate(360deg) translateX(30px);
+  }
+}
+html:not(.reduce-motion) .es-tile {
+  animation: es-float 3.4s ease-in-out infinite;
+}
+html:not(.reduce-motion) .es-tile::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 16px;
+  border: 1px solid var(--border-strong);
+  opacity: 0;
+  animation: es-ring 3.4s ease-out infinite;
+}
+html:not(.reduce-motion) .es-orb {
+  animation: es-orbit 5s linear infinite;
+}
+html:not(.reduce-motion) .es-orb-b {
+  animation-duration: 7s;
+  animation-direction: reverse;
+}
+html.reduce-motion .es-orb {
+  display: none;
+}

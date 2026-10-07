@@ -48,7 +48,8 @@
     "regenerate": "Wygeneruj odpowiedź ponownie",
     "continue": "Kontynuuj generowanie",
     "delete": "Usuń",
-    "fork": "Rozgałęź czat od tego miejsca"
+    "fork": "Rozgałęź czat od tego miejsca",
+    "copied": "Skopiowano"
   },
   "done": "Done",
   "webSources": "Źródła: {{count}}",

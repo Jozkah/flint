@@ -1464,7 +1464,8 @@
   },
   "drop": {
     "openInCode": "Deixa anar per obrir: només lectura",
-    "attachToMessage": "Deixa anar per adjuntar al missatge"
+    "attachToMessage": "Deixa anar per adjuntar al missatge",
+    "releaseToAttach": "Deixa anar per adjuntar"
   },
   "coworkMode": {
     "label": "Què pot fer Flint",
@@ -2469,5 +2470,18 @@
       "tokenUsage": "Ús de tokens",
       "tokenUsageSr": "Ús de tokens {{value}}"
     }
+  },
+  "voicePill": {
+    "cancel": "Cancel·la"
+  },
+  "motionMedia": {
+    "queued": "A la cua",
+    "generating": "Generant",
+    "refining": "Refinant",
+    "ready": "Llest",
+    "failed": "Ha fallat",
+    "stop": "Atura",
+    "retry": "Torna-ho a provar",
+    "downloading": "Baixant…"
   }
 }

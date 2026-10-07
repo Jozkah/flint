@@ -1460,7 +1460,8 @@
   },
   "drop": {
     "openInCode": "Déposez pour ouvrir — lecture seule",
-    "attachToMessage": "Déposez pour joindre à votre message"
+    "attachToMessage": "Déposez pour joindre à votre message",
+    "releaseToAttach": "Relâchez pour joindre"
   },
   "coworkMode": {
     "label": "Ce que Flint peut faire",
@@ -2469,5 +2470,18 @@
   "coworkShowEarlier_many": "Afficher {{count}} de messages précédents",
   "skillsUsedCount_many": "{{count}} de compétences utilisées",
   "artifactsCount_many": "{{count}} d'éléments",
-  "previewMessageCount_many": "{{count}} de messages"
+  "previewMessageCount_many": "{{count}} de messages",
+  "voicePill": {
+    "cancel": "Annuler"
+  },
+  "motionMedia": {
+    "queued": "En file d'attente",
+    "generating": "Génération",
+    "refining": "Affinage",
+    "ready": "Prêt",
+    "failed": "Échec",
+    "stop": "Arrêter",
+    "retry": "Réessayer",
+    "downloading": "Téléchargement…"
+  }
 }

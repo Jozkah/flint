@@ -1438,7 +1438,8 @@
   },
   "drop": {
     "openInCode": "Zum Öffnen ablegen – schreibgeschützt",
-    "attachToMessage": "Zum Anhängen an deine Nachricht ablegen"
+    "attachToMessage": "Zum Anhängen an deine Nachricht ablegen",
+    "releaseToAttach": "Zum Anhängen loslassen"
   },
   "coworkMode": {
     "label": "Was Flint tun darf",
@@ -2424,5 +2425,18 @@
       "tokenUsage": "Token-Nutzung",
       "tokenUsageSr": "Token-Nutzung {{value}}"
     }
+  },
+  "voicePill": {
+    "cancel": "Abbrechen"
+  },
+  "motionMedia": {
+    "queued": "In der Warteschlange",
+    "generating": "Wird erzeugt",
+    "refining": "Wird verfeinert",
+    "ready": "Fertig",
+    "failed": "Fehlgeschlagen",
+    "stop": "Stopp",
+    "retry": "Erneut versuchen",
+    "downloading": "Wird heruntergeladen…"
   }
 }

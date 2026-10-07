@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { createEvent, fireEvent, render, screen } from '@testing-library/react'
 import { Frame, FrameBody, FrameHeader } from '../frame'
 import { Segmented } from '../segmented'
 import { Chip } from '../chip'
@@ -68,5 +68,41 @@ describe('Chip and EmptyState', () => {
     render(<EmptyState title="No chats" description="Start one" action={<button>New chat</button>} />)
     expect(screen.getByText('No chats')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument()
+  })
+})
+
+describe('EmptyState motion', () => {
+  it('tilts the tile toward the pointer and resets on leave', () => {
+    render(<EmptyState icon={<svg />} title="Nothing" />)
+    const root = document.querySelector(
+      '[data-slot="empty-state"]'
+    ) as HTMLElement
+    const tile = document.querySelector(
+      '[data-slot="empty-state-tile"]'
+    ) as HTMLElement
+    const ev = createEvent.pointerMove(root)
+    Object.defineProperty(ev, 'clientX', { value: 500 })
+    Object.defineProperty(ev, 'clientY', { value: 0 })
+    fireEvent(root, ev)
+    expect(tile.style.transform).toContain('perspective(260px)')
+    expect(tile.style.transform).toContain('rotateY(14deg)')
+    fireEvent.pointerLeave(root)
+    expect(tile.style.transform).toBe('')
+  })
+
+  it('renders orbit dots and staggers description and action', () => {
+    render(
+      <EmptyState
+        icon={<svg />}
+        title="T"
+        description="D"
+        action={<button>Go</button>}
+      />
+    )
+    expect(document.querySelectorAll('.es-orb')).toHaveLength(2)
+    expect(screen.getByText('D')).toHaveStyle({ animationDelay: '80ms' })
+    expect(
+      screen.getByRole('button', { name: 'Go' }).parentElement
+    ).toHaveStyle({ animationDelay: '160ms' })
   })
 })

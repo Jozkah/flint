@@ -1462,7 +1462,8 @@
   },
   "drop": {
     "openInCode": "Solte para abrir — somente leitura",
-    "attachToMessage": "Solte para anexar à sua mensagem"
+    "attachToMessage": "Solte para anexar à sua mensagem",
+    "releaseToAttach": "Solte para anexar"
   },
   "coworkMode": {
     "label": "O que o Flint pode fazer",
@@ -2467,5 +2468,18 @@
       "tokenUsage": "Uso de tokens",
       "tokenUsageSr": "Uso de tokens {{value}}"
     }
+  },
+  "voicePill": {
+    "cancel": "Cancelar"
+  },
+  "motionMedia": {
+    "queued": "Na fila",
+    "generating": "Gerando",
+    "refining": "Refinando",
+    "ready": "Pronto",
+    "failed": "Falhou",
+    "stop": "Parar",
+    "retry": "Tentar novamente",
+    "downloading": "Baixando…"
   }
 }

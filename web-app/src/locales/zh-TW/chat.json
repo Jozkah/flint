@@ -48,7 +48,8 @@
     "regenerate": "重新生成回覆",
     "continue": "繼續生成",
     "delete": "刪除",
-    "fork": "從此處分岔對話"
+    "fork": "從此處分岔對話",
+    "copied": "已複製"
   },
   "done": "Done",
   "webSources": "{{count}} 個來源",

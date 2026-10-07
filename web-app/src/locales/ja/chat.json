@@ -48,7 +48,8 @@
     "regenerate": "応答を再生成",
     "continue": "生成を続ける",
     "delete": "削除",
-    "fork": "ここからチャットを分岐"
+    "fork": "ここからチャットを分岐",
+    "copied": "コピーしました"
   },
   "done": "Done",
   "webSources": "{{count}} 件のソース",

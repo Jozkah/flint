@@ -48,7 +48,8 @@
     "regenerate": "Regenera la resposta",
     "continue": "Continua generant",
     "delete": "Suprimeix",
-    "fork": "Bifurca el xat des d'aquí"
+    "fork": "Bifurca el xat des d'aquí",
+    "copied": "Copiat"
   },
   "done": "Done",
   "webSources": "{{count}} font(s)",

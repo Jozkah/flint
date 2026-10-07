@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Check, ChevronDown, Minus } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
+import { StatusMark, type StatusMarkState } from '@/components/ui/status-mark'
 import { cleanTaskLabel, isResolved, planTasks } from '@/lib/todoLabels'
 import type { TodoItem, TodoList, TodoStatus } from '@/types/coworkSession'
 
@@ -114,31 +115,17 @@ export function PlanSteps({
   )
 }
 
+const STEP_MARK: Record<TodoStatus, StatusMarkState> = {
+  pending: 'pending',
+  in_progress: 'running',
+  completed: 'done',
+  abandoned: 'cancelled',
+}
+
 function StepMark({ status }: { status: TodoStatus }) {
-  const base = 'flex size-4 shrink-0 items-center justify-center'
-  if (status === 'completed')
-    return (
-      <span className={cn(base, 'text-success')}>
-        <Check aria-hidden className="size-3.5" strokeWidth={2.5} />
-      </span>
-    )
-  if (status === 'abandoned')
-    return (
-      <span className={cn(base, 'text-muted-foreground')}>
-        <Minus aria-hidden className="size-3.5" />
-      </span>
-    )
   return (
-    <span className={base}>
-      <span
-        aria-hidden
-        className={cn(
-          'size-3 rounded-full border-[1.5px]',
-          status === 'in_progress'
-            ? 'size-3.5 border-2 border-foreground'
-            : 'border-border-strong'
-        )}
-      />
+    <span className="flex size-4 shrink-0 items-center justify-center">
+      <StatusMark status={STEP_MARK[status]} size={16} />
     </span>
   )
 }

@@ -1436,7 +1436,8 @@
   },
   "drop": {
     "openInCode": "खोलने के लिए ड्रॉप करें — केवल पढ़ने के लिए",
-    "attachToMessage": "अपने संदेश में संलग्न करने के लिए ड्रॉप करें"
+    "attachToMessage": "अपने संदेश में संलग्न करने के लिए ड्रॉप करें",
+    "releaseToAttach": "जोड़ने के लिए छोड़ें"
   },
   "coworkMode": {
     "label": "Flint क्या कर सकता है",
@@ -2424,5 +2425,18 @@
     }
   },
   "openclaw": "OpenClaw",
-  "openclawAgent": "OpenClaw एजेंट"
+  "openclawAgent": "OpenClaw एजेंट",
+  "voicePill": {
+    "cancel": "रद्द करें"
+  },
+  "motionMedia": {
+    "queued": "कतार में",
+    "generating": "बनाया जा रहा है",
+    "refining": "सुधारा जा रहा है",
+    "ready": "तैयार",
+    "failed": "विफल",
+    "stop": "रोकें",
+    "retry": "फिर कोशिश करें",
+    "downloading": "डाउनलोड हो रहा है…"
+  }
 }
