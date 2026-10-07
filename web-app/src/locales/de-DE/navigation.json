@@ -1,0 +1,6 @@
+{
+  "groupGeneral": "Allgemein",
+  "groupModelsAndTools": "Modelle und Tools",
+  "advancedSettings": "Erweitert",
+  "advancedSettingsHint": "Konfiguration von lokalem API-Server, Proxy, Hardware und Agent-Tools. Die Gruppierung ändert nichts an ihrer Funktionsweise."
+}

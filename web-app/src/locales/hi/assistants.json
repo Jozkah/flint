@@ -36,5 +36,6 @@
   "isDefault": "डिफ़ॉल्ट",
   "defaultAssistantSection": "डिफ़ॉल्ट सहायक",
   "defaultAssistantDesc": "नया चैट शुरू करते समय उपयोग किया जाता है",
-  "allAssistants": "सभी सहायक"
+  "allAssistants": "सभी सहायक",
+  "lastUsed": "आखिरी बार उपयोग किया गया"
 }

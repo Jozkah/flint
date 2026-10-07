@@ -3,5 +3,30 @@
   "description": "Questa chat sta raggiungendo il limite di memoria dell'IA, come una lavagna che si riempie. Possiamo espandere la finestra di memoria (chiamata dimensione del contesto) in modo che ricordi di più, ma ciò potrebbe consumare più memoria del computer. Possiamo anche troncare l'input, il che significa che l'IA dimenticherà una parte della cronologia della chat per fare spazio ai nuovi messaggi.",
   "increaseContextSizeDescription": "Vuoi aumentare la dimensione del contesto?",
   "truncateInput": "Tronca input",
-  "increaseContextSize": "Aumenta dimensione contesto"
+  "increaseContextSize": "Aumenta dimensione contesto",
+  "lastRequestOverflowed": "L'ultima richiesta ha superato la finestra di contesto.",
+  "contextOverflowDetail": "Questa richiesta richiedeva {{request}} token, ma la finestra di contesto del modello ne contiene solo {{context}}.",
+  "contextOverflowGeneric": "La richiesta supera la dimensione di contesto disponibile.",
+  "engine": {
+    "unknown": "Il motore del modello ha segnalato un errore imprevisto.",
+    "MODEL_LOAD_FAILED": "Non è stato possibile caricare il modello.",
+    "MODEL_ARCH_NOT_SUPPORTED": "L'architettura di questo modello non è supportata dal motore attuale. Aggiornare il motore dalle Impostazioni potrebbe aggiungere il supporto.",
+    "MODEL_LOAD_TIMED_OUT": "Il modello ha impiegato troppo a caricarsi ed è stato fermato. Un modello più piccolo o una dimensione di contesto minore di solito aiutano.",
+    "MISSING_SHARED_LIBRARY": "Manca una libreria necessaria al motore, quindi non può avviarsi.",
+    "GPU_DRIVER_TOO_OLD": "Il driver della tua GPU è troppo vecchio per questo motore. Aggiornare il driver, o passare al motore CPU nelle Impostazioni, risolverà il problema.",
+    "OUT_OF_MEMORY": "Non c'è abbastanza memoria per eseguire questo modello. Un modello più piccolo o una dimensione di contesto minore di solito aiutano.",
+    "INVALID_ARGUMENT": "Una delle impostazioni del modello non è valida.",
+    "IO_ERROR": "Non è stato possibile leggere o scrivere un file durante l'avvio del modello.",
+    "INTERNAL_ERROR": "Qualcosa è andato storto all'interno di Flint durante l'avvio del modello."
+  },
+  "engineMissingLibraries": "Mancanti: {{libraries}}",
+  "engineReportedDetail": "Il motore ha segnalato: {{detail}}",
+  "startModelFailed": "Impossibile avviare il modello: {{reason}}",
+  "createModelFailed": "Impossibile creare il modello: {{reason}}",
+  "noRunningSession": "Nessuna sessione in esecuzione trovata per il modello: {{model}}",
+  "serverPortOccupied": "Porta in uso",
+  "serverPortOccupiedDescription": "La porta {{port}} è già in uso. Prova con una porta diversa.",
+  "serverInvalidModelPath": "Percorso del modello non valido o inaccessibile",
+  "serverStartModelFailed": "Impossibile avviare il modello",
+  "serverStartFailed": "Impossibile avviare il server"
 }

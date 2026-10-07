@@ -1,6 +1,60 @@
 {
-  "col": {
-    "speed": "Ø Tempo"
+  "title": "Übersicht",
+  "morning": "Guten Morgen",
+  "afternoon": "Guten Tag",
+  "evening": "Guten Abend",
+  "subWeek": "Das haben deine Modelle diese Woche geleistet.",
+  "subMonth": "Das haben deine Modelle in den letzten 30 Tagen geleistet.",
+  "lastWeek": "Letzte Woche",
+  "last30": "Letzte 30 Tage",
+  "vsLastWeek": "ggü. letzter Woche",
+  "vsLastMonth": "ggü. den vorherigen 30 Tagen",
+  "options": "Dashboard-Optionen",
+  "resetStats": "Statistiken zurücksetzen",
+  "tokens": "Generierte Tokens",
+  "cost": "Geschätzte Kosten",
+  "speed": "Ø Generierungsgeschwindigkeit",
+  "toolSuccess": "Erfolgsquote der Tool-Aufrufe",
+  "throughput": "Token-Durchsatz",
+  "throughputAria": "Pro Tag generierte Tokens. Mit den Pfeiltasten links und rechts kannst du einzelne Tage ansehen.",
+  "activity": "Neueste Aktivität",
+  "activityRange": "Aktivitätszeitraum",
+  "today": "Heute",
+  "yesterday": "Gestern",
+  "thisWeek": "Diese Woche",
+  "searchActivity": "Aktivität durchsuchen",
+  "newActivities": {
+    "today_one": "neue Aktivität heute",
+    "today_other": "neue Aktivitäten heute",
+    "yesterday_one": "Aktivität gestern",
+    "yesterday_other": "Aktivitäten gestern",
+    "week_one": "Aktivität diese Woche",
+    "week_other": "Aktivitäten diese Woche"
   },
-  "tokensPerSecond": "{{value}} t/s"
+  "noActivity": "Noch nichts",
+  "noActivityHint": "Genehmigungen, Tool-Fehler und Verdichtungen erscheinen hier, sobald sie passieren.",
+  "runs": "Agent-Läufe",
+  "searchRuns": "Lauf",
+  "filter": "Filtern",
+  "filterAll": "Alle Läufe",
+  "openRun": "Lauf öffnen",
+  "noRuns": "Noch keine Cowork-Läufe",
+  "noRunsHint": "Übergib Cowork eine größere Aufgabe, dann erscheinen ihre Läufe hier.",
+  "openCowork": "Cowork öffnen",
+  "col": {
+    "run": "Lauf-ID",
+    "task": "Aufgabe",
+    "model": "Modell",
+    "status": "Status",
+    "started": "Gestartet",
+    "speed": "Ø Tempo",
+    "tokens": "Tokens"
+  },
+  "tokensPerSecond": "{{value}} t/s",
+  "status": {
+    "running": "Läuft",
+    "approval": "Braucht Genehmigung",
+    "done": "Fertig",
+    "idle": "Nicht gestartet"
+  }
 }

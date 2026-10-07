@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "Ordres",
+    "helpTitle": "Ordres disponibles",
+    "keys": "↑↓ tria · Intro/Tab insereix · Esc tanca",
+    "empty": "No hi ha ordres disponibles aquí"
+  },
+  "source": {
+    "plugin": "connector",
+    "pluginNamed": "connector {{plugin}}",
+    "skill": "habilitat",
+    "builtin": "integrada"
+  },
+  "scope": {
+    "project": "projecte",
+    "global": "global"
+  },
   "builtin": {
+    "help": "Llista les ordres disponibles",
+    "new": "Inicia una conversa nova",
+    "newSession": "Inicia una sessió de Cowork nova",
     "compact": "Resumeix els missatges antics per alliberar la finestra de context"
-  }
+  },
+  "sent": {
+    "command": "Ordre",
+    "skill": "Habilitat",
+    "showCommand": "Mostra l'ordre expandida",
+    "showSkill": "Mostra l'habilitat carregada"
+  },
+  "error": "No s'ha pogut executar {{command}}: {{error}}"
 }

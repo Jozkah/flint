@@ -1,15 +1,70 @@
 {
   "welcome": "Chào bạn, bạn khỏe không?",
   "description": "Hôm nay tôi có thể giúp gì cho bạn?",
+  "startedAt": "Bắt đầu {{time}}",
+  "home": {
+    "title": "Cuộc trò chuyện mới",
+    "notSaved": "Không có gì được lưu cho đến khi bạn gửi",
+    "sub": "Hỏi bất cứ điều gì, đính kèm tệp, hoặc giao một tác vụ lớn hơn cho Cowork.",
+    "suggestionsLabel": "Gợi ý",
+    "suggestions": {
+      "explain": "Giải thích thông báo lỗi này",
+      "summarise": "Tóm tắt một tài liệu tôi đính kèm",
+      "draft": "Soạn ghi chú phát hành từ một danh sách thay đổi",
+      "compare": "So sánh hai cách tiếp cận và đề xuất một cách"
+    }
+  },
   "temporaryChat": "Trò chuyện tạm thời",
   "temporaryChatDescription": "Bắt đầu một cuộc trò chuyện tạm thời sẽ không được lưu vào lịch sử trò chuyện của bạn.",
+  "temporaryChatBanner": "Cuộc trò chuyện tạm thời — sẽ không được lưu",
+  "temporaryChatKeep": "Giữ cuộc trò chuyện này",
+  "temporaryChatLeave": {
+    "title": "Giữ cuộc trò chuyện tạm thời này?",
+    "description": "Cuộc trò chuyện này không được lưu ở đâu cả. Hãy giữ lại để chuyển vào lịch sử của bạn, hoặc loại bỏ để xóa vĩnh viễn.",
+    "keep": "Giữ",
+    "discard": "Loại bỏ",
+    "kept": "Đã lưu cuộc trò chuyện vào lịch sử của bạn",
+    "keepFailed": "Không thể lưu cuộc trò chuyện này",
+    "discardFailed": "Không thể loại bỏ — quá trình tạo vẫn đang chạy. Hãy dừng nó và thử lại.",
+    "reason": {
+      "generation-not-stopped": "Quá trình tạo vẫn đang chạy. Hãy dừng nó và thử lại.",
+      "messages-not-persisted": "Không thể lưu đầy đủ cuộc trò chuyện. Không có gì bị mất — vui lòng thử lại.",
+      "thread-not-created": "Không thể lưu cuộc trò chuyện. Không có gì bị mất — vui lòng thử lại.",
+      "error": "Đã xảy ra lỗi. Cuộc trò chuyện của bạn vẫn còn đây — vui lòng thử lại."
+    }
+  },
   "status": {
     "empty": "Không tìm thấy cuộc trò chuyện nào"
   },
   "sendMessage": "Gửi tin nhắn",
   "newConversation": "Cuộc trò chuyện mới",
   "clearHistory": "Xóa lịch sử",
+  "embeddings": {
+    "title": "Đang chuẩn bị tài liệu của bạn",
+    "description": "Đang lập chỉ mục các tệp đính kèm để chúng có thể được tìm kiếm và trích dẫn. Với tài liệu lớn có thể mất một lúc."
+  },
+  "actions": {
+    "copy": "Sao chép",
+    "regenerate": "Tạo lại câu trả lời",
+    "continue": "Tiếp tục tạo",
+    "delete": "Xóa",
+    "fork": "Tách nhánh cuộc trò chuyện từ đây"
+  },
   "done": "Done",
+  "webSources": "{{count}} nguồn",
+  "webSourcesRead": "Đã đọc {{count}}",
+  "webSourcesReadFound": "Đã đọc {{read}} · tìm thấy {{found}}",
+  "reasoning": {
+    "label": "Đang suy luận...",
+    "thinking": "Đang suy nghĩ",
+    "usingTool": "{{tool}}...",
+    "showFullTimeline": "Hiện toàn bộ dòng thời gian",
+    "showCurrentStep": "Chỉ hiện bước hiện tại",
+    "thoughtForAWhile": "Đã suy nghĩ vài giây",
+    "thoughtFor": "Đã suy nghĩ {{duration}}",
+    "workedForAWhile": "Đã làm việc vài giây",
+    "workedFor": "Đã làm việc {{duration}}"
+  },
   "split": {
     "open": "Chia đôi cuộc trò chuyện",
     "openShort": "Chia",
@@ -43,15 +98,79 @@
     "recentRooms": "Phòng"
   },
   "transcriptView": {
+    "steps_one": "{{count}} bước",
     "steps_other": "{{count}} bước",
-    "working": "Đang làm"
+    "working": "Đang làm",
+    "failed": "Thất bại:",
+    "failedToRun": "Chạy thất bại",
+    "summary": {
+      "failed": "{{count}} thất bại",
+      "commands_one": "đã chạy {{count}} lệnh",
+      "commands_other": "đã chạy {{count}} lệnh",
+      "created_one": "đã tạo {{count}} tệp",
+      "created_other": "đã tạo {{count}} tệp",
+      "edited_one": "đã sửa {{count}} tệp",
+      "edited_other": "đã sửa {{count}} tệp",
+      "read_one": "đã đọc {{count}} tệp",
+      "read_other": "đã đọc {{count}} tệp",
+      "searched_one": "đã tìm kiếm {{count}} lần",
+      "searched_other": "đã tìm kiếm {{count}} lần",
+      "tools_one": "đã dùng {{count}} công cụ",
+      "tools_other": "đã dùng {{count}} công cụ"
+    }
   },
-  "actions": {
-    "fork": "Tách nhánh cuộc trò chuyện từ đây"
+  "widget": {
+    "label": "Widget",
+    "drawing": "Đang vẽ widget",
+    "source": "Xem mã nguồn",
+    "copy": "Sao chép HTML",
+    "copied": "Đã sao chép HTML.",
+    "copyFailed": "Không thể sao chép HTML.",
+    "save": "Lưu dưới dạng tệp .html",
+    "expand": "Mở kích thước đầy đủ",
+    "rerun": "Chạy lại",
+    "stalled": "Widget đã ngừng phản hồi.",
+    "parked": "Widget bị tạm dừng khi ở ngoài màn hình.",
+    "error": "Lỗi widget:",
+    "viewSource": "Xem mã nguồn",
+    "askFix": "Nhờ Flint sửa",
+    "fixPrompt": "Widget \"{{title}}\" hiển thị lỗi: {{error}}\nHãy sửa nó và hiển thị lại widget.",
+    "refused": "Widget không được hiển thị: {{reason}}",
+    "refusedUnknown": "lệnh gọi thất bại",
+    "tooLarge": "Widget này lớn hơn {{max}} ký tự và không được vẽ.",
+    "openLink": "Mở {{url}} trong trình duyệt của bạn?",
+    "cancel": "Hủy",
+    "busy": "Hãy chờ câu trả lời hiện tại hoàn tất, rồi thử lại.",
+    "noHost": "Chế độ xem này không thể gửi tin nhắn."
+  },
+  "browserCard": {
+    "opened": "Đã mở trong Trình duyệt",
+    "ready": "Sẵn sàng để mở",
+    "open": "Mở",
+    "more": "Thêm",
+    "copy": "Sao chép liên kết",
+    "copied": "Đã sao chép liên kết.",
+    "failed": "Không thể mở trình duyệt."
+  },
+  "regenerateTitle": {
+    "menu": "Tạo lại tiêu đề",
+    "working": "Đang đặt tên cho cuộc trò chuyện...",
+    "done": "Đã đổi tên cuộc trò chuyện.",
+    "empty": "Chưa có gì để đặt tên cho cuộc trò chuyện này.",
+    "busy": "Hãy tạm dừng hoặc dừng phòng trước khi đổi tên.",
+    "failed": "Không thể tạo tiêu đề."
   },
   "fork": {
     "chat": "Tách nhánh cuộc trò chuyện",
     "done": "Đã tách sang cuộc trò chuyện mới.",
     "failed": "Không thể tách nhánh cuộc trò chuyện này."
+  },
+  "version": {
+    "group": "Các phiên bản tin nhắn",
+    "previous": "Phiên bản trước",
+    "next": "Phiên bản tiếp theo",
+    "previousAt": "Phiên bản trước (đang hiển thị {{index}}/{{count}})",
+    "nextAt": "Phiên bản tiếp theo (đang hiển thị {{index}}/{{count}})",
+    "position": "Phiên bản {{index}}/{{count}}"
   }
 }

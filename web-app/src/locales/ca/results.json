@@ -1,7 +1,138 @@
 {
+  "status": {
+    "running": "En execució",
+    "completed": "Completada",
+    "failed": "Ha fallat",
+    "cancelled": "Cancel·lada",
+    "partial": "Feta en part"
+  },
+  "sections": {
+    "happened": "Què ha passat",
+    "where": "On és el resultat",
+    "checked": "Què s'ha comprovat",
+    "unresolved": "Sense resoldre",
+    "next": "Propers passos"
+  },
+  "headline": {
+    "running": "L'execució encara continua.",
+    "completedWithChanges": "L'execució ha acabat i Flint ha canviat fitxers.",
+    "completedNoChanges": "L'execució ha acabat sense que Flint hagi canviat cap fitxer.",
+    "completedChecksFailed": "L'execució ha acabat, però una comprovació que Flint ha executat no s'ha superat.",
+    "finishedIncomplete": "L'execució ha acabat, però una part de la sol·licitud no s'ha fet. Consulta Sense resoldre.",
+    "partial": "L'execució s'ha aturat abans d'acabar. Abans s'havia fet part de la feina.",
+    "failed": "L'execució s'ha aturat abans d'acabar, i no s'ha completat res.",
+    "cancelled": "L'execució s'ha aturat abans que es completés res."
+  },
+  "plan": {
+    "progress": "{{done}} de {{total}} fets"
+  },
+  "kept": "Aquests canvis s'han conservat. Aturar una execució no desfà el que ja ha fet.",
+  "location": {
+    "sandbox": "A l'entorn aïllat d'aquesta sessió, no al teu repositori.",
+    "worktree": "En un worktree separat que gestiona Flint, no al teu checkout.",
+    "userCheckout": "Directament a la carpeta que has adjuntat.",
+    "none": "No s'ha adjuntat cap arbre de treball a aquesta execució.",
+    "noFiles": "Flint no ha escrit cap fitxer.",
+    "open": "Obre {{path}}"
+  },
+  "checks": {
+    "none": "Flint no ha executat cap prova ni comprovació.",
+    "kind": {
+      "test": "Prova",
+      "build": "Compilació",
+      "lint": "Comprovació",
+      "command": "Ordre"
+    },
+    "outcome": {
+      "passed": "Superada",
+      "failed": "Fallida",
+      "didNotFinish": "No ha acabat",
+      "running": "En execució",
+      "notRun": "No executada",
+      "unknown": "Resultat desconegut"
+    },
+    "exit": "sortida {{code}}",
+    "summary": {
+      "allTestsPassed": "Les proves automàtiques s'han superat.",
+      "allChecksPassed": "Les comprovacions automàtiques s'han superat. No s'ha executat cap prova.",
+      "somePassed": "S'han superat {{passed}} de {{total}} comprovacions.",
+      "failedWithCode": "{{command}} ha fallat amb el codi de sortida {{code}}.",
+      "failedNoCode": "{{command}} ha fallat sense codi de sortida.",
+      "didNotFinish_one": "{{count}} comprovació no ha acabat: s'ha cancel·lat, ha excedit el temps o s'ha interromput.",
+      "didNotFinish_many": "{{count}} de comprovacions no han acabat: s'han cancel·lat, han excedit el temps o s'han interromput.",
+      "didNotFinish_other": "{{count}} comprovacions no han acabat: s'han cancel·lat, han excedit el temps o s'han interromput.",
+      "notRun_one": "{{count}} comprovació no s'ha executat.",
+      "notRun_many": "{{count}} de comprovacions no s'han executat.",
+      "notRun_other": "{{count}} comprovacions no s'han executat.",
+      "unknown_one": "{{count}} comprovació no té estat de sortida registrat, de manera que el seu resultat és desconegut.",
+      "unknown_many": "{{count}} de comprovacions no tenen estat de sortida registrat, de manera que els seus resultats són desconeguts.",
+      "unknown_other": "{{count}} comprovacions no tenen estat de sortida registrat, de manera que els seus resultats són desconeguts.",
+      "running_one": "{{count}} comprovació encara s'està executant.",
+      "running_many": "{{count}} de comprovacions encara s'estan executant.",
+      "running_other": "{{count}} comprovacions encara s'estan executant.",
+      "visualNotChecked": "No s'ha comprovat el comportament visual ni d'extrem a extrem."
+    },
+    "otherCommands": "També s'han executat {{count}} altra(es) ordre(s). No es compten com a comprovacions.",
+    "completion": {
+      "not-started": "no iniciada",
+      "running": "encara en execució",
+      "completed": "executada fins al final",
+      "cancelled": "cancel·lada",
+      "timed-out": "temps excedit",
+      "interrupted": "interrompuda"
+    },
+    "limitation": {
+      "exit-status-only": "Jutjada només pel seu estat de sortida.",
+      "compound-command": "S'han encadenat diverses ordres; l'estat cobreix la cadena, no cada pas.",
+      "output-truncated": "La sortida s'ha tallat, de manera que els errors posteriors poden no ser visibles.",
+      "background": "Iniciada en segon pla; l'estat pot no ser el de la tasca.",
+      "subset-selected": "Només s'ha seleccionat una part del conjunt de proves.",
+      "no-exit-status": "No s'ha registrat cap estat de sortida."
+    },
+    "claimsTitle": "Esmentat per l'assistent, no verificat per Flint:"
+  },
   "unresolved": {
     "stop": {
+      "error": "L'execució ha acabat amb un error.",
+      "aborted": "L'execució s'ha aturat.",
+      "deadline": "L'execució ha arribat al seu límit de temps.",
+      "timeout": "El model ha deixat de respondre a temps.",
+      "loop": "L'execució s'ha aturat per repetir-se.",
+      "steps": "L'execució ha usat tots els seus passos.",
       "tokens": "L'execució s'ha aturat en un límit de tokens (la finestra de context o l'assignació de la sol·licitud)."
-    }
+    },
+    "refused": "No permès: {{tool}} {{target}}",
+    "refusedReadOnly": "No executat, aquest torn era de només lectura: {{tool}} {{target}}. Canvia el mode a Pregunta abans dels canvis o Autònom, i després Continua.",
+    "cancelled": "Cancel·lat: {{tool}} {{target}}",
+    "failed": "Ha fallat: {{tool}} {{target}}",
+    "interrupted": "No ha acabat: {{tool}} {{target}}",
+    "checkFailed": "No superat: {{command}}"
+  },
+  "actions": {
+    "openResult": "Obre el resultat",
+    "reviewChanges": "Revisa els canvis",
+    "continue": "Continua",
+    "retry": "Torna-ho a provar",
+    "retryNote": "Tornar-ho a provar reenvia l'última sol·licitud. No desfà els canvis que l'execució ja ha fet.",
+    "restore": "Torna a un punt anterior"
+  },
+  "rewind": {
+    "scopeTitle": "Què canvia aquesta restauració",
+    "scopeTree": "Worktree: {{tree}}",
+    "filesHeading": "Fitxers que es tornaran a posar ({{count}})",
+    "noFiles": "Cap fitxer difereix d'aquest punt.",
+    "filesUnknown": "Flint no ha pogut llistar quins fitxers canviaran.",
+    "safetyNote": "Abans de restaurar, Flint desa l'estat actual com a punt nou, de manera que aquesta restauració es pot desfer.",
+    "boundaries": "Restaurar fitxers no desfà missatges, push remots, contingut publicat, paquets instal·lats ni altres efectes fora d'aquest worktree. Les ordres que ja s'han executat no es reverteixen.",
+    "unrelatedTitle": "Aquests fitxers han canviat després de l'últim punt i no els ha escrit Flint. La restauració els sobreescriurà:",
+    "unrelatedConfirm": "Entenc que aquestes edicions se sobreescriuran. Continuaran disponibles al punt desat.",
+    "safetyLabel": "Abans de restaurar {{time}}",
+    "safetyFailed": "No s'ha pogut desar primer l'estat actual, de manera que no s'ha restaurat res: {{reason}}",
+    "restored": "Restaurat. L'estat anterior s'ha desat com a \"{{label}}\".",
+    "previewDiff": "Previsualitza el diff",
+    "hideDiff": "Amaga el diff",
+    "previewEmpty": "No hi ha diferències per mostrar.",
+    "previewLoading": "Carregant el diff…",
+    "previewFailed": "No s'ha pogut construir el diff: {{reason}}"
   }
 }

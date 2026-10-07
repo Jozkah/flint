@@ -1,5 +1,23 @@
 {
   "skills": {
+    "whatIs": "Une compétence (skill) est un ensemble d'instructions écrites, éventuellement accompagnées de scripts ou de fichiers, que l'agent peut lire et suivre.",
+    "whereApplies": "Les compétences listées ici appartiennent à ce dossier de projet (.jan/agent/skills). Désactiver une compétence la masque à l'agent et aux commandes / de ce projet uniquement.",
+    "toolAccess": "Activer une compétence n'accorde aucun nouvel accès aux outils. L'agent lit les compétences via les outils de compétences intégrés (list, read, write), toujours autorisés sans demande. Un script inclus dans une compétence ne s'exécute que si l'agent appelle l'outil de commande, qui suit ses propres règles d'autorisation.",
+    "stateHelp": "Installée : la compétence existe dans ce projet. Activée : elle est proposée à l'agent pour le travail dans ce projet.",
+    "summary": "{{enabled}} compétences activées sur {{installed}} installées",
+    "state": {
+      "enabled": "Activée",
+      "disabled": "Désactivée",
+      "enable": "Activer",
+      "disable": "Désactiver"
+    },
+    "view": "Afficher",
+    "edit": "Modifier",
+    "importFailed": "Impossible d'importer {{name}} : {{error}}",
+    "loadHubFailed": "Impossible de charger le hub de compétences : {{error}}",
+    "deleteSkill": "Supprimer la compétence {{name}}",
+    "fromPlugin": "Du plugin {{plugin}}",
+    "pluginReadOnly": "Cette compétence provient du plugin {{plugin}} et est en lecture seule ici. Pour la modifier, éditez la source du plugin et réinstallez-le, ou désactivez le plugin dans Plugins.",
     "alwaysOn": "Toujours active",
     "alwaysActive": "Toujours active",
     "alwaysActiveHelp": "Suivre cette compétence dans toutes les conversations, sans qu'on le demande."

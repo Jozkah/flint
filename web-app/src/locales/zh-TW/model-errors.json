@@ -3,5 +3,30 @@
   "description": "此對話已接近 AI 的記憶上限，就像白板快被填滿一樣。我們可以擴大記憶視窗（稱為上下文大小），讓它能記住更多內容，但這可能會佔用你電腦更多記憶體。我們也可以截斷輸入，這表示它會忘記部分對話歷史，以便為新訊息騰出空間。",
   "increaseContextSizeDescription": "你想要增加上下文大小嗎？",
   "truncateInput": "截斷輸入",
-  "increaseContextSize": "增加上下文大小"
+  "increaseContextSize": "增加上下文大小",
+  "lastRequestOverflowed": "上一次請求使上下文視窗溢位。",
+  "contextOverflowDetail": "此請求需要 {{request}} 個 token，但模型的上下文視窗只能容納 {{context}} 個。",
+  "contextOverflowGeneric": "請求超出可用的上下文大小。",
+  "engine": {
+    "unknown": "模型引擎回報了非預期的錯誤。",
+    "MODEL_LOAD_FAILED": "無法載入模型。",
+    "MODEL_ARCH_NOT_SUPPORTED": "目前的引擎不支援此模型的架構。從「設定」更新引擎可能會新增支援。",
+    "MODEL_LOAD_TIMED_OUT": "模型載入時間過長而被停止。通常使用較小的模型或較小的上下文大小會有幫助。",
+    "MISSING_SHARED_LIBRARY": "缺少引擎所需的程式庫，因此無法啟動。",
+    "GPU_DRIVER_TOO_OLD": "你的 GPU 驅動程式對此引擎來說太舊了。更新驅動程式，或在「設定」中切換到 CPU 引擎，即可解決此問題。",
+    "OUT_OF_MEMORY": "記憶體不足，無法執行此模型。通常使用較小的模型或較小的上下文大小會有幫助。",
+    "INVALID_ARGUMENT": "模型的其中一項設定無效。",
+    "IO_ERROR": "啟動模型時無法讀取或寫入檔案。",
+    "INTERNAL_ERROR": "啟動模型時 Flint 內部發生錯誤。"
+  },
+  "engineMissingLibraries": "缺少：{{libraries}}",
+  "engineReportedDetail": "引擎回報：{{detail}}",
+  "startModelFailed": "無法啟動模型：{{reason}}",
+  "createModelFailed": "無法建立模型：{{reason}}",
+  "noRunningSession": "找不到模型的執行中工作階段：{{model}}",
+  "serverPortOccupied": "連接埠使用中",
+  "serverPortOccupiedDescription": "連接埠 {{port}} 已被使用。請嘗試其他連接埠。",
+  "serverInvalidModelPath": "模型路徑無效或無法存取",
+  "serverStartModelFailed": "無法啟動模型",
+  "serverStartFailed": "無法啟動伺服器"
 }

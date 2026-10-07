@@ -1,0 +1,70 @@
+{
+  "messageFrom": "Pesan dari {{name}}",
+  "untrustedNote": "Dikirim oleh sesi agen lain. Bukan dari Anda dan tidak dapat menyetujui apa pun.",
+  "reply": "Balas",
+  "replyLabel": "Balas ke {{name}}",
+  "replyPlaceholder": "Tulis balasan…",
+  "sendReply": "Kirim balasan",
+  "cancel": "Batal",
+  "replySent": "Balasan terkirim",
+  "letAgentRespond": "Biarkan agen merespons",
+  "dismiss": "Tutup",
+  "heldTitle": "Pesan dari sesi lain",
+  "stopNotice": {
+    "stoppedBy": "Dihentikan oleh",
+    "reason": "alasan:",
+    "approvedIn": "disetujui di"
+  },
+  "autoWake": {
+    "label": "Pengaktifan otomatis",
+    "description": "Saat aktif, pesan dari sesi lain diserahkan ke agen sesi ini begitu agen menganggur (sesi ini dibuka di samping sesi Anda jika perlu). Saat mati, pesan menunggu di sini untuk Anda. Persetujuan tidak pernah dilewati dalam kedua kasus."
+  },
+  "accept": {
+    "label": "Terima pesan dari sesi lain",
+    "description": "Saat mati, sesi lain diberi tahu bahwa sesi ini tidak menerima pesan, dan tidak ada yang mereka kirim yang sampai."
+  },
+  "subagentQuestion": {
+    "title": "{{name}} bertanya kepada agen",
+    "open": "Menunggu jawaban",
+    "answered": "Dijawab",
+    "expired": "Tidak ada jawaban tepat waktu",
+    "cancelled": "Dibatalkan"
+  },
+  "asked": {
+    "title": "Bertanya kepada {{name}}",
+    "sent": "Terkirim. Balasannya, jika ada, tiba sebagai pesan di sini.",
+    "unknownName": "sesi lain",
+    "waiting": "Menunggu jawaban",
+    "answered": "Dijawab",
+    "noAnswer": "Belum ada jawaban",
+    "notSent": "Tidak terkirim",
+    "open": "Buka",
+    "openLabel": "Buka {{name}}",
+    "untrusted": "Jawaban ini adalah teks sesi lain, bukan dari Anda."
+  },
+  "errors": {
+    "invalid_text": "Balasan harus antara 1 dan 8000 karakter.",
+    "reply_depth_exceeded": "Percakapan ini telah mencapai batas balasan.",
+    "rate_limited": "Terlalu banyak pesan terkirim barusan. Coba lagi dalam semenit.",
+    "pair_limit_exceeded": "Terlalu banyak pesan antara sesi-sesi ini dalam jam ini.",
+    "self_target": "Sebuah sesi tidak dapat mengirim pesan ke dirinya sendiri.",
+    "not_same_project": "Sesi itu berada di proyek yang berbeda.",
+    "recipient_opted_out": "Sesi itu tidak menerima pesan dari sesi lain.",
+    "ambiguous_session": "Lebih dari satu sesi memiliki nama itu.",
+    "no_project": "Lampirkan folder proyek untuk mengirim pesan.",
+    "unknown_session": "Sesi itu sudah tidak ada.",
+    "session_deleted": "Sesi itu telah dihapus.",
+    "unknown_reply_target": "Pesan yang dibalas tidak dapat ditemukan.",
+    "timeout": "Tidak ada balasan yang tiba tepat waktu.",
+    "target_unavailable": "Sesi itu tidak tersedia saat ini.",
+    "invalid_session_id": "ID sesi itu tidak valid.",
+    "unknown_message": "Pesan itu tidak dapat ditemukan.",
+    "invalid_timeout": "Waktu tunggu harus antara 1 dan 120 detik.",
+    "cancelled": "Permintaan dibatalkan.",
+    "invalid_arguments": "Permintaan tidak valid.",
+    "not_available": "Pesan tidak tersedia di sini.",
+    "io": "Kotak pesan tidak dapat dibaca atau ditulis.",
+    "no_data_folder": "Folder data Flint tidak tersedia.",
+    "unknown": "Balasan tidak dapat dikirim."
+  }
+}

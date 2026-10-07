@@ -1,6 +1,14 @@
 {
   "toolApproval": {
     "needsApproval": "Bu aracın çalıştırılmadan önce onayınıza ihtiyacı var.",
+    "proposedChange": "Bunun yapacağı değişiklik",
+    "childActionLabel": "Eylem",
+    "childAction": "{{origin}}, {{tool}} aracını çalıştırmak istiyor",
+    "childResourcesLabel": "Sunucu",
+    "childScopeLabel": "Kapsam",
+    "childScope": "Bir kez izin ver yalnızca bu tek çağrıya izin verir. Sonraki çağrı yine sorar.",
+    "childDenyLabel": "Reddederseniz",
+    "childDeny": "Araç çalışmaz ve çalıştırmaya çağrının reddedildiği bildirilir.",
     "deny": "Reddet",
     "allowOnce": "Bir Kez İzin Ver",
     "allowInThread": "Bu konuda izin ver",
@@ -56,10 +64,13 @@
     "exitCode": "Çıkış kodu: {{code}}",
     "terminated": "Sonlandırıldı",
     "outputTruncated": "Çıktı kırpıldı; yalnızca son satırlar gösteriliyor.",
+    "ranUnsandboxed": "korumalı alanın dışında çalıştırıldı",
+    "firstAttempt": "İlk deneme (korumalı alanda)",
+    "pollingJob": "arka plan işi {{id}} bekleniyor",
     "pathPlaceholder": "yol",
     "reading": "Okunuyor...",
     "workspaceRoot": "çalışma alanı kökü",
-    "ranUnsandboxed": "korumalı alanın dışında çalıştırıldı",
-    "firstAttempt": "İlk deneme (korumalı alanda)"
+    "matches": "{{count}} eşleşme",
+    "testsPassed": "{{count}} geçti"
   }
 }

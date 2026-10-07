@@ -1,6 +1,60 @@
 {
-  "col": {
-    "speed": "평균 속도"
+  "title": "개요",
+  "morning": "좋은 아침입니다",
+  "afternoon": "좋은 오후입니다",
+  "evening": "좋은 저녁입니다",
+  "subWeek": "이번 주에 모델이 한 일입니다.",
+  "subMonth": "최근 30일 동안 모델이 한 일입니다.",
+  "lastWeek": "지난주",
+  "last30": "최근 30일",
+  "vsLastWeek": "지난주 대비",
+  "vsLastMonth": "이전 30일 대비",
+  "options": "대시보드 옵션",
+  "resetStats": "통계 초기화",
+  "tokens": "생성된 토큰",
+  "cost": "예상 비용",
+  "speed": "평균 생성 속도",
+  "toolSuccess": "도구 호출 성공률",
+  "throughput": "토큰 처리량",
+  "throughputAria": "일별 생성된 토큰입니다. 왼쪽과 오른쪽 화살표 키로 날짜를 살펴보세요.",
+  "activity": "최근 활동",
+  "activityRange": "활동 기간",
+  "today": "오늘",
+  "yesterday": "어제",
+  "thisWeek": "이번 주",
+  "searchActivity": "활동 검색",
+  "newActivities": {
+    "today_one": "오늘 새 활동",
+    "today_other": "오늘 새 활동",
+    "yesterday_one": "어제 활동",
+    "yesterday_other": "어제 활동",
+    "week_one": "이번 주 활동",
+    "week_other": "이번 주 활동"
   },
-  "tokensPerSecond": "{{value}} t/s"
+  "noActivity": "아직 없음",
+  "noActivityHint": "승인, 도구 실패, 압축이 발생하는 대로 여기에 표시됩니다.",
+  "runs": "에이전트 실행",
+  "searchRuns": "실행",
+  "filter": "필터",
+  "filterAll": "모든 실행",
+  "openRun": "실행 열기",
+  "noRuns": "Cowork 실행이 아직 없습니다",
+  "noRunsHint": "더 큰 작업을 Cowork에 맡기면 실행 내역이 여기에 표시됩니다.",
+  "openCowork": "Cowork 열기",
+  "col": {
+    "run": "실행 ID",
+    "task": "작업",
+    "model": "모델",
+    "status": "상태",
+    "started": "시작",
+    "speed": "평균 속도",
+    "tokens": "토큰"
+  },
+  "tokensPerSecond": "{{value}} t/s",
+  "status": {
+    "running": "실행 중",
+    "approval": "승인 필요",
+    "done": "완료",
+    "idle": "시작 안 됨"
+  }
 }

@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "Povolit asistentovi používat {{host}}?",
+    "description": "Asistent chce použít panel prohlížeče na webu, který jste dosud neschválili.",
+    "urlLabel": "Úplná adresa",
+    "urlHint": "Zkontrolujte celou adresu včetně všeho za znakem ?. Adresy mohou vynášet informace z vaší konverzace.",
+    "wantsLabel": "Chce",
+    "wants": {
+      "browser_open": "otevřít tuto stránku",
+      "browser_read_text": "přečíst tuto stránku",
+      "browser_snapshot": "prohlédnout ovládací prvky této stránky",
+      "browser_screenshot": "pořídit snímek této stránky",
+      "browser_scroll": "posouvat tuto stránku",
+      "browser_click": "klikat na této stránce",
+      "browser_type": "psát na této stránce",
+      "browser_press": "stisknout klávesu na této stránce",
+      "browser_select": "vybrat možnost na této stránce"
+    },
+    "origin": "Požádal: {{origin}}",
+    "scopeLabel": "Na jak dlouho",
+    "once": "Jen tato návštěva",
+    "onceHint": "Skončí, když asistent přejde na jiný web, nebo po 15 minutách.",
+    "session": "Do zavření Flintu",
+    "always": "Vždy",
+    "alwaysHint": "Uloženo. Můžete to odebrat v Nastavení > Nástroje agenta.",
+    "subdomains": "Povolit také subdomény {{base}}",
+    "allow": "Povolit",
+    "deny": "Teď ne",
+    "never": "Tento web nikdy nepovolit",
+    "more": "Čeká dalších: {{count}}",
+    "warning": "Asistent může číst vše na stránce a text na stránce se ho může pokusit uvést v omyl."
+  },
+  "settings": {
+    "title": "Prohlížeč",
+    "enabled": "Povolit asistentovi používat panel prohlížeče",
+    "enabledDesc": "Přidá nástroje pro otevírání stránek, jejich čtení a s vaším schválením i klikání a psaní ve vestavěném panelu prohlížeče. Vidíte stejný panel. Každý web se zeptá při prvním použití; místní adresy a adresy v privátní síti se nikdy neotevřou.",
+    "maxActions": "Akcí na běh",
+    "maxActionsDesc": "Kliknutí, stisků kláves a výběrů, které může jeden běh provést, než se musí zastavit.",
+    "rulesTitle": "Uložená pravidla webů",
+    "rulesDesc": "Weby, které jste povolili napořád nebo zablokovali. Pravidlo pro example.com platí jen pro tento web; *.example.com pokrývá jeho subdomény.",
+    "empty": "Zatím žádná uložená pravidla. Web se zde objeví, když zvolíte Vždy povolit nebo Nikdy nepovolit.",
+    "allow": "Povoleno",
+    "deny": "Zablokováno",
+    "privateOk": "Místní adresa",
+    "remove": "Odebrat",
+    "removed": "Pravidlo odebráno",
+    "removeFailed": "Pravidlo se nepodařilo odebrat: {{error}}",
+    "addPlaceholder": "example.com nebo *.example.com",
+    "addLabel": "Web",
+    "addVerdict": "Pravidlo",
+    "addPrivate": "Povolit, aby šlo o místní adresu nebo adresu v privátní síti (pro vývojový server)",
+    "add": "Přidat pravidlo",
+    "added": "Pravidlo uloženo",
+    "addFailed": "Pravidlo se nepodařilo uložit: {{error}}",
+    "pointer": "Zobrazit ukazatel",
+    "pointerDesc": "Vykreslí v panelu prohlížeče kurzor, který plynule přejede na místo, kam asistent klikne nebo píše, a posouvá se s ním. Vypnuto: nic se nevykresluje a nic se nezdržuje.",
+    "reduceMotion": "Omezit animace",
+    "reduceMotionDesc": "Žádné plynulé přejezdy ani pulzující záře: ukazatel skočí rovnou na cíl.",
+    "reduceSystem": "Podle systému",
+    "reduceOn": "Vždy omezit",
+    "reduceOff": "Nikdy neomezovat",
+    "grantsTitle": "Prozatím schváleno",
+    "grantsNone": "Nic není schváleno bez uložení. Každý web, který není v uložených pravidlech, se zeptá.",
+    "grantsDesc": "Weby, které jste povolili pro tuto relaci nebo tuto návštěvu. Nejsou uloženy a skončí zavřením Flintu.",
+    "grantScope": {
+      "session": "tato relace",
+      "once": "tato návštěva"
+    },
+    "grantAge": "před {{minutes}} min",
+    "forgetGrants": "Zapomenout schválení této relace"
+  },
+  "card": {
+    "screenshot": "Snímek panelu prohlížeče"
+  },
+  "pane": {
+    "driving": "Asistent používá tento prohlížeč",
+    "takeOver": "Převzít",
+    "paused": "Asistent pozastaven",
+    "handBack": "Předat zpět",
+    "blocked": "Stránka byla zablokována: {{reason}}"
+  }
+}

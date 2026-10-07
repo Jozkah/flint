@@ -1,0 +1,116 @@
+{
+  "triggerLabel": "Czy ten model będzie działać na tym urządzeniu? {{status}}. Pokaż szczegóły",
+  "title": "Czy ten model będzie działać na tym urządzeniu?",
+  "subtitle": "Co zostało tu zmierzone, a co jest tylko oszacowane.",
+  "measuredHeading": "Zmierzone na tym urządzeniu",
+  "estimateHeading": "Oszacowanie",
+  "evidence": {
+    "ran-successfully": "Uruchomiono pomyślnie na tym urządzeniu z tymi ustawieniami.",
+    "failed-with-settings": "Nie udało się na tym urządzeniu z tymi ustawieniami. Inne ustawienia mogą zadziałać.",
+    "unsupported": "Nieobsługiwane przez to środowisko: silnik llama.cpp w tej wersji Flint nie rozpoznaje architektury modelu. Zmiana ustawień nie pomoże; może pomóc aktualizacja aplikacji.",
+    "stale": "Testowano wcześniej, ale od tego czasu coś się zmieniło, więc ten wynik może nie obowiązywać.",
+    "not-tested": "Nie testowano na tym urządzeniu."
+  },
+  "verdict": {
+    "fits": "Szacunkowo zmieści się w pamięci.",
+    "fits-partial-offload": "Szacunkowo się zmieści, a część modelu będzie działać na CPU. Będzie działać, ale odpowiadać wolniej.",
+    "tight": "Może wymagać dostosowania ustawień: zostałoby bardzo mało pamięci. Pomaga mniejszy rozmiar kontekstu.",
+    "exceeds": "Szacunkowo się nie zmieści. Oszacowania mogą być błędne; nadal możesz spróbować lub przetestować.",
+    "unknown": "Za mało informacji, aby oszacować."
+  },
+  "memoryModel": {
+    "unified": "Pamięć ujednolicona: {{ram}} współdzielone przez CPU i GPU. Domyślnie GPU może użyć około {{gpu}} z niej.",
+    "discrete-gpu": "Dedykowana pamięć GPU {{vram}} plus {{ram}} pamięci systemowej. Warstwy, które nie mieszczą się na GPU, działają na CPU.",
+    "integrated-gpu": "Zintegrowana grafika współdzieli {{ram}} pamięci systemowej, więc jest liczona raz.",
+    "cpu-only": "Nie wykryto GPU dla tego środowiska: model działa na CPU, używając {{ram}} pamięci systemowej.",
+    "unknown": "Pamięć urządzenia nie została jeszcze wykryta."
+  },
+  "showReasons": "Pokaż, jak to oszacowano",
+  "breakdown": {
+    "weights": "Plik modelu",
+    "kvCache": "Pamięć rozmowy dla {{tokens}} tokenów",
+    "mmproj": "Komponent rozpoznawania obrazu",
+    "overhead": "Narzut środowiska uruchomieniowego",
+    "total": "Szacowane zapotrzebowanie",
+    "budget": "Szacowana dostępność",
+    "otherLoaded": "Już zajęte przez inne wczytane modele"
+  },
+  "assumption": {
+    "kv-from-metadata": "Pamięć rozmowy jest obliczana na podstawie własnej architektury modelu i skonfigurowanych typów pamięci podręcznej.",
+    "kv-heuristic": "Nie udało się odczytać architektury modelu, więc pamięć rozmowy jest przybliżana na podstawie rozmiaru pliku.",
+    "kv-sliding-window-midpoint": "Ten model w niektórych warstwach przechowuje tylko ostatnie tokeny; dokładny podział jest nieznany, więc użyto środka.",
+    "context-capped-to-trained": "Rozmiar kontekstu jest ograniczony do tego, do czego model był trenowany.",
+    "unified-gpu-working-set": "macOS domyślnie ogranicza ilość pamięci ujednoliconej używanej przez GPU; powyżej tego warstwy działają na CPU.",
+    "integrated-gpu-shares-ram": "Pamięć zintegrowanej grafiki jest częścią pamięci systemowej i nie jest do niej dodawana.",
+    "discrete-vram-reserve": "Około 512 MB na każdy dedykowany GPU jest zostawione dla sterownika i wyświetlacza.",
+    "system-reserve": "Około 2 GB pamięci systemowej jest zostawione dla systemu operacyjnego i innych aplikacji.",
+    "runtime-overhead": "Bufory obliczeniowe i środowisko uruchomieniowe szacuje się na 300 MB plus 2% pliku modelu.",
+    "cpu-only-by-setting": "Warstwy GPU ustawiono na 0, więc GPU nie jest używane.",
+    "other-models-loaded": "Już wczytane modele są odejmowane, ale nie da się zaobserwować, gdzie się znajdują (GPU czy CPU).",
+    "mmap-not-counted": "Wczytywanie z mapowaniem pamięci może pozwolić modelowi uruchomić się w mniejszej ilości pamięci niż pokazano, kosztem dużej utraty szybkości; nie jest to uwzględniane.",
+    "mmproj-unknown": "Komponent rozpoznawania obrazu istnieje, ale jego rozmiar jest nieznany."
+  },
+  "uncertainty": {
+    "low": "Pewność: dość dobra. Rzeczywiste użycie nadal może się różnić.",
+    "medium": "Pewność: umiarkowana. Test na tym urządzeniu da prawdziwą odpowiedź.",
+    "high": "Pewność: niska. Wynik jest blisko limitu lub opiera się na zgrubnych założeniach; przetestuj, aby się dowiedzieć."
+  },
+  "difference": {
+    "settings": "Ustawienia zmieniły się od testu: {{keys}}.",
+    "runtime": "Aplikacja została zaktualizowana od testu ({{recorded}} do {{current}}).",
+    "device": "Zmieniła się konfiguracja pamięci lub GPU urządzenia.",
+    "modelFile": "Plik modelu się zmienił."
+  },
+  "otherSuccess": "Działał na tym urządzeniu z rozmiarem kontekstu {{context}}.",
+  "testScope": "Test dowodzi tylko krótkiej odpowiedzi z użytymi ustawieniami. Dłuższe rozmowy, większy kontekst lub inne wczytane modele nadal mogą wyczerpać pamięć.",
+  "testedAt": "Testowano {{when}} z ustawieniami: {{settings}}.",
+  "defaultSettings": "ustawienia domyślne",
+  "metric": {
+    "load": "Czas wczytywania",
+    "generation": "Prędkość generowania",
+    "prompt": "Prędkość czytania promptu"
+  },
+  "test": {
+    "run": "Przetestuj na tym urządzeniu",
+    "runAgain": "Przetestuj ponownie",
+    "cancel": "Anuluj test",
+    "running": "Testowanie: wczytywanie modelu i prośba o krótką odpowiedź…",
+    "succeeded": "Test zaliczony: model się wczytał i odpowiedział.",
+    "failed": "Test nie powiódł się: {{reason}}",
+    "cancelled": "Test anulowany. Nic, co wczytał test, nie pozostaje wczytane.",
+    "cancelledNotReleased": "Test anulowany, ale nie udało się zwolnić modelu. Zwolnij go z ustawień modelu.",
+    "notReleased": "Nie udało się potem zwolnić modelu; nadal zajmuje pamięć.",
+    "couldNotRun": "Nie udało się uruchomić testu: {{reason}}",
+    "blockedBusy": "Nie testowano: {{models}} pisze odpowiedź, a test musiałby go zwolnić. Spróbuj ponownie po jej zakończeniu. Nic nie zmieniono.",
+    "blockedInProgress": "Inny test modelu już trwa. Nic nie zmieniono.",
+    "restored": "{{models}} został wczytany ponownie.",
+    "notRestored": "Nie udało się ponownie wczytać {{models}}; wczytaj go z ustawień modelu.",
+    "needsConfirmation": "Test wymaga najpierw zwolnienia innego modelu.",
+    "confirmUnload": "Aby przetestować, Flint musi zwolnić {{models}}. Każda generowana przez niego odpowiedź zostanie zatrzymana. Nie zostanie wczytany automatycznie.",
+    "unloadAndTest": "Zwolnij i przetestuj",
+    "dontTest": "Nie testuj"
+  },
+  "testExplainer": "Test używa pliku modelu, który już jest na tym urządzeniu; nic nie jest pobierane. Wczytuje model z jego bieżącymi ustawieniami, prosi o odpowiedź jednym słowem i ponownie go zwalnia, jeśli nie był już wczytany.",
+  "adjustSettings": "Dostosuj ustawienia",
+  "setDefault": "Używaj w nowych czatach",
+  "removeDefault": "Przestań używać w nowych czatach",
+  "hideHint": "Ukryj tę wskazówkę",
+  "showHint": "Pokaż tę wskazówkę",
+  "badge": {
+    "worked": "Działał tutaj",
+    "unsupported": "Nieobsługiwany przez to środowisko",
+    "default": "Domyślny"
+  },
+  "location": {
+    "local": "Działa na tym urządzeniu lub w Twojej sieci",
+    "remote": "Zdalny: wiadomości są wysyłane do tego dostawcy"
+  },
+  "providerSettings": "Ustawienia {{provider}}",
+  "memoryBars": "Szacowane zapotrzebowanie na pamięć w porównaniu z dostępną",
+  "picker": {
+    "local": "Na tym komputerze lub w Twojej sieci",
+    "remote": "Dostawcy chmurowi",
+    "remoteHint": "wiadomości opuszczają ten komputer",
+    "inUse": "Używany tutaj: {{model}} · {{provider}}"
+  }
+}

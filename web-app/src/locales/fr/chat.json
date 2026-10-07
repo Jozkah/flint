@@ -1,15 +1,70 @@
 {
   "welcome": "Bonjour, comment allez-vous ?",
   "description": "Comment puis-je vous aider aujourd'hui ?",
+  "startedAt": "Commencé {{time}}",
+  "home": {
+    "title": "Nouvelle discussion",
+    "notSaved": "Rien n'est enregistré avant l'envoi",
+    "sub": "Posez une question, joignez des fichiers ou confiez une tâche plus importante à Cowork.",
+    "suggestionsLabel": "Suggestions",
+    "suggestions": {
+      "explain": "Expliquer ce message d'erreur",
+      "summarise": "Résumer un document que je joins",
+      "draft": "Rédiger des notes de version à partir d'une liste de modifications",
+      "compare": "Comparer deux approches et en recommander une"
+    }
+  },
   "temporaryChat": "Discussion temporaire",
   "temporaryChatDescription": "Commencez une conversation temporaire qui ne sera pas sauvegardée dans votre historique de discussion.",
+  "temporaryChatBanner": "Discussion temporaire — ne sera pas enregistrée",
+  "temporaryChatKeep": "Conserver cette discussion",
+  "temporaryChatLeave": {
+    "title": "Conserver cette discussion temporaire ?",
+    "description": "Cette discussion n'est enregistrée nulle part. Conservez-la pour l'ajouter à votre historique, ou abandonnez-la pour la supprimer définitivement.",
+    "keep": "Conserver",
+    "discard": "Abandonner",
+    "kept": "Discussion enregistrée dans votre historique",
+    "keepFailed": "Impossible d'enregistrer cette discussion",
+    "discardFailed": "Impossible d'abandonner : la génération est toujours en cours. Arrêtez-la et réessayez.",
+    "reason": {
+      "generation-not-stopped": "La génération est toujours en cours. Arrêtez-la et réessayez.",
+      "messages-not-persisted": "La discussion n'a pas pu être entièrement enregistrée. Rien n'a été perdu — veuillez réessayer.",
+      "thread-not-created": "La discussion n'a pas pu être enregistrée. Rien n'a été perdu — veuillez réessayer.",
+      "error": "Une erreur s'est produite. Votre discussion est toujours là — veuillez réessayer."
+    }
+  },
   "status": {
     "empty": "Aucune discussion trouvée"
   },
   "sendMessage": "Envoyer un message",
   "newConversation": "Nouvelle conversation",
   "clearHistory": "Effacer l'historique",
+  "embeddings": {
+    "title": "Préparation de vos documents",
+    "description": "Indexation des fichiers joints pour qu'ils puissent être recherchés et cités. Cela peut prendre un moment pour les gros documents."
+  },
+  "actions": {
+    "copy": "Copier",
+    "regenerate": "Régénérer la réponse",
+    "continue": "Continuer la génération",
+    "delete": "Supprimer",
+    "fork": "Créer une branche du chat à partir d'ici"
+  },
   "done": "Done",
+  "webSources": "{{count}} source(s)",
+  "webSourcesRead": "{{count}} lue(s)",
+  "webSourcesReadFound": "{{read}} lue(s) · {{found}} trouvée(s)",
+  "reasoning": {
+    "label": "Raisonnement…",
+    "thinking": "Réflexion",
+    "usingTool": "{{tool}}…",
+    "showFullTimeline": "Afficher la chronologie complète",
+    "showCurrentStep": "Afficher uniquement l'étape en cours",
+    "thoughtForAWhile": "A réfléchi quelques secondes",
+    "thoughtFor": "A réfléchi pendant {{duration}}",
+    "workedForAWhile": "A travaillé quelques secondes",
+    "workedFor": "A travaillé pendant {{duration}}"
+  },
   "split": {
     "open": "Diviser la conversation",
     "openShort": "Diviser",
@@ -44,16 +99,85 @@
   },
   "transcriptView": {
     "steps_one": "{{count}} étape",
-    "steps_many": "{{count}} étapes",
     "steps_other": "{{count}} étapes",
-    "working": "En cours"
+    "working": "En cours",
+    "failed": "Échec :",
+    "failedToRun": "Échec de l'exécution",
+    "summary": {
+      "failed": "{{count}} en échec",
+      "commands_one": "{{count}} commande exécutée",
+      "commands_other": "{{count}} commandes exécutées",
+      "created_one": "{{count}} fichier créé",
+      "created_other": "{{count}} fichiers créés",
+      "edited_one": "{{count}} fichier modifié",
+      "edited_other": "{{count}} fichiers modifiés",
+      "read_one": "{{count}} fichier lu",
+      "read_other": "{{count}} fichiers lus",
+      "searched_one": "{{count}} recherche",
+      "searched_other": "{{count}} recherches",
+      "tools_one": "{{count}} outil utilisé",
+      "tools_other": "{{count}} outils utilisés",
+      "commands_many": "{{count}} de commandes exécutées",
+      "created_many": "{{count}} de fichiers créés",
+      "edited_many": "{{count}} de fichiers modifiés",
+      "read_many": "{{count}} de fichiers lus",
+      "searched_many": "{{count}} de recherches",
+      "tools_many": "{{count}} d'outils utilisés"
+    },
+    "steps_many": "{{count}} d'étapes"
   },
-  "actions": {
-    "fork": "Créer une branche du chat à partir d'ici"
+  "widget": {
+    "label": "Widget",
+    "drawing": "Dessin du widget",
+    "source": "Voir la source",
+    "copy": "Copier le HTML",
+    "copied": "HTML copié.",
+    "copyFailed": "Impossible de copier le HTML.",
+    "save": "Enregistrer en fichier .html",
+    "expand": "Ouvrir en taille réelle",
+    "rerun": "Relancer",
+    "stalled": "Le widget ne répond plus.",
+    "parked": "Widget en pause hors de l'écran.",
+    "error": "Erreur du widget :",
+    "viewSource": "Voir la source",
+    "askFix": "Demander à Flint de corriger",
+    "fixPrompt": "Le widget « {{title}} » affiche une erreur : {{error}}\nCorrigez-le et affichez-le de nouveau.",
+    "refused": "Widget non affiché : {{reason}}",
+    "refusedUnknown": "l'appel a échoué",
+    "tooLarge": "Ce widget dépasse {{max}} caractères et n'est pas dessiné.",
+    "openLink": "Ouvrir {{url}} dans votre navigateur ?",
+    "cancel": "Annuler",
+    "busy": "Attendez la fin de la réponse en cours, puis réessayez.",
+    "noHost": "Cette vue ne peut pas envoyer de messages."
+  },
+  "browserCard": {
+    "opened": "Ouvert dans le navigateur",
+    "ready": "Prêt à ouvrir",
+    "open": "Ouvrir",
+    "more": "Plus",
+    "copy": "Copier le lien",
+    "copied": "Lien copié.",
+    "failed": "Impossible d'ouvrir le navigateur."
+  },
+  "regenerateTitle": {
+    "menu": "Régénérer le titre",
+    "working": "Nommage de la discussion…",
+    "done": "Discussion renommée.",
+    "empty": "Rien pour l'instant à partir de quoi nommer cette discussion.",
+    "busy": "Mettez le salon en pause ou arrêtez-le avant de le renommer.",
+    "failed": "Impossible de générer un titre."
   },
   "fork": {
     "chat": "Dupliquer le chat en branche",
     "done": "Branche créée dans un nouveau chat.",
     "failed": "Impossible de créer une branche de ce chat."
+  },
+  "version": {
+    "group": "Versions du message",
+    "previous": "Version précédente",
+    "next": "Version suivante",
+    "previousAt": "Version précédente (affichage {{index}} sur {{count}})",
+    "nextAt": "Version suivante (affichage {{index}} sur {{count}})",
+    "position": "Version {{index}} sur {{count}}"
   }
 }

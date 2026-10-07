@@ -1,0 +1,116 @@
+{
+  "triggerLabel": "此模型能在這台裝置上執行嗎？{{status}}。顯示詳細資料",
+  "title": "此模型能在這台裝置上執行嗎？",
+  "subtitle": "這裡哪些是實測的，哪些只是估算。",
+  "measuredHeading": "在這台裝置上實測",
+  "estimateHeading": "估算",
+  "evidence": {
+    "ran-successfully": "使用這些設定已在這台裝置上成功執行。",
+    "failed-with-settings": "使用這些設定在這台裝置上失敗。其他設定可能可行。",
+    "unsupported": "此執行階段不支援：此版本 Flint 中的 llama.cpp 引擎無法辨識該模型的架構。變更設定無濟於事；應用程式更新可能有幫助。",
+    "stale": "先前測試過，但此後有所變化，因此該結果可能不再適用。",
+    "not-tested": "尚未在這台裝置上測試。"
+  },
+  "verdict": {
+    "fits": "估計可放入記憶體。",
+    "fits-partial-offload": "估計可以放下，但模型的一部分在 CPU 上執行。可以運作，但回應較慢。",
+    "tight": "可能需要調整設定：剩餘記憶體將非常少。縮小上下文大小會有幫助。",
+    "exceeds": "估計放不下。估算可能有誤；你仍然可以嘗試或測試。",
+    "unknown": "資訊不足，無法估算。"
+  },
+  "memoryModel": {
+    "unified": "統一記憶體：{{ram}} 由 CPU 和 GPU 共用。預設情況下 GPU 可使用其中約 {{gpu}}。",
+    "discrete-gpu": "專用 GPU 記憶體 {{vram}} 加上 {{ram}} 系統記憶體。無法放入 GPU 的層會在 CPU 上執行。",
+    "integrated-gpu": "整合式顯示卡共用 {{ram}} 系統記憶體，因此只計算一次。",
+    "cpu-only": "此執行階段未偵測到 GPU：模型使用 {{ram}} 系統記憶體在 CPU 上執行。",
+    "unknown": "尚未偵測到裝置記憶體。"
+  },
+  "showReasons": "顯示估算方式",
+  "breakdown": {
+    "weights": "模型檔案",
+    "kvCache": "{{tokens}} 個 token 的對話記憶體",
+    "mmproj": "視覺元件",
+    "overhead": "執行階段額外負擔",
+    "total": "估算需求",
+    "budget": "估算可用",
+    "otherLoaded": "已被其他已載入的模型佔用"
+  },
+  "assumption": {
+    "kv-from-metadata": "對話記憶體是根據模型本身的架構和已設定的快取類型計算。",
+    "kv-heuristic": "無法讀取模型的架構，因此根據檔案大小近似估算對話記憶體。",
+    "kv-sliding-window-midpoint": "此模型在某些層中僅保留最近的 token；確切劃分未知，因此使用中間值。",
+    "context-capped-to-trained": "上下文大小被限制在模型訓練時的長度以內。",
+    "unified-gpu-working-set": "macOS 預設會限制 GPU 使用的統一記憶體量；超出部分的層會在 CPU 上執行。",
+    "integrated-gpu-shares-ram": "整合式顯示卡的記憶體是系統記憶體的一部分，不會疊加計算。",
+    "discrete-vram-reserve": "每個專用 GPU 約保留 512 MB 給驅動程式和顯示。",
+    "system-reserve": "約保留 2 GB 系統記憶體給作業系統和其他應用程式。",
+    "runtime-overhead": "運算緩衝區和執行階段估算為 300 MB 加模型檔案的 2%。",
+    "cpu-only-by-setting": "GPU 層數設定為 0，因此不使用 GPU。",
+    "other-models-loaded": "已載入的模型會被扣除，但無法觀察它們位於何處（GPU 或 CPU）。",
+    "mmap-not-counted": "記憶體對映載入可讓模型在比所示更少的記憶體下啟動，但會大幅降低速度；這一點未計入。",
+    "mmproj-unknown": "存在視覺元件，但其大小未知。"
+  },
+  "uncertainty": {
+    "low": "可信度：良好。實際使用仍可能有差異。",
+    "medium": "可信度：中等。在這台裝置上測試可得到真實答案。",
+    "high": "可信度：低。結果接近極限或基於粗略假設；請測試以確認。"
+  },
+  "difference": {
+    "settings": "自測試以來設定已變更：{{keys}}。",
+    "runtime": "自測試以來應用程式已更新（{{recorded}} 至 {{current}}）。",
+    "device": "裝置的記憶體或 GPU 設定已變更。",
+    "modelFile": "模型檔案已變更。"
+  },
+  "otherSuccess": "它確實曾在這台裝置上以 {{context}} 的上下文大小執行。",
+  "testScope": "測試僅證明在所用設定下能給出簡短回覆。更長的對話、更大的上下文或其他已載入的模型仍可能耗盡記憶體。",
+  "testedAt": "{{when}}使用{{settings}}測試。",
+  "defaultSettings": "預設設定",
+  "metric": {
+    "load": "載入時間",
+    "generation": "生成速度",
+    "prompt": "提示詞讀取速度"
+  },
+  "test": {
+    "run": "在這台裝置上測試",
+    "runAgain": "重新測試",
+    "cancel": "取消測試",
+    "running": "正在測試：載入模型並要求簡短回覆…",
+    "succeeded": "測試通過：模型已載入並回覆。",
+    "failed": "測試失敗：{{reason}}",
+    "cancelled": "測試已取消。測試載入的任何內容都不再處於載入狀態。",
+    "cancelledNotReleased": "測試已取消，但無法卸載模型。請在模型設定中卸載。",
+    "notReleased": "之後無法卸載模型；它仍在佔用記憶體。",
+    "couldNotRun": "無法執行測試：{{reason}}",
+    "blockedBusy": "未測試：{{models}} 正在撰寫回覆，而測試需要卸載它。請在它完成後重試。未做任何變更。",
+    "blockedInProgress": "另一項模型測試已在執行。未做任何變更。",
+    "restored": "{{models}} 已重新載入。",
+    "notRestored": "無法重新載入 {{models}}；請從模型設定中載入。",
+    "needsConfirmation": "測試需要先卸載另一個模型。",
+    "confirmUnload": "要進行測試，Flint 必須卸載 {{models}}。它正在生成的任何回覆都會停止。它不會自動重新載入。",
+    "unloadAndTest": "卸載並測試",
+    "dontTest": "不測試"
+  },
+  "testExplainer": "測試使用這台裝置上已有的模型檔案；不會下載任何內容。它會以目前設定載入模型，要求一個單字的回覆，並在模型原本未載入時再次將其卸載。",
+  "adjustSettings": "調整設定",
+  "setDefault": "用於新聊天",
+  "removeDefault": "不再用於新聊天",
+  "hideHint": "隱藏此提示",
+  "showHint": "顯示此提示",
+  "badge": {
+    "worked": "在這裡執行成功",
+    "unsupported": "此執行階段不支援",
+    "default": "預設"
+  },
+  "location": {
+    "local": "在這台裝置或你的網路上執行",
+    "remote": "遠端：訊息會傳送給此供應商"
+  },
+  "providerSettings": "{{provider}} 設定",
+  "memoryBars": "估算記憶體需求與可用記憶體的比較",
+  "picker": {
+    "local": "在這台電腦或你的網路上",
+    "remote": "雲端供應商",
+    "remoteHint": "訊息會離開這台電腦",
+    "inUse": "此處正在使用：{{model}} · {{provider}}"
+  }
+}

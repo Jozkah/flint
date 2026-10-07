@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "Consentire all'assistente di usare {{host}}?",
+    "description": "L'assistente vuole usare il pannello browser su un sito che non hai ancora approvato.",
+    "urlLabel": "Indirizzo completo",
+    "urlHint": "Controlla l'intero indirizzo, compreso tutto ciò che segue il ?. Gli indirizzi possono portare informazioni fuori dalla tua conversazione.",
+    "wantsLabel": "Vuole",
+    "wants": {
+      "browser_open": "aprire questa pagina",
+      "browser_read_text": "leggere questa pagina",
+      "browser_snapshot": "guardare i controlli di questa pagina",
+      "browser_screenshot": "fare uno screenshot di questa pagina",
+      "browser_scroll": "scorrere questa pagina",
+      "browser_click": "cliccare su questa pagina",
+      "browser_type": "scrivere su questa pagina",
+      "browser_press": "premere un tasto su questa pagina",
+      "browser_select": "scegliere un'opzione su questa pagina"
+    },
+    "origin": "Richiesto da {{origin}}",
+    "scopeLabel": "Per quanto tempo",
+    "once": "Solo questa visita",
+    "onceHint": "Termina quando l'assistente passa a un altro sito, o dopo 15 minuti.",
+    "session": "Fino alla chiusura di Flint",
+    "always": "Sempre",
+    "alwaysHint": "Salvato. Puoi rimuoverlo in Impostazioni > Strumenti dell'agente.",
+    "subdomains": "Consenti anche i sottodomini di {{base}}",
+    "allow": "Consenti",
+    "deny": "Non ora",
+    "never": "Non consentire mai questo sito",
+    "more": "Altri {{count}} in attesa",
+    "warning": "L'assistente può leggere tutto ciò che è nella pagina, e il testo di una pagina può cercare di ingannarlo."
+  },
+  "settings": {
+    "title": "Browser",
+    "enabled": "Consenti all'assistente di usare il pannello browser",
+    "enabledDesc": "Aggiunge strumenti per aprire pagine, leggerle e, con la tua approvazione, cliccare e scrivere nel pannello browser integrato. Vedi lo stesso pannello. Ogni sito chiede conferma la prima volta; gli indirizzi locali e di rete privata non vengono mai aperti.",
+    "maxActions": "Azioni per esecuzione",
+    "maxActionsDesc": "Clic, pressioni di tasti e selezioni che un'esecuzione può compiere prima di doversi fermare.",
+    "rulesTitle": "Regole dei siti salvate",
+    "rulesDesc": "Siti che hai consentito sempre, o bloccato. Una regola per example.com copre solo quel sito; *.example.com copre i suoi sottodomini.",
+    "empty": "Nessuna regola salvata. Un sito compare qui quando scegli Consenti sempre o Non consentire mai.",
+    "allow": "Consentito",
+    "deny": "Bloccato",
+    "privateOk": "Indirizzo locale",
+    "remove": "Rimuovi",
+    "removed": "Regola rimossa",
+    "removeFailed": "Impossibile rimuovere la regola: {{error}}",
+    "addPlaceholder": "example.com o *.example.com",
+    "addLabel": "Sito",
+    "addVerdict": "Regola",
+    "addPrivate": "Consenti che sia un indirizzo locale o di rete privata (per un server di sviluppo)",
+    "add": "Aggiungi regola",
+    "added": "Regola salvata",
+    "addFailed": "Impossibile salvare la regola: {{error}}",
+    "pointer": "Mostra il puntatore",
+    "pointerDesc": "Disegna un cursore nel pannello browser che scivola verso ciò su cui l'assistente clicca o scrive, e scorre con esso. Disattivato: non viene disegnato nulla e nulla è ritardato.",
+    "reduceMotion": "Riduci movimento",
+    "reduceMotionDesc": "Niente scivolamento né pulsazione luminosa: il puntatore salta direttamente al bersaglio.",
+    "reduceSystem": "Segui il sistema",
+    "reduceOn": "Riduci sempre",
+    "reduceOff": "Non ridurre mai",
+    "grantsTitle": "Approvati per ora",
+    "grantsNone": "Nulla è approvato senza essere salvato. Ogni sito non presente nelle regole salvate chiede conferma.",
+    "grantsDesc": "Siti che hai consentito per questa sessione o questa visita. Non vengono salvati e terminano alla chiusura di Flint.",
+    "grantScope": {
+      "session": "questa sessione",
+      "once": "questa visita"
+    },
+    "grantAge": "{{minutes}} min fa",
+    "forgetGrants": "Dimentica le approvazioni di questa sessione"
+  },
+  "card": {
+    "screenshot": "Screenshot del pannello browser"
+  },
+  "pane": {
+    "driving": "L'assistente sta usando questo browser",
+    "takeOver": "Prendi il controllo",
+    "paused": "Assistente in pausa",
+    "handBack": "Restituisci",
+    "blocked": "Una pagina è stata bloccata: {{reason}}"
+  }
+}

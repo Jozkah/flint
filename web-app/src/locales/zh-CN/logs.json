@@ -1,3 +1,19 @@
 {
-  "noLogs": "无可用日志"
+  "noLogs": "无可用日志",
+  "noMatch": "没有匹配筛选条件的行",
+  "title": "日志",
+  "serverTitle": "本地 API 服务器日志",
+  "copy": "复制日志",
+  "openFolder": "打开文件夹",
+  "copied": "已复制",
+  "search": "搜索日志",
+  "filterLabel": "按级别筛选",
+  "levelAll": "全部",
+  "levelError": "错误",
+  "levelWarn": "警告",
+  "levelInfo": "信息",
+  "levelDebug": "调试",
+  "shown": "{{shown}} / {{total}} 行",
+  "description": "Flint 及其引擎今天写入的所有内容。最新的在前。",
+  "serverDescription": "对兼容 OpenAI 的本地 API 服务器的请求。最新的在前。"
 }

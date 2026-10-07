@@ -1,6 +1,60 @@
 {
-  "col": {
-    "speed": "Tốc độ TB"
+  "title": "Tổng quan",
+  "morning": "Chào buổi sáng",
+  "afternoon": "Chào buổi chiều",
+  "evening": "Chào buổi tối",
+  "subWeek": "Đây là những gì các mô hình của bạn đã làm trong tuần này.",
+  "subMonth": "Đây là những gì các mô hình của bạn đã làm trong 30 ngày qua.",
+  "lastWeek": "Tuần trước",
+  "last30": "30 ngày qua",
+  "vsLastWeek": "so với tuần trước",
+  "vsLastMonth": "so với 30 ngày trước đó",
+  "options": "Tùy chọn bảng điều khiển",
+  "resetStats": "Đặt lại thống kê",
+  "tokens": "Token đã tạo",
+  "cost": "Chi phí ước tính",
+  "speed": "Tốc độ tạo trung bình",
+  "toolSuccess": "Tỷ lệ gọi công cụ thành công",
+  "throughput": "Thông lượng token",
+  "throughputAria": "Số token tạo ra mỗi ngày. Dùng phím mũi tên trái và phải để xem từng ngày.",
+  "activity": "Hoạt động mới nhất",
+  "activityRange": "Khoảng thời gian hoạt động",
+  "today": "Hôm nay",
+  "yesterday": "Hôm qua",
+  "thisWeek": "Tuần này",
+  "searchActivity": "Tìm hoạt động",
+  "newActivities": {
+    "today_one": "hoạt động mới hôm nay",
+    "today_other": "hoạt động mới hôm nay",
+    "yesterday_one": "hoạt động hôm qua",
+    "yesterday_other": "hoạt động hôm qua",
+    "week_one": "hoạt động trong tuần này",
+    "week_other": "hoạt động trong tuần này"
   },
-  "tokensPerSecond": "{{value}} t/s"
+  "noActivity": "Chưa có gì",
+  "noActivityHint": "Các phê duyệt, lỗi công cụ và lần nén sẽ hiện ở đây khi chúng xảy ra.",
+  "runs": "Lượt chạy tác tử",
+  "searchRuns": "Lượt chạy",
+  "filter": "Bộ lọc",
+  "filterAll": "Tất cả lượt chạy",
+  "openRun": "Mở lượt chạy",
+  "noRuns": "Chưa có lượt chạy Cowork nào",
+  "noRunsHint": "Giao cho Cowork một tác vụ lớn hơn và các lượt chạy của nó sẽ hiện ở đây.",
+  "openCowork": "Mở Cowork",
+  "col": {
+    "run": "ID lượt chạy",
+    "task": "Tác vụ",
+    "model": "Mô hình",
+    "status": "Trạng thái",
+    "started": "Bắt đầu",
+    "speed": "Tốc độ TB",
+    "tokens": "Token"
+  },
+  "tokensPerSecond": "{{value}} t/s",
+  "status": {
+    "running": "Đang chạy",
+    "approval": "Cần phê duyệt",
+    "done": "Xong",
+    "idle": "Chưa bắt đầu"
+  }
 }

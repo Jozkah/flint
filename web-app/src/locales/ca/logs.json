@@ -1,3 +1,19 @@
 {
-  "noLogs": "No hi ha registres disponibles"
+  "noLogs": "No hi ha registres disponibles",
+  "noMatch": "Cap línia coincideix amb el filtre",
+  "title": "Registres",
+  "serverTitle": "Registres del servidor d'API local",
+  "copy": "Copia els registres",
+  "openFolder": "Obre la carpeta",
+  "copied": "Copiat",
+  "search": "Cerca als registres",
+  "filterLabel": "Filtra per nivell",
+  "levelAll": "Tots",
+  "levelError": "Errors",
+  "levelWarn": "Advertències",
+  "levelInfo": "Informació",
+  "levelDebug": "Depuració",
+  "shown": "{{shown}} de {{total}} línies",
+  "description": "Tot el que Flint i el seu motor han escrit avui. Primer el més nou.",
+  "serverDescription": "Sol·licituds al servidor d'API local compatible amb OpenAI. Primer el més nou."
 }

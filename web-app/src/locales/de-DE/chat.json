@@ -1,15 +1,70 @@
 {
   "welcome": "Hi, wie geht es Dir?",
   "description": "Wie kann ich Dir heute helfen?",
+  "startedAt": "Gestartet {{time}}",
+  "home": {
+    "title": "Neuer Chat",
+    "notSaved": "Nichts wird gespeichert, bevor du sendest",
+    "sub": "Frag, was du willst, hänge Dateien an oder gib eine größere Aufgabe an Cowork.",
+    "suggestionsLabel": "Vorschläge",
+    "suggestions": {
+      "explain": "Diese Fehlermeldung erklären",
+      "summarise": "Ein angehängtes Dokument zusammenfassen",
+      "draft": "Release Notes aus einer Liste von Änderungen entwerfen",
+      "compare": "Zwei Ansätze vergleichen und einen empfehlen"
+    }
+  },
   "temporaryChat": "Temporärer Chat",
   "temporaryChatDescription": "Starte ein temporäres Gespräch, das nicht in deinem Chatverlauf gespeichert wird.",
+  "temporaryChatBanner": "Temporärer Chat – wird nicht gespeichert",
+  "temporaryChatKeep": "Diesen Chat behalten",
+  "temporaryChatLeave": {
+    "title": "Diesen temporären Chat behalten?",
+    "description": "Dieser Chat ist nirgends gespeichert. Behalte ihn, um ihn in deinen Verlauf zu übernehmen, oder verwirf ihn, um ihn endgültig zu löschen.",
+    "keep": "Behalten",
+    "discard": "Verwerfen",
+    "kept": "Chat in deinem Verlauf gespeichert",
+    "keepFailed": "Dieser Chat konnte nicht gespeichert werden",
+    "discardFailed": "Verwerfen nicht möglich – die Generierung läuft noch. Stoppe sie und versuche es erneut.",
+    "reason": {
+      "generation-not-stopped": "Die Generierung läuft noch. Stoppe sie und versuche es erneut.",
+      "messages-not-persisted": "Der Chat konnte nicht vollständig gespeichert werden. Es ging nichts verloren – bitte versuche es erneut.",
+      "thread-not-created": "Der Chat konnte nicht gespeichert werden. Es ging nichts verloren – bitte versuche es erneut.",
+      "error": "Etwas ist schiefgelaufen. Dein Chat ist noch da – bitte versuche es erneut."
+    }
+  },
   "status": {
     "empty": "Keine Chats gefunden"
   },
   "sendMessage": "Nachricht senden",
   "newConversation": "Neue Konversation",
   "clearHistory": "Verlauf löschen",
+  "embeddings": {
+    "title": "Deine Dokumente werden vorbereitet",
+    "description": "Die angehängten Dateien werden indiziert, damit sie durchsucht und zitiert werden können. Bei großen Dokumenten kann das einen Moment dauern."
+  },
+  "actions": {
+    "copy": "Kopieren",
+    "regenerate": "Antwort neu generieren",
+    "continue": "Weiter generieren",
+    "delete": "Löschen",
+    "fork": "Chat ab hier verzweigen"
+  },
   "done": "Done",
+  "webSources": "{{count}} Quelle(n)",
+  "webSourcesRead": "{{count}} gelesen",
+  "webSourcesReadFound": "{{read}} gelesen · {{found}} gefunden",
+  "reasoning": {
+    "label": "Denkt nach ...",
+    "thinking": "Denkt nach",
+    "usingTool": "{{tool}} ...",
+    "showFullTimeline": "Gesamten Verlauf anzeigen",
+    "showCurrentStep": "Nur aktuellen Schritt anzeigen",
+    "thoughtForAWhile": "Einige Sekunden nachgedacht",
+    "thoughtFor": "{{duration}} nachgedacht",
+    "workedForAWhile": "Einige Sekunden gearbeitet",
+    "workedFor": "{{duration}} gearbeitet"
+  },
   "split": {
     "open": "Unterhaltung teilen",
     "openShort": "Teilen",
@@ -45,14 +100,77 @@
   "transcriptView": {
     "steps_one": "{{count}} Schritt",
     "steps_other": "{{count}} Schritte",
-    "working": "Arbeitet"
+    "working": "Arbeitet",
+    "failed": "Fehlgeschlagen:",
+    "failedToRun": "Ausführung fehlgeschlagen",
+    "summary": {
+      "failed": "{{count}} fehlgeschlagen",
+      "commands_one": "{{count}} Befehl ausgeführt",
+      "commands_other": "{{count}} Befehle ausgeführt",
+      "created_one": "{{count}} Datei erstellt",
+      "created_other": "{{count}} Dateien erstellt",
+      "edited_one": "{{count}} Datei bearbeitet",
+      "edited_other": "{{count}} Dateien bearbeitet",
+      "read_one": "{{count}} Datei gelesen",
+      "read_other": "{{count}} Dateien gelesen",
+      "searched_one": "{{count}} Mal gesucht",
+      "searched_other": "{{count}} Mal gesucht",
+      "tools_one": "{{count}} Tool verwendet",
+      "tools_other": "{{count}} Tools verwendet"
+    }
   },
-  "actions": {
-    "fork": "Chat ab hier verzweigen"
+  "widget": {
+    "label": "Widget",
+    "drawing": "Widget wird gezeichnet",
+    "source": "Quelltext anzeigen",
+    "copy": "HTML kopieren",
+    "copied": "HTML kopiert.",
+    "copyFailed": "Das HTML konnte nicht kopiert werden.",
+    "save": "Als .html-Datei speichern",
+    "expand": "In voller Größe öffnen",
+    "rerun": "Erneut ausführen",
+    "stalled": "Das Widget reagiert nicht mehr.",
+    "parked": "Widget pausiert, solange es außerhalb des Bildschirms ist.",
+    "error": "Widget-Fehler:",
+    "viewSource": "Quelltext anzeigen",
+    "askFix": "Flint um Korrektur bitten",
+    "fixPrompt": "Das Widget „{{title}}“ zeigt einen Fehler: {{error}}\nBitte behebe ihn und zeige das Widget erneut an.",
+    "refused": "Widget nicht angezeigt: {{reason}}",
+    "refusedUnknown": "der Aufruf ist fehlgeschlagen",
+    "tooLarge": "Dieses Widget ist größer als {{max}} Zeichen und wird nicht gezeichnet.",
+    "openLink": "{{url}} in deinem Browser öffnen?",
+    "cancel": "Abbrechen",
+    "busy": "Warte, bis die aktuelle Antwort fertig ist, und versuche es dann erneut.",
+    "noHost": "Diese Ansicht kann keine Nachrichten senden."
+  },
+  "browserCard": {
+    "opened": "Im Browser geöffnet",
+    "ready": "Bereit zum Öffnen",
+    "open": "Öffnen",
+    "more": "Mehr",
+    "copy": "Link kopieren",
+    "copied": "Link kopiert.",
+    "failed": "Der Browser konnte nicht geöffnet werden."
+  },
+  "regenerateTitle": {
+    "menu": "Titel neu generieren",
+    "working": "Chat wird benannt ...",
+    "done": "Chat umbenannt.",
+    "empty": "Noch nichts vorhanden, woraus sich ein Name für diesen Chat ableiten ließe.",
+    "busy": "Pausiere oder stoppe den Raum, bevor du ihn umbenennst.",
+    "failed": "Es konnte kein Titel generiert werden."
   },
   "fork": {
     "chat": "Chat verzweigen",
     "done": "In einen neuen Chat verzweigt.",
     "failed": "Dieser Chat konnte nicht verzweigt werden."
+  },
+  "version": {
+    "group": "Nachrichtenversionen",
+    "previous": "Vorherige Version",
+    "next": "Nächste Version",
+    "previousAt": "Vorherige Version (zeigt {{index}} von {{count}})",
+    "nextAt": "Nächste Version (zeigt {{index}} von {{count}})",
+    "position": "Version {{index}} von {{count}}"
   }
 }

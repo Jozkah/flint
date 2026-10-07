@@ -1,7 +1,134 @@
 {
+  "status": {
+    "running": "Çalışıyor",
+    "completed": "Tamamlandı",
+    "failed": "Başarısız",
+    "cancelled": "İptal edildi",
+    "partial": "Kısmen tamamlandı"
+  },
+  "sections": {
+    "happened": "Ne oldu",
+    "where": "Sonuç nerede",
+    "checked": "Neler kontrol edildi",
+    "unresolved": "Çözülmemiş",
+    "next": "Sonraki adımlar"
+  },
+  "headline": {
+    "running": "Çalıştırma hâlâ sürüyor.",
+    "completedWithChanges": "Çalıştırma bitti ve Flint dosyaları değiştirdi.",
+    "completedNoChanges": "Çalıştırma, Flint hiçbir dosyayı değiştirmeden bitti.",
+    "completedChecksFailed": "Çalıştırma bitti, ancak Flint'in çalıştırdığı bir kontrol başarısız oldu.",
+    "finishedIncomplete": "Çalıştırma bitti, ancak isteğin bir kısmı yapılmadı. Çözülmemiş bölümüne bakın.",
+    "partial": "Çalıştırma bitmeden durdu. Önce bir miktar iş yapıldı.",
+    "failed": "Çalıştırma bitmeden durdu ve hiçbir şey tamamlanmadı.",
+    "cancelled": "Çalıştırma, hiçbir şey tamamlanmadan durduruldu."
+  },
+  "plan": {
+    "progress": "{{total}} içinden {{done}} tamamlandı"
+  },
+  "kept": "Bu değişiklikler korundu. Bir çalıştırmayı durdurmak, zaten yaptıklarını geri almaz.",
+  "location": {
+    "sandbox": "Bu oturumun korumalı alanında, deponuzda değil.",
+    "worktree": "Flint'in yönettiği ayrı bir çalışma ağacında, çalışma kopyanızda değil.",
+    "userCheckout": "Doğrudan bağlı klasörünüzde.",
+    "none": "Bu çalıştırmaya bir çalışma ağacı bağlanmamıştı.",
+    "noFiles": "Flint hiçbir dosya yazmadı.",
+    "open": "{{path}} dosyasını aç"
+  },
+  "checks": {
+    "none": "Flint hiçbir test veya kontrol çalıştırmadı.",
+    "kind": {
+      "test": "Test",
+      "build": "Derleme",
+      "lint": "Kontrol",
+      "command": "Komut"
+    },
+    "outcome": {
+      "passed": "Geçti",
+      "failed": "Başarısız",
+      "didNotFinish": "Bitmedi",
+      "running": "Çalışıyor",
+      "notRun": "Çalıştırılmadı",
+      "unknown": "Sonuç bilinmiyor"
+    },
+    "exit": "çıkış {{code}}",
+    "summary": {
+      "allTestsPassed": "Otomatik testler geçti.",
+      "allChecksPassed": "Otomatik kontroller geçti. Hiçbir test çalıştırılmadı.",
+      "somePassed": "{{total}} kontrolden {{passed}} tanesi geçti.",
+      "failedWithCode": "{{command}}, {{code}} çıkış koduyla başarısız oldu.",
+      "failedNoCode": "{{command}}, çıkış kodu olmadan başarısız oldu.",
+      "didNotFinish_one": "{{count}} kontrol bitmedi: iptal edildi, zaman aşımına uğradı veya kesintiye uğradı.",
+      "didNotFinish_other": "{{count}} kontrol bitmedi: iptal edildi, zaman aşımına uğradı veya kesintiye uğradı.",
+      "notRun_one": "{{count}} kontrol çalıştırılmadı.",
+      "notRun_other": "{{count}} kontrol çalıştırılmadı.",
+      "unknown_one": "{{count}} kontrolün kayıtlı çıkış durumu yok, bu nedenle sonucu bilinmiyor.",
+      "unknown_other": "{{count}} kontrolün kayıtlı çıkış durumu yok, bu nedenle sonuçları bilinmiyor.",
+      "running_one": "{{count}} kontrol hâlâ çalışıyor.",
+      "running_other": "{{count}} kontrol hâlâ çalışıyor.",
+      "visualNotChecked": "Görsel ve uçtan uca davranış kontrol edilmedi."
+    },
+    "otherCommands": "Ayrıca {{count}} başka komut çalıştırıldı. Kontrol olarak sayılmazlar.",
+    "completion": {
+      "not-started": "başlamadı",
+      "running": "hâlâ çalışıyor",
+      "completed": "sonuna kadar çalıştı",
+      "cancelled": "iptal edildi",
+      "timed-out": "zaman aşımına uğradı",
+      "interrupted": "kesintiye uğradı"
+    },
+    "limitation": {
+      "exit-status-only": "Yalnızca çıkış durumuyla değerlendirildi.",
+      "compound-command": "Birkaç komut zincirlendi; durum her adımı değil zinciri kapsar.",
+      "output-truncated": "Çıktı kesildi, bu nedenle sonraki hatalar görünmeyebilir.",
+      "background": "Arka planda başlatıldı; durum işin durumu olmayabilir.",
+      "subset-selected": "Test paketinin yalnızca bir kısmı seçildi.",
+      "no-exit-status": "Çıkış durumu kaydedilmedi."
+    },
+    "claimsTitle": "Asistan tarafından belirtildi, Flint tarafından doğrulanmadı:"
+  },
   "unresolved": {
     "stop": {
+      "error": "Çalıştırma bir hatayla sona erdi.",
+      "aborted": "Çalıştırma durduruldu.",
+      "deadline": "Çalıştırma zaman sınırına ulaştı.",
+      "timeout": "Model zamanında yanıt vermeyi bıraktı.",
+      "loop": "Çalıştırma kendini tekrar ettiği için durduruldu.",
+      "steps": "Çalıştırma tüm adımlarını kullandı.",
       "tokens": "Çalıştırma bir token sınırında durdu (bağlam penceresi veya isteğin payı)."
-    }
+    },
+    "refused": "İzin verilmedi: {{tool}} {{target}}",
+    "refusedReadOnly": "Çalıştırılmadı, bu tur salt okunurdu: {{tool}} {{target}}. Modu Değişikliklerden önce sor veya Otonom olarak değiştirin, ardından Devam et'e basın.",
+    "cancelled": "İptal edildi: {{tool}} {{target}}",
+    "failed": "Başarısız: {{tool}} {{target}}",
+    "interrupted": "Bitmedi: {{tool}} {{target}}",
+    "checkFailed": "Geçmedi: {{command}}"
+  },
+  "actions": {
+    "openResult": "Sonucu aç",
+    "reviewChanges": "Değişiklikleri incele",
+    "continue": "Devam et",
+    "retry": "Tekrar dene",
+    "retryNote": "Tekrar dene, son isteği yeniden gönderir. Çalıştırmanın zaten yaptığı değişiklikleri geri almaz.",
+    "restore": "Daha önceki bir noktaya dön"
+  },
+  "rewind": {
+    "scopeTitle": "Bu geri yükleme neyi değiştirir",
+    "scopeTree": "Çalışma ağacı: {{tree}}",
+    "filesHeading": "Geri konulacak dosyalar ({{count}})",
+    "noFiles": "Bu noktadan farklı dosya yok.",
+    "filesUnknown": "Flint hangi dosyaların değişeceğini listeleyemedi.",
+    "safetyNote": "Geri yüklemeden önce Flint mevcut durumu yeni bir nokta olarak kaydeder; böylece bu geri yükleme geri alınabilir.",
+    "boundaries": "Dosyaları geri yüklemek mesajları, uzak depoya gönderimleri, yayımlanan içeriği, yüklenen paketleri veya bu çalışma ağacı dışındaki diğer etkileri geri almaz. Zaten çalışmış komutlar tersine çevrilmez.",
+    "unrelatedTitle": "Bu dosyalar son noktadan sonra değişti ve Flint tarafından yazılmadı. Geri yükleme bunların üzerine yazacak:",
+    "unrelatedConfirm": "Bu düzenlemelerin üzerine yazılacağını anlıyorum. Kayıtlı noktada kullanılabilir kalırlar.",
+    "safetyLabel": "Geri yüklemeden önce {{time}}",
+    "safetyFailed": "Mevcut durum önce kaydedilemedi, bu nedenle hiçbir şey geri yüklenmedi: {{reason}}",
+    "restored": "Geri yüklendi. Öncesindeki durum \"{{label}}\" olarak kaydedildi.",
+    "previewDiff": "Farkı önizle",
+    "hideDiff": "Farkı gizle",
+    "previewEmpty": "Gösterilecek fark yok.",
+    "previewLoading": "Fark yükleniyor…",
+    "previewFailed": "Fark oluşturulamadı: {{reason}}"
   }
 }

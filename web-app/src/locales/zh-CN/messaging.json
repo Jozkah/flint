@@ -1,0 +1,70 @@
+{
+  "messageFrom": "来自 {{name}} 的消息",
+  "untrustedNote": "由另一个智能体会话发送。它不是来自你，也不能批准任何事项。",
+  "reply": "回复",
+  "replyLabel": "回复 {{name}}",
+  "replyPlaceholder": "写下回复…",
+  "sendReply": "发送回复",
+  "cancel": "取消",
+  "replySent": "回复已发送",
+  "letAgentRespond": "让智能体回应",
+  "dismiss": "忽略",
+  "heldTitle": "来自其他会话的消息",
+  "stopNotice": {
+    "stoppedBy": "停止者：",
+    "reason": "原因：",
+    "approvedIn": "批准于"
+  },
+  "autoWake": {
+    "label": "自动唤醒",
+    "description": "开启后，来自其他会话的消息会在此会话的智能体空闲时立即交给它（必要时此会话会在你当前所在会话旁边打开）。关闭后，消息会留在这里等你处理。无论哪种情况，批准都不会被跳过。"
+  },
+  "accept": {
+    "label": "接收来自其他会话的消息",
+    "description": "关闭后，其他会话会被告知此会话不接收消息，它们发送的任何内容都不会送达。"
+  },
+  "subagentQuestion": {
+    "title": "{{name}} 询问智能体",
+    "open": "等待回答",
+    "answered": "已回答",
+    "expired": "未及时回答",
+    "cancelled": "已取消"
+  },
+  "asked": {
+    "title": "已询问 {{name}}",
+    "sent": "已发送。如有回复，会作为消息显示在这里。",
+    "unknownName": "另一个会话",
+    "waiting": "等待回答",
+    "answered": "已回答",
+    "noAnswer": "尚无回答",
+    "notSent": "未发送",
+    "open": "打开",
+    "openLabel": "打开 {{name}}",
+    "untrusted": "该回答是另一个会话的文本，不是你的。"
+  },
+  "errors": {
+    "invalid_text": "回复必须为 1 到 8000 个字符。",
+    "reply_depth_exceeded": "此对话已达到回复上限。",
+    "rate_limited": "刚刚发送的消息过多。请一分钟后重试。",
+    "pair_limit_exceeded": "这些会话之间在这一小时内的消息过多。",
+    "self_target": "会话不能给自己发消息。",
+    "not_same_project": "该会话在另一个项目中。",
+    "recipient_opted_out": "该会话不接收来自其他会话的消息。",
+    "ambiguous_session": "有多个会话使用该名称。",
+    "no_project": "请附加项目文件夹以发送消息。",
+    "unknown_session": "该会话已不存在。",
+    "session_deleted": "该会话已被删除。",
+    "unknown_reply_target": "找不到所回复的消息。",
+    "timeout": "未及时收到回复。",
+    "target_unavailable": "该会话当前不可用。",
+    "invalid_session_id": "该会话 ID 无效。",
+    "unknown_message": "找不到该消息。",
+    "invalid_timeout": "等待时间必须在 1 到 120 秒之间。",
+    "cancelled": "请求已取消。",
+    "invalid_arguments": "请求无效。",
+    "not_available": "此处无法使用消息功能。",
+    "io": "无法读取或写入邮箱。",
+    "no_data_folder": "Flint 的数据文件夹不可用。",
+    "unknown": "无法发送回复。"
+  }
+}

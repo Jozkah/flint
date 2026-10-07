@@ -1,3 +1,19 @@
 {
-  "noLogs": "Brak dzienników"
+  "noLogs": "Brak dzienników",
+  "noMatch": "Żadne wiersze nie pasują do filtra",
+  "title": "Dzienniki",
+  "serverTitle": "Dzienniki lokalnego serwera API",
+  "copy": "Kopiuj dzienniki",
+  "openFolder": "Otwórz folder",
+  "copied": "Skopiowano",
+  "search": "Szukaj w dziennikach",
+  "filterLabel": "Filtruj według poziomu",
+  "levelAll": "Wszystkie",
+  "levelError": "Błędy",
+  "levelWarn": "Ostrzeżenia",
+  "levelInfo": "Informacje",
+  "levelDebug": "Debugowanie",
+  "shown": "{{shown}} z {{total}} wierszy",
+  "description": "Wszystko, co Flint i jego silnik zapisały dzisiaj. Od najnowszych.",
+  "serverDescription": "Żądania do lokalnego serwera API zgodnego z OpenAI. Od najnowszych."
 }

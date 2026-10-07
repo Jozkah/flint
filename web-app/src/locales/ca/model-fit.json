@@ -1,0 +1,116 @@
+{
+  "triggerLabel": "S'executarà aquest model en aquest dispositiu? {{status}}. Mostra els detalls",
+  "title": "S'executarà aquest model en aquest dispositiu?",
+  "subtitle": "El que s'ha mesurat aquí i el que només és una estimació.",
+  "measuredHeading": "Mesurat en aquest dispositiu",
+  "estimateHeading": "Estimació",
+  "evidence": {
+    "ran-successfully": "S'ha executat correctament en aquest dispositiu amb aquests paràmetres.",
+    "failed-with-settings": "Ha fallat en aquest dispositiu amb aquests paràmetres. Altres paràmetres podrien funcionar.",
+    "unsupported": "No admès per aquest runtime: el motor llama.cpp d'aquesta versió de Flint no reconeix l'arquitectura del model. Canviar els paràmetres no ajudarà; una actualització de l'aplicació potser sí.",
+    "stale": "Provat abans, però ha canviat alguna cosa des d'aleshores, de manera que aquest resultat pot no ser aplicable.",
+    "not-tested": "No provat en aquest dispositiu."
+  },
+  "verdict": {
+    "fits": "S'estima que cap a la memòria.",
+    "fits-partial-offload": "S'estima que hi cap, amb una part del model executant-se a la CPU. Funcionarà però respondrà més lentament.",
+    "tight": "Pot requerir ajustar els paràmetres: quedaria molt poca memòria. Una mida de context més petita ajuda.",
+    "exceeds": "S'estima que no hi cap. Les estimacions poden ser errònies; encara el pots provar o posar a prova.",
+    "unknown": "No hi ha prou informació per estimar."
+  },
+  "memoryModel": {
+    "unified": "Memòria unificada: {{ram}} compartits per la CPU i la GPU. Per defecte la GPU en pot usar uns {{gpu}}.",
+    "discrete-gpu": "Memòria dedicada de la GPU {{vram}} més {{ram}} de memòria del sistema. Les capes que no caben a la GPU s'executen a la CPU.",
+    "integrated-gpu": "Els gràfics integrats comparteixen els {{ram}} de memòria del sistema, de manera que es compta una sola vegada.",
+    "cpu-only": "No s'ha detectat cap GPU per a aquest runtime: el model s'executa a la CPU amb {{ram}} de memòria del sistema.",
+    "unknown": "Encara no s'ha detectat la memòria del dispositiu."
+  },
+  "showReasons": "Mostra com s'ha estimat això",
+  "breakdown": {
+    "weights": "Fitxer del model",
+    "kvCache": "Memòria de conversa per a {{tokens}} tokens",
+    "mmproj": "Component de visió",
+    "overhead": "Sobrecàrrega del runtime",
+    "total": "Necessitat estimada",
+    "budget": "Disponible estimat",
+    "otherLoaded": "Ja usat per altres models carregats"
+  },
+  "assumption": {
+    "kv-from-metadata": "La memòria de conversa es calcula a partir de l'arquitectura del propi model i dels tipus de memòria cau configurats.",
+    "kv-heuristic": "No s'ha pogut llegir l'arquitectura del model, de manera que la memòria de conversa s'aproxima a partir de la mida del fitxer.",
+    "kv-sliding-window-midpoint": "Aquest model només conserva els tokens recents en algunes capes; es desconeix la divisió exacta, de manera que s'usa el punt mitjà.",
+    "context-capped-to-trained": "La mida de context està limitada a la que el model va ser entrenat per suportar.",
+    "unified-gpu-working-set": "macOS limita per defecte quanta memòria unificada usa la GPU; a partir d'aquí, les capes s'executen a la CPU.",
+    "integrated-gpu-shares-ram": "La memòria dels gràfics integrats forma part de la memòria del sistema i no s'hi suma.",
+    "discrete-vram-reserve": "Uns 512 MB per GPU dedicada es deixen per al controlador i la pantalla.",
+    "system-reserve": "Uns 2 GB de memòria del sistema es deixen per al sistema operatiu i altres aplicacions.",
+    "runtime-overhead": "Els buffers de càlcul i el runtime s'estimen en 300 MB més el 2% del fitxer del model.",
+    "cpu-only-by-setting": "Les capes de GPU estan definides a 0, de manera que no s'usa la GPU.",
+    "other-models-loaded": "Es resten els models ja carregats, però no es pot observar on resideixen (GPU o CPU).",
+    "mmap-not-counted": "La càrrega amb mapatge de memòria pot permetre que un model s'iniciï amb menys memòria de la mostrada, a un gran cost de velocitat; això no es compta.",
+    "mmproj-unknown": "Hi ha un component de visió però es desconeix la seva mida."
+  },
+  "uncertainty": {
+    "low": "Confiança: raonablement bona. L'ús real encara pot diferir.",
+    "medium": "Confiança: moderada. Provar-ho en aquest dispositiu dona una resposta real.",
+    "high": "Confiança: baixa. El resultat és a prop del límit o es basa en suposicions aproximades; prova-ho per saber-ho."
+  },
+  "difference": {
+    "settings": "Els paràmetres han canviat des de la prova: {{keys}}.",
+    "runtime": "L'aplicació s'ha actualitzat des de la prova ({{recorded}} a {{current}}).",
+    "device": "La configuració de memòria o de GPU del dispositiu ha canviat.",
+    "modelFile": "El fitxer del model ha canviat."
+  },
+  "otherSuccess": "Sí que s'ha executat en aquest dispositiu amb una mida de context de {{context}}.",
+  "testScope": "Una prova només demostra una resposta curta amb els paràmetres usats. Les converses més llargues, un context més gran o altres models carregats poden quedar-se sense memòria igualment.",
+  "testedAt": "Provat {{when}} amb {{settings}}.",
+  "defaultSettings": "paràmetres per defecte",
+  "metric": {
+    "load": "Temps de càrrega",
+    "generation": "Velocitat de generació",
+    "prompt": "Velocitat de lectura del prompt"
+  },
+  "test": {
+    "run": "Prova en aquest dispositiu",
+    "runAgain": "Torna a provar",
+    "cancel": "Cancel·la la prova",
+    "running": "Provant: carregant el model i demanant una resposta curta…",
+    "succeeded": "Prova superada: el model s'ha carregat i ha respost.",
+    "failed": "Prova fallida: {{reason}}",
+    "cancelled": "Prova cancel·lada. Res del que la prova va carregar continua carregat.",
+    "cancelledNotReleased": "Prova cancel·lada, però no s'ha pogut descarregar el model. Descarrega'l des de la configuració del model.",
+    "notReleased": "Després no s'ha pogut descarregar el model; encara usa memòria.",
+    "couldNotRun": "No s'ha pogut executar la prova: {{reason}}",
+    "blockedBusy": "No provat: {{models}} està escrivint una resposta, i la prova l'hauria de descarregar. Torna-ho a provar quan hagi acabat. No s'ha canviat res.",
+    "blockedInProgress": "Ja s'està executant una altra prova de model. No s'ha canviat res.",
+    "restored": "{{models}} s'ha tornat a carregar.",
+    "notRestored": "{{models}} no s'ha pogut tornar a carregar; carrega'l des de la configuració del model.",
+    "needsConfirmation": "La prova necessita descarregar primer un altre model.",
+    "confirmUnload": "Per provar, Flint ha de descarregar {{models}}. Qualsevol resposta que estigui generant s'aturarà. No es torna a carregar automàticament.",
+    "unloadAndTest": "Descarrega i prova",
+    "dontTest": "No provis"
+  },
+  "testExplainer": "La prova usa el fitxer del model que ja és en aquest dispositiu; no es descarrega res. Carrega el model amb els seus paràmetres actuals, demana una resposta d'una paraula i el torna a descarregar si no estava ja carregat.",
+  "adjustSettings": "Ajusta els paràmetres",
+  "setDefault": "Usa per a xats nous",
+  "removeDefault": "Deixa d'usar per a xats nous",
+  "hideHint": "Amaga aquest suggeriment",
+  "showHint": "Mostra aquest suggeriment",
+  "badge": {
+    "worked": "Ha funcionat aquí",
+    "unsupported": "No admès per aquest runtime",
+    "default": "Per defecte"
+  },
+  "location": {
+    "local": "S'executa en aquest dispositiu o a la teva xarxa",
+    "remote": "Remot: els missatges s'envien a aquest proveïdor"
+  },
+  "providerSettings": "Configuració de {{provider}}",
+  "memoryBars": "Necessitat de memòria estimada en comparació amb la disponible",
+  "picker": {
+    "local": "En aquest ordinador o a la teva xarxa",
+    "remote": "Proveïdors al núvol",
+    "remoteHint": "els missatges surten d'aquest ordinador",
+    "inUse": "En ús aquí: {{model}} · {{provider}}"
+  }
+}

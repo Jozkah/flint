@@ -1,3 +1,19 @@
 {
-  "noLogs": "Günlük bulunamadı"
+  "noLogs": "Günlük bulunamadı",
+  "noMatch": "Filtreyle eşleşen satır yok",
+  "title": "Günlükler",
+  "serverTitle": "Yerel API sunucusu günlükleri",
+  "copy": "Günlükleri kopyala",
+  "openFolder": "Klasörü aç",
+  "copied": "Kopyalandı",
+  "search": "Günlüklerde ara",
+  "filterLabel": "Düzeye göre filtrele",
+  "levelAll": "Tümü",
+  "levelError": "Hatalar",
+  "levelWarn": "Uyarılar",
+  "levelInfo": "Bilgi",
+  "levelDebug": "Hata ayıklama",
+  "shown": "{{total}} satırdan {{shown}} tanesi",
+  "description": "Flint ve motorunun bugün yazdığı her şey. En yeniler önce.",
+  "serverDescription": "OpenAI uyumlu Yerel API Sunucusuna gelen istekler. En yeniler önce."
 }

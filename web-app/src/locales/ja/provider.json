@@ -2,6 +2,7 @@
   "addProvider": "プロバイダーを追加",
   "addOpenAIProvider": "カスタムプロバイダーを追加",
   "enterNameForProvider": "プロバイダー名（例: my-llm-server）",
+  "nameLabel": "名前",
   "apiTypeLabel": "API形式",
   "apiTypeOpenAI": "OpenAI互換",
   "apiTypeAnthropic": "Anthropic互換",
@@ -10,5 +11,9 @@
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "APIキー",
   "apiKeyPlaceholder": "APIキーを貼り付け",
-  "invalidBaseUrl": "ベースURLは有効なhttp(s) URLである必要があります"
+  "invalidBaseUrl": "ベースURLは有効なhttp(s) URLである必要があります",
+  "globalSettings": "グローバル設定",
+  "stripReasoning": "コンテキストから推論を除去",
+  "stripReasoningDesc": "履歴を再送信する前に、過去のターンの思考/推論の内容を、すべてのプロバイダーで削除します。ローカルモデルの KV キャッシュの再利用が改善されますが、一部のモデル (最近の Qwen など) では、複数ターンにわたる推論の質のため、残しておくことが推奨されています。",
+  "providerAlreadyExists": "{{name}} という名前のプロバイダーはすでに存在します。"
 }

@@ -1,0 +1,116 @@
+{
+  "triggerLabel": "Mô hình này có chạy được trên thiết bị này không? {{status}}. Hiện chi tiết",
+  "title": "Mô hình này có chạy được trên thiết bị này không?",
+  "subtitle": "Những gì đã được đo ở đây và những gì chỉ là ước tính.",
+  "measuredHeading": "Đã đo trên thiết bị này",
+  "estimateHeading": "Ước tính",
+  "evidence": {
+    "ran-successfully": "Đã chạy thành công trên thiết bị này với các cài đặt này.",
+    "failed-with-settings": "Đã thất bại trên thiết bị này với các cài đặt này. Cài đặt khác có thể chạy được.",
+    "unsupported": "Không được runtime này hỗ trợ: engine llama.cpp trong phiên bản Flint này không nhận ra kiến trúc của mô hình. Đổi cài đặt sẽ không giúp ích; một bản cập nhật ứng dụng có thể giúp.",
+    "stale": "Đã được kiểm thử trước đây, nhưng kể từ đó có thay đổi, nên kết quả đó có thể không còn áp dụng.",
+    "not-tested": "Chưa được kiểm thử trên thiết bị này."
+  },
+  "verdict": {
+    "fits": "Ước tính vừa trong bộ nhớ.",
+    "fits-partial-offload": "Ước tính vừa, với một phần mô hình chạy trên CPU. Nó sẽ hoạt động nhưng phản hồi chậm hơn.",
+    "tight": "Có thể cần điều chỉnh cài đặt: sẽ còn rất ít bộ nhớ. Giảm kích thước ngữ cảnh sẽ giúp ích.",
+    "exceeds": "Ước tính không vừa. Ước tính có thể sai; bạn vẫn có thể thử hoặc kiểm thử.",
+    "unknown": "Không đủ thông tin để ước tính."
+  },
+  "memoryModel": {
+    "unified": "Bộ nhớ hợp nhất: {{ram}} dùng chung bởi CPU và GPU. Theo mặc định GPU có thể dùng khoảng {{gpu}} trong đó.",
+    "discrete-gpu": "Bộ nhớ GPU chuyên dụng {{vram}} cộng với {{ram}} bộ nhớ hệ thống. Các lớp không vừa trên GPU sẽ chạy trên CPU.",
+    "integrated-gpu": "Đồ họa tích hợp dùng chung {{ram}} bộ nhớ hệ thống, nên chỉ được tính một lần.",
+    "cpu-only": "Không phát hiện GPU nào cho runtime này: mô hình chạy trên CPU với {{ram}} bộ nhớ hệ thống.",
+    "unknown": "Chưa phát hiện được bộ nhớ của thiết bị."
+  },
+  "showReasons": "Hiện cách ước tính này được tính",
+  "breakdown": {
+    "weights": "Tệp mô hình",
+    "kvCache": "Bộ nhớ hội thoại cho {{tokens}} token",
+    "mmproj": "Thành phần thị giác",
+    "overhead": "Chi phí phụ của runtime",
+    "total": "Nhu cầu ước tính",
+    "budget": "Khả dụng ước tính",
+    "otherLoaded": "Đã được các mô hình khác đang tải sử dụng"
+  },
+  "assumption": {
+    "kv-from-metadata": "Bộ nhớ hội thoại được tính từ kiến trúc của chính mô hình và các loại bộ nhớ đệm đã cấu hình.",
+    "kv-heuristic": "Không đọc được kiến trúc của mô hình, nên bộ nhớ hội thoại được ước lượng từ kích thước tệp.",
+    "kv-sliding-window-midpoint": "Mô hình này chỉ giữ các token gần đây ở một số lớp; cách chia chính xác không rõ, nên dùng điểm giữa.",
+    "context-capped-to-trained": "Kích thước ngữ cảnh bị giới hạn ở mức mô hình được huấn luyện.",
+    "unified-gpu-working-set": "macOS giới hạn lượng bộ nhớ hợp nhất mà GPU dùng theo mặc định; vượt quá mức đó, các lớp chạy trên CPU.",
+    "integrated-gpu-shares-ram": "Bộ nhớ đồ họa tích hợp là một phần của bộ nhớ hệ thống và không được cộng thêm vào.",
+    "discrete-vram-reserve": "Khoảng 512 MB cho mỗi GPU chuyên dụng được dành cho trình điều khiển và màn hình.",
+    "system-reserve": "Khoảng 2 GB bộ nhớ hệ thống được dành cho hệ điều hành và các ứng dụng khác.",
+    "runtime-overhead": "Bộ đệm tính toán và runtime được ước tính là 300 MB cộng 2% tệp mô hình.",
+    "cpu-only-by-setting": "Số lớp GPU được đặt là 0, nên GPU không được dùng.",
+    "other-models-loaded": "Các mô hình đã tải được trừ đi, nhưng vị trí của chúng (GPU hay CPU) không thể quan sát được.",
+    "mmap-not-counted": "Tải ánh xạ bộ nhớ có thể cho phép mô hình khởi động với ít bộ nhớ hơn mức hiển thị, đổi lại tốc độ giảm mạnh; điều đó không được tính.",
+    "mmproj-unknown": "Có một thành phần thị giác nhưng không rõ kích thước."
+  },
+  "uncertainty": {
+    "low": "Độ tin cậy: khá tốt. Sử dụng thực tế vẫn có thể khác.",
+    "medium": "Độ tin cậy: trung bình. Kiểm thử trên thiết bị này cho câu trả lời thực.",
+    "high": "Độ tin cậy: thấp. Kết quả gần giới hạn hoặc dựa trên các giả định thô; hãy kiểm thử để biết chắc."
+  },
+  "difference": {
+    "settings": "Cài đặt đã thay đổi kể từ lần kiểm thử: {{keys}}.",
+    "runtime": "Ứng dụng đã được cập nhật kể từ lần kiểm thử ({{recorded}} lên {{current}}).",
+    "device": "Cấu hình bộ nhớ hoặc GPU của thiết bị đã thay đổi.",
+    "modelFile": "Tệp mô hình đã thay đổi."
+  },
+  "otherSuccess": "Nó đã chạy trên thiết bị này với kích thước ngữ cảnh {{context}}.",
+  "testScope": "Một lần kiểm thử chỉ chứng minh một câu trả lời ngắn với các cài đặt đã dùng. Các cuộc trò chuyện dài hơn, ngữ cảnh lớn hơn hoặc các mô hình khác đang tải vẫn có thể hết bộ nhớ.",
+  "testedAt": "Đã kiểm thử {{when}} với {{settings}}.",
+  "defaultSettings": "cài đặt mặc định",
+  "metric": {
+    "load": "Thời gian tải",
+    "generation": "Tốc độ tạo",
+    "prompt": "Tốc độ đọc prompt"
+  },
+  "test": {
+    "run": "Kiểm thử trên thiết bị này",
+    "runAgain": "Kiểm thử lại",
+    "cancel": "Hủy kiểm thử",
+    "running": "Đang kiểm thử: tải mô hình và yêu cầu một câu trả lời ngắn…",
+    "succeeded": "Kiểm thử đạt: mô hình đã tải và trả lời.",
+    "failed": "Kiểm thử thất bại: {{reason}}",
+    "cancelled": "Đã hủy kiểm thử. Không còn gì do kiểm thử tải vẫn đang được tải.",
+    "cancelledNotReleased": "Đã hủy kiểm thử, nhưng không thể gỡ mô hình. Hãy gỡ nó trong cài đặt mô hình.",
+    "notReleased": "Sau đó không thể gỡ mô hình; nó vẫn đang dùng bộ nhớ.",
+    "couldNotRun": "Không thể chạy kiểm thử: {{reason}}",
+    "blockedBusy": "Chưa kiểm thử: {{models}} đang viết câu trả lời, và kiểm thử sẽ phải gỡ nó. Hãy thử lại khi nó xong. Không có gì bị thay đổi.",
+    "blockedInProgress": "Một lần kiểm thử mô hình khác đang chạy. Không có gì bị thay đổi.",
+    "restored": "{{models}} đã được tải lại.",
+    "notRestored": "Không thể tải lại {{models}}; hãy tải nó từ cài đặt mô hình.",
+    "needsConfirmation": "Kiểm thử cần gỡ một mô hình khác trước.",
+    "confirmUnload": "Để kiểm thử, Flint phải gỡ {{models}}. Mọi câu trả lời nó đang tạo sẽ dừng. Nó không được tải lại tự động.",
+    "unloadAndTest": "Gỡ và kiểm thử",
+    "dontTest": "Không kiểm thử"
+  },
+  "testExplainer": "Kiểm thử dùng tệp mô hình đã có trên thiết bị này; không có gì được tải xuống. Nó tải mô hình với cài đặt hiện tại, yêu cầu một câu trả lời một từ, và gỡ lại nếu trước đó nó chưa được tải.",
+  "adjustSettings": "Điều chỉnh cài đặt",
+  "setDefault": "Dùng cho cuộc trò chuyện mới",
+  "removeDefault": "Ngừng dùng cho cuộc trò chuyện mới",
+  "hideHint": "Ẩn gợi ý này",
+  "showHint": "Hiện gợi ý này",
+  "badge": {
+    "worked": "Đã chạy được ở đây",
+    "unsupported": "Không được runtime này hỗ trợ",
+    "default": "Mặc định"
+  },
+  "location": {
+    "local": "Chạy trên thiết bị này hoặc mạng của bạn",
+    "remote": "Từ xa: tin nhắn được gửi đến nhà cung cấp này"
+  },
+  "providerSettings": "Cài đặt {{provider}}",
+  "memoryBars": "Nhu cầu bộ nhớ ước tính so với lượng khả dụng",
+  "picker": {
+    "local": "Trên máy tính này hoặc mạng của bạn",
+    "remote": "Nhà cung cấp đám mây",
+    "remoteHint": "tin nhắn rời khỏi máy tính này",
+    "inUse": "Đang dùng ở đây: {{model}} · {{provider}}"
+  }
+}

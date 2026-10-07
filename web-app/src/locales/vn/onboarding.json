@@ -1,0 +1,64 @@
+{
+  "intentHeading": "Bạn muốn làm gì trước tiên?",
+  "intentHint": "Lựa chọn này chỉ quyết định hướng dẫn đưa bạn đến đâu. Mọi thứ khác trong Flint vẫn khả dụng.",
+  "intent": {
+    "question": {
+      "title": "Đặt câu hỏi",
+      "description": "Trò chuyện với mô hình về bất kỳ điều gì."
+    },
+    "documents": {
+      "title": "Làm việc với tài liệu",
+      "description": "Đính kèm tệp và đặt câu hỏi về chúng."
+    },
+    "project": {
+      "title": "Xây dựng hoặc thay đổi dự án",
+      "description": "Để Flint làm việc trong một thư mục trên máy tính này, và hỏi bạn trước khi thay đổi bất cứ điều gì."
+    }
+  },
+  "skipGuide": "Bỏ qua hướng dẫn",
+  "resumeNotice": "Chào mừng bạn trở lại. Bạn có thể tiếp tục từ chỗ đã dừng.",
+  "processingHeading": "Nơi các cuộc trò chuyện của bạn được xử lý",
+  "processingLocal": "Mô hình cục bộ chạy trên máy tính này. Tin nhắn và tệp của bạn ở lại đây, không cần tài khoản hay khóa API.",
+  "processingRemote": "Nhà cung cấp từ xa (ví dụ OpenAI) chạy mô hình trên máy chủ của họ. Tin nhắn và mọi tệp bạn đưa vào sẽ được gửi đến đó, và nhà cung cấp có thể tính phí. Bạn tự thiết lập điều này trong Cài đặt; Flint không bao giờ tự chuyển sang nhà cung cấp từ xa.",
+  "connectRemote": "Kết nối nhà cung cấp từ xa thay thế",
+  "guideTitle": {
+    "question": "Bắt đầu: đặt câu hỏi",
+    "documents": "Bắt đầu: làm việc với tài liệu",
+    "project": "Bắt đầu: xây dựng hoặc thay đổi dự án"
+  },
+  "guideRegion": "Hướng dẫn bắt đầu",
+  "stepDone": "Xong",
+  "stepTodo": "Cần làm",
+  "step": {
+    "choose-model": {
+      "title": "Chọn hoặc kết nối một mô hình",
+      "body": "Chọn mô hình bằng bộ chọn ở trên cùng. Mô hình cục bộ chạy trên máy tính này; nhà cung cấp từ xa cần tài khoản riêng."
+    },
+    "add-material": {
+      "documents": "Đính kèm tài liệu bằng nút kẹp giấy trong hộp tin nhắn.",
+      "project": "Mở Cowork và chọn thư mục dự án của bạn. Flint sẽ hỏi trước khi chỉnh sửa tệp hoặc chạy lệnh."
+    },
+    "first-task": {
+      "title": "Gửi tin nhắn đầu tiên",
+      "body": "Hãy hỏi điều gì đó hoặc mô tả thay đổi bạn muốn. Bước này hoàn tất khi cuộc trò chuyện bắt đầu."
+    },
+    "review-context": {
+      "title": "Kiểm tra những gì Flint đã dùng",
+      "body": "Sau khi Flint trả lời, hãy mở \"Flint đang dùng gì\" trong cuộc trò chuyện để xem những tệp đính kèm và hướng dẫn nào đã khả dụng với nó."
+    },
+    "addMaterialTitle": {
+      "documents": "Thêm tài liệu",
+      "project": "Chọn thư mục dự án"
+    }
+  },
+  "confirmStep": "Tôi đã làm xong",
+  "openProviders": "Cài đặt mô hình",
+  "openCowork": "Mở Cowork",
+  "hideGuide": "Ẩn hướng dẫn",
+  "guideComplete": "Bạn đã thiết lập xong. Mở lại hướng dẫn này bất cứ lúc nào từ Cài đặt > Chung.",
+  "finish": "Hoàn tất hướng dẫn",
+  "reopenGuide": "Hướng dẫn bắt đầu",
+  "reopenGuideDescription": "Xem lại các bước chọn mô hình, thêm tài liệu và hoàn thành tác vụ đầu tiên.",
+  "reopenGuideAction": "Mở hướng dẫn",
+  "resumeRecent": "Tiếp tục cuộc trò chuyện gần nhất: {{title}}"
+}

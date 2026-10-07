@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "Befehle",
+    "helpTitle": "Verfügbare Befehle",
+    "keys": "↑↓ wählen · Enter/Tab einfügen · Esc schließen",
+    "empty": "Hier sind keine Befehle verfügbar"
+  },
+  "source": {
+    "plugin": "Plugin",
+    "pluginNamed": "Plugin {{plugin}}",
+    "skill": "Skill",
+    "builtin": "integriert"
+  },
+  "scope": {
+    "project": "Projekt",
+    "global": "global"
+  },
   "builtin": {
+    "help": "Verfügbare Befehle auflisten",
+    "new": "Eine neue Unterhaltung beginnen",
+    "newSession": "Eine neue Cowork-Sitzung beginnen",
     "compact": "Ältere Nachrichten zusammenfassen, um das Kontextfenster freizugeben"
-  }
+  },
+  "sent": {
+    "command": "Befehl",
+    "skill": "Skill",
+    "showCommand": "Erweiterten Befehl anzeigen",
+    "showSkill": "Geladenen Skill anzeigen"
+  },
+  "error": "{{command}} konnte nicht ausgeführt werden: {{error}}"
 }

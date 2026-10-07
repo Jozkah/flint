@@ -1,7 +1,138 @@
 {
+  "status": {
+    "running": "En cours",
+    "completed": "Terminé",
+    "failed": "Échec",
+    "cancelled": "Annulé",
+    "partial": "Partiellement terminé"
+  },
+  "sections": {
+    "happened": "Ce qui s'est passé",
+    "where": "Où se trouve le résultat",
+    "checked": "Ce qui a été vérifié",
+    "unresolved": "Non résolu",
+    "next": "Prochaines étapes"
+  },
+  "headline": {
+    "running": "L'exécution est toujours en cours.",
+    "completedWithChanges": "L'exécution est terminée et Flint a modifié des fichiers.",
+    "completedNoChanges": "L'exécution est terminée sans que Flint ait modifié de fichiers.",
+    "completedChecksFailed": "L'exécution est terminée, mais une vérification lancée par Flint n'a pas réussi.",
+    "finishedIncomplete": "L'exécution est terminée, mais une partie de la demande n'a pas été traitée. Voir Non résolu.",
+    "partial": "L'exécution s'est arrêtée avant la fin. Une partie du travail a été faite auparavant.",
+    "failed": "L'exécution s'est arrêtée avant la fin, et rien n'a été accompli.",
+    "cancelled": "L'exécution a été arrêtée avant que quoi que ce soit ne soit accompli."
+  },
+  "plan": {
+    "progress": "{{done}} sur {{total}} terminés"
+  },
+  "kept": "Ces modifications ont été conservées. Arrêter une exécution n'annule pas ce qu'elle a déjà fait.",
+  "location": {
+    "sandbox": "Dans le bac à sable de cette session, pas dans votre dépôt.",
+    "worktree": "Dans un worktree distinct géré par Flint, pas dans votre copie de travail.",
+    "userCheckout": "Directement dans le dossier que vous avez associé.",
+    "none": "Aucune arborescence de travail n'était associée à cette exécution.",
+    "noFiles": "Flint n'a écrit aucun fichier.",
+    "open": "Ouvrir {{path}}"
+  },
+  "checks": {
+    "none": "Flint n'a lancé aucun test ni aucune vérification.",
+    "kind": {
+      "test": "Test",
+      "build": "Build",
+      "lint": "Vérification",
+      "command": "Commande"
+    },
+    "outcome": {
+      "passed": "Réussi",
+      "failed": "Échec",
+      "didNotFinish": "Non terminé",
+      "running": "En cours",
+      "notRun": "Non exécuté",
+      "unknown": "Résultat inconnu"
+    },
+    "exit": "code de sortie {{code}}",
+    "summary": {
+      "allTestsPassed": "Les tests automatisés ont réussi.",
+      "allChecksPassed": "Les vérifications automatisées ont réussi. Aucun test n'a été lancé.",
+      "somePassed": "{{passed}} vérifications réussies sur {{total}}.",
+      "failedWithCode": "{{command}} a échoué avec le code de sortie {{code}}.",
+      "failedNoCode": "{{command}} a échoué sans code de sortie.",
+      "didNotFinish_one": "{{count}} vérification n'a pas abouti : elle a été annulée, a expiré ou a été interrompue.",
+      "didNotFinish_other": "{{count}} vérifications n'ont pas abouti : elles ont été annulées, ont expiré ou ont été interrompues.",
+      "notRun_one": "{{count}} vérification n'a pas été exécutée.",
+      "notRun_other": "{{count}} vérifications n'ont pas été exécutées.",
+      "unknown_one": "{{count}} vérification n'a aucun statut de sortie enregistré, son résultat est donc inconnu.",
+      "unknown_other": "{{count}} vérifications n'ont aucun statut de sortie enregistré, leurs résultats sont donc inconnus.",
+      "running_one": "{{count}} vérification est toujours en cours.",
+      "running_other": "{{count}} vérifications sont toujours en cours.",
+      "visualNotChecked": "Le comportement visuel et de bout en bout n'a pas été vérifié.",
+      "didNotFinish_many": "{{count}} de vérifications n'ont pas abouti : elles ont été annulées, ont expiré ou ont été interrompues.",
+      "notRun_many": "{{count}} de vérifications n'ont pas été exécutées.",
+      "unknown_many": "{{count}} de vérifications n'ont aucun statut de sortie enregistré, leurs résultats sont donc inconnus.",
+      "running_many": "{{count}} de vérifications sont toujours en cours."
+    },
+    "otherCommands": "{{count}} autre(s) commande(s) ont également été exécutées. Elles ne sont pas comptées comme des vérifications.",
+    "completion": {
+      "not-started": "non démarré",
+      "running": "toujours en cours",
+      "completed": "exécuté jusqu'au bout",
+      "cancelled": "annulé",
+      "timed-out": "expiré",
+      "interrupted": "interrompu"
+    },
+    "limitation": {
+      "exit-status-only": "Jugé uniquement sur son statut de sortie.",
+      "compound-command": "Plusieurs commandes ont été enchaînées ; le statut couvre la chaîne, pas chaque étape.",
+      "output-truncated": "La sortie a été tronquée, des échecs ultérieurs peuvent donc ne pas être visibles.",
+      "background": "Lancé en arrière-plan ; le statut peut ne pas être celui de la tâche.",
+      "subset-selected": "Seule une partie de la suite de tests a été sélectionnée.",
+      "no-exit-status": "Aucun statut de sortie n'a été enregistré."
+    },
+    "claimsTitle": "Mentionné par l'assistant, non vérifié par Flint :"
+  },
   "unresolved": {
     "stop": {
+      "error": "L'exécution s'est terminée par une erreur.",
+      "aborted": "L'exécution a été arrêtée.",
+      "deadline": "L'exécution a atteint sa limite de temps.",
+      "timeout": "Le modèle a cessé de répondre dans les temps.",
+      "loop": "L'exécution a été arrêtée car elle se répétait.",
+      "steps": "L'exécution a utilisé toutes ses étapes.",
       "tokens": "L'exécution s'est arrêtée à une limite de jetons (la fenêtre de contexte ou le quota de la requête)."
-    }
+    },
+    "refused": "Non autorisé : {{tool}} {{target}}",
+    "refusedReadOnly": "Non exécuté, ce tour était en lecture seule : {{tool}} {{target}}. Passez le mode sur Demander avant les modifications ou Autonome, puis Continuez.",
+    "cancelled": "Annulé : {{tool}} {{target}}",
+    "failed": "Échec : {{tool}} {{target}}",
+    "interrupted": "Non terminé : {{tool}} {{target}}",
+    "checkFailed": "Non réussi : {{command}}"
+  },
+  "actions": {
+    "openResult": "Ouvrir le résultat",
+    "reviewChanges": "Examiner les modifications",
+    "continue": "Continuer",
+    "retry": "Réessayer",
+    "retryNote": "Réessayer renvoie la dernière demande. Cela n'annule pas les modifications déjà effectuées par l'exécution.",
+    "restore": "Revenir à un point antérieur"
+  },
+  "rewind": {
+    "scopeTitle": "Ce que cette restauration modifie",
+    "scopeTree": "Worktree : {{tree}}",
+    "filesHeading": "Fichiers qui seront remis en place ({{count}})",
+    "noFiles": "Aucun fichier ne diffère de ce point.",
+    "filesUnknown": "Flint n'a pas pu lister les fichiers qui vont changer.",
+    "safetyNote": "Avant la restauration, Flint enregistre l'état actuel comme un nouveau point, de sorte que cette restauration puisse être annulée.",
+    "boundaries": "Restaurer des fichiers n'annule pas les messages, les push distants, le contenu publié, les paquets installés ni les autres effets en dehors de ce worktree. Les commandes déjà exécutées ne sont pas annulées.",
+    "unrelatedTitle": "Ces fichiers ont changé après le dernier point et n'ont pas été écrits par Flint. La restauration les écrasera :",
+    "unrelatedConfirm": "Je comprends que ces modifications seront écrasées. Elles restent disponibles dans le point enregistré.",
+    "safetyLabel": "Avant la restauration {{time}}",
+    "safetyFailed": "L'état actuel n'a pas pu être enregistré au préalable, donc rien n'a été restauré : {{reason}}",
+    "restored": "Restauré. L'état précédent a été enregistré sous « {{label}} ».",
+    "previewDiff": "Aperçu du diff",
+    "hideDiff": "Masquer le diff",
+    "previewEmpty": "Aucune différence à afficher.",
+    "previewLoading": "Chargement du diff…",
+    "previewFailed": "Impossible de construire le diff : {{reason}}"
   }
 }

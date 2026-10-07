@@ -1,0 +1,116 @@
+{
+  "triggerLabel": "此模型能在这台设备上运行吗？{{status}}。显示详情",
+  "title": "此模型能在这台设备上运行吗？",
+  "subtitle": "这里哪些是实测的，哪些只是估算。",
+  "measuredHeading": "在这台设备上实测",
+  "estimateHeading": "估算",
+  "evidence": {
+    "ran-successfully": "使用这些设置已在这台设备上成功运行。",
+    "failed-with-settings": "使用这些设置在这台设备上失败。其他设置可能可行。",
+    "unsupported": "此运行时不支持：此版本 Flint 中的 llama.cpp 引擎无法识别该模型的架构。更改设置无济于事；应用更新可能有帮助。",
+    "stale": "之前测试过，但此后有所变化，因此该结果可能不再适用。",
+    "not-tested": "未在这台设备上测试。"
+  },
+  "verdict": {
+    "fits": "估计可放入内存。",
+    "fits-partial-offload": "估计可以放下，但模型的一部分在 CPU 上运行。可以工作，但响应较慢。",
+    "tight": "可能需要调整设置：剩余内存将非常少。减小上下文大小会有帮助。",
+    "exceeds": "估计放不下。估算可能有误；你仍然可以尝试或测试。",
+    "unknown": "信息不足，无法估算。"
+  },
+  "memoryModel": {
+    "unified": "统一内存：{{ram}} 由 CPU 和 GPU 共享。默认情况下 GPU 可使用其中约 {{gpu}}。",
+    "discrete-gpu": "专用 GPU 显存 {{vram}} 加上 {{ram}} 系统内存。无法放入 GPU 的层在 CPU 上运行。",
+    "integrated-gpu": "集成显卡共享 {{ram}} 系统内存，因此只计算一次。",
+    "cpu-only": "此运行时未检测到 GPU：模型使用 {{ram}} 系统内存在 CPU 上运行。",
+    "unknown": "尚未检测到设备内存。"
+  },
+  "showReasons": "显示估算方式",
+  "breakdown": {
+    "weights": "模型文件",
+    "kvCache": "{{tokens}} 个 token 的对话内存",
+    "mmproj": "视觉组件",
+    "overhead": "运行时开销",
+    "total": "估算需求",
+    "budget": "估算可用",
+    "otherLoaded": "已被其他已加载的模型占用"
+  },
+  "assumption": {
+    "kv-from-metadata": "对话内存根据模型自身的架构和已配置的缓存类型计算。",
+    "kv-heuristic": "无法读取模型的架构，因此根据文件大小近似估算对话内存。",
+    "kv-sliding-window-midpoint": "此模型在某些层中仅保留最近的 token；具体划分未知，因此使用中间值。",
+    "context-capped-to-trained": "上下文大小被限制在模型训练时的长度以内。",
+    "unified-gpu-working-set": "macOS 默认限制 GPU 使用的统一内存量；超出部分的层在 CPU 上运行。",
+    "integrated-gpu-shares-ram": "集成显卡的内存是系统内存的一部分，不会叠加计算。",
+    "discrete-vram-reserve": "每个专用 GPU 约保留 512 MB 给驱动程序和显示。",
+    "system-reserve": "约保留 2 GB 系统内存给操作系统和其他应用。",
+    "runtime-overhead": "计算缓冲区和运行时估算为 300 MB 加模型文件的 2%。",
+    "cpu-only-by-setting": "GPU 层数设置为 0，因此不使用 GPU。",
+    "other-models-loaded": "已加载的模型会被扣除，但无法观察它们位于何处（GPU 或 CPU）。",
+    "mmap-not-counted": "内存映射加载可以让模型在比所示更少的内存下启动，但会大幅降低速度；这一点未计入。",
+    "mmproj-unknown": "存在视觉组件，但其大小未知。"
+  },
+  "uncertainty": {
+    "low": "置信度：较好。实际使用仍可能有差异。",
+    "medium": "置信度：中等。在这台设备上测试可得到真实答案。",
+    "high": "置信度：低。结果接近极限或基于粗略假设；请测试以确认。"
+  },
+  "difference": {
+    "settings": "自测试以来设置已更改：{{keys}}。",
+    "runtime": "自测试以来应用已更新（{{recorded}} 至 {{current}}）。",
+    "device": "设备的内存或 GPU 配置已更改。",
+    "modelFile": "模型文件已更改。"
+  },
+  "otherSuccess": "它确实曾在这台设备上以 {{context}} 的上下文大小运行。",
+  "testScope": "测试仅证明在所用设置下能给出简短回复。更长的对话、更大的上下文或其他已加载的模型仍可能耗尽内存。",
+  "testedAt": "{{when}}使用{{settings}}测试。",
+  "defaultSettings": "默认设置",
+  "metric": {
+    "load": "加载时间",
+    "generation": "生成速度",
+    "prompt": "提示词读取速度"
+  },
+  "test": {
+    "run": "在这台设备上测试",
+    "runAgain": "重新测试",
+    "cancel": "取消测试",
+    "running": "正在测试：加载模型并请求简短回复…",
+    "succeeded": "测试通过：模型已加载并回复。",
+    "failed": "测试失败：{{reason}}",
+    "cancelled": "测试已取消。测试加载的任何内容都不再处于加载状态。",
+    "cancelledNotReleased": "测试已取消，但无法卸载模型。请在模型设置中卸载。",
+    "notReleased": "之后无法卸载模型；它仍在占用内存。",
+    "couldNotRun": "无法运行测试：{{reason}}",
+    "blockedBusy": "未测试：{{models}} 正在撰写回复，而测试需要卸载它。请在它完成后重试。未做任何更改。",
+    "blockedInProgress": "另一项模型测试已在运行。未做任何更改。",
+    "restored": "{{models}} 已重新加载。",
+    "notRestored": "无法重新加载 {{models}}；请从模型设置中加载。",
+    "needsConfirmation": "测试需要先卸载另一个模型。",
+    "confirmUnload": "要进行测试，Flint 必须卸载 {{models}}。它正在生成的任何回复都会停止。它不会自动重新加载。",
+    "unloadAndTest": "卸载并测试",
+    "dontTest": "不测试"
+  },
+  "testExplainer": "测试使用这台设备上已有的模型文件；不会下载任何内容。它会以当前设置加载模型，请求一个单词的回复，并在模型原本未加载时再次将其卸载。",
+  "adjustSettings": "调整设置",
+  "setDefault": "用于新聊天",
+  "removeDefault": "不再用于新聊天",
+  "hideHint": "隐藏此提示",
+  "showHint": "显示此提示",
+  "badge": {
+    "worked": "在这里运行成功",
+    "unsupported": "此运行时不支持",
+    "default": "默认"
+  },
+  "location": {
+    "local": "在这台设备或你的网络上运行",
+    "remote": "远程：消息会发送给此提供商"
+  },
+  "providerSettings": "{{provider}} 设置",
+  "memoryBars": "估算内存需求与可用内存的对比",
+  "picker": {
+    "local": "在这台电脑或你的网络上",
+    "remote": "云提供商",
+    "remoteHint": "消息会离开这台电脑",
+    "inUse": "此处正在使用：{{model}} · {{provider}}"
+  }
+}

@@ -1,7 +1,134 @@
 {
+  "status": {
+    "running": "运行中",
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "partial": "部分完成"
+  },
+  "sections": {
+    "happened": "发生了什么",
+    "where": "结果在哪里",
+    "checked": "检查了什么",
+    "unresolved": "未解决",
+    "next": "后续步骤"
+  },
+  "headline": {
+    "running": "运行仍在进行。",
+    "completedWithChanges": "运行已结束，Flint 更改了文件。",
+    "completedNoChanges": "运行已结束，Flint 没有更改任何文件。",
+    "completedChecksFailed": "运行已结束，但 Flint 运行的一项检查未通过。",
+    "finishedIncomplete": "运行已结束，但请求的一部分未完成。请参阅“未解决”。",
+    "partial": "运行在完成前停止。之前已完成了一些工作。",
+    "failed": "运行在完成前停止，没有任何内容完成。",
+    "cancelled": "运行在任何内容完成之前被停止。"
+  },
+  "plan": {
+    "progress": "已完成 {{done}} / {{total}}"
+  },
+  "kept": "这些更改已保留。停止运行不会撤销它已经做过的事。",
+  "location": {
+    "sandbox": "在此会话的沙盒中，而不是在你的仓库中。",
+    "worktree": "在由 Flint 管理的单独工作树中，而不是在你的检出副本中。",
+    "userCheckout": "直接在你关联的文件夹中。",
+    "none": "此次运行没有关联工作树。",
+    "noFiles": "Flint 没有写入任何文件。",
+    "open": "打开 {{path}}"
+  },
+  "checks": {
+    "none": "Flint 没有运行任何测试或检查。",
+    "kind": {
+      "test": "测试",
+      "build": "构建",
+      "lint": "检查",
+      "command": "命令"
+    },
+    "outcome": {
+      "passed": "通过",
+      "failed": "失败",
+      "didNotFinish": "未完成",
+      "running": "运行中",
+      "notRun": "未运行",
+      "unknown": "结果未知"
+    },
+    "exit": "退出码 {{code}}",
+    "summary": {
+      "allTestsPassed": "自动化测试已通过。",
+      "allChecksPassed": "自动化检查已通过。未运行任何测试。",
+      "somePassed": "{{total}} 项检查中有 {{passed}} 项通过。",
+      "failedWithCode": "{{command}} 失败，退出码为 {{code}}。",
+      "failedNoCode": "{{command}} 失败，没有退出码。",
+      "didNotFinish_one": "{{count}} 项检查未完成：已被取消、超时或中断。",
+      "didNotFinish_other": "{{count}} 项检查未完成：已被取消、超时或中断。",
+      "notRun_one": "{{count}} 项检查未运行。",
+      "notRun_other": "{{count}} 项检查未运行。",
+      "unknown_one": "{{count}} 项检查没有记录退出状态，因此结果未知。",
+      "unknown_other": "{{count}} 项检查没有记录退出状态，因此结果未知。",
+      "running_one": "{{count}} 项检查仍在运行。",
+      "running_other": "{{count}} 项检查仍在运行。",
+      "visualNotChecked": "尚未检查视觉效果和端到端行为。"
+    },
+    "otherCommands": "另外还运行了 {{count}} 条其他命令。它们不计为检查。",
+    "completion": {
+      "not-started": "未开始",
+      "running": "仍在运行",
+      "completed": "运行至完成",
+      "cancelled": "已取消",
+      "timed-out": "已超时",
+      "interrupted": "已中断"
+    },
+    "limitation": {
+      "exit-status-only": "仅根据退出状态判断。",
+      "compound-command": "多条命令被串联；状态涵盖整条链，而不是每一步。",
+      "output-truncated": "输出被截断，因此后面的失败可能不可见。",
+      "background": "在后台启动；状态可能不是该作业的状态。",
+      "subset-selected": "仅选择了测试套件的一部分。",
+      "no-exit-status": "未记录退出状态。"
+    },
+    "claimsTitle": "由助手提到，未经 Flint 验证："
+  },
   "unresolved": {
     "stop": {
+      "error": "运行因错误而结束。",
+      "aborted": "运行已被停止。",
+      "deadline": "运行达到了时间限制。",
+      "timeout": "模型未能及时响应。",
+      "loop": "运行因重复自身而被停止。",
+      "steps": "运行用完了所有步骤。",
       "tokens": "运行在令牌上限处停止（上下文窗口或请求额度）。"
-    }
+    },
+    "refused": "不允许：{{tool}} {{target}}",
+    "refusedReadOnly": "未运行，此轮为只读：{{tool}} {{target}}。请将模式切换为“更改前询问”或“自主”，然后点击“继续”。",
+    "cancelled": "已取消：{{tool}} {{target}}",
+    "failed": "失败：{{tool}} {{target}}",
+    "interrupted": "未完成：{{tool}} {{target}}",
+    "checkFailed": "未通过：{{command}}"
+  },
+  "actions": {
+    "openResult": "打开结果",
+    "reviewChanges": "查看更改",
+    "continue": "继续",
+    "retry": "重试",
+    "retryNote": "“重试”会再次发送上一个请求。它不会撤销运行已经做出的更改。",
+    "restore": "回到较早的时间点"
+  },
+  "rewind": {
+    "scopeTitle": "此次还原会更改什么",
+    "scopeTree": "工作树：{{tree}}",
+    "filesHeading": "将被放回的文件（{{count}}）",
+    "noFiles": "没有文件与此时间点不同。",
+    "filesUnknown": "Flint 无法列出哪些文件会更改。",
+    "safetyNote": "还原之前，Flint 会将当前状态保存为新的时间点，因此可以撤销此次还原。",
+    "boundaries": "还原文件不会撤销消息、远程推送、已发布的内容、已安装的软件包，或此工作树之外的其他影响。已经运行的命令不会被撤销。",
+    "unrelatedTitle": "这些文件在最近的时间点之后发生了更改，且不是由 Flint 写入的。还原会覆盖它们：",
+    "unrelatedConfirm": "我了解这些编辑将被覆盖。它们仍保留在已保存的时间点中。",
+    "safetyLabel": "还原前 {{time}}",
+    "safetyFailed": "无法先保存当前状态，因此未还原任何内容：{{reason}}",
+    "restored": "已还原。之前的状态已保存为“{{label}}”。",
+    "previewDiff": "预览差异",
+    "hideDiff": "隐藏差异",
+    "previewEmpty": "没有可显示的差异。",
+    "previewLoading": "正在加载差异…",
+    "previewFailed": "无法生成差异：{{reason}}"
   }
 }

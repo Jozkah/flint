@@ -1,0 +1,64 @@
+{
+  "intentHeading": "Was möchtest du zuerst tun?",
+  "intentHint": "Das entscheidet nur, wohin dich die Anleitung führt. Alles andere in Flint bleibt verfügbar.",
+  "intent": {
+    "question": {
+      "title": "Eine Frage stellen",
+      "description": "Chatte mit einem Modell über alles Mögliche."
+    },
+    "documents": {
+      "title": "Mit Dokumenten arbeiten",
+      "description": "Hänge Dateien an und frage danach."
+    },
+    "project": {
+      "title": "Ein Projekt erstellen oder ändern",
+      "description": "Lass Flint in einem Ordner auf diesem Computer arbeiten und vor jeder Änderung nachfragen."
+    }
+  },
+  "skipGuide": "Anleitung überspringen",
+  "resumeNotice": "Willkommen zurück. Du kannst dort weitermachen, wo du aufgehört hast.",
+  "processingHeading": "Wo deine Unterhaltungen verarbeitet werden",
+  "processingLocal": "Ein lokales Modell läuft auf diesem Computer. Deine Nachrichten und Dateien bleiben hier, und es wird weder ein Konto noch ein API-Schlüssel benötigt.",
+  "processingRemote": "Ein Remote-Anbieter (zum Beispiel OpenAI) führt das Modell auf seinen Servern aus. Deine Nachrichten und alle enthaltenen Dateien werden dorthin gesendet, und der Anbieter kann dir Kosten berechnen. Das richtest du selbst in den Einstellungen ein; Flint wechselt nie von sich aus zu einem solchen Anbieter.",
+  "connectRemote": "Stattdessen einen Remote-Anbieter verbinden",
+  "guideTitle": {
+    "question": "Erste Schritte: eine Frage stellen",
+    "documents": "Erste Schritte: mit Dokumenten arbeiten",
+    "project": "Erste Schritte: ein Projekt erstellen oder ändern"
+  },
+  "guideRegion": "Anleitung für die ersten Schritte",
+  "stepDone": "Erledigt",
+  "stepTodo": "Offen",
+  "step": {
+    "choose-model": {
+      "title": "Ein Modell auswählen oder verbinden",
+      "body": "Wähle oben mit der Auswahl ein Modell. Lokale Modelle laufen auf diesem Computer; Remote-Anbieter benötigen ein eigenes Konto."
+    },
+    "add-material": {
+      "documents": "Hänge ein Dokument mit der Büroklammer-Schaltfläche im Nachrichtenfeld an.",
+      "project": "Öffne Cowork und wähle den Ordner deines Projekts. Flint fragt nach, bevor es Dateien bearbeitet oder Befehle ausführt."
+    },
+    "first-task": {
+      "title": "Sende deine erste Nachricht",
+      "body": "Stelle eine Frage oder beschreibe die gewünschte Änderung. Dieser Schritt ist abgeschlossen, sobald eine Unterhaltung beginnt."
+    },
+    "review-context": {
+      "title": "Prüfen, was Flint verwendet hat",
+      "body": "Öffne nach Flints Antwort in der Unterhaltung „Was Flint verwendet“, um zu sehen, welche Anhänge und Anweisungen ihm zur Verfügung standen."
+    },
+    "addMaterialTitle": {
+      "documents": "Ein Dokument hinzufügen",
+      "project": "Einen Projektordner wählen"
+    }
+  },
+  "confirmStep": "Ich habe das erledigt",
+  "openProviders": "Modelleinstellungen",
+  "openCowork": "Cowork öffnen",
+  "hideGuide": "Anleitung ausblenden",
+  "guideComplete": "Alles eingerichtet. Du kannst diese Anleitung jederzeit unter Einstellungen > Allgemein erneut öffnen.",
+  "finish": "Anleitung beenden",
+  "reopenGuide": "Anleitung für die ersten Schritte",
+  "reopenGuideDescription": "Gehe noch einmal durch, wie du ein Modell wählst, Material hinzufügst und eine erste Aufgabe abschließt.",
+  "reopenGuideAction": "Anleitung öffnen",
+  "resumeRecent": "Letzte Unterhaltung fortsetzen: {{title}}"
+}

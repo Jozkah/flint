@@ -1,3 +1,19 @@
 {
-  "noLogs": "沒有可用的日誌"
+  "noLogs": "沒有可用的日誌",
+  "noMatch": "沒有符合篩選條件的行",
+  "title": "記錄",
+  "serverTitle": "本機 API 伺服器記錄",
+  "copy": "複製記錄",
+  "openFolder": "開啟資料夾",
+  "copied": "已複製",
+  "search": "搜尋記錄",
+  "filterLabel": "依等級篩選",
+  "levelAll": "全部",
+  "levelError": "錯誤",
+  "levelWarn": "警告",
+  "levelInfo": "資訊",
+  "levelDebug": "偵錯",
+  "shown": "{{shown}} / {{total}} 行",
+  "description": "Flint 及其引擎今天寫入的所有內容。最新的在前。",
+  "serverDescription": "對相容 OpenAI 的本機 API 伺服器的請求。最新的在前。"
 }

@@ -1,0 +1,116 @@
+{
+  "triggerLabel": "Läuft dieses Modell auf diesem Gerät? {{status}}. Details anzeigen",
+  "title": "Läuft dieses Modell auf diesem Gerät?",
+  "subtitle": "Was hier gemessen wurde und was nur geschätzt ist.",
+  "measuredHeading": "Auf diesem Gerät gemessen",
+  "estimateHeading": "Schätzung",
+  "evidence": {
+    "ran-successfully": "Lief auf diesem Gerät mit diesen Einstellungen erfolgreich.",
+    "failed-with-settings": "Auf diesem Gerät mit diesen Einstellungen fehlgeschlagen. Andere Einstellungen funktionieren möglicherweise.",
+    "unsupported": "Von dieser Runtime nicht unterstützt: Die llama.cpp-Engine in dieser Version von Flint erkennt die Architektur des Modells nicht. Andere Einstellungen helfen nicht; ein App-Update könnte helfen.",
+    "stale": "Früher getestet, aber seitdem hat sich etwas geändert, daher gilt dieses Ergebnis möglicherweise nicht mehr.",
+    "not-tested": "Auf diesem Gerät nicht getestet."
+  },
+  "verdict": {
+    "fits": "Passt voraussichtlich in den Speicher.",
+    "fits-partial-offload": "Passt voraussichtlich, wobei ein Teil des Modells auf der CPU läuft. Es funktioniert, antwortet aber langsamer.",
+    "tight": "Möglicherweise sind angepasste Einstellungen nötig: Es bliebe sehr wenig Speicher übrig. Eine kleinere Kontextgröße hilft.",
+    "exceeds": "Passt voraussichtlich nicht. Schätzungen können falsch sein; du kannst es trotzdem versuchen oder testen.",
+    "unknown": "Nicht genug Informationen für eine Schätzung."
+  },
+  "memoryModel": {
+    "unified": "Einheitlicher Speicher: {{ram}}, gemeinsam von CPU und GPU genutzt. Standardmäßig kann die GPU etwa {{gpu}} davon verwenden.",
+    "discrete-gpu": "Dedizierter GPU-Speicher {{vram}} plus {{ram}} Systemspeicher. Schichten, die nicht auf die GPU passen, laufen auf der CPU.",
+    "integrated-gpu": "Integrierte Grafik teilt sich die {{ram}} Systemspeicher, daher wird er nur einmal gezählt.",
+    "cpu-only": "Für diese Runtime wurde keine GPU erkannt: Das Modell läuft auf der CPU und nutzt {{ram}} Systemspeicher.",
+    "unknown": "Der Gerätespeicher wurde noch nicht erkannt."
+  },
+  "showReasons": "Anzeigen, wie das geschätzt wurde",
+  "breakdown": {
+    "weights": "Modelldatei",
+    "kvCache": "Unterhaltungsspeicher für {{tokens}} Tokens",
+    "mmproj": "Bildverarbeitungskomponente",
+    "overhead": "Runtime-Overhead",
+    "total": "Geschätzter Bedarf",
+    "budget": "Geschätzt verfügbar",
+    "otherLoaded": "Bereits von anderen geladenen Modellen belegt"
+  },
+  "assumption": {
+    "kv-from-metadata": "Der Unterhaltungsspeicher wird aus der Architektur des Modells und den konfigurierten Cache-Typen berechnet.",
+    "kv-heuristic": "Die Architektur des Modells konnte nicht gelesen werden, daher wird der Unterhaltungsspeicher anhand der Dateigröße geschätzt.",
+    "kv-sliding-window-midpoint": "Dieses Modell behält in einigen Schichten nur die letzten Tokens; die genaue Aufteilung ist unbekannt, daher wird der Mittelwert verwendet.",
+    "context-capped-to-trained": "Die Kontextgröße ist auf das begrenzt, wofür das Modell trainiert wurde.",
+    "unified-gpu-working-set": "macOS begrenzt standardmäßig, wie viel einheitlichen Speicher die GPU nutzt; darüber hinaus laufen Schichten auf der CPU.",
+    "integrated-gpu-shares-ram": "Der Speicher integrierter Grafik ist Teil des Systemspeichers und wird nicht zusätzlich hinzugerechnet.",
+    "discrete-vram-reserve": "Etwa 512 MB pro dedizierter GPU bleiben für Treiber und Anzeige frei.",
+    "system-reserve": "Etwa 2 GB Systemspeicher bleiben für das Betriebssystem und andere Apps frei.",
+    "runtime-overhead": "Compute-Puffer und die Runtime werden mit 300 MB plus 2 % der Modelldatei geschätzt.",
+    "cpu-only-by-setting": "Die GPU-Schichten sind auf 0 gesetzt, daher wird die GPU nicht verwendet.",
+    "other-models-loaded": "Bereits geladene Modelle werden abgezogen, aber wo sie liegen (GPU oder CPU), ist nicht beobachtbar.",
+    "mmap-not-counted": "Speicherabgebildetes Laden kann ein Modell mit weniger Speicher als angezeigt starten lassen, allerdings mit erheblichem Geschwindigkeitsverlust; das wird nicht berücksichtigt.",
+    "mmproj-unknown": "Eine Bildverarbeitungskomponente ist vorhanden, ihre Größe ist aber unbekannt."
+  },
+  "uncertainty": {
+    "low": "Zuverlässigkeit: ziemlich gut. Die tatsächliche Nutzung kann dennoch abweichen.",
+    "medium": "Zuverlässigkeit: mittel. Ein Test auf diesem Gerät liefert eine echte Antwort.",
+    "high": "Zuverlässigkeit: gering. Das Ergebnis liegt nahe am Limit oder beruht auf groben Annahmen; teste es, um Gewissheit zu haben."
+  },
+  "difference": {
+    "settings": "Einstellungen seit dem Test geändert: {{keys}}.",
+    "runtime": "Die App wurde seit dem Test aktualisiert ({{recorded}} auf {{current}}).",
+    "device": "Die Speicher- oder GPU-Konfiguration des Geräts hat sich geändert.",
+    "modelFile": "Die Modelldatei hat sich geändert."
+  },
+  "otherSuccess": "Es lief auf diesem Gerät mit einer Kontextgröße von {{context}}.",
+  "testScope": "Ein Test belegt nur eine kurze Antwort mit den verwendeten Einstellungen. Längere Unterhaltungen, ein größerer Kontext oder andere geladene Modelle können trotzdem den Speicher erschöpfen.",
+  "testedAt": "Getestet {{when}} mit {{settings}}.",
+  "defaultSettings": "Standardeinstellungen",
+  "metric": {
+    "load": "Ladezeit",
+    "generation": "Generierungsgeschwindigkeit",
+    "prompt": "Geschwindigkeit beim Lesen des Prompts"
+  },
+  "test": {
+    "run": "Auf diesem Gerät testen",
+    "runAgain": "Erneut testen",
+    "cancel": "Test abbrechen",
+    "running": "Test läuft: Das Modell wird geladen und um eine kurze Antwort gebeten …",
+    "succeeded": "Test bestanden: Das Modell wurde geladen und hat geantwortet.",
+    "failed": "Test fehlgeschlagen: {{reason}}",
+    "cancelled": "Test abgebrochen. Nichts, was der Test geladen hat, ist noch geladen.",
+    "cancelledNotReleased": "Test abgebrochen, aber das Modell konnte nicht entladen werden. Entlade es in den Modelleinstellungen.",
+    "notReleased": "Das Modell konnte danach nicht entladen werden; es belegt weiterhin Speicher.",
+    "couldNotRun": "Der Test konnte nicht ausgeführt werden: {{reason}}",
+    "blockedBusy": "Nicht getestet: {{models}} schreibt gerade eine Antwort, und der Test müsste es entladen. Versuche es erneut, wenn es fertig ist. Es wurde nichts geändert.",
+    "blockedInProgress": "Ein anderer Modelltest läuft bereits. Es wurde nichts geändert.",
+    "restored": "{{models}} wurde wieder geladen.",
+    "notRestored": "{{models}} konnte nicht wieder geladen werden; lade es in den Modelleinstellungen.",
+    "needsConfirmation": "Für den Test muss zuerst ein anderes Modell entladen werden.",
+    "confirmUnload": "Für den Test muss Flint {{models}} entladen. Eine Antwort, die es gerade generiert, wird abgebrochen. Es wird nicht automatisch neu geladen.",
+    "unloadAndTest": "Entladen und testen",
+    "dontTest": "Nicht testen"
+  },
+  "testExplainer": "Der Test verwendet die bereits auf diesem Gerät vorhandene Modelldatei; es wird nichts heruntergeladen. Er lädt das Modell mit seinen aktuellen Einstellungen, bittet um eine Ein-Wort-Antwort und entlädt es wieder, falls es nicht schon geladen war.",
+  "adjustSettings": "Einstellungen anpassen",
+  "setDefault": "Für neue Chats verwenden",
+  "removeDefault": "Nicht mehr für neue Chats verwenden",
+  "hideHint": "Diesen Hinweis ausblenden",
+  "showHint": "Diesen Hinweis anzeigen",
+  "badge": {
+    "worked": "Lief hier",
+    "unsupported": "Von dieser Runtime nicht unterstützt",
+    "default": "Standard"
+  },
+  "location": {
+    "local": "Läuft auf diesem Gerät oder in deinem Netzwerk",
+    "remote": "Remote: Nachrichten werden an diesen Anbieter gesendet"
+  },
+  "providerSettings": "Einstellungen für {{provider}}",
+  "memoryBars": "Geschätzter Speicherbedarf im Vergleich zum Verfügbaren",
+  "picker": {
+    "local": "Auf diesem Computer oder in deinem Netzwerk",
+    "remote": "Cloud-Anbieter",
+    "remoteHint": "Nachrichten verlassen diesen Computer",
+    "inUse": "Hier in Verwendung: {{model}} · {{provider}}"
+  }
+}

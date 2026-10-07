@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "Komutlar",
+    "helpTitle": "Kullanılabilir komutlar",
+    "keys": "↑↓ seç · Enter/Tab ekle · Esc kapat",
+    "empty": "Burada kullanılabilir komut yok"
+  },
+  "source": {
+    "plugin": "eklenti",
+    "pluginNamed": "{{plugin}} eklentisi",
+    "skill": "beceri",
+    "builtin": "yerleşik"
+  },
+  "scope": {
+    "project": "proje",
+    "global": "genel"
+  },
   "builtin": {
+    "help": "Kullanılabilir komutları listele",
+    "new": "Yeni bir konuşma başlat",
+    "newSession": "Yeni bir Cowork oturumu başlat",
     "compact": "Bağlam penceresini boşaltmak için eski mesajları özetle"
-  }
+  },
+  "sent": {
+    "command": "Komut",
+    "skill": "Beceri",
+    "showCommand": "Genişletilmiş komutu göster",
+    "showSkill": "Yüklenen beceriyi göster"
+  },
+  "error": "{{command}} çalıştırılamadı: {{error}}"
 }

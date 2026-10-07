@@ -6,5 +6,27 @@
   "increaseContextSize": "コンテキストサイズを増やす",
   "lastRequestOverflowed": "前回のリクエストがコンテキストウィンドウを超過しました。",
   "contextOverflowDetail": "このリクエストには {{request}} token が必要でしたが、モデルのコンテキストウィンドウは {{context}} token しか保持できません。",
-  "contextOverflowGeneric": "リクエストが利用可能なコンテキストサイズを超えています。"
+  "contextOverflowGeneric": "リクエストが利用可能なコンテキストサイズを超えています。",
+  "engine": {
+    "unknown": "モデルエンジンが予期しないエラーを報告しました。",
+    "MODEL_LOAD_FAILED": "モデルを読み込めませんでした。",
+    "MODEL_ARCH_NOT_SUPPORTED": "このモデルのアーキテクチャは、現在のエンジンでは対応していません。設定からエンジンを更新すると、対応する場合があります。",
+    "MODEL_LOAD_TIMED_OUT": "モデルの読み込みに時間がかかりすぎたため、停止されました。通常は、小さいモデルや小さいコンテキストサイズにすると改善します。",
+    "MISSING_SHARED_LIBRARY": "エンジンに必要なライブラリがないため、起動できません。",
+    "GPU_DRIVER_TOO_OLD": "お使いの GPU ドライバーは、このエンジンには古すぎます。ドライバーを更新するか、設定で CPU エンジンに切り替えると解決します。",
+    "OUT_OF_MEMORY": "このモデルを実行するためのメモリが足りません。通常は、小さいモデルや小さいコンテキストサイズにすると改善します。",
+    "INVALID_ARGUMENT": "モデルの設定のいずれかが無効です。",
+    "IO_ERROR": "モデルの起動中に、ファイルを読み書きできませんでした。",
+    "INTERNAL_ERROR": "モデルの起動中に、Flint 内部で問題が発生しました。"
+  },
+  "engineMissingLibraries": "不足: {{libraries}}",
+  "engineReportedDetail": "エンジンの報告: {{detail}}",
+  "startModelFailed": "モデルを起動できませんでした: {{reason}}",
+  "createModelFailed": "モデルを作成できませんでした: {{reason}}",
+  "noRunningSession": "モデルの実行中セッションが見つかりません: {{model}}",
+  "serverPortOccupied": "ポートは使用中です",
+  "serverPortOccupiedDescription": "ポート {{port}} はすでに使用されています。別のポートをお試しください。",
+  "serverInvalidModelPath": "モデルのパスが無効、またはアクセスできません",
+  "serverStartModelFailed": "モデルを起動できませんでした",
+  "serverStartFailed": "サーバーを起動できませんでした"
 }

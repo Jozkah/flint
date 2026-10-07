@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "指令",
+    "helpTitle": "可用指令",
+    "keys": "↑↓ 選擇 · Enter/Tab 插入 · Esc 關閉",
+    "empty": "此處沒有可用指令"
+  },
+  "source": {
+    "plugin": "外掛程式",
+    "pluginNamed": "外掛程式 {{plugin}}",
+    "skill": "技能",
+    "builtin": "內建"
+  },
+  "scope": {
+    "project": "專案",
+    "global": "全域"
+  },
   "builtin": {
+    "help": "列出可用指令",
+    "new": "開始新對話",
+    "newSession": "開始新的 Cowork 工作階段",
     "compact": "摘要較早的訊息以釋放上下文視窗"
-  }
+  },
+  "sent": {
+    "command": "指令",
+    "skill": "技能",
+    "showCommand": "顯示展開後的指令",
+    "showSkill": "顯示已載入的技能"
+  },
+  "error": "無法執行 {{command}}：{{error}}"
 }

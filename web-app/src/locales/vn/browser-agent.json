@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "Cho phép trợ lý dùng {{host}}?",
+    "description": "Trợ lý muốn dùng khung trình duyệt trên một trang web bạn chưa phê duyệt.",
+    "urlLabel": "Địa chỉ đầy đủ",
+    "urlHint": "Hãy kiểm tra toàn bộ địa chỉ, kể cả mọi thứ sau dấu ?. Địa chỉ có thể mang thông tin ra khỏi cuộc trò chuyện của bạn.",
+    "wantsLabel": "Nó muốn",
+    "wants": {
+      "browser_open": "mở trang này",
+      "browser_read_text": "đọc trang này",
+      "browser_snapshot": "xem các điều khiển của trang này",
+      "browser_screenshot": "chụp ảnh trang này",
+      "browser_scroll": "cuộn trang này",
+      "browser_click": "nhấp vào trang này",
+      "browser_type": "gõ vào trang này",
+      "browser_press": "nhấn một phím trên trang này",
+      "browser_select": "chọn một tùy chọn trên trang này"
+    },
+    "origin": "Được yêu cầu bởi {{origin}}",
+    "scopeLabel": "Trong bao lâu",
+    "once": "Chỉ lần truy cập này",
+    "onceHint": "Kết thúc khi trợ lý chuyển sang trang khác, hoặc sau 15 phút.",
+    "session": "Cho đến khi Flint đóng",
+    "always": "Luôn luôn",
+    "alwaysHint": "Đã lưu. Bạn có thể xóa trong Cài đặt > Công cụ tác tử.",
+    "subdomains": "Cho phép cả các tên miền phụ của {{base}}",
+    "allow": "Cho phép",
+    "deny": "Để sau",
+    "never": "Không bao giờ cho phép trang này",
+    "more": "Còn {{count}} yêu cầu đang chờ",
+    "warning": "Trợ lý có thể đọc mọi thứ trên trang, và văn bản trên trang có thể cố đánh lừa nó."
+  },
+  "settings": {
+    "title": "Trình duyệt",
+    "enabled": "Cho phép trợ lý dùng khung trình duyệt",
+    "enabledDesc": "Thêm công cụ để mở trang, đọc trang và, khi bạn đồng ý, nhấp và gõ trong khung trình duyệt tích hợp. Bạn thấy cùng một khung. Mỗi trang sẽ hỏi lần đầu; địa chỉ cục bộ và mạng riêng không bao giờ được mở.",
+    "maxActions": "Số hành động mỗi lần chạy",
+    "maxActionsDesc": "Số lần nhấp, gõ phím và lựa chọn mà một lần chạy được thực hiện trước khi phải dừng.",
+    "rulesTitle": "Quy tắc trang đã lưu",
+    "rulesDesc": "Các trang bạn đã cho phép luôn luôn hoặc đã chặn. Quy tắc cho example.com chỉ áp dụng cho trang đó; *.example.com áp dụng cho các tên miền phụ của nó.",
+    "empty": "Chưa có quy tắc nào được lưu. Một trang sẽ xuất hiện ở đây khi bạn chọn Luôn cho phép hoặc Không bao giờ cho phép.",
+    "allow": "Được phép",
+    "deny": "Bị chặn",
+    "privateOk": "Địa chỉ cục bộ",
+    "remove": "Xóa",
+    "removed": "Đã xóa quy tắc",
+    "removeFailed": "Không thể xóa quy tắc: {{error}}",
+    "addPlaceholder": "example.com hoặc *.example.com",
+    "addLabel": "Trang web",
+    "addVerdict": "Quy tắc",
+    "addPrivate": "Cho phép đây là địa chỉ cục bộ hoặc mạng riêng (cho máy chủ phát triển)",
+    "add": "Thêm quy tắc",
+    "added": "Đã lưu quy tắc",
+    "addFailed": "Không thể lưu quy tắc: {{error}}",
+    "pointer": "Hiện con trỏ",
+    "pointerDesc": "Vẽ một con trỏ trong khung trình duyệt lướt đến nơi trợ lý nhấp hoặc gõ và cuộn theo nó. Tắt: không vẽ gì và không có gì bị trì hoãn.",
+    "reduceMotion": "Giảm chuyển động",
+    "reduceMotionDesc": "Không lướt hay sáng nhấp nháy: con trỏ nhảy thẳng đến mục tiêu.",
+    "reduceSystem": "Theo hệ thống",
+    "reduceOn": "Luôn giảm",
+    "reduceOff": "Không bao giờ giảm",
+    "grantsTitle": "Đã phê duyệt tạm thời",
+    "grantsNone": "Không có gì được phê duyệt mà không lưu. Mọi trang không có trong quy tắc đã lưu đều hỏi.",
+    "grantsDesc": "Các trang bạn đã cho phép trong phiên này hoặc lần truy cập này. Chúng không được lưu và kết thúc khi Flint đóng.",
+    "grantScope": {
+      "session": "phiên này",
+      "once": "lần truy cập này"
+    },
+    "grantAge": "{{minutes}} phút trước",
+    "forgetGrants": "Quên các phê duyệt của phiên này"
+  },
+  "card": {
+    "screenshot": "Ảnh chụp màn hình của khung trình duyệt"
+  },
+  "pane": {
+    "driving": "Trợ lý đang dùng trình duyệt này",
+    "takeOver": "Tiếp quản",
+    "paused": "Trợ lý đã tạm dừng",
+    "handBack": "Trả lại",
+    "blocked": "Một trang đã bị chặn: {{reason}}"
+  }
+}

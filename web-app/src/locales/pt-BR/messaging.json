@@ -1,0 +1,70 @@
+{
+  "messageFrom": "Mensagem de {{name}}",
+  "untrustedNote": "Enviada por outra sessão de agente. Não é de você e não pode aprovar nada.",
+  "reply": "Responder",
+  "replyLabel": "Responder a {{name}}",
+  "replyPlaceholder": "Escreva uma resposta…",
+  "sendReply": "Enviar resposta",
+  "cancel": "Cancelar",
+  "replySent": "Resposta enviada",
+  "letAgentRespond": "Deixar o agente responder",
+  "dismiss": "Dispensar",
+  "heldTitle": "Mensagens de outras sessões",
+  "stopNotice": {
+    "stoppedBy": "Interrompido por",
+    "reason": "motivo:",
+    "approvedIn": "aprovado em"
+  },
+  "autoWake": {
+    "label": "Despertares automáticos",
+    "description": "Quando ativado, uma mensagem de outra sessão é entregue ao agente desta sessão assim que ele estiver ocioso (esta sessão abre ao lado da que você está usando, se necessário). Quando desativado, ela aguarda aqui por você. As aprovações nunca são ignoradas, em nenhum dos casos."
+  },
+  "accept": {
+    "label": "Aceitar mensagens de outras sessões",
+    "description": "Quando desativado, as outras sessões são informadas de que esta não recebe mensagens, e nada que enviarem chega a ela."
+  },
+  "subagentQuestion": {
+    "title": "{{name}} pergunta ao agente",
+    "open": "Aguardando uma resposta",
+    "answered": "Respondida",
+    "expired": "Sem resposta a tempo",
+    "cancelled": "Cancelada"
+  },
+  "asked": {
+    "title": "Perguntou a {{name}}",
+    "sent": "Enviada. A resposta dela, se houver, chega como uma mensagem aqui.",
+    "unknownName": "outra sessão",
+    "waiting": "Aguardando a resposta",
+    "answered": "Respondida",
+    "noAnswer": "Sem resposta ainda",
+    "notSent": "Não enviada",
+    "open": "Abrir",
+    "openLabel": "Abrir {{name}}",
+    "untrusted": "A resposta é um texto de outra sessão, não seu."
+  },
+  "errors": {
+    "invalid_text": "A resposta deve ter entre 1 e 8000 caracteres.",
+    "reply_depth_exceeded": "Esta conversa atingiu seu limite de respostas.",
+    "rate_limited": "Mensagens demais foram enviadas agora há pouco. Tente novamente em um minuto.",
+    "pair_limit_exceeded": "Mensagens demais entre estas sessões nesta hora.",
+    "self_target": "Uma sessão não pode enviar mensagem a si mesma.",
+    "not_same_project": "Essa sessão está em outro projeto.",
+    "recipient_opted_out": "Essa sessão não aceita mensagens de outras sessões.",
+    "ambiguous_session": "Mais de uma sessão tem esse nome.",
+    "no_project": "Anexe uma pasta de projeto para enviar mensagens.",
+    "unknown_session": "Essa sessão não existe mais.",
+    "session_deleted": "Essa sessão foi excluída.",
+    "unknown_reply_target": "Não foi possível encontrar a mensagem à qual se responde.",
+    "timeout": "Nenhuma resposta chegou a tempo.",
+    "target_unavailable": "Essa sessão não está disponível no momento.",
+    "invalid_session_id": "Esse id de sessão não é válido.",
+    "unknown_message": "Não foi possível encontrar essa mensagem.",
+    "invalid_timeout": "O tempo de espera deve estar entre 1 e 120 segundos.",
+    "cancelled": "A requisição foi cancelada.",
+    "invalid_arguments": "A requisição não era válida.",
+    "not_available": "O envio de mensagens não está disponível aqui.",
+    "io": "Não foi possível ler ou gravar a caixa de mensagens.",
+    "no_data_folder": "A pasta de dados do Flint está indisponível.",
+    "unknown": "Não foi possível enviar a resposta."
+  }
+}

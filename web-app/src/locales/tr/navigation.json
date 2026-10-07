@@ -1,0 +1,6 @@
+{
+  "groupGeneral": "Genel",
+  "groupModelsAndTools": "Modeller ve araçlar",
+  "advancedSettings": "Gelişmiş",
+  "advancedSettingsHint": "Yerel API sunucusu, proxy, donanım ve ajan aracı yapılandırması. Bunları gruplamak çalışma şekillerini değiştirmez."
+}

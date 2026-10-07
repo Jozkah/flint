@@ -1,15 +1,70 @@
 {
   "welcome": "嗨，你好嗎？",
   "description": "今天我能為您做些什麼？",
+  "startedAt": "開始於 {{time}}",
+  "home": {
+    "title": "新聊天",
+    "notSaved": "傳送之前不會儲存任何內容",
+    "sub": "隨便問點什麼，附加檔案，或把更大的任務交給 Cowork。",
+    "suggestionsLabel": "建議",
+    "suggestions": {
+      "explain": "解釋這則錯誤訊息",
+      "summarise": "摘要我附加的文件",
+      "draft": "根據變更清單草擬版本資訊",
+      "compare": "比較兩種方案並推薦其中一種"
+    }
+  },
+  "temporaryChat": "臨時聊天",
+  "temporaryChatDescription": "開始一個不會儲存到聊天歷史記錄的臨時對話。",
+  "temporaryChatBanner": "臨時聊天 — 不會被儲存",
+  "temporaryChatKeep": "保留此聊天",
+  "temporaryChatLeave": {
+    "title": "保留此臨時聊天？",
+    "description": "此聊天沒有儲存在任何地方。保留它以移入你的歷史記錄，或捨棄它以永久刪除。",
+    "keep": "保留",
+    "discard": "捨棄",
+    "kept": "聊天已儲存到你的歷史記錄",
+    "keepFailed": "無法儲存此聊天",
+    "discardFailed": "無法捨棄 — 仍在生成。請先停止，然後重試。",
+    "reason": {
+      "generation-not-stopped": "仍在生成。請先停止，然後重試。",
+      "messages-not-persisted": "聊天未能完整儲存。沒有遺失任何內容 — 請重試。",
+      "thread-not-created": "聊天無法儲存。沒有遺失任何內容 — 請重試。",
+      "error": "發生錯誤。你的聊天仍在這裡 — 請重試。"
+    }
+  },
   "status": {
     "empty": "找不到聊天"
   },
   "sendMessage": "傳送訊息",
   "newConversation": "新對話",
   "clearHistory": "清除歷史記錄",
-  "temporaryChat": "臨時聊天",
-  "temporaryChatDescription": "開始一個不會儲存到聊天歷史記錄的臨時對話。",
+  "embeddings": {
+    "title": "正在準備你的文件",
+    "description": "正在為附加的檔案建立索引，以便可以搜尋和引用。對於大型文件可能需要一些時間。"
+  },
+  "actions": {
+    "copy": "複製",
+    "regenerate": "重新生成回覆",
+    "continue": "繼續生成",
+    "delete": "刪除",
+    "fork": "從此處分岔對話"
+  },
   "done": "Done",
+  "webSources": "{{count}} 個來源",
+  "webSourcesRead": "已讀取 {{count}} 個",
+  "webSourcesReadFound": "已讀取 {{read}} 個 · 找到 {{found}} 個",
+  "reasoning": {
+    "label": "正在推理...",
+    "thinking": "正在思考",
+    "usingTool": "{{tool}}...",
+    "showFullTimeline": "顯示完整時間軸",
+    "showCurrentStep": "僅顯示目前步驟",
+    "thoughtForAWhile": "思考了幾秒鐘",
+    "thoughtFor": "思考了 {{duration}}",
+    "workedForAWhile": "工作了幾秒鐘",
+    "workedFor": "工作了 {{duration}}"
+  },
   "split": {
     "open": "分割對話",
     "openShort": "分割",
@@ -43,15 +98,79 @@
     "recentRooms": "房間"
   },
   "transcriptView": {
+    "steps_one": "{{count}} 步",
     "steps_other": "{{count}} 個步驟",
-    "working": "處理中"
+    "working": "處理中",
+    "failed": "失敗：",
+    "failedToRun": "執行失敗",
+    "summary": {
+      "failed": "{{count}} 個失敗",
+      "commands_one": "執行了 {{count}} 個指令",
+      "commands_other": "執行了 {{count}} 個指令",
+      "created_one": "建立了 {{count}} 個檔案",
+      "created_other": "建立了 {{count}} 個檔案",
+      "edited_one": "編輯了 {{count}} 個檔案",
+      "edited_other": "編輯了 {{count}} 個檔案",
+      "read_one": "讀取了 {{count}} 個檔案",
+      "read_other": "讀取了 {{count}} 個檔案",
+      "searched_one": "搜尋了 {{count}} 次",
+      "searched_other": "搜尋了 {{count}} 次",
+      "tools_one": "使用了 {{count}} 個工具",
+      "tools_other": "使用了 {{count}} 個工具"
+    }
   },
-  "actions": {
-    "fork": "從此處分岔對話"
+  "widget": {
+    "label": "小工具",
+    "drawing": "正在繪製小工具",
+    "source": "檢視原始碼",
+    "copy": "複製 HTML",
+    "copied": "HTML 已複製。",
+    "copyFailed": "無法複製 HTML。",
+    "save": "另存為 .html 檔案",
+    "expand": "以完整尺寸開啟",
+    "rerun": "重新執行",
+    "stalled": "小工具已停止回應。",
+    "parked": "小工具在畫面外時已暫停。",
+    "error": "小工具錯誤：",
+    "viewSource": "檢視原始碼",
+    "askFix": "請 Flint 修復",
+    "fixPrompt": "小工具「{{title}}」顯示錯誤：{{error}}\n請修復它並再次顯示該小工具。",
+    "refused": "未顯示小工具：{{reason}}",
+    "refusedUnknown": "呼叫失敗",
+    "tooLarge": "此小工具超過 {{max}} 個字元，未繪製。",
+    "openLink": "要在瀏覽器中開啟 {{url}} 嗎？",
+    "cancel": "取消",
+    "busy": "請等待目前回覆完成，然後重試。",
+    "noHost": "此檢視無法傳送訊息。"
+  },
+  "browserCard": {
+    "opened": "已在瀏覽器中開啟",
+    "ready": "可以開啟",
+    "open": "開啟",
+    "more": "更多",
+    "copy": "複製連結",
+    "copied": "連結已複製。",
+    "failed": "無法開啟瀏覽器。"
+  },
+  "regenerateTitle": {
+    "menu": "重新生成標題",
+    "working": "正在為聊天命名...",
+    "done": "聊天已重新命名。",
+    "empty": "目前還沒有內容可用來為此聊天命名。",
+    "busy": "重新命名之前請先暫停或停止房間。",
+    "failed": "無法產生標題。"
   },
   "fork": {
     "chat": "分岔對話",
     "done": "已分岔為新對話。",
     "failed": "無法分岔此對話。"
+  },
+  "version": {
+    "group": "訊息版本",
+    "previous": "上一個版本",
+    "next": "下一個版本",
+    "previousAt": "上一個版本（顯示第 {{index}} 個，共 {{count}} 個）",
+    "nextAt": "下一個版本（顯示第 {{index}} 個，共 {{count}} 個）",
+    "position": "第 {{index}} 個版本，共 {{count}} 個"
   }
 }

@@ -1,11 +1,26 @@
 {
   "limitedSupport": "このプロバイダーは完全にはサポートされていない可能性があります。機能（ツール・画像認識・音声）は自動検出されません。モデルを手動で追加し、モデルごとに機能を設定してください。",
   "mlxExperimental": "MLXのサポートは実験的です。埋め込みは利用できず、推論の切り替えはまだ接続されておらず、一部の新しいモデルアーキテクチャは読み込みに失敗する場合があります。優先順位を付けられるよう、問題はGitHubで報告してください。",
+  "engineBundled": "推論エンジンは Jan に組み込まれているため、個別にダウンロードや更新を行う必要はありません。モデルの読み込みに失敗したことを報告する際は、このバージョンを併せてお伝えください。",
+  "engineReleaseNotes": "リリースノート",
+  "engineBuild": "ビルド",
+  "engineCommit": "コミット",
   "refreshModelsError": "モデルを取得するには、プロバイダーにベースURLとAPIキーが設定されている必要があります。",
   "refreshModelsSuccess": "{{provider}}から{{count}}個の新しいモデルを追加しました。",
+  "refreshModelsRemoved": "サーバーが一覧に表示しなくなったモデル {{count}} 個を削除しました。",
   "noNewModels": "新しいモデルは見つかりませんでした。利用可能なすべてのモデルは既に追加されています。",
   "refreshModelsFailed": "{{provider}}からのモデルの取得に失敗しました。APIキーとベースURLを確認してください。",
   "models": "モデル",
+  "backendInstalled": "インストール済み",
+  "backendHistoryShow": "更新履歴を表示",
+  "backendHistoryHide": "更新履歴を非表示",
+  "backendHistoryLoading": "更新履歴を読み込んでいます...",
+  "backendHistoryEmpty": "記録されたバックエンドの更新はまだありません。",
+  "backendHistoryNone": "なし",
+  "backendHistoryUpdated": "更新",
+  "backendHistoryRolledBack": "ロールバック",
+  "backendHistoryRollbackFailed": "ロールバックに失敗",
+  "backendHistoryFailed": "失敗",
   "chatModels": "チャットモデル",
   "embeddingModels": "埋め込みモデル",
   "embeddingModelsDesc": "RAGとベクトル検索に使用されます。選択したモデルは、埋め込みを生成する際のデフォルトになります。",
@@ -21,8 +36,29 @@
   "importModelError": "モデルのインポートに失敗しました:",
   "stop": "停止",
   "start": "開始",
+  "status": {
+    "loading": "読み込み中",
+    "loaded": "読み込み済み",
+    "failed": "失敗",
+    "available": "利用可能 · 未読み込み",
+    "needsApiKey": "API キーが必要",
+    "connected": "接続済み"
+  },
+  "table": {
+    "name": "名前",
+    "file": "ファイル",
+    "size": "サイズ",
+    "context": "コンテキスト",
+    "status": "ステータス",
+    "actions": "操作"
+  },
+  "openProvider": "{{provider}} の設定を開く",
+  "useProvider": "{{provider}} を使用",
+  "editModelLabel": "{{modelId}} を編集",
+  "addModelLabel": "モデルを追加",
   "noModelFound": "モデルが見つかりません",
   "noModelFoundDesc": "利用可能なモデルはここにリストされます。まだモデルがない場合は、ハブにアクセスしてダウンロードしてください。",
+  "browseHuggingFace": "Hugging Face を参照",
   "noModelFoundRemoteDesc": "利用可能なモデルはここにリストされます。上の更新ボタンでプロバイダーからモデルを取得するか、+ボタンで手動で追加してください。",
   "configuration": "設定",
   "apiEndpoint": "APIエンドポイント",
@@ -71,6 +107,16 @@
   "editModel": {
     "title": "モデルを編集: {{modelId}}",
     "description": "以下のオプションを切り替えて、モデルの機能を設定します。",
+    "inputCost": "入力コスト (100 万トークンあたり USD)",
+    "outputCost": "出力コスト (100 万トークンあたり USD)",
+    "cachedInputCost": "キャッシュ済み入力コスト (100 万トークンあたり USD)",
+    "cacheWriteCost": "キャッシュ書き込みコスト (100 万トークンあたり USD)",
+    "costHelp": "空欄にすると、よく知られたモデルには組み込みの価格が使われます。ローカルモデルは無料です。キャッシュ済み入力またはキャッシュ書き込みの価格が空欄の場合は、入力価格で計算されます。",
+    "displayName": "表示名",
+    "displayNamePlaceholder": "表示名を入力",
+    "displayNameHelp": "このモデルが一覧表示されるすべての場所に表示されます。リクエストでは、引き続き元の識別子 {{modelId}} が使われます。",
+    "displayNameEmpty": "名前を入力するか、モデルの識別子を入力して元に戻してください。",
+    "displayNameDuplicate": "このプロバイダーの別のモデルが、すでにその名前を使用しています。",
     "capabilities": "機能",
     "tools": "ツール",
     "vision": "画像認識",
@@ -89,7 +135,8 @@
   "enterNameForProvider": "プロバイダーの名前を入力してください",
   "baseUrl": {
     "title": "ベースURL",
-    "azureDescription": "あなたのAzure OpenAIエンドポイント。YOUR-RESOURCE-NAMEをAzureリソース名に置き換えてください。"
+    "azureDescription": "あなたのAzure OpenAIエンドポイント。YOUR-RESOURCE-NAMEをAzureリソース名に置き換えてください。",
+    "qwenDescription": "Model Studio のエンドポイントです。キーは、作成されたリージョンでのみ機能します。シンガポールの場合は https://dashscope-intl.aliyuncs.com/compatible-mode/v1、中国本土の場合は https://dashscope.aliyuncs.com/compatible-mode/v1 を使用してください。"
   },
   "apiKeys": {
     "title": "APIキー",
@@ -107,6 +154,30 @@
     "addKey": "キーを追加",
     "removeKey": "キーを削除"
   },
+  "dataFolderUnavailable": "今回の実行では、データフォルダー {{path}} を使用できなかったため、Flint は既定のフォルダー内のモデルを表示しています。そこに保存されているモデルは削除されておらず、そのフォルダーが再び利用可能になると戻ります。設定 > 一般を参照してください。",
+  "customHeaders": {
+    "title": "カスタムヘッダー",
+    "description": "このプロバイダーへのすべてのリクエストに付加される追加の HTTP ヘッダーです (ゲートウェイのテナントやサブスクリプションキーなど)。API キーを置き換えることはできません。",
+    "namePlaceholder": "ヘッダー名",
+    "valuePlaceholder": "値",
+    "enabled": "このヘッダーを送信",
+    "enabledHint": "オフにすると、ヘッダーを削除せずに送信を止めます。",
+    "secret": "シークレット",
+    "secretHint": "システムの資格情報ストアに保存され、設定には保存されず、ログでは非表示になります。",
+    "add": "ヘッダーを追加",
+    "remove": "ヘッダーを削除",
+    "saveFailed": "ヘッダーを保存できませんでした: {{error}}",
+    "errors": {
+      "empty-name": "ヘッダー名を入力してください。",
+      "invalid-name": "ヘッダー名には、英字、数字、! # $ % & ' * + - . ^ _ ` | ~ のみ使用でき、スペースは使えません。",
+      "reserved": "このヘッダーは Flint 自身が設定するため、ここでは置き換えられません。",
+      "duplicate": "このヘッダーは、上ですでに設定されています。",
+      "empty-value": "値を入力してください。",
+      "invalid-value": "値に改行やその他の制御文字を含めることはできません。",
+      "too-long": "長すぎます。",
+      "too-many": "ヘッダーが多すぎます。"
+    }
+  },
   "cardMenu": {
     "actions": "{{provider}} の操作",
     "edit": "設定を編集",
@@ -117,11 +188,13 @@
   },
   "removeProvider": {
     "confirmTitle": "{{provider}} を削除しますか？",
-    "confirmDescription": "{{provider}} とその {{count}} 個のモデルが、保存された API キーとともに Flint から削除されます。",
+    "confirmDescription_one": "{{provider}} とその {{count}} 個のモデルが、保存済みの API キーとともに Flint から削除されます。",
+    "confirmDescription_other": "{{provider}} とその {{count}} 個のモデルが、保存済みの API キーとともに Flint から削除されます。",
     "keepsHistory": "そのモデルを使うチャット、セッション、ルーム、アシスタントの履歴は残り、モデルは利用不可と表示されます。",
     "cancel": "キャンセル",
     "remove": "削除",
-    "success": "{{provider}} を削除しました。"
+    "success": "{{provider}} を削除しました。",
+    "confirmDescription": "{{provider}} とその {{count}} 個のモデルが、保存された API キーとともに Flint から削除されます。"
   },
   "renameProvider": {
     "title": "プロバイダー名を変更",

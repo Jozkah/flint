@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "命令",
+    "helpTitle": "可用命令",
+    "keys": "↑↓ 选择 · Enter/Tab 插入 · Esc 关闭",
+    "empty": "此处没有可用命令"
+  },
+  "source": {
+    "plugin": "插件",
+    "pluginNamed": "插件 {{plugin}}",
+    "skill": "技能",
+    "builtin": "内置"
+  },
+  "scope": {
+    "project": "项目",
+    "global": "全局"
+  },
   "builtin": {
+    "help": "列出可用命令",
+    "new": "开始新对话",
+    "newSession": "开始新的 Cowork 会话",
     "compact": "总结较早的消息以释放上下文窗口"
-  }
+  },
+  "sent": {
+    "command": "命令",
+    "skill": "技能",
+    "showCommand": "显示展开后的命令",
+    "showSkill": "显示已加载的技能"
+  },
+  "error": "无法运行 {{command}}：{{error}}"
 }

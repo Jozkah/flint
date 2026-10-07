@@ -1,7 +1,142 @@
 {
+  "status": {
+    "running": "Běží",
+    "completed": "Dokončeno",
+    "failed": "Selhalo",
+    "cancelled": "Zrušeno",
+    "partial": "Částečně hotovo"
+  },
+  "sections": {
+    "happened": "Co se stalo",
+    "where": "Kde je výsledek",
+    "checked": "Co bylo zkontrolováno",
+    "unresolved": "Nevyřešeno",
+    "next": "Další kroky"
+  },
+  "headline": {
+    "running": "Běh stále probíhá.",
+    "completedWithChanges": "Běh skončil a Flint změnil soubory.",
+    "completedNoChanges": "Běh skončil bez toho, aby Flint změnil nějaké soubory.",
+    "completedChecksFailed": "Běh skončil, ale kontrola, kterou Flint spustil, neprošla.",
+    "finishedIncomplete": "Běh skončil, ale část požadavku nebyla provedena. Viz Nevyřešeno.",
+    "partial": "Běh se zastavil před dokončením. Nějaká práce byla předtím provedena.",
+    "failed": "Běh se zastavil před dokončením a nic nebylo dokončeno.",
+    "cancelled": "Běh byl zastaven dřív, než bylo cokoli dokončeno."
+  },
+  "plan": {
+    "progress": "Hotovo {{done}} z {{total}}"
+  },
+  "kept": "Tyto změny byly zachovány. Zastavení běhu nevrací zpět to, co již provedl.",
+  "location": {
+    "sandbox": "V sandboxu této relace, ne ve vašem repozitáři.",
+    "worktree": "V samostatném pracovním stromě spravovaném Flintem, ne ve vaší pracovní kopii.",
+    "userCheckout": "Přímo ve vaší připojené složce.",
+    "none": "K tomuto běhu nebyl připojen žádný pracovní strom.",
+    "noFiles": "Flint nezapsal žádné soubory.",
+    "open": "Otevřít {{path}}"
+  },
+  "checks": {
+    "none": "Flint nespustil žádné testy ani kontroly.",
+    "kind": {
+      "test": "Test",
+      "build": "Sestavení",
+      "lint": "Kontrola",
+      "command": "Příkaz"
+    },
+    "outcome": {
+      "passed": "Prošlo",
+      "failed": "Selhalo",
+      "didNotFinish": "Nedokončeno",
+      "running": "Běží",
+      "notRun": "Nespuštěno",
+      "unknown": "Výsledek neznámý"
+    },
+    "exit": "ukončení {{code}}",
+    "summary": {
+      "allTestsPassed": "Automatické testy prošly.",
+      "allChecksPassed": "Automatické kontroly prošly. Žádné testy nebyly spuštěny.",
+      "somePassed": "Prošlo {{passed}} z {{total}} kontrol.",
+      "failedWithCode": "{{command}} selhal s ukončovacím kódem {{code}}.",
+      "failedNoCode": "{{command}} selhal bez ukončovacího kódu.",
+      "didNotFinish_one": "{{count}} kontrola nebyla dokončena: byla zrušena, vypršel časový limit nebo byla přerušena.",
+      "didNotFinish_few": "{{count}} kontroly nebyly dokončeny: byly zrušeny, vypršel jim časový limit nebo byly přerušeny.",
+      "didNotFinish_many": "Kontrol nedokončeno: {{count}}. Byly zrušeny, vypršel jim časový limit nebo byly přerušeny.",
+      "didNotFinish_other": "Kontrol nedokončeno: {{count}}. Byly zrušeny, vypršel jim časový limit nebo byly přerušeny.",
+      "notRun_one": "{{count}} kontrola nebyla spuštěna.",
+      "notRun_few": "{{count}} kontroly nebyly spuštěny.",
+      "notRun_many": "Kontrol nespuštěno: {{count}}.",
+      "notRun_other": "Kontrol nespuštěno: {{count}}.",
+      "unknown_one": "{{count}} kontrola nemá zaznamenaný stav ukončení, takže její výsledek není znám.",
+      "unknown_few": "{{count}} kontroly nemají zaznamenaný stav ukončení, takže jejich výsledky nejsou známy.",
+      "unknown_many": "Kontroly bez zaznamenaného stavu ukončení, takže jejich výsledky nejsou známy: {{count}}.",
+      "unknown_other": "Kontroly bez zaznamenaného stavu ukončení, takže jejich výsledky nejsou známy: {{count}}.",
+      "running_one": "{{count}} kontrola stále běží.",
+      "running_few": "{{count}} kontroly stále běží.",
+      "running_many": "Kontrol, které stále běží: {{count}}.",
+      "running_other": "Kontrol, které stále běží: {{count}}.",
+      "visualNotChecked": "Vizuální chování a chování od začátku do konce nebylo zkontrolováno."
+    },
+    "otherCommands": "Spuštěno bylo také dalších příkazů: {{count}}. Nepočítají se jako kontroly.",
+    "completion": {
+      "not-started": "nezahájeno",
+      "running": "stále běží",
+      "completed": "doběhlo do konce",
+      "cancelled": "zrušeno",
+      "timed-out": "vypršel časový limit",
+      "interrupted": "přerušeno"
+    },
+    "limitation": {
+      "exit-status-only": "Posuzováno jen podle stavu ukončení.",
+      "compound-command": "Bylo zřetězeno několik příkazů; stav se vztahuje na řetězec, ne na každý krok.",
+      "output-truncated": "Výstup byl oříznut, takže pozdější selhání nemusí být vidět.",
+      "background": "Spuštěno na pozadí; stav nemusí být stavem úlohy.",
+      "subset-selected": "Byla vybrána jen část sady testů.",
+      "no-exit-status": "Nebyl zaznamenán žádný stav ukončení."
+    },
+    "claimsTitle": "Zmíněno asistentem, Flintem neověřeno:"
+  },
   "unresolved": {
     "stop": {
+      "error": "Běh skončil chybou.",
+      "aborted": "Běh byl zastaven.",
+      "deadline": "Běh dosáhl časového limitu.",
+      "timeout": "Model včas přestal odpovídat.",
+      "loop": "Běh byl zastaven, protože se opakoval.",
+      "steps": "Běh vyčerpal všechny své kroky.",
       "tokens": "Běh se zastavil na limitu tokenů (kontextové okno nebo limit požadavku)."
-    }
+    },
+    "refused": "Nepovoleno: {{tool}} {{target}}",
+    "refusedReadOnly": "Nespuštěno, tato výměna byla jen pro čtení: {{tool}} {{target}}. Přepněte režim na Ptát se před změnami nebo Autonomní a poté zvolte Pokračovat.",
+    "cancelled": "Zrušeno: {{tool}} {{target}}",
+    "failed": "Selhalo: {{tool}} {{target}}",
+    "interrupted": "Nedokončeno: {{tool}} {{target}}",
+    "checkFailed": "Neprošlo: {{command}}"
+  },
+  "actions": {
+    "openResult": "Otevřít výsledek",
+    "reviewChanges": "Zkontrolovat změny",
+    "continue": "Pokračovat",
+    "retry": "Zkusit znovu",
+    "retryNote": "Zkusit znovu odešle poslední požadavek znovu. Nevrací zpět změny, které běh již provedl.",
+    "restore": "Vrátit se k dřívějšímu bodu"
+  },
+  "rewind": {
+    "scopeTitle": "Co toto obnovení změní",
+    "scopeTree": "Pracovní strom: {{tree}}",
+    "filesHeading": "Soubory, které budou vráceny ({{count}})",
+    "noFiles": "Žádné soubory se od tohoto bodu neliší.",
+    "filesUnknown": "Flint nedokázal vypsat, které soubory se změní.",
+    "safetyNote": "Před obnovením Flint uloží aktuální stav jako nový bod, takže toto obnovení lze vrátit zpět.",
+    "boundaries": "Obnovení souborů nevrací zprávy, vzdálené pushe, publikovaný obsah, nainstalované balíčky ani jiné účinky mimo tento pracovní strom. Již spuštěné příkazy se nevracejí.",
+    "unrelatedTitle": "Tyto soubory se změnily po posledním bodu a nezapsal je Flint. Obnovení je přepíše:",
+    "unrelatedConfirm": "Rozumím, že tyto úpravy budou přepsány. Zůstanou dostupné v uloženém bodu.",
+    "safetyLabel": "Před obnovením {{time}}",
+    "safetyFailed": "Aktuální stav se nejprve nepodařilo uložit, proto nebylo nic obnoveno: {{reason}}",
+    "restored": "Obnoveno. Stav před tím byl uložen jako „{{label}}“.",
+    "previewDiff": "Náhled rozdílů",
+    "hideDiff": "Skrýt rozdíly",
+    "previewEmpty": "Žádné rozdíly k zobrazení.",
+    "previewLoading": "Načítání rozdílů…",
+    "previewFailed": "Rozdíly se nepodařilo sestavit: {{reason}}"
   }
 }

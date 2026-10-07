@@ -1,0 +1,173 @@
+{
+  "live": "Langsung",
+  "chart": {
+    "peak": "puncak",
+    "avg": "rata-rata"
+  },
+  "models": {
+    "title": "Model",
+    "description": "Model lokal berjalan di mesin ini. Provider jarak jauh memakai kunci API Anda.",
+    "importGguf": "Impor GGUF",
+    "browseHuggingFace": "Telusuri Hugging Face",
+    "startFailed": "Tidak dapat memulai {{model}}"
+  },
+  "kpi": {
+    "installed": "Terpasang",
+    "installedSub": "{{local}} lokal · {{remote}} jarak jauh",
+    "loaded": "Dimuat sekarang",
+    "loadedSub": "dari {{count}} model lokal",
+    "disk": "Disk terpakai",
+    "diskSub": "{{count}} file model",
+    "fastest": "Tercepat",
+    "fastestNone": "Belum ada balasan yang diukur",
+    "embeddingSub": "{{count}} model embedding",
+    "addedSub": "ditambahkan ke Flint",
+    "repliesToday": "Balasan hari ini",
+    "repliesSub": "{{count}} balasan diukur",
+    "apiKeys": "Kunci API",
+    "fallbackSub": "{{count}} kunci cadangan",
+    "noFallbackSub": "tanpa kunci cadangan",
+    "avgSpeed": "Kecepatan rata-rata"
+  },
+  "loaded": {
+    "title": "Dimuat sekarang",
+    "empty": "Tidak ada model yang dimuat",
+    "emptyHint": "Mulai model lokal dari tabel di bawah, atau kirim pesan padanya.",
+    "unload": "Bongkar"
+  },
+  "speed": {
+    "title": "Kecepatan pembuatan",
+    "label": "token / detik",
+    "window": "{{count}} balasan terakhir",
+    "empty": "Belum ada balasan yang diukur",
+    "emptyHint": "Kecepatan muncul di sini setelah model menjawab obrolan.",
+    "noneYet": "belum ada balasan"
+  },
+  "providers": {
+    "title": "Provider",
+    "onDevice": "Di perangkat ini",
+    "remote": "Jarak jauh",
+    "modelsCount_other": "{{count}} model",
+    "notSetUp": "belum disiapkan",
+    "custom": "Provider kustom",
+    "customHint": "Kompatibel dengan OpenAI atau Anthropic"
+  },
+  "status": {
+    "running": "Berjalan",
+    "connected": "Terhubung",
+    "verified": "Terverifikasi",
+    "off": "Mati",
+    "loaded": "Dimuat",
+    "ready": "Siap",
+    "noKey": "Tanpa kunci API"
+  },
+  "installed": {
+    "title": "Model terpasang",
+    "filter": "Tampilkan model",
+    "search": "Cari model",
+    "none": "Belum ada model",
+    "noneHint": "Impor file GGUF atau tambahkan model ke provider.",
+    "noMatch": "Tidak ada model yang cocok"
+  },
+  "filter": {
+    "all": "Semua",
+    "local": "Lokal",
+    "remote": "Jarak jauh"
+  },
+  "table": {
+    "name": "Model",
+    "provider": "Provider",
+    "capabilities": "Kemampuan",
+    "size": "Ukuran",
+    "context": "Konteks",
+    "speed": "Kecepatan",
+    "status": "Status",
+    "remote": "jarak jauh"
+  },
+  "menu": {
+    "modelActions": "Tindakan untuk {{model}}",
+    "start": "Mulai",
+    "stop": "Bongkar",
+    "openProvider": "Buka provider",
+    "copyId": "Salin ID model",
+    "copied": "ID model disalin"
+  },
+  "provider": {
+    "enabled": "Aktif",
+    "remoteNote": "Jarak jauh · pesan keluar dari komputer ini",
+    "api": "API",
+    "connection": "Koneksi",
+    "engineSettings": "Pengaturan engine",
+    "memorySettings": "Memori & cache",
+    "danger": "Zona berbahaya"
+  },
+  "mcp": {
+    "title": "Alat & MCP",
+    "description": "Server dan alat yang dapat dipanggil model Anda melaluinya.",
+    "autoApprove": "Setujui otomatis",
+    "editJson": "Edit JSON",
+    "kpiServers": "Server MCP",
+    "kpiServersSub": "{{connected}} terhubung · {{connecting}} menghubungkan",
+    "kpiTools": "Alat tersedia",
+    "kpiToolsSub": "dari {{count}} server terhubung",
+    "kpiCalls": "Panggilan hari ini",
+    "kpiCallsSub": "{{pct}}% gagal",
+    "kpiCallsNone": "Belum ada panggilan alat hari ini",
+    "kpiApproved": "Disetujui otomatis",
+    "kpiApprovedSub": "{{count}} server bertanya dulu",
+    "kpiApprovedAll": "Semua panggilan alat diizinkan",
+    "tabServers": "Server",
+    "tabRouting": "Perutean & batas",
+    "toolsCount": "{{count}} alat",
+    "filterLabel": "Tampilkan server",
+    "filterAll": "Semua",
+    "filterOn": "Aktif",
+    "filterOff": "Mati",
+    "viewLabel": "Tata letak",
+    "viewCards": "Kartu",
+    "viewList": "Daftar",
+    "callsPerMin": "panggilan / menit",
+    "window": "{{count}} menit terakhir",
+    "needsExtension": "Memerlukan Jan Browser Extension",
+    "moreActions": "Tindakan lain untuk {{serverName}}",
+    "addTile": "Tambah server MCP",
+    "addTileHint": "STDIO, HTTP atau SSE"
+  },
+  "extensions": {
+    "description": "Plugin, skill, dan bagian engine yang menyusun Flint.",
+    "engine": "Engine",
+    "marketplace": "Marketplace",
+    "engineEmpty": "Tidak ada ekstensi bawaan yang dimuat.",
+    "builtIn": "Bawaan",
+    "active": "Aktif",
+    "skillsCount_other": "{{count}} skill",
+    "commandsCount_other": "{{count}} perintah",
+    "agentsCount_other": "{{count}} agen",
+    "pluginActions": "Tindakan untuk {{name}}",
+    "details": "Detail",
+    "enable": "Aktifkan",
+    "disable": "Nonaktifkan",
+    "closePanel": "Tutup panel",
+    "fromPlugin": "dari {{name}}",
+    "standaloneSkill": "Skill mandiri",
+    "projectSkill": "Skill proyek",
+    "edit": "Edit",
+    "view": "Lihat"
+  },
+  "library": {
+    "description": "Dokumen, kode, halaman, dan media yang dihasilkan eksekusi Cowork Anda.",
+    "kpiArtifacts": "Artefak",
+    "kpiArtifactsSub": "{{count}} baru minggu ini",
+    "kpiSessions": "Dari Cowork",
+    "kpiSessionsSub": "di {{count}} sesi",
+    "kpiDisk": "Di disk",
+    "kpiDiskSub": "di sandbox sesi",
+    "kindCode": "Kode",
+    "kindPages": "Halaman",
+    "kindDocuments": "Dokumen",
+    "kindImages": "Gambar",
+    "kindAudio": "Audio",
+    "kindVideo": "Video",
+    "htmlPage": "Halaman HTML"
+  }
+}

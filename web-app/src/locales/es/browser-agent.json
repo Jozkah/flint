@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "¿Permitir que el asistente use {{host}}?",
+    "description": "El asistente quiere usar el panel del navegador en un sitio que aún no has aprobado.",
+    "urlLabel": "Dirección completa",
+    "urlHint": "Revisa la dirección completa, incluido lo que va después de ?. Las direcciones pueden sacar información de tu conversación.",
+    "wantsLabel": "Quiere",
+    "wants": {
+      "browser_open": "abrir esta página",
+      "browser_read_text": "leer esta página",
+      "browser_snapshot": "ver los controles de esta página",
+      "browser_screenshot": "tomar una captura de esta página",
+      "browser_scroll": "desplazarse por esta página",
+      "browser_click": "hacer clic en esta página",
+      "browser_type": "escribir en esta página",
+      "browser_press": "pulsar una tecla en esta página",
+      "browser_select": "elegir una opción en esta página"
+    },
+    "origin": "Solicitado por {{origin}}",
+    "scopeLabel": "Durante cuánto tiempo",
+    "once": "Solo esta visita",
+    "onceHint": "Termina cuando el asistente pasa a otro sitio o después de 15 minutos.",
+    "session": "Hasta que se cierre Flint",
+    "always": "Siempre",
+    "alwaysHint": "Se guarda. Puedes quitarlo en Ajustes > Herramientas del agente.",
+    "subdomains": "Permitir también los subdominios de {{base}}",
+    "allow": "Permitir",
+    "deny": "Ahora no",
+    "never": "No permitir nunca este sitio",
+    "more": "{{count}} más en espera",
+    "warning": "El asistente puede leer todo lo que hay en la página, y el texto de una página puede intentar engañarlo."
+  },
+  "settings": {
+    "title": "Navegador",
+    "enabled": "Permitir que el asistente use el panel del navegador",
+    "enabledDesc": "Añade herramientas para abrir páginas, leerlas y, con tu aprobación, hacer clic y escribir en el panel del navegador integrado. Ves el mismo panel. Cada sitio pregunta la primera vez; las direcciones locales y de redes privadas nunca se abren.",
+    "maxActions": "Acciones por ejecución",
+    "maxActionsDesc": "Clics, pulsaciones de teclas y selecciones que una ejecución puede hacer antes de tener que detenerse.",
+    "rulesTitle": "Reglas de sitios guardadas",
+    "rulesDesc": "Sitios que permitiste siempre o bloqueaste. Una regla para example.com cubre solo ese sitio; *.example.com cubre sus subdominios.",
+    "empty": "Aún no hay reglas guardadas. Un sitio aparece aquí cuando eliges Permitir siempre o No permitir nunca.",
+    "allow": "Permitido",
+    "deny": "Bloqueado",
+    "privateOk": "Dirección local",
+    "remove": "Quitar",
+    "removed": "Regla quitada",
+    "removeFailed": "No se pudo quitar la regla: {{error}}",
+    "addPlaceholder": "example.com o *.example.com",
+    "addLabel": "Sitio",
+    "addVerdict": "Regla",
+    "addPrivate": "Permitir que sea una dirección local o de red privada (para un servidor de desarrollo)",
+    "add": "Añadir regla",
+    "added": "Regla guardada",
+    "addFailed": "No se pudo guardar la regla: {{error}}",
+    "pointer": "Mostrar el puntero",
+    "pointerDesc": "Dibuja un cursor en el panel del navegador que se desliza hasta donde el asistente hace clic o escribe, y se desplaza con él. Desactivado: no se dibuja nada y no se retrasa nada.",
+    "reduceMotion": "Reducir movimiento",
+    "reduceMotionDesc": "Sin deslizamientos ni pulsos de brillo: el puntero salta directamente a su destino.",
+    "reduceSystem": "Seguir el sistema",
+    "reduceOn": "Reducir siempre",
+    "reduceOff": "No reducir nunca",
+    "grantsTitle": "Aprobado por ahora",
+    "grantsNone": "Nada está aprobado sin haberse guardado. Todo sitio que no esté en las reglas guardadas pregunta.",
+    "grantsDesc": "Sitios que permitiste durante esta sesión o esta visita. No se guardan y terminan al cerrar Flint.",
+    "grantScope": {
+      "session": "esta sesión",
+      "once": "esta visita"
+    },
+    "grantAge": "hace {{minutes}} min",
+    "forgetGrants": "Olvidar las aprobaciones de esta sesión"
+  },
+  "card": {
+    "screenshot": "Captura del panel del navegador"
+  },
+  "pane": {
+    "driving": "El asistente está usando este navegador",
+    "takeOver": "Tomar el control",
+    "paused": "Asistente en pausa",
+    "handBack": "Devolver el control",
+    "blocked": "Se bloqueó una página: {{reason}}"
+  }
+}

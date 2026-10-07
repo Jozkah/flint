@@ -1,15 +1,70 @@
 {
   "welcome": "Hola, com estàs?",
   "description": "En què et puc ajudar avui?",
+  "startedAt": "Iniciat {{time}}",
+  "home": {
+    "title": "Xat nou",
+    "notSaved": "No es desa res fins que enviïs",
+    "sub": "Pregunta el que vulguis, adjunta fitxers o encarrega una tasca més gran a Cowork.",
+    "suggestionsLabel": "Suggeriments",
+    "suggestions": {
+      "explain": "Explica aquest missatge d'error",
+      "summarise": "Resumeix un document que adjunti",
+      "draft": "Redacta notes de la versió a partir d'una llista de canvis",
+      "compare": "Compara dos enfocaments i recomana'n un"
+    }
+  },
   "temporaryChat": "Xat temporal",
   "temporaryChatDescription": "Inicia una conversa temporal que no es desarà a l’historial de xats.",
+  "temporaryChatBanner": "Xat temporal — no es desarà",
+  "temporaryChatKeep": "Conserva aquest xat",
+  "temporaryChatLeave": {
+    "title": "Vols conservar aquest xat temporal?",
+    "description": "Aquest xat no es desa enlloc. Conserva'l per moure'l a l'historial o descarta'l per eliminar-lo definitivament.",
+    "keep": "Conserva",
+    "discard": "Descarta",
+    "kept": "El xat s'ha desat a l'historial",
+    "keepFailed": "No s'ha pogut desar aquest xat",
+    "discardFailed": "No s'ha pogut descartar: la generació encara s'està executant. Atura-la i torna-ho a provar.",
+    "reason": {
+      "generation-not-stopped": "La generació encara s'està executant. Atura-la i torna-ho a provar.",
+      "messages-not-persisted": "No s'ha pogut desar el xat del tot. No s'ha perdut res; torna-ho a provar.",
+      "thread-not-created": "No s'ha pogut desar el xat. No s'ha perdut res; torna-ho a provar.",
+      "error": "Alguna cosa ha anat malament. El xat continua aquí; torna-ho a provar."
+    }
+  },
   "status": {
     "empty": "No s’ha trobat cap xat"
   },
   "sendMessage": "Envia el missatge",
   "newConversation": "Conversa nova",
   "clearHistory": "Neteja l’historial",
+  "embeddings": {
+    "title": "Preparant els teus documents",
+    "description": "S'estan indexant els fitxers adjunts perquè es puguin cercar i citar. Pot trigar una mica amb documents grans."
+  },
+  "actions": {
+    "copy": "Copia",
+    "regenerate": "Regenera la resposta",
+    "continue": "Continua generant",
+    "delete": "Suprimeix",
+    "fork": "Bifurca el xat des d'aquí"
+  },
   "done": "Done",
+  "webSources": "{{count}} font(s)",
+  "webSourcesRead": "{{count}} llegides",
+  "webSourcesReadFound": "{{read}} llegides · {{found}} trobades",
+  "reasoning": {
+    "label": "Raonant...",
+    "thinking": "Pensant",
+    "usingTool": "{{tool}}...",
+    "showFullTimeline": "Mostra la cronologia completa",
+    "showCurrentStep": "Mostra només el pas actual",
+    "thoughtForAWhile": "Ha pensat uns segons",
+    "thoughtFor": "Ha pensat durant {{duration}}",
+    "workedForAWhile": "Ha treballat uns segons",
+    "workedFor": "Ha treballat durant {{duration}}"
+  },
   "split": {
     "open": "Divideix la conversa",
     "openShort": "Divideix",
@@ -44,15 +99,85 @@
   },
   "transcriptView": {
     "steps_one": "{{count}} pas",
+    "steps_many": "{{count}} de passos",
     "steps_other": "{{count}} passos",
-    "working": "Treballant"
+    "working": "Treballant",
+    "failed": "Ha fallat:",
+    "failedToRun": "No s'ha pogut executar",
+    "summary": {
+      "failed": "{{count}} han fallat",
+      "commands_one": "ha executat {{count}} ordre",
+      "commands_many": "ha executat {{count}} d'ordres",
+      "commands_other": "ha executat {{count}} ordres",
+      "created_one": "ha creat {{count}} fitxer",
+      "created_many": "ha creat {{count}} de fitxers",
+      "created_other": "ha creat {{count}} fitxers",
+      "edited_one": "ha editat {{count}} fitxer",
+      "edited_many": "ha editat {{count}} de fitxers",
+      "edited_other": "ha editat {{count}} fitxers",
+      "read_one": "ha llegit {{count}} fitxer",
+      "read_many": "ha llegit {{count}} de fitxers",
+      "read_other": "ha llegit {{count}} fitxers",
+      "searched_one": "ha cercat {{count}} cop",
+      "searched_many": "ha cercat {{count}} de cops",
+      "searched_other": "ha cercat {{count}} cops",
+      "tools_one": "ha usat {{count}} eina",
+      "tools_many": "ha usat {{count}} d'eines",
+      "tools_other": "ha usat {{count}} eines"
+    }
   },
-  "actions": {
-    "fork": "Bifurca el xat des d'aquí"
+  "widget": {
+    "label": "Giny",
+    "drawing": "Dibuixant el giny",
+    "source": "Mostra el codi font",
+    "copy": "Copia l'HTML",
+    "copied": "HTML copiat.",
+    "copyFailed": "No s'ha pogut copiar l'HTML.",
+    "save": "Desa com a fitxer .html",
+    "expand": "Obre a mida completa",
+    "rerun": "Torna a executar",
+    "stalled": "El giny ha deixat de respondre.",
+    "parked": "Giny en pausa mentre és fora de pantalla.",
+    "error": "Error del giny:",
+    "viewSource": "Mostra el codi font",
+    "askFix": "Demana a Flint que ho arregli",
+    "fixPrompt": "El giny \"{{title}}\" mostra un error: {{error}}\nArregla'l i mostra el giny de nou.",
+    "refused": "No es mostra el giny: {{reason}}",
+    "refusedUnknown": "la crida ha fallat",
+    "tooLarge": "Aquest giny és més gran que {{max}} caràcters i no es dibuixa.",
+    "openLink": "Vols obrir {{url}} al navegador?",
+    "cancel": "Cancel·la",
+    "busy": "Espera que acabi la resposta actual i torna-ho a provar.",
+    "noHost": "Aquesta vista no pot enviar missatges."
+  },
+  "browserCard": {
+    "opened": "Obert al navegador",
+    "ready": "A punt per obrir",
+    "open": "Obre",
+    "more": "Més",
+    "copy": "Copia l'enllaç",
+    "copied": "Enllaç copiat.",
+    "failed": "No s'ha pogut obrir el navegador."
+  },
+  "regenerateTitle": {
+    "menu": "Regenera el títol",
+    "working": "Posant nom al xat...",
+    "done": "S'ha canviat el nom del xat.",
+    "empty": "Encara no hi ha res per posar nom a aquest xat.",
+    "busy": "Posa en pausa o atura la sala abans de canviar-li el nom.",
+    "failed": "No s'ha pogut generar un títol."
   },
   "fork": {
     "chat": "Bifurca el xat",
     "done": "S'ha bifurcat en un xat nou.",
     "failed": "No s'ha pogut bifurcar aquest xat."
+  },
+  "version": {
+    "group": "Versions del missatge",
+    "previous": "Versió anterior",
+    "next": "Versió següent",
+    "previousAt": "Versió anterior (es mostra {{index}} de {{count}})",
+    "nextAt": "Versió següent (es mostra {{index}} de {{count}})",
+    "position": "Versió {{index}} de {{count}}"
   }
 }
