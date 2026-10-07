@@ -274,11 +274,15 @@ html:not(.reduce-motion) .spot-card:hover::before {
 /* ---------- BlurWords greeting ---------- */
 .bw-word {
   display: inline-block;
+  margin-right: 0.27em;
   will-change: transform, filter, opacity;
 }
 html:not(.reduce-motion) .bw-word {
   animation: bw-in 1100ms cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: calc(var(--bw-i, 0) * 260ms);
+}
+.bw-word:last-child {
+  margin-right: 0;
 }
 @keyframes bw-in {
   0% {

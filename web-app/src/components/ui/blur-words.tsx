@@ -25,7 +25,6 @@ export function BlurWords({ text, trailing, className }: BlurWordsProps) {
             style={{ ['--bw-i' as string]: i }}
           >
             {word}
-            {i < words.length - 1 ? ' ' : ''}
           </span>
         ))}
       </span>
