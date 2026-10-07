@@ -16,7 +16,10 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
 }))
 
 vi.mock('@/hooks/useTheme', () => ({
-  useTheme: () => ({ isDark: false }),
+  useTheme: Object.assign(() => ({ isDark: false }), {
+    getState: () => ({ isDark: false }),
+    subscribe: () => () => {},
+  }),
 }))
 
 vi.mock('@/containers/AvatarEmoji', () => ({
