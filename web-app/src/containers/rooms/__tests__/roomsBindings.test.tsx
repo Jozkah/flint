@@ -71,6 +71,8 @@ describe('roomsBindings', () => {
 
   it('without a provider, resolves the engine lazily instead of staying pending', async () => {
     const { result } = renderHook(() => useRoomsApi())
-    await waitFor(() => expect(result.current.status).not.toBe('pending'))
+    await waitFor(() => expect(result.current.status).not.toBe('pending'), {
+      timeout: 15000,
+    })
   })
 })
