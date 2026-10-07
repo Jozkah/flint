@@ -225,6 +225,10 @@ enum Commands {
         /// Exact DNS name used by the private-network HTTPS proxy
         #[arg(long)]
         public_host: Option<String>,
+        /// Let browser sessions add and start stdio MCP servers (runs programs
+        /// on this machine); http and sse servers are always allowed
+        #[arg(long)]
+        allow_mcp_stdio: bool,
     },
     /// Non-interactive CLI: launch agents, run headless agent tasks, manage models and threads
     #[command(display_order = 1)]
@@ -1361,7 +1365,7 @@ async fn run() {
     };
 
     match command {
-        Commands::Serve { listen, assets_dir, data_dir, public_host } => {
+        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio } => {
             if let Some(data_dir) = data_dir {
                 std::env::set_var("JAN_DATA_FOLDER", data_dir);
             }
@@ -1380,6 +1384,7 @@ async fn run() {
                     data_folder,
                     auth_file,
                     public_host,
+                    allow_mcp_stdio,
                 },
             ).await {
                 eprintln!("Error: {error}");

@@ -4,6 +4,7 @@ import { BrowserThreadsService } from '../threads/browser'
 import { BrowserMessagesService } from '../messages/browser'
 import { BrowserProjectsService } from '../projects/browser'
 import { BrowserAssistantsService } from '../assistants/browser'
+import { BrowserMCPService } from '../mcp/browser'
 import type { ThreadMessage } from '@janhq/core'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -61,5 +62,21 @@ describe('headless browser adapters', () => {
       '/api/v1/assistants/a%20b',
       expect.objectContaining({ method: 'DELETE', credentials: 'same-origin' })
     )
+  })
+
+  it('carries MCP calls and approvals to the server', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, redirected: false, json: async () => ({ error: '', content: [] }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, redirected: false, json: async () => ({ ticket: 't1' }) })
+      .mockResolvedValueOnce({ ok: true, status: 204, redirected: false })
+    vi.stubGlobal('fetch', fetch)
+    const mcp = new BrowserMCPService()
+    await mcp.callTool({ toolName: 'search', serverName: 'web', arguments: { q: 'x' }, approvalTicket: 'tk' })
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ toolName: 'search', approvalTicket: 'tk' })
+    expect(await mcp.allowOnceForServer('web', 'search', 'fp')).toBe('t1')
+    await mcp.activateMCPServer('my server', { command: 'x' } as never, { start: false })
+    expect(fetch.mock.calls[2][0]).toBe('/api/v1/mcp/servers/my%20server/activate')
+    expect(JSON.parse(fetch.mock.calls[2][1].body).start).toBe(false)
   })
 })

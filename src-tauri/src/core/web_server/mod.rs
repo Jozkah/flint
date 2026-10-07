@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod data;
+pub mod mcp;
 pub mod provider;
 pub mod resources;
 pub mod server;

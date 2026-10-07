@@ -22,6 +22,7 @@ use tokio::net::TcpListener;
 
 use super::auth::AuthStore;
 use super::data;
+use super::mcp;
 use super::provider;
 use super::resources;
 use super::static_files::{self, StaticError};
@@ -40,6 +41,9 @@ pub struct Options {
     pub auth_file: PathBuf,
     /// Exact DNS name exposed by a private-network HTTPS proxy.
     pub public_host: Option<String>,
+    /// Allow browser sessions to add and start stdio MCP servers (runs programs
+    /// on this machine).
+    pub allow_mcp_stdio: bool,
 }
 
 struct State {
@@ -49,6 +53,7 @@ struct State {
     hosts: HashSet<String>,
     public_host: Option<String>,
     login_failures: Mutex<VecDeque<Instant>>,
+    mcp: mcp::Host,
 }
 
 fn login_blocked(failures: &mut VecDeque<Instant>) -> bool {
@@ -276,6 +281,196 @@ async fn resource_route(
     }
 }
 
+
+fn percent_decode(raw: &str) -> Option<String> {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = raw.get(i + 1..i + 3)?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+fn query_param(query: Option<&str>, key: &str) -> Option<String> {
+    form_urlencoded::parse(query?.as_bytes())
+        .find(|(name, _)| name == key)
+        .map(|(_, value)| value.into_owned())
+}
+
+fn str_field<'a>(value: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    value.get(key).and_then(serde_json::Value::as_str)
+}
+
+fn result_response(result: Result<(), String>, failure: StatusCode) -> Resp {
+    match result {
+        Ok(()) => no_content(),
+        Err(message) => reply(failure, "text/plain; charset=utf-8", message),
+    }
+}
+
+async fn mcp_route(state: &State, method: &Method, rest: &str, req: Request<Incoming>) -> Resp {
+    let query = req.uri().query().map(str::to_owned);
+    let decoded: Option<Vec<String>> = rest.split('/').map(percent_decode).collect();
+    let Some(decoded) = decoded else {
+        return text(StatusCode::BAD_REQUEST, "Invalid path");
+    };
+    let parts: Vec<&str> = decoded.iter().map(String::as_str).collect();
+    let host = &state.mcp;
+    match (method.clone(), parts.as_slice()) {
+        (Method::GET, ["config"]) => reply(StatusCode::OK, "application/json", mcp::config_text()),
+        (Method::PUT, ["config"]) => {
+            let body = match read_json(req).await {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
+            let Some(configs) = str_field(&body, "configs") else {
+                return text(StatusCode::BAD_REQUEST, "Expected a configs string");
+            };
+            result_response(mcp::save_config(host, configs).await, StatusCode::BAD_REQUEST)
+        }
+        (Method::POST, ["restart"]) => {
+            mcp::restart_all(host).await;
+            no_content()
+        }
+        (Method::GET, ["tools"]) => {
+            let names = query_param(query.as_deref(), "servers").map(|list| {
+                list.split(',')
+                    .filter(|n| !n.is_empty())
+                    .map(str::to_owned)
+                    .collect::<Vec<String>>()
+            });
+            let start = query_param(query.as_deref(), "start").as_deref() == Some("true");
+            json(&mcp::tools(host, names, start).await)
+        }
+        (Method::GET, ["summaries"]) => json(&mcp::summaries(host).await),
+        (Method::GET, ["statuses"]) => json(&mcp::statuses(host).await),
+        (Method::GET, ["connected"]) => json(&mcp::connected(host).await),
+        (Method::GET, ["log", name]) => {
+            let lines = query_param(query.as_deref(), "lines").and_then(|v| v.parse().ok());
+            json(&mcp::log(name, lines))
+        }
+        (Method::POST, ["servers", name, "activate"]) => {
+            let body = match read_json(req).await {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
+            let Some(config) = body.get("config").cloned() else {
+                return text(StatusCode::BAD_REQUEST, "Expected a config object");
+            };
+            let start = body
+                .get("start")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(true);
+            result_response(
+                mcp::activate(host, name, config, start).await,
+                StatusCode::BAD_REQUEST,
+            )
+        }
+        (Method::POST, ["servers", name, "deactivate"]) => {
+            result_response(mcp::deactivate(host, name).await, StatusCode::BAD_REQUEST)
+        }
+        (Method::POST, ["servers", name, "start"]) => {
+            result_response(mcp::start(host, name).await, StatusCode::BAD_GATEWAY)
+        }
+        (Method::POST, ["servers", name, "stop"]) => {
+            mcp::stop(host, name).await;
+            no_content()
+        }
+        (Method::POST, ["call"]) => {
+            let body = match read_json(req).await {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
+            let Some(tool) = str_field(&body, "toolName") else {
+                return text(StatusCode::BAD_REQUEST, "toolName is required");
+            };
+            let call = mcp::Call {
+                tool,
+                server: str_field(&body, "serverName").filter(|n| !n.is_empty()),
+                arguments: body
+                    .get("arguments")
+                    .and_then(serde_json::Value::as_object)
+                    .cloned(),
+                cancellation_token: str_field(&body, "cancellationToken").map(str::to_owned),
+                max_output_chars: body
+                    .get("maxOutputChars")
+                    .and_then(serde_json::Value::as_u64),
+                approval_ticket: str_field(&body, "approvalTicket"),
+            };
+            // A refused or failed call is data for the chat, as on desktop.
+            match mcp::call(host, call).await {
+                Ok(result) => json(&result),
+                Err(message) => json(&serde_json::json!({ "error": message, "content": [] })),
+            }
+        }
+        (Method::POST, ["cancel"]) => {
+            let body = match read_json(req).await {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
+            if let Some(token) = str_field(&body, "token") {
+                mcp::cancel(host, token).await;
+            }
+            no_content()
+        }
+        (Method::GET, ["trust"]) => json(&mcp::trust_report()),
+        (Method::GET, ["trust", "trusted"]) => json(&mcp::trusted()),
+        (Method::GET, ["fingerprints"]) => json(&mcp::fingerprints()),
+        (Method::POST, ["trust", name]) => {
+            let body = match read_json(req).await {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
+            result_response(
+                mcp::trust(name, str_field(&body, "fingerprint")),
+                StatusCode::CONFLICT,
+            )
+        }
+        (Method::DELETE, ["trust", name]) => {
+            result_response(mcp::revoke(name), StatusCode::BAD_REQUEST)
+        }
+        (Method::POST, ["forget", name]) => {
+            let body = match read_json(req).await {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
+            result_response(
+                mcp::forget(name, str_field(&body, "reason").unwrap_or("")),
+                StatusCode::BAD_REQUEST,
+            )
+        }
+        (Method::POST, ["allow-once"]) => {
+            let body = match read_json(req).await {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
+            let (Some(server), Some(tool)) =
+                (str_field(&body, "serverName"), str_field(&body, "toolName"))
+            else {
+                return text(StatusCode::BAD_REQUEST, "serverName and toolName are required");
+            };
+            match mcp::allow_once(server, tool, str_field(&body, "fingerprint")) {
+                Ok(ticket) => json(&serde_json::json!({ "ticket": ticket })),
+                Err(message) => result_response(Err(message), StatusCode::CONFLICT),
+            }
+        }
+        (Method::GET, ["auth", name]) => json(&mcp::auth_status(name)),
+        (Method::DELETE, ["auth", name]) => match mcp::clear_auth(name) {
+            Ok(cleared) => json(&serde_json::json!({ "cleared": cleared })),
+            Err(message) => result_response(Err(message), StatusCode::BAD_REQUEST),
+        },
+        _ => text(StatusCode::NOT_FOUND, "Unknown API route"),
+    }
+}
+
 async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
     if !host_allowed(&state, req.headers()) {
         return text(StatusCode::MISDIRECTED_REQUEST, "Unknown host");
@@ -469,6 +664,9 @@ async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
     if path == "/api/v1/provider/cancel" && method == Method::POST {
         return provider::cancel(req).await;
     }
+    if let Some(rest) = path.strip_prefix("/api/v1/mcp/") {
+        return mcp_route(&state, &method, rest, req).await;
+    }
     if path.starts_with("/api/v1/projects")
         || path.starts_with("/api/v1/assistants")
         || path.starts_with("/api/v1/hardware")
@@ -574,6 +772,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
         hosts,
         public_host: options.public_host.map(|host| host.to_ascii_lowercase()),
         login_failures: Mutex::new(VecDeque::new()),
+        mcp: mcp::Host::new(options.allow_mcp_stdio),
     });
     eprintln!(
         "Flint web server listening on http://{}",
@@ -634,6 +833,7 @@ mod tests {
             hosts: HashSet::from(["localhost:1340".to_string()]),
             public_host: None,
             login_failures: Mutex::new(VecDeque::new()),
+            mcp: mcp::Host::new(false),
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(
@@ -658,6 +858,7 @@ mod tests {
             data_folder: dir.path().to_path_buf(),
             auth_file: dir.path().join("auth.json"),
             public_host: None,
+            allow_mcp_stdio: false,
         })
         .await
         .unwrap_err();

@@ -195,7 +195,7 @@ class PlatformServiceHub implements ServiceHub {
         if (response?.ok && response.headers.get('content-type')?.includes('application/json')) {
           const session = await response.json().catch(() => null)
           if (session?.authenticated === true) {
-            const [threads, messages, projects, assistants, hardware, providers, transport] = await Promise.all([
+            const [threads, messages, projects, assistants, hardware, providers, transport, mcp] = await Promise.all([
               import('./threads/browser'),
               import('./messages/browser'),
               import('./projects/browser'),
@@ -203,6 +203,7 @@ class PlatformServiceHub implements ServiceHub {
               import('./hardware/browser'),
               import('./providers/browser'),
               import('@/lib/providerFetch'),
+              import('./mcp/browser'),
             ])
             this.threadsService = new threads.BrowserThreadsService()
             this.messagesService = new messages.BrowserMessagesService()
@@ -211,6 +212,7 @@ class PlatformServiceHub implements ServiceHub {
             this.hardwareService = new hardware.BrowserHardwareService()
             transport.enableServerTransport()
             this.providersService = new providers.BrowserProvidersService()
+            this.mcpService = new mcp.BrowserMCPService()
           }
         }
       }
