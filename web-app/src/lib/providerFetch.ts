@@ -160,6 +160,62 @@ export type EndpointDiagnostics = {
   responded: string | null
 }
 
+/**
+ * Set when the page is served by `flint serve`: provider requests then go
+ * through the server's copy of the transport instead of the Tauri bridge.
+ */
+let serverTransport = false
+const LINE_BREAK = String.fromCharCode(10)
+
+export function enableServerTransport(): void {
+  serverTransport = true
+}
+
+/** Whether provider requests can use the canonical transport at all. */
+export function hasProviderTransport(): boolean {
+  return serverTransport || hasTauriRuntime()
+}
+
+/**
+ * Run one streaming request on the server, handing each decoded chunk to
+ * `onChunk`. The server answers with one `StreamChunk` JSON object per line.
+ */
+async function streamViaServer(
+  payload: unknown,
+  onChunk: (chunk: StreamChunk) => void,
+  signal: AbortSignal
+): Promise<void> {
+  const response = await fetch('/api/v1/provider/stream', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  })
+  if (response.status === 401 || response.redirected) {
+    window.location.assign('/login')
+    throw new Error('Sign in required')
+  }
+  if (!response.ok || !response.body) {
+    throw new Error((await response.text()) || `Provider transport failed (${response.status})`)
+  }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffered = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffered += decoder.decode(value, { stream: true })
+    let newline = buffered.indexOf(LINE_BREAK)
+    while (newline >= 0) {
+      const line = buffered.slice(0, newline).trim()
+      buffered = buffered.slice(newline + 1)
+      if (line) onChunk(JSON.parse(line) as StreamChunk)
+      newline = buffered.indexOf(LINE_BREAK)
+    }
+  }
+}
+
 function bytesOf(b64: string): Uint8Array {
   const binary = atob(b64)
   const out = new Uint8Array(binary.length)
@@ -291,6 +347,15 @@ export const providerFetch: typeof globalThis.fetch = async (
   const stop = () => {
     if (stopped) return
     stopped = true
+    if (serverTransport && !hasTauriRuntime()) {
+      void fetch('/api/v1/provider/cancel', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ streamId }),
+      }).catch(() => {})
+      return
+    }
     void invoke('provider_http_cancel', { streamId }).catch(() => {})
   }
 
@@ -342,8 +407,7 @@ export const providerFetch: typeof globalThis.fetch = async (
       )
     }
 
-    const channel = new Channel<StreamChunk>()
-    channel.onmessage = (chunk) => {
+    const onChunk = (chunk: StreamChunk) => {
       switch (chunk.kind) {
         case 'head': {
           if (settled) return
@@ -411,22 +475,33 @@ export const providerFetch: typeof globalThis.fetch = async (
       }
     }
 
-    invoke('provider_http_stream', { request: payload, channel }).catch(
-      (e: unknown) => {
-        const error =
-          e instanceof Error
-            ? e
-            : new Error(typeof e === 'string' ? e : String(e))
-        if (!settled) {
-          settled = true
-          failedBeforeResponse()
-          reject(error)
-        } else {
-          failure = error
-          drain()
-        }
+    const fail = (e: unknown) => {
+      const error =
+        e instanceof Error ? e : new Error(typeof e === 'string' ? e : String(e))
+      if (!settled) {
+        settled = true
+        failedBeforeResponse()
+        reject(error)
+      } else {
+        failure = error
+        drain()
       }
-    )
+    }
+
+    if (serverTransport && !hasTauriRuntime()) {
+      const abort = new AbortController()
+      // Ending the local body (consumer released it) also ends the HTTP read.
+      void streamViaServer(payload, onChunk, abort.signal)
+        .catch((e: unknown) => {
+          if (!ended) fail(e)
+        })
+      signal?.addEventListener('abort', () => abort.abort(), { once: true })
+      return
+    }
+
+    const channel = new Channel<StreamChunk>()
+    channel.onmessage = onChunk
+    invoke('provider_http_stream', { request: payload, channel }).catch(fail)
   })
 }
 
@@ -435,7 +510,7 @@ export const providerFetch: typeof globalThis.fetch = async (
  * where it does not (the browser build, and tests).
  */
 export function runtimeProviderFetch(): typeof globalThis.fetch {
-  return hasTauriRuntime() ? providerFetch : globalThis.fetch
+  return hasProviderTransport() ? providerFetch : globalThis.fetch
 }
 
 /** What was resolved for an endpoint, for the provider details surface. */

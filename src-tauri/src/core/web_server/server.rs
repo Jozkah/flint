@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::{Bytes, Incoming};
 use hyper::header::{self, HeaderValue};
@@ -21,10 +22,11 @@ use tokio::net::TcpListener;
 
 use super::auth::AuthStore;
 use super::data;
+use super::provider;
 use super::resources;
 use super::static_files::{self, StaticError};
 
-type Resp = Response<Full<Bytes>>;
+pub(super) type Resp = Response<UnsyncBoxBody<Bytes, std::convert::Infallible>>;
 const MAX_LOGIN_BODY: usize = 4 * 1024;
 const MAX_JSON_BODY: usize = 1024 * 1024;
 const COOKIE_NAME: &str = "flint_session";
@@ -72,7 +74,7 @@ fn valid_dns_name(host: &str) -> bool {
         })
 }
 
-fn reply(status: StatusCode, content_type: &'static str, body: impl Into<Bytes>) -> Resp {
+pub(super) fn reply(status: StatusCode, content_type: &'static str, body: impl Into<Bytes>) -> Resp {
     Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, content_type)
@@ -84,11 +86,11 @@ fn reply(status: StatusCode, content_type: &'static str, body: impl Into<Bytes>)
             "content-security-policy",
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
         )
-        .body(Full::new(body.into()))
+        .body(Full::new(body.into()).boxed_unsync())
         .expect("static response parts are valid")
 }
 
-fn text(status: StatusCode, body: &'static str) -> Resp {
+pub(super) fn text(status: StatusCode, body: &'static str) -> Resp {
     reply(status, "text/plain; charset=utf-8", body)
 }
 
@@ -118,7 +120,7 @@ async fn read_json(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
     Ok(value)
 }
 
-async fn read_json_value(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
+pub(super) async fn read_json_value(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
     let is_json = req.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.split(';').next().is_some_and(|kind| kind.trim().eq_ignore_ascii_case("application/json")));
     if !is_json {
@@ -426,6 +428,12 @@ async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
             }
             _ => {}
         }
+    }
+    if path == "/api/v1/provider/stream" && method == Method::POST {
+        return provider::stream(req).await;
+    }
+    if path == "/api/v1/provider/cancel" && method == Method::POST {
+        return provider::cancel(req).await;
     }
     if path.starts_with("/api/v1/projects")
         || path.starts_with("/api/v1/assistants")

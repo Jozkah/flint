@@ -195,18 +195,22 @@ class PlatformServiceHub implements ServiceHub {
         if (response?.ok && response.headers.get('content-type')?.includes('application/json')) {
           const session = await response.json().catch(() => null)
           if (session?.authenticated === true) {
-            const [threads, messages, projects, assistants, hardware] = await Promise.all([
+            const [threads, messages, projects, assistants, hardware, providers, transport] = await Promise.all([
               import('./threads/browser'),
               import('./messages/browser'),
               import('./projects/browser'),
               import('./assistants/browser'),
               import('./hardware/browser'),
+              import('./providers/browser'),
+              import('@/lib/providerFetch'),
             ])
             this.threadsService = new threads.BrowserThreadsService()
             this.messagesService = new messages.BrowserMessagesService()
             this.projectsService = new projects.BrowserProjectsService()
             this.assistantsService = new assistants.BrowserAssistantsService()
             this.hardwareService = new hardware.BrowserHardwareService()
+            transport.enableServerTransport()
+            this.providersService = new providers.BrowserProvidersService()
           }
         }
       }
