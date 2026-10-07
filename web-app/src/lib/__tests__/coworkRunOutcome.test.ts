@@ -787,6 +787,22 @@ describe('failed tool diagnostics', () => {
     })
     expect(JSON.stringify(outcome.unresolved)).not.toContain('secret123')
   })
+
+  it('drops a failure once the same call later succeeds', () => {
+    const outcome = deriveRunOutcome(input({
+      stoppedBy: 'loop',
+      turns: [
+        user(),
+        write('a.ts', { toolState: 'failed', isError: true, result: 'denied' }),
+        write('a.ts'),
+        write('b.ts', { toolState: 'failed', isError: true, result: 'denied' }),
+      ],
+    }))
+    expect(outcome.unresolved).toEqual([
+      expect.objectContaining({ kind: 'stop' }),
+      expect.objectContaining({ kind: 'failed', target: 'b.ts' }),
+    ])
+  })
 })
 
 describe('the request Continue sends', () => {
