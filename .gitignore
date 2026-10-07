@@ -89,6 +89,7 @@ target-windows-final/
 .upstream-cache/
 
 # Generated planning / handoff / session docs (not source-of-truth)
+docs/superpowers/
 docs/AGENT_HARNESS_ARCHITECTURE.md
 docs/AGENT_HARNESS_FEATURE_REGISTRY.md
 docs/AGENT_HARNESS_ROADMAP.md
