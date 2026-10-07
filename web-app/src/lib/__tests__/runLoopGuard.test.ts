@@ -276,6 +276,14 @@ it('stops the same call made over and over', () => {
   expect(verdict).toMatchObject({ tripped: true, reason: 'repeated-call' })
 })
 
+it('lets the same call poll something that keeps changing', () => {
+  const poll = (result: string) => call({ failed: false, result })
+  const growing = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(poll)
+  expect(detectLoop(growing)).toEqual({ tripped: false })
+  const stuck = Array.from({ length: 5 }, () => poll('same'))
+  expect(detectLoop(stuck)).toMatchObject({ tripped: true, reason: 'repeated-call' })
+})
+
 it('is not fooled by a different spelling of the same call', () => {
   expect(canonicalKey({ tool: 'read', input: { a: 1, b: 2 } })).toBe(
     canonicalKey({ tool: 'read', input: { b: 2, a: 1 } })
