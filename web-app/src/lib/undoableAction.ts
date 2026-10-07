@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { toast } from 'sonner'
+import { showUndoToast } from '@/lib/toastUndo'
 
 /**
  * Deletes that wait a few seconds before they happen, with Undo on the toast.
@@ -41,17 +41,16 @@ export function undoableDelete(opts: {
     if (undone) return
     void Promise.resolve(opts.run()).finally(() => show(opts.id))
   }, opts.delayMs ?? UNDO_WINDOW_MS)
-  toast.success(opts.message, {
+  showUndoToast({
+    message: opts.message,
     id: `undo-${opts.id}`,
     description: opts.description,
-    duration: opts.delayMs ?? UNDO_WINDOW_MS,
-    action: {
-      label: opts.undoLabel,
-      onClick: () => {
-        undone = true
-        window.clearTimeout(timer)
-        show(opts.id)
-      },
+    durationMs: opts.delayMs ?? UNDO_WINDOW_MS,
+    undoLabel: opts.undoLabel,
+    onUndo: () => {
+      undone = true
+      window.clearTimeout(timer)
+      show(opts.id)
     },
   })
 }

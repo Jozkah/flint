@@ -99,7 +99,13 @@ describe('ModelCombobox', () => {
 
   it('displays current value in input', () => {
     act(() => {
-      render(<ModelCombobox {...defaultProps} value="gpt-4" />)
+      render(
+        <ModelCombobox
+          {...defaultProps}
+          models={['gpt-4', 'gpt-4o']}
+          value="gpt-4"
+        />
+      )
     })
 
     const input = screen.getByDisplayValue('gpt-4')
@@ -209,7 +215,13 @@ describe('ModelCombobox', () => {
 
     expect(screen.getByDisplayValue('')).toBeInTheDocument()
 
-    rerender(<ModelCombobox {...defaultProps} value="gpt-4" />)
+    rerender(
+      <ModelCombobox
+        {...defaultProps}
+        models={['gpt-4', 'gpt-4o']}
+        value="gpt-4"
+      />
+    )
 
     expect(screen.getByDisplayValue('gpt-4')).toBeInTheDocument()
   })
@@ -324,10 +336,13 @@ describe('ModelCombobox', () => {
       expect(dropdown).toBeInTheDocument()
 
       // Should show GPT models
-      expect(screen.getByText('gpt-3.5-turbo')).toBeInTheDocument()
-      expect(screen.getByText('gpt-4')).toBeInTheDocument()
+      // The matched part of each id is bold, so look the rows up by id.
+      expect(
+        document.querySelector('[data-model="gpt-3.5-turbo"]')
+      ).toBeTruthy()
+      expect(document.querySelector('[data-model="gpt-4"]')).toBeTruthy()
       // Should not show Claude
-      expect(screen.queryByText('claude-3-haiku')).not.toBeInTheDocument()
+      expect(document.querySelector('[data-model="claude-3-haiku"]')).toBeNull()
     })
   })
 
@@ -493,8 +508,85 @@ describe('ModelCombobox', () => {
     await waitFor(() => {
       const secondModel = screen.getByText('gpt-4')
       const modelElement = secondModel.closest('[data-model]')
-      // Highlighted: a neutral fill, not the accent.
-      expect(modelElement).toHaveClass('bg-accent')
+      // Highlighted: the glide pill sits on it.
+      expect(modelElement).toHaveAttribute('data-highlighted')
+    })
+  })
+
+  describe('highlight and match', () => {
+    it('bolds the matched part of each id', async () => {
+      const user = userEvent.setup()
+      render(<ModelCombobox {...defaultProps} />)
+      await user.type(screen.getByRole('textbox'), 'gpt-4')
+      await waitFor(() => {
+        const strong = document.querySelector(
+          '[data-model="gpt-4"] strong'
+        ) as HTMLElement
+        expect(strong.textContent).toBe('gpt-4')
+      })
+      expect(document.querySelector('[data-model="gpt-3.5-turbo"]')).toBeNull()
+    })
+
+    it('moves one pill with the keyboard and keeps free text', async () => {
+      const user = userEvent.setup()
+      render(<ModelCombobox {...defaultProps} />)
+      await user.click(screen.getByRole('textbox'))
+      await waitFor(() =>
+        expect(document.querySelector('[data-slot="model-pill"]')).toBeTruthy()
+      )
+      expect(
+        document.querySelectorAll('[data-slot="model-pill"]')
+      ).toHaveLength(1)
+      expect(document.querySelector('[data-highlighted]')).toBeNull()
+      await user.keyboard('{ArrowDown}{ArrowDown}')
+      const hl = document.querySelector('[data-highlighted]') as HTMLElement
+      expect(hl.getAttribute('data-model')).toBe('gpt-4')
+      expect(
+        document.querySelector('[data-slot="model-pill"]')
+      ).toHaveAttribute('data-visible')
+    })
+
+    it('ticks the selected row and highlights on hover', async () => {
+      const user = userEvent.setup()
+      render(
+        <ModelCombobox
+          {...defaultProps}
+          models={['gpt-4', 'gpt-4o']}
+          value="gpt-4"
+        />
+      )
+      await user.click(screen.getByRole('textbox'))
+      await waitFor(() =>
+        expect(document.querySelector('[data-model="gpt-4"]')).toBeTruthy()
+      )
+      const row = document.querySelector('[data-model="gpt-4"]') as HTMLElement
+      expect(row.querySelector('[data-slot="model-tick"]')).toBeTruthy()
+      expect(row).toHaveAttribute('aria-selected', 'true')
+      const other = document.querySelector(
+        '[data-model="gpt-4o"]'
+      ) as HTMLElement
+      expect(other.querySelector('[data-slot="model-tick"]')).toBeNull()
+      fireEvent.mouseEnter(other)
+      expect(other).toHaveAttribute('data-highlighted')
+    })
+
+    it('flips above when there is no room below', async () => {
+      const user = userEvent.setup()
+      const prev = window.innerHeight
+      Object.defineProperty(window, 'innerHeight', {
+        value: 160,
+        configurable: true,
+      })
+      render(<ModelCombobox {...defaultProps} />)
+      await user.click(screen.getByRole('textbox'))
+      await waitFor(() => {
+        const menu = document.querySelector('[data-dropdown="model-combobox"]')
+        expect(menu).toHaveAttribute('data-side', 'top')
+      })
+      Object.defineProperty(window, 'innerHeight', {
+        value: prev,
+        configurable: true,
+      })
     })
   })
 

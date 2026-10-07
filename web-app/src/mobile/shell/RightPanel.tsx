@@ -10,6 +10,7 @@ import { accessLabel, modeLabel } from './labels'
 import { roomAct } from '../state/controls'
 import { ActivityList, ChangesList } from '../ui/changes'
 import { ChatUsage, ChatUsing, CodeTab, PreviewTab } from './panels'
+import { ScrubField } from '../ui/scrub-field'
 import { t } from '../i18n'
 
 function Header({ title }: { title: string }) {
@@ -81,8 +82,92 @@ function RoomPanel({ id, tab }: { id: string; tab: string }) {
       </>
     } else if (tab === 'rsettings') {
       const l = room.limits
-      const numberField = (label: string, value: number, key: keyof typeof l, min: number, max: number, convert: (v: number) => number = (v) => v) => <label className="field">{label}<input type="number" min={min} max={max} defaultValue={value} disabled={locked} onBlur={(e) => { const n = Number(e.currentTarget.value); if (Number.isFinite(n)) void updateRoom(room.id, { limits: { [key]: convert(n) } }, t('rightpanel.fieldUpdated', { label })) }} /></label>
-      body = <div className="card2"><h4><I n="settings" />{t('rightpanel.roomSettings')}{locked && <span className="chip" style={{ marginLeft: 'auto' }}><I n="lock" size={11} />{t('rightpanel.locked')}</span>}</h4>{locked && <small className="muted">{t('rightpanel.pauseToChange')}</small>}<label className="field">{t('rightpanel.speakingMode')}<select value={room.mode} disabled={locked} onChange={(e) => void updateRoom(room.id, { mode: e.target.value as RoomUpdateParams['patch']['mode'] }, t('rightpanel.speakingModeUpdated'))}><option value="round-robin">{t('rooms.mode.roundRobin')}</option><option value="user-selected">{t('rooms.mode.userSelected')}</option><option value="moderator-selected">{t('rooms.mode.moderatorSelected')}</option></select></label>{numberField(t('rightpanel.rounds'), l.maxRounds, 'maxRounds', 1, 50)}{numberField(t('rightpanel.turns'), l.maxTurns, 'maxTurns', 1, 200)}{numberField(t('rightpanel.totalTokens'), l.maxTotalTokens, 'maxTotalTokens', 1000, 2000000)}{numberField(t('rightpanel.tokensPerReply'), l.maxOutputTokensPerTurn, 'maxOutputTokensPerTurn', 64, 8192)}{numberField(t('rightpanel.runningTime'), Math.round(l.maxDurationMs / 60000), 'maxDurationMs', 1, 240, (minutes) => Math.round(minutes * 60000))}<small className="muted">{t('rightpanel.desktopOnly')}</small></div>
+      const numberField = (
+        label: string,
+        value: number,
+        key: keyof typeof l,
+        min: number,
+        max: number,
+        convert: (v: number) => number = (v) => v
+      ) => (
+        <ScrubField
+          label={label}
+          value={value}
+          min={min}
+          max={max}
+          disabled={locked}
+          onCommit={(n) =>
+            void updateRoom(
+              room.id,
+              { limits: { [key]: convert(n) } },
+              `${label} updated.`
+            )
+          }
+        />
+      )
+      body = (
+        <div className="card2">
+          <h4>
+            <I n="settings" />
+            Room settings
+            {locked && (
+              <span className="chip" style={{ marginLeft: 'auto' }}>
+                <I n="lock" size={11} />
+                Locked
+              </span>
+            )}
+          </h4>
+          {locked && (
+            <small className="muted">Pause the room to change settings.</small>
+          )}
+          <label className="field">
+            Speaking mode
+            <select
+              value={room.mode}
+              disabled={locked}
+              onChange={(e) =>
+                void updateRoom(
+                  room.id,
+                  { mode: e.target.value as RoomUpdateParams['patch']['mode'] },
+                  'Speaking mode updated.'
+                )
+              }
+            >
+              <option value="round-robin">Round-robin</option>
+              <option value="user-selected">You choose</option>
+              <option value="moderator-selected">Moderator chooses</option>
+            </select>
+          </label>
+          {numberField('Rounds', l.maxRounds, 'maxRounds', 1, 50)}
+          {numberField('Turns', l.maxTurns, 'maxTurns', 1, 200)}
+          {numberField(
+            'Total tokens',
+            l.maxTotalTokens,
+            'maxTotalTokens',
+            1000,
+            2000000
+          )}
+          {numberField(
+            'Tokens per reply',
+            l.maxOutputTokensPerTurn,
+            'maxOutputTokensPerTurn',
+            64,
+            8192
+          )}
+          {numberField(
+            'Running time (minutes)',
+            Math.round(l.maxDurationMs / 60000),
+            'maxDurationMs',
+            1,
+            240,
+            (minutes) => Math.round(minutes * 60000)
+          )}
+          <small className="muted">
+            Working folder and write permissions remain desktop-only because
+            they grant filesystem access.
+          </small>
+        </div>
+      )
     } else {
       body = <><div className="card2">{next && <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><Avatar id={next.model} provider={next.provider} name={next.name} size={32} /><span style={{ flex: 1 }}><b>{room.status === 'running' ? t('room.speaking', { name: next.name }) : t('rightpanel.speaksNext', { name: next.name })}</b><br /><small className="muted">{next.role} · {next.model}</small></span></div>}<div className="kv"><span><Tx k="rightpanel.roundOf" parts={{ round: <b>{room.usage.rounds}</b>, max: room.limits.maxRounds }} /></span><span><Tx k="rooms.turnOf" parts={{ turn: <b>{room.usage.turns}</b>, max: room.limits.maxTurns }} /></span></div><div className="meter"><i style={{ width: `${Math.min(100, (room.usage.turns / Math.max(1, room.limits.maxTurns)) * 100)}%` }} /></div><div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 6 }}>{room.status === 'running' ? <button type="button" className="btn pri" onClick={() => roomAct({ id: room.id }, 'pause', t('rightpanel.paused'))}><I n="pause" />{t('rightpanel.pause')}</button> : <button type="button" className="btn pri" onClick={() => roomAct({ id: room.id }, room.roomStatus === 'draft' ? 'start' : 'resume', room.roomStatus === 'draft' ? t('rightpanel.started') : t('rightpanel.resumed'))}><I n="play" />{room.roomStatus === 'draft' ? t('rightpanel.start') : t('rightpanel.resume')}</button>}<button type="button" className="btn" disabled={order.length < 2} onClick={() => { const who = order[1]; if (who) void act('room.control', { id: room.id, action: 'next', participantId: who.id }, t('rightpanel.speaksNext', { name: who.name })) }}>{t('rightpanel.next')}</button><button type="button" className="btn dan" onClick={() => roomAct({ id: room.id }, 'stop', t('rightpanel.stopped'))} >{t('studio.stop')}</button></div></div><div className="card2"><h4><I n="sparkles" />{t('room.steer')}</h4><div className="steer"><button type="button" onClick={() => openSheet('vote', { id: room.id })}><b><I n="vote" size={14} /> {t('rightpanel.callVote')}</b><small>{t('rightpanel.voteHint')}</small></button><button type="button" onClick={() => roomAct({ id: room.id }, 'final', t('rightpanel.finalAsked'))}><b><I n="flag" size={14} /> {t('rightpanel.finalPositions')}</b></button><button type="button" onClick={() => roomAct({ id: room.id }, 'synthesize', t('rightpanel.synthesisAsked'))}><b><I n="file" size={14} /> {t('rightpanel.synthesize')}</b></button><button type="button" onClick={() => roomAct({ id: room.id }, 'cancel', t('rightpanel.turnCancelled'))}><b><I n="x" size={14} /> {t('rightpanel.cancelTurn')}</b></button></div></div><div className="card2"><h4><I n="gauge" />{t('rightpanel.usage')}</h4><Kv k={t('rightpanel.tokens')} v={`${compact(room.usage.tokens)} / ${compact(room.limits.maxTotalTokens)}`} /><Kv k={t('rightpanel.time')} v={`${duration(room.usage.activeMs)} / ${duration(room.limits.maxDurationMs)}`} />{room.usage.costUsd !== null && <Kv k={t('rightpanel.cost')} v={`$${room.usage.costUsd.toFixed(2)}`} />}</div></>
     }

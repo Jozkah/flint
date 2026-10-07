@@ -140,11 +140,29 @@ describe('approvals outside Cowork', () => {
     show({ name: 'chat', id: 'c1' })
     const card = await screen.findByTestId('approval-card', {}, T)
     client.rpc.mockImplementationOnce(async () => ({ status: 'answered' }))
-    fireEvent.click(within(card).getByRole('button', { name: 'Allow once' }))
-    expect((await screen.findAllByText('Allowed once · from this phone', {}, T)).length).toBeGreaterThan(0)
-    expect(client.rpc).toHaveBeenCalledWith('approvals.respond', { requestId: 'ap7', decision: 'allow', scope: 'once' })
-    handleEvent({ type: 'approval.requested', requestId: 'ap8', toolName: 'web_search', threadId: 'c1', kind: 'chat' })
-    expect(app.get().notices[0]).toMatchObject({ route: { name: 'chat', id: 'c1' } })
+    fireEvent.keyDown(
+      within(card).getByRole('slider', { name: 'Allow once' }),
+      { key: 'End' }
+    )
+    expect(
+      (await screen.findAllByText('Allowed once · from this phone', {}, T))
+        .length
+    ).toBeGreaterThan(0)
+    expect(client.rpc).toHaveBeenCalledWith('approvals.respond', {
+      requestId: 'ap7',
+      decision: 'allow',
+      scope: 'once',
+    })
+    handleEvent({
+      type: 'approval.requested',
+      requestId: 'ap8',
+      toolName: 'web_search',
+      threadId: 'c1',
+      kind: 'chat',
+    })
+    expect(app.get().notices[0]).toMatchObject({
+      route: { name: 'chat', id: 'c1' },
+    })
   })
 
   it('a subagent’s approval says who asks and shows the change', async () => {

@@ -28,6 +28,7 @@ import { Pin, PinOff } from 'lucide-react'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { showUndoToast } from '@/lib/toastUndo'
 import {
   MEMORY_AUTOSAVE_ANCHOR,
   MEMORY_LIST_ANCHOR,
@@ -339,16 +340,20 @@ function MemorySettings() {
       try {
         await memoryRecordForget(location, drop.scope, drop.id)
         await reload()
-        toast.success('Kept one memory', {
+        showUndoToast({
+          message: 'Kept one memory',
           description: keep.preview,
-          action: {
-            label: 'Undo',
-            onClick: () => {
-              void (async () => {
-                await memoryRecordRestore(location, drop.scope, drop.id, drop.content)
-                await reload()
-              })()
-            },
+          undoLabel: 'Undo',
+          onUndo: () => {
+            void (async () => {
+              await memoryRecordRestore(
+                location,
+                drop.scope,
+                drop.id,
+                drop.content
+              )
+              await reload()
+            })()
           },
         })
       } catch (error) {
@@ -371,17 +376,21 @@ function MemorySettings() {
         await reload()
         // Undo restores the same record, not a copy of its text, so provenance
         // and identity survive the round trip.
-        toast.success('Memory forgotten', {
+        showUndoToast({
+          message: 'Memory forgotten',
           description: memory.preview,
-          action: {
-            label: 'Undo',
-            onClick: () => {
-              if (!location) return
-              void (async () => {
-                await memoryRecordRestore(location, scope, memory.id, memory.content)
-                await reload()
-              })()
-            },
+          undoLabel: 'Undo',
+          onUndo: () => {
+            if (!location) return
+            void (async () => {
+              await memoryRecordRestore(
+                location,
+                scope,
+                memory.id,
+                memory.content
+              )
+              await reload()
+            })()
           },
         })
       } catch (error) {

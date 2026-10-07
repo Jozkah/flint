@@ -4,6 +4,7 @@
 import { useState } from 'react'
 import type { PushPrefs } from '@/lib/remote/protocol'
 import { Grp, IRow } from '../ui/ios'
+import { BellSwitch } from '../ui/bell-switch'
 import { act, describeError, toast } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
 import { DEFAULT_PUSH, disablePush, enablePush, minToTime, pushSupport, supportText, timeToMin, withOffset, type PushSupport } from '../state/push'
@@ -51,11 +52,18 @@ export default function PushSettings({ support = pushSupport() }: { support?: Pu
         cap={t('push.title')}
         foot={why ?? t('push.foot')}
       >
-        <IRow
-          label={t('push.notify')}
-          sw={on}
-          sub={data && !data.available ? t('push.notSetUp') : undefined}
-          onClick={why || busy || (data && !data.available) ? undefined : () => void toggle()}
+        <BellSwitch
+          label="Notify this phone"
+          on={on}
+          busy={busy}
+          sub={
+            data && !data.available ? 'Not set up on the computer' : undefined
+          }
+          onClick={
+            why || busy || (data && !data.available)
+              ? undefined
+              : () => void toggle()
+          }
           testId="push-toggle"
         />
         {on && <IRow label={t('push.sendTest')} onClick={() => void act('push.test', {}, t('push.testSent'))} testId="push-test" />}

@@ -55,10 +55,17 @@ const dialog = vi.hoisted(() => ({
   open: vi.fn(async () => '/picked/in.json' as string | null),
   save: vi.fn(async () => '/picked/out.json' as string | null),
 }))
-const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+const toast = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  custom: vi.fn(),
+  dismiss: vi.fn(),
+}))
+const showUndoToast = vi.hoisted(() => vi.fn())
 
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => api)
 vi.mock('sonner', () => ({ toast }))
+vi.mock('@/lib/toastUndo', () => ({ showUndoToast }))
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (config: any) => config,
 }))
@@ -302,8 +309,9 @@ describe('Settings > Memory: user memory controls (AH-082)', () => {
       (b) => b.getAttribute('data-keep-id') === 'mem-npm'
     )!
     await userEvent.click(keep)
-    await waitFor(() => expect(toast.success).toHaveBeenCalled())
-    const undo = (toast.success.mock.calls[0][1] as any).action.onClick
+    await waitFor(() => expect(showUndoToast).toHaveBeenCalled())
+    const undo = (showUndoToast.mock.calls[0][0] as { onUndo: () => void })
+      .onUndo
     undo()
     await waitFor(() =>
       expect(api.memoryRecordRestore).toHaveBeenCalledWith(LOCATION, 'user', 'mem-yarn', 'Use yarn.')

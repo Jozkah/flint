@@ -1436,7 +1436,11 @@
   },
   "drop": {
     "openInCode": "Drop to open — read-only",
-    "attachToMessage": "Drop to attach to your message"
+    "attachToMessage": "Drop to attach to your message",
+    "releaseToAttach": "Release to attach"
+  },
+  "voicePill": {
+    "cancel": "Cancel"
   },
   "coworkMode": {
     "label": "What Flint may do",
@@ -2422,5 +2426,15 @@
       "tokenUsage": "Token usage",
       "tokenUsageSr": "Token usage {{value}}"
     }
+  },
+  "motionMedia": {
+    "queued": "Queued",
+    "generating": "Generating",
+    "refining": "Refining",
+    "ready": "Ready",
+    "failed": "Failed",
+    "stop": "Stop",
+    "retry": "Retry",
+    "downloading": "Downloading…"
   }
 }

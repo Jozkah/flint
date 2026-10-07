@@ -8,6 +8,7 @@ import { useLive } from '../state/live'
 import { usePhonePermissions } from './hooks'
 import { ResolvedLine } from './live'
 import { respond } from './respond'
+import { SlideCommit } from './slide-commit'
 import { t } from '../i18n'
 
 export function ApprovalCard({ a }: { a: RemoteApproval }) {
@@ -62,9 +63,13 @@ export function ApprovalCard({ a }: { a: RemoteApproval }) {
             <button type="button" className="btn dan" onClick={() => void respond(a, 'deny')}>
               {t('common.deny')}
             </button>
-            <button type="button" className="btn pri" onClick={() => void respond(a, 'allow')}>
-              {t('common.allowOnce')}
-            </button>
+            <SlideCommit
+              label="Allow once"
+              errorLabel="Didn’t work, try again"
+              doneLabel="Allowed"
+              testId="approval-allow"
+              onCommit={async () => (await respond(a, 'allow')) !== undefined}
+            />
           </>
         ) : (
           <span className="apnote">{t('approval.answerOnComputer')}</span>
