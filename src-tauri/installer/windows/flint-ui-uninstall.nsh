@@ -36,8 +36,8 @@ Function un.FlintConfirm
   ${FlintPx} $0 ${FLINT_RIGHT_X}
   ${FlintPx} $1 224
   ${FlintPx} $2 ${FLINT_RIGHT_W}
-  ${FlintPx} $3 54
-  ${NSD_CreateLabel} $0 $1 $2 $3 "Leaving this off removes only the application. Turn it on only if you also want Flint's local data removed."
+  ${FlintPx} $3 84
+  ${NSD_CreateLabel} $0 $1 $2 $3 "Leaving this off removes only the application. Turn it on only if you also want Flint's local data removed. Warning: this data folder (jan.ai.app) is shared with Jan, so turning this on also deletes the chats, models and settings of any Jan installation on this computer."
   Pop $4
   SendMessage $4 ${WM_SETFONT} $FlintFontSmall 1
   !insertmacro _FlintCtl $4 MUTED BG

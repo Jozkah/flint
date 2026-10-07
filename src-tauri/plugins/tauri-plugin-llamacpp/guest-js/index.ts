@@ -191,6 +191,10 @@ export async function reloadEngineModels(
 }
 
 // GGUF commands
+export async function sha256File(path: string): Promise<string> {
+  return await invoke('plugin:llamacpp|sha256_file', { path })
+}
+
 export async function readGgufMetadata(path: string): Promise<GgufMetadata> {
   return await invoke('plugin:llamacpp|read_gguf_metadata', { path })
 }

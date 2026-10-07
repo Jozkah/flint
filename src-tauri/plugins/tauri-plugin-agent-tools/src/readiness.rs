@@ -644,7 +644,18 @@ pub fn probe_sandbox(now_ms: i64) -> ComponentReport {
         now_ms,
     )
     .granting(&[capability::SANDBOX_ENFORCED])
-    .detailed(vec![format!("backend={}", backend.as_str())])
+    .detailed({
+        let mut details = vec![format!("backend={}", backend.as_str())];
+        if crate::tools::jail::network_shares_host_namespace() {
+            details.push(
+                "network sandboxing shares the host network namespace (install pasta to \
+                 isolate it): with the network allowed, host abstract unix sockets \
+                 are reachable"
+                    .to_string(),
+            );
+        }
+        details
+    })
 }
 
 /// Probe the shell by starting one.
