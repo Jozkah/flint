@@ -1263,6 +1263,9 @@ export function ThreadConversation({
                 : result.isError
                   ? JSON.stringify(result.content ?? '')
                   : undefined,
+              result: result.isError
+                ? undefined
+                : JSON.stringify(result.content ?? ''),
             })
 
             if (result.error) {
