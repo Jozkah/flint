@@ -25,6 +25,7 @@ use super::static_files::{self, StaticError};
 
 type Resp = Response<Full<Bytes>>;
 const MAX_LOGIN_BODY: usize = 4 * 1024;
+const MAX_JSON_BODY: usize = 1024 * 1024;
 const COOKIE_NAME: &str = "flint_session";
 const LOGIN_WINDOW: Duration = Duration::from_secs(5 * 60);
 const LOGIN_FAILURE_LIMIT: usize = 10;
@@ -98,6 +99,30 @@ fn json(value: &impl serde::Serialize) -> Resp {
             "Could not serialize response",
         ),
     }
+}
+
+fn json_created(value: &impl serde::Serialize) -> Resp {
+    let mut response = json(value);
+    if response.status() == StatusCode::OK {
+        *response.status_mut() = StatusCode::CREATED;
+    }
+    response
+}
+
+async fn read_json(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
+    let is_json = req.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(';').next().is_some_and(|kind| kind.trim().eq_ignore_ascii_case("application/json")));
+    if !is_json {
+        return Err(text(StatusCode::UNSUPPORTED_MEDIA_TYPE, "Expected application/json"));
+    }
+    let body = Limited::new(req.into_body(), MAX_JSON_BODY).collect().await
+        .map_err(|_| text(StatusCode::PAYLOAD_TOO_LARGE, "Request too large"))?.to_bytes();
+    let value: serde_json::Value = serde_json::from_slice(&body)
+        .map_err(|_| text(StatusCode::BAD_REQUEST, "Invalid JSON"))?;
+    if !value.is_object() {
+        return Err(text(StatusCode::BAD_REQUEST, "Expected JSON object"));
+    }
+    Ok(value)
 }
 
 fn session_cookie(headers: &hyper::HeaderMap) -> Option<&str> {
@@ -244,6 +269,83 @@ async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
                 ),
             );
             return response;
+        }
+    }
+    if method == Method::POST && path == "/api/v1/threads" {
+        let thread = match read_json(req).await {
+            Ok(value) => value,
+            Err(response) => return response,
+        };
+        let root = state.data_folder.clone();
+        return match tokio::task::spawn_blocking(move || data::create_thread(&root, thread)).await {
+            Ok(Ok(thread)) => json_created(&thread),
+            _ => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not create thread"),
+        };
+    }
+    if let Some(rest) = path.strip_prefix("/api/v1/threads/") {
+        let parts: Vec<_> = rest.split('/').collect();
+        if parts.iter().any(|part| crate::core::threads::utils::validate_thread_id(part).is_err()) {
+            return text(StatusCode::BAD_REQUEST, "Invalid id");
+        }
+        match (method.clone(), parts.as_slice()) {
+            (Method::PUT, [id]) => {
+                let thread = match read_json(req).await {
+                    Ok(value) => value,
+                    Err(response) => return response,
+                };
+                if thread.get("id").and_then(serde_json::Value::as_str) != Some(*id) {
+                    return text(StatusCode::BAD_REQUEST, "Thread id does not match URL");
+                }
+                let root = state.data_folder.clone();
+                let id = (*id).to_owned();
+                return match tokio::task::spawn_blocking(move || data::update_thread(&root, &id, thread)).await {
+                    Ok(Ok(())) => reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new()),
+                    Ok(Err(_)) => text(StatusCode::NOT_FOUND, "Thread not found"),
+                    Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not update thread"),
+                };
+            }
+            (Method::DELETE, [id]) => {
+                let permanent = req.uri().query() == Some("permanent=true");
+                return match data::delete_thread(&state.data_folder, id, permanent).await {
+                    Ok(()) => reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new()),
+                    Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete thread"),
+                };
+            }
+            (Method::POST, [id, "messages"]) => {
+                let message = match read_json(req).await {
+                    Ok(value) => value,
+                    Err(response) => return response,
+                };
+                if message.get("thread_id").and_then(serde_json::Value::as_str) != Some(*id) {
+                    return text(StatusCode::BAD_REQUEST, "Message thread id does not match URL");
+                }
+                return match data::create_message(&state.data_folder, id, message).await {
+                    Ok(message) => json_created(&message),
+                    Err(_) => text(StatusCode::NOT_FOUND, "Thread not found"),
+                };
+            }
+            (Method::PUT, [id, "messages", message_id]) => {
+                let message = match read_json(req).await {
+                    Ok(value) => value,
+                    Err(response) => return response,
+                };
+                if message.get("thread_id").and_then(serde_json::Value::as_str) != Some(*id)
+                    || message.get("id").and_then(serde_json::Value::as_str) != Some(*message_id)
+                {
+                    return text(StatusCode::BAD_REQUEST, "Message id does not match URL");
+                }
+                return match data::update_message(&state.data_folder, id, message_id, message).await {
+                    Ok(message) => json(&message),
+                    Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not update message"),
+                };
+            }
+            (Method::DELETE, [id, "messages", message_id]) => {
+                return match data::delete_message(&state.data_folder, id, message_id).await {
+                    Ok(()) => reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new()),
+                    Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete message"),
+                };
+            }
+            _ => {}
         }
     }
     if method == Method::GET && path == "/api/v1/threads" {

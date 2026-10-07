@@ -188,6 +188,21 @@ class PlatformServiceHub implements ServiceHub {
         this.pathService = new pathModule.TauriPathService()
         this.coreService = new coreModule.MobileCoreService() // Mobile service with pre-loaded extensions
         this.deepLinkService = new deepLinkModule.TauriDeepLinkService()
+      } else {
+        // Vite development also runs in a browser. Select the server adapters
+        // only when Flint's authenticated API answers this probe.
+        const response = await fetch('/api/v1/session', { credentials: 'same-origin' }).catch(() => null)
+        if (response?.ok && response.headers.get('content-type')?.includes('application/json')) {
+          const session = await response.json().catch(() => null)
+          if (session?.authenticated === true) {
+            const [threads, messages] = await Promise.all([
+              import('./threads/browser'),
+              import('./messages/browser'),
+            ])
+            this.threadsService = new threads.BrowserThreadsService()
+            this.messagesService = new messages.BrowserMessagesService()
+          }
+        }
       }
 
       this.initialized = true
