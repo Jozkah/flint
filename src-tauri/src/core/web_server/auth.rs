@@ -95,23 +95,30 @@ impl AuthStore {
             .parent()
             .ok_or_else(|| io::Error::other("auth path has no parent"))?;
         fs::create_dir_all(parent)?;
+        // Write a complete private file first, then publish it atomically so a
+        // crash never leaves a truncated store that blocks every later start.
+        let temporary = path.with_extension("init");
         let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
+        options.write(true).create(true).truncate(true);
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
             options.mode(0o600);
         }
-        let mut file = match options.open(&path) {
-            Ok(file) => file,
+        let mut file = options.open(&temporary)?;
+        serde_json::to_writer(&mut file, &state).map_err(io::Error::other)?;
+        file.flush()?;
+        file.sync_all()?;
+        drop(file);
+        let published = fs::hard_link(&temporary, &path);
+        let _ = fs::remove_file(&temporary);
+        match published {
+            Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                 return Self::load(path).map(|store| (store, None));
             }
             Err(error) => return Err(error),
-        };
-        serde_json::to_writer(&mut file, &state).map_err(io::Error::other)?;
-        file.flush()?;
-        file.sync_all()?;
+        }
         Ok((Self { path, state }, Some(admin)))
     }
 
