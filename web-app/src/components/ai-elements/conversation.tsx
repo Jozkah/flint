@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ArrowDown } from 'lucide-react'
 import type { ComponentProps } from 'react'
 import { useCallback, memo } from 'react'
@@ -74,6 +75,7 @@ export const ConversationScrollButton = ({
   className,
   ...props
 }: ConversationScrollButtonProps) => {
+  const { t } = useTranslation()
   const { isAtBottom, scrollToBottom } = useStickToBottomContext()
 
   const handleScrollToBottom = useCallback(() => {
@@ -91,9 +93,11 @@ export const ConversationScrollButton = ({
         size="icon"
         type="button"
         variant="outline"
+        aria-label={t('common:scrollToBottom')}
+        title={t('common:scrollToBottom')}
         {...props}
       >
-        <ArrowDown className="size-4" />
+        <ArrowDown className="size-4" aria-hidden="true" />
       </Button>
     )
   )
