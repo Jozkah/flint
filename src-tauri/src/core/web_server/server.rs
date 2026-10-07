@@ -352,6 +352,14 @@ async fn resource_route(
         (Method::GET, "/api/v1/hardware/info") => {
             blocking(|| Ok(tauri_plugin_hardware::get_system_info())).await
         }
+        (Method::GET, "/api/v1/hardware/usage") => {
+            blocking(|| Ok(tauri_plugin_hardware::sample_system_usage())).await
+        }
+        (Method::GET, "/api/v1/app/info") => json(&serde_json::json!({
+            "dataFolder": state.data_folder.to_string_lossy(),
+            "version": env!("CARGO_PKG_VERSION"),
+            "headless": true,
+        })),
         (Method::GET, "/api/v1/hardware/snapshot") => {
             blocking(|| Ok(tauri_plugin_hardware::snapshot::get_system_snapshot())).await
         }
@@ -852,6 +860,7 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
     if path.starts_with("/api/v1/projects")
         || path.starts_with("/api/v1/assistants")
         || path.starts_with("/api/v1/hardware")
+        || path == "/api/v1/app/info"
         || path.starts_with("/api/v1/provider-keys/")
         || path == "/api/v1/secret-values"
     {

@@ -1,7 +1,7 @@
 /**
  * Browser Hardware Service - reports the machine the Flint server runs on.
- * Live usage sampling and GPU device selection stay unavailable until the
- * inference process is extracted from the desktop app.
+ * GPU device selection stays unavailable until the inference process is
+ * extracted from the desktop app.
  */
 
 import { browserApi } from '@/services/browserApi'
@@ -18,8 +18,8 @@ export class BrowserHardwareService implements HardwareService {
     return browserApi<HardwareData>('/api/v1/hardware/info')
   }
 
-  async getSystemUsage(): Promise<SystemUsage | null> {
-    return null
+  getSystemUsage(): Promise<SystemUsage | null> {
+    return browserApi<SystemUsage>('/api/v1/hardware/usage')
   }
 
   getSystemSnapshot(): Promise<SystemSnapshot | null> {
