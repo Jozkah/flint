@@ -4,6 +4,9 @@ import { TokenUsageSummary } from '../TokenUsageSummary'
 import { finalizeTokenUsage, summarizeUsage } from '@/lib/tokenUsage'
 import type { Pricing } from '@/lib/modelPricing'
 
+// These tests read the words, so they use the English strings rather than the keys.
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
+
 const priced: Pricing = { input: 3, output: 15, cachedInput: 0.3, cacheWrite: 3.75 }
 const noCachedPrice: Pricing = { input: 3, output: 15 }
 

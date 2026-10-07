@@ -1,3 +1,4 @@
+import { useTranslation } from '@/i18n/react-i18next-compat'
 /**
  * The `@` menu: files and folders in the attached folder, skills, saved agents
  * and aliases, in one ranked list. AH-204.
@@ -119,6 +120,7 @@ export function FilePickerPopover({
   onAliasSave,
   onAliasCancel,
 }: FilePickerPopoverProps) {
+  const { t } = useTranslation()
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const [aliasName, setAliasName] = useState('')
   const [aliasLines, setAliasLines] = useState('')
@@ -229,7 +231,7 @@ export function FilePickerPopover({
           )}
         </form>
       )}
-      <div id={listId} role="listbox" aria-label="References">
+      <div id={listId} role="listbox" aria-label={t('common:a11y.references')}>
         {entries.map((entry, idx) => (
           <div
             key={`${entry.kind}:${entry.token}`}

@@ -213,7 +213,7 @@ function MemorySettings() {
    * project's records and no other's. A folder, when one is picked, is the
    * identity instead, so choosing one of these clears the other.
    */
-  const { folders: projects } = useThreadManagement()
+  const projects = useThreadManagement((s) => s.folders)
   const [projectId, setProjectId] = useState('')
   const selectedProject = projects.find((p) => p.id === projectId)
   useEffect(() => {

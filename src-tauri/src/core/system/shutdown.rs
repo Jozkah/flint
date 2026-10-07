@@ -1,7 +1,7 @@
 //! Teardown work that must run before the process goes away.
 //!
 //! `RunEvent::Exit` is the normal home for it, but the in-app updater leaves
-//! the process without raising that event: `tauri-plugin-updater` calls
+//! the process without raising that event: the updater plugin calls
 //! `std::process::exit(0)` itself after launching the Windows installer, and
 //! `AppHandle::restart()` execs the new binary directly. Whatever only
 //! `RunEvent::Exit` cleaned up (the engine, MCP servers, agent shells, pending
@@ -63,7 +63,7 @@ pub async fn shutdown_cleanup<R: Runtime>(app: &AppHandle<R>) {
 ///
 /// The frontend calls this after the update has downloaded and verified, right
 /// before the installer runs, so a failed download leaves the running app
-/// untouched. On Windows `tauri-plugin-updater` exits the process as soon as
+/// untouched. On Windows the updater plugin exits the process as soon as
 /// the installer is launched and offers no hook this crate can register, so
 /// this has to happen before `install()`.
 ///

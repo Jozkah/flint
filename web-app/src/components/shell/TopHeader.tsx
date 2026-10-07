@@ -42,7 +42,7 @@ function useCurrentName(crumb: ReturnType<typeof crumbForPath>) {
   const thread = useThreads((s) =>
     crumb.dynamic === 'thread' && crumb.param ? s.threads[crumb.param] : undefined
   )
-  const { folders } = useThreadManagement()
+  const folders = useThreadManagement((s) => s.folders)
   const providers = useModelProvider((s) => s.providers)
   const { summaries } = useRoomsState()
   const sessionTitle = useCoworkSessions((s) =>

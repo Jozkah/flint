@@ -235,3 +235,23 @@ if (typeof Blob !== 'undefined' && typeof Blob.prototype.text !== 'function') {
     })
   }
 }
+
+/**
+ * jsdom does no layout, so Range and Text nodes have no client rects.
+ * ProseMirror measures through them when it scrolls the cursor into view and
+ * throws inside a timer, where the test cannot catch it.
+ */
+const emptyRects = (): DOMRectList =>
+  Object.assign([] as unknown as DOMRectList, { item: () => null })
+if (typeof Range !== 'undefined') {
+  if (typeof Range.prototype.getClientRects !== 'function') {
+    Range.prototype.getClientRects = emptyRects
+  }
+  if (typeof Range.prototype.getBoundingClientRect !== 'function') {
+    Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0)
+  }
+}
+if (typeof Text !== 'undefined') {
+  const text = Text.prototype as unknown as { getClientRects?: () => DOMRectList }
+  if (typeof text.getClientRects !== 'function') text.getClientRects = emptyRects
+}

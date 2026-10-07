@@ -6,6 +6,7 @@ import { createStore } from './store'
 import { client, toast } from './app'
 import { downscaleImage } from '../ui/downscale'
 import { RemoteCallError } from '../api/client'
+import { t } from '../i18n'
 
 export type PhoneAttachment = {
   localId: string
@@ -48,14 +49,14 @@ export const MAX_FILES = 10
 
 export async function addFiles(key: string, files: File[]): Promise<void> {
   const room = MAX_FILES - (attachments.get().by[key]?.length ?? 0)
-  if (files.length > room) toast(`Up to ${MAX_FILES} files per message`)
+  if (files.length > room) toast(t('attachments.max', { count: MAX_FILES }))
   await Promise.all(
     files.slice(0, Math.max(0, room)).map(async (raw) => {
       const localId = `a${Date.now().toString(36)}${(seq++).toString(36)}`
       const isImage = raw.type.startsWith('image/')
       const item: PhoneAttachment = {
         localId,
-        name: raw.name || 'file',
+        name: raw.name || t('attachments.file'),
         size: raw.size,
         mime: raw.type,
         status: 'uploading',
@@ -69,7 +70,7 @@ export async function addFiles(key: string, files: File[]): Promise<void> {
         const info = await client().upload(file, (f) => patch(key, localId, { progress: f }))
         patch(key, localId, { status: 'ready', progress: 1, uploadId: info.uploadId, mime: info.mime, name: info.name })
       } catch (e) {
-        const msg = e instanceof RemoteCallError ? e.message : 'Upload failed'
+        const msg = e instanceof RemoteCallError ? e.message : t('attachments.uploadFailed')
         patch(key, localId, { status: 'error', error: msg })
         toast(`${raw.name}: ${msg}`)
       }
@@ -108,7 +109,7 @@ export const deskRefs = (list: readonly PhoneAttachment[]) => list.filter((a) =>
 /** What a send carries, or why it must wait. */
 export function outgoing(key: string): { ok: true; uploadIds: string[]; refs: string[]; any: boolean } | { ok: false; why: string } {
   const list = attachments.get().by[key] ?? []
-  if (list.some((a) => a.status === 'uploading')) return { ok: false, why: 'Wait for the files to finish uploading' }
+  if (list.some((a) => a.status === 'uploading')) return { ok: false, why: t('attachments.wait') }
   const ready = list.filter((a) => a.status === 'ready')
   return {
     ok: true,

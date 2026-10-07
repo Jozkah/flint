@@ -1,3 +1,4 @@
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Gauge } from 'lucide-react'
 import {
   Popover,
@@ -8,6 +9,19 @@ import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
 import { CacheReuseBadge } from '@/components/CacheReuseBadge'
 import type { TokenUsage } from '@/lib/tokenUsage'
 import type { TurnMemory } from '@/types/coworkSession'
+
+/** `text` with the first `token` set in the mono face, as ids are elsewhere. */
+function withMono(text: string, token: string) {
+  const at = text.indexOf(token)
+  if (at < 0) return text
+  return (
+    <>
+      {text.slice(0, at)}
+      <span className="font-mono">{token}</span>
+      {text.slice(at + token.length)}
+    </>
+  )
+}
 
 /**
  * One request's token breakdown and the memories it carried, for the turn it
@@ -21,6 +35,7 @@ export function TurnUsageDetails({
   usage?: TokenUsage
   memory?: TurnMemory
 }) {
+  const { t } = useTranslation()
   const hasUsage = !!usage && (usage.totalTokens ?? 0) > 0
   const injected = memory?.injectedIds ?? []
   const withheld = memory?.conflictIds ?? []
@@ -41,7 +56,7 @@ export function TurnUsageDetails({
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label="Token usage and memory for this turn"
+          aria-label={t('common:a11y.turnUsageAndMemory')}
           data-testid="turn-usage-trigger"
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:text-foreground"
         >
@@ -52,7 +67,7 @@ export function TurnUsageDetails({
           )}
           {injected.length > 0 && (
             <span>
-              · {injected.length} {injected.length === 1 ? 'memory' : 'memories'}
+              · {t('common:usage.memoryCount', { count: injected.length })}
             </span>
           )}
         </button>
@@ -70,9 +85,9 @@ export function TurnUsageDetails({
             className={hasUsage ? 'mt-2 border-t border-border pt-2' : undefined}
             data-testid="turn-memory"
           >
-            <div className="font-medium text-foreground">Memory in this request</div>
+            <div className="font-medium text-foreground">{t('common:usage.memoryHeading')}</div>
             {injected.length > 0 ? (
-              <ul className="mt-1 space-y-0.5" aria-label="Memories sent">
+              <ul className="mt-1 space-y-0.5" aria-label={t('common:a11y.memoriesSent')}>
                 {injected.map((id) => {
                   const why = memory?.recall?.find((r) => r.id === id)
                   return (
@@ -88,11 +103,11 @@ export function TurnUsageDetails({
                 })}
               </ul>
             ) : (
-              <p className="mt-1 text-muted-foreground">No memory was sent.</p>
+              <p className="mt-1 text-muted-foreground">{t('common:usage.noMemory')}</p>
             )}
             {withheld.length > 0 && (
               <p className="mt-1 text-warning" data-testid="turn-memory-withheld">
-                Withheld as conflicting: {withheld.join(', ')}
+                {t('common:usage.withheld', { ids: withheld.join(', ') })}
               </p>
             )}
             {overridden.map((o) => (
@@ -103,12 +118,14 @@ export function TurnUsageDetails({
                 data-memory-id={o.memoryId}
               >
                 <p>
-                  Not sent: <span className="font-mono">{o.memoryId}</span> disagrees with{' '}
-                  {o.winnerName} about the {o.subject}, and {o.winnerName} ranks higher.
+                  {withMono(
+                    t('common:usage.overridden', { id: o.memoryId, winner: o.winnerName, subject: o.subject }),
+                    o.memoryId
+                  )}
                 </p>
-                <p className="text-muted-foreground">Memory: “{o.memorySays}”</p>
+                <p className="text-muted-foreground">{t('common:usage.memorySays', { text: o.memorySays })}</p>
                 <p className="text-muted-foreground">
-                  {o.winnerName}: “{o.winnerSays}”
+                  {t('common:usage.winnerSays', { winner: o.winnerName, text: o.winnerSays })}
                 </p>
               </div>
             ))}
@@ -118,12 +135,12 @@ export function TurnUsageDetails({
                 className="mt-1 text-destructive"
                 data-testid="turn-memory-refused"
               >
-                Refused: <span className="font-mono">{r.memoryId}</span> {r.reason}.
+                {withMono(t('common:usage.refused', { id: r.memoryId, reason: r.reason }), r.memoryId)}
               </p>
             ))}
             {recallOff.length > 0 && (
               <p className="mt-1 text-muted-foreground" data-testid="turn-memory-recall-off">
-                Recall off for: {recallOff.join(', ')}
+                {t('common:usage.recallOff', { ids: recallOff.join(', ') })}
               </p>
             )}
             {issues.length > 0 && (

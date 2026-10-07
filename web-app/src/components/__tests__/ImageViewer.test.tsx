@@ -6,6 +6,23 @@ import { ImageViewer, downloadNameOf, type ViewerImage } from '../ImageViewer'
 import { AttachedImages } from '../AttachedImages'
 import { fitScale } from '@/lib/imageResize'
 
+vi.mock('@/i18n/react-i18next-compat', async () => {
+  const en = (await import('@/locales/en/common.json')).default as any
+  return {
+    useTranslation: () => ({
+      t: (key: string, vars?: Record<string, unknown>) => {
+        const str = key
+          .replace(/^common:/, '')
+          .split('.')
+          .reduce((o: any, k) => o?.[k], en)
+        return typeof str === 'string'
+          ? str.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars?.[k] ?? ''))
+          : key
+      },
+    }),
+  }
+})
+
 const png = 'data:image/png;base64,AAAA'
 const jpg = 'data:image/jpeg;base64,BBBB'
 const images: ViewerImage[] = [

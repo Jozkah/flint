@@ -5,6 +5,7 @@ import { ago, greet } from '../ui/format'
 import { go, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { byKind, useSessions } from '../state/sessions'
+import { t } from '../i18n'
 
 const NOTICE_ICON: Record<string, [IconId, string]> = {
   approval: ['shield', 'var(--tk-appr)'],
@@ -21,18 +22,18 @@ export default function Overview() {
   const cowork = byKind(sessions, 'cowork')
   const week = Date.now() - 7 * 24 * 3600 * 1000
   const kpis: [string, string, string][] = [
-    ['Conversations this week', String(sessions.filter((s) => s.updatedAt >= week).length), `${sessions.length} in all`],
-    ['Models loaded', String(status.data?.modelsLoaded ?? '—'), `${models.data?.models.length ?? 0} available`],
-    ['Running now', String(status.data?.runs.length ?? '—'), 'Chats, Cowork and Rooms'],
-    ['Approvals waiting', String(status.data?.approvalsWaiting ?? '—'), 'Across all sessions'],
+    [t('overview.kpi.conversations'), String(sessions.filter((s) => s.updatedAt >= week).length), t('overview.kpi.inAll', { count: sessions.length })],
+    [t('overview.kpi.modelsLoaded'), String(status.data?.modelsLoaded ?? '—'), t('overview.kpi.available', { count: models.data?.models.length ?? 0 })],
+    [t('overview.kpi.runningNow'), String(status.data?.runs.length ?? '—'), t('overview.kpi.runningKinds')],
+    [t('overview.kpi.approvals'), String(status.data?.approvalsWaiting ?? '—'), t('overview.kpi.acrossSessions')],
   ]
   return (
     <>
-      <TopMain crumb="Workspace" title="Usage overview" />
+      <TopMain crumb={t('common.workspace')} title={t('overview.title')} />
       <div className="scroll">
         <div className="ph">
           <h2>{greet()} 👋</h2>
-          <p>Here's what's happening on your computer.</p>
+          <p>{t('overview.intro')}</p>
         </div>
         <div className="kpis">
           {kpis.map(([k, v, s]) => (
@@ -46,16 +47,16 @@ export default function Overview() {
         <div className="card2" style={{ marginBottom: 12 }}>
           <h4>
             <I n="activity" />
-            Token Throughput
+            {t('overview.throughput')}
           </h4>
-          <small className="muted">Token and speed charts are shown on the computer for now.</small>
+          <small className="muted">{t('overview.chartsNote')}</small>
         </div>
         <div className="card2" style={{ marginBottom: 12 }}>
           <h4>
             <I n="bell" />
-            Latest Activity
+            {t('overview.latest')}
           </h4>
-          {notices.length === 0 && <small className="muted">Nothing since this phone connected.</small>}
+          {notices.length === 0 && <small className="muted">{t('overview.nothingSince')}</small>}
           {notices.slice(0, 6).map((n) => {
             const [icon, color] = NOTICE_ICON[n.kind]
             return (
@@ -73,9 +74,9 @@ export default function Overview() {
         <div className="card2">
           <h4>
             <I n="cowork" />
-            Agent Runs
+            {t('overview.agentRuns')}
           </h4>
-          {cowork.length === 0 && <Empty>No Cowork sessions yet.</Empty>}
+          {cowork.length === 0 && <Empty>{t('overview.noCowork')}</Empty>}
           {cowork.slice(0, 6).map((s) => (
             <button
               key={s.id}
@@ -85,11 +86,11 @@ export default function Overview() {
               style={{ padding: '8px 0', borderTop: '.8px dashed var(--border)', borderRadius: 0 }}
             >
               <span className="tx">
-                <b>{s.title || 'Untitled'}</b>
-                <small>{s.group ?? 'No folder'} · {ago(s.updatedAt)}</small>
+                <b>{s.title || t('common.untitled')}</b>
+                <small>{s.group ?? t('overview.noFolder')} · {ago(s.updatedAt)}</small>
               </span>
               <span style={{ fontSize: 11.5, color: s.status === 'running' || s.status === 'waiting' ? 'var(--warning)' : 'var(--success)' }}>
-                {s.status === 'running' ? 'Running' : s.status === 'waiting' ? 'Needs approval' : '✓ Done'}
+                {s.status === 'running' ? t('overview.running') : s.status === 'waiting' ? t('overview.needsApproval') : t('overview.done')}
               </span>
             </button>
           ))}

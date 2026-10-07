@@ -2,6 +2,7 @@
 // unit-tested (src/mobile/__tests__/sw.test.ts). sw.ts wires them up.
 
 import { REMOTE_API_PREFIX, type PushPayload } from '@/lib/remote/protocol'
+import { t } from '../i18n'
 
 export const APP_SCOPE = '/m/'
 
@@ -19,7 +20,7 @@ export function safeUrl(url: unknown): string {
  * browsers penalise a push that shows nothing (`userVisibleOnly`). */
 export function notificationFor(raw: unknown): ShownNotification {
   const p = (raw && typeof raw === 'object' ? raw : {}) as Partial<PushPayload>
-  const title = typeof p.title === 'string' && p.title ? p.title : 'Flint needs you'
+  const title = typeof p.title === 'string' && p.title ? p.title : t('push.defaultTitle')
   const data: PushPayload = {
     title,
     body: typeof p.body === 'string' ? p.body : '',
@@ -40,8 +41,8 @@ export function notificationFor(raw: unknown): ShownNotification {
   }
   if (data.category === 'approval' && data.requestId) {
     options.actions = [
-      { action: 'allow', title: 'Allow once' },
-      { action: 'deny', title: 'Deny' },
+      { action: 'allow', title: t('common.allowOnce') },
+      { action: 'deny', title: t('common.deny') },
     ]
     options.requireInteraction = true
   }
@@ -117,9 +118,6 @@ export async function openApp(
   await clients.openWindow(`${origin}${url}`)
 }
 
-export const RESULT_TEXT: Record<Exclude<RespondResult, 'answered'>, string> = {
-  gone: 'That approval was already answered or its run ended.',
-  unpaired: 'This phone is not paired any more. Open Flint to pair again.',
-  refused: 'Your computer refused that answer. Open Flint to see why.',
-  failed: "Couldn't reach your computer. Open Flint to answer.",
-}
+/** What the notification says when answering from it did not work, in the
+ * page's language (the service worker loads it first; see sw.ts). */
+export const resultText = (r: Exclude<RespondResult, 'answered'>): string => t(`sw.result.${r}`)

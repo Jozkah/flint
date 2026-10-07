@@ -7,14 +7,15 @@ import { go, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { reachLabel } from '../state/sessions'
 import { THEME_WORD } from '../shell/labels'
+import { t } from '../i18n'
 
 const sub = (s: string) => () => go({ name: 'settings-sub', sub: s })
-const onOff = (v: boolean | null | undefined) => (v === undefined || v === null ? undefined : v ? 'On' : 'Off')
+const onOff = (v: boolean | null | undefined) => (v === undefined || v === null ? undefined : v ? t('common.on') : t('common.off'))
 
 export default function Settings() {
   const { data: s } = useRpc('settings.get', {})
   const status = useRpc('status', {})
-  const computer = useApp((st) => st.computerName) ?? 'Your computer'
+  const computer = useApp((st) => st.computerName) ?? t('common.yourComputerCap')
   const theme = useApp((st) => st.theme)
   const [q, setQ] = useState('')
   const loaded = status.data?.modelsLoaded ?? 0
@@ -23,81 +24,81 @@ export default function Settings() {
 
   const groups = [
     {
-      cap: 'This phone',
+      cap: t('settings.groups.phone'),
       rows: rows([
-        { label: 'Remote access', icon: 'signal-full' as const, val: 'On', onClick: () => go({ name: 'remote' }) },
-        { label: 'Notifications', icon: 'bell' as const, onClick: sub('notifs') },
-        { label: 'Sound & haptics', icon: 'x-play' as const, onClick: sub('sound') },
-        { label: 'Reasoning & thinking', icon: 'zap' as const, onClick: sub('reasoning') },
+        { label: t('settings.rows.remote'), icon: 'signal-full' as const, val: t('common.on'), onClick: () => go({ name: 'remote' }) },
+        { label: t('settings.rows.notifications'), icon: 'bell' as const, onClick: sub('notifs') },
+        { label: t('settings.rows.sound'), icon: 'x-play' as const, onClick: sub('sound') },
+        { label: t('settings.rows.reasoning'), icon: 'zap' as const, onClick: sub('reasoning') },
       ]),
     },
     {
-      cap: 'General',
+      cap: t('settings.groups.general'),
       rows: rows([
-        { label: 'General', icon: 'x-sliders' as const, onClick: sub('general') },
-        { label: 'Appearance', icon: 'x-palette' as const, val: THEME_WORD[theme], onClick: sub('appearance') },
-        { label: 'Assistants', icon: 'x-feather' as const, onClick: sub('assistants') },
-        { label: 'Attachments', icon: 'x-clip' as const, onClick: sub('attachments') },
-        { label: 'Memory', icon: 'x-brain' as const, onClick: sub('memory') },
-        { label: 'Permissions', icon: 'x-shield' as const, onClick: sub('perms') },
-        { label: 'Shortcuts', icon: 'command' as const, onClick: sub('shortcuts') },
+        { label: t('settings.rows.general'), icon: 'x-sliders' as const, onClick: sub('general') },
+        { label: t('settings.rows.appearance'), icon: 'x-palette' as const, val: THEME_WORD[theme], onClick: sub('appearance') },
+        { label: t('settings.rows.assistants'), icon: 'x-feather' as const, onClick: sub('assistants') },
+        { label: t('settings.rows.attachments'), icon: 'x-clip' as const, onClick: sub('attachments') },
+        { label: t('settings.rows.memory'), icon: 'x-brain' as const, onClick: sub('memory') },
+        { label: t('settings.rows.permissions'), icon: 'x-shield' as const, onClick: sub('perms') },
+        { label: t('settings.rows.shortcuts'), icon: 'command' as const, onClick: sub('shortcuts') },
       ]),
     },
     {
-      cap: 'Models & tools',
+      cap: t('settings.groups.models'),
       rows: rows([
         {
-          label: 'Providers',
+          label: t('settings.rows.providers'),
           icon: 'x-cube' as const,
-          val: s ? `${s.providers.active} connected` : undefined,
+          val: s ? t('settings.connectedCount', { count: s.providers.active }) : undefined,
           onClick: () => go({ name: 'models' }),
         },
         {
-          label: 'MCP Servers',
+          label: t('settings.rows.mcp'),
           icon: 'flow' as const,
           exp: true,
-          val: s ? `${s.mcpServers.active} on` : undefined,
+          val: s ? t('settings.onCount', { count: s.mcpServers.active }) : undefined,
           onClick: () => go({ name: 'tools' }),
         },
-        { label: 'Web Search', icon: 'x-search' as const, val: onOff(s?.webSearch.enabled), onClick: sub('websearch') },
-        { label: 'Claude Code', icon: 'claude' as const, exp: true, onClick: sub('claudecode') },
+        { label: t('settings.rows.webSearch'), icon: 'x-search' as const, val: onOff(s?.webSearch.enabled), onClick: sub('websearch') },
+        { label: t('settings.rows.claudeCode'), icon: 'claude' as const, exp: true, onClick: sub('claudecode') },
         {
-          label: 'Jev',
+          label: t('settings.rows.jev'),
           icon: 'jev' as const,
           exp: true,
-          val: s?.jev ? (s.jev.skills === 'off' && s.jev.rerank === 'off' ? 'Off' : 'On') : undefined,
+          val: s?.jev ? (s.jev.skills === 'off' && s.jev.rerank === 'off' ? t('common.off') : t('common.on')) : undefined,
           onClick: sub('jev'),
         },
-        { label: 'Extensions', icon: 'x-puzzle' as const, exp: true, onClick: sub('extensions') },
+        { label: t('settings.rows.extensions'), icon: 'x-puzzle' as const, exp: true, onClick: sub('extensions') },
       ]),
     },
     {
-      cap: 'Advanced',
+      cap: t('settings.groups.advanced'),
       rows: rows([
-        { label: 'Local API Server', icon: 'x-server' as const, val: onOff(s?.localApi.enabled), onClick: sub('localapi') },
-        { label: 'HTTPS Proxy', icon: 'x-globe' as const, val: onOff(s?.proxy.enabled), onClick: sub('proxy') },
-        { label: 'Hardware', icon: 'x-cpu' as const, onClick: sub('hardware') },
-        { label: 'Agent Tools', icon: 'x-terminal' as const, val: onOff(s?.agentTools), onClick: sub('agenttools') },
+        { label: t('settings.rows.localApi'), icon: 'x-server' as const, val: onOff(s?.localApi.enabled), onClick: sub('localapi') },
+        { label: t('settings.rows.proxy'), icon: 'x-globe' as const, val: onOff(s?.proxy.enabled), onClick: sub('proxy') },
+        { label: t('settings.rows.hardware'), icon: 'x-cpu' as const, onClick: sub('hardware') },
+        { label: t('settings.rows.agentTools'), icon: 'x-terminal' as const, val: onOff(s?.agentTools), onClick: sub('agenttools') },
       ]),
     },
     {
       cap: '',
       rows: rows([
-        { label: 'Help & feedback', icon: 'headset' as const, onClick: sub('help') },
-        { label: 'About Flint', icon: 'news' as const, val: s?.version, onClick: sub('about') },
+        { label: t('settings.rows.help'), icon: 'headset' as const, onClick: sub('help') },
+        { label: t('settings.rows.about'), icon: 'news' as const, val: s?.version, onClick: sub('about') },
       ]),
     },
   ]
 
   return (
     <>
-      <TopMain crumb="Settings" title="Settings" />
+      <TopMain crumb={t('settings.title')} title={t('settings.title')} />
       <div className="scroll" style={{ padding: 0 }}>
         <div className="ios">
-          <h1>Settings</h1>
+          <h1>{t('settings.title')}</h1>
           <div className="isrch">
             <I n="search" />
-            <input placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search settings" />
+            <input placeholder={t('settings.search')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('settings.searchLabel')} />
           </div>
           {!q && (
             <button type="button" className="profile" onClick={sub('computer')}>
@@ -107,7 +108,7 @@ export default function Settings() {
               <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 <b>{computer}</b>
                 <small>
-                  Connected through {reachLabel()} · {loaded} {loaded === 1 ? 'model' : 'models'} loaded
+                  {t('settings.connectedThrough', { via: reachLabel(), count: loaded })}
                 </small>
               </span>
               <I n="chevr" style={{ color: 'var(--subtle-foreground)' }} />

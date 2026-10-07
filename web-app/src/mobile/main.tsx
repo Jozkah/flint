@@ -15,6 +15,7 @@ import { app, handleEvent, installRuntime } from './state/app'
 import { invalidate } from './state/rpc'
 import { readPairingFragment } from './state/router'
 import { startTheme } from './theme'
+import { getLanguage, LANGUAGE_KEY, onLanguageChange } from './i18n'
 
 const store = mirrorToken(localPairingStore(), (t) => idbSet(TOKEN_KEY, t))
 const client = new RemoteClient({ store })
@@ -48,6 +49,13 @@ document.addEventListener('visibilitychange', syncHidden)
 syncHidden()
 void registerServiceWorker()
 startTheme()
+// The page's language, for the service worker's notifications (no localStorage there).
+document.documentElement.lang = getLanguage()
+void idbSet(LANGUAGE_KEY, getLanguage())
+onLanguageChange((language) => {
+  document.documentElement.lang = language
+  void idbSet(LANGUAGE_KEY, language)
+})
 
 const pairing = readPairingFragment(location.hash)
 if (pairing) app.set({ auth: 'pairing', pairing })

@@ -2,6 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
+vi.mock('@/i18n/react-i18next-compat', async () => {
+  const en = (await import('@/locales/en/common.json')).default as any
+  return {
+    useTranslation: () => ({
+      t: (key: string) =>
+        key
+          .replace(/^common:/, '')
+          .split('.')
+          .reduce((o: any, k) => o?.[k], en) ?? key,
+    }),
+  }
+})
+
 vi.mock('@/lib/migration', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/migration')>()
   return {

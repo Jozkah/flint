@@ -8,6 +8,7 @@ import { clock, toolLabel } from './format'
 import { I } from './icons'
 import { ASSISTANT_ICON } from './assistants'
 import { ReplyRow } from './reply'
+import { t } from '../i18n'
 
 /** Inline `code` and @mentions inside a line of text. */
 function inline(text: string): ReactNode[] {
@@ -113,7 +114,7 @@ export function Reasoning({ text }: { text?: string }) {
   if (!text) return null
   return (
     <details className="thought" data-testid="reasoning">
-      <summary>Thought</summary>
+      <summary>{t('live.thought')}</summary>
       <div>{text}</div>
     </details>
   )
@@ -147,23 +148,23 @@ export function VersionNav({
   if (!versions || versions.count < 2) return null
   const { index, count } = versions
   return (
-    <div className="vnav" role="group" aria-label="Message versions" data-testid="version-nav">
+    <div className="vnav" role="group" aria-label={t('messages.versions')} data-testid="version-nav">
       <button
         type="button"
         className="ib"
-        aria-label={`Previous version (showing ${index} of ${count})`}
+        aria-label={t('messages.previous', { index, count })}
         disabled={index <= 1}
         onClick={() => onStep(-1)}
       >
         <I n="chev" style={{ transform: 'rotate(90deg)' }} />
       </button>
-      <span role="status" aria-live="polite" aria-label={`Version ${index} of ${count}`}>
+      <span role="status" aria-live="polite" aria-label={t('messages.version', { index, count })}>
         {index}/{count}
       </span>
       <button
         type="button"
         className="ib"
-        aria-label={`Next version (showing ${index} of ${count})`}
+        aria-label={t('messages.next', { index, count })}
         disabled={index >= count}
         onClick={() => onStep(1)}
       >
@@ -187,15 +188,15 @@ export function ToolStep({ step }: { step: RemoteToolStep }) {
       {open && (
         <div className="tb">
           <div className="tsec">
-            <div className="h">Parameters</div>
+            <div className="h">{t('messages.parameters')}</div>
             <dl className="kv2">
-              <dt>tool</dt>
+              <dt>{t('messages.tool')}</dt>
               <dd>
                 <code>{step.name}</code>
               </dd>
               {step.arg && (
                 <>
-                  <dt>argument</dt>
+                  <dt>{t('messages.argument')}</dt>
                   <dd>
                     <code>{step.arg}</code>
                   </dd>
@@ -206,7 +207,7 @@ export function ToolStep({ step }: { step: RemoteToolStep }) {
           </div>
           {step.output && (
             <div className="tsec">
-              <div className="h">{step.status === 'failed' ? 'Error' : 'Result'}</div>
+              <div className="h">{step.status === 'failed' ? t('messages.error') : t('messages.result')}</div>
               <pre className="tio" data-testid="tool-output">{step.output}</pre>
             </div>
           )}
@@ -225,7 +226,7 @@ export function ToolTimeline({ steps, after }: { steps: RemoteToolStep[]; after?
       {steps.length > 0 && (
         <button type="button" className="stepcount" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
           <I n="chev" size={13} style={open ? undefined : { transform: 'rotate(-90deg)' }} />
-          {steps.length} {steps.length === 1 ? 'step' : 'steps'}
+          {t('messages.steps', { count: steps.length })}
         </button>
       )}
       {open && (

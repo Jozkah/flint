@@ -1,38 +1,39 @@
 // The design's words for Cowork modes and access, and the thinking-budget
 // levels, shared by sheets and screens.
+import { t } from '../i18n'
 
 export const COWORK_MODES = [
-  { id: 'review', label: 'Review first', short: 'Review', sub: 'Reads, searches and inspects. Cannot write files or run commands.' },
-  { id: 'ask', label: 'Ask before changes', short: 'Ask', sub: 'Works normally, but every change waits for you to allow it.' },
-  { id: 'auto', label: 'Auto mode', short: 'Auto', sub: 'Changes files and runs commands without asking.' },
-  { id: 'bypass', label: 'Bypass permissions', short: 'Bypass', sub: 'Runs tool calls without approval prompts for this session. Folder access limits still apply.' },
+  { id: 'review', label: t('labels.modes.review.label'), short: t('labels.modes.review.short'), sub: t('labels.modes.review.sub') },
+  { id: 'ask', label: t('labels.modes.ask.label'), short: t('labels.modes.ask.short'), sub: t('labels.modes.ask.sub') },
+  { id: 'auto', label: t('labels.modes.auto.label'), short: t('labels.modes.auto.short'), sub: t('labels.modes.auto.sub') },
+  { id: 'bypass', label: t('labels.modes.bypass.label'), short: t('labels.modes.bypass.short'), sub: t('labels.modes.bypass.sub') },
 ] as const
 
 export const ACCESS_MODES = [
-  { id: 'review-only', label: 'Review only', short: 'Review', sub: 'Nothing is written anywhere.' },
-  { id: 'managed-worktree', label: 'Managed worktree', short: 'Worktree', sub: 'A separate branch and folder Flint manages. Your checkout is untouched.' },
-  { id: 'edit-folder', label: 'Edit this folder', short: 'Edit', sub: 'Changes land directly in the attached folder.' },
+  { id: 'review-only', label: t('labels.access.reviewOnly.label'), short: t('labels.access.reviewOnly.short'), sub: t('labels.access.reviewOnly.sub') },
+  { id: 'managed-worktree', label: t('labels.access.worktree.label'), short: t('labels.access.worktree.short'), sub: t('labels.access.worktree.sub') },
+  { id: 'edit-folder', label: t('labels.access.editFolder.label'), short: t('labels.access.editFolder.short'), sub: t('labels.access.editFolder.sub') },
 ] as const
 
 export const LEVELS = [
-  ['Low', '~3k'],
-  ['Medium', '~8k'],
-  ['High', '~16k'],
-  ['XHigh', '~25k'],
-  ['Unlimited', '∞'],
+  [t('labels.levels.low'), '~3k'],
+  [t('labels.levels.medium'), '~8k'],
+  [t('labels.levels.high'), '~16k'],
+  [t('labels.levels.xhigh'), '~25k'],
+  [t('labels.levels.unlimited'), '∞'],
 ] as const
 
 export const modeLabel = (id: string) => COWORK_MODES.find((m) => m.id === id)
 export const accessLabel = (id: string) => ACCESS_MODES.find((m) => m.id === id)
 
 export const ROOM_STATUS: Record<string, string> = {
-  running: 'Running',
-  'awaiting-user': 'Waiting for you',
-  paused: 'Paused',
-  stopped: 'Stopped',
-  completed: 'Completed',
-  failed: 'Failed',
-  draft: 'Draft',
+  running: t('labels.room.running'),
+  'awaiting-user': t('labels.room.awaiting'),
+  paused: t('labels.room.paused'),
+  stopped: t('labels.room.stopped'),
+  completed: t('labels.room.completed'),
+  failed: t('labels.room.failed'),
+  draft: t('labels.room.draft'),
 }
 
-export const THEME_WORD = { system: 'Match phone', light: 'Light', dark: 'Dark' } as const
+export const THEME_WORD = { system: t('theme.system'), light: t('theme.light'), dark: t('theme.dark') } as const

@@ -4,6 +4,7 @@ import type { IconName } from '@/components/ui/icon'
 import { Icon } from '@/components/ui/icon'
 import { I } from './icons'
 import { Sw, TypeSafeMark } from './bits'
+import { t } from '../i18n'
 
 export type IRowProps = {
   icon?: IconName | 'jev' | 'claude' | null
@@ -41,7 +42,7 @@ export function IRow({ icon, label, sub, val, sw, exp, onClick, testId }: IRowPr
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {label}
           {exp && (
-            <span title="Experimental" style={{ color: 'var(--subtle-foreground)', display: 'flex' }}>
+            <span title={t('common.experimental')} style={{ color: 'var(--subtle-foreground)', display: 'flex' }}>
               <I n="flask" size={13} />
             </span>
           )}

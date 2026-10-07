@@ -34,6 +34,7 @@ import {
   settlePending,
 } from './live'
 import { clearAttachments, outgoing } from './attachments'
+import { t } from '../i18n'
 
 export type Notice = {
   id: string
@@ -227,28 +228,28 @@ export function setTheme(theme: ThemePref) {
 // ---------------------------------------------------------------------------
 
 const LATER: Partial<Record<RemoteMethod, string>> = {
-  'chat.send': 'Sending from the phone',
-  'cowork.send': 'Sending from the phone',
-  'room.send': 'Writing to a room from the phone',
-  'room.control': 'Controlling a room from the phone',
-  'run.stop': 'Stopping runs from the phone',
-  'approvals.respond': 'Answering approvals from the phone',
-  'settings.set': 'Changing settings from the phone',
+  'chat.send': t('app.later.send'),
+  'cowork.send': t('app.later.send'),
+  'room.send': t('app.later.roomSend'),
+  'room.control': t('app.later.roomControl'),
+  'run.stop': t('app.later.stop'),
+  'approvals.respond': t('app.later.approvals'),
+  'settings.set': t('app.later.settings'),
 }
 
 /** Why a call failed, in words for a toast. */
 export function describeError(method: RemoteMethod, e: unknown): string {
   if (e instanceof RemoteCallError) {
-    if (e.code === 'not_implemented') return `${LATER[method] ?? 'This'} comes in a later update`
+    if (e.code === 'not_implemented') return t('app.laterUpdate', { what: LATER[method] ?? t('app.this') })
     if (e.code === 'forbidden') return e.message
-    if (e.code === 'network') return "Can't reach your computer"
-    if (e.code === 'unavailable') return "Flint's window isn't open on your computer"
-    if (e.code === 'timeout') return "Your computer didn't answer in time"
-    if (e.code === 'unauthorized') return "This phone isn't paired"
+    if (e.code === 'network') return t('app.cantReach')
+    if (e.code === 'unavailable') return t('app.windowClosed')
+    if (e.code === 'timeout') return t('app.timeout')
+    if (e.code === 'unauthorized') return t('pairing.unpairedTitle')
     if (e.code === 'desktop_only') return `${e.message}.`
     return e.message
   }
-  return 'Something went wrong'
+  return t('app.wentWrong')
 }
 
 /** Calls a method that acts on the computer. The desktop's answer is shown
@@ -328,8 +329,8 @@ export async function sendMessage(
       settlePending(clientId, result)
       if (kind !== 'room' && !opts.clientId) clearAttachments(key)
       for (const r of result.rejected ?? []) toast(`${r.name}: ${r.message}`)
-      if (result.delivery === 'queued') toast('Queued · sends when the current run ends')
-      else if (result.delivery === 'steered') toast('Steering · goes to the run at its next step')
+      if (result.delivery === 'queued') toast(t('live.pending.queued'))
+      else if (result.delivery === 'steered') toast(t('live.pending.steered'))
       invalidate(['sessions.list', 'thread.queue', 'status'])
       return result
     } catch (e) {
@@ -363,7 +364,7 @@ export async function respondApproval(
   scope: NonNullable<ApprovalRespondParams['scope']> = 'once',
   label?: string
 ) {
-  const words = label ?? (decision === 'deny' ? 'Denied' : 'Allowed once')
+  const words = label ?? (decision === 'deny' ? t('app.denied') : t('app.allowedOnce'))
   const r = await act('approvals.respond', {
     requestId: a.requestId,
     decision,
@@ -371,11 +372,11 @@ export async function respondApproval(
   })
   if (!r) return undefined
   if (r.status === 'gone') {
-    markResolved(a.requestId, { by: 'computer', label: 'Answered from the computer', threadId: a.threadId })
-    toast('Already answered from the computer')
+    markResolved(a.requestId, { by: 'computer', label: t('app.answeredOnComputer'), threadId: a.threadId })
+    toast(t('app.alreadyAnswered'))
   } else {
-    markResolved(a.requestId, { by: 'phone', label: `${words} · from this phone`, threadId: a.threadId })
-    toast(`${words} · from this phone`)
+    markResolved(a.requestId, { by: 'phone', label: t('app.fromPhone', { words }), threadId: a.threadId })
+    toast(t('app.fromPhone', { words }))
   }
   invalidate(['approvals.list', 'status', 'cowork.get', 'sessions.list'])
   return r
@@ -386,11 +387,11 @@ export async function respondAsk(a: Pick<RemoteAsk, 'requestId' | 'threadId'>, a
   const r = await act('asks.respond', { requestId: a.requestId, threadId: a.threadId, answers })
   if (!r) return undefined
   if (r.status === 'gone') {
-    markResolved(a.requestId, { by: 'computer', label: 'Answered from the computer', threadId: a.threadId })
-    toast('Already answered from the computer')
+    markResolved(a.requestId, { by: 'computer', label: t('app.answeredOnComputer'), threadId: a.threadId })
+    toast(t('app.alreadyAnswered'))
   } else {
-    const words = answers ? 'Answered' : 'Skipped'
-    markResolved(a.requestId, { by: 'phone', label: `${words} · from this phone`, threadId: a.threadId })
+    const words = answers ? t('app.answered') : t('app.skipped')
+    markResolved(a.requestId, { by: 'phone', label: t('app.fromPhone', { words }), threadId: a.threadId })
   }
   invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
   return r
@@ -401,10 +402,10 @@ export async function respondPrompt(p: Pick<RemotePrompt, 'id' | 'threadId'>, ac
   const r = await act('approvals.prompt', { id: p.id, action })
   if (!r) return undefined
   if (r.status === 'gone') {
-    markResolved(p.id, { by: 'computer', label: 'Answered from the computer', threadId: p.threadId })
-    toast('Already answered from the computer')
+    markResolved(p.id, { by: 'computer', label: t('app.answeredOnComputer'), threadId: p.threadId })
+    toast(t('app.alreadyAnswered'))
   } else {
-    markResolved(p.id, { by: 'phone', label: `${label} · from this phone`, threadId: p.threadId })
+    markResolved(p.id, { by: 'phone', label: t('app.fromPhone', { words: label }), threadId: p.threadId })
   }
   invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
   return r
@@ -438,8 +439,8 @@ export function followThread(kind: SessionKind, id: string): () => void {
 }
 
 /** For controls with no RPC yet (rename, delete, export ...). */
-export function notYet(what = 'This') {
-  toast(`${what} isn't available from the phone yet`)
+export function notYet(what = t('app.this')) {
+  toast(t('app.notYet', { what }))
 }
 
 // ---------------------------------------------------------------------------
@@ -468,7 +469,7 @@ export function markNoticesRead() {
 /** Cache-key prefix of one conversation's messages (params start with id). */
 const threadKey = (id: string) => `thread.messages ${JSON.stringify({ id }).slice(0, -1)}`
 
-const KIND_WORD: Record<SessionKind, string> = { chat: 'Chat', cowork: 'Cowork', room: 'Room' }
+const KIND_WORD: Record<SessionKind, string> = { chat: t('home.modes.chat'), cowork: t('home.modes.cowork'), room: t('room.crumb') }
 
 /** The kind of a conversation this phone has listed; Cowork when unknown. */
 const kindOf = (id: string): SessionKind =>
@@ -480,8 +481,8 @@ export function handleEvent(e: RemoteEvent) {
       invalidate(['approvals.list', 'status', 'sessions.list', 'cowork.get'])
       addNotice({
         kind: 'approval',
-        title: 'Approval waiting',
-        body: `Flint wants to use ${e.toolName}`,
+        title: t('notifications.approval'),
+        body: t('app.wantsToUse', { tool: e.toolName }),
         route: { name: e.kind ?? kindOf(e.threadId), id: e.threadId },
         requestId: e.requestId,
       })
@@ -490,8 +491,8 @@ export function handleEvent(e: RemoteEvent) {
       invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
       addNotice({
         kind: 'approval',
-        title: 'Flint has a question',
-        body: e.question || 'Your Cowork session is waiting for your answer',
+        title: t('notifications.question'),
+        body: e.question || t('app.questionBody'),
         route: { name: 'cowork', id: e.threadId },
       })
       break
@@ -499,7 +500,7 @@ export function handleEvent(e: RemoteEvent) {
       invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
       addNotice({
         kind: 'approval',
-        title: 'Flint needs you',
+        title: t('home.needsYou'),
         body: e.title,
         route: e.threadId ? { name: kindOf(e.threadId), id: e.threadId } : { name: 'notifications' },
       })
@@ -507,7 +508,7 @@ export function handleEvent(e: RemoteEvent) {
     case 'prompt.resolved': {
       const shown = peekRpc('prompts.list', {})?.prompts.find((p) => p.id === e.id)
       if (shown && !live.get().resolved[e.id]) {
-        markResolved(e.id, { by: 'computer', label: 'Answered from the computer', threadId: shown.threadId })
+        markResolved(e.id, { by: 'computer', label: t('app.answeredOnComputer'), threadId: shown.threadId })
       }
       invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
       break
@@ -516,7 +517,7 @@ export function handleEvent(e: RemoteEvent) {
       // Answered on the computer (or another phone) while this phone showed it.
       const shown = peekRpc('asks.list', {})?.asks.find((a) => a.requestId === e.requestId)
       if (shown && !live.get().resolved[e.requestId]) {
-        markResolved(e.requestId, { by: 'computer', label: 'Answered from the computer', threadId: shown.threadId })
+        markResolved(e.requestId, { by: 'computer', label: t('app.answeredOnComputer'), threadId: shown.threadId })
       }
       invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
       break
@@ -525,7 +526,7 @@ export function handleEvent(e: RemoteEvent) {
       // Answered on the computer (or another phone) while this phone showed it.
       const shown = peekRpc('approvals.list', {})?.approvals.find((a) => a.requestId === e.requestId)
       if (shown && !live.get().resolved[e.requestId]) {
-        markResolved(e.requestId, { by: 'computer', label: 'Answered from the computer', threadId: shown.threadId })
+        markResolved(e.requestId, { by: 'computer', label: t('app.answeredOnComputer'), threadId: shown.threadId })
       }
       if (app.get().push?.requestId === e.requestId) app.set({ push: null })
       invalidate(['approvals.list', 'status', 'sessions.list', 'cowork.get'])
@@ -566,8 +567,8 @@ export function handleEvent(e: RemoteEvent) {
       addNotice(
         {
           kind: e.kind === 'room' ? 'room' : 'run',
-          title: `${KIND_WORD[e.kind]} run finished`,
-          body: 'Open it to see the result.',
+          title: t('app.runFinished', { kind: KIND_WORD[e.kind] }),
+          body: t('app.openResult'),
           route: { name: e.kind, id: e.id },
         },
         e.kind !== 'chat'

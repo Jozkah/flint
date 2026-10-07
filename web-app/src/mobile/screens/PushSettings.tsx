@@ -7,15 +7,16 @@ import { Grp, IRow } from '../ui/ios'
 import { act, describeError, toast } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
 import { DEFAULT_PUSH, disablePush, enablePush, minToTime, pushSupport, supportText, timeToMin, withOffset, type PushSupport } from '../state/push'
+import { t } from '../i18n'
 
 const TYPES: [keyof PushPrefs, string][] = [
-  ['approvals', 'An approval is waiting'],
-  ['runFinished', 'A run finishes'],
-  ['runFailed', 'A run fails or stops'],
-  ['pr', 'A PR merges or its checks fail'],
-  ['roomWaiting', 'A Room is waiting for you'],
-  ['synthesis', 'A Room synthesis is ready'],
-  ['chatReply', 'A chat reply finishes'],
+  ['approvals', t('push.types.approvals')],
+  ['runFinished', t('push.types.runFinished')],
+  ['runFailed', t('push.types.runFailed')],
+  ['pr', t('push.types.pr')],
+  ['roomWaiting', t('push.types.roomWaiting')],
+  ['synthesis', t('push.types.synthesis')],
+  ['chatReply', t('push.types.chatReply')],
 ]
 
 
@@ -47,37 +48,37 @@ export default function PushSettings({ support = pushSupport() }: { support?: Pu
   return (
     <>
       <Grp
-        cap="Push notifications"
-        foot={why ?? 'Sent by your computer straight to this phone’s push service, only while Flint is not open here. Payloads are encrypted and carry no message text.'}
+        cap={t('push.title')}
+        foot={why ?? t('push.foot')}
       >
         <IRow
-          label="Notify this phone"
+          label={t('push.notify')}
           sw={on}
-          sub={data && !data.available ? 'Not set up on the computer' : undefined}
+          sub={data && !data.available ? t('push.notSetUp') : undefined}
           onClick={why || busy || (data && !data.available) ? undefined : () => void toggle()}
           testId="push-toggle"
         />
-        {on && <IRow label="Send a test notification" onClick={() => void act('push.test', {}, 'Test sent')} testId="push-test" />}
+        {on && <IRow label={t('push.sendTest')} onClick={() => void act('push.test', {}, t('push.testSent'))} testId="push-test" />}
       </Grp>
       {on && (
         <>
-          <Grp cap="Notify me when">
+          <Grp cap={t('push.notifyWhen')}>
             {TYPES.map(([k, label]) => (
               <IRow key={k} label={label} sw={!!prefs[k]} onClick={flip(k)} testId={`push-${k}`} />
             ))}
           </Grp>
-          <Grp foot="Shows “Flint needs you” instead of what happened, for lock screens.">
-            <IRow label="Hide content" sw={prefs.hideContent} onClick={flip('hideContent')} testId="push-hide" />
+          <Grp foot={t('push.hideFoot')}>
+            <IRow label={t('push.hideContent')} sw={prefs.hideContent} onClick={flip('hideContent')} testId="push-hide" />
           </Grp>
-          <Grp cap="Quiet hours" foot="Nothing but approvals comes through during quiet hours.">
-            <IRow label="Quiet hours" sw={quiet.enabled} onClick={() => setQuiet({ enabled: !quiet.enabled })} testId="push-quiet" />
+          <Grp cap={t('push.quiet')} foot={t('push.quietFoot')}>
+            <IRow label={t('push.quiet')} sw={quiet.enabled} onClick={() => setQuiet({ enabled: !quiet.enabled })} testId="push-quiet" />
             {quiet.enabled && (
               <div className="irow noic" style={{ gap: 8 }}>
                 <label className="lab" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  From
-                  <input type="time" aria-label="Quiet hours start" value={minToTime(quiet.start)} onChange={(e) => { const m = timeToMin(e.target.value); if (m !== null) setQuiet({ start: m }) }} />
-                  to
-                  <input type="time" aria-label="Quiet hours end" value={minToTime(quiet.end)} onChange={(e) => { const m = timeToMin(e.target.value); if (m !== null) setQuiet({ end: m }) }} />
+                  {t('push.from')}
+                  <input type="time" aria-label={t('push.quietStart')} value={minToTime(quiet.start)} onChange={(e) => { const m = timeToMin(e.target.value); if (m !== null) setQuiet({ start: m }) }} />
+                  {t('push.to')}
+                  <input type="time" aria-label={t('push.quietEnd')} value={minToTime(quiet.end)} onChange={(e) => { const m = timeToMin(e.target.value); if (m !== null) setQuiet({ end: m }) }} />
                 </label>
               </div>
             )}

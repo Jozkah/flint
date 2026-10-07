@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/hover-card'
 import { useWebCitationStore } from '@/stores/web-citation-store'
 import { cn } from '@/lib/utils'
-import { hostOf, siteInitial } from '@/lib/webUrl'
+import { hostOf, isHttpUrl, siteInitial } from '@/lib/webUrl'
 import { SiteIcon } from '@/components/SiteIcon'
 
 export const WebCitationChip = memo(
@@ -14,6 +14,7 @@ export const WebCitationChip = memo(
     const citation = useWebCitationStore((s) =>
       messageId ? s.byMessageId[messageId]?.[url] : undefined
     )
+    if (!isHttpUrl(url)) return null
     const host = hostOf(url)
     const initial = siteInitial(url)
     return (
@@ -32,7 +33,7 @@ export const WebCitationChip = memo(
               fallback={
                 <span
                   aria-hidden
-                  className="inline-block size-3.5 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground hover:ring-2 hover:ring-primary/40"
+                  className="size-3.5 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground hover:ring-2 hover:ring-primary/40"
                 >
                   {initial}
                 </span>

@@ -290,16 +290,18 @@ export function DataProvider() {
       })
     serviceHub.deeplink().getCurrent().then(handleDeepLink)
 
-    let unsubscribeOpenUrl = () => {}
+    let cancelled = false
+    let unsubscribeOpenUrl: (() => void) | undefined
     serviceHub
       .deeplink()
       .onOpenUrl(handleDeepLink)
       .then((unsub) => {
-        unsubscribeOpenUrl = unsub
+        if (cancelled) unsub()
+        else unsubscribeOpenUrl = unsub
       })
 
     // Listen for deep link events
-    let unsubscribe = () => {}
+    let unsubscribe: (() => void) | undefined
     serviceHub
       .events()
       .listen(SystemEvent.DEEP_LINK, (event) => {
@@ -307,11 +309,13 @@ export function DataProvider() {
         handleDeepLink([deep_link])
       })
       .then((unsub) => {
-        unsubscribe = unsub
+        if (cancelled) unsub()
+        else unsubscribe = unsub
       })
     return () => {
-      unsubscribeOpenUrl()
-      unsubscribe()
+      cancelled = true
+      unsubscribeOpenUrl?.()
+      unsubscribe?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceHub])

@@ -1,3 +1,4 @@
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import {
@@ -6,7 +7,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { copyToClipboard } from '@/lib/clipboard'
 
 type SecretInputProps = Omit<
@@ -16,7 +17,10 @@ type SecretInputProps = Omit<
 
 export function SecretInput({ className, value, ...props }: SecretInputProps) {
   const [revealed, setRevealed] = useState(false)
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(copiedTimer.current), [])
 
   const stringValue = typeof value === 'string' ? value : String(value ?? '')
 
@@ -24,7 +28,8 @@ export function SecretInput({ className, value, ...props }: SecretInputProps) {
     if (!stringValue) return
     if (!(await copyToClipboard(stringValue))) return
     setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    clearTimeout(copiedTimer.current)
+    copiedTimer.current = setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -39,7 +44,7 @@ export function SecretInput({ className, value, ...props }: SecretInputProps) {
         <button
           type="button"
           tabIndex={-1}
-          aria-label={revealed ? 'Hide' : 'Reveal'}
+          aria-label={revealed ? t('common:a11y.hide') : t('common:a11y.reveal')}
           className="p-1 rounded text-muted-foreground hover:bg-secondary/50"
           onClick={() => setRevealed((v) => !v)}
         >
@@ -48,7 +53,7 @@ export function SecretInput({ className, value, ...props }: SecretInputProps) {
         <button
           type="button"
           tabIndex={-1}
-          aria-label="Copy"
+          aria-label={t('common:a11y.copy')}
           disabled={!stringValue}
           className="p-1 rounded text-muted-foreground hover:bg-secondary/50 disabled:opacity-40 disabled:pointer-events-none"
           onClick={handleCopy}

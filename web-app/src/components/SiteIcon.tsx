@@ -9,7 +9,16 @@ import { faviconCandidates } from '@/lib/webUrl'
  * `<link>` instead), so the common first-party names are tried in turn before
  * giving up. All of them are on the site's own origin.
  */
-export function SiteIcon({
+export function SiteIcon(props: {
+  url: string
+  className?: string
+  fallback: ReactNode
+}) {
+  // Keyed by address so a new url starts again at the first candidate.
+  return <SiteIconFor key={props.url} {...props} />
+}
+
+function SiteIconFor({
   url,
   className,
   fallback,

@@ -4,6 +4,9 @@ import userEvent from '@testing-library/user-event'
 import { TokenCounter } from '../TokenCounter'
 import { useTokensCount } from '@/hooks/useTokensCount'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
+
+// These tests read the words, so they use the English strings rather than the keys.
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
 vi.mock('@/hooks/useTokensCount', () => ({
   useTokensCount: vi.fn(),
 }))

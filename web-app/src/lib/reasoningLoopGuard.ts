@@ -6,6 +6,12 @@ const WINDOW = MAX_PERIOD * 4
 const MIN_COVERED = 48
 /** A unit must come round at least this often. */
 const MIN_REPEATS = 4
+/**
+ * The most unfinished text held while waiting for a word to end. A longer run
+ * with no whitespace (minified blob, base64) is closed off as one token, so
+ * memory and the per-delta join cost stay bounded.
+ */
+const MAX_PENDING = 1024
 
 /**
  * Detect a model stuck repeating the same reasoning, independent of stream
@@ -22,6 +28,10 @@ export class ReasoningLoopGuard {
     const words = joined.split(/\s+/)
     this.pending = words.pop() ?? ''
     this.tokens.push(...words.filter(Boolean))
+    if (this.pending.length > MAX_PENDING) {
+      this.tokens.push(this.pending.slice(0, MAX_PENDING))
+      this.pending = ''
+    }
     if (this.tokens.length > WINDOW) this.tokens.splice(0, this.tokens.length - WINDOW)
     return this.looping()
   }

@@ -1,6 +1,7 @@
 // The effort bar's stops, as ReasoningEffortSlider computes them.
 import type { ChatDetails, EffortChoiceWire } from '@/lib/remote/protocol'
 import { clampEffort, effortLabel, type EffortLevel } from '@/lib/modelEffort'
+import { t } from '../i18n'
 
 /** The bar's stops and the one shown, as ReasoningEffortSlider computes them. */
 export function effortStops(e: NonNullable<ChatDetails['effort']>) {
@@ -12,4 +13,4 @@ export function effortStops(e: NonNullable<ChatDetails['effort']>) {
   return { stops, shown: (chosen ?? fallback) as EffortChoiceWire }
 }
 
-export const stopLabel = (s: EffortChoiceWire) => (s === 'off' ? 'Off' : effortLabel(s as EffortLevel))
+export const stopLabel = (s: EffortChoiceWire) => (s === 'off' ? t('common.off') : effortLabel(s as EffortLevel))

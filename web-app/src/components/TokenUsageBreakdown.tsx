@@ -1,3 +1,4 @@
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -12,22 +13,6 @@ import {
   type TokenUsage,
   type UsageValueKind,
 } from '@/lib/tokenUsage'
-
-/** Why "Uncached input" is not a count of cache misses. */
-export const UNCACHED_INPUT_NOTE =
-  'Derived: input tokens minus cached input tokens. This is a token count, not a number of cache-miss events.'
-
-export const CACHE_UNREPORTED_NOTE =
-  'The provider did not report prompt-cache usage for this request, so no cached or uncached split is shown.'
-
-export const CACHE_WRITE_NOTE =
-  'Tokens the provider wrote to its prompt cache. They are part of the uncached input and are not counted again in the total.'
-
-const KIND_LABEL: Record<UsageValueKind, string> = {
-  reported: 'reported',
-  derived: 'derived',
-  clamped: 'clamped',
-}
 
 const formatExact = (num: number) => num.toLocaleString()
 
@@ -54,6 +39,7 @@ export function TokenUsageBreakdown({
   /** Distinguishes a per-message breakdown from the counter's. */
   testIdPrefix?: string
 }) {
+  const { t } = useTranslation()
   const input = usage.inputTokens
   const cached = usage.cachedInputTokens
   const uncached = usage.uncachedInputTokens
@@ -67,13 +53,13 @@ export function TokenUsageBreakdown({
     <div
       className={cn('space-y-1.5 min-w-0', className)}
       role="group"
-      aria-label="Token usage for this request"
+      aria-label={t('common:a11y.requestTokenUsage')}
       data-testid={id('breakdown')}
       data-usage-scope={scope}
     >
       {input !== undefined && (
         <div className="flex items-center justify-between gap-2 text-xs">
-          <span className="text-muted-foreground">Prompt cache</span>
+          <span className="text-muted-foreground">{t('common:usage.promptCache')}</span>
           <CacheReuseBadge usage={usage} testId={id('cache-status')} />
         </div>
       )}
@@ -84,19 +70,19 @@ export function TokenUsageBreakdown({
           data-requests={usage.requests}
           data-cache-hit-requests={usage.cacheHitRequests}
         >
-          {usage.requests} requests
+          {t('common:usage.requests', { count: usage.requests })}
           {usage.cacheHitRequests !== undefined &&
-            ` · cache reused on ${usage.cacheHitRequests}`}
+            t('common:usage.reusedOn', { count: usage.cacheHitRequests })}
           {usage.cacheReportedRequests !== undefined &&
             usage.cacheReportedRequests < usage.requests &&
-            ` · ${usage.requests - usage.cacheReportedRequests} did not report the cache`}
+            t('common:usage.didNotReport', { count: usage.requests - usage.cacheReportedRequests })}
         </div>
       )}
       {input !== undefined && (
         <Row
           testId={id('input')}
           icon={<ArrowUp className="size-3.5" aria-hidden />}
-          label="Input"
+          label={t('common:usage.input')}
           value={input}
           kind={kinds.input}
         />
@@ -115,20 +101,20 @@ export function TokenUsageBreakdown({
           <Row
             testId={id('cached')}
             swatch="bg-chart-1"
-            label="Cached input"
+            label={t('common:usage.cachedInput')}
             value={cached}
             kind={kinds.cached}
-            title="Read from the provider's prompt cache"
+            title={t('common:a11y.promptCacheRead')}
             indent
           />
           {uncached !== undefined && (
             <Row
               testId={id('uncached')}
               swatch="bg-chart-3"
-              label="Uncached input"
+              label={t('common:usage.uncachedInput')}
               value={uncached}
               kind={kinds.uncached}
-              note={UNCACHED_INPUT_NOTE}
+              note={t('common:usage.uncachedNote')}
               indent
             />
           )}
@@ -137,9 +123,9 @@ export function TokenUsageBreakdown({
         input !== undefined && (
           <Row
             testId={id('cache-unreported')}
-            label="Cached input"
-            text="Not reported"
-            title={CACHE_UNREPORTED_NOTE}
+            label={t('common:usage.cachedInput')}
+            text={t('common:usage.notReported')}
+            title={t('common:usage.unreportedNote')}
             muted
             indent
           />
@@ -150,10 +136,10 @@ export function TokenUsageBreakdown({
         <Row
           testId={id('cache-write')}
           swatch="bg-chart-2"
-          label="Cache write"
+          label={t('common:usage.cacheWrite')}
           value={cacheWrite}
           kind={kinds.cacheWrite}
-          note={CACHE_WRITE_NOTE}
+          note={t('common:usage.writeNote')}
           indent={cacheKnown ? 2 : 1}
         />
       )}
@@ -162,7 +148,7 @@ export function TokenUsageBreakdown({
         <Row
           testId={id('output')}
           icon={<ArrowDown className="size-3.5" aria-hidden />}
-          label="Output"
+          label={t('common:usage.output')}
           value={usage.outputTokens}
           kind={kinds.output}
         />
@@ -172,7 +158,7 @@ export function TokenUsageBreakdown({
         <Row
           testId={id('total')}
           icon={<Sigma className="size-3.5" aria-hidden />}
-          label="Total"
+          label={t('common:usage.total')}
           value={usage.totalTokens}
           kind={kinds.total}
           strong
@@ -185,12 +171,15 @@ export function TokenUsageBreakdown({
           data-testid={id('clamped')}
           role="note"
         >
-          The provider reported inconsistent cache counts
-          {usage.reported.cachedInputTokens !== undefined &&
-            ` (cached ${formatExact(usage.reported.cachedInputTokens)})`}
-          {usage.reported.cacheWriteTokens !== undefined &&
-            ` (cache write ${formatExact(usage.reported.cacheWriteTokens)})`}
-          ; the values above were clamped to the input.
+          {t('common:usage.clamped', {
+            detail:
+              (usage.reported.cachedInputTokens !== undefined
+                ? t('common:usage.clampedCached', { n: formatExact(usage.reported.cachedInputTokens) })
+                : '') +
+              (usage.reported.cacheWriteTokens !== undefined
+                ? t('common:usage.clampedWrite', { n: formatExact(usage.reported.cacheWriteTokens) })
+                : ''),
+          })}
         </div>
       )}
 
@@ -199,7 +188,7 @@ export function TokenUsageBreakdown({
           className="text-[10px] leading-snug text-muted-foreground break-words"
           data-testid={id('source')}
         >
-          Cache figures reported via {source}
+          {t('common:usage.reportedVia', { source })}
         </div>
       )}
     </div>
@@ -261,6 +250,12 @@ function Row({
   muted?: boolean
   indent?: boolean | 1 | 2
 }) {
+  const { t } = useTranslation()
+  const kindLabel: Record<UsageValueKind, string> = {
+    reported: t('common:usage.kind.reported'),
+    derived: t('common:usage.kind.derived'),
+    clamped: t('common:usage.kind.clamped'),
+  }
   const depth = indent === true ? 1 : indent || 0
   const shown = value !== undefined ? formatExact(value) : text
   return (
@@ -270,7 +265,11 @@ function Row({
       data-value={value}
       data-kind={kind}
       title={title}
-      aria-label={`${label}: ${shown}${kind ? ` (${KIND_LABEL[kind]})` : ''}`}
+      aria-label={
+        kind
+          ? t('common:usage.rowLabelKind', { label, value: shown, kind: kindLabel[kind] })
+          : t('common:usage.rowLabel', { label, value: shown })
+      }
     >
       <span
         className={cn(
@@ -318,7 +317,7 @@ function Row({
             )}
             aria-hidden="true"
           >
-            {KIND_LABEL[kind]}
+            {kindLabel[kind]}
           </span>
         )}
         <span

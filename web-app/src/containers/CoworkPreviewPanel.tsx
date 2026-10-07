@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toAssetUrl } from '@/lib/assetPath'
 import { FolderOpen, Globe, RotateCw, SquareArrowOutUpRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -8,7 +9,7 @@ import {
 } from '@/components/ui/tooltip'
 import { RenderMarkdown } from '@/containers/RenderMarkdown'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
-import { getServiceHub, useServiceHub } from '@/hooks/useServiceHub'
+import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { buildSrcDoc } from '@/lib/htmlSandbox'
 import { usePreviewSource } from '@/hooks/usePreviewSource'
@@ -112,7 +113,7 @@ export function CoworkPreviewPanel({ root, path, onClose, verify }: Props) {
     setState({ status: 'loading', path })
 
     void (async () => {
-      const url = getServiceHub().core().convertFileSrc(abs)
+      const url = await toAssetUrl(abs)
       if (isAssetKind(kind)) {
         // The element streams the file itself, so there is nothing to fetch and
         // a large video costs nothing to "open".

@@ -4,6 +4,7 @@ import { TopThread } from '../shell/TopBar'
 import { Composer } from '../shell/Composer'
 import { ROOM_STATUS } from '../shell/labels'
 import { I } from '../ui/icons'
+import { Tx } from '../ui/trans'
 import { Avatar, Empty, Loading } from '../ui/bits'
 import { compact, duration, speakerColor } from '../ui/format'
 import { Prose } from '../ui/messages'
@@ -12,27 +13,28 @@ import { useRpc } from '../state/rpc'
 import { pendingFor, useLive } from '../state/live'
 import { PendingBubble, StreamingMessage } from '../ui/live'
 import { useFollow, useStickToBottom } from '../ui/hooks'
+import { t } from '../i18n'
 
 function UsageStrip({ room }: { room: RoomDetail }) {
   const { usage: u, limits: l } = room
   return (
     <div className="usage">
       <span>
-        Turns <b>{u.turns} / {l.maxTurns}</b>
+        <Tx k="room.usage.turns" parts={{ value: <b>{u.turns} / {l.maxTurns}</b> }} />
       </span>
       <span>
-        Rounds <b>{u.rounds} / {l.maxRounds}</b>
+        <Tx k="room.usage.rounds" parts={{ value: <b>{u.rounds} / {l.maxRounds}</b> }} />
       </span>
       <span>
-        Tokens <b>{compact(u.tokens)} / {compact(l.maxTotalTokens)}</b>
+        <Tx k="room.usage.tokens" parts={{ value: <b>{compact(u.tokens)} / {compact(l.maxTotalTokens)}</b> }} />
       </span>
       {u.costUsd !== null && (
         <span>
-          Cost <b>${u.costUsd.toFixed(2)}{l.maxCostUsd !== null ? ` / $${l.maxCostUsd.toFixed(2)}` : ''}</b>
+          <Tx k="room.usage.cost" parts={{ value: <b>${u.costUsd.toFixed(2)}{l.maxCostUsd !== null ? ` / $${l.maxCostUsd.toFixed(2)}` : ''}</b> }} />
         </span>
       )}
       <span>
-        Time <b>{duration(u.activeMs)} / {duration(l.maxDurationMs)}</b>
+        <Tx k="room.usage.time" parts={{ value: <b>{duration(u.activeMs)} / {duration(l.maxDurationMs)}</b> }} />
       </span>
     </div>
   )
@@ -62,10 +64,10 @@ export default function Room({ id }: { id: string }) {
         crumb={
           <>
             {running ? <I n="loader" size={11} spin="slow" /> : room?.roomStatus === 'awaiting-user' ? <span className="sd wait" style={{ width: 6, height: 6 }} /> : null}
-            {room ? `${ROOM_STATUS[room.roomStatus] ?? 'Room'} · Room` : 'Room'}
+            {room ? t('room.crumbStatus', { status: ROOM_STATUS[room.roomStatus] ?? t('room.crumb') }) : t('room.crumb')}
           </>
         }
-        title={room?.title || 'Room'}
+        title={room?.title || t('room.crumb')}
         menu={() => openSheet('roommenu', { id, title: room?.title })}
       />
       {room && <UsageStrip room={room} />}
@@ -76,11 +78,11 @@ export default function Room({ id }: { id: string }) {
           <div className="stage">
             <Avatar id={next.model} provider={next.provider} name={next.name} size={32} />
             <span className="tx">
-              <b>{running ? `${next.name} is speaking` : 'Waiting for you'}</b>
+              <b>{running ? t('room.speaking', { name: next.name }) : t('room.waitingForYou')}</b>
               <small>
                 {running
-                  ? `${next.role} · ${next.model} · Round ${Math.max(1, room.round)} of ${room.limits.maxRounds}`
-                  : 'Choose who speaks next, or reply'}
+                  ? t('room.stageLine', { role: next.role, model: next.model, round: Math.max(1, room.round), max: room.limits.maxRounds })
+                  : t('room.chooseNext')}
               </small>
             </span>
             {running && (
@@ -96,12 +98,12 @@ export default function Room({ id }: { id: string }) {
         {room && room.objective && messages.length === 0 && (
           <div className="rm">
             <div className="who">
-              <b>Objective</b>
+              <b>{t('room.objective')}</b>
             </div>
             {room.objective}
           </div>
         )}
-        {msgs.data && messages.length === 0 && <Empty>No one has spoken yet.</Empty>}
+        {msgs.data && messages.length === 0 && <Empty>{t('room.noOne')}</Empty>}
         {messages.map((m) => {
           const p = byName(m.author)
           const isUser = m.role === 'user'
@@ -109,7 +111,7 @@ export default function Room({ id }: { id: string }) {
             <div key={m.id} className="rm msg">
               <div className="who">
                 {!isUser && p && <Avatar id={p.model} provider={p.provider} name={p.name} size={16} />}
-                <b style={p && room ? { color: speakerColor(room, p.id) } : undefined}>{isUser ? 'You' : (m.author ?? 'Moderator')}</b>
+                <b style={p && room ? { color: speakerColor(room, p.id) } : undefined}>{isUser ? t('room.you') : (m.author ?? t('room.moderator'))}</b>
                 {!isUser && (m.authorRole || p) && (
                   <>
                     · {m.authorRole ?? p?.role}
@@ -127,16 +129,16 @@ export default function Room({ id }: { id: string }) {
         {streamShown && <StreamingMessage s={streamShown} />}
       </div>
       <Composer
-        placeholder="Write to the room… use @ to mention someone"
-        label="Message to the room"
+        placeholder={t('room.placeholder')}
+        label={t('room.messageLabel')}
         top={
           <div className="to">
             <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>
-              To
+              {t('room.to')}
             </span>
             <button type="button" className="chip" aria-pressed={to === 'everyone'} onClick={() => setTo('everyone')}>
               <I n="at" size={12} />
-              Everyone
+              {t('room.everyone')}
             </button>
             {room?.participants.map((p) => (
               <button key={p.id} type="button" className="chip" aria-pressed={to === p.id} onClick={() => setTo(p.id)}>
@@ -148,13 +150,13 @@ export default function Room({ id }: { id: string }) {
         }
         extra={
           <>
-            <button type="button" className="ib" aria-label="Mention" onClick={() => setTo('everyone')}>
+            <button type="button" className="ib" aria-label={t('room.mention')} onClick={() => setTo('everyone')}>
               <I n="at" />
             </button>
-            <button type="button" className="ib" onClick={() => openDrawer('right', 'discussion')} aria-label="Steer the discussion">
+            <button type="button" className="ib" onClick={() => openDrawer('right', 'discussion')} aria-label={t('room.steer')}>
               <I n="flag" />
             </button>
-            <button type="button" className="ib" onClick={() => openDrawer('right', 'participants')} aria-label="Reasoning">
+            <button type="button" className="ib" onClick={() => openDrawer('right', 'participants')} aria-label={t('room.reasoning')}>
               <I n="bulb" />
             </button>
           </>
