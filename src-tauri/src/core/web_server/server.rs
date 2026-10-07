@@ -228,6 +228,40 @@ async fn resource_route(
                 Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete assistant"),
             }
         }
+        (Method::GET, p) if p.starts_with("/api/v1/provider-keys/") => {
+            let name = p["/api/v1/provider-keys/".len()..].to_owned();
+            blocking(move || resources::provider_keys(&name).map(|keys| serde_json::json!({ "keys": keys }))).await
+        }
+        (Method::PUT, p) if p.starts_with("/api/v1/provider-keys/") => {
+            let name = p["/api/v1/provider-keys/".len()..].to_owned();
+            let value = match read_json(req).await {
+                Ok(value) => value,
+                Err(response) => return response,
+            };
+            match tokio::task::spawn_blocking(move || resources::set_provider_keys(&name, &value)).await {
+                Ok(Ok(())) => no_content(),
+                Ok(Err(_)) => text(StatusCode::BAD_REQUEST, "Invalid keys"),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not save keys"),
+            }
+        }
+        (Method::DELETE, p) if p.starts_with("/api/v1/provider-keys/") => {
+            let name = p["/api/v1/provider-keys/".len()..].to_owned();
+            match tokio::task::spawn_blocking(move || resources::delete_provider_keys(&name)).await {
+                Ok(Ok(())) => no_content(),
+                Ok(Err(_)) => text(StatusCode::BAD_REQUEST, "Invalid provider"),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete keys"),
+            }
+        }
+        (Method::POST, "/api/v1/secret-values") => {
+            let value = match read_json(req).await {
+                Ok(value) => value,
+                Err(response) => return response,
+            };
+            match resources::register_secret_values(&value) {
+                Ok(()) => no_content(),
+                Err(_) => text(StatusCode::BAD_REQUEST, "Invalid values"),
+            }
+        }
         (Method::GET, "/api/v1/hardware/info") => {
             blocking(|| Ok(tauri_plugin_hardware::get_system_info())).await
         }
@@ -438,6 +472,8 @@ async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
     if path.starts_with("/api/v1/projects")
         || path.starts_with("/api/v1/assistants")
         || path.starts_with("/api/v1/hardware")
+        || path.starts_with("/api/v1/provider-keys/")
+        || path == "/api/v1/secret-values"
     {
         return resource_route(&state, &method, &path, req).await;
     }

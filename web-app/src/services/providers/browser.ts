@@ -3,11 +3,11 @@
  *
  * Model discovery and chat completions go through the server's copy of the
  * provider transport, so the browser never needs CORS access to a provider and
- * the endpoint-resolution rules match the desktop app. There is no OS keyring
- * in a browser: keys stay in the page's own settings, so clearing them has
- * nothing further to delete.
+ * the endpoint-resolution rules match the desktop app. API keys are stored by
+ * the server (keyring or encrypted file), not by the browser.
  */
 
+import { hostInvoke } from '@/lib/hostInvoke'
 import { providerFetch } from '@/lib/providerFetch'
 import { TauriProvidersService } from './tauri'
 
@@ -16,5 +16,11 @@ export class BrowserProvidersService extends TauriProvidersService {
     return providerFetch as typeof fetch
   }
 
-  async deleteProviderKeys(): Promise<void> {}
+  async deleteProviderKeys(providerName: string): Promise<void> {
+    try {
+      await hostInvoke('delete_provider_keys', { provider: providerName })
+    } catch (error) {
+      console.error(`Failed to delete stored keys for ${providerName}:`, error)
+    }
+  }
 }

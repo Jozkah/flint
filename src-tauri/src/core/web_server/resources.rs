@@ -11,6 +11,74 @@ use serde_json::Value;
 
 use crate::core::threads::utils::validate_thread_id;
 
+const MAX_KEYS: usize = 32;
+const MAX_KEY_LEN: usize = 4096;
+
+fn provider_name(name: &str) -> Result<(), String> {
+    let plain = !name.is_empty()
+        && name.len() <= 128
+        && name
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.'))
+        && !name.starts_with('.');
+    if plain {
+        Ok(())
+    } else {
+        Err("invalid provider name".into())
+    }
+}
+
+/// A provider's stored key chain, from the same keyring/encrypted-file store
+/// the desktop app uses, so one set of keys serves both.
+pub fn provider_keys(name: &str) -> Result<Vec<String>, String> {
+    provider_name(name)?;
+    Ok(crate::core::server::provider_secrets::load_provider_keys(name))
+}
+
+pub fn set_provider_keys(name: &str, value: &Value) -> Result<(), String> {
+    provider_name(name)?;
+    let list = value
+        .get("keys")
+        .and_then(Value::as_array)
+        .ok_or("expected {\"keys\": [...]}")?;
+    if list.len() > MAX_KEYS {
+        return Err("too many keys".into());
+    }
+    let mut keys: Vec<String> = Vec::new();
+    for entry in list {
+        let key = entry.as_str().ok_or("keys must be strings")?.trim();
+        if key.len() > MAX_KEY_LEN {
+            return Err("key too long".into());
+        }
+        if !key.is_empty() && !keys.iter().any(|k| k == key) {
+            keys.push(key.to_owned());
+        }
+    }
+    for key in &keys {
+        crate::core::secret_values::register(key);
+    }
+    crate::core::server::provider_secrets::store_provider_keys(name, &keys)
+}
+
+pub fn delete_provider_keys(name: &str) -> Result<(), String> {
+    provider_name(name)?;
+    crate::core::server::provider_secrets::delete_provider_keys(name)
+}
+
+/// Values the user marked secret, redacted from every log from now on.
+pub fn register_secret_values(value: &Value) -> Result<(), String> {
+    let list = value
+        .get("values")
+        .and_then(Value::as_array)
+        .ok_or("expected {\"values\": [...]}")?;
+    for entry in list.iter().take(256) {
+        if let Some(text) = entry.as_str() {
+            crate::core::secret_values::register(text);
+        }
+    }
+    Ok(())
+}
+
 const PROJECTS_FILE: &str = "projects.json";
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -94,6 +162,21 @@ mod tests {
         assert!(set_projects(dir.path(), json!({"id":"p1"})).is_err());
         assert!(set_projects(dir.path(), json!([{"id":"p1"}])).is_err());
         assert_eq!(projects(dir.path()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn key_requests_are_validated_before_touching_the_store() {
+        assert!(provider_keys("../x").is_err());
+        assert!(provider_keys("..%5Cx").is_err());
+        assert!(provider_keys("open ai").is_err());
+        assert!(provider_keys(&"a".repeat(200)).is_err());
+        assert!(set_provider_keys("openai", &json!({"keys": "nope"})).is_err());
+        assert!(set_provider_keys("openai", &json!({"keys": [1]})).is_err());
+        let many: Vec<String> = (0..40).map(|i| format!("k{i}")).collect();
+        assert!(set_provider_keys("openai", &json!({ "keys": many })).is_err());
+        assert!(set_provider_keys("openai", &json!({"keys": ["a".repeat(5000)]})).is_err());
+        assert!(register_secret_values(&json!({"values": 3})).is_err());
+        assert!(delete_provider_keys("a/b").is_err());
     }
 
     #[test]

@@ -20,6 +20,7 @@ import { AppEvent, events } from '@janhq/core'
 import { SystemEvent } from '@/types/events'
 import { sweepThreadWorkspaces } from '@/lib/agentTools'
 import { invoke } from '@tauri-apps/api/core'
+import { hostInvoke } from '@/lib/hostInvoke'
 import { providerHasRemoteApiKeys, providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
 import {
   fillSecretHeaderValues,
@@ -71,7 +72,7 @@ async function registerRemoteProvider(provider: ModelProvider) {
   }
 
   try {
-    await invoke('register_provider_config', { request })
+    await hostInvoke('register_provider_config', { request })
     console.debug(`Registered remote provider: ${provider.provider}`)
   } catch (error) {
     console.error(`Failed to register provider ${provider.provider}:`, error)
@@ -89,7 +90,7 @@ async function seedProviderKeysFromKeyring(
     providers.map(async (provider) => {
       if (provider.provider === 'llamacpp') return provider
       try {
-        const keys = await invoke<string[]>('get_provider_keys', {
+        const keys = await hostInvoke<string[]>('get_provider_keys', {
           provider: provider.provider,
         })
         if (!keys || keys.length === 0) return provider
@@ -166,7 +167,7 @@ const syncRemoteProviders = () => {
   // Unregister providers that were previously registered but are now inactive/removed
   for (const name of registeredProviderNames) {
     if (!currentActive.has(name)) {
-      invoke('unregister_provider_config', { provider: name }).catch(() => {})
+      hostInvoke('unregister_provider_config', { provider: name }).catch(() => {})
     }
   }
 
@@ -201,7 +202,7 @@ const syncModelParamDefaults = () => {
     }
   }
 
-  invoke('set_model_param_defaults', { defaults }).catch((e) =>
+  hostInvoke('set_model_param_defaults', { defaults }).catch((e) =>
     console.error('Failed to sync model param defaults:', e)
   )
 }
