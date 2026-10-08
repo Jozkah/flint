@@ -47,6 +47,30 @@ pub(crate) const STUCK_TURN_LIMIT: usize = 3;
 /// A stalled local read or web request must not hold the entire tool batch open.
 const READ_ONLY_TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
+/// How long a read-only call may run before the batch stops waiting for it.
+/// The messaging tools wait for another session by design (`wait_for_reply`
+/// defaults to 60 s, both it and `send_message` allow up to 120 s), so their
+/// bound is the wait they were asked for plus a margin.
+fn read_only_tool_timeout(name: &str, args: &serde_json::Value) -> std::time::Duration {
+    const MARGIN_SECS: u64 = 15;
+    const MAX_WAIT_SECS: u64 = 120;
+    const DEFAULT_WAIT_SECS: u64 = 60;
+    let wait = match name {
+        "wait_for_reply" => Some(
+            args.get("timeout_seconds")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(DEFAULT_WAIT_SECS),
+        ),
+        "send_message" => args.get("wait_seconds").and_then(|v| v.as_u64()),
+        _ => None,
+    };
+    match wait {
+        Some(secs) => READ_ONLY_TOOL_TIMEOUT
+            .max(std::time::Duration::from_secs(secs.min(MAX_WAIT_SECS) + MARGIN_SECS)),
+        None => READ_ONLY_TOOL_TIMEOUT,
+    }
+}
+
 async fn bounded_read_only_call<F: Future<Output = ToolOutcome>>(
     call: F,
     id: String,
@@ -3997,6 +4021,7 @@ impl CompositeToolInvoker {
                 // run's scope rather than sharing one.
                 let registered = self.call_token(&id);
                 let timeout_id = id.clone();
+                let call_timeout = read_only_tool_timeout(tool.name, &args);
                 read_futures.push(bounded_read_only_call(
                     async move {
                         let ctx = ToolContext::new(&root, &store, &enabled)
@@ -4019,7 +4044,7 @@ impl CompositeToolInvoker {
                     },
                     timeout_id,
                     name.to_string(),
-                    READ_ONLY_TOOL_TIMEOUT,
+                    call_timeout,
                 ));
                 continue;
             }
@@ -6339,6 +6364,13 @@ fn body_cost_ceiling(
 /// The `job_id`s of background `bash` commands started by the tool results in
 /// `messages`. The bash tool reports a backgrounded command as
 /// `(job_id=<id>)`; that fixed sentence is the one place the id appears.
+/// The messages after the first `scanned` ones. A compaction replaces the
+/// conversation with a shorter one, so `scanned` can be past the end; slicing
+/// with it directly panicked the whole run, so it is clamped.
+fn unscanned(messages: &[serde_json::Value], scanned: usize) -> &[serde_json::Value] {
+    &messages[scanned.min(messages.len())..]
+}
+
 fn background_jobs_started(messages: &[serde_json::Value]) -> Vec<String> {
     let mut ids = Vec::new();
     for message in messages {
@@ -6607,7 +6639,13 @@ async fn run_turn_cycle(
     let mut shells_scanned = conversation_messages.len();
 
     while unlimited || turn < max_turns {
-        shells_owed.extend(background_jobs_started(&conversation_messages[shells_scanned..]));
+        // A compaction replaces the vector with a shorter one, so the index of
+        // what was already scanned can be past the end: clamp it rather than
+        // slice out of range (which panicked the whole run).
+        shells_owed.extend(background_jobs_started(unscanned(
+            &conversation_messages,
+            shells_scanned,
+        )));
         shells_scanned = conversation_messages.len();
         if let Some(text) = finished_background_jobs(&mut shells_owed) {
             crate::core::agent::reminder::attach(&mut conversation_messages, &text);
@@ -6739,6 +6777,8 @@ async fn run_turn_cycle(
                                 );
                             }
                             conversation_messages = projected;
+                            // What was scanned lives in the vector that just went away.
+                            shells_scanned = conversation_messages.len();
                             let _ = events.send(StreamEvent::MessagesUpdated {
                                 messages: conversation_messages.clone(),
                             });
@@ -6860,6 +6900,8 @@ async fn run_turn_cycle(
                             attempts + 1
                         );
                         conversation_messages = compacted;
+                        // What was scanned lives in the vector that just went away.
+                        shells_scanned = conversation_messages.len();
                         // Publish now, not at the end of the run: a retry that
                         // never recovers returns Err, and an unpublished
                         // compaction leaves the client holding the oversized
@@ -7079,6 +7121,8 @@ async fn run_turn_cycle(
                             );
                         }
                         conversation_messages = compacted;
+                        // What was scanned lives in the vector that just went away.
+                        shells_scanned = conversation_messages.len();
                     }
                     // Too little to drop: not a failure, and not a compaction
                     // either, so the record says nothing happened.
@@ -7545,6 +7589,18 @@ async fn run_turn_cycle(
 
 #[cfg(test)]
 mod tests {
+    /// After a full compaction the conversation is shorter than the number of
+    /// messages already scanned; the scan must not slice past the end.
+    #[test]
+    fn a_compaction_shorter_than_the_scanned_count_does_not_panic_the_scan() {
+        let messages: Vec<serde_json::Value> = (0..3).map(|i| serde_json::json!({ "n": i })).collect();
+        assert_eq!(super::unscanned(&messages, 0).len(), 3);
+        assert_eq!(super::unscanned(&messages, 2).len(), 1);
+        assert!(super::unscanned(&messages, 3).is_empty());
+        assert!(super::unscanned(&messages, 50).is_empty());
+        assert!(super::unscanned(&[], 7).is_empty());
+    }
+
     /// The dispatcher's git rewrite: a commit gets the trailer for the run's
     /// model, only the `git` tool is touched, and the switches are honoured.
     #[test]
@@ -13312,6 +13368,19 @@ mod tests {
         assert_eq!(stalled.id, "stalled");
         assert!(stalled.content.starts_with("ERROR: read timed out"));
         assert_eq!(finished.content, "contents");
+    }
+
+    #[test]
+    fn waiting_messaging_tools_get_their_wait_plus_a_margin() {
+        use serde_json::json;
+        let base = READ_ONLY_TOOL_TIMEOUT;
+        assert_eq!(read_only_tool_timeout("read_file", &json!({})), base);
+        assert_eq!(read_only_tool_timeout("send_message", &json!({})), base);
+        assert_eq!(read_only_tool_timeout("send_message", &json!({ "wait_seconds": 10 })), base);
+        assert!(read_only_tool_timeout("send_message", &json!({ "wait_seconds": 120 })).as_secs() > 120);
+        assert!(read_only_tool_timeout("wait_for_reply", &json!({})).as_secs() > 60);
+        assert!(read_only_tool_timeout("wait_for_reply", &json!({ "timeout_seconds": 120 })).as_secs() > 120);
+        assert!(read_only_tool_timeout("wait_for_reply", &json!({ "timeout_seconds": 9999 })).as_secs() <= 135);
     }
 
     #[tokio::test]

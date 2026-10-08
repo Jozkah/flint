@@ -538,6 +538,8 @@ impl RemoteHub {
     // -- uploads -------------------------------------------------------------
 
     pub fn set_upload_dir(&self, dir: PathBuf) {
+        // Whatever an earlier run left here belongs to no upload any more.
+        lock(&self.uploads).sweep(&dir);
         *lock(&self.upload_dir) = Some(dir);
     }
 
@@ -548,7 +550,11 @@ impl RemoteHub {
     }
 
     pub fn upload_check(&self, device_id: &str, id: &str, offset: u64, len: usize) -> Result<Upload, UploadError> {
-        lock(&self.uploads).check_chunk(device_id, id, offset, len)
+        lock(&self.uploads).reserve_chunk(device_id, id, offset, len)
+    }
+
+    pub fn upload_release(&self, id: &str) {
+        lock(&self.uploads).release_chunk(id)
     }
 
     pub fn upload_wrote(&self, id: &str, len: usize) -> u64 {

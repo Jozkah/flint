@@ -2533,8 +2533,14 @@ pub async fn session_import_open() -> Result<Option<serde_json::Value>, String> 
     let Some(path) = pick_bundle_path(false).await else {
         return Ok(None);
     };
-    let bytes = std::fs::read(&path).map_err(|e| format!("could not read the file: {e}"))?;
-    crate::core::agent::session_bundle::parse_import(&bytes).map(Some)
+    // The size limit was removed on purpose (#199), so the read and the parse
+    // of a large export must not run on the async thread.
+    tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| format!("could not read the file: {e}"))?;
+        crate::core::agent::session_bundle::parse_import(&bytes).map(Some)
+    })
+    .await
+    .map_err(|e| format!("could not read the file: {e}"))?
 }
 
 /// Record one hidden utility-agent invocation. AH-208.

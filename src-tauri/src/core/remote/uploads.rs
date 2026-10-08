@@ -34,6 +34,9 @@ pub struct Upload {
     pub path: PathBuf,
     pub mime: Option<String>,
     pub touched: Instant,
+    /// A chunk of this upload is being appended. A second PUT at the same
+    /// offset arriving meanwhile is refused instead of appending twice.
+    pub writing: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -202,9 +205,40 @@ pub struct UploadBook {
 }
 
 impl UploadBook {
+    /// Forgets the uploads that outlived [`UPLOAD_TTL`] and deletes their files.
     fn prune(&mut self, now: Instant) {
-        self.uploads
-            .retain(|_, u| now.duration_since(u.touched) < UPLOAD_TTL);
+        let expired: Vec<String> = self
+            .uploads
+            .iter()
+            .filter(|(_, u)| now.duration_since(u.touched) >= UPLOAD_TTL)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in expired {
+            if let Some(u) = self.uploads.remove(&id) {
+                if let Some(dir) = u.path.parent() {
+                    let _ = std::fs::remove_dir_all(dir);
+                }
+            }
+        }
+    }
+
+    /// Deletes every folder under `root` that no upload in the book owns: the
+    /// book lives in memory, so after a restart whatever is on disk is
+    /// unreachable.
+    pub fn sweep(&self, root: &Path) {
+        let Ok(entries) = std::fs::read_dir(root) else { return };
+        for entry in entries.flatten() {
+            let id = entry.file_name().to_string_lossy().into_owned();
+            if self.uploads.contains_key(&id) {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                let _ = std::fs::remove_dir_all(&path);
+            } else {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
     }
 
     pub fn start(
@@ -239,6 +273,7 @@ impl UploadBook {
             received: 0,
             mime: None,
             touched: now,
+            writing: false,
         };
         self.uploads.insert(id, up.clone());
         Ok(up)
@@ -262,9 +297,31 @@ impl UploadBook {
         Ok(u.clone())
     }
 
+    /// [`Self::check_chunk`], and claims the upload for the write so that two
+    /// PUTs at the same offset cannot both append. Pair it with [`Self::wrote`]
+    /// or [`Self::release_chunk`].
+    pub fn reserve_chunk(&mut self, device_id: &str, id: &str, offset: u64, len: usize) -> Result<Upload, UploadError> {
+        let up = self.check_chunk(device_id, id, offset, len)?;
+        if up.writing {
+            return Err(UploadError::BadOffset(up.received));
+        }
+        if let Some(u) = self.uploads.get_mut(id) {
+            u.writing = true;
+        }
+        Ok(up)
+    }
+
+    /// Gives the claim from [`Self::reserve_chunk`] back after a failed write.
+    pub fn release_chunk(&mut self, id: &str) {
+        if let Some(u) = self.uploads.get_mut(id) {
+            u.writing = false;
+        }
+    }
+
     pub fn wrote(&mut self, id: &str, len: usize, now: Instant) -> u64 {
         match self.uploads.get_mut(id) {
             Some(u) => {
+                u.writing = false;
                 u.received += len as u64;
                 u.touched = now;
                 u.received
