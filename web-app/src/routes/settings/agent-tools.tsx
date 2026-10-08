@@ -50,6 +50,7 @@ import {
 import { errorText } from '@/lib/errorText'
 import { CompactionPolicySettings } from '@/containers/CompactionPolicySettings'
 import { AttributionSettings } from '@/containers/AttributionSettings'
+import { ComputerExclusionSettings } from '@/containers/ComputerExclusionSettings'
 import { SandboxToolchainGrants } from '@/containers/SandboxToolchainGrants'
 import { BrowserAgentSettings } from '@/containers/BrowserAgentSettings'
 import { SubagentSettings } from '@/containers/SubagentSettings'
@@ -512,6 +513,7 @@ function AgentToolsContent() {
           )}
           {sandbox?.enforces && <SandboxToolchainGrants />}
           <AttributionSettings />
+          <ComputerExclusionSettings />
         </Card>
         )}
 
