@@ -114,6 +114,7 @@ import {
   isContextOverflowMessage,
   parseContextOverflow,
 } from '@/utils/error'
+import { PREFLIGHT_CONTEXT_ERROR_PREFIX } from '@/lib/contextEstimate'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
 import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionDivider'
@@ -514,6 +515,9 @@ export function ThreadConversation({
   const contextBannerMessage = useMemo(() => {
     const raw = contextLimitError?.message
     if (!raw) return undefined
+    // Flint's own pre-flight check: its message names the window and where it
+    // came from, which the generic line would hide.
+    if (raw.startsWith(PREFLIGHT_CONTEXT_ERROR_PREFIX)) return raw
     const info = parseContextOverflow(raw)
     if (info)
       return t('model-errors:contextOverflowDetail', {
@@ -3205,11 +3209,15 @@ export function ThreadConversation({
                             </Button>
                           ) : (
                             <div className="mt-3 space-y-2">
-                              <p className="text-sm text-fg-2">
-                                This model's context window is set by its server,
-                                so Flint cannot enlarge it. Start a new chat, shorten
-                                the conversation, or raise the limit on the server.
-                              </p>
+                              {!contextLimitError?.message?.startsWith(
+                                PREFLIGHT_CONTEXT_ERROR_PREFIX
+                              ) && (
+                                <p className="text-sm text-fg-2">
+                                  This model's context window is set by its server,
+                                  so Flint cannot enlarge it. Start a new chat, shorten
+                                  the conversation, or raise the limit on the server.
+                                </p>
+                              )}
                               <Button
                                 variant="outline"
                                 size="sm"

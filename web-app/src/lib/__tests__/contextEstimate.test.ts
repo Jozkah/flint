@@ -34,4 +34,10 @@ describe('context cap and calibration', () => {
     expect(() => assertEstimatedContextFits(160_000, 1, 200_000, 22_000)).not.toThrow()
     expect(() => assertEstimatedContextFits(240_000, 1, 0, 22_000)).not.toThrow()
   })
+
+  it('names the window and its source in the pre-flight error', () => {
+    expect(() => assertEstimatedContextFits(24_000, 1, 8_192, 2_048, 'model-settings')).toThrow(
+      /24000 prompt tokens plus 2048 reserved.*window of 8192 \(from model-settings\)/
+    )
+  })
 })
