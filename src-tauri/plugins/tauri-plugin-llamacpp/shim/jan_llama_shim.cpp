@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <memory>
@@ -356,7 +357,11 @@ jan_llama_engine * jan_llama_engine_start_from_preset(const char *       ini_pat
         engine->params = pctx.default_params;
 
         common_preset global;
-        common_presets presets = pctx.load_from_ini(ini_path, global);
+        // load_from_ini takes a std::filesystem::path since v0.6.0. A bare
+        // const char * would be read in the Windows ANSI code page, so an ini
+        // under a profile folder with accents would not open; ini_path is UTF-8
+        // (as llama.cpp's own callers treat their strings), hence u8path.
+        common_presets presets = pctx.load_from_ini(std::filesystem::u8path(ini_path), global);
 
         auto it = presets.find(preset_name);
         if (it == presets.end()) {
