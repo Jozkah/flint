@@ -48,7 +48,7 @@ use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::tungstenite::handshake::derive_accept_key;
-use tokio_tungstenite::tungstenite::protocol::{frame::coding::CloseCode, CloseFrame, Role};
+use tokio_tungstenite::tungstenite::protocol::{frame::coding::CloseCode, CloseFrame, Role, WebSocketConfig};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
@@ -68,6 +68,48 @@ const MAX_VOICE_BODY: usize = 6 * 1024 * 1024;
 const VOICE_METHOD: &str = "voice.transcribe";
 /// A socket that has not authenticated by then is closed.
 const WS_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
+/// Largest message or frame a socket accepts. Everything a phone sends is a
+/// short JSON command, and before it has authenticated nobody should be able
+/// to make the app buffer more than this.
+const WS_MAX_MESSAGE: usize = 16 * 1024;
+/// Sockets one address may hold open without having authenticated.
+const WS_MAX_UNAUTHENTICATED_PER_IP: usize = 32;
+
+/// Counts the sockets of one address that have not authenticated yet; the
+/// slot is given back when the guard is dropped.
+struct UnauthSlot {
+    ip: IpAddr,
+}
+
+fn unauth_counts() -> &'static std::sync::Mutex<std::collections::HashMap<IpAddr, usize>> {
+    static COUNTS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<IpAddr, usize>>> =
+        std::sync::OnceLock::new();
+    COUNTS.get_or_init(Default::default)
+}
+
+impl UnauthSlot {
+    fn acquire(ip: IpAddr, cap: usize) -> Option<UnauthSlot> {
+        let mut counts = unauth_counts().lock().unwrap_or_else(|e| e.into_inner());
+        let n = counts.entry(ip).or_insert(0);
+        if *n >= cap {
+            return None;
+        }
+        *n += 1;
+        Some(UnauthSlot { ip })
+    }
+}
+
+impl Drop for UnauthSlot {
+    fn drop(&mut self) {
+        let mut counts = unauth_counts().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(n) = counts.get_mut(&self.ip) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                counts.remove(&self.ip);
+            }
+        }
+    }
+}
 
 type Resp = Response<Full<Bytes>>;
 
@@ -752,14 +794,35 @@ fn upgrade(hub: Arc<RemoteHub>, mut req: Request<Incoming>) -> Resp {
     };
     let peer = req.extensions().get::<PeerIp>().map(|p| p.0);
     let stop = req.extensions().get::<StopSignal>().map(|s| s.0.clone());
+    // A socket that has not authenticated holds a slot until it does.
+    let slot = if pre_auth.is_none() {
+        match UnauthSlot::acquire(peer.unwrap_or(IpAddr::from([0, 0, 0, 0])), WS_MAX_UNAUTHENTICATED_PER_IP) {
+            Some(slot) => Some(slot),
+            None => {
+                return error(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "too_many",
+                    "Too many connections waiting to sign in",
+                )
+            }
+        }
+    } else {
+        None
+    };
     let upgrade = hyper::upgrade::on(&mut req);
     tokio::spawn(async move {
         match upgrade.await {
             Ok(upgraded) => {
-                let ws =
-                    WebSocketStream::from_raw_socket(TokioIo::new(upgraded), Role::Server, None)
-                        .await;
-                run_socket(hub, ws, pre_auth, peer, stop).await;
+                let config = WebSocketConfig::default()
+                    .max_message_size(Some(WS_MAX_MESSAGE))
+                    .max_frame_size(Some(WS_MAX_MESSAGE));
+                let ws = WebSocketStream::from_raw_socket(
+                    TokioIo::new(upgraded),
+                    Role::Server,
+                    Some(config),
+                )
+                .await;
+                run_socket(hub, ws, pre_auth, peer, stop, slot).await;
             }
             Err(e) => log::debug!("remote: websocket upgrade failed: {e}"),
         }
@@ -814,6 +877,7 @@ async fn run_socket<S>(
     pre_auth: Option<Device>,
     peer: Option<IpAddr>,
     mut stop: Option<watch::Receiver<bool>>,
+    slot: Option<UnauthSlot>,
 ) where
     S: AsyncRead + AsyncWrite + Unpin,
 {
@@ -844,6 +908,7 @@ async fn run_socket<S>(
         }
     };
 
+    drop(slot);
     hub.socket_opened(&device.id);
     hub.socket_visible(&device.id, true);
     let mut shown = true;
@@ -1020,5 +1085,21 @@ mod body_cap_tests {
         assert!(body_fits(voice.as_bytes()));
         assert!(!body_fits(other.as_bytes()));
         assert!(body_fits(br#"{"id":"1","method":"chat.send","params":{}}"#));
+    }
+}
+
+#[cfg(test)]
+mod unauth_slot_tests {
+    use super::*;
+
+    #[test]
+    fn an_address_gets_a_fixed_number_of_unauthenticated_sockets() {
+        let ip: IpAddr = "203.0.113.77".parse().unwrap();
+        let held: Vec<_> = (0..3).map(|_| UnauthSlot::acquire(ip, 3).unwrap()).collect();
+        assert!(UnauthSlot::acquire(ip, 3).is_none());
+        // Another address is unaffected, and a released slot is reusable.
+        assert!(UnauthSlot::acquire("203.0.113.78".parse().unwrap(), 3).is_some());
+        drop(held);
+        assert!(UnauthSlot::acquire(ip, 3).is_some());
     }
 }
