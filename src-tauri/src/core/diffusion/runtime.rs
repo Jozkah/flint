@@ -507,16 +507,61 @@ async fn run_job<R: Runtime>(
         }
         (r.port, live)
     };
+    // If the caller's future is dropped (an HTTP client that went away) the
+    // guard frees the engine and asks it to cancel the job.
+    let mut guard = JobGuard { live: live.clone(), armed: true };
     let outcome = poll_job(app, port, &live, path, body, cancel_key).await;
-    if let Some(r) = resident().lock().await.as_mut() {
-        r.busy = false;
-        r.current_job = None;
-        r.last_used = Instant::now();
+    guard.armed = false;
+    release_job(&live, false).await;
+    outcome
+}
+
+/// Frees the engine when a generation's future is dropped before it finished.
+struct JobGuard {
+    live: Arc<StdMutex<Live>>,
+    armed: bool,
+}
+
+impl Drop for JobGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let live = self.live.clone();
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn(async move { release_job(&live, true).await });
+            }
+            Err(_) => {
+                if let Ok(mut l) = live.lock() {
+                    l.tracker = None;
+                }
+            }
+        }
     }
+}
+
+/// Mark the engine idle again, and when `cancel` is set ask it to stop the job
+/// that was running.
+async fn release_job(live: &Arc<StdMutex<Live>>, cancel: bool) {
+    let (port, job) = match resident().lock().await.as_mut() {
+        Some(r) => {
+            r.busy = false;
+            r.last_used = Instant::now();
+            (Some(r.port), r.current_job.take())
+        }
+        None => (None, None),
+    };
     if let Ok(mut l) = live.lock() {
         l.tracker = None;
     }
-    outcome
+    if let (true, Some(port), Some(job), Ok(client)) = (cancel, port, job, http()) {
+        let _ = client
+            .post(format!("http://127.0.0.1:{port}/sdcpp/v1/jobs/{job}/cancel"))
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await;
+    }
 }
 
 async fn poll_job<R: Runtime>(
@@ -873,5 +918,62 @@ mod oom_tests {
         assert!(is_out_of_memory(OUT_OF_MEMORY));
         assert!(is_out_of_memory(&format!("{OUT_OF_MEMORY} (generate_image returned no results)")));
         assert!(!is_out_of_memory("Cancelled."));
+    }
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::*;
+
+    fn idle_child() -> Child {
+        #[cfg(windows)]
+        let mut command = {
+            let mut c = Command::new("cmd");
+            c.args(["/C", "ping", "-n", "60", "127.0.0.1"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut command = {
+            let mut c = Command::new("sleep");
+            c.arg("60");
+            c
+        };
+        command
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("spawn a stand-in engine")
+    }
+
+    #[tokio::test]
+    async fn dropping_a_running_generation_frees_the_engine() {
+        let live = Arc::new(StdMutex::new(Live::default()));
+        *resident().lock().await = Some(Resident {
+            model_id: "test-model",
+            kind: Kind::Image,
+            child: idle_child(),
+            port: 1,
+            live: live.clone(),
+            last_used: Instant::now(),
+            busy: true,
+            current_job: Some("job-1".to_string()),
+        });
+        {
+            let _guard = JobGuard { live: live.clone(), armed: true };
+            // the future holding the guard is dropped here
+        }
+        for _ in 0..50 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            if resident().lock().await.as_ref().is_some_and(|r| !r.busy) {
+                break;
+            }
+        }
+        let guard = resident().lock().await;
+        let r = guard.as_ref().expect("still loaded");
+        assert!(!r.busy, "the engine must not stay busy");
+        assert!(r.current_job.is_none());
+        drop(guard);
+        *resident().lock().await = None;
     }
 }
