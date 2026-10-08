@@ -76,6 +76,44 @@ describe('an MCP tool called from Cowork', () => {
     expect(h.executeAgentTool).not.toHaveBeenCalled()
   })
 
+  // Pins the Ask-mode contract: the prompt is put up, and nothing reaches the
+  // backend (no ticket, no call) until the person has answered it.
+  for (const mode of ['ask', 'auto'] as const) {
+    it(`executes nothing before the click in ${mode} mode`, async () => {
+      let answer: (v: boolean) => void = () => undefined
+      const onApproveMcp = vi.fn(
+        () => new Promise<boolean>((resolve) => (answer = resolve))
+      )
+      const running = dispatchCoworkTool(
+        call,
+        ctx({ mode: mode as CoworkMode, onApproveMcp })
+      )
+      await new Promise((r) => setTimeout(r, 20))
+      expect(onApproveMcp).toHaveBeenCalledTimes(1)
+      expect(h.allowOnceForServer).not.toHaveBeenCalled()
+      expect(h.callTool).not.toHaveBeenCalled()
+
+      answer(true)
+      await running
+      expect(h.allowOnceForServer).toHaveBeenCalledTimes(1)
+      expect(h.callTool).toHaveBeenCalledTimes(1)
+    })
+  }
+
+  it('never mints a ticket for a refused or withdrawn call', async () => {
+    const controller = new AbortController()
+    const running = dispatchCoworkTool(
+      call,
+      ctx({ onApproveMcp: vi.fn(() => new Promise<boolean>(() => undefined)) }),
+      controller.signal
+    )
+    await new Promise((r) => setTimeout(r, 10))
+    controller.abort()
+    await running
+    expect(h.allowOnceForServer).not.toHaveBeenCalled()
+    expect(h.callTool).not.toHaveBeenCalled()
+  })
+
   it('does not call the server when the user says no', async () => {
     const out = await dispatchCoworkTool(
       call,
