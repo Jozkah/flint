@@ -123,7 +123,7 @@ pub async fn save_config(host: &Host, text: &str) -> Result<(), String> {
         }
         // Turning a stdio server on is starting it; the lifecycle routes gate
         // that, but a saved `active` flag must not smuggle it past them.
-        let was_active = before.get(name).is_some_and(|old| active(old));
+        let was_active = before.get(name).is_some_and(active);
         if is_stdio(config) && active(config) && !was_active && !host.allow_stdio {
             return Err(refuse_stdio(host));
         }

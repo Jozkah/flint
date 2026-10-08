@@ -132,6 +132,7 @@ fn json_created(value: &impl serde::Serialize) -> Resp {
     response
 }
 
+#[allow(clippy::result_large_err)]
 async fn read_json(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
     let value = read_json_value(req).await?;
     if !value.is_object() {
@@ -140,6 +141,7 @@ async fn read_json(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
     Ok(value)
 }
 
+#[allow(clippy::result_large_err)]
 pub(super) async fn read_json_value(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
     let is_json = req.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.split(';').next().is_some_and(|kind| kind.trim().eq_ignore_ascii_case("application/json")));
