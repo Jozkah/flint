@@ -19,6 +19,129 @@ pub enum Action {
 // Canonical names, deliberately bounded: no script or arbitrary key expression.
 const KEYS: &[&str] = &["ctrl", "alt", "shift", "meta", "enter", "tab", "escape", "backspace", "delete", "space", "up", "down", "left", "right", "home", "end", "pageup", "pagedown"];
 
+/// A screen rectangle (desktop pixels) the tool must never act in: a pointer
+/// move, click, type, key or scroll aimed inside it is refused before any OS
+/// call. Keeps the agent from, say, hitting a "New save" button over the file
+/// the person is working in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Region { pub x: i32, pub y: i32, pub width: u32, pub height: u32 }
+
+impl Region {
+    pub fn contains(&self, x: i32, y: i32) -> bool {
+        let (x, y) = (i64::from(x), i64::from(y));
+        x >= i64::from(self.x) && x < i64::from(self.x) + i64::from(self.width)
+            && y >= i64::from(self.y) && y < i64::from(self.y) + i64::from(self.height)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Exclusions {
+    pub regions: Vec<Region>,
+    /// Process names (without `.exe`). When not empty the tool acts only on
+    /// windows of these apps.
+    pub allowed_apps: Vec<String>,
+}
+
+const MAX_REGIONS: usize = 32;
+static EXCLUDED: std::sync::RwLock<Exclusions> = std::sync::RwLock::new(Exclusions { regions: Vec::new(), allowed_apps: Vec::new() });
+
+fn exclusions_path(data_folder: &std::path::Path) -> std::path::PathBuf { data_folder.join("computer-exclusions.json") }
+
+/// The saved regions; a missing or unreadable file is no regions.
+pub fn load_exclusions(data_folder: &std::path::Path) -> Exclusions {
+    std::fs::read_to_string(exclusions_path(data_folder)).ok().and_then(|raw| serde_json::from_str(&raw).ok()).unwrap_or_default()
+}
+
+/// Saves the regions and makes them the ones in force for this process.
+pub fn save_exclusions(data_folder: &std::path::Path, exclusions: &Exclusions) -> Result<Exclusions, String> {
+    let regions: Vec<Region> = exclusions.regions.iter().filter(|r| r.width > 0 && r.height > 0).take(MAX_REGIONS).copied().collect();
+    let mut allowed_apps: Vec<String> = Vec::new();
+    for app in &exclusions.allowed_apps {
+        let name = app_key(app);
+        if !name.is_empty() && !allowed_apps.iter().any(|a| app_key(a) == name) && allowed_apps.len() < MAX_REGIONS { allowed_apps.push(app.trim().to_string()); }
+    }
+    let clean = Exclusions { regions, allowed_apps };
+    std::fs::create_dir_all(data_folder).map_err(|e| e.to_string())?;
+    let path = exclusions_path(data_folder);
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(&clean).unwrap_or_default()).map_err(|e| e.to_string())?;
+    std::fs::rename(tmp, path).map_err(|e| e.to_string())?;
+    set_active_exclusions(clean.clone());
+    Ok(clean)
+}
+
+/// Makes `regions` the ones in force (called at startup and after a save).
+pub fn set_active_exclusions(exclusions: Exclusions) {
+    if let Ok(mut guard) = EXCLUDED.write() { *guard = exclusions; }
+}
+
+/// Case-insensitive process name without a trailing `.exe`.
+fn app_key(name: &str) -> String {
+    let n = name.trim().to_lowercase();
+    n.strip_suffix(".exe").unwrap_or(&n).to_string()
+}
+
+fn app_allowed(app: &str, allowed: &[String]) -> bool {
+    let key = app_key(app);
+    allowed.iter().any(|a| app_key(a) == key)
+}
+
+fn action_point(action: &Action) -> Option<(i32, i32)> {
+    match action {
+        Action::Screenshot => None,
+        Action::Move { x, y } | Action::Click { x, y, .. } | Action::Type { x, y, .. } | Action::Key { x, y, .. } | Action::Scroll { x, y, .. } => Some((*x, *y)),
+    }
+}
+
+/// Names of apps with a visible window, for the picker in Settings.
+pub async fn list_open_apps() -> Vec<String> {
+    #[cfg(windows)]
+    {
+        let mut cmd = tokio::process::Command::new("powershell.exe");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", include_str!("computer_windows_app.ps1")])
+            .env("FLINT_APP_MODE", "list").creation_flags(0x0800_0000);
+        if let Ok(out) = output(cmd).await {
+            return String::from_utf8_lossy(&out.stdout).lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+        }
+    }
+    Vec::new()
+}
+
+/// Refuses an action whose target window is not one of the allowed apps.
+async fn check_app(action: &Action, allowed: &[String]) -> Result<(), String> {
+    let Some((x, y)) = action_point(action) else { return Ok(()) };
+    if allowed.is_empty() { return Ok(()); }
+    #[cfg(windows)]
+    {
+        let mut cmd = tokio::process::Command::new("powershell.exe");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", include_str!("computer_windows_app.ps1")])
+            .env("FLINT_APP_X", x.to_string()).env("FLINT_APP_Y", y.to_string()).creation_flags(0x0800_0000);
+        let out = output(cmd).await.map_err(|e| format!("could not tell which app is at ({x}, {y}): {e}. Nothing was sent."))?;
+        let app = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if app.is_empty() { return Err(format!("no app window is at ({x}, {y}). The user limited the computer tool to: {}. Nothing was sent.", allowed.join(", "))); }
+        if app_allowed(&app, allowed) { Ok(()) } else {
+            Err(format!("the window at ({x}, {y}) belongs to '{app}', which the user has not allowed the computer tool to control. Allowed apps: {}. Nothing was sent.", allowed.join(", ")))
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (x, y);
+        Err("the user limited the computer tool to certain apps, which can only be enforced on Windows. Nothing was sent.".into())
+    }
+}
+
+fn check_excluded(action: &Action, regions: &[Region]) -> Result<(), String> {
+    let (x, y) = match action {
+        Action::Screenshot => return Ok(()),
+        Action::Move { x, y } | Action::Click { x, y, .. } | Action::Type { x, y, .. } | Action::Key { x, y, .. } | Action::Scroll { x, y, .. } => (*x, *y),
+    };
+    match regions.iter().find(|r| r.contains(x, y)) {
+        Some(r) => Err(format!("({x}, {y}) is inside a screen region the user marked off-limits ({}x{} at {}, {}). Nothing was sent. Choose a target outside it, or ask the user to change the region in Settings > Agent tools.", r.width, r.height, r.x, r.y)),
+        None => Ok(()),
+    }
+}
+
 pub fn plan(args: &Value) -> Result<Action, String> {
     let coordinate = |name: &str| -> Result<i32, String> {
         args.get(name).and_then(Value::as_i64).filter(|n| (-32768..=32767).contains(n))
@@ -71,6 +194,9 @@ static INPUT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub async fn run(args: &Value) -> (String, Option<Vec<ImageContentPart>>) {
     let action = match plan(args) { Ok(p) => p, Err(e) => return (format!("ERROR: {e}"), None) };
+    let limits = EXCLUDED.read().map(|g| g.clone()).unwrap_or_default();
+    if let Err(e) = check_excluded(&action, &limits.regions) { return (format!("ERROR: {e}"), None); }
+    if let Err(e) = check_app(&action, &limits.allowed_apps).await { return (format!("ERROR: {e}"), None); }
     let _guard = INPUT_LOCK.lock().await;
     // Let the approval card disappear before a coordinate-based click.
     tokio::time::sleep(Duration::from_millis(250)).await;
@@ -90,6 +216,12 @@ pub async fn run(args: &Value) -> (String, Option<Vec<ImageContentPart>>) {
         Ok(None) => ("Desktop input sent. Take another screenshot to verify the resulting state.".into(), None),
         Err(e) => (format!("ERROR: computer: {e}"), None),
     }
+}
+
+/// A PNG of the desktop for the region picker in Settings.
+pub async fn capture_png() -> Result<Vec<u8>, String> {
+    let _guard = INPUT_LOCK.lock().await;
+    perform(&Action::Screenshot).await?.ok_or_else(|| "no capture".to_string())
 }
 
 async fn output(mut cmd: tokio::process::Command) -> Result<std::process::Output, String> {
@@ -174,6 +306,26 @@ mod tests {
         for args in [json!({"action":"type","text":"x".repeat(12001)}), json!({"action":"key","keys":["ctrl+a;exec"]}), json!({"action":"key","keys":["ctrl","ctrl"]}), json!({"action":"click","x":0.5,"y":2}), json!({"action":"click","x":1,"y":2,"count":3}), json!({"action":"scroll","amount":21})] { assert!(plan(&args).is_err(), "{args}"); }
         assert_eq!(plan(&json!({"action":"key","x":1,"y":2,"keys":["CTRL","a"]})), Ok(Action::Key { x:1, y:2, keys: vec!["ctrl".into(),"a".into()] }));
         assert!(plan(&json!({"action":"type","x":1,"y":2,"text":"Olá 🐧"})).is_ok());
+    }
+    #[test]
+    fn excluded_regions_refuse_every_pointer_action_but_not_screenshots() {
+        let r = [Region { x: 100, y: 50, width: 40, height: 20 }];
+        for args in [json!({"action":"click","x":100,"y":50}), json!({"action":"move","x":139,"y":69}), json!({"action":"type","x":120,"y":60,"text":"a"}), json!({"action":"key","x":120,"y":60,"keys":["enter"]}), json!({"action":"scroll","x":120,"y":60,"amount":1})] {
+            assert!(check_excluded(&plan(&args).unwrap(), &r).is_err(), "{args}");
+        }
+        for args in [json!({"action":"click","x":140,"y":50}), json!({"action":"click","x":99,"y":50}), json!({"action":"click","x":100,"y":70}), json!({"action":"screenshot"})] {
+            assert!(check_excluded(&plan(&args).unwrap(), &r).is_ok(), "{args}");
+        }
+    }
+    #[test]
+    fn exclusions_round_trip_and_drop_empty_regions() {
+        let dir = tempfile::tempdir().unwrap();
+        let saved = save_exclusions(dir.path(), &Exclusions { regions: vec![Region { x: 1, y: 2, width: 3, height: 4 }, Region { x: 0, y: 0, width: 0, height: 9 }], allowed_apps: vec!["Notepad.exe".into(), "notepad".into(), " ".into()] }).unwrap();
+        assert_eq!(saved.regions.len(), 1);
+        assert_eq!(saved.allowed_apps, vec!["Notepad.exe".to_string()]);
+        assert!(app_allowed("NOTEPAD", &saved.allowed_apps) && !app_allowed("paint", &saved.allowed_apps));
+        assert_eq!(load_exclusions(dir.path()), saved);
+        set_active_exclusions(Exclusions::default());
     }
     #[test]
     #[cfg(target_os = "linux")]

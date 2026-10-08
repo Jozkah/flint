@@ -115,6 +115,35 @@ pub async fn set_attribution_settings(
     Ok(settings)
 }
 
+/// Screen regions the `computer` tool must never act in
+/// (`<data folder>/computer-exclusions.json`).
+#[tauri::command]
+pub async fn get_computer_exclusions(app: tauri::AppHandle) -> tauri_plugin_agent_tools::tools::computer::Exclusions {
+    tauri_plugin_agent_tools::tools::computer::load_exclusions(&get_jan_data_folder_path(app))
+}
+
+#[tauri::command]
+pub async fn set_computer_exclusions(
+    app: tauri::AppHandle,
+    exclusions: tauri_plugin_agent_tools::tools::computer::Exclusions,
+) -> Result<tauri_plugin_agent_tools::tools::computer::Exclusions, String> {
+    tauri_plugin_agent_tools::tools::computer::save_exclusions(&get_jan_data_folder_path(app), &exclusions)
+}
+
+/// Names of apps with a visible window, to pick allowed apps from.
+#[tauri::command]
+pub async fn list_open_apps() -> Vec<String> {
+    tauri_plugin_agent_tools::tools::computer::list_open_apps().await
+}
+
+/// The desktop as a PNG data URL, for drawing a region on.
+#[tauri::command]
+pub async fn capture_desktop_preview() -> Result<String, String> {
+    use base64::Engine as _;
+    let png = tauri_plugin_agent_tools::tools::computer::capture_png().await?;
+    Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)))
+}
+
 /// A `git` tool call's input with Flint's attribution added, as the renderer's
 /// dispatchers run it: rewritten before the approval prompt, so the prompt
 /// shows the exact message or body. `base` resolves a relative `-F` file.
