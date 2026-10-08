@@ -278,6 +278,10 @@ pub fn mark_started(data_folder: &Path) -> Option<String> {
     let _ = STARTED_AT.set(Instant::now());
     let path = marker_path(data_folder);
     let earlier = std::fs::read_to_string(&path).ok();
+    // The first run on a fresh install starts before anything has created the
+    // data folder; without it the marker was never written and a crash during
+    // that run was never reported.
+    let _ = std::fs::create_dir_all(data_folder);
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let _ = std::fs::write(
         &path,
@@ -573,6 +577,17 @@ mod tests {
         let dir = folder("first");
         assert_eq!(mark_started(&dir), None);
         assert!(marker_path(&dir).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_first_run_on_a_fresh_install_still_writes_its_marker() {
+        // The data folder does not exist yet on the very first launch.
+        let dir = std::env::temp_dir().join(format!("flint-crash-trace-fresh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!dir.exists());
+        assert_eq!(mark_started(&dir), None);
+        assert!(marker_path(&dir).exists(), "a crash in this run must be reported next start");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
