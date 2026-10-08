@@ -250,6 +250,25 @@ pub fn friendly_failure(tail: &[String]) -> String {
     }
 }
 
+/// Serialises `load`, which can take minutes and replaces the resident engine.
+static LOAD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn load_lock() -> &'static Mutex<()> {
+    LOAD_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Loading `model_id` replaces whatever engine is resident; refuse when that
+/// engine is in the middle of a generation, which the swap would kill.
+async fn check_can_replace(model_id: &str) -> Result<(), String> {
+    match resident().lock().await.as_ref() {
+        Some(r) if r.busy && r.model_id != model_id => Err(
+            "The image engine is busy with another generation. Wait for it to finish or stop it, then load the other model."
+                .to_string(),
+        ),
+        _ => Ok(()),
+    }
+}
+
 pub async fn unload<R: Runtime>(app: &tauri::AppHandle<R>) {
     let taken = resident().lock().await.take();
     if let Some(mut r) = taken {
@@ -273,6 +292,10 @@ pub async fn load<R: Runtime>(
         .ok_or("The image engine is not installed yet.")?;
     let files = files_for(app, def)?;
 
+    // One load or swap at a time: two callers must not each start an engine,
+    // with the first one's child killed when the second replaces it.
+    let _serial = load_lock().lock().await;
+
     // Already there, and still running: nothing to do.
     {
         let mut guard = resident().lock().await;
@@ -282,6 +305,7 @@ pub async fn load<R: Runtime>(
             }
         }
     }
+    check_can_replace(def.id).await?;
     unload(app).await;
     emit_state(app, "loading", Some(def.id));
 
@@ -925,6 +949,9 @@ mod oom_tests {
 mod guard_tests {
     use super::*;
 
+    /// The tests share the process-wide resident engine.
+    static SERIAL: Mutex<()> = Mutex::const_new(());
+
     fn idle_child() -> Child {
         #[cfg(windows)]
         let mut command = {
@@ -948,6 +975,7 @@ mod guard_tests {
 
     #[tokio::test]
     async fn dropping_a_running_generation_frees_the_engine() {
+        let _serial = SERIAL.lock().await;
         let live = Arc::new(StdMutex::new(Live::default()));
         *resident().lock().await = Some(Resident {
             model_id: "test-model",
@@ -975,5 +1003,26 @@ mod guard_tests {
         assert!(r.current_job.is_none());
         drop(guard);
         *resident().lock().await = None;
+    }
+
+    #[tokio::test]
+    async fn a_busy_engine_is_not_replaced_by_another_model() {
+        let _serial = SERIAL.lock().await;
+        *resident().lock().await = Some(Resident {
+            model_id: "model-a",
+            kind: Kind::Image,
+            child: idle_child(),
+            port: 1,
+            live: Arc::new(StdMutex::new(Live::default())),
+            last_used: Instant::now(),
+            busy: true,
+            current_job: None,
+        });
+        let refused = check_can_replace("model-b").await;
+        let same = check_can_replace("model-a").await;
+        *resident().lock().await = None;
+        assert!(refused.unwrap_err().contains("busy"));
+        assert!(same.is_ok());
+        assert!(check_can_replace("model-b").await.is_ok());
     }
 }
