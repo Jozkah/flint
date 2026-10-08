@@ -175,6 +175,15 @@
     "busy": "Před přejmenováním místnost pozastavte nebo zastavte.",
     "failed": "Název se nepodařilo vygenerovat."
   },
+  "convertToCowork": {
+    "menu": "Převést do Cowork",
+    "title": "Převést do Cowork?",
+    "description": "Konverzace se stane novou relací Cowork. Co se má stát s tímto chatem?",
+    "keep": "Ponechat chat",
+    "delete": "Smazat chat",
+    "done": "Převedeno na relaci Cowork.",
+    "failed": "Není co převádět: tento chat nemá žádné zprávy."
+  },
   "fork": {
     "chat": "Rozvětvit chat",
     "done": "Rozvětveno do nového chatu.",

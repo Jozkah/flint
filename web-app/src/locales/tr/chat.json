@@ -161,6 +161,15 @@
     "busy": "Yeniden adlandırmadan önce odayı duraklatın veya durdurun.",
     "failed": "Başlık oluşturulamadı."
   },
+  "convertToCowork": {
+    "menu": "Cowork'e dönüştür",
+    "title": "Cowork'e dönüştürülsün mü?",
+    "description": "Konuşma yeni bir Cowork oturumu olur. Bu sohbete ne yapılsın?",
+    "keep": "Sohbeti koru",
+    "delete": "Sohbeti sil",
+    "done": "Cowork oturumuna dönüştürüldü.",
+    "failed": "Dönüştürülecek bir şey yok: bu sohbette mesaj yok."
+  },
   "fork": {
     "chat": "Sohbeti dallandır",
     "done": "Yeni bir sohbete dallandırıldı.",

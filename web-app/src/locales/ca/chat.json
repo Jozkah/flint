@@ -168,6 +168,15 @@
     "busy": "Posa en pausa o atura la sala abans de canviar-li el nom.",
     "failed": "No s'ha pogut generar un títol."
   },
+  "convertToCowork": {
+    "menu": "Converteix a Cowork",
+    "title": "Convertir a Cowork?",
+    "description": "La conversa es converteix en una nova sessió de Cowork. Què ha de passar amb aquest xat?",
+    "keep": "Conserva el xat",
+    "delete": "Elimina el xat",
+    "done": "S'ha convertit en una sessió de Cowork.",
+    "failed": "Res a convertir: aquest xat no té missatges."
+  },
   "fork": {
     "chat": "Bifurca el xat",
     "done": "S'ha bifurcat en un xat nou.",

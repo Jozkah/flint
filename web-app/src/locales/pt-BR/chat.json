@@ -168,6 +168,15 @@
     "busy": "Pause ou pare a sala antes de renomeá-la.",
     "failed": "Não foi possível gerar um título."
   },
+  "convertToCowork": {
+    "menu": "Converter em Cowork",
+    "title": "Converter em Cowork?",
+    "description": "A conversa se torna uma nova sessão do Cowork. O que fazer com este chat?",
+    "keep": "Manter chat",
+    "delete": "Excluir chat",
+    "done": "Convertido em uma sessão do Cowork.",
+    "failed": "Nada para converter: este chat não tem mensagens."
+  },
   "fork": {
     "chat": "Ramificar chat",
     "done": "Ramificado em um novo chat.",
