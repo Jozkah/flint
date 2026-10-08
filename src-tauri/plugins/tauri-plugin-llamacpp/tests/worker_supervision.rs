@@ -175,9 +175,23 @@ fn pid_alive(pid: u32) -> bool {
     !matches!(rest.split_whitespace().next(), Some("Z") | None)
 }
 
-#[cfg(not(unix))]
+/// Windows has no /proc, so ask `tasklist` for exactly this pid. Its CSV rows
+/// quote the pid column, which keeps pid 12 from matching pid 1234; an exited
+/// process drops out of the list as soon as its last handle closes.
+#[cfg(windows)]
+fn pid_alive(pid: u32) -> bool {
+    let Ok(out) = std::process::Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
+        .output()
+    else {
+        return false;
+    };
+    String::from_utf8_lossy(&out.stdout).contains(&format!("\"{pid}\""))
+}
+
+#[cfg(not(any(unix, windows)))]
 fn pid_alive(_pid: u32) -> bool {
-    // No cheap /proc equivalent; the assertion is Unix-only.
+    // No cheap process lookup on this platform; the assertion is skipped.
     false
 }
 
