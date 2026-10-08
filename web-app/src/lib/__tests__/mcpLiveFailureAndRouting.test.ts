@@ -200,3 +200,4 @@ const coworkConfig = (over = {}) => ({
   readOnlyFolder: null,
   ...over,
 })
+
