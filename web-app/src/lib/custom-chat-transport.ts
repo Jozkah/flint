@@ -2797,10 +2797,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       useAppState.getState().updateModelLoadProgress(undefined)
       useAppState.getState().updateThreadModelLoadProgress(threadId, undefined)
     } catch (error) {
+      const wasLoading = Boolean(useAppState.getState().loadingModels[threadId])
       useAppState.getState().updateLoadingModel(false)
       useAppState.getState().updateThreadLoadingModel(threadId, false)
       useAppState.getState().updateModelLoadProgress(undefined)
       useAppState.getState().updateThreadModelLoadProgress(threadId, undefined)
+      if (wasLoading && !(error instanceof Error && error.name === 'AbortError')) {
+        useAppState.getState().markThreadModelLoadFailed(threadId, true)
+      }
       console.error('Failed to create model:', error)
       // Preserve AbortError identity so callers/UI can tell a user-initiated
       // Stop from an actual model-load failure.

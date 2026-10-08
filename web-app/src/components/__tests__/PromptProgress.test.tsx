@@ -8,8 +8,10 @@ vi.mock('@/hooks/useAppState', () => ({
   useAppState: vi.fn(),
 }))
 
+const route = vi.hoisted(() => ({ params: undefined as { threadId: string } | undefined }))
+
 vi.mock('@tanstack/react-router', () => ({
-  useParams: () => undefined,
+  useParams: () => route.params,
 }))
 
 const mockUseAppState = useAppState as ReturnType<typeof vi.fn>
@@ -17,6 +19,43 @@ const mockUseAppState = useAppState as ReturnType<typeof vi.fn>
 describe('PromptProgress', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    route.params = undefined
+  })
+
+  it('shows the failed card when the thread has a stamped model load failure', () => {
+    route.params = { threadId: 't1' }
+    mockUseAppState.mockImplementation((selector) =>
+      selector({
+        promptProgress: undefined,
+        promptProgresses: {},
+        loadingModel: false,
+        loadingModels: {},
+        modelLoadFailures: { t1: Date.now() },
+        modelLoadProgressByThread: {},
+      })
+    )
+
+    render(<PromptProgress />)
+
+    expect(screen.getByTestId('model-loader')).toHaveTextContent(/Failed after/)
+  })
+
+  it('does not show a failure for another thread', () => {
+    route.params = { threadId: 't1' }
+    mockUseAppState.mockImplementation((selector) =>
+      selector({
+        promptProgress: undefined,
+        promptProgresses: {},
+        loadingModel: false,
+        loadingModels: {},
+        modelLoadFailures: { other: Date.now() },
+        modelLoadProgressByThread: {},
+      })
+    )
+
+    render(<PromptProgress hideIdle />)
+
+    expect(screen.queryByTestId('model-loader')).toBeNull()
   })
 
   it('should calculate percentage correctly', () => {
