@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "Tanpa judul",
+    "actionsFor": "Tindakan untuk {{name}}",
     "confirmEmpty": "Hapus semua isi arsip secara permanen? Tindakan ini tidak dapat dibatalkan.",
     "deletedBlocked": "{{count}} dihapus. {{title}}: {{reason}}",
     "deleted": "{{count}} dihapus",
     "title": "Arsip",
-    "intro": "Item yang dihapus menunggu di sini. Tekan lama satu item untuk memulihkan atau menghapusnya permanen.",
+    "intro": "Item yang dihapus menunggu di sini. Geser satu ke kiri, atau tekan dan tahan, untuk memulihkannya atau menghapusnya secara permanen.",
     "empty": "Arsip kosong.",
     "retention_other": "Item arsip dihapus permanen setelah {{count}} hari.",
     "retentionForever": "Item arsip tetap ada sampai Anda menghapusnya.",
@@ -68,7 +69,10 @@
     "from": "dari {{origin}}",
     "loading": "Memuat…",
     "experimental": "Eksperimental",
-    "delete": "Hapus"
+    "delete": "Hapus",
+    "working": "Memproses",
+    "allowed": "Diizinkan",
+    "didNotWorkRetry": "Tidak berhasil, coba lagi"
   },
   "chat": {
     "system": "Sistem",
@@ -323,6 +327,7 @@
     "foot": "Dikirim komputer Anda langsung ke layanan push ponsel ini, hanya saat Flint tidak terbuka di sini. Muatan dienkripsi dan tidak membawa teks pesan.",
     "notify": "Beri notifikasi ke ponsel ini",
     "notSetUp": "Belum disiapkan di komputer",
+    "willNotify": "Anda akan diberi tahu",
     "sendTest": "Kirim notifikasi uji",
     "testSent": "Uji terkirim",
     "notifyWhen": "Beri tahu saya saat",

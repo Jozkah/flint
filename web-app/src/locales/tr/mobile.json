@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "Başlıksız",
+    "actionsFor": "{{name}} için eylemler",
     "confirmEmpty": "Arşivdeki her şey kalıcı olarak silinsin mi? Bu geri alınamaz.",
     "deletedBlocked": "{{count}} silindi. {{title}}: {{reason}}",
     "deleted": "{{count}} silindi",
     "title": "Arşiv",
-    "intro": "Silinen öğeler burada bekler. Geri yüklemek veya kalıcı olarak silmek için birine basılı tutun.",
+    "intro": "Silinen öğeler burada bekler. Geri yüklemek veya kalıcı olarak silmek için bir öğeyi sola kaydırın ya da basılı tutun.",
     "empty": "Arşivde hiçbir şey yok.",
     "retention_one": "Arşivlenen öğeler {{count}} gün sonra kalıcı olarak silinir.",
     "retention_other": "Arşivlenen öğeler {{count}} gün sonra kalıcı olarak silinir.",
@@ -69,7 +70,10 @@
     "from": "{{origin}} kaynaklı",
     "loading": "Yükleniyor…",
     "experimental": "Deneysel",
-    "delete": "Sil"
+    "delete": "Sil",
+    "working": "Çalışıyor",
+    "allowed": "İzin verildi",
+    "didNotWorkRetry": "Olmadı, tekrar deneyin"
   },
   "chat": {
     "system": "Sistem",
@@ -328,6 +332,7 @@
     "foot": "Bilgisayarınızdan doğrudan bu telefonun anlık bildirim hizmetine gönderilir, yalnızca Flint burada açık değilken. Yükler şifrelidir ve mesaj metni taşımaz.",
     "notify": "Bu telefonu bilgilendir",
     "notSetUp": "Bilgisayarda kurulmadı",
+    "willNotify": "Bildirim alacaksınız",
     "sendTest": "Test bildirimi gönder",
     "testSent": "Test gönderildi",
     "notifyWhen": "Şu durumlarda bildir",

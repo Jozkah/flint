@@ -6,6 +6,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
 } from 'react'
+import { t } from '../i18n'
 import { useReducedMotion } from './use-reduced-motion'
 
 const HEIGHT = 44
@@ -30,8 +31,8 @@ export type SlideCommitProps = {
 
 export function SlideCommit({
   label,
-  errorLabel = 'Didn’t work, try again',
-  doneLabel = 'Allowed',
+  errorLabel = t('common.didNotWorkRetry'),
+  doneLabel = t('common.allowed'),
   onCommit,
   disabled,
   testId,
@@ -191,7 +192,7 @@ export function SlideCommit({
           aria-valuenow={Math.round(progress * 100)}
           aria-valuetext={
             phase === 'pending'
-              ? 'Working'
+              ? t('common.working')
               : phase === 'done'
                 ? doneLabel
                 : phase === 'error'
