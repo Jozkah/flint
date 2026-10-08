@@ -635,6 +635,19 @@ pub const SANDBOX_ENV_ALLOW: &[&str] = &[
     "PATHEXT",
     "ProgramFiles",
     "ProgramData",
+    // The Windows helper copies these from its own environment when present
+    // (`win_env::SYSTEM_PASSTHROUGH`), but this list cleared them before it
+    // ran, so a confined shell and a hook never saw them. System locations and
+    // platform facts, no user data and no secret.
+    "SystemDrive",
+    "OS",
+    "PROCESSOR_ARCHITECTURE",
+    "PROCESSOR_IDENTIFIER",
+    "NUMBER_OF_PROCESSORS",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "CommonProgramFiles",
+    "CommonProgramFiles(x86)",
     // Windows only, and not for the shell: on Windows the process spawned here
     // is the AppContainer helper, which builds the confined shell's environment
     // itself (`tools::win_env`). `CreateProcessW` resolves the container's own
