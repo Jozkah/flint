@@ -31,7 +31,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -49,6 +49,8 @@ jobs:
   prepare:
     name: Prepare release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       ref: ${{ steps.release.outputs.ref }}
@@ -301,12 +303,6 @@ jobs:
             dist-sha256-${{ matrix.name }}.txt
           if-no-files-found: error
 
-      - name: Upload the bundles to the release
-        if: github.event_name != 'push'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
-
       - name: Upload the engine build log
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -315,11 +311,64 @@ jobs:
           path: src-tauri/target/engine-build.log
           if-no-files-found: ignore
 
+  # The build jobs run with a read-only token. Only this job, which runs no
+  # repository code, may write to the release.
+  upload-release:
+    name: Upload the bundles to the release
+    if: github.event_name != 'push' && needs.prepare.outputs.skip != 'true'
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the bundles
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: flint-${{ needs.prepare.outputs.tag }}-*
+          path: bundles
+          merge-multiple: true
+
+      - name: Upload the bundles to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          shopt -s nullglob
+          files=(bundles/dist/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::no bundles were downloaded"
+            exit 1
+          fi
+          gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+
+  # Nightly prereleases pile up: keep the newest few and anything younger than
+  # two weeks.
+  prune-nightly:
+    name: Prune old nightly prereleases
+    if: github.event_name == 'schedule'
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete nightlies older than 14 days, keeping the newest 3
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cutoff="$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          old="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 300             --json tagName,createdAt,isPrerelease             --jq "[.[] | select((.tagName | test(\"^nightly-[0-9]\")) and .isPrerelease)] | sort_by(.createdAt) | reverse | .[3:] | .[] | select(.createdAt < \"$cutoff\") | .tagName")"
+          for tag in $old; do
+            echo "Deleting $tag"
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          done
+
   publish-nightly:
     name: Publish nightly prerelease
     if: github.event_name == 'schedule' && needs.prepare.outputs.skip != 'true'
-    needs: [prepare, build]
+    needs: [prepare, build, upload-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Publish complete nightly release
         env:

@@ -150,7 +150,27 @@ test('a push to main builds the commit as an artifact without touching releases'
   assert.match(result.output, new RegExp(`ref=${'a'.repeat(40)}`))
   assert.match(result.output, /skip=false/)
   assert.doesNotMatch(result.log, /release |api /)
-  assert.match(workflow, /Upload the bundles to the release\n        if: github.event_name != 'push'/)
+  assert.match(workflow, /  upload-release:\n    name: Upload the bundles to the release\n    if: github.event_name != 'push'/)
   assert.match(workflow, /push:\n    branches: \[main\]/)
   assert.match(workflow, /cancel-in-progress: \$\{\{ github.event_name == 'push' \}\}/)
+})
+
+test('the build jobs hold a read-only token; only the release jobs may write', () => {
+  assert.match(workflow, /\npermissions:\n  contents: read\n/)
+  const jobs = workflow.split('\njobs:\n')[1].split(/\n  (?=[a-z-]+:\n)/)
+  const writers = jobs
+    .filter((job) => /\n    permissions:\n      contents: write/.test(job))
+    .map((job) => job.split(':')[0].trim())
+  assert.deepEqual(writers.sort(), ['prepare', 'prune-nightly', 'publish-nightly', 'upload-release'])
+  const build = jobs.find((job) => job.trim().startsWith('build:'))
+  assert.doesNotMatch(build, /gh release upload/)
+  assert.match(workflow, /upload-release:[\s\S]*gh release upload/)
+})
+
+test('old nightly prereleases are pruned, keeping the newest three', () => {
+  const prune = workflow.split('\n  prune-nightly:')[1].split('\n  publish-nightly:')[0]
+  assert.match(prune, /if: github.event_name == 'schedule'/)
+  assert.match(prune, /\.\[3:\]/)
+  assert.match(prune, /14 days ago/)
+  assert.match(prune, /--cleanup-tag/)
 })
