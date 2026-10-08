@@ -422,6 +422,9 @@ async fn confirm_exit<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) {
         // RunEvent::Exit, which exit(0) skips; a force quit left the profile
         // refused as "held" for hours.
         core::migration::lock::release_session_locks();
+        // exit(0) also skips the clean-exit mark, so the next start would log
+        // "previous run did not shut down cleanly" for a normal quit.
+        core::crash_trace::mark_clean_exit(&get_jan_data_folder_path(app_handle.clone()));
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         std::process::exit(0);
     });
@@ -1090,6 +1093,9 @@ pub fn run_app(app: tauri::App) {
             });
 
             if cleanup_already_running {
+                // The cleanup (a shutdown for an update, or a force quit) ran
+                // earlier; this is still the end of a clean run.
+                core::crash_trace::mark_clean_exit(&get_jan_data_folder_path(app_handle.clone()));
                 return;
             }
 
@@ -1128,4 +1134,5 @@ mod startup_guard_tests {
             );
         }
     }
+
 }
