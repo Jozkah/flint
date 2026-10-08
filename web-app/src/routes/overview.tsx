@@ -27,6 +27,7 @@ import {
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn, getProviderTitle } from '@/lib/utils'
+import { speedStats } from '@/lib/tokenSpeed'
 import {
   change,
   summarize,
@@ -37,6 +38,8 @@ import {
 } from '@/stores/usage-stats-store'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { BlurWords } from '@/components/ui/blur-words'
+import { blurWordsDelay } from '@/lib/blur-words'
 
 export const Route = createFileRoute('/overview')({
   component: Overview,
@@ -394,21 +397,21 @@ type RunRow = {
 }
 
 /**
- * Average generation speed across a session's replies, weighted by the tokens
- * each produced so a one-line reply does not count as much as a long one.
- * `null` when no reply reported a speed.
+ * Average generation speed across a session's replies: every token over every
+ * second spent generating (the same figure the token popup shows), not a mean
+ * of speeds. `null` when no reply reported a measurable speed.
  */
 function averageTokenSpeed(turns: CoworkSession['turns']): number | null {
-  let weighted = 0
-  let weight = 0
-  for (const tu of turns) {
-    const speed = tu.tokenSpeed?.tokenSpeed
-    if (!speed || !Number.isFinite(speed) || speed <= 0) continue
-    const w = tu.tokenSpeed?.tokenCount ?? tu.usage?.completion_tokens ?? 1
-    weighted += speed * w
-    weight += w
-  }
-  return weight > 0 ? weighted / weight : null
+  return (
+    speedStats(
+      turns.map((tu) => ({
+        tokenSpeed: tu.tokenSpeed?.tokenSpeed,
+        durationMs: tu.tokenSpeed?.durationMs,
+        source: tu.tokenSpeed?.source,
+        tokenCount: tu.tokenSpeed?.tokenCount ?? tu.usage?.completion_tokens,
+      }))
+    ).average ?? null
+  )
 }
 
 /**
@@ -617,6 +620,7 @@ function Overview() {
   const activity = useUsageStats((s) => s.activity)
   const [range, setRange] = useState<Range>(7)
   const now = Date.now()
+  const greeting = t(greetingKey(new Date(now)))
   const current = useMemo(() => summarize(days, range, now), [days, range, now])
   const previous = useMemo(() => summarize(days, range, now - range * 86_400_000), [days, range, now])
   const cmpLabel = range === 7 ? t('overview:vsLastWeek') : t('overview:vsLastMonth')
@@ -645,12 +649,29 @@ function Overview() {
     <div className="h-full overflow-x-hidden overflow-y-auto px-1 pt-2 pb-6 [scrollbar-width:thin]" data-testid="overview-page">
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex flex-col gap-4 leading-none motion-safe:animate-rise-in">
+          <div className="flex flex-col gap-4 leading-none">
             <h1 className="m-0 text-2xl font-medium tracking-[-.01em]">
-              {t(greetingKey(new Date(now)))}
-              <span aria-hidden className="ml-2 inline-block origin-[70%_70%] motion-safe:animate-[wave_1.8s_ease-in-out_.6s_1]">👋</span>
+              <BlurWords
+                text={greeting}
+                trailing={
+                  <span
+                    aria-hidden
+                    className="ml-2 inline-block origin-[70%_70%] motion-safe:animate-[wave_1.8s_ease-in-out_var(--wave-delay)_1]"
+                    style={{
+                      ['--wave-delay' as string]: `${blurWordsDelay(greeting) + 700}ms`,
+                    }}
+                  >
+                    👋
+                  </span>
+                }
+              />
             </h1>
-            <p className="m-0 text-[0.8125rem] text-secondary-foreground">
+            <p
+              className="m-0 text-[0.8125rem] text-secondary-foreground motion-safe:animate-[rise-in_.7s_var(--expo)_var(--sub-delay)_both]"
+              style={{
+                ['--sub-delay' as string]: `${blurWordsDelay(greeting) + 450}ms`,
+              }}
+            >
               {range === 7 ? t('overview:subWeek') : t('overview:subMonth')}
             </p>
           </div>

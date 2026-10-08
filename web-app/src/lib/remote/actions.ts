@@ -8,8 +8,15 @@ import type { SubmittedFile } from '@/lib/coworkAttachments'
 import type { PlannedAttachments } from './attachments'
 import { RemoteRpcError, type RemoteHandlers } from './bridge'
 import { createIdempotencyCache, type IdempotencyCache } from './idempotency'
+import { checkAskAnswers } from './asks'
+import { offers } from './prompts'
+import type { AskAnswer } from '@/types/coworkSession'
 import type {
   ApprovalRespondParams,
+  AskRespondParams,
+  PromptRespondParams,
+  RemoteAsk,
+  RemotePrompt,
   ChatSendParams,
   CoworkAccessId,
   CoworkModeId,
@@ -91,6 +98,25 @@ export type RemoteActions = {
   /** Settings › Remote access, as the window reads it. */
   permissions(): Promise<{ approvals: boolean; alwaysAllow: boolean } | null>
 
+  // -- Questions -------------------------------------------------------------
+  /** A question a Cowork run is waiting on. */
+  findAsk?(threadId: string, requestId: string): RemoteAsk | null
+  /** Hands the run its answer (`null`: skipped), as the desktop's card does.
+   * False when nothing waits under that id any more. */
+  answerAsk?(threadId: string, requestId: string, answers: AskAnswer[] | null): boolean
+  /** One of the other blocking prompts (see `prompts.ts`). */
+  findPrompt?(id: string): RemotePrompt | null
+  /** Answers it as the desktop's own dialog would. False when it is gone. */
+  respondPrompt?(id: string, action: string): boolean
+  /** Keeps what an interrupted turn finished, so the session can go on. */
+  recoverInterrupted?(id: string): void
+  /** Regenerates or edits through the mounted chat's own handlers. False
+   * when the chat did not mount in time. */
+  chatAct?(
+    id: string,
+    action: { type: 'regenerate'; messageId?: string } | { type: 'edit'; messageId: string; text: string }
+  ): Promise<boolean>
+
   // -- Rooms -----------------------------------------------------------------
   roomExists(id: string): Promise<boolean>
   room: {
@@ -154,7 +180,7 @@ function modelOf(v: unknown): ModelRef | undefined {
 }
 
 const REASONING: readonly ReasoningMode[] = ['auto', 'on', 'off']
-const MODES: readonly CoworkModeId[] = ['review', 'ask', 'auto']
+const MODES: readonly CoworkModeId[] = ['review', 'ask', 'auto', 'bypass']
 const ACCESS: readonly CoworkAccessId[] = ['review-only', 'managed-worktree', 'edit-folder']
 
 const desktopOnly = (what: string) =>
@@ -175,6 +201,10 @@ type ActionMethods =
   | 'room.control'
   | 'settings.set'
   | 'approvals.respond'
+  | 'asks.respond'
+  | 'approvals.prompt'
+  | 'chat.regenerate'
+  | 'chat.edit'
 
 export function createActionHandlers(
   a: RemoteActions,
@@ -231,6 +261,17 @@ export function createActionHandlers(
     }
     return att
   }
+  /** A message action in a chat: only while it is idle, as on the desktop
+   * (its row hides them during a reply). */
+  const chatAct = async (id: string, action: Parameters<NonNullable<RemoteActions['chatAct']>>[1]) => {
+    if (!a.chatAct) throw new RemoteRpcError('not_implemented', 'That is not available from phones yet')
+    if (!a.chatExists(id)) throw new RemoteRpcError('not_found', 'No such chat')
+    if (a.chatBusy(id)) throw new RemoteRpcError('busy', 'Wait for the reply to finish')
+    a.open('chat', id)
+    if (!(await a.chatAct(id, action))) {
+      throw new RemoteRpcError('unavailable', "Flint's window didn't open that chat in time")
+    }
+  }
   const textWith = (text: string, att: PlannedAttachments) =>
     text || (att.files.length + att.docs.length ? 'Please look at the attached file(s).' : text)
 
@@ -283,6 +324,7 @@ export function createActionHandlers(
         const att = await prepare(ctx.device.id, { kind: 'cowork', id: isNew ? null : id, model }, p, text)
         const sid = isNew ? a.createCowork({ folder, mode, model }) : id
         if (!isNew && mode) a.setCoworkMode(sid, mode)
+        if (!isNew && p.resume === true && !a.coworkBusy(sid)) a.recoverInterrupted?.(sid)
         return deliver('cowork', sid, textWith(text, att), p.steer === true, () => a.coworkBusy(sid), att)
       })
     },
@@ -330,6 +372,61 @@ export function createActionHandlers(
         p.decision === 'deny' ? 'deny' : WIRE_DECISION[scope]
       )
       return { status: 'answered' }
+    },
+
+    'asks.respond': (params) => {
+      const p = (isRecord(params) ? params : {}) as Partial<AskRespondParams>
+      const requestId = str(p.requestId)
+      const threadId = str(p.threadId)
+      if (!requestId || !threadId) throw new RemoteRpcError('bad_params', 'requestId and threadId are required')
+      if (!a.findAsk || !a.answerAsk) {
+        throw new RemoteRpcError('not_implemented', 'Answering questions is not available from phones yet')
+      }
+      const ask = a.findAsk(threadId, requestId)
+      if (!ask) return { status: 'gone' }
+      let answers: AskAnswer[] | null = null
+      if (p.answers !== null && p.answers !== undefined) {
+        const checked = checkAskAnswers(ask, p.answers)
+        if (typeof checked === 'string') throw new RemoteRpcError('bad_params', checked)
+        answers = checked
+      }
+      return { status: a.answerAsk(threadId, requestId, answers) ? 'answered' : 'gone' }
+    },
+
+    'chat.regenerate': async (params) => {
+      const p = (isRecord(params) ? params : {}) as Record<string, unknown>
+      const id = str(p.id)
+      if (!id) throw new RemoteRpcError('bad_params', 'id is required')
+      await chatAct(id, { type: 'regenerate', ...(str(p.messageId) ? { messageId: str(p.messageId) } : {}) })
+      return { ok: true }
+    },
+
+    'chat.edit': async (params) => {
+      const p = (isRecord(params) ? params : {}) as Record<string, unknown>
+      const id = str(p.id)
+      const messageId = str(p.messageId)
+      if (!id || !messageId) throw new RemoteRpcError('bad_params', 'id and messageId are required')
+      await chatAct(id, { type: 'edit', messageId, text: textOf(p) })
+      return { ok: true }
+    },
+
+    'approvals.prompt': async (params) => {
+      const p = (isRecord(params) ? params : {}) as Partial<PromptRespondParams>
+      const id = str(p.id)
+      if (!id || typeof p.action !== 'string') throw new RemoteRpcError('bad_params', 'id and action are required')
+      if (!a.findPrompt || !a.respondPrompt) {
+        throw new RemoteRpcError('not_implemented', 'Answering this is not available from phones yet')
+      }
+      // The server already refused it when approvals from phones are off; the
+      // window checks again, since it is the one that acts.
+      const perms = await a.permissions()
+      if (perms && !perms.approvals) {
+        throw new RemoteRpcError('forbidden', 'Approvals from phones are turned off on the computer')
+      }
+      const prompt = a.findPrompt(id)
+      if (!prompt) return { status: 'gone' }
+      if (!offers(prompt, p.action)) throw new RemoteRpcError('bad_params', 'That answer is not offered for this prompt')
+      return { status: a.respondPrompt(id, p.action) ? 'answered' : 'gone' }
     },
 
     'room.send': async (params, ctx) => {

@@ -229,8 +229,8 @@ export function planTurn(input: {
 /**
  * The window a Cowork request is checked against.
  *
- * The user's own Max Context Tokens wins: it is a decision, and Chat already
- * honours it. Without one, the resolved capability stands -- except a bundled
+ * A discovered server or runtime window is authoritative. The assistant's
+ * Max Context Tokens supplies a fallback when no window was reported. A bundled
  * family guess (`qwen3` = 32,768) that the provider has already disproved by
  * accepting a larger prompt. A session was refused at "the window is 32,768"
  * one step after the same endpoint had served a 78,814-token request, with
@@ -243,9 +243,10 @@ export function coworkWindow(input: {
   /** The largest prompt the provider has accepted in this session. */
   acceptedPrompt?: number | null
 }): number | null {
+  const known = input.capabilities?.contextTokens ?? null
+  if (known != null && input.capabilities?.source !== 'bundled') return known
   const user = positive(input.userSet)
   if (user != null) return user
-  const known = input.capabilities?.contextTokens ?? null
   if (known == null) return null
   if (
     input.capabilities?.source === 'bundled' &&

@@ -3,6 +3,7 @@ import { I } from '../ui/icons'
 import { Empty, Kv, Loading } from '../ui/bits'
 import { useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
+import { t } from '../i18n'
 
 const gb = (mb: number) => `${(mb / 1024).toFixed(mb >= 10240 ? 0 : 1)} GB`
 
@@ -23,10 +24,10 @@ export default function System() {
   return (
     <>
       <TopMain
-        crumb="Engine"
-        title="System Monitor"
+        crumb={t('models.crumb')}
+        title={t('system.title')}
         extra={
-          <button type="button" className="ib" onClick={reload} aria-label="Refresh">
+          <button type="button" className="ib" onClick={reload} aria-label={t('system.refresh')}>
             <I n="refresh" />
           </button>
         }
@@ -37,9 +38,9 @@ export default function System() {
         {data && (
           <>
             <div className="ph">
-              <h2>{computer ?? data.computerName ?? 'Your computer'}</h2>
+              <h2>{computer ?? data.computerName ?? t('common.yourComputerCap')}</h2>
               <p>
-                {[data.os, data.gpus[0] ? `${data.gpus[0].name} ${gb(data.gpus[0].vram)}` : '', data.ram.total ? `${gb(data.ram.total)} RAM` : '']
+                {[data.os, data.gpus[0] ? `${data.gpus[0].name} ${gb(data.gpus[0].vram)}` : '', data.ram.total ? t('system.ram', { size: gb(data.ram.total) }) : '']
                   .filter(Boolean)
                   .join(' · ')}
               </p>
@@ -59,13 +60,13 @@ export default function System() {
             <div className="card2">
               <h4>
                 <I n="server" />
-                Local API server
+                {t('system.localApi')}
               </h4>
               <Kv
-                k="Status"
+                k={t('settings.computer.status')}
                 v={
                   <span style={{ color: data.localApi.running ? 'var(--success)' : undefined }}>
-                    {data.localApi.running ? `On · ${data.localApi.host}:${data.localApi.port}` : 'Off'}
+                    {data.localApi.running ? t('system.onAt', { host: data.localApi.host, port: data.localApi.port }) : t('common.off')}
                   </span>
                 }
               />

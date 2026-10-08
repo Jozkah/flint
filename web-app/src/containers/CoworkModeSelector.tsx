@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Diamond, ShieldCheck, Zap } from 'lucide-react'
+import { Check, ChevronDown, Diamond, ShieldCheck, ShieldOff, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -21,6 +21,7 @@ const ICONS: Record<CoworkMode, typeof Diamond> = {
   review: Diamond,
   ask: ShieldCheck,
   auto: Zap,
+  bypass: ShieldOff,
 }
 
 type Props = {
@@ -62,7 +63,7 @@ export function CoworkModeSelector({ mode, onChange, variant = 'pill' }: Props) 
               // Autonomous is the mode that can change things without asking,
               // so it is the one that does not sit quietly in the row. Warning,
               // not the accent: the accent means selected.
-              mode === 'auto'
+              mode === 'auto' || mode === 'bypass'
                 ? quiet
                   ? 'text-warning hover:text-warning'
                   : 'border-warning/35 bg-warning-tint text-warning'
@@ -103,7 +104,7 @@ export function CoworkModeSelector({ mode, onChange, variant = 'pill' }: Props) 
                   aria-hidden
                   className={cn(
                     'mt-px size-4 shrink-0',
-                    option === 'auto'
+                    option === 'auto' || option === 'bypass'
                       ? 'text-warning'
                       : 'text-secondary-foreground'
                   )}

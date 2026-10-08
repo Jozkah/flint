@@ -46,6 +46,7 @@ import {
   detectTemplateKwargsFromChatTemplate,
   getDefaultEmbeddingModelId,
   modelFileProblem,
+  assertSha256Matches,
   setDefaultEmbeddingModelId,
   type EmbedBatchResult,
 } from './util'
@@ -72,6 +73,7 @@ import {
   asI32,
   loadLlamaModel,
   readGgufMetadata,
+  sha256File,
   findGgufTensors,
   isModelSupported,
   unloadLlamaModel,
@@ -1780,6 +1782,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     // opts.modelPath: URL to the model file
     // opts.mmprojPath: URL to the mmproj file
 
+    const janDataFolderPath = await getJanDataFolderPath()
+
     /**
      * Resolve a model file that must already exist.
      *
@@ -1793,8 +1797,15 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
             'Point the import at a file already on this machine.'
         )
       }
-      if (!(await fs.existsSync(path)))
-        throw new Error(`File not found: ${path}`)
+      if (path.split(/[\/]/).includes('..')) {
+        throw new Error(`Refusing path with '..' segment: ${path}`)
+      }
+      // The Hugging Face downloader returns a path relative to the data
+      // folder. Checking that string directly looks in the process working
+      // directory (notably / on a Linux desktop launch).
+      const fullPath = await joinPath([janDataFolderPath, path])
+      if (!(await fs.existsSync(fullPath)))
+        throw new Error(`File not found: ${fullPath}`)
       return path
     }
 
@@ -1812,8 +1823,22 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
 
     // Validate GGUF files
-    const janDataFolderPath = await getJanDataFolderPath()
     const fullModelPath = await joinPath([janDataFolderPath, modelPath])
+
+    if (opts.modelSha256) {
+      assertSha256Matches(
+        'model',
+        opts.modelSha256,
+        await sha256File(fullModelPath)
+      )
+    }
+    if (opts.mmprojSha256 && mmprojPath) {
+      assertSha256Matches(
+        'mmproj',
+        opts.mmprojSha256,
+        await sha256File(await joinPath([janDataFolderPath, mmprojPath]))
+      )
+    }
     let isEmbedding = false
     let mtpLayers = 0
     let specKind: SpecDraftKind = 'mtp'

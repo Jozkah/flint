@@ -313,7 +313,17 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
       key={path}
       className="flex min-w-0 items-center gap-2 border-b border-dashed border-border py-1.5 font-mono text-xs text-fg-2 last:border-b-0"
     >
-      <span className="min-w-0 flex-1 break-all">{path}</span>
+      {open && openable(path) ? (
+        <button
+          type="button"
+          className="min-w-0 flex-1 break-all text-left text-acc-text underline decoration-dotted underline-offset-2 hover:text-foreground"
+          onClick={() => props.onOpenPath?.(path)}
+        >
+          {path}
+        </button>
+      ) : (
+        <span className="min-w-0 flex-1 break-all">{path}</span>
+      )}
       {open && openable(path) ? (
         <Button
           variant="link"
@@ -537,7 +547,8 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                 )}
                 {group(
                   t('common:coworkOrigins.overExisting'),
-                  changes.janWritesOverExisting
+                  changes.janWritesOverExisting,
+                  true
                 )}
               </>
             )}
@@ -643,6 +654,16 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                 {visibleUnresolved.map((item, index) => (
                   <li key={index} className="break-words text-foreground">
                     {unresolvedText(t, item)}
+                    {item.kind === 'stop' && item.message ? (
+                      <div className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
+                        {item.message}
+                      </div>
+                    ) : null}
+                    {item.kind === 'failed' && item.detail ? (
+                      <div className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
+                        {item.detail}
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>

@@ -9,6 +9,7 @@ import { client, closeSheet, toast } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
 import { setStudioForm, studioForm } from '../state/studio'
 import { Media } from '../ui/studio'
+import { t } from '../i18n'
 
 const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`
 
@@ -17,7 +18,7 @@ async function call(run: () => Promise<unknown>, ok?: string) {
     await run()
     if (ok) toast(ok)
   } catch (e) {
-    toast(e instanceof Error ? e.message : 'That did not work')
+    toast(e instanceof Error ? e.message : t('common.didNotWork'))
   } finally {
     invalidate(['studio.'])
   }
@@ -27,12 +28,12 @@ function ModelRow({ m, s }: { m: StudioModelWire; s: StudioStatusResult }) {
   const loaded = s.resident?.modelId === m.id
   const dl = s.download?.modelId === m.id ? s.download : null
   const sub = loaded
-    ? `Loaded${s.engineBackend ? ` · ${s.engineBackend === 'cuda12' ? 'CUDA' : s.engineBackend === 'vulkan' ? 'Vulkan' : 'CPU'}` : ''}`
+    ? `${t('models.loaded')}${s.engineBackend ? ` · ${s.engineBackend === 'cuda12' ? 'CUDA' : s.engineBackend === 'vulkan' ? 'Vulkan' : 'CPU'}` : ''}`
     : dl
-      ? `Downloading ${Math.round((dl.bytes / Math.max(1, dl.total)) * 100)}% · ${gb(dl.bytes)} of ${gb(dl.total)}`
+      ? t('studio.sheet.downloading', { pct: Math.round((dl.bytes / Math.max(1, dl.total)) * 100), done: gb(dl.bytes), total: gb(dl.total) })
       : m.installed
-        ? 'Not loaded'
-        : `Not downloaded · ${gb(m.totalBytes)}`
+        ? t('studio.sheet.notLoaded')
+        : t('studio.sheet.notDownloaded', { size: gb(m.totalBytes) })
   return (
     <div className="opt" style={{ borderColor: 'var(--border)' }}>
       <I n={m.kind === 'video' ? 'video' : 'image'} />
@@ -41,16 +42,16 @@ function ModelRow({ m, s }: { m: StudioModelWire; s: StudioStatusResult }) {
         <small>{sub}</small>
       </span>
       {loaded ? (
-        <button type="button" className="btn sm" onClick={() => void call(() => client().rpc('studio.unload', {}), 'Unloaded')}>
-          Unload
+        <button type="button" className="btn sm" onClick={() => void call(() => client().rpc('studio.unload', {}), t('studio.sheet.unloaded'))}>
+          {t('studio.sheet.unload')}
         </button>
       ) : m.installed ? (
-        <button type="button" className="btn sm" disabled={!!s.job} onClick={() => void call(() => client().rpc('studio.load', { modelId: m.id }), 'Loaded')}>
-          Load
+        <button type="button" className="btn sm" disabled={!!s.job} onClick={() => void call(() => client().rpc('studio.load', { modelId: m.id }), t('studio.sheet.loadedToast'))}>
+          {t('studio.sheet.load')}
         </button>
       ) : (
-        <button type="button" className="btn sm" disabled={!!dl} onClick={() => void call(() => client().rpc('studio.download', { modelId: m.id }), 'Downloading on the computer')}>
-          Download
+        <button type="button" className="btn sm" disabled={!!dl} onClick={() => void call(() => client().rpc('studio.download', { modelId: m.id }), t('studio.sheet.downloadingToast'))}>
+          {t('studio.sheet.download')}
         </button>
       )}
     </div>
@@ -67,12 +68,12 @@ export function StudioSettingsSheet() {
   return (
     <>
       <Grab />
-      <h3>{img ? 'Image' : 'Video'} settings</h3>
-      {s && !s.supported && <p className="sh">Studio is not available on this system yet. It runs on Windows for now.</p>}
+      <h3>{img ? t('studio.sheet.imageSettings') : t('studio.sheet.videoSettings')}</h3>
+      {s && !s.supported && <p className="sh">{t('studio.sheet.unsupported')}</p>}
       {s?.supported && s.models.filter((m) => m.kind === kind).map((m) => <ModelRow key={m.id} m={m} s={s} />)}
       {sizes.length > 0 && (
         <>
-          <div className="ssec">Shape</div>
+          <div className="ssec">{t('studio.sheet.shape')}</div>
           <Pills
             items={sizes.map((z, i) => ({ id: String(i), label: z.label }))}
             value={String(Math.min(form.sizeIndex, sizes.length - 1))}
@@ -80,41 +81,41 @@ export function StudioSettingsSheet() {
           />
         </>
       )}
-      <div className="ssec">{img ? 'Number of images' : 'Clip length'}</div>
+      <div className="ssec">{img ? t('studio.sheet.count') : t('studio.sheet.length')}</div>
       {img ? (
         <Pills items={['1', '2', '4'].map((n) => ({ id: n, label: n }))} value={String(form.count)} onChange={(v) => setStudioForm({ count: Number(v) })} />
       ) : (
         <Pills
-          items={(s?.videoSeconds ?? [1, 2, 3, 5]).map((n) => ({ id: String(n), label: `${n} s` }))}
+          items={(s?.videoSeconds ?? [1, 2, 3, 5]).map((n) => ({ id: String(n), label: t('studio.sheet.seconds', { n }) }))}
           value={String(form.seconds)}
           onChange={(v) => setStudioForm({ seconds: Number(v) })}
         />
       )}
       <label className="field">
-        Seed
-        <input inputMode="numeric" placeholder="Random" value={form.seed} onChange={(e) => setStudioForm({ seed: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
+        {t('studio.sheet.seed')}
+        <input inputMode="numeric" placeholder={t('studio.sheet.random')} value={form.seed} onChange={(e) => setStudioForm({ seed: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
       </label>
       <label className="field">
-        Things to avoid
-        <input placeholder="blurry, text" value={form.negative} onChange={(e) => setStudioForm({ negative: e.target.value })} />
+        {t('studio.sheet.avoid')}
+        <input placeholder={t('studio.sheet.avoidExample')} value={form.negative} onChange={(e) => setStudioForm({ negative: e.target.value })} />
       </label>
       {!img && s?.memoryWarning && (
         <div className="mcpoff" data-testid="memory-warning">
-          <b>This computer has {s.memoryGb ?? 'little'} GB of memory</b>
-          <span>Video may run out of memory below 32 GB. {s.memoryWarning}</span>
+          <b>{t('studio.sheet.memory', { gb: s.memoryGb ?? t('studio.sheet.little') })}</b>
+          <span>{t('studio.sheet.memoryBody', { warning: s.memoryWarning })}</span>
           {memoryAck ? (
-            <span>Understood.</span>
+            <span>{t('studio.sheet.understood')}</span>
           ) : (
             <button type="button" className="btn sm" onClick={() => studioForm.set({ memoryAck: true })}>
-              I understand
+              {t('studio.sheet.understand')}
             </button>
           )}
         </div>
       )}
       {s && (
         <>
-          <div className="ssec">Engine</div>
-          <Kv k={s.engineBackend ? s.engineBackend.toUpperCase() : 'Engine'} v={s.supported ? (s.engineTag ? `Installed · ${s.engineTag}` : 'Not installed (set it up on the computer)') : 'Not available'} />
+          <div className="ssec">{t('models.crumb')}</div>
+          <Kv k={s.engineBackend ? s.engineBackend.toUpperCase() : t('models.crumb')} v={s.supported ? (s.engineTag ? t('studio.sheet.installed', { tag: s.engineTag }) : t('studio.sheet.notInstalled')) : t('studio.sheet.notAvailable')} />
           {s.error && <p className="sh" style={{ color: 'var(--destructive)' }}>{s.error}</p>}
         </>
       )}
@@ -129,12 +130,12 @@ export function StudioItemSheet({ item }: { item?: StudioItemWire }) {
   const r = item.recipe
   const save = () => {
     const url = media.data?.dataUrl
-    if (!url) return toast('Still loading')
+    if (!url) return toast(t('studio.sheet.stillLoading'))
     const a = document.createElement('a')
     a.href = url
     a.download = `${item.id}.${item.kind === 'video' ? 'webm' : 'png'}`
     a.click()
-    toast('Saved')
+    toast(t('studio.sheet.saved'))
   }
   return (
     <>
@@ -143,18 +144,18 @@ export function StudioItemSheet({ item }: { item?: StudioItemWire }) {
         <Media item={item} controls />
       </div>
       <p className="sh" style={{ marginTop: 6 }}>{r.prompt}</p>
-      <Kv k="Seed" v={r.seed} />
-      <Kv k="Time" v={durationText(r.durationMs)} />
-      <Kv k="Model" v={r.modelName} />
+      <Kv k={t('studio.sheet.seed')} v={r.seed} />
+      <Kv k={t('rightpanel.time')} v={durationText(r.durationMs)} />
+      <Kv k={t('chat.model')} v={r.modelName} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-        <button type="button" className="btn" disabled={busy} onClick={() => { setBusy(true); closeSheet(); void call(() => client().rpc('studio.remix', { kind: item.kind, id: item.id }), 'Remixing with a new seed') }}>
-          Remix
+        <button type="button" className="btn" disabled={busy} onClick={() => { setBusy(true); closeSheet(); void call(() => client().rpc('studio.remix', { kind: item.kind, id: item.id }), t('studio.sheet.remixing')) }}>
+          {t('studio.sheet.remix')}
         </button>
         <button type="button" className="btn" onClick={save}>
-          Save
+          {t('studio.sheet.save')}
         </button>
-        <button type="button" className="btn dan" disabled={busy} onClick={() => { setBusy(true); closeSheet(); void call(() => client().rpc('studio.delete', { kind: item.kind, id: item.id }), 'Deleted') }}>
-          Delete
+        <button type="button" className="btn dan" disabled={busy} onClick={() => { setBusy(true); closeSheet(); void call(() => client().rpc('studio.delete', { kind: item.kind, id: item.id }), t('studio.sheet.deleted')) }}>
+          {t('common.delete')}
         </button>
       </div>
     </>
@@ -168,21 +169,21 @@ export function VoiceSetupSheet() {
       invalidate(['voice.status'])
       if (r.ready) {
         closeSheet()
-        toast('Voice input is ready')
-      } else toast('Not set up yet')
+        toast(t('studio.sheet.voiceReady'))
+      } else toast(t('studio.sheet.notSetUp'))
     } catch {
-      toast("Can't reach your computer")
+      toast(t('pairing.unreachable'))
     }
   }
   return (
     <>
       <Grab />
-      <h3>Set up voice input on your computer</h3>
+      <h3>{t('studio.sheet.voiceTitle')}</h3>
       <p className="sh">
-        Your words are turned into text by a voice model on your computer. On the computer, open Flint, press the microphone beside Send in any message box and follow the setup to download the voice model. Then dictation works from this phone too.
+        {t('studio.sheet.voiceBody')}
       </p>
       <button type="button" className="btn pri" onClick={() => void check()}>
-        Check again
+        {t('pairing.checkAgain')}
       </button>
     </>
   )

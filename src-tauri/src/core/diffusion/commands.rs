@@ -7,7 +7,46 @@ use super::engine;
 use super::gallery::{self, GalleryItem};
 use super::runtime::{self, Generated, ImageParams, ResidentInfo, VideoParams};
 use serde::Serialize;
+use std::path::Path;
 use tauri::Runtime;
+
+/// Imported adapters live in Studio's own directory, separate from model weights.
+#[tauri::command]
+pub fn diffusion_list_loras<R: Runtime>(app: tauri::AppHandle<R>) -> Result<Vec<String>, String> {
+    let dir = engine::diffusion_root(&app).join("loras");
+    if !dir.exists() { return Ok(Vec::new()); }
+    let mut names = Vec::new();
+    for entry in std::fs::read_dir(&dir).map_err(|e| format!("Could not read LoRA adapters: {e}"))? {
+        let entry = entry.map_err(|e| format!("Could not read LoRA adapters: {e}"))?;
+        let path = entry.path();
+        if path.is_file() && path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("safetensors")) {
+            names.push(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    names.sort_by_key(|name| name.to_ascii_lowercase());
+    Ok(names)
+}
+
+#[tauri::command]
+pub fn diffusion_import_lora<R: Runtime>(app: tauri::AppHandle<R>, path: String) -> Result<String, String> {
+    let source = Path::new(&path);
+    if !source.is_file() || !source.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("safetensors")) {
+        return Err("Choose a .safetensors LoRA file.".to_string());
+    }
+    let name = source.file_name().and_then(|n| n.to_str()).ok_or("LoRA file name is invalid.")?.to_string();
+    let dir = engine::diffusion_root(&app).join("loras");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Could not create LoRA folder: {e}"))?;
+    let target = dir.join(&name);
+    let mut input = std::fs::File::open(source).map_err(|e| format!("Could not open LoRA: {e}"))?;
+    let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(&target)
+        .map_err(|e| format!("Could not import LoRA (file may already exist): {e}"))?;
+    if let Err(error) = std::io::copy(&mut input, &mut output) {
+        drop(output);
+        let _ = std::fs::remove_file(&target);
+        return Err(format!("Could not copy LoRA: {error}"));
+    }
+    Ok(name)
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +65,7 @@ pub struct ModelStatus {
 #[serde(rename_all = "camelCase")]
 pub struct Status {
     pub supported: bool,
+    pub engine_builds: Vec<&'static str>,
     pub engine_tag: &'static str,
     pub engine_backend: Option<Backend>,
     pub models: Vec<ModelStatus>,
@@ -46,6 +86,7 @@ pub async fn diffusion_status<R: Runtime>(app: tauri::AppHandle<R>) -> Result<St
         .collect();
     Ok(Status {
         supported: engine::platform_supported(),
+        engine_builds: catalog::available_backends().iter().map(|b| b.id()).collect(),
         engine_tag: catalog::ENGINE_TAG,
         engine_backend: engine::installed_backend(&app),
         models,
@@ -74,6 +115,9 @@ pub async fn diffusion_download_model<R: Runtime>(
     model_id: String,
     token: Option<String>,
 ) -> Result<(), String> {
+    if !engine::platform_supported() {
+        return Err("Local image and video generation needs Windows x64 or Linux x64.".to_string());
+    }
     let def = catalog::model(&model_id).ok_or_else(|| format!("Unknown model {model_id}."))?;
     for (index, file) in def.files.iter().enumerate() {
         if std::fs::metadata(runtime::model_file_path(&app, file))
@@ -247,6 +291,7 @@ pub async fn diffusion_save_external_images<R: Runtime>(
             batch_seed: 0,
             model_id: params.model_id.clone(),
             model_name: params.model_name.clone(),
+            lora: Vec::new(),
             frames: None,
             fps: None,
             created_at_ms,
@@ -301,6 +346,9 @@ pub async fn diffusion_add_custom_model<R: Runtime>(
     app: tauri::AppHandle<R>,
     params: AddCustomModel,
 ) -> Result<ModelStatus, String> {
+    if !engine::platform_supported() {
+        return Err("Local image and video generation needs Windows x64 or Linux x64.".to_string());
+    }
     let AddCustomModel { repo, filename, family, display_name, license, token } = params;
     custom::family(&family).ok_or("That model family is not supported.")?;
     let files = crate::core::huggingface::huggingface_model_files(repo.clone(), token).await?;

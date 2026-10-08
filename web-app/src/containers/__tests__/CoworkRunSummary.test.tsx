@@ -46,6 +46,17 @@ describe('the run summary the application writes', () => {
     expect(region()).toHaveTextContent('notes.md')
   })
 
+  it('opens the file name itself in the result list', async () => {
+    const onOpenPath = vi.fn()
+    render(<CoworkRunSummary
+      summary={{ ...empty, janWrites: [{ destination: 'repository', paths: ['print_checklist.html'] }] }}
+      onOpenPath={onOpenPath}
+      canOpenPath={() => true}
+    />)
+    await userEvent.click(screen.getByRole('button', { name: 'print_checklist.html' }))
+    expect(onOpenPath).toHaveBeenCalledWith('print_checklist.html')
+  })
+
   // The distinction the whole ledger exists to preserve.
   // Only the session's own writes are listed. Files that were already
   // changed, or changed by something else, are not its work.
@@ -215,9 +226,31 @@ describe('the outcome of a run', () => {
 
   it('opens on its own for a run that did not finish', () => {
     render(
-      <CoworkRunSummary outcome={deriveRunOutcome(base({ stoppedBy: 'loop' }))} />
+      <CoworkRunSummary outcome={deriveRunOutcome(base({ stoppedBy: 'loop', errorText: 'bash failed 3 times' }))} />
     )
     expect(region().querySelector('details')).toHaveAttribute('open')
+    expect(region()).toHaveTextContent('bash failed 3 times')
+  })
+
+  it('shows reason for a failed tool call in an unfinished run', () => {
+    render(
+      <CoworkRunSummary
+        outcome={deriveRunOutcome(base({
+          stoppedBy: 'loop',
+          turns: [user, {
+            role: 'tool',
+            content: '',
+            name: 'bash',
+            args: { command: 'Get-Item G:\\SteamLibrary' },
+            result: 'Access is denied',
+            status: 'done',
+            toolState: 'failed',
+            isError: true,
+          }],
+        }))}
+      />
+    )
+    expect(region()).toHaveTextContent('Access is denied')
   })
 
   it('says the work a stopped run did was kept', () => {

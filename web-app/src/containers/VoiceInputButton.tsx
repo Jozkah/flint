@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
-import { LoaderCircle, Mic, Square } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { VoicePill, type VoicePillEnd } from '@/components/ui/voice-pill'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import {
   cancelDictation,
@@ -15,14 +14,16 @@ import {
   stopDictation,
   useVoiceInput,
   voiceInputSupported,
+  voiceLevel,
   type ComposerIo,
 } from '@/hooks/useVoiceInput'
 import { VoiceSetupDialog } from '@/containers/VoiceSetupDialog'
 import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
 
 /**
- * The microphone beside Send. Press to dictate, press again to stop and keep
- * the text; Escape while listening throws the dictation away.
+ * The microphone beside Send. Tap to dictate, tap again to stop and keep the
+ * text, or hold to record while held and drag left to cancel. Escape while
+ * listening throws the dictation away.
  */
 export function VoiceInputButton({
   composer,
@@ -31,6 +32,7 @@ export function VoiceInputButton({
   composer: ComposerIo
   disabled?: boolean
 }) {
+  const { t } = useTranslation()
   const status = useVoiceInput((s) => s.status)
   const pending = useVoiceInput((s) => s.pending)
   const error = useVoiceInput((s) => s.error)
@@ -77,11 +79,15 @@ export function VoiceInputButton({
   const busy = status === 'starting' || status === 'stopping'
   const listening = status === 'listening'
 
-  const press = () => {
-    if (listening) return void stopDictation()
-    if (busy) return
+  const begin = () => {
+    if (busy || listening) return
     if (!installed) return setSetupOpen(true)
     void startDictation(composer)
+  }
+
+  const end = (reason: VoicePillEnd) => {
+    if (reason === 'cancel') void cancelDictation()
+    else void stopDictation()
   }
 
   const label = listening
@@ -96,28 +102,20 @@ export function VoiceInputButton({
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant={listening ? 'default' : 'ghost'}
-            size="icon-sm"
-            disabled={disabled || busy}
+          <VoicePill
+            listening={listening}
+            busy={busy}
+            spinning={pending > 0}
+            disabled={disabled}
+            cancelLabel={t('common:voicePill.cancel')}
             aria-label={label}
             aria-pressed={listening}
             data-test-id="voice-input-button"
-            onClick={press}
-            className={cn(
-              'size-7 pointer-coarse:size-11',
-              listening && 'bg-destructive text-white hover:bg-destructive/90'
-            )}
-          >
-            {busy || (listening && pending > 0) ? (
-              <LoaderCircle className="size-4 motion-safe:animate-spin" />
-            ) : listening ? (
-              <Square className="size-3 fill-current" />
-            ) : (
-              <Mic className="size-4" />
-            )}
-          </Button>
+            onBegin={begin}
+            onEnd={end}
+            getLevel={voiceLevel}
+            className="size-7 pointer-coarse:size-11"
+          />
         </TooltipTrigger>
         <TooltipContent>
           <p>{label}</p>

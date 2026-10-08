@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 /// Windows-only confinement backend for [`jail`]. Present on every platform so
 /// the argv it builds stays unit-testable.
 pub mod appcontainer;
+/// The interactive `browser` tool (src/browser holds the session).
+pub mod browser_tool;
 /// The expected shape of a call, for refusals of its arguments.
 pub mod call_shape;
 pub mod cmdscan;
@@ -14,6 +16,19 @@ pub mod gate;
 pub mod git_attribution;
 pub mod git_native;
 pub mod git_tool;
+pub mod host_action;
+pub mod host_build;
+pub mod host_package;
+pub mod host_powershell;
+pub mod host_ssh;
+pub mod host_wsl;
+pub mod notify_user;
+pub mod clipboard;
+pub mod computer;
+pub mod open_path;
+pub mod docker_tool;
+pub mod host_read;
+pub mod local_http;
 pub mod handlers;
 pub mod host_tools;
 pub mod image;
@@ -31,6 +46,7 @@ pub mod schema;
 pub mod shell_diag;
 pub mod toolchain_grants;
 pub mod web;
+pub mod win_events;
 /// Windows sandbox environment construction. Compiled on every host so its
 /// rules stay unit-testable off Windows; only the AppContainer backend calls it.
 pub mod win_env;
@@ -227,6 +243,9 @@ pub struct ToolContext<'a> {
     /// and `skill_read` consult it after `store_root`, which shadows it. `None`
     /// where the store already is the user store (the desktop) or none exists.
     pub user_skills_root: Option<&'a Path>,
+    /// The surface keeps a tool's picture beside the transcript rather than in
+    /// it, so pictures are sent small (a bounded JPEG). Only the desktop sets it.
+    pub compact_images: bool,
 }
 
 impl std::fmt::Debug for ToolContext<'_> {
@@ -294,7 +313,14 @@ impl<'a> ToolContext<'a> {
             job_owner: None,
             job_record_to: None,
             user_skills_root: None,
+            compact_images: false,
         }
+    }
+
+    /// Ask for small pictures. See [`Self::compact_images`].
+    pub fn with_compact_images(mut self) -> Self {
+        self.compact_images = true;
+        self
     }
 
     /// Give the session-messaging tools a mailbox. See [`Self::mailbox_root`].
@@ -626,6 +652,102 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // Look at (free) or change (asked) the programs installed, through winget.
+    // The gate classifies per call: looking is allowed, changing is asked.
+    BuiltinTool {
+        name: "host_package",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // A command inside a WSL distribution; asked every time, command shown.
+    BuiltinTool {
+        name: "host_wsl",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // One command on another machine over the user's SSH; asked every time.
+    BuiltinTool {
+        name: "host_ssh",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // A desktop toast for the end of something long. Rate-limited, no approval:
+    // it reads and changes nothing.
+    BuiltinTool {
+        name: "notify_user",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    // Run a PowerShell script as the user, outside the sandbox. The most trusted
+    // tool in the set, so: asked every time with the whole script shown, refused
+    // by the backend unless a person approved it, run from a writable folder.
+    BuiltinTool {
+        name: "host_powershell",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // Read or replace the text on the clipboard. `Write` so plan mode withholds
+    // it; asked about every time, in both directions.
+    BuiltinTool {
+        name: "clipboard",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // Native keyboard, mouse and desktop capture, approved as a host action.
+    BuiltinTool { name: "computer", capability: Capability::Write, path_args: &[] },
+    // Open a project file or folder on screen, or show it in Explorer. Asked
+    // about every time; the handler confines the path and refuses programs.
+    BuiltinTool {
+        name: "open_path",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // Runs gradle, mvn or dotnet (and their wrappers) in the project folder with
+    // the host's own JVM, caches and loopback, which the bash sandbox lacks. A
+    // build is the project's own code, so the gate asks about every call and
+    // the backend refuses one the app did not record a person approving.
+    BuiltinTool {
+        name: "host_build",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // End one process or start, stop or restart one service on this computer.
+    // `Write` so plan mode withholds it. The gate asks about every call (no
+    // grant or auto-approval covers it) and the backend refuses a call the app
+    // did not record a person approving. No path argument.
+    BuiltinTool {
+        name: "host_action",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // Read-only host facts (processes, ports, services, registry, ...) the bash
+    // sandbox cannot see. A named query from a fixed list; no command text.
+    BuiltinTool {
+        name: "host_query",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    // GET or HEAD to a server on this computer; loopback only, because the
+    // sandbox blocks loopback and web_fetch is for the internet.
+    BuiltinTool {
+        name: "local_http",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    // Read-only Docker (ps, logs, top, ...) run by the host; anything that
+    // changes things is refused.
+    BuiltinTool {
+        name: "docker",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    // Reads the Windows Event Log with the host's wevtutil, which the bash
+    // sandbox is not admitted to. Read-only, typed filters, no path.
+    BuiltinTool {
+        name: "windows_events",
+        capability: Capability::Read,
+        path_args: &[],
+    },
     // Write: clones a GitHub repository into the workspace with host Git (git
     // cannot run in the bash sandbox). Gated and approved like `write`; the
     // destination is checked against the write roots here and in the handler.
@@ -699,6 +821,24 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         name: "open_in_browser",
         capability: Capability::Read,
         path_args: &[],
+    },
+    // Makes a picture with the image model resident in the desktop's Studio.
+    // Like `open_in_browser` the desktop answers it; no other surface has the
+    // engine. It reads and writes no project file (results go to the gallery).
+    BuiltinTool {
+        name: "generate_image",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    // The interactive confined browser (browser/session.rs). `Write` so it is
+    // withheld in plan mode and run one call at a time; the gate classifies
+    // each call (looking runs, acting is gated like a write, open and
+    // evaluate are asked every time), see `browser_tool::class_of`.
+    BuiltinTool {
+        name: "browser",
+        capability: Capability::Write,
+        // Only `upload` carries a path; the gate then checks it like a write's.
+        path_args: &["path"],
     },
     // The assistant's use of the desktop's built-in browser pane. They exist
     // here so the Rust loop (the CLI and durable jobs) knows the names and
@@ -785,7 +925,20 @@ pub const BROWSER_NEEDS_DESKTOP: &str = "Browser tools need the Flint desktop ap
 /// Tools the desktop answers itself (a prompt, or a store only the app can
 /// read). Auto-allowed by the gate like the workspace tools.
 pub fn is_host_tool(name: &str) -> bool {
-    matches!(name, "request_access" | "list_plugins" | "open_in_browser") || is_browser_tool(name)
+    matches!(
+        name,
+        "request_access" | "list_plugins" | "open_in_browser" | "generate_image"
+    ) || is_browser_tool(name)
+}
+
+/// Tools whose every call is put to a person, and which the backend refuses
+/// unless one answered: they change this computer or read something private.
+/// No session grant, no auto-approving mode and no "always" covers them.
+pub fn is_always_ask(name: &str) -> bool {
+    matches!(
+        name,
+        "host_action" | "host_build" | "host_powershell" | "host_package" | "host_wsl" | "host_ssh" | "clipboard" | "open_path" | "computer"
+    )
 }
 
 /// The session-messaging tools. Auto-allowed by the gate (an agent.toml deny
@@ -854,11 +1007,31 @@ mod tests {
         // The seventh memory tool is `memory_propose`: the typed path by which
         // a model says a fact is worth remembering, so that Jan decides rather
         // than the app parsing an intention out of prose.
-        // + request_access, list_plugins and open_in_browser, which the desktop answers itself.
+        // + request_access, list_plugins, open_in_browser and generate_image, which the desktop answers itself.
         // + git_inspect and git_clone, host Git the bash sandbox cannot run.
+        // + windows_events, the host's Event Log reader the sandbox is refused.
+        // + host_query, local_http and docker: read-only host facts, loopback HTTP and Docker.
+        // + host_action: end a process or start, stop or restart a service, asked every time.
+        // + host_build: gradle, mvn or dotnet outside the sandbox, asked every time.
+        // + clipboard and open_path, asked every time.
+        // + host_powershell, a script outside the sandbox, asked every time.
+        // + host_package, host_wsl, host_ssh and notify_user.
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
-        assert_eq!(BUILTIN_TOOLS.len(), 39);
+        // + browser, the interactive confined browser.
+        assert_eq!(BUILTIN_TOOLS.len(), 55);
+    }
+
+    #[test]
+    fn the_interactive_browser_is_a_write_class_tool_with_no_path() {
+        let t = lookup("browser").expect("browser is builtin");
+        // Write, so plan mode withholds it and calls run one at a time; the
+        // gate then classifies each call (see `browser_tool::class_of`).
+        assert_eq!(t.capability, Capability::Write);
+        assert_eq!(t.path_args, &["path"]);
+        // It is not one of the desktop-pane tools, nor a workspace tool the
+        // gate would allow without asking.
+        assert!(!is_browser_tool("browser") && !is_host_tool("browser") && !is_workspace_tool("browser"));
     }
 
     #[test]

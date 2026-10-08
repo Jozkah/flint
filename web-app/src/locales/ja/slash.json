@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "コマンド",
+    "helpTitle": "使用できるコマンド",
+    "keys": "↑↓ 選択 · Enter/Tab 挿入 · Esc 閉じる",
+    "empty": "ここで使用できるコマンドはありません"
+  },
+  "source": {
+    "plugin": "プラグイン",
+    "pluginNamed": "プラグイン {{plugin}}",
+    "skill": "スキル",
+    "builtin": "組み込み"
+  },
+  "scope": {
+    "project": "プロジェクト",
+    "global": "グローバル"
+  },
   "builtin": {
+    "help": "使用できるコマンドを一覧表示",
+    "new": "新しい会話を開始",
+    "newSession": "新しい Cowork セッションを開始",
     "compact": "古いメッセージを要約してコンテキストウィンドウを空けます"
-  }
+  },
+  "sent": {
+    "command": "コマンド",
+    "skill": "スキル",
+    "showCommand": "展開されたコマンドを表示",
+    "showSkill": "読み込まれたスキルを表示"
+  },
+  "error": "{{command}} を実行できませんでした: {{error}}"
 }

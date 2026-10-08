@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "Comandi",
+    "helpTitle": "Comandi disponibili",
+    "keys": "↑↓ scegli · Invio/Tab inserisci · Esc chiudi",
+    "empty": "Nessun comando disponibile qui"
+  },
+  "source": {
+    "plugin": "plugin",
+    "pluginNamed": "plugin {{plugin}}",
+    "skill": "skill",
+    "builtin": "integrato"
+  },
+  "scope": {
+    "project": "progetto",
+    "global": "globale"
+  },
   "builtin": {
+    "help": "Elenca i comandi disponibili",
+    "new": "Avvia una nuova conversazione",
+    "newSession": "Avvia una nuova sessione Cowork",
     "compact": "Riassumi i messaggi più vecchi per liberare la finestra di contesto"
-  }
+  },
+  "sent": {
+    "command": "Comando",
+    "skill": "Skill",
+    "showCommand": "Mostra il comando espanso",
+    "showSkill": "Mostra la skill caricata"
+  },
+  "error": "Impossibile eseguire {{command}}: {{error}}"
 }

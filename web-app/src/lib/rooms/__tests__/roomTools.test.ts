@@ -12,6 +12,11 @@ vi.mock('@/hooks/useWebSearchConfig', () => ({
   useWebSearchConfig: { getState: () => ({ webSearchEnabled }) },
 }))
 
+let visualizeEnabled = false
+vi.mock('@/hooks/useVisualizeConfig', () => ({
+  useVisualizeConfig: { getState: () => ({ enabled: visualizeEnabled }) },
+}))
+
 const directEditAuthorize = vi.fn(async () => 'grant-123')
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
   directEditAuthorize: (...a: unknown[]) => directEditAuthorize(...a),
@@ -259,5 +264,24 @@ describe('buildRoomTools', () => {
     const tools = await buildRoomTools(ctx)
     // 'shell' is not trusted, so its tool is withheld.
     expect(Object.keys(tools).sort()).toEqual(['query_db', 'read', 'search_docs', 'skill_read'])
+  })
+
+  it('offers the widget tools when enabled and records the call for the transcript card', async () => {
+    visualizeEnabled = true
+    try {
+      const seen: RoomToolActivity[] = []
+      const tools = await buildRoomTools({ roomId: 'r9', folder: null, access: 'read' }, (a) => seen.push(a))
+      expect(Object.keys(tools)).toEqual(expect.arrayContaining(['visualize_read_me', 'show_widget']))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const out = await (tools.show_widget as any).execute({ title: 'T', widget_code: '<p>hi</p>' })
+      expect(out).toContain('Widget rendered: T')
+      expect(seen.find((a) => !a.running)).toMatchObject({ name: 'show_widget', ok: true, args: { title: 'T' } })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const bad = await (tools.show_widget as any).execute({ title: 'T' })
+      expect(bad).toMatch(/^ERROR: /)
+      expect(seen.filter((a) => !a.running).map((a) => a.ok)).toEqual([true, false])
+    } finally {
+      visualizeEnabled = false
+    }
   })
 })

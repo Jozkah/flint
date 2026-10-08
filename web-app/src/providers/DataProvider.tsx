@@ -20,6 +20,7 @@ import { AppEvent, events } from '@janhq/core'
 import { SystemEvent } from '@/types/events'
 import { sweepThreadWorkspaces } from '@/lib/agentTools'
 import { invoke } from '@tauri-apps/api/core'
+import { hostInvoke } from '@/lib/hostInvoke'
 import { providerHasRemoteApiKeys, providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
 import {
   fillSecretHeaderValues,
@@ -71,7 +72,7 @@ async function registerRemoteProvider(provider: ModelProvider) {
   }
 
   try {
-    await invoke('register_provider_config', { request })
+    await hostInvoke('register_provider_config', { request })
     console.debug(`Registered remote provider: ${provider.provider}`)
   } catch (error) {
     console.error(`Failed to register provider ${provider.provider}:`, error)
@@ -89,7 +90,7 @@ async function seedProviderKeysFromKeyring(
     providers.map(async (provider) => {
       if (provider.provider === 'llamacpp') return provider
       try {
-        const keys = await invoke<string[]>('get_provider_keys', {
+        const keys = await hostInvoke<string[]>('get_provider_keys', {
           provider: provider.provider,
         })
         if (!keys || keys.length === 0) return provider
@@ -166,7 +167,7 @@ const syncRemoteProviders = () => {
   // Unregister providers that were previously registered but are now inactive/removed
   for (const name of registeredProviderNames) {
     if (!currentActive.has(name)) {
-      invoke('unregister_provider_config', { provider: name }).catch(() => {})
+      hostInvoke('unregister_provider_config', { provider: name }).catch(() => {})
     }
   }
 
@@ -201,7 +202,7 @@ const syncModelParamDefaults = () => {
     }
   }
 
-  invoke('set_model_param_defaults', { defaults }).catch((e) =>
+  hostInvoke('set_model_param_defaults', { defaults }).catch((e) =>
     console.error('Failed to sync model param defaults:', e)
   )
 }
@@ -290,16 +291,18 @@ export function DataProvider() {
       })
     serviceHub.deeplink().getCurrent().then(handleDeepLink)
 
-    let unsubscribeOpenUrl = () => {}
+    let cancelled = false
+    let unsubscribeOpenUrl: (() => void) | undefined
     serviceHub
       .deeplink()
       .onOpenUrl(handleDeepLink)
       .then((unsub) => {
-        unsubscribeOpenUrl = unsub
+        if (cancelled) unsub()
+        else unsubscribeOpenUrl = unsub
       })
 
     // Listen for deep link events
-    let unsubscribe = () => {}
+    let unsubscribe: (() => void) | undefined
     serviceHub
       .events()
       .listen(SystemEvent.DEEP_LINK, (event) => {
@@ -307,11 +310,13 @@ export function DataProvider() {
         handleDeepLink([deep_link])
       })
       .then((unsub) => {
-        unsubscribe = unsub
+        if (cancelled) unsub()
+        else unsubscribe = unsub
       })
     return () => {
-      unsubscribeOpenUrl()
-      unsubscribe()
+      cancelled = true
+      unsubscribeOpenUrl?.()
+      unsubscribe?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceHub])
@@ -446,6 +451,15 @@ export function DataProvider() {
                   console.log(`Auto-started server model: ${model}`)
                 } catch (err) {
                   console.warn(`Failed to auto-start server model ${model}:`, err)
+                  // A picture or video model cannot load in the chat engine, so
+                  // trying it again at every launch only repeats the error.
+                  if (/image or video generation model/.test(JSON.stringify(err))) {
+                    setLastServerModels(
+                      lastServerModels.filter(
+                        (m) => !(m.model === model && m.provider === providerName)
+                      )
+                    )
+                  }
                 }
               })
             )

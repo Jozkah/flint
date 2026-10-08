@@ -36,6 +36,9 @@ const WRAPPERS: &[&str] = &[
     "exec", "then", "else", "elif", "do", "if", "while", "until", "for", "case", "function",
     "select", "coproc", "!",
 ];
+/// [`WRAPPERS`] with a flag that takes a separate value.
+const VALUE_FLAG_WRAPPERS: &[&str] =
+    &["nice", "timeout", "stdbuf", "ionice", "chrt", "exec", "time"];
 
 pub fn scan_command(command: &str) -> CommandScan {
     let mut bases = BTreeSet::new();
@@ -303,8 +306,31 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
             // any inline assignments to reach the wrapped command.
             while idx < tokens.len() {
                 let t = &tokens[idx];
-                let numeric = t.chars().next().is_some_and(|c| c.is_ascii_digit());
-                if t.starts_with('-') || numeric || is_assignment(t) {
+                let numeric = |t: &str| t.chars().next().is_some_and(|c| c.is_ascii_digit());
+                if t == "--" {
+                    idx += 1;
+                    break;
+                }
+                // A bare flag followed by a word may take that word as its
+                // value (`timeout -s KILL 5 rm`, `exec -a ls rm`, `time -o ls
+                // rm`), so which token is the command is ambiguous: prompt.
+                // Attached values (`-oL`, `--signal=KILL`) are not. `time` is
+                // checked by `is_time_plain_flag`, which whitelists its
+                // no-value flags so unknown, combined or abbreviated
+                // spellings default to ambiguous rather than being missed.
+                let value_flag = if base.as_str() == "time" {
+                    t.starts_with('-') && !is_time_plain_flag(t)
+                } else {
+                    (t.len() == 2 && t.starts_with('-') && !numeric(&t[1..]))
+                        || (t.starts_with("--") && !t.contains('='))
+                };
+                if value_flag
+                    && VALUE_FLAG_WRAPPERS.contains(&base.as_str())
+                    && tokens.get(idx + 1).is_some_and(|n| !n.starts_with('-') && !numeric(n))
+                {
+                    return false;
+                }
+                if t.starts_with('-') || numeric(t) || is_assignment(t) {
                     idx += 1;
                 } else {
                     break;
@@ -315,6 +341,20 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
         bases.insert(base);
         return true;
     }
+}
+
+/// GNU `time`'s getopt spec is `+af:o:pqvV`: only `-f`/`--format` and
+/// `-o`/`--output` take a separate value; `-a`, `-p`, `-q`, `-v`, `-V` do not
+/// and may combine into one cluster (`-aqvV`). Whether `t` is entirely made of
+/// those no-value flags, so anything else (an unknown flag, a cluster holding
+/// `f` or `o`, or an abbreviation of `--format`/`--output` such as `--out`) is
+/// treated as ambiguous rather than missed.
+fn is_time_plain_flag(t: &str) -> bool {
+    const LONG: &[&str] = &["--append", "--portability", "--quiet", "--verbose", "--version"];
+    if let Some(short) = t.strip_prefix('-').filter(|s| !s.starts_with('-')) {
+        return !short.is_empty() && short.chars().all(|c| "apqvV".contains(c));
+    }
+    LONG.contains(&t)
 }
 
 /// Split a segment into whitespace-delimited tokens, stripping quotes and
@@ -575,6 +615,33 @@ mod tests {
         assert_eq!(bases("timeout 5 curl http://x"), set(&["curl"]));
         assert_eq!(bases("nice -n 10 make"), set(&["make"]));
         assert_eq!(bases("nohup node server.js"), set(&["node"]));
+    }
+
+    #[test]
+    fn a_wrapper_flag_that_may_take_a_value_makes_the_command_ambiguous() {
+        // `time -o FILE cmd` writes to FILE and runs cmd, not FILE, so a grant
+        // on `ls` must not cover `time -o ls rm -rf ~`.
+        for command in [
+            "time -o ls rm -rf ~",
+            "command time -o ls rm -rf ~",
+            "/usr/bin/time -o ls rm x",
+            "time -f ls rm -rf ~",
+            "time -ao ls rm -rf ~",
+            "time --out ls rm -rf ~",
+            "time --format ls rm -rf ~",
+            "time --forma ls rm -rf ~",
+            "time -zo ls rm -rf ~",
+            "timeout -s KILL 5 rm x",
+            "exec -a ls rm x",
+        ] {
+            assert_eq!(scan_command(command), CommandScan::Opaque, "{command}");
+        }
+        // Plain flags, attached values and numeric arguments stay resolvable.
+        assert_eq!(bases("time -p ls"), set(&["ls"]));
+        assert_eq!(bases("time -aqvV ls"), set(&["ls"]));
+        assert_eq!(bases("timeout --signal=KILL 5 curl u"), set(&["curl"]));
+        assert_eq!(bases("nice -n 10 make"), set(&["make"]));
+        assert_eq!(bases("time -- ls"), set(&["ls"]));
     }
 
     #[test]

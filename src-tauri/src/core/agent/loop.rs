@@ -6,6 +6,7 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 // Agent upstream traffic runs on `genai`, which is built against reqwest 0.13;
@@ -42,6 +43,48 @@ const MAX_CONSECUTIVE_BROKEN_TOOL_TURNS: usize = 15;
 /// arguments), or consecutive turns whose every tool call failed, after which
 /// the run is considered stuck and the user is asked for guidance.
 pub(crate) const STUCK_TURN_LIMIT: usize = 3;
+
+/// A stalled local read or web request must not hold the entire tool batch open.
+const READ_ONLY_TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
+
+/// How long a read-only call may run before the batch stops waiting for it.
+/// The messaging tools wait for another session by design (`wait_for_reply`
+/// defaults to 60 s, both it and `send_message` allow up to 120 s), so their
+/// bound is the wait they were asked for plus a margin.
+fn read_only_tool_timeout(name: &str, args: &serde_json::Value) -> std::time::Duration {
+    const MARGIN_SECS: u64 = 15;
+    const MAX_WAIT_SECS: u64 = 120;
+    const DEFAULT_WAIT_SECS: u64 = 60;
+    let wait = match name {
+        "wait_for_reply" => Some(
+            args.get("timeout_seconds")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(DEFAULT_WAIT_SECS),
+        ),
+        "send_message" => args.get("wait_seconds").and_then(|v| v.as_u64()),
+        _ => None,
+    };
+    match wait {
+        Some(secs) => READ_ONLY_TOOL_TIMEOUT
+            .max(std::time::Duration::from_secs(secs.min(MAX_WAIT_SECS) + MARGIN_SECS)),
+        None => READ_ONLY_TOOL_TIMEOUT,
+    }
+}
+
+async fn bounded_read_only_call<F: Future<Output = ToolOutcome>>(
+    call: F,
+    id: String,
+    name: String,
+    timeout: std::time::Duration,
+) -> ToolOutcome {
+    match tokio::time::timeout(timeout, call).await {
+        Ok(outcome) => outcome,
+        Err(_) => ToolOutcome::plain(
+            id,
+            format!("ERROR: {name} timed out after {} seconds", timeout.as_secs()),
+        ),
+    }
+}
 
 /// Why the loop decided the model is stuck.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2266,6 +2309,7 @@ impl CompositeToolInvoker {
                     model: ctx.model_id.clone(),
                     budget_remaining: ctx.max_session_tokens,
                     send_reasoning: ctx.send_reasoning,
+                    model_settings: crate::core::agent::subagent::load_model_settings(),
                 };
                 // Every reviewer is dispatched before any is awaited, so they
                 // work at the same time and none waits on another's answer.
@@ -2279,6 +2323,8 @@ impl CompositeToolInvoker {
                         isolate: None,
                         fork_context: false,
                         durable: false,
+                        max_turns: None,
+                        title: None,
                     };
                     let run = spawn_subagent(&ctx.bg, &ctx.parent_args, request, &parent, &self.events).map_err(|e| e.to_string());
                     dispatched.push((reviewer.clone(), run));
@@ -2879,6 +2925,7 @@ impl CompositeToolInvoker {
                             model: ctx.model_id.clone(),
                             budget_remaining: ctx.max_session_tokens,
                             send_reasoning: ctx.send_reasoning,
+                            model_settings: crate::core::agent::subagent::load_model_settings(),
                         },
                     ) {
                         Ok(run_id) => {
@@ -2917,6 +2964,7 @@ impl CompositeToolInvoker {
                         model: ctx.model_id.clone(),
                         budget_remaining: ctx.max_session_tokens,
                         send_reasoning: ctx.send_reasoning,
+                        model_settings: crate::core::agent::subagent::load_model_settings(),
                     },
                     &self.events,
                 ) {
@@ -2952,6 +3000,11 @@ impl CompositeToolInvoker {
                     Ok(r) => r,
                     Err(e) => return format!("ERROR: {e}"),
                 };
+                // Reading the rest of an answer that came back shortened: it
+                // was already collected, so there is nothing to wait for.
+                if let Some(offset) = crate::core::agent::subagent::parse_await_offset(args) {
+                    return crate::core::agent::subagent::read_retained_result(&run_id, offset);
+                }
                 let data = std::path::Path::new(&ctx.parent_args.jan_data_folder);
                 let owner = ctx.parent_args.session_id.as_deref().unwrap_or_default();
                 let awaited = if crate::core::agent::durable_subagent::is_durable(data, owner, &run_id) {
@@ -3513,9 +3566,16 @@ impl CompositeToolInvoker {
                     .map(str::to_string)
             })
             .collect();
-        let _ = tauri_plugin_agent_tools::hooks::fire_post_tool_batch(
+        // A subagent's turns tell the hook so (`FLINT_HOOK_AGENT`).
+        let agent = if matches!(self.subject, tauri_plugin_agent_tools::subject::Subject::MainAgent) {
+            "main"
+        } else {
+            "subagent"
+        };
+        let _ = tauri_plugin_agent_tools::hooks::fire_post_tool_batch_as(
             &self.project_root,
             names,
+            agent,
             self.allow_network,
             self.allow_home_read,
             self.sandbox,
@@ -3928,6 +3988,14 @@ impl CompositeToolInvoker {
                         .map(|d| format!("Destructive command: {d}."));
                     Decision::Prompt(PromptKind::Exec)
                 }
+                // Changes the computer or reads something private: asked every
+                // time, so no "always" is offered for it.
+                Decision::Prompt(PromptKind::Ask)
+                    if tauri_plugin_agent_tools::tools::is_always_ask(name) =>
+                {
+                    forced_reason = Some("Asked every time: it changes this computer or reads something private.".to_string());
+                    Decision::Prompt(PromptKind::Ask)
+                }
                 other => other,
             };
             if matches!(decision, Decision::Prompt(_)) {
@@ -3952,25 +4020,32 @@ impl CompositeToolInvoker {
                 // Reads run concurrently, so each needs its own token under the
                 // run's scope rather than sharing one.
                 let registered = self.call_token(&id);
-                read_futures.push(async move {
-                    let ctx = ToolContext::new(&root, &store, &enabled)
-                        .with_network(allow_network)
-                        .with_home_readonly(allow_home_read)
-                        .with_sandbox(sandbox)
-                        .with_scratch_root(&scratch)
-                        .with_user_skills(user_skills.as_deref())
-                        .with_cancel(registered.token().clone());
-                    // Held until the future completes, then dropped, which
-                    // deregisters it.
-                    let _registered = registered;
-                    let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
-                    let text = tauri_plugin_agent_tools::tools::call_shape::explain(tool.name, &args, text);
-                    ToolOutcome {
-                        diff,
-                        images: images.unwrap_or_default(),
-                        ..ToolOutcome::plain(id, text)
-                    }
-                });
+                let timeout_id = id.clone();
+                let call_timeout = read_only_tool_timeout(tool.name, &args);
+                read_futures.push(bounded_read_only_call(
+                    async move {
+                        let ctx = ToolContext::new(&root, &store, &enabled)
+                            .with_network(allow_network)
+                            .with_home_readonly(allow_home_read)
+                            .with_sandbox(sandbox)
+                            .with_scratch_root(&scratch)
+                            .with_user_skills(user_skills.as_deref())
+                            .with_cancel(registered.token().clone());
+                        // Held until the future completes, then dropped, which
+                        // deregisters it.
+                        let _registered = registered;
+                        let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
+                        let text = tauri_plugin_agent_tools::tools::call_shape::explain(tool.name, &args, text);
+                        ToolOutcome {
+                            diff,
+                            images: images.unwrap_or_default(),
+                            ..ToolOutcome::plain(id, text)
+                        }
+                    },
+                    timeout_id,
+                    name.to_string(),
+                    call_timeout,
+                ));
                 continue;
             }
             let (text, diff, images) = match decision {
@@ -4014,12 +4089,54 @@ impl CompositeToolInvoker {
                         .and_then(|k| args.get(*k))
                         .and_then(|v| v.as_str())
                         .map(String::from);
-                    let command = if name == "git" {
+                    let command = if name == "browser" {
+                        // What the browser will do, naming the element by what
+                        // the last snapshot called it, never the typed text.
+                        Some(tauri_plugin_agent_tools::tools::browser_tool::display(
+                            &args,
+                            &self.cancel_scope.run,
+                        ))
+                    } else if name == "git" {
                         // The exact command line, so the prompt names what
                         // will run rather than a blob of arguments.
                         tauri_plugin_agent_tools::tools::git_tool::plan_from_args(&args)
                             .ok()
                             .map(|p| p.display())
+                    } else if tauri_plugin_agent_tools::tools::is_always_ask(name) {
+                        // What an always-asked host tool will do, in words,
+                        // so the prompt is not a bare tool name.
+                        use tauri_plugin_agent_tools::tools::{
+                            clipboard, host_action, host_build, host_package, host_powershell, host_ssh, host_wsl, open_path,
+                        };
+                        match name {
+                            "host_action" => host_action::plan(&args).ok().map(|a| host_action::summary(&a)),
+                            "host_build" => host_build::plan(&args).ok().map(|p| {
+                                format!(
+                                    "{} (in {})",
+                                    p.display(),
+                                    args.get("cwd").and_then(|v| v.as_str()).unwrap_or("the project folder")
+                                )
+                            }),
+                            "clipboard" => clipboard::plan(&args).ok().map(|a| clipboard::summary(&a)),
+                            "open_path" => open_path::plan(&args).ok().map(|p| open_path::summary(&p)),
+                            "host_package" => host_package::plan(&args).ok().map(|p| host_package::summary(&p)),
+                            "host_ssh" => host_ssh::plan(&args).ok().map(|p| host_ssh::display(&p)),
+                            "host_wsl" => host_wsl::plan(&args).ok().map(|p| {
+                                format!(
+                                    "{} (from {})",
+                                    host_wsl::display(&p),
+                                    args.get("cwd").and_then(|v| v.as_str()).unwrap_or("the project folder")
+                                )
+                            }),
+                            "host_powershell" => host_powershell::plan(&args).ok().map(|p| {
+                                format!(
+                                    "PowerShell (in {}):\n{}",
+                                    args.get("cwd").and_then(|v| v.as_str()).unwrap_or("the project folder"),
+                                    host_powershell::display(&p)
+                                )
+                            }),
+                            _ => None,
+                        }
                     } else {
                         matches!(tool.capability, Capability::Exec)
                             .then(|| args.get("command").and_then(|v| v.as_str()))
@@ -5351,7 +5468,7 @@ async fn orchestrate_inner(
     };
     let cc_cwd = project_root
         .clone()
-        .or_else(dirs::home_dir)
+        .or_else(crate::core::app::commands::jan_home_dir)
         .unwrap_or_default();
     let system_prompt = if cc_hooks.is_empty() {
         system_prompt
@@ -5863,6 +5980,9 @@ async fn orchestrate_inner(
         }
         // AH-174: what the commands this run started used, in the record of
         // how it ended and on the stream for a caller that reports it.
+        // The run's browser (the `browser` tool) ends with it: process tree
+        // killed, temporary profile deleted.
+        tauri_plugin_agent_tools::browser::session::close_run(&tools.cancel_scope.run);
         let run_resources = tauri_plugin_agent_tools::resources::finish_run(&tools.cancel_scope.run);
         if let Some(resources) = run_resources.clone() {
             let _ = events.send(StreamEvent::RunResources { resources });
@@ -6244,6 +6364,13 @@ fn body_cost_ceiling(
 /// The `job_id`s of background `bash` commands started by the tool results in
 /// `messages`. The bash tool reports a backgrounded command as
 /// `(job_id=<id>)`; that fixed sentence is the one place the id appears.
+/// The messages after the first `scanned` ones. A compaction replaces the
+/// conversation with a shorter one, so `scanned` can be past the end; slicing
+/// with it directly panicked the whole run, so it is clamped.
+fn unscanned(messages: &[serde_json::Value], scanned: usize) -> &[serde_json::Value] {
+    &messages[scanned.min(messages.len())..]
+}
+
 fn background_jobs_started(messages: &[serde_json::Value]) -> Vec<String> {
     let mut ids = Vec::new();
     for message in messages {
@@ -6512,7 +6639,13 @@ async fn run_turn_cycle(
     let mut shells_scanned = conversation_messages.len();
 
     while unlimited || turn < max_turns {
-        shells_owed.extend(background_jobs_started(&conversation_messages[shells_scanned..]));
+        // A compaction replaces the vector with a shorter one, so the index of
+        // what was already scanned can be past the end: clamp it rather than
+        // slice out of range (which panicked the whole run).
+        shells_owed.extend(background_jobs_started(unscanned(
+            &conversation_messages,
+            shells_scanned,
+        )));
         shells_scanned = conversation_messages.len();
         if let Some(text) = finished_background_jobs(&mut shells_owed) {
             crate::core::agent::reminder::attach(&mut conversation_messages, &text);
@@ -6644,6 +6777,8 @@ async fn run_turn_cycle(
                                 );
                             }
                             conversation_messages = projected;
+                            // What was scanned lives in the vector that just went away.
+                            shells_scanned = conversation_messages.len();
                             let _ = events.send(StreamEvent::MessagesUpdated {
                                 messages: conversation_messages.clone(),
                             });
@@ -6765,6 +6900,8 @@ async fn run_turn_cycle(
                             attempts + 1
                         );
                         conversation_messages = compacted;
+                        // What was scanned lives in the vector that just went away.
+                        shells_scanned = conversation_messages.len();
                         // Publish now, not at the end of the run: a retry that
                         // never recovers returns Err, and an unpublished
                         // compaction leaves the client holding the oversized
@@ -7450,6 +7587,18 @@ async fn run_turn_cycle(
 
 #[cfg(test)]
 mod tests {
+    /// After a full compaction the conversation is shorter than the number of
+    /// messages already scanned; the scan must not slice past the end.
+    #[test]
+    fn a_compaction_shorter_than_the_scanned_count_does_not_panic_the_scan() {
+        let messages: Vec<serde_json::Value> = (0..3).map(|i| serde_json::json!({ "n": i })).collect();
+        assert_eq!(super::unscanned(&messages, 0).len(), 3);
+        assert_eq!(super::unscanned(&messages, 2).len(), 1);
+        assert!(super::unscanned(&messages, 3).is_empty());
+        assert!(super::unscanned(&messages, 50).is_empty());
+        assert!(super::unscanned(&[], 7).is_empty());
+    }
+
     /// The dispatcher's git rewrite: a commit gets the trailer for the run's
     /// model, only the `git` tool is touched, and the switches are honoured.
     #[test]
@@ -10401,6 +10550,52 @@ mod tests {
         assert_eq!(result["choices"][0]["message"]["content"], "done");
     }
 
+    /// A subagent child runs with a finite `max_turns` (see
+    /// `subagent::child_body`). One that keeps calling tools has to stop with
+    /// the turn-limit failure the parent turns into a clear status, rather than
+    /// run on.
+    #[tokio::test]
+    async fn turn_cycle_with_a_cap_stops_a_child_that_never_finishes() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        // Different arguments each turn, so the repeated-call guard stays out
+        // of it and the turn cap is what ends the run.
+        let call = |n: u32| {
+            let mut c = tool_call_completion();
+            c["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] =
+                json!(format!("{{\"q\":\"query {n}\"}}"));
+            c
+        };
+        let model = MockModel::new(vec![call(1), call(2), call(3), call(4)]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "hi" })];
+
+        let err = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            3,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("a child that never answers must be stopped");
+
+        assert_eq!(err.kind(), ErrorKind::BudgetExhausted, "{}", err.message());
+        assert!(err.message().contains("3-turn limit"), "{}", err.message());
+        let shown = crate::core::agent::subagent::child_failure_text(err.kind(), err.message(), 3);
+        assert!(shown.contains("all 3 of its turns"), "{shown}");
+        assert_eq!(tool.calls.lock().unwrap().len(), 3, "it ran exactly its turns, no more");
+    }
+
     #[test]
     fn absent_turn_cap_is_unbounded() {
         assert_eq!(body_turn_cap(&json!({})), 0);
@@ -13151,6 +13346,39 @@ mod tests {
         assert!(out[1].content.contains("BBB"), "got: {}", out[1].content);
         assert!(out[2].content.contains("CCC"), "got: {}", out[2].content);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn stalled_read_only_call_returns_error_without_holding_other_calls() {
+        let stalled = bounded_read_only_call(
+            std::future::pending::<ToolOutcome>(),
+            "stalled".into(),
+            "read".into(),
+            std::time::Duration::from_millis(20),
+        );
+        let finished = bounded_read_only_call(
+            async { ToolOutcome::plain("finished".into(), "contents".into()) },
+            "finished".into(),
+            "read".into(),
+            std::time::Duration::from_millis(20),
+        );
+        let (stalled, finished) = tokio::join!(stalled, finished);
+        assert_eq!(stalled.id, "stalled");
+        assert!(stalled.content.starts_with("ERROR: read timed out"));
+        assert_eq!(finished.content, "contents");
+    }
+
+    #[test]
+    fn waiting_messaging_tools_get_their_wait_plus_a_margin() {
+        use serde_json::json;
+        let base = READ_ONLY_TOOL_TIMEOUT;
+        assert_eq!(read_only_tool_timeout("read_file", &json!({})), base);
+        assert_eq!(read_only_tool_timeout("send_message", &json!({})), base);
+        assert_eq!(read_only_tool_timeout("send_message", &json!({ "wait_seconds": 10 })), base);
+        assert!(read_only_tool_timeout("send_message", &json!({ "wait_seconds": 120 })).as_secs() > 120);
+        assert!(read_only_tool_timeout("wait_for_reply", &json!({})).as_secs() > 60);
+        assert!(read_only_tool_timeout("wait_for_reply", &json!({ "timeout_seconds": 120 })).as_secs() > 120);
+        assert!(read_only_tool_timeout("wait_for_reply", &json!({ "timeout_seconds": 9999 })).as_secs() <= 135);
     }
 
     #[tokio::test]

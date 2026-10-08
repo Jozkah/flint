@@ -10,6 +10,7 @@ import { RemoteCallError } from '../api/client'
 import { client, openSheet, toast } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { I } from './icons'
+import { t } from '../i18n'
 
 /** Longest recording sent: the computer accepts about 2.5 minutes. */
 export const MAX_DICTATION_SECONDS = 120
@@ -27,10 +28,10 @@ export function insertAt(value: string, start: number, end: number, text: string
 /** Why recording is not possible here, or null when it is. */
 export function micUnavailable(): string | null {
   if (typeof window !== 'undefined' && window.isSecureContext === false) {
-    return 'Dictation needs a secure connection. Open Flint over HTTPS (or on localhost) to use the microphone.'
+    return t('dictate.secure')
   }
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-    return "This browser can't record audio."
+    return t('dictate.noRecording')
   }
   return null
 }
@@ -77,10 +78,10 @@ export function DictateButton({
     try {
       const { text } = await client().rpc('voice.transcribe', { audio: toBase64(encodeWav(all, TARGET_RATE)) })
       if (text) insertRef.current(text)
-      else toast('No words were heard')
+      else toast(t('dictate.noWords'))
     } catch (e) {
       if (e instanceof RemoteCallError && e.code === 'not_ready') openSheet('voicesetup')
-      else toast(e instanceof Error ? e.message : 'Dictation failed')
+      else toast(e instanceof Error ? e.message : t('dictate.failed'))
     } finally {
       setPhase('idle')
     }
@@ -106,7 +107,7 @@ export function DictateButton({
     } catch (e) {
       rec.current = null
       setPhase('idle')
-      toast(e instanceof Error ? e.message : 'The microphone could not be opened')
+      toast(e instanceof Error ? e.message : t('dictate.micFailed'))
     }
   }
 
@@ -116,7 +117,7 @@ export function DictateButton({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        void discard().then(() => toast('Recording discarded'))
+        void discard().then(() => toast(t('dictate.discarded')))
       }
     }
     window.addEventListener('keydown', onKey)
@@ -124,13 +125,13 @@ export function DictateButton({
   }, [phase])
   useEffect(() => () => void rec.current?.recorder.stop(), [])
 
-  const label = phase === 'recording' ? 'Stop dictating' : phase === 'sending' ? 'Transcribing…' : 'Dictate'
+  const label = phase === 'recording' ? t('dictate.stop') : phase === 'sending' ? t('dictate.transcribing') : t('dictate.start')
   return (
     <button
       type="button"
       className={`send dict${phase === 'recording' ? ' rec' : ''}`}
       aria-label={label}
-      title={phase === 'recording' ? 'Press to keep, Escape to discard' : label}
+      title={phase === 'recording' ? t('dictate.hint') : label}
       disabled={phase === 'sending'}
       data-testid="dictate"
       style={style}

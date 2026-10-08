@@ -1,0 +1,64 @@
+{
+  "intentHeading": "Önce ne yapmak istersiniz?",
+  "intentHint": "Bu yalnızca rehberin sizi nereye götüreceğini belirler. Flint'teki diğer her şey kullanılabilir kalır.",
+  "intent": {
+    "question": {
+      "title": "Soru sor",
+      "description": "Bir modelle istediğiniz konuda sohbet edin."
+    },
+    "documents": {
+      "title": "Belgelerle çalış",
+      "description": "Dosya ekleyin ve onlar hakkında soru sorun."
+    },
+    "project": {
+      "title": "Proje oluştur veya değiştir",
+      "description": "Flint'in bu bilgisayardaki bir klasörde çalışmasına izin verin; herhangi bir şeyi değiştirmeden önce size sorar."
+    }
+  },
+  "skipGuide": "Rehberi atla",
+  "resumeNotice": "Tekrar hoş geldiniz. Kaldığınız yerden devam edebilirsiniz.",
+  "processingHeading": "Konuşmalarınızın işlendiği yer",
+  "processingLocal": "Yerel bir model bu bilgisayarda çalışır. Mesajlarınız ve dosyalarınız burada kalır; hesap veya API anahtarı gerekmez.",
+  "processingRemote": "Uzak bir sağlayıcı (örneğin OpenAI) modeli kendi sunucularında çalıştırır. Mesajlarınız ve eklediğiniz dosyalar oraya gönderilir ve sağlayıcı sizden ücret alabilir. Bunu Ayarlar'dan kendiniz yapılandırırsınız; Flint kendi kendine asla bir sağlayıcıya geçmez.",
+  "connectRemote": "Bunun yerine uzak bir sağlayıcı bağla",
+  "guideTitle": {
+    "question": "Başlarken: soru sor",
+    "documents": "Başlarken: belgelerle çalış",
+    "project": "Başlarken: proje oluştur veya değiştir"
+  },
+  "guideRegion": "Başlangıç rehberi",
+  "stepDone": "Tamamlandı",
+  "stepTodo": "Yapılacak",
+  "step": {
+    "choose-model": {
+      "title": "Bir model seçin veya bağlayın",
+      "body": "Üstteki seçiciyle bir model seçin. Yerel modeller bu bilgisayarda çalışır; uzak sağlayıcılar kendi hesabınızı gerektirir."
+    },
+    "add-material": {
+      "documents": "Mesaj kutusundaki ataç düğmesiyle bir belge ekleyin.",
+      "project": "Cowork'ü açın ve projenizin klasörünü seçin. Flint, dosyaları düzenlemeden veya komut çalıştırmadan önce sorar."
+    },
+    "first-task": {
+      "title": "İlk mesajınızı gönderin",
+      "body": "Bir şey sorun veya istediğiniz değişikliği anlatın. Bu adım bir konuşma başladığında tamamlanır."
+    },
+    "review-context": {
+      "title": "Flint'in neyi kullandığını kontrol edin",
+      "body": "Flint cevap verdikten sonra, hangi eklerin ve talimatların kullanılabildiğini görmek için konuşmadaki \"Flint'in kullandıkları\" bölümünü açın."
+    },
+    "addMaterialTitle": {
+      "documents": "Belge ekle",
+      "project": "Proje klasörü seç"
+    }
+  },
+  "confirmStep": "Bunu yaptım",
+  "openProviders": "Model ayarları",
+  "openCowork": "Cowork'ü aç",
+  "hideGuide": "Rehberi gizle",
+  "guideComplete": "Kurulum tamam. Bu rehberi istediğiniz zaman Ayarlar > Genel bölümünden yeniden açabilirsiniz.",
+  "finish": "Rehberi bitir",
+  "reopenGuide": "Başlangıç rehberi",
+  "reopenGuideDescription": "Model seçme, materyal ekleme ve ilk görevi tamamlama adımlarını yeniden gözden geçirin.",
+  "reopenGuideAction": "Rehberi aç",
+  "resumeRecent": "Son konuşmanıza devam edin: {{title}}"
+}

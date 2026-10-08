@@ -76,6 +76,10 @@ with the same values):
   turn's tool names, comma-separated, in call order
 - `FLINT_HOOK_TOOL_COUNT` / `JAN_HOOK_TOOL_COUNT`: `post-tool-batch` only, how
   many calls the turn made
+- `FLINT_HOOK_AGENT` / `JAN_HOOK_AGENT`: `post-tool-batch` only, `main` for the
+  main agent's turn or `subagent` for a turn of a subagent it dispatched, so a
+  hook can tell them apart. Set by the harness, never by a model; any other
+  value is reported as `main`. Observe-only like the event itself.
 - `FLINT_PROJECT_ROOT` / `JAN_PROJECT_ROOT`: the project root
 
 Stdin is empty. The prompt, the tool's arguments and provider keys are never

@@ -192,3 +192,25 @@ describe('open in split view', () => {
     }
   })
 })
+
+describe('convert to Cowork', () => {
+  it('is offered on right-click', () => {
+    renderList()
+    fireEvent.contextMenu(screen.getByTestId('row'))
+    expect(screen.getByText('chat:convertToCowork.menu')).toBeInTheDocument()
+  })
+
+  it('is offered from the keyboard context-menu key', () => {
+    renderList()
+    fireEvent.keyDown(screen.getByTestId('row'), { key: 'ContextMenu' })
+    expect(screen.getByText('chat:convertToCowork.menu')).toBeInTheDocument()
+  })
+
+  it('asks whether to keep or delete the chat', () => {
+    renderList()
+    fireEvent.contextMenu(screen.getByTestId('row'))
+    fireEvent.click(screen.getByText('chat:convertToCowork.menu'))
+    expect(screen.getByTestId('convert-keep-chat')).toBeInTheDocument()
+    expect(screen.getByTestId('convert-delete-chat')).toBeInTheDocument()
+  })
+})

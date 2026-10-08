@@ -98,6 +98,18 @@ impl LlamacppError {
             ));
         }
 
+        // A diffusion checkpoint (Qwen-Image, Flux, Wan...) is not a language
+        // model: its tensor names overrun the 64-byte limit llama.cpp's reader
+        // enforces, or its architecture is one llama.cpp never had. Say where
+        // it can be run instead of a reader error.
+        if is_image_model_failure(&lower) {
+            return Some(Self::new(
+                ErrorCode::ModelLoadFailed,
+                "This looks like an image or video generation model, which the chat engine cannot run. Load it from Studio instead.".into(),
+                Some(output.into()),
+            ));
+        }
+
         if lower.contains("error loading model architecture") {
             return Some(Self::new(
                 ErrorCode::ModelArchNotSupported,
@@ -108,6 +120,15 @@ impl LlamacppError {
 
         None
     }
+}
+
+fn is_image_model_failure(lower: &str) -> bool {
+    const ARCHITECTURES: [&str; 6] = ["flux", "qwen_image", "qwen-image", "wan", "z_image", "sd3"];
+    let long_tensor_name = lower.contains("tensor name") && lower.contains("is too long");
+    let diffusion_arch = ARCHITECTURES
+        .iter()
+        .any(|a| lower.contains(&format!("unknown model architecture: '{a}'")));
+    long_tensor_name || diffusion_arch
 }
 
 // Deliberately specific: a bare "was not found" also matches a missing model
@@ -199,6 +220,7 @@ pub enum ServerError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[cfg(feature = "tauri")]
     #[error("Tauri error: {0}")]
     Tauri(#[from] tauri::Error),
 
@@ -219,6 +241,7 @@ impl serde::Serialize for ServerError {
                 "An input/output error occurred.".into(),
                 Some(e.to_string()),
             ),
+            #[cfg(feature = "tauri")]
             ServerError::Tauri(e) => LlamacppError::new(
                 ErrorCode::InternalError,
                 "An internal application error occurred.".into(),
@@ -381,6 +404,18 @@ mod tests {
             classify("something else entirely went wrong").code,
             ErrorCode::ModelLoadFailed
         ));
+    }
+
+    #[test]
+    fn points_a_diffusion_checkpoint_at_studio() {
+        let raw = "gguf_init_from_reader: tensor name 4 is too long: 71 >= 64;                    gguf_init_from_reader: failed to read tensor info";
+        let err = classify(raw);
+        assert!(matches!(err.code, ErrorCode::ModelLoadFailed));
+        assert!(err.message.contains("Studio"));
+        assert_eq!(err.details.as_deref(), Some(raw));
+        let arch = classify("llama_model_load: unknown model architecture: 'qwen_image'");
+        assert!(arch.message.contains("Studio"));
+        assert!(!classify("unknown model architecture: 'llama'").message.contains("Studio"));
     }
 
     #[test]

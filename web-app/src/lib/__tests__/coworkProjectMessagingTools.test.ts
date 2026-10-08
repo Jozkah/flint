@@ -41,19 +41,14 @@ describe('Cowork project-scoped messaging tools', () => {
     ])
   })
 
-  it('does not advertise guaranteed no_project calls without an attached project', async () => {
+  it('offers messaging to a session with no folder, but not stop_session', async () => {
     const tools = await buildCoworkTools(base)
 
     expect(tools.read).toBeDefined()
-    for (const name of [
-      'list_sessions',
-      'send_message',
-      'read_messages',
-      'wait_for_reply',
-      'stop_session',
-    ]) {
-      expect(tools[name]).toBeUndefined()
+    for (const name of ['list_sessions', 'send_message', 'read_messages', 'wait_for_reply']) {
+      expect(tools[name], name).toBeDefined()
     }
+    expect(tools.stop_session).toBeUndefined()
   })
 
   it('advertises session messaging when the Cowork run has a project identity', async () => {

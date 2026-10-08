@@ -162,6 +162,7 @@ pub struct ImageRequest {
     pub batch: u32,
     pub seed: u32,
     pub sampling: Sampling,
+    pub lora: Vec<(String, f64)>,
 }
 
 /// Bigger than this and the VAE decodes in tiles, or it runs out of memory.
@@ -188,6 +189,7 @@ pub fn build_img_gen_request(req: &ImageRequest) -> Value {
         "output_format": "png",
         "seed": req.seed,
         "sample_params": sample,
+        "lora": req.lora.iter().map(|(path, multiplier)| json!({ "path": path, "multiplier": multiplier })).collect::<Vec<_>>(),
     });
     if u64::from(req.width) * u64::from(req.height) > TILING_PIXELS {
         body["vae_tiling_params"] = json!({ "enabled": true });
@@ -205,6 +207,7 @@ pub struct VideoRequest {
     pub fps: u32,
     pub seed: u32,
     pub sampling: Sampling,
+    pub lora: Vec<(String, f64)>,
 }
 
 /// The frame counts a video model can make: four times something, plus one.
@@ -234,6 +237,7 @@ pub fn build_vid_gen_request(req: &VideoRequest) -> Value {
         "video_frames": snap_frames(req.frames),
         "fps": req.fps,
         "sample_params": sample,
+        "lora": req.lora.iter().map(|(path, multiplier)| json!({ "path": path, "multiplier": multiplier })).collect::<Vec<_>>(),
         // The video decoder is the part that runs out of memory first.
         "vae_tiling_params": { "enabled": true },
         "output_format": "webm",
@@ -376,6 +380,7 @@ mod tests {
             batch: 2,
             seed: 42,
             sampling: sampling(),
+            lora: vec![],
         });
         assert_eq!(body["prompt"], "a cat");
         assert_eq!(body["batch_count"], 2);
@@ -397,11 +402,14 @@ mod tests {
             batch: 1,
             seed: 1,
             sampling: Sampling { sample_method: Some("euler".into()), flow_shift: Some(3.0), ..sampling() },
+            lora: vec![("style.safetensors".into(), 0.7)],
         });
         assert_eq!(body["vae_tiling_params"]["enabled"], true);
         assert_eq!(body["negative_prompt"], "blurry");
         assert_eq!(body["sample_params"]["sample_method"], "euler");
         assert_eq!(body["sample_params"]["flow_shift"], 3.0);
+        assert_eq!(body["lora"][0]["multiplier"], 0.7);
+        assert_eq!(body["lora"][0]["path"], "style.safetensors");
     }
 
     #[test]
@@ -424,6 +432,7 @@ mod tests {
             fps: 24,
             seed: 7,
             sampling: Sampling { steps: 30, cfg_scale: 5.0, sample_method: Some("euler".into()), flow_shift: Some(5.0) },
+            lora: vec![],
         });
         assert_eq!(body["video_frames"], 117);
         assert_eq!(body["fps"], 24);
@@ -435,6 +444,7 @@ mod tests {
     #[test]
     fn sizes_must_be_in_range_and_a_multiple_of_sixteen() {
         assert_eq!(size_problem(1024, 1024, 256, 2048), None);
+        assert_eq!(size_problem(16, 32, 16, 2048), None);
         assert!(size_problem(255, 1024, 256, 2048).unwrap().contains("width"));
         assert!(size_problem(1024, 2064, 256, 2048).unwrap().contains("height"));
         assert!(size_problem(1000, 1024, 256, 2048).unwrap().contains("multiple of 16"));

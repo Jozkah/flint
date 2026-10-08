@@ -1,6 +1,9 @@
 import type { ToolImage } from '@/lib/toolOutputImages'
 import type { ApprovalSource } from '@janhq/tauri-plugin-agent-tools-api'
-import { approvalSourceFor } from '@/hooks/useToolApprovalRequests'
+import {
+  approvalSourceFor,
+  useToolApprovalRequests,
+} from '@/hooks/useToolApprovalRequests'
 import type {
   ChangeActorInput,
   ToolResources,
@@ -29,11 +32,27 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 
 type AdvertisedTools = Awaited<ReturnType<typeof advertisedToolSchemas>>
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { useToolApproval } from '@/hooks/useToolApproval'
 import { errorText } from '@/lib/errorText'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 import { runAccessRequest } from '@/lib/accessRequests'
 import { listPluginsForModel } from '@/lib/pluginInventory'
 import { runOpenInBrowser } from '@/lib/browserOpen'
+import { runGenerateImage } from '@/lib/generateImageTool'
+import { HOST_ASKED, hostCallNeedsAsking } from '@/lib/hostAsked'
+import { similarToolCall } from '@/lib/similarToolCall'
+import {
+  putToolScreenshot,
+  SCREENSHOT_RESULT_NOTE,
+} from '@/lib/toolScreenshots'
+import {
+  BROWSER_TOOL_NAME,
+  browserAlwaysAsks,
+  browserCallClass,
+  browserInputForPrompt,
+  closeBrowserSession,
+  describeBrowserCall,
+} from '@/lib/browserTool'
 import {
   BROWSER_TOOL_NAMES,
   browserAgentSchemas,
@@ -78,15 +97,44 @@ export const AGENT_TOOL_NAMES = new Set([
   'request_access',
   'list_plugins',
   'open_in_browser',
+  // Makes a picture with the image model loaded in Studio. See `runGenerateImage`.
+  'generate_image',
   // Read and drive the built-in browser pane. Answered by the desktop, and
   // gated there (domain prompt, action approval): see lib/browserAgent.ts.
   ...BROWSER_TOOL_NAMES,
+  // The agent's interactive, confined browser (browser/session.rs). Looking
+  // runs; acting is asked like a write; `open` and `evaluate` are asked every
+  // time. See `approveBrowserTool`.
+  'browser',
   // The host's git and gh, outside the sandbox (tools/git_tool.rs). Reads run
   // without asking; everything else is put to the user by the dispatcher
   // (see `gitApproval`), and a push or pull request every time.
   'git',
   // Read-only facts about an attached clone.
   'git_inspect',
+  // The Windows Event Log, read by the host because the sandbox is refused.
+  'windows_events',
+  // Read-only host facts, loopback HTTP and Docker, which the sandbox cannot do.
+  'host_query',
+  'local_http',
+  'docker',
+  // Ends a process or changes a service. Asked about every time: see
+  // `approveHostAction`.
+  'host_action',
+  // Gradle, Maven and .NET builds outside the sandbox. Asked about every time.
+  'host_build',
+  // The clipboard and opening a project file on screen. Asked about every time.
+  'clipboard',
+  'computer',
+  'open_path',
+  // A PowerShell script outside the sandbox. Asked about every time, script shown.
+  'host_powershell',
+  // winget (changes asked, looking free), a command in WSL or over SSH (asked every
+  // time), and a desktop notification.
+  'host_package',
+  'host_wsl',
+  'host_ssh',
+  'notify_user',
 ])
 
 // Keyed by what the answer depends on. One module-level list shared by chat
@@ -136,7 +184,10 @@ export async function getSandboxToolchains(): Promise<ToolchainReport | null> {
   try {
     return (await sandboxToolchains()) ?? null
   } catch (e) {
-    console.warn('[agentTools] Failed to probe sandbox toolchains:', messageOf(e))
+    console.warn(
+      '[agentTools] Failed to probe sandbox toolchains:',
+      messageOf(e)
+    )
     return null
   }
 }
@@ -332,6 +383,213 @@ export function agentToolInputError(
 }
 
 /**
+ * Ask the user about a `browser` call that needs it, before the backend runs
+ * it. `null` when it may proceed, otherwise what to tell the model.
+ *
+ * Looking at a page the run already opened never asks. Acting asks like a
+ * write (a grant or an approving mode covers it). `open` and `evaluate` ask
+ * every time: the model chooses which service on this machine the browser
+ * reaches, and a script can do what no single click can. Nobody to ask (an
+ * unattended run) means those two are refused and acting is allowed, as
+ * writes are in that mode.
+ */
+export async function approveBrowserTool(
+  input: unknown,
+  threadId: string,
+  options: AgentToolOptions
+): Promise<string | null> {
+  const cls = browserCallClass(input)
+  if (cls === 'read') return null
+  const alwaysAsk =
+    browserAlwaysAsks(cls) ||
+    useToolApproval.getState().permissionMode === 'auto-approve'
+  if (
+    options.unattended &&
+    useToolApproval.getState().permissionMode !== 'bypass'
+  ) {
+    return alwaysAsk
+      ? `browser ${cls} was not run: it must be approved by the user every time, and nobody is available to ask. Ask the user to open the page, or to run this in a mode that asks.`
+      : null
+  }
+  const what = await describeBrowserCall(input, threadId)
+  const context = `Agent browser (a separate, temporary browser limited to pages on this machine): ${what}`
+  const shown = browserInputForPrompt(input)
+  const ok = options.approve
+    ? await options.approve({ context, alwaysAsk, input: shown })
+    : await useToolApprovalRequests
+        .getState()
+        .requestApproval(
+          options.callId ?? '',
+          BROWSER_TOOL_NAME,
+          threadId,
+          undefined,
+          {
+            input: shown,
+            alwaysAsk,
+            taskContext: context,
+            signal: options.signal,
+            origin: options.origin,
+            destructiveChecked: true,
+            autoApproveStreak: alwaysAsk ? undefined : threadId,
+          }
+        )
+  return ok ? null : 'The user declined this browser action.'
+}
+
+const HOST_ACTION_NAME = 'host_action'
+const HOST_BUILD_NAME = 'host_build'
+/** Host calls ask unless an explicit action-scoped grant covers them. */
+/** What the question says it is about, by tool. */
+const HOST_CONTEXT: Record<string, string> = {
+  [HOST_BUILD_NAME]: 'Build',
+  host_powershell: 'PowerShell on this computer',
+  host_package: 'Programs on this computer',
+  host_wsl: 'Command in WSL',
+  host_ssh: 'Command over SSH',
+  clipboard: 'Clipboard',
+  computer: 'Keyboard and mouse',
+  open_path: 'Open on screen',
+}
+
+/** One row of a `host_query` answer, or none. */
+async function hostQueryRows(
+  args: Record<string, unknown>,
+  threadId: string
+): Promise<Record<string, unknown>[]> {
+  try {
+    const r = await executeAgentTool('host_query', args, threadId)
+    const parsed = typeof r.content === 'string' ? JSON.parse(r.content) : null
+    return Array.isArray(parsed) ? parsed : parsed ? [parsed] : []
+  } catch {
+    return []
+  }
+}
+
+/** What a `host_action` call will do, with the target's own details looked up. */
+export async function describeHostAction(
+  input: unknown,
+  threadId: string,
+  toolName: string = HOST_ACTION_NAME
+): Promise<string> {
+  const a = (input && typeof input === 'object' ? input : {}) as Record<
+    string,
+    unknown
+  >
+  if (toolName === 'computer') {
+    const target = `screen (${String(a.x)}, ${String(a.y)})`
+    if (a.action === 'screenshot') return 'Capture the primary desktop display (the X11 root on Linux)'
+    if (a.action === 'type') return `Click ${target} and ${a.replace === true ? 'replace the field with' : 'type'} this text (on Wayland this also replaces the clipboard):\n${String(a.text ?? '')}`
+    if (a.action === 'key') return `Click ${target} and press ${Array.isArray(a.keys) ? a.keys.join(' + ') : ''}`
+    if (a.action === 'scroll') return `Click ${target} and scroll ${String(a.amount)} wheel steps (positive down)`
+    return `${a.action === 'move' ? 'Move the pointer to' : `${a.count === 2 ? 'Double-click' : 'Click'} with the ${String(a.button ?? 'left')} button at`} ${target}`
+  }
+  if (toolName === 'clipboard') {
+    if (a.action === 'write') {
+      const text = String(a.text ?? '')
+      return `Replace the clipboard with ${[...text].length} characters:\n${text}`
+    }
+    return 'Read the current clipboard content'
+  }
+  if (toolName === 'host_package') {
+    const verb = String(a.action ?? '')
+    const label = verb ? verb[0].toUpperCase() + verb.slice(1) : 'Change'
+    return `${label} ${String(a.id ?? '')} with winget`
+  }
+  if (toolName === 'host_wsl' || toolName === 'host_ssh') {
+    const command = String(a.command ?? '')
+    const where =
+      toolName === 'host_ssh'
+        ? `on ${String(a.host ?? '')}${a.port ? ` port ${String(a.port)}` : ''} over SSH`
+        : `in WSL (${typeof a.distro === 'string' && a.distro ? a.distro : 'the default distribution'})`
+    return `Run this ${where}:\n${command}`
+  }
+  if (toolName === 'host_powershell') {
+    const script = String(a.script ?? '')
+    const where =
+      typeof a.cwd === 'string' && a.cwd ? a.cwd : 'the project folder'
+    return `Run this script as you, outside the sandbox, in ${where}:\n${script}`
+  }
+  if (toolName === 'open_path') {
+    return a.reveal === true
+      ? `Show ${String(a.path)} in Explorer`
+      : `Open ${String(a.path)} with its default app`
+  }
+  if (typeof a.program === 'string') {
+    const words = Array.isArray(a.args) ? a.args.map(String) : []
+    const command = [a.program, ...words]
+      .map((w) => (/\s/.test(w) ? `"${w}"` : w))
+      .join(' ')
+    const where =
+      typeof a.cwd === 'string' && a.cwd
+        ? ` in ${a.cwd}`
+        : ' in the project folder'
+    return `Run \`${command}\`${where}, outside the sandbox (it runs the project's own build scripts)`
+  }
+  if (a.action === 'kill_process') {
+    const row = (
+      await hostQueryRows({ query: 'processes', pid: a.pid }, threadId)
+    )[0]
+    const who = row
+      ? `${String(row.ProcessName)}${row.Path ? ` (${String(row.Path)})` : ''}`
+      : 'no process with that number is running'
+    return `End process ${String(a.pid)}: ${who}`
+  }
+  const name = String(a.name ?? '')
+  const verb = String(a.action ?? '').replace('_service', '')
+  const row = (await hostQueryRows({ query: 'services', name }, threadId)).find(
+    (r) => String(r.Name).toLowerCase() === name.toLowerCase()
+  )
+  const label = verb ? verb[0].toUpperCase() + verb.slice(1) : 'Change'
+  const detail = row
+    ? ` (${String(row.DisplayName)}, now ${String(row.Status)})`
+    : ''
+  return `${label} service ${name}${detail}`
+}
+
+/**
+ * Ask the user about a `host_action` call, before the backend runs it. `null`
+ * when they approved, otherwise what to tell the model.
+ *
+ * The prompt names the exact target (a process with its name and path), looked
+ * up just before asking. Recognized actions may use an explicit scoped grant.
+ * An unattended run without such a grant is refused.
+ */
+export async function approveHostAction(
+  input: unknown,
+  threadId: string,
+  options: AgentToolOptions,
+  toolName: string = HOST_ACTION_NAME
+): Promise<string | null> {
+  if (options.approvalSource === 'bypass') return null
+  const similar = similarToolCall(toolName, input)
+  const approval = useToolApproval.getState()
+  if (
+    options.unattended &&
+    approval.permissionMode !== 'bypass' &&
+    (!similar ||
+      (!approval.isSimilarCallApproved(similar.key) &&
+        !approval.isToolApproved(threadId, similar.key)))
+  ) {
+    return `${toolName} was not run: the user must approve it every time, and nobody is available to ask. Tell the user what you wanted to do.`
+  }
+  const what = await describeHostAction(input, threadId, toolName)
+  const context = `${HOST_CONTEXT[toolName] ?? 'Change this computer'}: ${what}`
+  const ok = options.approve
+    ? await options.approve({ context, alwaysAsk: true, input })
+    : await useToolApprovalRequests
+        .getState()
+        .requestApproval(options.callId ?? '', toolName, threadId, undefined, {
+          input,
+          alwaysAsk: true,
+          taskContext: context,
+          signal: options.signal,
+          origin: options.origin,
+          destructiveChecked: true,
+        })
+  return ok ? null : 'The user declined this action.'
+}
+
+/**
  * Execute one built-in agent tool.
  *
  * The filesystem tools are confined to this thread's own sandbox, so scratch
@@ -356,6 +614,8 @@ export function agentToolInputError(
  * one place that still knows the order is the adapter below.
  */
 export type AgentToolOptions = {
+  /** Cowork's run mode determines the audit source for this call. */
+  approvalSource?: ApprovalSource
   /**
    * A project folder to attach read-only. Rust validates it and refuses one
    * that overlaps the workspace or the Flint data folder, rather than silently
@@ -432,6 +692,29 @@ export async function executeAgentTool(
     const inputError = agentToolInputError(toolName, input)
     if (inputError) return { error: inputError }
 
+    if (HOST_ASKED.has(toolName) && hostCallNeedsAsking(toolName, input)) {
+      // The id the question is asked under is the id the backend is told, so
+      // its guard can see that a person answered.
+      const callId = options.callId ?? `${toolName}-${Date.now()}`
+      options = { ...options, callId }
+      const declined = await approveHostAction(
+        input,
+        threadId,
+        options,
+        toolName
+      )
+      if (declined) return { error: declined }
+    }
+
+    if (toolName === BROWSER_TOOL_NAME) {
+      // The id the question is asked under is the id the backend is told, so
+      // its audit and its guard can see the answer.
+      const callId = options.callId ?? `${BROWSER_TOOL_NAME}-${Date.now()}`
+      options = { ...options, callId }
+      const declined = await approveBrowserTool(input, threadId, options)
+      if (declined) return { error: declined }
+    }
+
     if (isBrowserTool(toolName)) {
       // The built-in browser pane: prompts, policy and the page itself.
       const r = await runBrowserAgentTool(toolName, input, threadId, {
@@ -456,6 +739,7 @@ export async function executeAgentTool(
       return {
         content: await runAccessRequest(input, threadId, {
           dataFolder,
+          bypass: options.approvalSource === 'bypass',
           scope: options.scope,
           signal: options.signal,
           taskLabel: options.taskLabel,
@@ -475,6 +759,7 @@ export async function executeAgentTool(
       }
     }
     if (toolName === 'open_in_browser') return runOpenInBrowser(input)
+    if (toolName === 'generate_image') return runGenerateImage(input)
     if (toolName === 'list_plugins') {
       return { content: await listPluginsForModel(options.readOnlyProject) }
     }
@@ -505,6 +790,18 @@ export async function executeAgentTool(
             approvalOf(options)
           )
     const resources = result.resources ?? undefined
+    // A browser screenshot is kept beside the transcript and the result says
+    // so; the stored result stays text (see lib/toolScreenshots.ts).
+    let content = result.content
+    if (
+      !result.isError &&
+      toolName === BROWSER_TOOL_NAME &&
+      options.callId &&
+      result.images?.[0] &&
+      putToolScreenshot(options.callId, result.images[0].dataUrl)
+    ) {
+      content = `${content}\n${SCREENSHOT_RESULT_NOTE}`
+    }
     if (result.isError) {
       return {
         error: result.content,
@@ -515,7 +812,7 @@ export async function executeAgentTool(
       }
     }
     return {
-      content: result.content,
+      content,
       diff: result.diff ?? undefined,
       resources,
       ...(result.images?.length ? { images: result.images } : {}),
@@ -535,7 +832,8 @@ export async function executeAgentTool(
 export function notifyToolBatch(
   threadId: string,
   toolNames: string[],
-  scope: 'thread' | 'session' = 'thread'
+  scope: 'thread' | 'session' = 'thread',
+  agent: 'main' | 'subagent' = 'main'
 ): void {
   if (toolNames.length === 0) return
   void (async () => {
@@ -547,7 +845,8 @@ export function notifyToolBatch(
         threadId,
         toolNames,
         useAgentToolsConfig.getState().bashNetworkEnabled,
-        scope as WorkspaceScope
+        scope as WorkspaceScope,
+        agent
       )
     } catch {
       // A hook problem is the backend's to log; the chat goes on.
@@ -629,7 +928,7 @@ async function runStreaming(
  * record: an allowed edit used to be logged as an open "prompt:Write".
  */
 const approvalOf = (options: AgentToolOptions): ApprovalSource | undefined =>
-  options.callId ? approvalSourceFor(options.callId) : undefined
+  options.approvalSource ?? (options.callId ? approvalSourceFor(options.callId) : undefined)
 
 /** The extra folders as the binding takes them: absent when there are none. */
 const extraProjectsOf = (options: AgentToolOptions): string[] | undefined =>
@@ -673,6 +972,8 @@ export async function previewAgentChange(
  * while the user is deleting a thread.
  */
 export async function cleanupThreadWorkspace(threadId: string): Promise<void> {
+  // The thread's agent browser goes with it.
+  void closeBrowserSession(threadId)
   try {
     const dataFolder = await getServiceHub().app().getJanDataFolder()
     if (!dataFolder) return

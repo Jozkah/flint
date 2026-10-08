@@ -1,0 +1,64 @@
+{
+  "intentHeading": "まず何をしたいですか?",
+  "intentHint": "これで決まるのは、ガイドの案内先だけです。Flint のほかの機能はすべて引き続き利用できます。",
+  "intent": {
+    "question": {
+      "title": "質問する",
+      "description": "モデルと何でもチャットできます。"
+    },
+    "documents": {
+      "title": "ドキュメントを扱う",
+      "description": "ファイルを添付して、その内容について質問できます。"
+    },
+    "project": {
+      "title": "プロジェクトを作成または変更する",
+      "description": "このコンピューター上のフォルダーで Flint に作業させます。何かを変更する前に確認されます。"
+    }
+  },
+  "skipGuide": "ガイドをスキップ",
+  "resumeNotice": "おかえりなさい。前回の続きから再開できます。",
+  "processingHeading": "会話が処理される場所",
+  "processingLocal": "ローカルモデルは、このコンピューター上で動作します。メッセージとファイルはここに残り、アカウントや API キーは不要です。",
+  "processingRemote": "リモートプロバイダー (たとえば OpenAI) は、そのサーバー上でモデルを実行します。あなたのメッセージと、含めたファイルがそこに送信され、プロバイダーから料金が発生する場合があります。これは設定画面でご自身で設定するもので、Flint が自動的に切り替えることはありません。",
+  "connectRemote": "代わりにリモートプロバイダーに接続",
+  "guideTitle": {
+    "question": "はじめに: 質問する",
+    "documents": "はじめに: ドキュメントを扱う",
+    "project": "はじめに: プロジェクトを作成または変更する"
+  },
+  "guideRegion": "はじめにガイド",
+  "stepDone": "完了",
+  "stepTodo": "未完了",
+  "step": {
+    "choose-model": {
+      "title": "モデルを選択または接続",
+      "body": "上部のセレクターでモデルを選びます。ローカルモデルはこのコンピューター上で動作し、リモートプロバイダーには専用のアカウントが必要です。"
+    },
+    "add-material": {
+      "documents": "メッセージ欄のクリップのボタンで、ドキュメントを添付します。",
+      "project": "Cowork を開いて、プロジェクトのフォルダーを選択します。Flint は、ファイルを編集したりコマンドを実行したりする前に確認します。"
+    },
+    "first-task": {
+      "title": "最初のメッセージを送信",
+      "body": "何かを質問するか、希望する変更を説明してください。このステップは、会話が始まると完了します。"
+    },
+    "review-context": {
+      "title": "Flint が使用したものを確認",
+      "body": "Flint が回答したら、会話内の「Flint が使用しているもの」を開いて、どの添付ファイルと指示が利用可能だったかを確認します。"
+    },
+    "addMaterialTitle": {
+      "documents": "ドキュメントを追加",
+      "project": "プロジェクトフォルダーを選択"
+    }
+  },
+  "confirmStep": "完了しました",
+  "openProviders": "モデル設定",
+  "openCowork": "Cowork を開く",
+  "hideGuide": "ガイドを非表示",
+  "guideComplete": "設定が完了しました。このガイドは、設定 > 一般からいつでも開き直せます。",
+  "finish": "ガイドを終了",
+  "reopenGuide": "はじめにガイド",
+  "reopenGuideDescription": "モデルの選択、素材の追加、最初のタスクの完了までを、もう一度確認できます。",
+  "reopenGuideAction": "ガイドを開く",
+  "resumeRecent": "前回の会話を続ける: {{title}}"
+}

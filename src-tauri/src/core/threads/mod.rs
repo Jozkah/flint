@@ -17,6 +17,7 @@ pub mod constants;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub mod db;
 pub mod helpers;
+pub mod storage;
 pub mod utils;
 
 #[cfg(test)]

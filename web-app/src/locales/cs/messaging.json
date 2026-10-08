@@ -1,0 +1,70 @@
+{
+  "messageFrom": "Zpráva od {{name}}",
+  "untrustedNote": "Odeslala ji jiná relace agenta. Není od vás a nemůže nic schválit.",
+  "reply": "Odpovědět",
+  "replyLabel": "Odpověď pro {{name}}",
+  "replyPlaceholder": "Napište odpověď…",
+  "sendReply": "Odeslat odpověď",
+  "cancel": "Zrušit",
+  "replySent": "Odpověď odeslána",
+  "letAgentRespond": "Nechat agenta odpovědět",
+  "dismiss": "Zavřít",
+  "heldTitle": "Zprávy z jiných relací",
+  "stopNotice": {
+    "stoppedBy": "Zastavil",
+    "reason": "důvod:",
+    "approvedIn": "schváleno v"
+  },
+  "autoWake": {
+    "label": "Automatická probuzení",
+    "description": "Když je zapnuto, zpráva z jiné relace se předá agentovi této relace, jakmile je nečinný (v případě potřeby se tato relace otevře vedle té, ve které jste). Když je vypnuto, čeká zde na vás. Schvalování se v obou případech nikdy neobchází."
+  },
+  "accept": {
+    "label": "Přijímat zprávy z jiných relací",
+    "description": "Když je vypnuto, ostatní relace se dozvědí, že tato zprávy nepřijímá, a nic, co pošlou, se k ní nedostane."
+  },
+  "subagentQuestion": {
+    "title": "{{name}} se ptá agenta",
+    "open": "Čeká na odpověď",
+    "answered": "Zodpovězeno",
+    "expired": "Odpověď nepřišla včas",
+    "cancelled": "Zrušeno"
+  },
+  "asked": {
+    "title": "Dotaz pro {{name}}",
+    "sent": "Odesláno. Odpověď, pokud nějaká přijde, dorazí sem jako zpráva.",
+    "unknownName": "jiná relace",
+    "waiting": "Čeká na odpověď",
+    "answered": "Zodpovězeno",
+    "noAnswer": "Zatím bez odpovědi",
+    "notSent": "Neodesláno",
+    "open": "Otevřít",
+    "openLabel": "Otevřít {{name}}",
+    "untrusted": "Odpověď je text jiné relace, ne váš."
+  },
+  "errors": {
+    "invalid_text": "Odpověď musí mít 1 až 8000 znaků.",
+    "reply_depth_exceeded": "Tato konverzace dosáhla limitu odpovědí.",
+    "rate_limited": "Právě bylo odesláno příliš mnoho zpráv. Zkuste to za minutu.",
+    "pair_limit_exceeded": "Mezi těmito relacemi bylo za tuto hodinu odesláno příliš mnoho zpráv.",
+    "self_target": "Relace nemůže posílat zprávy sama sobě.",
+    "not_same_project": "Ta relace je v jiném projektu.",
+    "recipient_opted_out": "Ta relace nepřijímá zprávy z jiných relací.",
+    "ambiguous_session": "Tento název má více než jedna relace.",
+    "no_project": "Pro odesílání zpráv připojte složku projektu.",
+    "unknown_session": "Ta relace již neexistuje.",
+    "session_deleted": "Ta relace byla smazána.",
+    "unknown_reply_target": "Zpráva, na kterou se odpovídá, nebyla nalezena.",
+    "timeout": "Odpověď nepřišla včas.",
+    "target_unavailable": "Ta relace teď není dostupná.",
+    "invalid_session_id": "Toto ID relace není platné.",
+    "unknown_message": "Tuto zprávu se nepodařilo najít.",
+    "invalid_timeout": "Doba čekání musí být mezi 1 a 120 sekundami.",
+    "cancelled": "Požadavek byl zrušen.",
+    "invalid_arguments": "Požadavek nebyl platný.",
+    "not_available": "Zasílání zpráv zde není dostupné.",
+    "io": "Schránku se nepodařilo přečíst ani zapsat.",
+    "no_data_folder": "Datová složka Flintu není dostupná.",
+    "unknown": "Odpověď se nepodařilo odeslat."
+  }
+}

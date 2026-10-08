@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "명령",
+    "helpTitle": "사용 가능한 명령",
+    "keys": "↑↓ 선택 · Enter/Tab 삽입 · Esc 닫기",
+    "empty": "여기서 사용할 수 있는 명령이 없습니다"
+  },
+  "source": {
+    "plugin": "플러그인",
+    "pluginNamed": "플러그인 {{plugin}}",
+    "skill": "스킬",
+    "builtin": "기본 제공"
+  },
+  "scope": {
+    "project": "프로젝트",
+    "global": "전역"
+  },
   "builtin": {
+    "help": "사용 가능한 명령 목록 보기",
+    "new": "새 대화 시작",
+    "newSession": "새 Cowork 세션 시작",
     "compact": "오래된 메시지를 요약해 컨텍스트 창을 확보합니다"
-  }
+  },
+  "sent": {
+    "command": "명령",
+    "skill": "스킬",
+    "showCommand": "확장된 명령 보기",
+    "showSkill": "불러온 스킬 보기"
+  },
+  "error": "{{command}}을(를) 실행할 수 없습니다: {{error}}"
 }

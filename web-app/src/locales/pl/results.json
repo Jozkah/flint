@@ -1,7 +1,142 @@
 {
+  "status": {
+    "running": "W toku",
+    "completed": "Ukończone",
+    "failed": "Niepowodzenie",
+    "cancelled": "Anulowane",
+    "partial": "Częściowo wykonane"
+  },
+  "sections": {
+    "happened": "Co się stało",
+    "where": "Gdzie jest wynik",
+    "checked": "Co sprawdzono",
+    "unresolved": "Nierozwiązane",
+    "next": "Następne kroki"
+  },
+  "headline": {
+    "running": "Uruchomienie nadal trwa.",
+    "completedWithChanges": "Uruchomienie zakończyło się, a Flint zmienił pliki.",
+    "completedNoChanges": "Uruchomienie zakończyło się bez zmiany plików przez Flint.",
+    "completedChecksFailed": "Uruchomienie zakończyło się, ale kontrola uruchomiona przez Flint nie przeszła.",
+    "finishedIncomplete": "Uruchomienie zakończyło się, ale część prośby nie została wykonana. Zobacz Nierozwiązane.",
+    "partial": "Uruchomienie zatrzymało się przed ukończeniem. Część pracy została wcześniej wykonana.",
+    "failed": "Uruchomienie zatrzymało się przed ukończeniem i nic nie zostało zakończone.",
+    "cancelled": "Uruchomienie zatrzymano, zanim cokolwiek zostało ukończone."
+  },
+  "plan": {
+    "progress": "Wykonano {{done}} z {{total}}"
+  },
+  "kept": "Te zmiany zostały zachowane. Zatrzymanie uruchomienia nie cofa tego, co już zrobiło.",
+  "location": {
+    "sandbox": "W piaskownicy tej sesji, nie w Twoim repozytorium.",
+    "worktree": "W osobnym worktree zarządzanym przez Flint, nie w Twoim checkout.",
+    "userCheckout": "Bezpośrednio w dołączonym folderze.",
+    "none": "Do tego uruchomienia nie dołączono drzewa roboczego.",
+    "noFiles": "Flint nie zapisał żadnych plików.",
+    "open": "Otwórz {{path}}"
+  },
+  "checks": {
+    "none": "Flint nie uruchomił żadnych testów ani kontroli.",
+    "kind": {
+      "test": "Test",
+      "build": "Kompilacja",
+      "lint": "Kontrola",
+      "command": "Polecenie"
+    },
+    "outcome": {
+      "passed": "Zaliczone",
+      "failed": "Niepowodzenie",
+      "didNotFinish": "Nie zakończyło się",
+      "running": "W toku",
+      "notRun": "Nie uruchomiono",
+      "unknown": "Wynik nieznany"
+    },
+    "exit": "kod {{code}}",
+    "summary": {
+      "allTestsPassed": "Testy automatyczne zaliczone.",
+      "allChecksPassed": "Kontrole automatyczne zaliczone. Nie uruchomiono testów.",
+      "somePassed": "Zaliczono {{passed}} z {{total}} kontroli.",
+      "failedWithCode": "{{command}} zakończyło się niepowodzeniem z kodem wyjścia {{code}}.",
+      "failedNoCode": "{{command}} zakończyło się niepowodzeniem bez kodu wyjścia.",
+      "didNotFinish_one": "{{count}} kontrola nie zakończyła się: została anulowana, przekroczyła limit czasu lub została przerwana.",
+      "didNotFinish_other": "{{count}} kontroli nie zakończyło się: zostały anulowane, przekroczyły limit czasu lub zostały przerwane.",
+      "didNotFinish_few": "{{count}} kontrole nie zakończyły się: zostały anulowane, przekroczyły limit czasu lub zostały przerwane.",
+      "didNotFinish_many": "{{count}} kontroli nie zakończyło się: zostały anulowane, przekroczyły limit czasu lub zostały przerwane.",
+      "notRun_one": "{{count}} kontrola nie została uruchomiona.",
+      "notRun_other": "{{count}} kontroli nie zostało uruchomionych.",
+      "notRun_few": "{{count}} kontrole nie zostały uruchomione.",
+      "notRun_many": "{{count}} kontroli nie zostało uruchomionych.",
+      "unknown_one": "{{count}} kontrola nie ma zapisanego statusu wyjścia, więc jej wynik jest nieznany.",
+      "unknown_other": "{{count}} kontroli nie ma zapisanego statusu wyjścia, więc ich wyniki są nieznane.",
+      "unknown_few": "{{count}} kontrole nie mają zapisanego statusu wyjścia, więc ich wyniki są nieznane.",
+      "unknown_many": "{{count}} kontroli nie ma zapisanego statusu wyjścia, więc ich wyniki są nieznane.",
+      "running_one": "{{count}} kontrola nadal trwa.",
+      "running_other": "{{count}} kontroli nadal trwa.",
+      "running_few": "{{count}} kontrole nadal trwają.",
+      "running_many": "{{count}} kontroli nadal trwa.",
+      "visualNotChecked": "Zachowanie wizualne i end-to-end nie zostało sprawdzone."
+    },
+    "otherCommands": "Uruchomiono także inne polecenia ({{count}}). Nie są liczone jako kontrole.",
+    "completion": {
+      "not-started": "nierozpoczęte",
+      "running": "nadal trwa",
+      "completed": "wykonane do końca",
+      "cancelled": "anulowane",
+      "timed-out": "przekroczono limit czasu",
+      "interrupted": "przerwane"
+    },
+    "limitation": {
+      "exit-status-only": "Oceniane tylko na podstawie statusu wyjścia.",
+      "compound-command": "Połączono kilka poleceń; status dotyczy całego łańcucha, a nie każdego kroku.",
+      "output-truncated": "Wynik został obcięty, więc późniejsze niepowodzenia mogą nie być widoczne.",
+      "background": "Uruchomione w tle; status może nie być statusem zadania.",
+      "subset-selected": "Wybrano tylko część zestawu testów.",
+      "no-exit-status": "Nie zapisano statusu wyjścia."
+    },
+    "claimsTitle": "Wspomniane przez asystenta, niezweryfikowane przez Flint:"
+  },
   "unresolved": {
     "stop": {
+      "error": "Uruchomienie zakończyło się błędem.",
+      "aborted": "Uruchomienie zostało zatrzymane.",
+      "deadline": "Uruchomienie osiągnęło limit czasu.",
+      "timeout": "Model przestał odpowiadać na czas.",
+      "loop": "Uruchomienie zatrzymano, ponieważ się powtarzało.",
+      "steps": "Uruchomienie wykorzystało wszystkie swoje kroki.",
       "tokens": "Przebieg zatrzymał się na limicie tokenów (okno kontekstu lub limit żądania)."
-    }
+    },
+    "refused": "Niedozwolone: {{tool}} {{target}}",
+    "refusedReadOnly": "Nie uruchomiono, ta tura była tylko do odczytu: {{tool}} {{target}}. Przełącz tryb na Pytaj przed zmianami lub Autonomiczny, a następnie Kontynuuj.",
+    "cancelled": "Anulowano: {{tool}} {{target}}",
+    "failed": "Niepowodzenie: {{tool}} {{target}}",
+    "interrupted": "Nie zakończyło się: {{tool}} {{target}}",
+    "checkFailed": "Nie przeszło: {{command}}"
+  },
+  "actions": {
+    "openResult": "Otwórz wynik",
+    "reviewChanges": "Przejrzyj zmiany",
+    "continue": "Kontynuuj",
+    "retry": "Spróbuj ponownie",
+    "retryNote": "Spróbuj ponownie wysyła ostatnią prośbę jeszcze raz. Nie cofa zmian, które uruchomienie już wprowadziło.",
+    "restore": "Wróć do wcześniejszego punktu"
+  },
+  "rewind": {
+    "scopeTitle": "Co zmienia to przywrócenie",
+    "scopeTree": "Worktree: {{tree}}",
+    "filesHeading": "Pliki, które zostaną przywrócone ({{count}})",
+    "noFiles": "Żadne pliki nie różnią się od tego punktu.",
+    "filesUnknown": "Flint nie mógł wylistować, które pliki się zmienią.",
+    "safetyNote": "Przed przywróceniem Flint zapisuje bieżący stan jako nowy punkt, więc to przywrócenie można cofnąć.",
+    "boundaries": "Przywrócenie plików nie cofa wiadomości, wypchnięć na zdalne repozytoria, opublikowanych treści, zainstalowanych pakietów ani innych skutków poza tym worktree. Polecenia, które już się wykonały, nie są cofane.",
+    "unrelatedTitle": "Te pliki zmieniły się po najnowszym punkcie i nie zostały zapisane przez Flint. Przywrócenie je nadpisze:",
+    "unrelatedConfirm": "Rozumiem, że te zmiany zostaną nadpisane. Pozostają dostępne w zapisanym punkcie.",
+    "safetyLabel": "Przed przywróceniem {{time}}",
+    "safetyFailed": "Nie udało się najpierw zapisać bieżącego stanu, więc nic nie przywrócono: {{reason}}",
+    "restored": "Przywrócono. Stan sprzed tego zapisano jako „{{label}}”.",
+    "previewDiff": "Podgląd różnic",
+    "hideDiff": "Ukryj różnice",
+    "previewEmpty": "Brak różnic do pokazania.",
+    "previewLoading": "Wczytywanie różnic…",
+    "previewFailed": "Nie udało się zbudować różnic: {{reason}}"
   }
 }

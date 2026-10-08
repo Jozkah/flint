@@ -1,5 +1,23 @@
 {
   "skills": {
+    "whatIs": "Beceri, ajanın okuyup izleyebileceği, isteğe bağlı olarak yanında betikler veya dosyalar bulunan yazılı talimatlar kümesidir.",
+    "whereApplies": "Burada listelenen beceriler bu proje klasörüne (.jan/agent/skills) aittir. Bir beceriyi kapatmak, onu yalnızca bu projede ajandan ve / komutlarından gizler.",
+    "toolAccess": "Bir beceriyi etkinleştirmek yeni araç erişimi vermez. Ajan becerileri, her zaman sormadan izin verilen yerleşik beceri araçlarıyla (listele, oku, yaz) okur. Bir becerinin içerdiği betik yalnızca ajan, kendi izin kurallarına tabi olan komut aracını çağırırsa çalışır.",
+    "stateHelp": "Yüklü: beceri bu projede mevcut. Etkin: ajana bu projedeki iş için sunulur.",
+    "summary": "Yüklü {{installed}} beceriden {{enabled}} tanesi etkin",
+    "state": {
+      "enabled": "Etkin",
+      "disabled": "Kapalı",
+      "enable": "Etkinleştir",
+      "disable": "Devre dışı bırak"
+    },
+    "view": "Görüntüle",
+    "edit": "Düzenle",
+    "importFailed": "{{name}} içe aktarılamadı: {{error}}",
+    "loadHubFailed": "Beceri merkezi yüklenemedi: {{error}}",
+    "deleteSkill": "{{name}} becerisini sil",
+    "fromPlugin": "{{plugin}} eklentisinden",
+    "pluginReadOnly": "Bu beceri {{plugin}} eklentisinden gelir ve burada salt okunurdur. Değiştirmek için eklentinin kaynağını düzenleyip eklentiyi yeniden yükleyin veya Eklentiler bölümünden eklentiyi kapatın.",
     "alwaysOn": "Her zaman açık",
     "alwaysActive": "Her zaman etkin",
     "alwaysActiveHelp": "Bu beceriyi istenmeden her konuşmada uygula."

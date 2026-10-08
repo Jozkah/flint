@@ -89,8 +89,11 @@ impl ServedTools {
         let Some(tool) = lookup(name) else {
             return false;
         };
-        // A peer has no browser pane to drive.
-        if tauri_plugin_agent_tools::tools::is_browser_tool(name) {
+        // A peer has no browser pane to drive, and the interactive `browser`
+        // tool is a `Write` tool with no path argument, which the rule below
+        // would otherwise serve by default. It needs a person to approve each
+        // address it opens, and a peer program cannot be asked.
+        if tauri_plugin_agent_tools::tools::is_browser_tool(name) || name == "browser" {
             return false;
         }
         if !self.only.is_empty() && !self.only.iter().any(|n| n == name) {

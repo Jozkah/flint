@@ -250,6 +250,25 @@ pub fn friendly_failure(tail: &[String]) -> String {
     }
 }
 
+/// Serialises `load`, which can take minutes and replaces the resident engine.
+static LOAD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn load_lock() -> &'static Mutex<()> {
+    LOAD_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Loading `model_id` replaces whatever engine is resident; refuse when that
+/// engine is in the middle of a generation, which the swap would kill.
+async fn check_can_replace(model_id: &str) -> Result<(), String> {
+    match resident().lock().await.as_ref() {
+        Some(r) if r.busy && r.model_id != model_id => Err(
+            "The image engine is busy with another generation. Wait for it to finish or stop it, then load the other model."
+                .to_string(),
+        ),
+        _ => Ok(()),
+    }
+}
+
 pub async fn unload<R: Runtime>(app: &tauri::AppHandle<R>) {
     let taken = resident().lock().await.take();
     if let Some(mut r) = taken {
@@ -266,12 +285,16 @@ pub async fn load<R: Runtime>(
     offload: Offload,
 ) -> Result<ResidentInfo, String> {
     if !engine::platform_supported() {
-        return Err("Image generation is available on Windows for now.".to_string());
+        return Err("Local image generation needs Windows x64 or Linux x64.".to_string());
     }
     let def = catalog::model(model_id).ok_or_else(|| format!("Unknown model {model_id}."))?;
     let backend = engine::installed_backend(app)
         .ok_or("The image engine is not installed yet.")?;
     let files = files_for(app, def)?;
+
+    // One load or swap at a time: two callers must not each start an engine,
+    // with the first one's child killed when the second replaces it.
+    let _serial = load_lock().lock().await;
 
     // Already there, and still running: nothing to do.
     {
@@ -282,14 +305,19 @@ pub async fn load<R: Runtime>(
             }
         }
     }
+    check_can_replace(def.id).await?;
     unload(app).await;
     emit_state(app, "loading", Some(def.id));
 
     let dir = engine::engine_dir(app, backend);
     let scratch = engine::diffusion_root(app).join("scratch");
+    let lora_dir = engine::diffusion_root(app).join("loras");
     std::fs::create_dir_all(&scratch).map_err(|e| format!("Could not create the scratch folder: {e}"))?;
+    std::fs::create_dir_all(&lora_dir).map_err(|e| format!("Could not create the LoRA folder: {e}"))?;
     let port = free_port()?;
-    let argv = build_server_args(&files, port, &scratch, offload, None, &[]);
+    let argv = build_server_args(&files, port, &scratch, offload, None, &[
+        "--lora-model-dir".to_string(), lora_dir.to_string_lossy().into_owned(),
+    ]);
 
     let mut command = Command::new(dir.join(engine::SERVER_EXE));
     command
@@ -298,6 +326,7 @@ pub async fn load<R: Runtime>(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
+    engine::configure_library_path(&mut command, &dir);
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let mut child = command
@@ -409,6 +438,34 @@ pub struct ImageParams {
     pub seed: Option<u32>,
     #[serde(default)]
     pub steps: Option<u32>,
+    #[serde(default)]
+    pub lora: Vec<LoraChoice>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoraChoice {
+    pub name: String,
+    pub multiplier: f64,
+}
+
+fn resolve_loras<R: Runtime>(app: &tauri::AppHandle<R>, choices: &[LoraChoice]) -> Result<Vec<(String, f64)>, String> {
+    let dir = engine::diffusion_root(app).join("loras");
+    choices.iter().map(|choice| {
+        let name = std::path::Path::new(&choice.name);
+        if name.file_name().and_then(|n| n.to_str()) != Some(choice.name.as_str())
+            || !choice.name.to_ascii_lowercase().ends_with(".safetensors") {
+            return Err("Choose an imported LoRA adapter.".to_string());
+        }
+        if !choice.multiplier.is_finite() || !(0.0..=2.0).contains(&choice.multiplier) {
+            return Err("LoRA strength must be between 0 and 2.".to_string());
+        }
+        let path = dir.join(&choice.name);
+        if !path.is_file() {
+            return Err(format!("LoRA adapter {} is missing.", choice.name));
+        }
+        // sd-server resolves relative LoRA names against --lora-model-dir.
+        Ok((choice.name.clone(), choice.multiplier))
+    }).collect()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -427,6 +484,8 @@ pub struct VideoParams {
     pub seed: Option<u32>,
     #[serde(default)]
     pub steps: Option<u32>,
+    #[serde(default)]
+    pub lora: Vec<LoraChoice>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -472,16 +531,61 @@ async fn run_job<R: Runtime>(
         }
         (r.port, live)
     };
+    // If the caller's future is dropped (an HTTP client that went away) the
+    // guard frees the engine and asks it to cancel the job.
+    let mut guard = JobGuard { live: live.clone(), armed: true };
     let outcome = poll_job(app, port, &live, path, body, cancel_key).await;
-    if let Some(r) = resident().lock().await.as_mut() {
-        r.busy = false;
-        r.current_job = None;
-        r.last_used = Instant::now();
+    guard.armed = false;
+    release_job(&live, false).await;
+    outcome
+}
+
+/// Frees the engine when a generation's future is dropped before it finished.
+struct JobGuard {
+    live: Arc<StdMutex<Live>>,
+    armed: bool,
+}
+
+impl Drop for JobGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let live = self.live.clone();
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn(async move { release_job(&live, true).await });
+            }
+            Err(_) => {
+                if let Ok(mut l) = live.lock() {
+                    l.tracker = None;
+                }
+            }
+        }
     }
+}
+
+/// Mark the engine idle again, and when `cancel` is set ask it to stop the job
+/// that was running.
+async fn release_job(live: &Arc<StdMutex<Live>>, cancel: bool) {
+    let (port, job) = match resident().lock().await.as_mut() {
+        Some(r) => {
+            r.busy = false;
+            r.last_used = Instant::now();
+            (Some(r.port), r.current_job.take())
+        }
+        None => (None, None),
+    };
     if let Ok(mut l) = live.lock() {
         l.tracker = None;
     }
-    outcome
+    if let (true, Some(port), Some(job), Ok(client)) = (cancel, port, job, http()) {
+        let _ = client
+            .post(format!("http://127.0.0.1:{port}/sdcpp/v1/jobs/{job}/cancel"))
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await;
+    }
 }
 
 async fn poll_job<R: Runtime>(
@@ -636,6 +740,7 @@ pub async fn generate_image<R: Runtime>(
         batch: count,
         seed,
         sampling,
+        lora: resolve_loras(app, &params.lora)?,
     };
     let started = Instant::now();
     let (job_id, result) = run_job_with_fallback(
@@ -684,6 +789,7 @@ pub async fn generate_image<R: Runtime>(
             batch_seed: seed,
             model_id: def.id.to_string(),
             model_name: def.display_name.to_string(),
+            lora: params.lora.iter().map(|l| gallery::LoraRecipe { name: l.name.clone(), multiplier: l.multiplier }).collect(),
             frames: None,
             fps: None,
             created_at_ms: gallery::now_ms(),
@@ -735,6 +841,7 @@ pub async fn generate_video<R: Runtime>(
         fps: video.fps,
         seed,
         sampling,
+        lora: resolve_loras(app, &params.lora)?,
     };
     let started = Instant::now();
     let (job_id, result) = run_job_with_fallback(app, def.id, "/sdcpp/v1/vid_gen", build_vid_gen_request(&request), steps, 1).await?;
@@ -761,6 +868,7 @@ pub async fn generate_video<R: Runtime>(
         batch_seed: seed,
         model_id: def.id.to_string(),
         model_name: def.display_name.to_string(),
+        lora: params.lora.iter().map(|l| gallery::LoraRecipe { name: l.name.clone(), multiplier: l.multiplier }).collect(),
         frames: result["frame_count"].as_u64().map(|n| n as u32).or(Some(frames)),
         fps: result["fps"].as_u64().map(|n| n as u32).or(Some(video.fps)),
         created_at_ms: gallery::now_ms(),
@@ -834,5 +942,87 @@ mod oom_tests {
         assert!(is_out_of_memory(OUT_OF_MEMORY));
         assert!(is_out_of_memory(&format!("{OUT_OF_MEMORY} (generate_image returned no results)")));
         assert!(!is_out_of_memory("Cancelled."));
+    }
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::*;
+
+    /// The tests share the process-wide resident engine.
+    static SERIAL: Mutex<()> = Mutex::const_new(());
+
+    fn idle_child() -> Child {
+        #[cfg(windows)]
+        let mut command = {
+            let mut c = Command::new("cmd");
+            c.args(["/C", "ping", "-n", "60", "127.0.0.1"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut command = {
+            let mut c = Command::new("sleep");
+            c.arg("60");
+            c
+        };
+        command
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("spawn a stand-in engine")
+    }
+
+    #[tokio::test]
+    async fn dropping_a_running_generation_frees_the_engine() {
+        let _serial = SERIAL.lock().await;
+        let live = Arc::new(StdMutex::new(Live::default()));
+        *resident().lock().await = Some(Resident {
+            model_id: "test-model",
+            kind: Kind::Image,
+            child: idle_child(),
+            port: 1,
+            live: live.clone(),
+            last_used: Instant::now(),
+            busy: true,
+            current_job: Some("job-1".to_string()),
+        });
+        {
+            let _guard = JobGuard { live: live.clone(), armed: true };
+            // the future holding the guard is dropped here
+        }
+        for _ in 0..50 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            if resident().lock().await.as_ref().is_some_and(|r| !r.busy) {
+                break;
+            }
+        }
+        let guard = resident().lock().await;
+        let r = guard.as_ref().expect("still loaded");
+        assert!(!r.busy, "the engine must not stay busy");
+        assert!(r.current_job.is_none());
+        drop(guard);
+        *resident().lock().await = None;
+    }
+
+    #[tokio::test]
+    async fn a_busy_engine_is_not_replaced_by_another_model() {
+        let _serial = SERIAL.lock().await;
+        *resident().lock().await = Some(Resident {
+            model_id: "model-a",
+            kind: Kind::Image,
+            child: idle_child(),
+            port: 1,
+            live: Arc::new(StdMutex::new(Live::default())),
+            last_used: Instant::now(),
+            busy: true,
+            current_job: None,
+        });
+        let refused = check_can_replace("model-b").await;
+        let same = check_can_replace("model-a").await;
+        *resident().lock().await = None;
+        assert!(refused.unwrap_err().contains("busy"));
+        assert!(same.is_ok());
+        assert!(check_can_replace("model-b").await.is_ok());
     }
 }

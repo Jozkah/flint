@@ -3,14 +3,20 @@ import { D } from '../ui/bits'
 import { I } from '../ui/icons'
 import { back, go, openDrawer, openSheet, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
+import { routeFor } from '../state/sessions'
+import { t } from '../i18n'
 
 /** Runs in flight and approvals waiting, from the computer's status. */
 export function LiveChips() {
   const { data } = useRpc('status', {})
   const runs = data?.runs.length ?? 0
   const approvals = data?.approvalsWaiting ?? 0
+  const questions = data?.questionsWaiting ?? 0
   const list = useRpc('approvals.list', {}, approvals > 0)
+  const asks = useRpc('asks.list', {}, questions > 0)
+  const sessions = useRpc('sessions.list', {}, approvals > 0).data?.sessions ?? []
   const first = list.data?.approvals[0]
+  const firstAsk = asks.data?.asks[0]
   return (
     <>
       {runs > 0 && (
@@ -18,7 +24,7 @@ export function LiveChips() {
           type="button"
           className="runpill"
           onClick={() => openSheet('runs')}
-          aria-label={`${runs} running`}
+          aria-label={t('topbar.running', { count: runs })}
           data-testid="runs-pill"
         >
           <I n="loader" spin="slow" />
@@ -29,12 +35,24 @@ export function LiveChips() {
         <button
           type="button"
           className="apill"
-          onClick={() => (first ? go({ name: 'cowork', id: first.threadId }) : go({ name: 'notifications' }))}
-          aria-label={`${approvals} approvals waiting`}
+          onClick={() => (first ? go(routeFor(first.threadId, sessions)) : go({ name: 'notifications' }))}
+          aria-label={t('topbar.approvals', { count: approvals })}
           data-testid="approvals-pill"
         >
           <I n="shield" />
           <span>{approvals}</span>
+        </button>
+      )}
+      {questions > 0 && (
+        <button
+          type="button"
+          className="apill"
+          onClick={() => (firstAsk ? go({ name: 'cowork', id: firstAsk.threadId }) : go({ name: 'notifications' }))}
+          aria-label={t('topbar.questions', { count: questions })}
+          data-testid="questions-pill"
+        >
+          <I n="hand" />
+          <span>{questions}</span>
         </button>
       )}
     </>
@@ -44,7 +62,7 @@ export function LiveChips() {
 function Bell() {
   const unread = useApp((s) => s.notices.some((n) => n.unread))
   return (
-    <button type="button" className="ib" onClick={() => go({ name: 'notifications' })} aria-label="Notifications">
+    <button type="button" className="ib" onClick={() => go({ name: 'notifications' })} aria-label={t('notifications.title')}>
       <D n="bell" size={18} />
       {unread && <span className="dotb" />}
     </button>
@@ -53,7 +71,7 @@ function Bell() {
 
 export function SidebarButton() {
   return (
-    <button type="button" className="ib" onClick={() => openDrawer('left')} aria-label="Open navigation">
+    <button type="button" className="ib" onClick={() => openDrawer('left')} aria-label={t('topbar.openNav')}>
       <D n="sidebar-right" size={18} style={{ transform: 'rotate(180deg)' }} />
     </button>
   )
@@ -61,7 +79,7 @@ export function SidebarButton() {
 
 export function PanelButton() {
   return (
-    <button type="button" className="ib" onClick={() => openDrawer('right')} aria-label="Open panel">
+    <button type="button" className="ib" onClick={() => openDrawer('right')} aria-label={t('topbar.openPanel')}>
       <D n="sidebar-right" size={18} />
     </button>
   )
@@ -103,7 +121,7 @@ export function TopThread({
         <b>{title}</b>
       </div>
       {menu && (
-        <button type="button" className="ib" onClick={menu} aria-label="More">
+        <button type="button" className="ib" onClick={menu} aria-label={t('topbar.more')}>
           <I n="more" />
         </button>
       )}
@@ -116,7 +134,7 @@ export function TopThread({
 export function TopBack({ crumb, title, action }: { crumb?: ReactNode; title: ReactNode; action?: ReactNode }) {
   return (
     <div className="top">
-      <button type="button" className="ib" onClick={() => back()} aria-label="Back">
+      <button type="button" className="ib" onClick={() => back()} aria-label={t('topbar.back')}>
         <I n="back" />
       </button>
       <div className="crumb">

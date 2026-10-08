@@ -21,10 +21,10 @@ log = "0.4"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 sha2 = "0.10.9"
-tauri = { version = "2.5.0", default-features = false, features = [] }
+tauri = { version = "2.5.0", default-features = false, features = [], optional = true }
 thiserror = "2.0.12"
 tokio = { version = "1", features = ["full"] }
-tauri-plugin-hardware = { path = "../tauri-plugin-hardware" }
+tauri-plugin-hardware = { path = "../tauri-plugin-hardware", default-features = false }
 serde_json = "1.0.149"
 futures-util = "0.3"
 # The loopback OpenAI-compatible surface. Same versions the app crate already
@@ -64,7 +64,10 @@ path = "src/bin/flint-llama-worker.rs"
 required-features = ["engine"]
 
 [features]
-default = []
+default = ["tauri"]
+# The Tauri command/plugin surface. Disabled by `flint serve`, which
+# supervises the engine worker (`engine::worker`) without any GUI crate.
+tauri = ["dep:tauri", "tauri-plugin-hardware/tauri"]
 # Compiles and statically links llama.cpp (libllama + libcommon +
 # server-context) plus the C shim. OFF by default: this crate is a
 # non-optional dependency of the app crate, so enabling it unconditionally

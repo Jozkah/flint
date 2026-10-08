@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react'
 import { Shell } from '../shell/Shell'
 import { App } from '../App'
 import { memoryPairingStore } from '../api/storage'
@@ -39,6 +39,19 @@ describe('phone screens (mocked RPC)', () => {
     show({ name: 'chat', id: 'c1' })
     expect(await screen.findByText(/The cache key is built from the region only/, {}, T)).toBeInTheDocument()
     expect(screen.getByText('Do the build ID one. Just show me the diff.')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['chat', 'c1', 'chat.send'],
+    ['cowork', 'w1', 'cowork.send'],
+  ] as const)('steers a running %s from the phone', async (name, id, method) => {
+    client = useFixtures({ [method]: { kind: name, id, delivery: 'steered' } })
+    show({ name, id })
+    const steer = await screen.findByLabelText('Steer active run', {}, T)
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Use the other approach' } })
+    fireEvent.click(steer)
+    await waitFor(() => expect(client.rpc).toHaveBeenCalledWith(method,
+      expect.objectContaining({ id, text: 'Use the other approach', steer: true })))
   })
 
   it('Chat renders system/tool messages and can load older history', async () => {
@@ -89,9 +102,19 @@ describe('phone screens (mocked RPC)', () => {
     expect(within(card).getByText('git push -u origin flint/radar-retry && gh pr create --fill')).toBeInTheDocument()
     expect(screen.getAllByText('3 of 5 done').length).toBeGreaterThan(0)
     client.rpc.mockImplementationOnce(async () => ({ status: 'answered' }))
-    fireEvent.click(within(card).getByRole('button', { name: 'Allow once' }))
-    expect((await screen.findAllByText('Allowed once · from this phone', {}, T)).length).toBeGreaterThan(0)
-    expect(client.rpc).toHaveBeenCalledWith('approvals.respond', { requestId: 'ap1', decision: 'allow', scope: 'once' })
+    fireEvent.keyDown(
+      within(card).getByRole('slider', { name: 'Allow once' }),
+      { key: 'End' }
+    )
+    expect(
+      (await screen.findAllByText('Allowed once · from this phone', {}, T))
+        .length
+    ).toBeGreaterThan(0)
+    expect(client.rpc).toHaveBeenCalledWith('approvals.respond', {
+      requestId: 'ap1',
+      decision: 'allow',
+      scope: 'once',
+    })
   })
 
   it('Room shows usage, the speaker and the discussion', async () => {

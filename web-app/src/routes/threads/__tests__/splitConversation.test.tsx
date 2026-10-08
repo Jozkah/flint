@@ -279,6 +279,8 @@ vi.mock('@/hooks/useToolApprovalRequests', () => ({
   useToolApprovalRequests: Object.assign((s: any) => s(h.toolApprovalState), {
     getState: () => h.toolApprovalState,
   }),
+  // The chat shows approvals a subagent raises; none exist in these tests.
+  allApprovalRequests: () => [],
 }))
 vi.mock('@/stores/message-queue-store', () => ({
   useMessageQueue: Object.assign(() => undefined, {

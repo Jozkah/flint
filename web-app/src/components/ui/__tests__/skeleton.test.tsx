@@ -62,3 +62,13 @@ describe('Skeleton', () => {
     expect(skeleton).toHaveClass('bg-red-500')
   })
 })
+
+describe('Skeleton sweep', () => {
+  it('carries the sweep class and keeps the plain block colour', () => {
+    render(<Skeleton />)
+    const el = document.querySelector('[data-slot="skeleton"]')
+    expect(el).toHaveClass('sk-sweep')
+    expect(el).toHaveClass('bg-sk')
+    expect(el).not.toHaveClass('animate-pulse')
+  })
+})

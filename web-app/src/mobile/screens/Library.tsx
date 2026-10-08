@@ -6,6 +6,7 @@ import { go, openSheet } from '../state/app'
 import { Media } from '../ui/studio'
 import { useRpc } from '../state/rpc'
 import { ago } from '../ui/format'
+import { t } from '../i18n'
 
 /** What Cowork runs and Studio produced, as the desktop's Library lists it. Opening a
  * file happens on the computer; a row goes to the session that wrote it. */
@@ -17,22 +18,22 @@ export default function Library() {
   )
   return (
     <>
-      <TopMain crumb="Workspace" title="Library" />
+      <TopMain crumb={t('common.workspace')} title={t('library.title')} />
       <div className="scroll">
         <div className="ph">
-          <h2>Library</h2>
-          <p>Everything your Cowork runs and Studio produced.</p>
+          <h2>{t('library.title')}</h2>
+          <p>{t('library.intro')}</p>
         </div>
         <div className="sin" style={{ marginBottom: 10 }}>
           <I n="search" />
-          <input placeholder="Search artifacts" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search artifacts" />
+          <input placeholder={t('library.search')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('library.search')} />
         </div>
         {loading && !data && <Loading />}
         {error && !data && <Empty>{error.message}</Empty>}
         {data && (
           <div className="frame" data-testid="library-list">
             {items.length === 0 ? (
-              <Empty icon={<I n="book" size={20} />}>{data.items.length ? 'Nothing matches.' : 'Nothing produced yet.'}</Empty>
+              <Empty icon={<I n="book" size={20} />}>{data.items.length ? t('library.noMatch') : t('library.empty')}</Empty>
             ) : (
               items.map((a) => (
                 <button

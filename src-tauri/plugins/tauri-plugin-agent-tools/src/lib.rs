@@ -11,6 +11,8 @@
 
 pub mod access;
 pub mod atomic_file;
+pub mod breadcrumb;
+pub mod browser;
 pub mod browser_discovery;
 pub mod activity;
 pub mod audit;
@@ -193,6 +195,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::mailbox_session_register,
             commands::mailbox_session_status,
             commands::mailbox_session_heartbeat,
+            commands::mailbox_session_waiting,
             commands::mailbox_session_remove,
             commands::mailbox_session_revive,
             commands::mailbox_take_for_delivery,
@@ -200,6 +203,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::mailbox_mark_read,
             commands::mailbox_claim,
             commands::mailbox_reply,
+            commands::mailbox_auto_reply,
             commands::mailbox_list_sessions,
             commands::mailbox_stop_approve,
             commands::mailbox_stop_pending,

@@ -17,6 +17,7 @@ import { StudioItemSheet, StudioSettingsSheet, VoiceSetupSheet } from './studioS
 import type { ArchiveItemWire, StudioItemWire } from '@/lib/remote/protocol'
 import { archiveChanged } from '../state/archive'
 import { addDeskFile, addFiles, attachKey, insertIntoComposer, MAX_FILES } from '../state/attachments'
+import { t } from '../i18n'
 
 type Props = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
@@ -25,7 +26,7 @@ const participantId = (p: Props) => str(p.participant)
 function Title({ children, sub }: { children: ReactNode; sub?: ReactNode }) {
   return <><Grab /><h3>{children}</h3>{sub && <p className="sh">{sub}</p>}</>
 }
-function DesktopOnly({ title, sub = 'Available on the computer.' }: { title: ReactNode; sub?: ReactNode }) {
+function DesktopOnly({ title, sub = t('sheets.availableOnComputer') }: { title: ReactNode; sub?: ReactNode }) {
   return <div className="opt" aria-disabled="true"><I n="monitor" /><span className="tx"><b>{title}</b><small>{sub}</small></span></div>
 }
 function Action({ icon, label, run, danger = false, sub }: { icon: IconId; label: string; run: () => void; danger?: boolean; sub?: ReactNode }) {
@@ -48,7 +49,7 @@ async function mobileMutation(raw: Record<string, unknown>, ok?: string) {
     invalidate(['sessions.list', 'rooms.get', 'cowork.get'])
     return result
   } catch (e) {
-    toast(e instanceof Error ? e.message : 'The action failed')
+    toast(e instanceof Error ? e.message : t('sheets.actionFailed'))
     return null
   }
 }
@@ -64,16 +65,16 @@ function ModelSheet({ props }: { props: Props }) {
     const participant = participantId(props)
     if (target === 'home') {
       app.set((s) => ({ composer: { ...s.composer, model: { id: m.id, provider: m.provider, name: m.name } } }))
-      closeSheet(); toast(`Switched to ${m.name}`); return
+      closeSheet(); toast(t('sheets.switchedTo', { name: m.name })); return
     }
     if ((target === 'chat' || target === 'cowork') && id) {
-      closeSheet(); void act('settings.set', { scope: target, id, model: { id: m.id, provider: m.provider } }, `Switched to ${m.name}`).then(() => invalidate(['cowork.get', 'sessions.list'])); return
+      closeSheet(); void act('settings.set', { scope: target, id, model: { id: m.id, provider: m.provider } }, t('sheets.switchedTo', { name: m.name })).then(() => invalidate(['cowork.get', 'sessions.list'])); return
     }
     if (target === 'room' && id && participant) {
-      closeSheet(); void mobileMutation({ mobileOp: 'room.update', id, patch: { participants: [{ id: participant, model: { id: m.id, provider: m.provider } }] } }, `Switched to ${m.name}`)
+      closeSheet(); void mobileMutation({ mobileOp: 'room.update', id, patch: { participants: [{ id: participant, model: { id: m.id, provider: m.provider } }] } }, t('sheets.switchedTo', { name: m.name }))
     }
   }
-  return <><Title>Model</Title><div className="sin"><I n="search" /><input placeholder="Search models..." value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search models" /></div>{loading && !data && <p className="sh">Loading models…</p>}{models.map((m) => <Opt key={`${m.provider}/${m.id}`} title={m.name} sub={`${m.providerName ?? m.provider}${m.local ? ' · Runs on this computer' : ''}${m.loaded ? ' · Loaded' : ''}`} selected={target === 'home' && current?.id === m.id && current.provider === m.provider} lead={<Avatar id={m.id} name={m.name} provider={m.provider} size={28} square />} onClick={() => pick(m)} />)}{data && models.length === 0 && <p className="sh">No models match.</p>}<div className="ssec" /><DesktopOnly title="Parameters" sub="Output, context, compaction and sampling are configured on the computer." /></>
+  return <><Title>{t('chat.model')}</Title><div className="sin"><I n="search" /><input placeholder={t('sheets.searchModels')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('sheets.searchModelsLabel')} /></div>{loading && !data && <p className="sh">{t('sheets.loadingModels')}</p>}{models.map((m) => <Opt key={`${m.provider}/${m.id}`} title={m.name} sub={`${m.providerName ?? m.provider}${m.local ? ` · ${t('sheets.runsHere')}` : ''}${m.loaded ? ` · ${t('models.loaded')}` : ''}`} selected={target === 'home' && current?.id === m.id && current.provider === m.provider} lead={<Avatar id={m.id} name={m.name} provider={m.provider} size={28} square />} onClick={() => pick(m)} />)}{data && models.length === 0 && <p className="sh">{t('huggingface.noMatch')}</p>}<div className="ssec" /><DesktopOnly title={t('sheets.parameters')} sub={t('sheets.parametersSub')} /></>
 }
 
 function ReasonSheet({ props }: { props: Props }) {
@@ -87,127 +88,135 @@ function ReasonSheet({ props }: { props: Props }) {
     if (target === 'chat' && id) { closeSheet(); void act('settings.set', { scope: 'chat', id, reasoning: reason }, label); return }
     if (target === 'room' && id && participant) { closeSheet(); void mobileMutation({ mobileOp: 'room.update', id, patch: { participants: [{ id: participant, reasoning: { mode: reason } }] } }, label) }
   }
-  if (target === 'cowork') return <><Title sub="This Cowork session">Reasoning</Title><DesktopOnly title="Reasoning mode" sub="Cowork reasoning is bound to the persisted desktop session/model settings and is read-only on the phone." /></>
-  return <><Title>Reasoning</Title>{([['auto','Auto',"Use the model's default."],['on','On','Force reasoning on.'],['off','Off','Disable reasoning.']] as const).map(([v,t,s]) => <Opt key={v} title={t} sub={s} selected={current === v} onClick={() => setReason(v, `Reasoning: ${t}`)} />)}<div className="ssec" /><DesktopOnly title="Reasoning effort / thinking budget" sub="Provider-specific effort and context budgets stay with the persisted desktop model settings." /></>
+  if (target === 'cowork') return <><Title sub={t('sheets.thisCowork')}>{t('room.reasoning')}</Title><DesktopOnly title={t('sheets.reasoningMode')} sub={t('sheets.reasoningModeSub')} /></>
+  return <><Title>{t('room.reasoning')}</Title>{([['auto', t('chat.auto'), t('sheets.reasonAutoSub')], ['on', t('common.on'), t('sheets.reasonOnSub')], ['off', t('common.off'), t('sheets.reasonOffSub')]] as const).map(([v, label, hint]) => <Opt key={v} title={label} sub={hint} selected={current === v} onClick={() => setReason(v, t('sheets.reasoningLabel', { label }))} />)}<div className="ssec" /><DesktopOnly title={t('sheets.effortBudget')} sub={t('sheets.effortBudgetSub')} /></>
 }
 
 function ModeSheet({ props }: { props: Props }) {
   const current = str(props.value) ?? app.get().composer.cwMode
   const id = str(props.id)
-  return <><Title>What Flint may do</Title>{COWORK_MODES.map((m) => <Opt key={m.id} title={m.label} sub={m.sub} selected={current === m.id} onClick={() => { closeSheet(); if (!id) app.set((s) => ({ composer: { ...s.composer, cwMode: m.id } })); else void act('settings.set', { scope: 'cowork', id, mode: m.id }, m.label).then(() => invalidate(['cowork.get'])) }} />)}</>
+  return <><Title>{t('home.mayDo')}</Title>{COWORK_MODES.map((m) => <Opt key={m.id} title={m.label} sub={m.sub} selected={current === m.id} onClick={() => { closeSheet(); if (!id) app.set((s) => ({ composer: { ...s.composer, cwMode: m.id } })); else void act('settings.set', { scope: 'cowork', id, mode: m.id }, m.label).then(() => invalidate(['cowork.get'])) }} />)}</>
 }
 
 function AccessSheet({ props }: { props: Props }) {
   const current = str(props.value) ?? app.get().composer.access
   const id = str(props.id)
-  return <><Title sub="Write access requires confirmation on the computer.">Where changes go</Title>{ACCESS_MODES.map((m) => m.id === 'review-only' ? <Opt key={m.id} title={m.label} sub={m.sub} selected={current === m.id} onClick={() => { closeSheet(); if (!id) app.set((s) => ({ composer: { ...s.composer, access: m.id } })); else void act('settings.set', { scope: 'cowork', id, access: m.id }, 'Review only').then(() => invalidate(['cowork.get'])) }} /> : <DesktopOnly key={m.id} title={m.label} sub={`${m.sub} Computer confirmation required.`} />)}</>
+  return <><Title sub={t('sheets.writeAccessSub')}>{t('home.changesGo')}</Title>{ACCESS_MODES.map((m) => m.id === 'review-only' ? <Opt key={m.id} title={m.label} sub={m.sub} selected={current === m.id} onClick={() => { closeSheet(); if (!id) app.set((s) => ({ composer: { ...s.composer, access: m.id } })); else void act('settings.set', { scope: 'cowork', id, access: m.id }, t('sheets.reviewOnly')).then(() => invalidate(['cowork.get'])) }} /> : <DesktopOnly key={m.id} title={m.label} sub={t('sheets.confirmRequired', { sub: m.sub })} />)}</>
 }
 
 function StopSheet({ props }: { props: Props }) {
   const kind = str(props.kind) as SessionKind | undefined
   const id = str(props.id)
-  return <><Title>Stop…</Title>
-    <Action icon="sq" label="Stop current task" sub="Ends this response and everything under it. Other sessions keep running." run={() => { if (kind && id) void act('run.stop', { kind, id }, 'Stopped this task.') }} />
-    {kind && id && <Action icon="sq" label="Stop all in this chat" danger sub="Ends every run, tool, command and agent in this chat." run={() => { if (window.confirm('Stop all activity in this chat?')) void act('run.stop', { kind, id, scope: 'chat' }).then((r) => { if (r) toast(`Stopped chat activity (${r.stopped} stopped).`) }) }} />}
-    <Action icon="alert" label="Stop all activity" danger sub="Ends every run, tool, command and agent everywhere in Flint." run={() => { if (window.confirm('Stop everything?')) void act('run.stop', { all: true }, 'Stopped everything.') }} /></>
+  return <><Title>{t('composer.stop')}</Title>
+    <Action icon="sq" label={t('sheets.stopTask')} sub={t('sheets.stopTaskSub')} run={() => { if (kind && id) void act('run.stop', { kind, id }, t('sheets.stoppedTask')) }} />
+    {kind && id && <Action icon="sq" label={t('sheets.stopChat')} danger sub={t('sheets.stopChatSub')} run={() => { if (window.confirm(t('sheets.stopChatConfirm'))) void act('run.stop', { kind, id, scope: 'chat' }).then((r) => { if (r) toast(t('sheets.stoppedChat', { count: r.stopped })) }) }} />}
+    <Action icon="alert" label={t('sheets.stopAll')} danger sub={t('sheets.stopAllSub')} run={() => { if (window.confirm(t('sheets.stopAllConfirm'))) void act('run.stop', { all: true }, t('sheets.stoppedAll')) }} /></>
 }
 
 function PermDetailsSheet({ props }: { props: Props }) {
   const a = props.approval as RemoteApproval | undefined
   const perms = usePhonePermissions()
-  if (!a) return <Title>Permission details</Title>
-  return <><Title sub="Choose how far this permission goes">Permission details</Title><div className="scopes">{a.scopes.filter((s) => s.scope !== 'always' || perms.alwaysAllow).map((s, i) => <button key={s.scope} type="button" className={`scope${i === 0 ? ' sug' : ''}`} disabled={!perms.approvals} onClick={() => { closeSheet(); void respond(a, 'allow', s.scope, s.label) }}><b>{s.label}{s.broader && <span className="broader">● Broader</span>}</b><small>{perms.approvals ? s.explanation : 'Approvals from phones are disabled on the computer.'}</small></button>)}</div><div className="ssec">Technical details</div><Kv k="Tool" v={<span className="mono">{a.toolName}</span>} /><Kv k="Server" v={a.serverName ?? 'Built in'} /><div className="cmd">{a.argumentsJson}</div></>
+  if (!a) return <Title>{t('approval.details')}</Title>
+  return <><Title sub={t('sheets.permScope')}>{t('approval.details')}</Title><div className="scopes">{a.scopes.filter((s) => s.scope !== 'always' || perms.alwaysAllow).map((s, i) => <button key={s.scope} type="button" className={`scope${i === 0 ? ' sug' : ''}`} disabled={!perms.approvals} onClick={() => { closeSheet(); void respond(a, 'allow', s.scope, s.label) }}><b>{s.label}{s.broader && <span className="broader">● {t('sheets.broader')}</span>}</b><small>{perms.approvals ? s.explanation : t('sheets.approvalsDisabled')}</small></button>)}</div><div className="ssec">{t('sheets.technical')}</div><Kv k={t('sheets.tool')} v={<span className="mono">{a.toolName}</span>} /><Kv k={t('sheets.server')} v={a.serverName ?? t('sheets.builtIn')} /><div className="cmd">{a.argumentsJson}</div></>
 }
 
 function RunsSheet() {
   const { data } = useRpc('status', {})
   const { sessions } = useSessions()
-  return <><Title>Runs in progress</Title>{(data?.runs ?? []).length === 0 && <p className="sh">Nothing is running.</p>}{(data?.runs ?? []).map((r) => { const s = sessions.find((x) => x.id === r.id); return <Opt key={`${r.kind}:${r.id}`} title={s?.title ?? 'Untitled'} sub={`${r.kind === 'room' ? 'Room' : r.kind === 'cowork' ? 'Cowork' : 'Chat'} · running`} lead={<FlintMark size={28} />} onClick={() => go({ name: r.kind, id: r.id })} /> })}</>
+  return <><Title>{t('sheets.runs')}</Title>{(data?.runs ?? []).length === 0 && <p className="sh">{t('sheets.nothingRunning')}</p>}{(data?.runs ?? []).map((r) => { const s = sessions.find((x) => x.id === r.id); return <Opt key={`${r.kind}:${r.id}`} title={s?.title ?? t('common.untitled')} sub={t('sheets.runningKind', { kind: r.kind === 'room' ? t('room.crumb') : r.kind === 'cowork' ? t('home.modes.cowork') : t('home.modes.chat') })} lead={<FlintMark size={28} />} onClick={() => go({ name: r.kind, id: r.id })} /> })}</>
 }
 
 function ConnSheet() {
-  const computer = useApp((s) => s.computerName) ?? 'Your computer'
+  const computer = useApp((s) => s.computerName) ?? t('common.yourComputerCap')
   const conn = useApp((s) => s.conn)
   const status = useRpc('status', {})
   const sys = useRpc('system.info', {})
-  return <><Title>Computers</Title><Opt title={computer} sub={`${conn} · ${reachLabel()} · ${status.data?.modelsLoaded ?? 0} models loaded`} selected lead={<I n="monitor" />} /><Kv k="Route" v={<span className="mono">{location.host}</span>} /><Kv k="Local API" v={sys.data ? (sys.data.localApi.running ? 'On' : 'Off') : '—'} /><Action icon="monitor" label="System Monitor" run={() => go({ name: 'system' })} /><Action icon="settings" label="Remote access" run={() => go({ name: 'remote' })} /></>
+  return <><Title>{t('sheets.computers')}</Title><Opt title={computer} sub={t('sheets.connLine', { conn, via: reachLabel(), count: status.data?.modelsLoaded ?? 0 })} selected lead={<I n="monitor" />} /><Kv k={t('sheets.route')} v={<span className="mono">{location.host}</span>} /><Kv k={t('settings.computer.localApi')} v={sys.data ? (sys.data.localApi.running ? t('common.on') : t('common.off')) : '—'} /><Action icon="monitor" label={t('system.title')} run={() => go({ name: 'system' })} /><Action icon="settings" label={t('settings.rows.remote')} run={() => go({ name: 'remote' })} /></>
 }
 
 function PaletteSheet() {
   const [q, setQ] = useState('')
   const { sessions } = useSessions()
   const hits = useMemo(() => (q ? sessions.filter((s) => s.title.toLowerCase().includes(q.toLowerCase())) : sessions).slice(0, 12), [q, sessions])
-  return <><Grab /><div className="sin"><I n="search" /><input placeholder="Type a command, page or conversation…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus /></div><Opt title="New chat" lead={<I n="pen" />} onClick={() => go({ name: 'home', mode: 'chat' })} /><Opt title="New Cowork session" lead={<I n="cowork" />} onClick={() => go({ name: 'home', mode: 'cowork' })} /><Opt title="Rooms" lead={<I n="rooms" />} onClick={() => go({ name: 'rooms' })} /><div className="ssec">Conversations</div>{hits.map((s) => <Opt key={s.id} title={s.title || 'Untitled'} sub={s.group} onClick={() => go({ name: s.kind, id: s.id })} />)}</>
+  return <><Grab /><div className="sin"><I n="search" /><input placeholder={t('sheets.palettePlaceholder')} value={q} onChange={(e) => setQ(e.target.value)} autoFocus /></div><Opt title={t('home.title')} lead={<I n="pen" />} onClick={() => go({ name: 'home', mode: 'chat' })} /><Opt title={t('sheets.newCowork')} lead={<I n="cowork" />} onClick={() => go({ name: 'home', mode: 'cowork' })} /><Opt title={t('rooms.title')} lead={<I n="rooms" />} onClick={() => go({ name: 'rooms' })} /><div className="ssec">{t('sheets.conversations')}</div>{hits.map((s) => <Opt key={s.id} title={s.title || t('common.untitled')} sub={s.group} onClick={() => go({ name: s.kind, id: s.id })} />)}</>
 }
 
 function VoteSheet({ props }: { props: Props }) {
   const [proposal, setProposal] = useState('')
   const id = str(props.id)
-  return <><Title sub="Every participant answers yes or no, with a reason.">Call a vote</Title><label className="field">Proposal<input value={proposal} onChange={(e) => setProposal(e.target.value)} /></label><button type="button" className="btn pri big" disabled={!proposal.trim() || !id} onClick={() => { closeSheet(); if (id) void act('room.control', { id, action: 'vote', proposal: proposal.trim() }, 'Vote called.') }}>Call vote</button></>
+  return <><Title sub={t('sheets.voteSub')}>{t('sheets.callVote')}</Title><label className="field">{t('sheets.proposal')}<input value={proposal} onChange={(e) => setProposal(e.target.value)} /></label><button type="button" className="btn pri big" disabled={!proposal.trim() || !id} onClick={() => { closeSheet(); if (id) void act('room.control', { id, action: 'vote', proposal: proposal.trim() }, t('sheets.voteCalled')) }}>{t('rightpanel.callVote')}</button></>
 }
 
-const NOTIFY_ROWS: [keyof NotificationPrefs, string][] = [['approvals','An approval is waiting'],['runFinished','A run finishes'],['errors','A run fails or stops'],['roomTurns','A Room is waiting for you']]
+const NOTIFY_ROWS: [keyof NotificationPrefs, string][] = [['approvals', t('push.types.approvals')], ['runFinished', t('push.types.runFinished')], ['errors', t('push.types.runFailed')], ['roomTurns', t('push.types.roomWaiting')]]
 function NotifSetSheet() {
   const { data } = useRpc('settings.get', {})
   const prefs = data?.notifications ?? DEFAULT_NOTIFY
-  return <><Title>Notify me when</Title>{NOTIFY_ROWS.map(([k,label]) => <button key={k} type="button" className={`row${prefs[k] ? ' on' : ''}`} onClick={() => void act('settings.set', { key: 'notifications', value: { ...prefs, [k]: !prefs[k] } }).then(() => invalidate(['settings.get']))}><span className="tx"><b>{label}</b></span><Sw on={prefs[k]} /></button>)}</>
+  return <><Title>{t('push.notifyWhen')}</Title>{NOTIFY_ROWS.map(([k,label]) => <button key={k} type="button" className={`row${prefs[k] ? ' on' : ''}`} onClick={() => void act('settings.set', { key: 'notifications', value: { ...prefs, [k]: !prefs[k] } }).then(() => invalidate(['settings.get']))}><span className="tx"><b>{label}</b></span><Sw on={prefs[k]} /></button>)}</>
 }
 
 function ToolsSheet() {
   const { data } = useRpc('tools.list', {})
-  return <><Title>Available tools</Title>{(data?.servers ?? []).map((s) => <div key={s.name} className="opt" aria-disabled="true"><I n="wrench" /><span className="tx"><b>{s.name}</b><small>{s.active ? 'On' : 'Off'} · managed on the computer</small></span></div>)}{data && data.servers.length === 0 && <Empty>No MCP servers are set up.</Empty>}</>
+  return <><Title>{t('sheets.availableTools')}</Title>{(data?.servers ?? []).map((s) => <div key={s.name} className="opt" aria-disabled="true"><I n="wrench" /><span className="tx"><b>{s.name}</b><small>{t('sheets.toolState', { state: s.active ? t('common.on') : t('common.off') })}</small></span></div>)}{data && data.servers.length === 0 && <Empty>{t('sheets.noMcp')}</Empty>}</>
+}
+
+const TEMPLATE_NAME: Record<string, string> = {
+  'Architecture review': 'home.templates.architecture.name',
+  Naming: 'home.templates.naming.name',
+  'Cross-check': 'home.templates.crossCheck.name',
+  Debate: 'home.templates.debate.name',
 }
 
 function RoomNewSheet({ props }: { props: Props }) {
   const models = useRpc('models.list', {})
   const template = str(props.template)
-  const [title, setTitle] = useState(template ?? '')
+  const templateName = template ? (TEMPLATE_NAME[template] ? t(TEMPLATE_NAME[template]) : template) : ''
+  const [title, setTitle] = useState(templateName)
   const [objective, setObjective] = useState('')
   const create = async () => {
     const choices = models.data?.models ?? []
-    if (choices.length < 2) { toast('Set up at least two models on the computer first.'); return }
+    if (choices.length < 2) { toast(t('sheets.needTwoModels')); return }
     const count = template === 'Cross-check' || template === 'Debate' ? 2 : Math.min(3, choices.length)
     const picked = choices.slice(0, count)
     const moderator = template === 'Architecture review' || template === 'Debate'
     closeSheet()
-    const result = await mobileMutation({ mobileOp: 'room.create', input: { title: title.trim() || template || 'New room', objective: objective.trim(), mode: 'round-robin', participants: picked.map((m,i) => ({ name: m.name || `Participant ${i+1}`, role: i === 0 ? 'proposer' : i === 1 ? 'reviewer' : 'cross-checker', model: { id: m.id, provider: m.provider }, toolAccess: 'none' })), moderator: { enabled: moderator, ...(moderator ? { model: { id: picked[0].id, provider: picked[0].provider } } : {}) } } })
+    const result = await mobileMutation({ mobileOp: 'room.create', input: { title: title.trim() || templateName || t('home.newRoom'), objective: objective.trim(), mode: 'round-robin', participants: picked.map((m,i) => ({ name: m.name || t('home.participant', { n: i + 1 }), role: i === 0 ? 'proposer' : i === 1 ? 'reviewer' : 'cross-checker', model: { id: m.id, provider: m.provider }, toolAccess: 'none' })), moderator: { enabled: moderator, ...(moderator ? { model: { id: picked[0].id, provider: picked[0].provider } } : {}) } } })
     const id = result && typeof result.id === 'string' ? result.id : null
     if (id) go({ name: 'room', id })
   }
-  return <><Title sub={template ? `Template: ${template}` : 'Configure the room before creating it.'}>New room</Title><label className="field">Title<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Radar cache TTL" /></label><label className="field">Objective<input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="What should participants discuss or decide?" /></label><button type="button" className="btn pri big" disabled={!models.data || models.data.models.length < 2} onClick={() => void create()}>Create room</button></>
+  return <><Title sub={template ? t('sheets.template', { name: templateName }) : t('sheets.configureRoom')}>{t('home.newRoom')}</Title><label className="field">{t('sheets.titleField')}<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('sheets.titlePlaceholder')} /></label><label className="field">{t('room.objective')}<input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder={t('sheets.objectivePlaceholder')} /></label><button type="button" className="btn pri big" disabled={!models.data || models.data.models.length < 2} onClick={() => void create()}>{t('sheets.createRoom')}</button></>
 }
 
 function copyId(props: Props) {
   const id = str(props.id); if (!id) return
-  void copyToClipboard(id).then((ok) => toast(ok ? 'ID copied' : 'Copy failed'))
+  void copyToClipboard(id).then((ok) => toast(ok ? t('sheets.idCopied') : t('common.copyFailed')))
 }
 function Group({ children }: { children: ReactNode }) {
   return <div className="mgrp">{children}</div>
 }
 function ThreadMenu({ props }: { props: Props }) {
   const id = str(props.id)
-  const rename = () => { if (!id) return; const title = window.prompt('Chat name', str(props.title) ?? ''); if (title?.trim()) void mobileMutation({ mobileOp: 'thread.rename', id, title: title.trim() }, 'Renamed.') }
-  const remove = () => { if (id && window.confirm('Delete this chat?')) void mobileMutation({ mobileOp: 'thread.delete', id }, 'Chat deleted.').then(() => go({ name: 'home' })) }
-  return <><Title>{str(props.title) ?? 'Chat'}</Title>
-    <Group><Action icon="pin" label="Pin" run={() => { if (id) void mobileMutation({ mobileOp: 'thread.pin', id }, 'Updated.') }} /><Action icon="edit" label="Rename" run={rename} /><Action icon="refresh" label="Regenerate title" run={() => { if (id) void regenerateTitleOf('chat', id) }} /></Group>
-    <Group><Action icon="fork" label="Fork chat" run={() => { if (id) void forkFrom(id) }} /><DesktopOnly title="Move to group" /></Group>
-    <Group><DesktopOnly title="Open in split view" /><Action icon="copy" label="Copy ID" run={() => copyId(props)} /></Group>
-    <Group><Action icon="trash" label="Delete" danger run={remove} /></Group></>
+  const rename = () => { if (!id) return; const title = window.prompt(t('sheets.chatName'), str(props.title) ?? ''); if (title?.trim()) void mobileMutation({ mobileOp: 'thread.rename', id, title: title.trim() }, t('sheets.renamed')) }
+  const remove = () => { if (id && window.confirm(t('sheets.deleteChatConfirm'))) void mobileMutation({ mobileOp: 'thread.delete', id }, t('sheets.chatDeleted')).then(() => go({ name: 'home' })) }
+  return <><Title>{str(props.title) ?? t('chat.untitled')}</Title>
+    <Group><Action icon="pin" label={t('sheets.pin')} run={() => { if (id) void mobileMutation({ mobileOp: 'thread.pin', id }, t('sheets.updated')) }} /><Action icon="edit" label={t('sheets.rename')} run={rename} /><Action icon="refresh" label={t('sheets.regenerateTitle')} run={() => { if (id) void regenerateTitleOf('chat', id) }} /></Group>
+    <Group><Action icon="fork" label={t('sheets.forkChat')} run={() => { if (id) void forkFrom(id) }} /><DesktopOnly title={t('sheets.moveToGroup')} /></Group>
+    <Group><DesktopOnly title={t('sheets.splitView')} /><Action icon="copy" label={t('sheets.copyId')} run={() => copyId(props)} /></Group>
+    <Group><Action icon="trash" label={t('common.delete')} danger run={remove} /></Group></>
 }
 function SessionMenu({ props }: { props: Props }) {
   const id = str(props.id)
-  return <><Title>{str(props.title) ?? 'Cowork session'}</Title>
-    <Group><Action icon="file" label="File activity" run={() => openDrawer('right', 'activity')} /><Action icon="refresh" label="Regenerate title" run={() => { if (id) void regenerateTitleOf('cowork', id) }} /><DesktopOnly title="Open in split view" /></Group>
-    <Group><DesktopOnly title="Move to group" /><Action icon="fork" label="Fork" run={() => { if (id) void mobileMutation({ mobileOp: 'cowork.fork', id }, 'Forked.').then((r) => { const next = r && typeof r.id === 'string' ? r.id : null; if (next) go({ name: 'cowork', id: next }) }) }} /></Group>
-    <Group><Action icon="copy" label="Copy ID" run={() => copyId(props)} /><DesktopOnly title="Export" /><DesktopOnly title="Hand off" /></Group>
-    <Group><Action icon="trash" label="Delete" danger run={() => { if (id && window.confirm('Delete this Cowork session?')) void mobileMutation({ mobileOp: 'cowork.delete', id }, 'Session deleted.').then(() => go({ name: 'home' })) }} /></Group></>
+  return <><Title>{str(props.title) ?? t('cowork.untitled')}</Title>
+    <Group><Action icon="file" label={t('sheets.fileActivity')} run={() => openDrawer('right', 'activity')} /><Action icon="edit" label={t('sheets.rename')} run={() => { if (!id) return; const title = window.prompt(t('sheets.sessionName'), str(props.title) ?? ''); if (title?.trim()) void mobileMutation({ mobileOp: 'cowork.rename', id, title: title.trim() }, t('sheets.renamed')) }} /><Action icon="refresh" label={t('sheets.regenerateTitle')} run={() => { if (id) void regenerateTitleOf('cowork', id) }} /><DesktopOnly title={t('sheets.splitView')} /></Group>
+    <Group><DesktopOnly title={t('sheets.moveToGroup')} /><Action icon="fork" label={t('sheets.fork')} run={() => { if (id) void mobileMutation({ mobileOp: 'cowork.fork', id }, t('sheets.forked')).then((r) => { const next = r && typeof r.id === 'string' ? r.id : null; if (next) go({ name: 'cowork', id: next }) }) }} /></Group>
+    <Group><Action icon="copy" label={t('sheets.copyId')} run={() => copyId(props)} /><DesktopOnly title={t('sheets.export')} /><DesktopOnly title={t('sheets.handOff')} /></Group>
+    <Group><Action icon="trash" label={t('common.delete')} danger run={() => { if (id && window.confirm(t('sheets.deleteSessionConfirm'))) void mobileMutation({ mobileOp: 'cowork.delete', id }, t('sheets.sessionDeleted')).then(() => go({ name: 'home' })) }} /></Group></>
 }
 function RoomMenu({ props }: { props: Props }) {
   const id = str(props.id)
-  return <><Title>{str(props.title) ?? 'Room'}</Title>
-    <Group><Action icon="pause" label="Pause" run={() => roomAct(props, 'pause', 'Paused.')} /><Action icon="play" label="Resume" run={() => roomAct(props, 'resume', 'Resumed.')} /><Action icon="vote" label="Call vote" run={() => openSheet('vote', props)} /><Action icon="file" label="Synthesize" run={() => roomAct(props, 'synthesize', 'Asked for a synthesis.')} /><Action icon="sq" label="Stop room" run={() => roomAct(props, 'stop', 'Stopped.')} /></Group>
-    <Group><DesktopOnly title="Open in split view" /><DesktopOnly title="Move to group" /><Action icon="refresh" label="Regenerate title" run={() => { if (id) void regenerateTitleOf('room', id) }} /></Group>
-    <Group><button type="button" className="opt" onClick={() => openSheet('clearroom', props)}><I n="erase" /><span className="tx"><b>Clear this room…</b></span></button><Action icon="trash" label="Delete" danger run={() => { if (id && window.confirm('Delete this Room?')) void mobileMutation({ mobileOp: 'room.delete', id }, 'Room deleted.').then(() => go({ name: 'rooms' })) }} /></Group></>
+  return <><Title>{str(props.title) ?? t('room.crumb')}</Title>
+    <Group><Action icon="pause" label={t('rightpanel.pause')} run={() => roomAct(props, 'pause', t('rightpanel.paused'))} /><Action icon="play" label={t('rightpanel.resume')} run={() => roomAct(props, 'resume', t('rightpanel.resumed'))} /><Action icon="vote" label={t('rightpanel.callVote')} run={() => openSheet('vote', props)} /><Action icon="file" label={t('rightpanel.synthesize')} run={() => roomAct(props, 'synthesize', t('rightpanel.synthesisAsked'))} /><Action icon="sq" label={t('sheets.stopRoom')} run={() => roomAct(props, 'stop', t('rightpanel.stopped'))} /></Group>
+    <Group><DesktopOnly title={t('sheets.splitView')} /><DesktopOnly title={t('sheets.moveToGroup')} /><Action icon="refresh" label={t('sheets.regenerateTitle')} run={() => { if (id) void regenerateTitleOf('room', id) }} /></Group>
+    <Group><button type="button" className="opt" onClick={() => openSheet('clearroom', props)}><I n="erase" /><span className="tx"><b>{t('sheets.clearRoomAction')}</b></span></button><Action icon="trash" label={t('common.delete')} danger run={() => { if (id && window.confirm(t('sheets.deleteRoomConfirm'))) void mobileMutation({ mobileOp: 'room.delete', id }, t('sheets.roomDeleted')).then(() => go({ name: 'rooms' })) }} /></Group></>
 }
 function ArchiveMenu({ props }: { props: Props }) {
   const item = props.item as ArchiveItemWire | undefined
@@ -218,23 +227,23 @@ function ArchiveMenu({ props }: { props: Props }) {
       toast(ok)
     } catch (e) {
       // A refused purge says why (a Cowork session with unmerged work).
-      toast(e instanceof Error ? e.message : 'That did not work')
+      toast(e instanceof Error ? e.message : t('common.didNotWork'))
     } finally {
       archiveChanged()
     }
   }
-  return <><Title>{item?.title || 'Archived item'}</Title>
-    <Group><Action icon="refresh" label="Restore" run={() => void run('archive.restore', 'Restored')} />
-    <Action icon="trash" label="Delete permanently" danger run={() => { if (item && window.confirm(`Delete “${item.title || 'this item'}” permanently? This can’t be undone.`)) void run('archive.purge', 'Deleted permanently') }} /></Group></>
+  return <><Title>{item?.title || t('sheets.archivedItem')}</Title>
+    <Group><Action icon="refresh" label={t('sheets.restore')} run={() => void run('archive.restore', t('sheets.restored'))} />
+    <Action icon="trash" label={t('sheets.deletePermanently')} danger run={() => { if (item && window.confirm(t('sheets.deleteItemConfirm', { title: item.title || t('sheets.thisItem') }))) void run('archive.purge', t('sheets.deletedPermanently')) }} /></Group></>
 }
 function ClearRoomSheet({ props }: { props: Props }) {
   const id = str(props.id)
   const [scope, setScope] = useState<'chat' | 'knowledge' | 'everything'>('chat')
-  return <><Title>Clear this room</Title>
-    <Opt title="Chat only" sub="Every message, vote and synthesis. Keeps what participants learned." selected={scope === 'chat'} onClick={() => setScope('chat')} />
-    <Opt title="Chat and knowledge" sub="Also the run counters and round, so it starts over from the objective." selected={scope === 'knowledge'} onClick={() => setScope('knowledge')} />
-    <Opt title="Everything, including cache" sub="Also its scratch workspaces." selected={scope === 'everything'} onClick={() => setScope('everything')} />
-    <button type="button" className="btn dan big" disabled={!id} onClick={() => { closeSheet(); if (id) void act('room.clear', { id, scope }, 'Room cleared.').then(() => invalidate(['rooms.get', 'thread.messages'])) }}>Clear</button></>
+  return <><Title>{t('sheets.clearRoom')}</Title>
+    <Opt title={t('sheets.scope.chat')} sub={t('sheets.scope.chatSub')} selected={scope === 'chat'} onClick={() => setScope('chat')} />
+    <Opt title={t('sheets.scope.knowledge')} sub={t('sheets.scope.knowledgeSub')} selected={scope === 'knowledge'} onClick={() => setScope('knowledge')} />
+    <Opt title={t('sheets.scope.everything')} sub={t('sheets.scope.everythingSub')} selected={scope === 'everything'} onClick={() => setScope('everything')} />
+    <button type="button" className="btn dan big" disabled={!id} onClick={() => { closeSheet(); if (id) void act('room.clear', { id, scope }, t('sheets.roomCleared')).then(() => invalidate(['rooms.get', 'thread.messages'])) }}>{t('sheets.clear')}</button></>
 }
 
 function Chevron() {
@@ -254,10 +263,10 @@ function PlusSheet({ props }: { props: Props }) {
   const details = useRpc('chat.details', { id: id ?? '' }, target === 'chat' && Boolean(id))
   const homeWeb = useApp((s) => s.composer.web)
   const web = target === 'home' ? homeWeb : (settings.data?.webSearch.enabled ?? false)
-  const provider = settings.data?.webSearchProviders?.find((p) => p.id === settings.data?.webSearch.provider)?.name ?? settings.data?.webSearch.provider ?? 'Web'
+  const provider = settings.data?.webSearchProviders?.find((p) => p.id === settings.data?.webSearch.provider)?.name ?? settings.data?.webSearch.provider ?? t('sheets.web')
   const toggleWeb = () => {
     if (target === 'home') { app.set((s) => ({ composer: { ...s.composer, web: !s.composer.web } })); return }
-    void act('settings.set', { key: 'webSearch', value: !web }, !web ? 'Web search on' : 'Web search off').then(() => invalidate(['settings.get']))
+    void act('settings.set', { key: 'webSearch', value: !web }, !web ? t('settings.web.on') : t('settings.web.off')).then(() => invalidate(['settings.get']))
   }
   const active = (tools.data?.servers ?? []).filter((x) => x.active).length
   const d = details.data
@@ -266,23 +275,23 @@ function PlusSheet({ props }: { props: Props }) {
     closeSheet()
     if (files?.length) void addFiles(key, Array.from(files))
   }
-  const computer = useApp((s) => s.computerName) ?? 'the computer'
-  const deskNote = cowork && id ? undefined : 'Cowork sessions only: they have a folder'
-  return <><Title>Add</Title>
-    <FilePick icon="image" label="Photo library" accept="image/*" multiple onPick={pick} testId="add-photos" />
-    <FilePick icon="camera" label="Take photo" accept="image/*" capture="environment" onPick={pick} testId="add-camera" />
-    <FilePick icon="file" label="Add files" sub={`Up to ${MAX_FILES} per message`} multiple onPick={pick} testId="add-files" />
-    <button type="button" className="opt" disabled={!!deskNote} aria-disabled={!!deskNote} onClick={() => openSheet('files', { id, pick: 'attach', key })} data-testid="add-desk"><I n="folder" /><span className="tx"><b>Files on {computer}</b><small>{deskNote ?? 'Browse the session folder (read-only)'}</small></span></button>
-    <button type="button" className="opt" disabled={!!deskNote} aria-disabled={!!deskNote} onClick={() => openSheet('files', { id, pick: 'ref', key })} data-testid="add-ref"><I n="at" /><span className="tx"><b>Reference a file (@)</b><small>{deskNote ?? 'Inserts @path into the message'}</small></span></button>
-    <div className="ssec">Options</div>
-    <Go lead={<FlintMark size={26} />} title="Assistant" sub={cowork ? 'Flint' : d ? (d.assistant.auto ? 'Auto · Jev picks per turn' : d.assistant.name) : 'Auto · Jev picks per turn'} sheet="assistant" props={props} />
-    <Go icon="sliders" title="Sampling" sub="Defaults from the model" sheet="params" />
-    <Go icon="wrench" title="Tools" sub={tools.data ? `${active} enabled` : undefined} sheet="tools" />
-    <button type="button" className={`row${web ? ' on' : ''}`} style={{ padding: '9px 10px' }} aria-pressed={web} onClick={toggleWeb} data-testid="plus-web"><I n="globe" /><span className="tx"><b>Web search</b><small>{provider}</small></span><Sw on={web} /></button>
+  const computer = useApp((s) => s.computerName) ?? t('common.theComputer')
+  const deskNote = cowork && id ? undefined : t('sheets.coworkOnly')
+  return <><Title>{t('sheets.add')}</Title>
+    <FilePick icon="image" label={t('sheets.photoLibrary')} accept="image/*" multiple onPick={pick} testId="add-photos" />
+    <FilePick icon="camera" label={t('sheets.takePhoto')} accept="image/*" capture="environment" onPick={pick} testId="add-camera" />
+    <FilePick icon="file" label={t('sheets.addFiles')} sub={t('sheets.upTo', { count: MAX_FILES })} multiple onPick={pick} testId="add-files" />
+    <button type="button" className="opt" disabled={!!deskNote} aria-disabled={!!deskNote} onClick={() => openSheet('files', { id, pick: 'attach', key })} data-testid="add-desk"><I n="folder" /><span className="tx"><b>{t('sheets.filesOn', { computer })}</b><small>{deskNote ?? t('sheets.browseFolder')}</small></span></button>
+    <button type="button" className="opt" disabled={!!deskNote} aria-disabled={!!deskNote} onClick={() => openSheet('files', { id, pick: 'ref', key })} data-testid="add-ref"><I n="at" /><span className="tx"><b>{t('sheets.referenceFile')}</b><small>{deskNote ?? t('sheets.referenceHint')}</small></span></button>
+    <div className="ssec">{t('sheets.options')}</div>
+    <Go lead={<FlintMark size={26} />} title={t('sheets.assistant')} sub={cowork ? 'Flint' : d ? (d.assistant.auto ? t('sheets.autoJev') : d.assistant.name) : t('sheets.autoJev')} sheet="assistant" props={props} />
+    <Go icon="sliders" title={t('sheets.sampling')} sub={t('sheets.samplingSub')} sheet="params" />
+    <Go icon="wrench" title={t('sheets.tools')} sub={tools.data ? t('sheets.enabled', { count: active }) : undefined} sheet="tools" />
+    <button type="button" className={`row${web ? ' on' : ''}`} style={{ padding: '9px 10px' }} aria-pressed={web} onClick={toggleWeb} data-testid="plus-web"><I n="globe" /><span className="tx"><b>{t('sheets.webSearch')}</b><small>{provider}</small></span><Sw on={web} /></button>
     {target === 'chat' && d?.effort
-      ? <Go icon="bulb" title="Reasoning" sub="Effort is under the composer" sheet="effort" props={{ id }} />
-      : <Go icon="bulb" title="Reasoning" sheet="reason" props={{ for: target, id }} />}
-    {cowork && <Go icon="slash" title="Commands & skills" sheet="skills" />}</>
+      ? <Go icon="bulb" title={t('room.reasoning')} sub={t('sheets.effortUnder')} sheet="effort" props={{ id }} />
+      : <Go icon="bulb" title={t('room.reasoning')} sheet="reason" props={{ for: target, id }} />}
+    {cowork && <Go icon="slash" title={t('sheets.commandsSkills')} sheet="skills" />}</>
 }
 
 /** ComposerEffort's bar: Faster ↔ Smarter, Off only where the model can stop thinking. */
@@ -290,20 +299,20 @@ function EffortSheet({ props }: { props: Props }) {
   const id = str(props.id) ?? ''
   const { data } = useRpc('chat.details', { id }, Boolean(id))
   const e = data?.effort
-  if (!e) return <><Title>Effort</Title><p className="sh">This model sizes its own thinking.</p></>
+  if (!e) return <><Title>{t('sheets.effort')}</Title><p className="sh">{t('sheets.effortOwn')}</p></>
   const { stops, shown } = effortStops(e)
   const i = Math.max(0, stops.indexOf(shown))
   const at = stops.length > 1 ? i / (stops.length - 1) : 0
   const choose = (choice: EffortChoiceWire | null, label: string) => void act('chat.effort', { id, choice }, label).then(() => invalidate(['chat.details']))
   return <><Grab />
-    <div className="kv" style={{ background: 'none', border: 0, padding: 0 }}><h3>Effort</h3>{e.overridden && <button type="button" className="btn sm ghost" onClick={() => choose(null, 'Effort reset')}>Reset</button>}</div>
-    <div className="kv" style={{ background: 'none', border: 0, padding: 0, fontSize: 12 }}><span>Faster</span><span>Smarter</span></div>
-    <div className="etrack" role="radiogroup" aria-label="Effort">
-      {stops.map((x, j) => <button key={x} type="button" role="radio" aria-checked={j === i} className="estop" aria-label={stopLabel(x)} onClick={() => choose(x, `Effort: ${stopLabel(x)}`)}><i /></button>)}
+    <div className="kv" style={{ background: 'none', border: 0, padding: 0 }}><h3>{t('sheets.effort')}</h3>{e.overridden && <button type="button" className="btn sm ghost" onClick={() => choose(null, t('sheets.effortReset'))}>{t('sheets.reset')}</button>}</div>
+    <div className="kv" style={{ background: 'none', border: 0, padding: 0, fontSize: 12 }}><span>{t('sheets.faster')}</span><span>{t('sheets.smarter')}</span></div>
+    <div className="etrack" role="radiogroup" aria-label={t('sheets.effort')}>
+      {stops.map((x, j) => <button key={x} type="button" role="radio" aria-checked={j === i} className="estop" aria-label={stopLabel(x)} onClick={() => choose(x, t('sheets.effortChosen', { label: stopLabel(x) }))}><i /></button>)}
       <span className="ethumb" style={{ left: `calc(${at * 100}% - ${at * 28}px)` }} />
     </div>
-    <div className="elabels">{stops.map((x) => <span key={x}>{stopLabel(x)}{x === e.recommended && <small>Recommended</small>}</span>)}</div>
-    <p className="sh">{e.canDisable ? `${data?.model?.name ?? 'This model'} can turn thinking off. ` : ''}Applies to this chat.</p></>
+    <div className="elabels">{stops.map((x) => <span key={x}>{stopLabel(x)}{x === e.recommended && <small>{t('ask.recommended')}</small>}</span>)}</div>
+    <p className="sh">{e.canDisable ? `${t('sheets.canTurnOff', { name: data?.model?.name ?? t('sheets.thisModel') })} ` : ''}{t('sheets.appliesToChat')}</p></>
 }
 
 /** The context ring's card, and the last reply's figures. */
@@ -316,41 +325,41 @@ function TokensSheet({ props }: { props: Props }) {
   const d = details.data
   const last = [...(msgs.data?.messages ?? [])].reverse().find((m) => m.role === 'assistant')?.meta
   const compactNow = d?.canCompact
-    ? () => { closeSheet(); app.set((s) => ({ compacting: { ...s.compacting, [id]: true } })); void act('chat.compact', { id }, 'Compacting the conversation…') }
+    ? () => { closeSheet(); app.set((s) => ({ compacting: { ...s.compacting, [id]: true } })); void act('chat.compact', { id }, t('cowork.compacting')) }
     : undefined
   if (target === 'cowork') {
     const u = cowork.data?.usage
     const c = cowork.data?.context
-    return <><Title>Context</Title>{c?.windowTokens ? <Kv k="Context window" v={`${c.usedTokens.toLocaleString()} of ${c.windowTokens.toLocaleString()} tokens (${Math.round((c.usedTokens / c.windowTokens) * 100)}%)`} /> : null}{u ? <><Kv k="Input" v={`${u.inputTokens.toLocaleString()} tokens`} /><Kv k="Output" v={`${u.outputTokens.toLocaleString()} tokens`} /></> : <p className="sh">Nothing sent yet.</p>}<DesktopOnly title="Compact session" sub="Cowork sessions compact on the computer." /></>
+    return <><Title>{t('rightpanel.context')}</Title>{c?.windowTokens ? <Kv k={t('reply.context')} v={t('sheets.contextLine', { used: c.usedTokens.toLocaleString(), total: c.windowTokens.toLocaleString(), pct: Math.round((c.usedTokens / c.windowTokens) * 100) })} /> : null}{u ? <><Kv k={t('rightpanel.input')} v={t('reply.tokens', { count: u.inputTokens.toLocaleString() })} /><Kv k={t('rightpanel.output')} v={t('reply.tokens', { count: u.outputTokens.toLocaleString() })} /></> : <p className="sh">{t('reply.nothingSent')}</p>}<DesktopOnly title={t('reply.compact')} sub={t('sheets.coworkCompact')} /></>
   }
-  if (target !== 'chat') return <><Title>Context</Title><ContextCard c={null} /></>
-  return <><Title>Context</Title><ContextCard c={d?.context ?? null} speed={d?.speed} onCompact={compactNow} />
-    {last && <><div className="ssec">Last reply</div>
-      {last.tokensPerSecond ? <Kv k="Generation" v={`${last.tokensPerSecond.toFixed(1)} t/s`} /> : null}
-      {last.promptPerSecond ? <Kv k="Reading" v={`${last.promptPerSecond.toFixed(0)} t/s`} /> : null}
-      {last.draft ? <Kv k="Draft accepted" v={`${Math.round((last.draft.accepted / last.draft.tokens) * 100)}% of ${last.draft.tokens}`} /> : null}
-      {last.cache ? <Kv k="Prompt cache" v={last.cache === 'reused' ? 'Cache reused' : 'Not reused'} /> : null}</>}
-    {d && !d.canCompact && <DesktopOnly title="Compact session" sub="Open the chat on the computer to compact it." />}</>
+  if (target !== 'chat') return <><Title>{t('rightpanel.context')}</Title><ContextCard c={null} /></>
+  return <><Title>{t('rightpanel.context')}</Title><ContextCard c={d?.context ?? null} speed={d?.speed} onCompact={compactNow} />
+    {last && <><div className="ssec">{t('reply.last')}</div>
+      {last.tokensPerSecond ? <Kv k={t('sheets.generation')} v={`${last.tokensPerSecond.toFixed(1)} t/s`} /> : null}
+      {last.promptPerSecond ? <Kv k={t('sheets.reading')} v={`${last.promptPerSecond.toFixed(0)} t/s`} /> : null}
+      {last.draft ? <Kv k={t('sheets.draftAccepted')} v={t('sheets.draftLine', { pct: Math.round((last.draft.accepted / last.draft.tokens) * 100), total: last.draft.tokens })} /> : null}
+      {last.cache ? <Kv k={t('panels.promptCache')} v={last.cache === 'reused' ? t('panels.cacheReused') : t('panels.notReused')} /> : null}</>}
+    {d && !d.canCompact && <DesktopOnly title={t('reply.compact')} sub={t('sheets.openToCompact')} />}</>
 }
 
 function ReplyStatsSheet({ props }: { props: Props }) {
   const m = props.meta as ReplyMeta | undefined
-  return <><Title>Last reply</Title>
-    {m?.tokensPerSecond ? <Kv k="Generation" v={`${m.tokensPerSecond.toFixed(1)} t/s`} /> : null}
-    {m?.promptPerSecond ? <Kv k="Reading" v={`${m.promptPerSecond.toFixed(0)} t/s`} /> : null}
-    {m?.outputTokens ? <Kv k="Tokens" v={m.outputTokens.toLocaleString()} /> : null}
-    {m?.cache ? <Kv k="Prompt cache" v={m.cache === 'reused' ? 'Cache reused' : 'Not reused'} /> : null}
-    {m?.draft ? <Kv k="Draft accepted" v={`${Math.round((m.draft.accepted / m.draft.tokens) * 100)}% of ${m.draft.tokens}`} /> : null}
-    {m?.model ? <Kv k="Model" v={<span className="mono">{m.model}</span>} /> : null}</>
+  return <><Title>{t('reply.last')}</Title>
+    {m?.tokensPerSecond ? <Kv k={t('sheets.generation')} v={`${m.tokensPerSecond.toFixed(1)} t/s`} /> : null}
+    {m?.promptPerSecond ? <Kv k={t('sheets.reading')} v={`${m.promptPerSecond.toFixed(0)} t/s`} /> : null}
+    {m?.outputTokens ? <Kv k={t('rightpanel.tokens')} v={m.outputTokens.toLocaleString()} /> : null}
+    {m?.cache ? <Kv k={t('panels.promptCache')} v={m.cache === 'reused' ? t('panels.cacheReused') : t('panels.notReused')} /> : null}
+    {m?.draft ? <Kv k={t('sheets.draftAccepted')} v={t('sheets.draftLine', { pct: Math.round((m.draft.accepted / m.draft.tokens) * 100), total: m.draft.tokens })} /> : null}
+    {m?.model ? <Kv k={t('chat.model')} v={<span className="mono">{m.model}</span>} /> : null}</>
 }
 
 function SkillsUsedSheet({ props }: { props: Props }) {
   const skills = Array.isArray(props.skills) ? (props.skills as string[]) : []
-  return <><Title>Used {skills.length} {skills.length === 1 ? 'skill' : 'skills'}</Title>
+  return <><Title>{t('reply.skills', { count: skills.length })}</Title>
     {skills.map((name) => { const [plugin, skill] = name.includes(':') ? name.split(':', 2) : [null, name]; return <div key={name} className="opt"><span className="tx"><b>{plugin && <span className="muted">{plugin}:</span>}{skill}</b></span></div> })}</>
 }
 
-const ASSISTANT_SUB: Record<string, string> = { jan: 'Default', quartz: 'Code and review', coal: 'Research and reading', blaze: 'Writing and drafts', redstone: 'Automation and tools' }
+const ASSISTANT_SUB: Record<string, string> = { jan: t('sheets.asst.jan'), quartz: t('sheets.asst.quartz'), coal: t('sheets.asst.coal'), blaze: t('sheets.asst.blaze'), redstone: t('sheets.asst.redstone') }
 /** The assistant picker (#47): Auto lets Jev route each turn, else Flint. */
 function AssistantSheet({ props }: { props: Props }) {
   const target = str(props.for) ?? 'home'
@@ -358,32 +367,34 @@ function AssistantSheet({ props }: { props: Props }) {
   const list = useRpc('assistants.list', {})
   const details = useRpc('chat.details', { id: id ?? '' }, target === 'chat' && Boolean(id))
   if (target !== 'chat' || !id) {
-    return <><Title>Assistant</Title><Opt title="Flint" sub={target === 'cowork' ? 'This Cowork session' : 'Auto · Jev picks per turn once the chat starts'} selected lead={<FlintMark size={26} />} onClick={closeSheet} /><DesktopOnly title="Choose another assistant" sub={target === 'cowork' ? 'Cowork assistants are chosen on the computer.' : 'Pick one in the chat after sending the first message.'} /></>
+    return <><Title>{t('sheets.assistant')}</Title><Opt title="Flint" sub={target === 'cowork' ? t('sheets.thisCowork') : t('sheets.autoOnceStarts')} selected lead={<FlintMark size={26} />} onClick={closeSheet} /><DesktopOnly title={t('sheets.chooseAssistant')} sub={target === 'cowork' ? t('sheets.coworkAssistants') : t('sheets.pickAfterFirst')} /></>
   }
   const cur = details.data?.assistant
   const pick = (assistant: string, label: string) => { closeSheet(); void act('chat.assistant', { id, assistant }, label).then(() => invalidate(['chat.details'])) }
   const all = list.data?.assistants ?? []
-  return <><Title>Assistant</Title>
-    <Opt title="Auto" sub={list.data?.routing === false ? 'Automatic routing is off in Settings › Jev' : 'Jev routes each turn to the right assistant, else Flint'} selected={Boolean(cur?.auto)} lead={<span className="pico"><I n="wand" /></span>} onClick={() => pick('auto', 'Assistant: Auto')} />
-    {all.map((a) => { const icon = ASSISTANT_ICON[a.name]; return <Opt key={a.id} title={a.name} sub={a.description || ASSISTANT_SUB[a.id]} selected={!cur?.auto && cur?.id === a.id} lead={a.id === 'jan' ? <FlintMark size={26} /> : <span className="pico" style={icon ? { color: icon[1] } : undefined}><I n={icon?.[0] ?? 'sparkles'} /></span>} onClick={() => pick(a.id, `Assistant: ${a.name}`)} /> })}
-    <Go icon="sliders" title="Parameters" sheet="params" /></>
+  return <><Title>{t('sheets.assistant')}</Title>
+    <Opt title={t('chat.auto')} sub={list.data?.routing === false ? t('sheets.routingOff') : t('sheets.routingOn')} selected={Boolean(cur?.auto)} lead={<span className="pico"><I n="wand" /></span>} onClick={() => pick('auto', t('sheets.assistantLabel', { name: t('chat.auto') }))} />
+    {all.map((a) => { const icon = ASSISTANT_ICON[a.name]; return <Opt key={a.id} title={a.name} sub={a.description || ASSISTANT_SUB[a.id]} selected={!cur?.auto && cur?.id === a.id} lead={a.id === 'jan' ? <FlintMark size={26} /> : <span className="pico" style={icon ? { color: icon[1] } : undefined}><I n={icon?.[0] ?? 'sparkles'} /></span>} onClick={() => pick(a.id, t('sheets.assistantLabel', { name: a.name }))} /> })}
+    <Go icon="sliders" title={t('sheets.parameters')} sheet="params" /></>
 }
 
 function MsgMenu({ props }: { props: Props }) {
   const id = str(props.id)
   const messageId = str(props.messageId)
   const text = str(props.text) ?? ''
-  return <><Title>Message actions</Title>
-    <Action icon="copy" label="Copy" run={() => void navigator.clipboard?.writeText(text).then(() => toast('Copied'), () => toast('Copy failed'))} />
-    <Action icon="fork" label="Fork chat from here" run={() => { if (id) void forkFrom(id, messageId) }} />
-    <DesktopOnly title="Edit, regenerate or delete" sub="These change the conversation on the computer." /></>
+  return <><Title>{t('chat.messageActions')}</Title>
+    <Action icon="copy" label={t('common.copy')} run={() => void navigator.clipboard?.writeText(text).then(() => toast(t('common.copied')), () => toast(t('common.copyFailed')))} />
+    <Action icon="fork" label={t('chat.forkFromHere')} run={() => { if (id) void forkFrom(id, messageId) }} />
+    {id && messageId && <Action icon="refresh" label={t('sheets.regenerate')} run={() => void act('chat.regenerate', { id, messageId }, t('sheets.regenerating'))} />}
+    {id && messageId && <Action icon="edit" label={t('sheets.edit')} run={() => { const next = window.prompt(t('sheets.editMessage'), text); if (next?.trim() && next.trim() !== text) void act('chat.edit', { id, messageId, text: next.trim() }, t('sheets.edited')) }} />}
+    <DesktopOnly title={t('common.delete')} sub={t('sheets.deleteOnComputer')} /></>
 }
 
 function ModelGoneSheet({ props }: { props: Props }) {
   const id = str(props.id)
-  return <><Title sub={`${str(props.name) ?? 'The model'} was removed from the computer.`}>A model is no longer available</Title>
-    <Opt title="This chat" sub="Choose a model to continue" selected onClick={() => openSheet('model', { for: 'chat', id })} />
-    <button type="button" className="btn pri big" onClick={() => openSheet('model', { for: 'chat', id })}>Choose a model</button></>
+  return <><Title sub={t('chat.modelGoneBody', { name: str(props.name) ?? t('sheets.theModel') })}>{t('chat.modelGoneTitle')}</Title>
+    <Opt title={t('rightpanel.thisChat')} sub={t('sheets.chooseToContinue')} selected onClick={() => openSheet('model', { for: 'chat', id })} />
+    <button type="button" className="btn pri big" onClick={() => openSheet('model', { for: 'chat', id })}>{t('chat.chooseModel')}</button></>
 }
 
 /** The Code tab's project explorer: the session folder, a level at a time. */
@@ -408,27 +419,27 @@ function FilesSheet({ props }: { props: Props }) {
     openDrawer('right', 'code')
   }
   const up = path.split('/').slice(0, -1).join('/')
-  return <><Title sub={data?.root ?? undefined}>{pickMode === 'attach' ? 'Attach a file' : pickMode === 'ref' ? 'Reference a file' : 'Project explorer'}</Title>
+  return <><Title sub={data?.root ?? undefined}>{pickMode === 'attach' ? t('sheets.attachFile') : pickMode === 'ref' ? t('sheets.referenceFileTitle') : t('panels.explorer')}</Title>
     {path && <Opt title=".." sub={path} lead={<I n="back" />} onClick={() => setPath(up)} />}
-    {loading && !data && <p className="sh">Loading…</p>}
+    {loading && !data && <p className="sh">{t('common.loading')}</p>}
     {error && <p className="sh">{error.message}</p>}
-    {data && !data.root && <p className="sh">This session has no folder.</p>}
+    {data && !data.root && <p className="sh">{t('sheets.noFolder')}</p>}
     {data?.entries.map((e) => <Opt key={e.relPath} title={e.name} lead={<I n={e.isDir ? 'folder' : 'file'} />} onClick={() => (e.isDir ? setPath(e.relPath) : open(e.relPath))} />)}
-    {data?.truncated && <p className="sh">More files are in this folder than the phone lists.</p>}</>
+    {data?.truncated && <p className="sh">{t('sheets.truncated')}</p>}</>
 }
 
 const SHEETS: Record<string, (p: { props: Props }) => ReactNode> = {
   model: ModelSheet, reason: ReasonSheet, mode: ModeSheet, access: AccessSheet, stop: StopSheet, permdetails: PermDetailsSheet, vote: VoteSheet, runs: RunsSheet, conn: ConnSheet, palette: PaletteSheet, notifset: NotifSetSheet, tools: ToolsSheet, roomnew: RoomNewSheet, threadmenu: ThreadMenu, sessmenu: SessionMenu, roommenu: RoomMenu, clearroom: ClearRoomSheet, plus: PlusSheet, attach: PlusSheet, cwoptions: PlusSheet, effort: EffortSheet, tokens: TokensSheet, replystats: ReplyStatsSheet, skillsused: SkillsUsedSheet, assistant: AssistantSheet, msgmenu: MsgMenu, modelgone: ModelGoneSheet, files: FilesSheet,
   archivemenu: ArchiveMenu,
   studioset: () => <StudioSettingsSheet />, studioitem: ({ props }) => <StudioItemSheet item={props.item as StudioItemWire | undefined} />, voicesetup: () => <VoiceSetupSheet />,
-  params: () => <><Title>Parameters</Title><DesktopOnly title="Output, context, compaction and sampling" /></>,
-  skills: () => <><Title>Commands & skills</Title><DesktopOnly title="Commands & skills" sub="Run or configure these on the computer." /></>,
-  coworkmenu: () => <><Title>Cowork</Title><Action icon="plus" label="New session" run={() => go({ name: 'home', mode: 'cowork' })} /><DesktopOnly title="New group" /><DesktopOnly title="Import session" /></>,
-  chatfilter: () => <><Title>Show</Title><Opt title="All" selected onClick={closeSheet} /><DesktopOnly title="Active filter" /></>,
-  workspace: ({ props }) => <><Title>Workspace</Title><Kv k="Folder" v={str(props.folder) ?? str(props.group) ?? 'None'} /><DesktopOnly title="Change folder" sub="Changing an existing session workspace requires desktop confirmation." />{str(props.folder) && <Action icon="copy" label="Copy path" run={() => void copyToClipboard(str(props.folder)!).then((ok) => toast(ok ? 'Path copied' : 'Copy failed'))} />}</>,
-  temp: () => <><Title>Temporary chat</Title><DesktopOnly title="Temporary chat" sub="Temporary history is not exposed by the current remote protocol." /></>,
-  profile: () => <><Title>Work profile</Title><DesktopOnly title="Work profile" sub="Persisted Cowork profiles are selected on the computer." /></>,
-  worktree: ({ props }) => <><Title>Session worktree</Title><Kv k="Branch" v={str(props.branch) ?? 'Working copy'} /><Kv k="Path" v={str(props.path) ?? '—'} /><DesktopOnly title="Apply / merge changes" sub="Applying changes to the attached folder requires desktop confirmation." /></>,
+  params: () => <><Title>{t('sheets.parameters')}</Title><DesktopOnly title={t('sheets.paramsTitle')} /></>,
+  skills: () => <><Title>{t('sheets.commandsSkills')}</Title><DesktopOnly title={t('sheets.commandsSkills')} sub={t('sheets.skillsSub')} /></>,
+  coworkmenu: () => <><Title>{t('home.modes.cowork')}</Title><Action icon="plus" label={t('nav.newSession')} run={() => go({ name: 'home', mode: 'cowork' })} /><DesktopOnly title={t('sheets.newGroup')} /><DesktopOnly title={t('sheets.importSession')} /></>,
+  chatfilter: () => <><Title>{t('sheets.show')}</Title><Opt title={t('archive.filters.all')} selected onClick={closeSheet} /><DesktopOnly title={t('sheets.activeFilter')} /></>,
+  workspace: ({ props }) => <><Title>{t('common.workspace')}</Title><Kv k={t('home.folder')} v={str(props.folder) ?? str(props.group) ?? t('rightpanel.none')} /><DesktopOnly title={t('sheets.changeFolder')} sub={t('sheets.changeFolderSub')} />{str(props.folder) && <Action icon="copy" label={t('sheets.copyPath')} run={() => void copyToClipboard(str(props.folder)!).then((ok) => toast(ok ? t('panels.pathCopied') : t('common.copyFailed')))} />}</>,
+  temp: () => <><Title>{t('home.tempChat')}</Title><DesktopOnly title={t('home.tempChat')} sub={t('sheets.tempSub')} /></>,
+  profile: () => <><Title>{t('sheets.workProfile')}</Title><DesktopOnly title={t('sheets.workProfile')} sub={t('sheets.profileSub')} /></>,
+  worktree: ({ props }) => <><Title>{t('changes.sessionWorktree')}</Title><Kv k={t('sheets.branch')} v={str(props.branch) ?? t('changes.workingCopy')} /><Kv k={t('sheets.path')} v={str(props.path) ?? '—'} /><DesktopOnly title={t('sheets.applyMerge')} sub={t('sheets.applyMergeSub')} /></>,
 }
 export function SheetBody({ name, props }: { name: string; props: Props }) {
   const Cmp = SHEETS[name]

@@ -50,8 +50,11 @@ import {
 import { errorText } from '@/lib/errorText'
 import { CompactionPolicySettings } from '@/containers/CompactionPolicySettings'
 import { AttributionSettings } from '@/containers/AttributionSettings'
+import { ComputerExclusionSettings } from '@/containers/ComputerExclusionSettings'
 import { SandboxToolchainGrants } from '@/containers/SandboxToolchainGrants'
 import { BrowserAgentSettings } from '@/containers/BrowserAgentSettings'
+import { SubagentSettings } from '@/containers/SubagentSettings'
+import { VisualizeSettings } from '@/containers/VisualizeSettings'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,6 +100,12 @@ function AgentToolsContent() {
   const agentToolsEnabled = useAgentToolsConfig((s) => s.agentToolsEnabled)
   const setAgentToolsEnabled = useAgentToolsConfig(
     (s) => s.setAgentToolsEnabled
+  )
+  const chatDelegationEnabled = useAgentToolsConfig(
+    (s) => s.chatDelegationEnabled
+  )
+  const setChatDelegationEnabled = useAgentToolsConfig(
+    (s) => s.setChatDelegationEnabled
   )
   const bashNetworkEnabled = useAgentToolsConfig((s) => s.bashNetworkEnabled)
   const setBashNetworkEnabled = useAgentToolsConfig(
@@ -298,7 +307,9 @@ function AgentToolsContent() {
       <SettingsPageBody
         title={t('common:agent_tools')}
         description={t('settings:pageDesc.agentTools')}
-        layout={[0, 1, 0]}
+        // Behaviour: tools | shell, then compaction | browser. Skills and
+        // memories are a lone group each and span the page.
+        layout={[0, 1, 0, 1]}
         actions={
           <Segmented<'behaviour' | 'skills' | 'memories'>
             // Remounted when the counts arrive: the gliding pill is measured
@@ -353,6 +364,22 @@ function AgentToolsContent() {
               <Switch
                 checked={agentToolsEnabled}
                 onCheckedChange={setAgentToolsEnabled}
+              />
+            }
+          />
+          {/* Chats may hand jobs to subagents. Each child's changes and
+              commands still ask, exactly as the chat's own do. */}
+          <CardItem
+            anchor="settings-agent-tools-chat-delegation"
+            title={t('settings:agentTools.chatDelegation')}
+            description={t('settings:agentTools.chatDelegationDesc')}
+            align="start"
+            actions={
+              <Switch
+                data-testid="chat-delegation-toggle"
+                checked={chatDelegationEnabled}
+                onCheckedChange={setChatDelegationEnabled}
+                disabled={!agentToolsEnabled}
               />
             }
           />
@@ -434,6 +461,14 @@ function AgentToolsContent() {
               />
             }
           />
+        </Card>
+        )}
+
+        {tab === 'behaviour' && (
+        <Card
+          title={t('settings:agentTools.shellTitle')}
+          description={t('settings:agentTools.shellDescription')}
+        >
           <CardItem
             title={t('settings:agentTools.shell')}
             align="start"
@@ -478,11 +513,14 @@ function AgentToolsContent() {
           )}
           {sandbox?.enforces && <SandboxToolchainGrants />}
           <AttributionSettings />
+          <ComputerExclusionSettings />
         </Card>
         )}
 
+        {tab === 'behaviour' && <SubagentSettings />}
         {tab === 'behaviour' && <CompactionPolicySettings />}
         {tab === 'behaviour' && <BrowserAgentSettings />}
+        {tab === 'behaviour' && <VisualizeSettings />}
         {tab === 'memories' && (
           <Card
             title={t('settings:agentTools.memories')}

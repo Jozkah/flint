@@ -13,6 +13,7 @@
   },
   "notDetected": "Not found on this computer",
   "address": "Address",
+  "noPhoneApp": "This copy of Flint is missing the phone app's files, so phones see a page saying it is not included. Reinstall Flint, and check that an older copy is not the one running. Flint looked in:",
   "port": "Port",
   "portDesc": "Between 1024 and 65535.",
   "customHost": "Custom host name",

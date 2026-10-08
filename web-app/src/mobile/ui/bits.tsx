@@ -7,6 +7,7 @@ import { TypeSafeMark } from '@/components/ui/TypeSafeMark'
 import { I } from './icons'
 
 import { MARK } from './format'
+import { t } from '../i18n'
 
 export function FlintMark({ size, className }: { size?: number; className?: string }) {
   return (
@@ -144,7 +145,7 @@ export function Empty({ children, icon }: { children: ReactNode; icon?: ReactNod
   )
 }
 
-export function Loading({ label = 'Loading…' }: { label?: string }) {
+export function Loading({ label = t('common.loading') }: { label?: string }) {
   return (
     <div className="empty" role="status" aria-live="polite">
       <I n="loader" spin size={18} />

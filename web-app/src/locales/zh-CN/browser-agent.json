@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "允许助手使用 {{host}} 吗？",
+    "description": "助手想在你尚未批准的网站上使用浏览器窗格。",
+    "urlLabel": "完整地址",
+    "urlHint": "请检查整个地址，包括 ? 之后的任何内容。地址可能会把你对话中的信息带出去。",
+    "wantsLabel": "它想要",
+    "wants": {
+      "browser_open": "打开此页面",
+      "browser_read_text": "读取此页面",
+      "browser_snapshot": "查看此页面的控件",
+      "browser_screenshot": "为此页面截图",
+      "browser_scroll": "滚动此页面",
+      "browser_click": "在此页面上点击",
+      "browser_type": "在此页面上输入",
+      "browser_press": "在此页面上按键",
+      "browser_select": "在此页面上选择一个选项"
+    },
+    "origin": "请求来源：{{origin}}",
+    "scopeLabel": "持续多久",
+    "once": "仅本次访问",
+    "onceHint": "在助手转到其他网站时或 15 分钟后结束。",
+    "session": "直到 Flint 关闭",
+    "always": "始终",
+    "alwaysHint": "已保存。你可以在“设置”>“智能体工具”中移除。",
+    "subdomains": "同时允许 {{base}} 的子域名",
+    "allow": "允许",
+    "deny": "暂不",
+    "never": "永不允许此网站",
+    "more": "还有 {{count}} 个等待中",
+    "warning": "助手可以读取页面上的所有内容，而页面上的文字可能试图误导它。"
+  },
+  "settings": {
+    "title": "浏览器",
+    "enabled": "允许助手使用浏览器窗格",
+    "enabledDesc": "添加打开页面、读取页面的工具，并在你批准后在内置浏览器窗格中点击和输入。你看到的是同一个窗格。每个网站首次使用时都会询问；本地和私有网络地址永远不会被打开。",
+    "maxActions": "每次运行的操作数",
+    "maxActionsDesc": "一次运行在必须停止之前可以进行的点击、按键和选择次数。",
+    "rulesTitle": "已保存的网站规则",
+    "rulesDesc": "你选择始终允许或已阻止的网站。example.com 的规则仅涵盖该网站；*.example.com 涵盖其子域名。",
+    "empty": "尚无已保存的规则。当你选择“始终允许”或“永不允许”时，网站会显示在这里。",
+    "allow": "已允许",
+    "deny": "已阻止",
+    "privateOk": "本地地址",
+    "remove": "移除",
+    "removed": "规则已移除",
+    "removeFailed": "无法移除规则：{{error}}",
+    "addPlaceholder": "example.com 或 *.example.com",
+    "addLabel": "网站",
+    "addVerdict": "规则",
+    "addPrivate": "允许其为本地或私有网络地址（用于开发服务器）",
+    "add": "添加规则",
+    "added": "规则已保存",
+    "addFailed": "无法保存规则：{{error}}",
+    "pointer": "显示指针",
+    "pointerDesc": "在浏览器窗格中绘制一个光标，它会滑向助手点击或输入的位置，并随之滚动。关闭：不绘制任何内容，也没有任何延迟。",
+    "reduceMotion": "减少动效",
+    "reduceMotionDesc": "没有滑动或发光脉冲：指针直接跳到目标。",
+    "reduceSystem": "跟随系统",
+    "reduceOn": "始终减少",
+    "reduceOff": "从不减少",
+    "grantsTitle": "当前已批准",
+    "grantsNone": "未保存的内容不会被批准。每个不在已保存规则中的网站都会询问。",
+    "grantsDesc": "你为本次会话或本次访问允许的网站。它们不会被保存，并在 Flint 关闭时结束。",
+    "grantScope": {
+      "session": "本次会话",
+      "once": "本次访问"
+    },
+    "grantAge": "{{minutes}} 分钟前",
+    "forgetGrants": "忘记本次会话的批准"
+  },
+  "card": {
+    "screenshot": "浏览器窗格的截图"
+  },
+  "pane": {
+    "driving": "助手正在使用此浏览器",
+    "takeOver": "接管",
+    "paused": "助手已暂停",
+    "handBack": "交还",
+    "blocked": "页面已被阻止：{{reason}}"
+  }
+}

@@ -3,5 +3,30 @@
   "description": "Cuộc trò chuyện này đang đạt đến giới hạn bộ nhớ của AI, giống như một bảng trắng sắp đầy. Chúng ta có thể mở rộng cửa sổ bộ nhớ (gọi là kích thước ngữ cảnh) để AI nhớ được nhiều hơn, nhưng điều này có thể sử dụng nhiều bộ nhớ máy tính của bạn hơn. Chúng ta cũng có thể cắt bớt đầu vào, nghĩa là AI sẽ quên một phần lịch sử trò chuyện để dành chỗ cho các tin nhắn mới.",
   "increaseContextSizeDescription": "Bạn có muốn tăng kích thước ngữ cảnh không?",
   "truncateInput": "Cắt bớt đầu vào",
-  "increaseContextSize": "Tăng kích thước ngữ cảnh"
+  "increaseContextSize": "Tăng kích thước ngữ cảnh",
+  "lastRequestOverflowed": "Yêu cầu gần nhất đã làm tràn cửa sổ ngữ cảnh.",
+  "contextOverflowDetail": "Yêu cầu này cần {{request}} token, nhưng cửa sổ ngữ cảnh của mô hình chỉ chứa {{context}}.",
+  "contextOverflowGeneric": "Yêu cầu vượt quá kích thước ngữ cảnh khả dụng.",
+  "engine": {
+    "unknown": "Engine mô hình báo một lỗi không mong đợi.",
+    "MODEL_LOAD_FAILED": "Không thể tải mô hình.",
+    "MODEL_ARCH_NOT_SUPPORTED": "Kiến trúc của mô hình này không được engine hiện tại hỗ trợ. Cập nhật engine từ Cài đặt có thể bổ sung hỗ trợ.",
+    "MODEL_LOAD_TIMED_OUT": "Mô hình tải quá lâu nên đã bị dừng. Thường thì dùng mô hình nhỏ hơn hoặc kích thước ngữ cảnh nhỏ hơn sẽ giúp ích.",
+    "MISSING_SHARED_LIBRARY": "Thiếu một thư viện mà engine cần, nên nó không thể khởi động.",
+    "GPU_DRIVER_TOO_OLD": "Trình điều khiển GPU của bạn quá cũ so với engine này. Cập nhật trình điều khiển, hoặc chuyển sang engine CPU trong Cài đặt, sẽ khắc phục việc này.",
+    "OUT_OF_MEMORY": "Không đủ bộ nhớ để chạy mô hình này. Thường thì dùng mô hình nhỏ hơn hoặc kích thước ngữ cảnh nhỏ hơn sẽ giúp ích.",
+    "INVALID_ARGUMENT": "Một trong các cài đặt của mô hình không hợp lệ.",
+    "IO_ERROR": "Không thể đọc hoặc ghi một tệp khi khởi động mô hình.",
+    "INTERNAL_ERROR": "Đã xảy ra lỗi bên trong Flint khi khởi động mô hình."
+  },
+  "engineMissingLibraries": "Thiếu: {{libraries}}",
+  "engineReportedDetail": "Engine báo: {{detail}}",
+  "startModelFailed": "Không thể khởi động mô hình: {{reason}}",
+  "createModelFailed": "Không thể tạo mô hình: {{reason}}",
+  "noRunningSession": "Không tìm thấy phiên đang chạy cho mô hình: {{model}}",
+  "serverPortOccupied": "Cổng đang được dùng",
+  "serverPortOccupiedDescription": "Cổng {{port}} đã được sử dụng. Vui lòng thử cổng khác.",
+  "serverInvalidModelPath": "Đường dẫn mô hình không hợp lệ hoặc không truy cập được",
+  "serverStartModelFailed": "Không thể khởi động mô hình",
+  "serverStartFailed": "Không thể khởi động máy chủ"
 }

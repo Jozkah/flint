@@ -1,3 +1,19 @@
 {
-  "noLogs": "Không có nhật ký nào"
+  "noLogs": "Không có nhật ký nào",
+  "noMatch": "Không có dòng nào khớp với bộ lọc",
+  "title": "Nhật ký",
+  "serverTitle": "Nhật ký máy chủ API cục bộ",
+  "copy": "Sao chép nhật ký",
+  "openFolder": "Mở thư mục",
+  "copied": "Đã sao chép",
+  "search": "Tìm trong nhật ký",
+  "filterLabel": "Lọc theo mức",
+  "levelAll": "Tất cả",
+  "levelError": "Lỗi",
+  "levelWarn": "Cảnh báo",
+  "levelInfo": "Thông tin",
+  "levelDebug": "Gỡ lỗi",
+  "shown": "{{shown}}/{{total}} dòng",
+  "description": "Mọi thứ Flint và công cụ của nó đã ghi hôm nay. Mới nhất trước.",
+  "serverDescription": "Các yêu cầu đến Máy chủ API cục bộ tương thích OpenAI. Mới nhất trước."
 }

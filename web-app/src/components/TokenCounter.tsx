@@ -15,27 +15,21 @@ import {
   summarizeUsage,
   type TokenUsage,
 } from '@/lib/tokenUsage'
-import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
+import { TokenUsageSummary, type UsageSpeed } from '@/components/TokenUsageSummary'
 import { speedStats, type SpeedSample } from '@/lib/tokenSpeed'
+import { resolvePricing, type Pricing } from '@/lib/modelPricing'
 import { ContextWindowCard } from '@/components/ContextWindowCard'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import { reconcileBreakdown } from '@/lib/contextBreakdown'
+import { contextUsage, type ContextUsage } from '@/lib/contextUsage'
 import {
   DEFAULT_COMPACTION_POLICY,
   effectiveReserve,
   getCompactionPolicy,
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
-import {
-  Brain,
-  Gauge,
-  Ruler,
-  Layers2,
-  Image,
-  Mic,
-  Moon,
-  Sliders,
-} from 'lucide-react'
+import { Brain, Layers2, Image, Mic, Moon, Sliders } from 'lucide-react'
 
 interface TokenCounterProps {
   messages?: ThreadMessage[]
@@ -45,13 +39,12 @@ interface TokenCounterProps {
   /** Usage reported directly, for a surface that keeps no thread messages. */
   source?: TokenUsageSource
   /** Generation speed of the latest reply and the conversation's average. */
-  speed?: { last?: number; average?: number }
+  speed?: UsageSpeed
   /** Compacts the conversation; offered from the context card when given. */
   onCompact?: () => void
+  /** Opens the provider settings where the model's price is set. */
+  onSetPrice?: (providerId: string) => void
 }
-
-const WARN_PCT = 85
-const OVER_PCT = 100
 
 const formatExact = (num: number) => num.toLocaleString()
 
@@ -62,10 +55,10 @@ export const TokenCounter = memo(function TokenCounter({
   source,
   speed: speedProp,
   onCompact,
+  onSetPrice,
 }: TokenCounterProps) {
   const { t } = useTranslation()
   const { calculateTokens, ...tokenData } = useTokensCount(messages, source)
-  const ringGradientId = useId()
   // Which conversation these numbers belong to, stamped on the badge and its
   // popover so nothing -- a test, a screen reader, a stale portal left over
   // from the previous session -- can mistake one session's usage for another's.
@@ -99,7 +92,8 @@ export const TokenCounter = memo(function TokenCounter({
           return {
             tokenSpeed: ts.tokenSpeed,
             durationMs: ts.durationMs,
-            tokenCount: readTokenUsage(meta?.usage)?.outputTokens ?? ts.tokenCount,
+            source: ts.source,
+            tokenCount: ts.tokenCount ?? readTokenUsage(meta?.usage)?.outputTokens,
           }
         })
       ),
@@ -152,20 +146,45 @@ export const TokenCounter = memo(function TokenCounter({
     }
   }, [tokenData.tokenCount, additionalTokens, prevTokenCount])
 
-  const totalTokens = useMemo(
-    () => tokenData.tokenCount + additionalTokens,
-    [tokenData.tokenCount, additionalTokens]
+  // A chat reopened before its messages are back (or after a restart) has
+  // counted nothing yet; what it last showed stands in, and says how old it is.
+  const last = useContextBreakdown((s) => (scope ? s.lastById[scope] : undefined))
+  const setLast = useContextBreakdown((s) => s.setLast)
+  const modelId = useModelProvider((s) => s.selectedModel?.id)
+  // What the selected model costs: the user's own price on the model (looked up
+  // in the provider, so an edit shows at once), else a known one. `undefined`
+  // with no model selected; `null` for one with no price.
+  const selectedProviderId = useModelProvider((s) => s.selectedProvider)
+  const pricedModel = useModelProvider((s) => {
+    const sel = s.selectedModel
+    if (!sel) return undefined
+    return (
+      s.providers?.find((p) => p.provider === s.selectedProvider)?.models.find((m) => m.id === sel.id) ??
+      sel
+    )
+  })
+  const pricing = useMemo(
+    () => (pricedModel ? resolvePricing(selectedProviderId, pricedModel) : undefined),
+    [selectedProviderId, pricedModel]
   )
+  const setPrice = useMemo(
+    () => (onSetPrice ? () => onSetPrice(selectedProviderId) : undefined),
+    [onSetPrice, selectedProviderId]
+  )
+  const measuredTokens = tokenData.tokenCount + additionalTokens
+  const totalTokens = measuredTokens > 0 ? measuredTokens : (last?.used ?? 0)
 
   const reconciled = useMemo(
     () => (stored ? reconcileBreakdown(stored, totalTokens) : null),
     [stored, totalTokens]
   )
 
-  const pct = useMemo(() => {
-    if (!tokenData.maxTokens) return undefined
-    return (totalTokens / tokenData.maxTokens) * 100
-  }, [totalTokens, tokenData.maxTokens])
+  // The ring and the card both read this one figure, so they cannot differ.
+  const usage = contextUsage(
+    reconciled?.usedTokens ?? totalTokens,
+    tokenData.maxTokens,
+    policy.auto ? effectiveReserve(tokenData.maxTokens ?? 0, policy) : 0
+  )
 
   // What the popover itemises. A caller that reported no breakdown still has
   // its input/output/total, which is all the older counter showed.
@@ -185,17 +204,26 @@ export const TokenCounter = memo(function TokenCounter({
     ]
   )
 
-  const tier: 'ok' | 'warn' | 'over' = useMemo(() => {
-    if (pct === undefined) return 'ok'
-    if (pct >= OVER_PCT) return 'over'
-    if (pct >= WARN_PCT) return 'warn'
-    return 'ok'
-  }, [pct])
+  const tier = usage.tier
 
-  // Remote providers report no context-window denominator, so a percentage is
-  // meaningless. Show a plain total-tokens badge once a turn has counted tokens.
+  // Remember what is shown, so leaving the chat or restarting does not lose
+  // it. Written only when it changed; a figure restored from here is equal to
+  // what is stored and writes nothing.
+  const shownUsed = usage.used
+  const shownWindow = usage.window ?? undefined
+  useEffect(() => {
+    if (!scope || (shownUsed <= 0 && !shownWindow)) return
+    if (last && last.used === shownUsed && last.window === shownWindow && last.model === modelId) return
+    setLast(scope, { used: shownUsed, window: shownWindow, model: modelId, at: Date.now() })
+  }, [scope, shownUsed, shownWindow, modelId, last, setLast])
+
+  // The age the figures are labelled with: the request they describe, else when
+  // they were last shown.
+  const updatedAt = stored?.at ?? last?.at
+
+  // No window is known for this model: the dashed ring, and the popover says
+  // what there is (nothing yet, or the usage without a fraction).
   if (!tokenData.maxTokens) {
-    if (totalTokens <= 0) return null
     return (
       <TokenCountOnly
         totalTokens={totalTokens}
@@ -204,12 +232,15 @@ export const TokenCounter = memo(function TokenCounter({
         scope={scope}
         modelDisplayName={tokenData.modelDisplayName}
         speed={speed}
+        pricing={pricing}
+        onSetPrice={setPrice}
+        ringUsage={usage}
         card={
           reconciled ? (
             <ContextWindowCard
               segments={reconciled.segments}
               usedTokens={reconciled.usedTokens}
-              updatedAt={stored?.at}
+              updatedAt={updatedAt}
               onCompact={onCompact}
             />
           ) : null
@@ -259,7 +290,7 @@ export const TokenCounter = memo(function TokenCounter({
         <TooltipTrigger asChild>
           <button
             type="button"
-            aria-label="Token usage"
+            aria-label={t('common:a11y.tokenUsage')}
             data-testid="token-counter"
             data-usage-scope={scope}
             className={cn('relative cursor-pointer', className)}
@@ -274,40 +305,9 @@ export const TokenCounter = memo(function TokenCounter({
                 isAnimating && 'scale-110'
               )}
             >
-              <svg
-                aria-hidden
-                className="size-[18px] shrink-0 -rotate-90"
-                viewBox="0 0 20 20"
-              >
-                <defs>
-                  <linearGradient id={ringGradientId} x1="0" y1="0" x2="20" y2="20" gradientUnits="userSpaceOnUse">
-                    <stop style={{ stopColor: ringColors[0] }} />
-                    <stop offset="1" style={{ stopColor: ringColors[1] }} />
-                  </linearGradient>
-                </defs>
-                <circle
-                  cx="10"
-                  cy="10"
-                  r="8"
-                  strokeWidth="2.4"
-                  fill="none"
-                  className="stroke-track"
-                />
-                <circle
-                  cx="10"
-                  cy="10"
-                  r="8"
-                  strokeWidth="2.4"
-                  fill="none"
-                  strokeLinecap="round"
-                  stroke={`url(#${ringGradientId})`}
-                  strokeDasharray={`${2 * Math.PI * 8}`}
-                  strokeDashoffset={`${2 * Math.PI * 8 * (1 - Math.min(pct ?? 0, 100) / 100)}`}
-                  className="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-700 motion-safe:ease-expo"
-                />
-              </svg>
+              <ContextRing usage={usage} colors={ringColors} />
               <span className="sr-only" data-testid="context-percent">
-                {`Context ${pct?.toFixed(0) ?? '0'}% full`}
+                {t('common:usage.counter.contextFull', { pct: usage.pct.toFixed(0) })}
               </span>
               {tier !== 'ok' && (
                 // AH-077: said in words, not only by colour, and announced.
@@ -317,7 +317,7 @@ export const TokenCounter = memo(function TokenCounter({
                   data-tier={tier}
                   className="sr-only"
                 >
-                  {tier === 'over' ? 'Full' : 'Nearly full'}
+                  {tier === 'over' ? t('common:usage.counter.full') : t('common:usage.counter.nearlyFull')}
                 </span>
               )}
             </div>
@@ -328,7 +328,7 @@ export const TokenCounter = memo(function TokenCounter({
           align="center"
           sideOffset={6}
           showArrow={false}
-          className="min-w-72 max-w-80 bg-background border p-0 overflow-hidden"
+          className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
           data-testid="token-usage-popover"
         >
           {reconciled ? (
@@ -336,18 +336,18 @@ export const TokenCounter = memo(function TokenCounter({
               {tier !== 'ok' && (
                 <p
                   data-testid="context-pressure-detail"
-                  className={cn('px-3 pt-2.5 text-[11px] leading-snug', textCls)}
+                  className={cn('px-4 pt-3 text-[11px] leading-snug', textCls)}
                 >
                   {tier === 'over'
-                    ? 'This conversation is larger than the context window: the next request may be cut or refused. Start a new chat or remove attachments.'
-                    : `${formatExact(remaining)} tokens left. Start a new chat or remove attachments before the window fills.`}
+                    ? t('common:usage.counter.over')
+                    : t('common:usage.counter.tokensLeft', { count: formatExact(remaining) })}
                 </p>
               )}
               <ContextWindowCard
                 segments={reconciled.segments}
                 usedTokens={reconciled.usedTokens}
                 windowTokens={tokenData.maxTokens}
-                updatedAt={stored?.at}
+                updatedAt={updatedAt}
                 autoCompactOn={policy.auto}
                 autoCompactBuffer={effectiveReserve(tokenData.maxTokens, policy)}
                 onCompact={onCompact}
@@ -356,11 +356,11 @@ export const TokenCounter = memo(function TokenCounter({
           ) : (
             <>
           {/* Header */}
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
             <Brain className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-foreground">
-                Context window
+                {t('common:usage.counter.contextWindow')}
               </div>
               {modelDisplayName && (
                 <div className="text-[11px] text-muted-foreground truncate">
@@ -371,28 +371,31 @@ export const TokenCounter = memo(function TokenCounter({
             {modelProps?.isSleeping && (
               <Moon
                 className="size-3.5 text-muted-foreground"
-                aria-label="Model sleeping"
+                aria-label={t('common:a11y.modelSleeping')}
               />
             )}
           </div>
 
           {/* Progress block */}
-          <div className="px-3 py-2.5">
+          <div className="px-4 py-3">
             {tier !== 'ok' && (
               <p
                 data-testid="context-pressure-detail"
                 className={cn('mb-2 text-[11px] leading-snug', textCls)}
               >
                 {tier === 'over'
-                  ? 'This conversation is larger than the context window: the next request may be cut or refused. Start a new chat or remove attachments.'
-                  : `${formatExact(remaining)} tokens left. Start a new chat or remove attachments before the window fills.`}
+                  ? t('common:usage.counter.over')
+                  : t('common:usage.counter.tokensLeft', { count: formatExact(remaining) })}
                 {/* AH-077: an estimate that reads like a measurement is worse
                     than no number, so the figures say where they came from. */}
                 <span className="block" data-testid="context-pressure-source">
-                  {formatExact(totalTokens)} of {formatExact(tokenData.maxTokens)} tokens,{' '}
-                  {breakdown.reported
-                    ? 'counted by the provider'
-                    : "Flint's estimate"}
+                  {t('common:usage.counter.source', {
+                    used: formatExact(totalTokens),
+                    max: formatExact(tokenData.maxTokens),
+                    origin: breakdown.reported
+                      ? t('common:usage.counter.byProvider')
+                      : t('common:usage.counter.estimate'),
+                  })}
                 </span>
               </p>
             )}
@@ -403,20 +406,24 @@ export const TokenCounter = memo(function TokenCounter({
                   textCls
                 )}
               >
-                {pct?.toFixed(1) ?? '0.0'}%
+                {usage.pct.toFixed(1)}%
               </span>
-              <span className="text-xs text-muted-foreground tabular-nums font-mono">
+              <span
+                className="text-xs text-muted-foreground tabular-nums font-mono"
+                data-testid="context-used-of"
+                title={t('common:usage.counter.leftTitle', { count: formatExact(remaining) })}
+              >
                 {formatTokenCount(totalTokens)} /{' '}
                 {formatTokenCount(tokenData.maxTokens)}
               </span>
             </div>
-            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-track rounded-full overflow-hidden">
               <div
                 className={cn(
                   'h-full rounded-full transition-all duration-500 ease-out',
                   barCls
                 )}
-                style={{ width: `${Math.min(pct ?? 0, 100)}%` }}
+                style={{ width: `${usage.pct}%` }}
               />
             </div>
             {tokenData.isOverflow && (
@@ -429,55 +436,50 @@ export const TokenCounter = memo(function TokenCounter({
             </>
           )}
 
-          <SpeedSection speed={speed} />
-
-          {/* Token breakdown */}
-          <div className="px-3 py-2 border-t border-border space-y-1.5">
-            <TokenUsageBreakdown usage={breakdown} scope={scope} />
-            <Row
-              icon={<Ruler className="size-3.5" />}
-              label="Remaining"
-              value={formatExact(remaining)}
-            />
-          </div>
-
-          <SessionUsageSection usage={sessionUsage} scope={scope} />
+          <TokenUsageSummary
+            usage={breakdown}
+            session={sessionUsage}
+            speed={speed}
+            scope={scope}
+            pricing={pricing}
+            onSetPrice={setPrice}
+          />
 
           {/* Footer: fit + slots + modalities */}
           {showFooter && (
-            <div className="px-3 py-2 border-t border-border flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            <div className="px-4 py-3 border-t border-border flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
               {showFittedBadge && (
                 <span
                   className="flex items-center gap-1"
-                  title={`Configured ctx_len: ${formatExact(tokenData.configuredCtxLen!)}`}
+                  title={t('common:usage.counter.configured', { value: formatExact(tokenData.configuredCtxLen!) })}
                 >
                   <Sliders className="size-3" />
-                  Fitted to {formatTokenCount(tokenData.maxTokens)}
+                  {t('common:usage.counter.fitted', { value: formatTokenCount(tokenData.maxTokens) })}
                 </span>
               )}
               {modelProps?.totalSlots !== undefined &&
                 modelProps.totalSlots > 1 && (
                   <span className="flex items-center gap-1">
                     <Layers2 className="size-3" />
-                    {modelProps.totalSlots} slots
+                    {t('common:usage.counter.slots', { count: modelProps.totalSlots })}
                   </span>
                 )}
               {tokenData.modalities?.vision && (
                 <span
                   className="flex items-center gap-1"
-                  title="Vision input supported"
+                  title={t('common:a11y.visionSupported')}
                 >
                   <Image className="size-3" />
-                  Vision
+                  {t('common:usage.counter.vision')}
                 </span>
               )}
               {tokenData.modalities?.audio && (
                 <span
                   className="flex items-center gap-1"
-                  title="Audio input supported"
+                  title={t('common:a11y.audioSupported')}
                 >
                   <Mic className="size-3" />
-                  Audio
+                  {t('common:usage.counter.audio')}
                 </span>
               )}
             </div>
@@ -495,7 +497,10 @@ function TokenCountOnly({
   scope,
   modelDisplayName,
   speed,
+  pricing,
+  onSetPrice,
   card,
+  ringUsage,
   className,
 }: {
   totalTokens: number
@@ -503,37 +508,30 @@ function TokenCountOnly({
   sessionUsage?: TokenUsage
   scope?: string
   modelDisplayName?: string
-  speed?: { last?: number; average?: number }
+  speed?: UsageSpeed
+  pricing?: Pricing | null
+  onSetPrice?: () => void
   card?: React.ReactNode
+  ringUsage: ContextUsage
   className?: string
 }) {
+  const { t } = useTranslation()
   return (
     <TooltipProvider delayDuration={400}>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
-            aria-label="Token usage"
+            aria-label={t('common:a11y.tokenUsage')}
             data-testid="token-counter"
             data-usage-scope={scope}
             className={cn('relative cursor-default', className)}
           >
-            {/* No window size is known for this provider, so there is no
-                fill to show: the circle is the same one the local models get,
-                empty, with the total on hover. */}
+            {/* No window size is known for this provider, so the ring has no
+                fill to show: the same ring the local models get, dashed. */}
             <div className="grid size-7 place-items-center rounded-full transition-colors hover:bg-accent">
-              <svg aria-hidden className="size-[18px] shrink-0" viewBox="0 0 20 20">
-                <circle
-                  cx="10"
-                  cy="10"
-                  r="8"
-                  strokeWidth="2.4"
-                  fill="none"
-                  className="stroke-track"
-                />
-                <circle cx="10" cy="10" r="2.2" className="fill-muted-foreground" />
-              </svg>
-              <span className="sr-only">{`Token usage ${formatTokenCount(totalTokens)}`}</span>
+              <ContextRing usage={ringUsage} />
+              <span className="sr-only">{t('common:usage.counter.tokenUsageSr', { value: formatTokenCount(totalTokens) })}</span>
             </div>
           </button>
         </TooltipTrigger>
@@ -542,14 +540,14 @@ function TokenCountOnly({
           align="center"
           sideOffset={6}
           showArrow={false}
-          className="min-w-64 max-w-80 bg-background border p-0 overflow-hidden"
+          className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
           data-testid="token-usage-popover"
         >
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
             <Brain className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-foreground">
-                Token usage
+                {t('common:usage.counter.tokenUsage')}
               </div>
               {modelDisplayName && (
                 <div className="text-[11px] text-muted-foreground truncate">
@@ -559,88 +557,68 @@ function TokenCountOnly({
             </div>
           </div>
           {card ? <div className="border-b border-border">{card}</div> : null}
-          <div className="px-3 py-2">
-            <TokenUsageBreakdown usage={usage} scope={scope} />
-          </div>
-          <SpeedSection speed={speed} />
-          <SessionUsageSection usage={sessionUsage} scope={scope} />
+          <TokenUsageSummary
+            usage={usage}
+            session={sessionUsage}
+            speed={speed}
+            scope={scope}
+            pricing={pricing}
+            onSetPrice={onSetPrice}
+          />
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   )
 }
 
-/** Generation speed, when at least one reply was long enough to time. */
-function SpeedSection({ speed }: { speed?: { last?: number; average?: number } }) {
-  if (!speed?.last && !speed?.average) return null
-  const fmt = (n: number) => `${n >= 100 ? Math.round(n) : n.toFixed(1)} tokens/sec`
-  return (
-    <div className="px-3 py-2 border-t border-border space-y-1" data-testid="speed-section">
-      <div className="text-[11px] font-medium text-foreground">Generation speed</div>
-      {speed.last ? (
-        <Row icon={<Gauge className="size-3.5" />} label="Latest reply" value={fmt(speed.last)} />
-      ) : null}
-      {speed.average ? (
-        <Row icon={<Gauge className="size-3.5" />} label="Average" value={fmt(speed.average)} />
-      ) : null}
-    </div>
-  )
-}
-
-function Row({
-  icon,
-  label,
-  value,
-  strong,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  strong?: boolean
-}) {
-  return (
-    <div className="flex items-center justify-between text-xs">
-      <span className="flex items-center gap-1.5 text-muted-foreground">
-        {icon}
-        {label}
-      </span>
-      <span
-        className={cn(
-          'font-mono tabular-nums',
-          strong ? 'text-foreground font-semibold' : 'text-foreground'
-        )}
-      >
-        {value}
-      </span>
-    </div>
-  )
-}
-
-/**
- * Every request of this conversation, added up: how many requests there were
- * and how many reused the provider's cache, apart from the token totals.
- */
-function SessionUsageSection({
+/** The composer's ring: a dashed empty one when the window is not known. */
+function ContextRing({
   usage,
-  scope,
+  colors = ['var(--success)', 'var(--success)'],
 }: {
-  usage?: TokenUsage
-  scope?: string
+  usage: ContextUsage
+  colors?: string[]
 }) {
-  if (!usage || (usage.requests ?? 0) <= 0) return null
+  const gradientId = useId()
+  const c = 2 * Math.PI * 8
   return (
-    <div
-      className="px-3 py-2 border-t border-border space-y-1"
-      data-testid="session-usage"
-      data-usage-scope={scope}
-      data-requests={usage.requests}
-      data-cache-hit-requests={usage.cacheHitRequests}
+    <svg
+      aria-hidden
+      className="size-[18px] shrink-0 -rotate-90"
+      viewBox="0 0 20 20"
+      data-testid="context-ring"
+      data-window={usage.known ? 'known' : 'unknown'}
+      data-fraction={usage.fraction.toFixed(4)}
     >
-      <div className="text-[11px] font-medium text-foreground">
-        This conversation ({usage.requests}{' '}
-        {usage.requests === 1 ? 'request' : 'requests'})
-      </div>
-      <TokenUsageBreakdown usage={usage} scope={scope} testIdPrefix="session-token-usage" />
-    </div>
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="20" y2="20" gradientUnits="userSpaceOnUse">
+          <stop style={{ stopColor: colors[0] }} />
+          <stop offset="1" style={{ stopColor: colors[1] }} />
+        </linearGradient>
+      </defs>
+      <circle
+        cx="10"
+        cy="10"
+        r="8"
+        strokeWidth="2.4"
+        fill="none"
+        className={usage.known ? 'stroke-track' : 'stroke-muted-foreground/50'}
+        strokeDasharray={usage.known ? undefined : '2.5 2.5'}
+      />
+      {usage.known && (
+        <circle
+          cx="10"
+          cy="10"
+          r="8"
+          strokeWidth="2.4"
+          fill="none"
+          strokeLinecap="round"
+          stroke={`url(#${gradientId})`}
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - usage.fraction)}
+          className="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-700 motion-safe:ease-expo"
+        />
+      )}
+    </svg>
   )
 }

@@ -39,6 +39,29 @@ test('Windows installer resolves every source path from current workspace', asyn
   }
 })
 
+test('Windows installer ships the phone app the way the MSI does', async () => {
+  // The generated template is rebuilt from the base at every build
+  // (scripts/prepare-windows-installer.mjs), so the base is what has to list it.
+  const base = await readFile(
+    new URL('../src-tauri/tauri.bundle.windows.nsis.base.template', import.meta.url),
+    'utf8'
+  )
+  const template = await readFile(templatePath, 'utf8')
+  const line = /File \/a \/r "flint_workspace\\src-tauri\\resources\\mobile\\\*"/
+  assert.match(base, line)
+  const config = JSON.parse(
+    await readFile(new URL('../src-tauri/tauri.windows.conf.json', import.meta.url), 'utf8')
+  )
+
+  // The NSIS bundler ignores `bundle.resources` for this template, so every
+  // folder the config lists has to be installed by the template itself.
+  assert.ok(config.bundle.resources.includes('resources/mobile/'))
+  assert.match(
+    template,
+    /File \/a \/r "flint_workspace\\src-tauri\\resources\\mobile\\\*"/
+  )
+})
+
 test('Windows installer recovers only Flint bundled processes and locked files', async () => {
   const template = await readFile(templatePath, 'utf8')
 

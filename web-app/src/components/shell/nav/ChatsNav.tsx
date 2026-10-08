@@ -112,7 +112,9 @@ export function ChatsNav() {
   const getFilteredThreads = useThreads((s) => s.getFilteredThreads)
   const isLoadingThreads = useThreads((s) => s.isLoadingThreads)
   const deleteAllThreads = useThreads((s) => s.deleteAllThreads)
-  const { folders, addFolder, updateFolder } = useThreadManagement()
+  const folders = useThreadManagement((s) => s.folders)
+  const addFolder = useThreadManagement((s) => s.addFolder)
+  const updateFolder = useThreadManagement((s) => s.updateFolder)
   const streaming = useChatSessions((s) => s.sessions)
   const { open: projectDialogOpen, setOpen: setProjectDialogOpen } =
     useProjectDialog()

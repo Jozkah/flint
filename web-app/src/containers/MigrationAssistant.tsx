@@ -10,6 +10,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { IconLoader } from '@tabler/icons-react'
+import { toast } from 'sonner'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useMigrationAssistant } from '@/stores/migration-assistant-store'
 import {
   migrationDetect,
@@ -45,6 +47,7 @@ const COPY_LIKE: MigrationMode[] = ['copy', 'move']
  * detect -> choose -> plan -> execute, and offers rollback/retry on failure.
  */
 export function MigrationAssistant() {
+  const { t } = useTranslation()
   const { open, openedManually, openAssistant, closeAssistant } =
     useMigrationAssistant()
 
@@ -591,7 +594,7 @@ export function MigrationAssistant() {
                 disabled={busy}
               >
                 {busy ? <IconLoader size={14} className="animate-spin" /> : null}
-                Migrate
+                {t('common:migration.migrate')}
               </Button>
             )}
             {step === 'result' &&
@@ -605,7 +608,7 @@ export function MigrationAssistant() {
                       onClick={onRollback}
                       disabled={busy}
                     >
-                      Roll back
+                      {t('common:migration.rollBack')}
                     </Button>
                   )}
                   <Button
@@ -613,7 +616,7 @@ export function MigrationAssistant() {
                     onClick={() => setStep('choose')}
                     disabled={busy}
                   >
-                    Retry
+                    {t('common:migration.retry')}
                   </Button>
                 </>
               )}
@@ -623,11 +626,20 @@ export function MigrationAssistant() {
                   size="sm"
                   onClick={() => {
                     // The new data folder is only read at startup.
-                    if (result?.restart_required) window.core?.api?.relaunch()
-                    else closeAssistant()
+                    if (result?.restart_required) {
+                      const relaunch = window.core?.api?.relaunch
+                      if (relaunch) window.core?.api?.relaunch()
+                      else {
+                        // No relaunch bridge here: say so rather than do nothing.
+                        toast.info(t('common:migration.restartManually'))
+                        closeAssistant()
+                      }
+                    } else closeAssistant()
                   }}
                 >
-                  {result?.restart_required ? 'Restart Flint' : 'Done'}
+                  {result?.restart_required
+                    ? t('common:migration.restart')
+                    : t('common:migration.done')}
                 </Button>
               )}
           </div>

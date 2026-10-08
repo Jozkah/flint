@@ -1,3 +1,19 @@
 {
-  "noLogs": "Keine Logs verfügbar"
+  "noLogs": "Keine Logs verfügbar",
+  "noMatch": "Keine Zeilen entsprechen dem Filter",
+  "title": "Protokolle",
+  "serverTitle": "Protokolle des lokalen API-Servers",
+  "copy": "Protokolle kopieren",
+  "openFolder": "Ordner öffnen",
+  "copied": "Kopiert",
+  "search": "Protokolle durchsuchen",
+  "filterLabel": "Nach Stufe filtern",
+  "levelAll": "Alle",
+  "levelError": "Fehler",
+  "levelWarn": "Warnungen",
+  "levelInfo": "Info",
+  "levelDebug": "Debug",
+  "shown": "{{shown}} von {{total}} Zeilen",
+  "description": "Alles, was Flint und seine Engine heute geschrieben haben. Neueste zuerst.",
+  "serverDescription": "Anfragen an den OpenAI-kompatiblen lokalen API-Server. Neueste zuerst."
 }

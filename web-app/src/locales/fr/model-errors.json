@@ -3,5 +3,30 @@
   "description": "Cette discussion atteint la limite de mémoire de l'IA, comme un tableau blanc qui se remplit. Nous pouvons étendre la fenêtre de mémoire (appelée taille de contexte) pour qu'elle se souvienne de plus, mais cela peut utiliser plus de mémoire de votre ordinateur. Nous pouvons également tronquer l'entrée, ce qui signifie qu'elle oubliera une partie de l'historique de la discussion pour faire de la place aux nouveaux messages.",
   "increaseContextSizeDescription": "Voulez-vous augmenter la taille du contexte ?",
   "truncateInput": "Tronquer l'entrée",
-  "increaseContextSize": "Augmenter la taille du contexte"
+  "increaseContextSize": "Augmenter la taille du contexte",
+  "lastRequestOverflowed": "La dernière requête a dépassé la fenêtre de contexte.",
+  "contextOverflowDetail": "Cette requête nécessitait {{request}} tokens, mais la fenêtre de contexte du modèle n'en contient que {{context}}.",
+  "contextOverflowGeneric": "La requête dépasse la taille de contexte disponible.",
+  "engine": {
+    "unknown": "Le moteur du modèle a signalé une erreur inattendue.",
+    "MODEL_LOAD_FAILED": "Le modèle n'a pas pu être chargé.",
+    "MODEL_ARCH_NOT_SUPPORTED": "L'architecture de ce modèle n'est pas prise en charge par le moteur actuel. Mettre à jour le moteur depuis les Paramètres peut ajouter cette prise en charge.",
+    "MODEL_LOAD_TIMED_OUT": "Le chargement du modèle a pris trop de temps et a été interrompu. Un modèle plus petit ou une taille de contexte plus petite aide généralement.",
+    "MISSING_SHARED_LIBRARY": "Une bibliothèque dont le moteur a besoin est manquante, il ne peut donc pas démarrer.",
+    "GPU_DRIVER_TOO_OLD": "Votre pilote GPU est trop ancien pour ce moteur. Mettre à jour le pilote, ou passer au moteur CPU dans les Paramètres, résoudra ce problème.",
+    "OUT_OF_MEMORY": "La mémoire est insuffisante pour exécuter ce modèle. Un modèle plus petit ou une taille de contexte plus petite aide généralement.",
+    "INVALID_ARGUMENT": "L'un des paramètres du modèle n'est pas valide.",
+    "IO_ERROR": "Un fichier n'a pas pu être lu ou écrit au démarrage du modèle.",
+    "INTERNAL_ERROR": "Une erreur s'est produite dans Flint au démarrage du modèle."
+  },
+  "engineMissingLibraries": "Manquant : {{libraries}}",
+  "engineReportedDetail": "Le moteur a signalé : {{detail}}",
+  "startModelFailed": "Échec du démarrage du modèle : {{reason}}",
+  "createModelFailed": "Échec de la création du modèle : {{reason}}",
+  "noRunningSession": "Aucune session en cours trouvée pour le modèle : {{model}}",
+  "serverPortOccupied": "Port utilisé",
+  "serverPortOccupiedDescription": "Le port {{port}} est déjà utilisé. Veuillez essayer un autre port.",
+  "serverInvalidModelPath": "Chemin du modèle invalide ou inaccessible",
+  "serverStartModelFailed": "Échec du démarrage du modèle",
+  "serverStartFailed": "Échec du démarrage du serveur"
 }

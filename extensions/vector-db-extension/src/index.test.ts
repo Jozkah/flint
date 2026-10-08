@@ -265,24 +265,18 @@ describe('ingestFile (thread)', () => {
 })
 
 describe('ingestFileForProject', () => {
-  it('creates the collection before the duplicate check and rejects duplicates', async () => {
-    mockRag.parseDocument.mockResolvedValue('body')
-    mockVecdb.chunkText.mockResolvedValue(['c1'])
-    getByName.mockReturnValue(
-      makeEngine({
-        getEmbeddingContextSize: undefined,
-        countEmbeddingTokens: undefined,
-        embed: vi.fn().mockResolvedValue({ data: [{ embedding: [1, 2], index: 0 }] }),
-      })
-    )
+  it('rejects duplicates before parsing or embedding', async () => {
     mockVecdb.listAttachments.mockResolvedValue([{ name: 'a', path: '/a' }])
+    mockRag.parseDocument.mockClear()
+    mockVecdb.createCollection.mockClear()
     await expect(
       ext.ingestFileForProject('p1', { name: 'a', path: '/a', type: 'text/plain' } as any, {
         chunkSize: 100,
         chunkOverlap: 10,
       } as any)
     ).rejects.toThrow('already been attached to this project')
-    expect(mockVecdb.createCollection).toHaveBeenCalledWith('project_p1', 2)
+    expect(mockRag.parseDocument).not.toHaveBeenCalled()
+    expect(mockVecdb.createCollection).not.toHaveBeenCalled()
   })
 
   it('uses the default 384 dimension when there are no chunks', async () => {
@@ -299,21 +293,15 @@ describe('ingestFileForProject', () => {
     expect(mockVecdb.insertChunks).not.toHaveBeenCalled()
   })
 
-  it('recreates the collection when the final embedding dimension differs from the seed', async () => {
+  it('embeds once and sizes the collection from the first result', async () => {
     mockRag.parseDocument.mockResolvedValue('body')
     mockVecdb.chunkText.mockResolvedValue(['c1'])
-    let call = 0
+    const embed = vi.fn().mockResolvedValue({ data: [{ embedding: [1, 2, 3], index: 0 }] })
     getByName.mockReturnValue(
       makeEngine({
         getEmbeddingContextSize: undefined,
         countEmbeddingTokens: undefined,
-        embed: vi.fn().mockImplementation(() => {
-          call += 1
-          // First embed (dimension probe) -> len 2; re-embed -> len 3
-          return Promise.resolve({
-            data: [{ embedding: call === 1 ? [1, 2] : [1, 2, 3], index: 0 }],
-          })
-        }),
+        embed,
       })
     )
     mockVecdb.createFile.mockResolvedValue({ id: 'f1' })
@@ -326,25 +314,18 @@ describe('ingestFileForProject', () => {
       chunkOverlap: 10,
     } as any)
 
-    expect(mockVecdb.createCollection).toHaveBeenNthCalledWith(1, 'project_p1', 2)
-    expect(mockVecdb.deleteCollection).toHaveBeenCalledWith('project_p1')
-    expect(mockVecdb.createCollection).toHaveBeenNthCalledWith(2, 'project_p1', 3)
+    expect(embed).toHaveBeenCalledTimes(1)
+    expect(mockVecdb.createCollection).toHaveBeenCalledWith('project_p1', 3)
   })
 
-  it('throws when the re-embed yields no dimension', async () => {
+  it('throws when the embedding yields no dimension', async () => {
     mockRag.parseDocument.mockResolvedValue('body')
     mockVecdb.chunkText.mockResolvedValue(['c1'])
-    let call = 0
     getByName.mockReturnValue(
       makeEngine({
         getEmbeddingContextSize: undefined,
         countEmbeddingTokens: undefined,
-        embed: vi.fn().mockImplementation(() => {
-          call += 1
-          return Promise.resolve({
-            data: [{ embedding: call === 1 ? [1, 2] : [], index: 0 }],
-          })
-        }),
+        embed: vi.fn().mockResolvedValue({ data: [{ embedding: [], index: 0 }] }),
       })
     )
     mockVecdb.listAttachments.mockResolvedValue([])

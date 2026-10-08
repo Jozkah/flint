@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { create } from 'zustand'
 import type { WorkspaceScope } from '@janhq/tauri-plugin-agent-tools-api'
+import { useToolApproval } from '@/hooks/useToolApproval'
 
 /**
  * `request_access`: the model asks for one folder or file outside its
@@ -73,8 +74,7 @@ export const prepareAccess = (args: {
   reason: string
   scope?: WorkspaceScope
   audit?: AccessAuditIds
-}) =>
-  invoke<PreparedAccess | RefusedAccess>(`${PLUGIN}access_prepare`, args)
+}) => invoke<PreparedAccess | RefusedAccess>(`${PLUGIN}access_prepare`, args)
 
 export const grantAccess = (args: {
   dataFolder: string
@@ -214,6 +214,7 @@ function result(status: string, fields: Record<string, unknown>): string {
 
 export type RunAccessRequestOptions = {
   dataFolder: string
+  bypass?: boolean
   scope?: WorkspaceScope
   taskLabel?: string
   origin?: string
@@ -242,7 +243,8 @@ export async function runAccessRequest(
   const path = typeof args.path === 'string' ? args.path : ''
   const reason =
     typeof args.reason === 'string' ? args.reason.trim().slice(0, 500) : ''
-  const rawMode = typeof args.access_mode === 'string' ? args.access_mode : 'read'
+  const rawMode =
+    typeof args.access_mode === 'string' ? args.access_mode : 'read'
   const accessMode: AccessMode = rawMode === 'write' ? 'write' : 'read'
   if (rawMode !== 'read' && rawMode !== 'write') {
     return result('refused', {
@@ -268,17 +270,26 @@ export async function runAccessRequest(
     audit: opts.audit,
   })
   if (prepared.status === 'refused') return prepared.modelResult
+  if (opts.signal?.aborted) {
+    return result('cancelled', {
+      path: prepared.display,
+      message: 'The request was withdrawn before access was granted.',
+    })
+  }
 
-  const decision = await useAccessRequests.getState().ask(
-    {
-      threadId,
-      taskLabel: opts.taskLabel,
-      origin: opts.origin,
-      reason,
-      prepared,
-    },
-    opts.signal
-  )
+  const decision =
+    (opts.bypass || useToolApproval.getState().permissionMode === 'bypass')
+      ? 'session'
+      : await useAccessRequests.getState().ask(
+          {
+            threadId,
+            taskLabel: opts.taskLabel,
+            origin: opts.origin,
+            reason,
+            prepared,
+          },
+          opts.signal
+        )
 
   if (decision === 'unavailable') {
     return result('unavailable', {
@@ -331,6 +342,12 @@ export async function runAccessRequest(
   }
 
   try {
+    if (opts.signal?.aborted) {
+      return result('cancelled', {
+        path: prepared.display,
+        message: 'The request was withdrawn before access was granted.',
+      })
+    }
     const grant = await grantAccess({
       dataFolder: opts.dataFolder,
       sessionId: threadId,

@@ -24,6 +24,7 @@ pub mod catalog;
 pub mod commands;
 pub mod custom;
 pub mod engine;
+pub mod installation;
 pub mod gallery;
 pub mod progress;
 pub mod runtime;

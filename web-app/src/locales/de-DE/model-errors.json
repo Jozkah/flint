@@ -3,5 +3,30 @@
   "description": "Dieser Chat erreicht das KI Speicher Limit. Wir können das Speicherfenster vergrößern (auch Kontextgröße genannt), so dass sich die KI an mehr erinnern kann, aber dies erfordert es mehr Speicher zu verwenden. Um Platz zu schaffen können wir auch den Input verkleinern, was bedeutet, dass die KI einen Teil seiner Chat-Historie vergisst.",
   "increaseContextSizeDescription": "Möchtest Du die Kontextgröße erhöhen?",
   "truncateInput": "Input verkleinern",
-  "increaseContextSize": "Kontextgröße erhöhen"
+  "increaseContextSize": "Kontextgröße erhöhen",
+  "lastRequestOverflowed": "Die letzte Anfrage hat das Kontextfenster überschritten.",
+  "contextOverflowDetail": "Diese Anfrage benötigte {{request}} Tokens, aber das Kontextfenster des Modells fasst nur {{context}}.",
+  "contextOverflowGeneric": "Die Anfrage überschreitet die verfügbare Kontextgröße.",
+  "engine": {
+    "unknown": "Die Modell-Engine hat einen unerwarteten Fehler gemeldet.",
+    "MODEL_LOAD_FAILED": "Das Modell konnte nicht geladen werden.",
+    "MODEL_ARCH_NOT_SUPPORTED": "Die Architektur dieses Modells wird von der aktuellen Engine nicht unterstützt. Ein Update der Engine in den Einstellungen kann Unterstützung hinzufügen.",
+    "MODEL_LOAD_TIMED_OUT": "Das Laden des Modells hat zu lange gedauert und wurde gestoppt. Ein kleineres Modell oder eine kleinere Kontextgröße hilft meist.",
+    "MISSING_SHARED_LIBRARY": "Eine Bibliothek, die die Engine benötigt, fehlt, daher kann sie nicht starten.",
+    "GPU_DRIVER_TOO_OLD": "Dein GPU-Treiber ist für diese Engine zu alt. Ein Treiber-Update oder der Wechsel zur CPU-Engine in den Einstellungen behebt das.",
+    "OUT_OF_MEMORY": "Es ist nicht genug Speicher vorhanden, um dieses Modell auszuführen. Ein kleineres Modell oder eine kleinere Kontextgröße hilft meist.",
+    "INVALID_ARGUMENT": "Eine der Einstellungen des Modells ist ungültig.",
+    "IO_ERROR": "Beim Starten des Modells konnte eine Datei nicht gelesen oder geschrieben werden.",
+    "INTERNAL_ERROR": "Beim Starten des Modells ist in Flint etwas schiefgelaufen."
+  },
+  "engineMissingLibraries": "Fehlt: {{libraries}}",
+  "engineReportedDetail": "Die Engine meldete: {{detail}}",
+  "startModelFailed": "Modell konnte nicht gestartet werden: {{reason}}",
+  "createModelFailed": "Modell konnte nicht erstellt werden: {{reason}}",
+  "noRunningSession": "Keine laufende Sitzung für das Modell gefunden: {{model}}",
+  "serverPortOccupied": "Port belegt",
+  "serverPortOccupiedDescription": "Port {{port}} wird bereits verwendet. Bitte versuche einen anderen Port.",
+  "serverInvalidModelPath": "Ungültiger oder nicht zugänglicher Modellpfad",
+  "serverStartModelFailed": "Modell konnte nicht gestartet werden",
+  "serverStartFailed": "Server konnte nicht gestartet werden"
 }

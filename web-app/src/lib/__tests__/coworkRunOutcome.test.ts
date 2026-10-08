@@ -766,6 +766,45 @@ describe('a change tool withheld by a read-only turn', () => {
   })
 })
 
+describe('failed tool diagnostics', () => {
+  it('keeps a short, redacted error alongside the failed command', () => {
+    const outcome = deriveRunOutcome(input({
+      stoppedBy: 'loop',
+      turns: [
+        user(),
+        bash('Get-Item G:\\SteamLibrary', {
+          toolState: 'failed',
+          isError: true,
+          result: 'Access is denied. token=secret123',
+        }),
+      ],
+    }))
+    expect(outcome.unresolved).toContainEqual({
+      kind: 'failed',
+      tool: 'bash',
+      target: 'Get-Item G:\\SteamLibrary',
+      detail: expect.stringContaining('Access is denied'),
+    })
+    expect(JSON.stringify(outcome.unresolved)).not.toContain('secret123')
+  })
+
+  it('drops a failure once the same call later succeeds', () => {
+    const outcome = deriveRunOutcome(input({
+      stoppedBy: 'loop',
+      turns: [
+        user(),
+        write('a.ts', { toolState: 'failed', isError: true, result: 'denied' }),
+        write('a.ts'),
+        write('b.ts', { toolState: 'failed', isError: true, result: 'denied' }),
+      ],
+    }))
+    expect(outcome.unresolved).toEqual([
+      expect.objectContaining({ kind: 'stop' }),
+      expect.objectContaining({ kind: 'failed', target: 'b.ts' }),
+    ])
+  })
+})
+
 describe('the request Continue sends', () => {
   it('names each unresolved step so the next run retries it', () => {
     const text = continueRequest([

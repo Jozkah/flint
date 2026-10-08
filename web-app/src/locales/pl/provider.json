@@ -1,5 +1,19 @@
 {
   "addProvider": "Dodaj Dostawcę",
   "addOpenAIProvider": "Dodaj Dostawcę OpenAI",
-  "enterNameForProvider": "Wprowadź nazwę dostawcy"
+  "enterNameForProvider": "Wprowadź nazwę dostawcy",
+  "nameLabel": "Nazwa",
+  "apiTypeLabel": "Format API",
+  "apiTypeOpenAI": "Zgodny z OpenAI",
+  "apiTypeAnthropic": "Zgodny z Anthropic",
+  "baseUrlLabel": "Bazowy adres URL",
+  "baseUrlPlaceholder": "https://your-endpoint/v1",
+  "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
+  "apiKeyLabel": "Klucz API",
+  "apiKeyPlaceholder": "Wklej swój klucz API",
+  "invalidBaseUrl": "Bazowy adres URL musi być prawidłowym adresem http(s)",
+  "globalSettings": "Ustawienia globalne",
+  "stripReasoning": "Usuwaj rozumowanie z kontekstu",
+  "stripReasoningDesc": "Usuwa treść myślenia/rozumowania z wcześniejszych tur przed ponownym wysłaniem historii, dla wszystkich dostawców. Poprawia ponowne użycie KV-cache dla modeli lokalnych, ale niektóre modele (np. nowsze wydania Qwen) zalecają jego zachowanie dla lepszego rozumowania wieloturowego.",
+  "providerAlreadyExists": "Dostawca o nazwie {{name}} już istnieje."
 }

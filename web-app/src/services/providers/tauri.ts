@@ -25,6 +25,7 @@ import {
   parseModelList,
 } from '@/lib/endpointDiagnostics'
 import { modelsUrlCandidates } from '@/lib/modelsUrl'
+import { recordListedWindows } from '@/lib/listedWindows'
 import { findModelEntry } from '@/lib/detectContextWindow'
 
 export class TauriProvidersService extends DefaultProvidersService {
@@ -266,6 +267,9 @@ export class TauriProvidersService extends DefaultProvidersService {
         // `models` array whose entries carry `name`/`model` but no `id`, which
         // the previous branch turned into a list of `undefined`.
         const ids = parseModelList(Array.isArray(data) ? { data } : data)
+        // The list carries each model's window (vLLM `max_model_len`); the ids
+        // alone would throw it away.
+        recordListedWindows(provider.base_url, data)
         if (ids.length === 0) {
           console.warn('Provider listed no models at /models:', data)
         }

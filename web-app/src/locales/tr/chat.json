@@ -1,8 +1,38 @@
 {
   "welcome": "Merhaba, nasılsın?",
   "description": "Bugün size nasıl yardımcı olabilirim?",
+  "startedAt": "Başlangıç: {{time}}",
+  "home": {
+    "title": "Yeni sohbet",
+    "notSaved": "Siz gönderene kadar hiçbir şey kaydedilmez",
+    "sub": "Her şeyi sorun, dosya ekleyin veya daha büyük bir görevi Cowork'e devredin.",
+    "suggestionsLabel": "Öneriler",
+    "suggestions": {
+      "explain": "Bu hata mesajını açıkla",
+      "summarise": "Eklediğim bir belgeyi özetle",
+      "draft": "Bir değişiklik listesinden sürüm notları taslağı hazırla",
+      "compare": "İki yaklaşımı karşılaştır ve birini öner"
+    }
+  },
   "temporaryChat": "Geçici Sohbet",
   "temporaryChatDescription": "Sohbet geçmişinize kaydedilmeyecek geçici bir konuşma başlatın.",
+  "temporaryChatBanner": "Geçici sohbet — kaydedilmeyecek",
+  "temporaryChatKeep": "Bu sohbeti sakla",
+  "temporaryChatLeave": {
+    "title": "Bu geçici sohbet saklansın mı?",
+    "description": "Bu sohbet hiçbir yere kaydedilmedi. Geçmişinize taşımak için saklayın veya kalıcı olarak silmek için atın.",
+    "keep": "Sakla",
+    "discard": "At",
+    "kept": "Sohbet geçmişinize kaydedildi",
+    "keepFailed": "Bu sohbet kaydedilemedi",
+    "discardFailed": "Atılamadı — üretim hâlâ sürüyor. Durdurup tekrar deneyin.",
+    "reason": {
+      "generation-not-stopped": "Üretim hâlâ sürüyor. Durdurup tekrar deneyin.",
+      "messages-not-persisted": "Sohbet tam olarak kaydedilemedi. Hiçbir şey kaybolmadı — lütfen tekrar deneyin.",
+      "thread-not-created": "Sohbet kaydedilemedi. Hiçbir şey kaybolmadı — lütfen tekrar deneyin.",
+      "error": "Bir şeyler ters gitti. Sohbetiniz hâlâ burada — lütfen tekrar deneyin."
+    }
+  },
   "status": {
     "empty": "Sohbet Bulunamadı"
   },
@@ -14,15 +44,21 @@
     "description": "Eklenen dosyalar aranıp alıntılanabilecek şekilde dizinleniyor. Büyük belgelerde bu işlem biraz zaman alabilir."
   },
   "actions": {
+    "copy": "Kopyala",
     "regenerate": "Yanıtı yeniden üret",
     "continue": "Üretmeye devam et",
-    "fork": "Sohbeti buradan dallandır"
+    "delete": "Sil",
+    "fork": "Sohbeti buradan dallandır",
+    "copied": "Kopyalandı"
   },
   "done": "Bitti",
   "webSources": "{{count}} kaynak",
+  "webSourcesRead": "{{count}} okundu",
+  "webSourcesReadFound": "{{read}} okundu · {{found}} bulundu",
   "reasoning": {
     "label": "Muhakeme...",
     "thinking": "Düşünüyor",
+    "usingTool": "{{tool}}...",
     "showFullTimeline": "Tüm zaman çizelgesini göster",
     "showCurrentStep": "Yalnızca geçerli adımı göster",
     "thoughtForAWhile": "Birkaç saniye düşündü",
@@ -65,11 +101,86 @@
   "transcriptView": {
     "steps_one": "{{count}} adım",
     "steps_other": "{{count}} adım",
-    "working": "Çalışıyor"
+    "working": "Çalışıyor",
+    "failed": "Başarısız:",
+    "failedToRun": "Çalıştırılamadı",
+    "summary": {
+      "failed": "{{count}} başarısız",
+      "commands_one": "{{count}} komut çalıştırıldı",
+      "commands_other": "{{count}} komut çalıştırıldı",
+      "created_one": "{{count}} dosya oluşturuldu",
+      "created_other": "{{count}} dosya oluşturuldu",
+      "edited_one": "{{count}} dosya düzenlendi",
+      "edited_other": "{{count}} dosya düzenlendi",
+      "read_one": "{{count}} dosya okundu",
+      "read_other": "{{count}} dosya okundu",
+      "searched_one": "{{count}} kez arama yapıldı",
+      "searched_other": "{{count}} kez arama yapıldı",
+      "tools_one": "{{count}} araç kullanıldı",
+      "tools_other": "{{count}} araç kullanıldı"
+    }
+  },
+  "widget": {
+    "label": "Widget",
+    "drawing": "Widget çiziliyor",
+    "source": "Kaynağı görüntüle",
+    "copy": "HTML'yi kopyala",
+    "copied": "HTML kopyalandı.",
+    "copyFailed": "HTML kopyalanamadı.",
+    "save": ".html dosyası olarak kaydet",
+    "expand": "Tam boyutta aç",
+    "rerun": "Yeniden çalıştır",
+    "stalled": "Widget yanıt vermeyi bıraktı.",
+    "parked": "Widget ekran dışındayken duraklatıldı.",
+    "error": "Widget hatası:",
+    "viewSource": "Kaynağı görüntüle",
+    "askFix": "Flint'ten düzeltmesini iste",
+    "fixPrompt": "\"{{title}}\" widget'ı bir hata gösteriyor: {{error}}\nLütfen düzeltin ve widget'ı yeniden gösterin.",
+    "refused": "Widget gösterilmedi: {{reason}}",
+    "refusedUnknown": "çağrı başarısız oldu",
+    "tooLarge": "Bu widget {{max}} karakterden büyük ve çizilmiyor.",
+    "openLink": "{{url}} tarayıcınızda açılsın mı?",
+    "cancel": "İptal",
+    "busy": "Mevcut yanıtın bitmesini bekleyin, ardından tekrar deneyin.",
+    "noHost": "Bu görünüm mesaj gönderemez."
+  },
+  "browserCard": {
+    "opened": "Tarayıcıda açıldı",
+    "ready": "Açılmaya hazır",
+    "open": "Aç",
+    "more": "Daha fazla",
+    "copy": "Bağlantıyı kopyala",
+    "copied": "Bağlantı kopyalandı.",
+    "failed": "Tarayıcı açılamadı."
+  },
+  "regenerateTitle": {
+    "menu": "Başlığı yeniden oluştur",
+    "working": "Sohbete ad veriliyor...",
+    "done": "Sohbet yeniden adlandırıldı.",
+    "empty": "Bu sohbete ad vermek için henüz bir şey yok.",
+    "busy": "Yeniden adlandırmadan önce odayı duraklatın veya durdurun.",
+    "failed": "Başlık oluşturulamadı."
+  },
+  "convertToCowork": {
+    "menu": "Cowork'e dönüştür",
+    "title": "Cowork'e dönüştürülsün mü?",
+    "description": "Konuşma yeni bir Cowork oturumu olur. Bu sohbete ne yapılsın?",
+    "keep": "Sohbeti koru",
+    "delete": "Sohbeti sil",
+    "done": "Cowork oturumuna dönüştürüldü.",
+    "failed": "Dönüştürülecek bir şey yok: bu sohbette mesaj yok."
   },
   "fork": {
     "chat": "Sohbeti dallandır",
     "done": "Yeni bir sohbete dallandırıldı.",
     "failed": "Bu sohbet dallandırılamadı."
+  },
+  "version": {
+    "group": "Mesaj sürümleri",
+    "previous": "Önceki sürüm",
+    "next": "Sonraki sürüm",
+    "previousAt": "Önceki sürüm ({{count}} içinden {{index}}. gösteriliyor)",
+    "nextAt": "Sonraki sürüm ({{count}} içinden {{index}}. gösteriliyor)",
+    "position": "Sürüm {{index}} / {{count}}"
   }
 }

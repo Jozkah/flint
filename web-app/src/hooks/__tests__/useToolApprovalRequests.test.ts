@@ -27,13 +27,157 @@ describe('useToolApprovalRequests', () => {
       approvedMcpTools: {},
       approvedServers: [],
       approvedToolsGlobal: [],
+      approvedSimilarCalls: [],
       invalidatedServers: [],
       allowAllMCPPermissions: false,
+      permissionMode: 'ask',
     })
   })
 
   // What `mcp_server_fingerprints` reports for the server in these tests.
   const GH = { serverFingerprint: 'sha256:gh' }
+
+  it('auto-approves safe built-in and MCP calls in auto mode', async () => {
+    useToolApproval.setState({ permissionMode: 'auto-approve' })
+    await expect(
+      useToolApprovalRequests
+        .getState()
+        .requestApproval('safe-1', 'read', 'thread-1')
+    ).resolves.toBe(true)
+    await expect(
+      useToolApprovalRequests
+        .getState()
+        .requestApproval('safe-2', 'search', 'thread-1', 'search-server', GH)
+    ).resolves.toBe(true)
+    expect(useToolApprovalRequests.getState().pending).toEqual({})
+  })
+
+  it('asks before dangerous calls in auto mode', () => {
+    useToolApproval.setState({
+      permissionMode: 'auto-approve',
+      allowAllMCPPermissions: true,
+      approvedToolsGlobal: ['bash'],
+    })
+    void useToolApprovalRequests
+      .getState()
+      .requestApproval('danger-1', 'bash', 'thread-1', undefined, {
+        input: { command: 'rm -rf /' },
+        workspaceRoots: ['/home/user/project'],
+      })
+    void useToolApprovalRequests
+      .getState()
+      .requestApproval('danger-2', 'host_powershell', 'thread-1', undefined, {
+        input: { script: 'Stop-Process -Id 42' },
+        alwaysAsk: true,
+      })
+    void useToolApprovalRequests
+      .getState()
+      .requestApproval('danger-3', 'files', 'thread-1', 'connected-files', {
+        ...GH,
+        input: { action: 'delete' },
+      })
+    expect(useToolApprovalRequests.getState().pending['danger-1']).toBeDefined()
+    expect(useToolApprovalRequests.getState().pending['danger-2']).toBeDefined()
+    expect(useToolApprovalRequests.getState().pending['danger-3']).toBeDefined()
+  })
+
+  it('bypass mode answers always-ask calls without a prompt', async () => {
+    useToolApproval.setState({ permissionMode: 'bypass' })
+    await expect(
+      useToolApprovalRequests
+        .getState()
+        .requestApproval('bypass-1', 'host_powershell', 'thread-1', undefined, {
+          input: { script: 'Stop-Process -Id 42' },
+          alwaysAsk: true,
+        })
+    ).resolves.toBe(true)
+    expect(useToolApprovalRequests.getState().pending).toEqual({})
+  })
+
+  it('remembers a narrow process-stop rule across different IDs', async () => {
+    const first = useToolApprovalRequests.getState().requestApproval(
+      'stop-42', 'host_powershell', 'thread-process', undefined,
+      { input: { script: 'Stop-Process -Id 42' }, alwaysAsk: true }
+    )
+    expect(useToolApprovalRequests.getState().pending['stop-42']).toBeDefined()
+    useToolApprovalRequests.getState().resolveApproval('stop-42', 'allow-always')
+    await expect(first).resolves.toBe(true)
+    expect(useToolApproval.getState().approvedSimilarCalls).toHaveLength(1)
+
+    await expect(useToolApprovalRequests.getState().requestApproval(
+      'stop-99', 'host_powershell', 'thread-process', undefined,
+      { input: { script: 'Stop-Process -Id 99' }, alwaysAsk: true }
+    )).resolves.toBe(true)
+    expect(useToolApprovalRequests.getState().pending['stop-99']).toBeUndefined()
+
+    void useToolApprovalRequests.getState().requestApproval(
+      'other-script', 'host_powershell', 'thread-process', undefined,
+      { input: { script: 'Stop-Process -Id 99; Remove-Item C:\\data' }, alwaysAsk: true }
+    )
+    expect(useToolApprovalRequests.getState().pending['other-script']).toBeDefined()
+
+    useToolApproval.getState().revokeSimilarCall('host_powershell:stop-process-id')
+    void useToolApprovalRequests.getState().requestApproval(
+      'stop-after-revoke', 'host_powershell', 'thread-process', undefined,
+      { input: { script: 'Stop-Process -Id 100' }, alwaysAsk: true }
+    )
+    expect(useToolApprovalRequests.getState().pending['stop-after-revoke']).toBeDefined()
+  })
+
+  it('applies a process-kill grant only to host_action kill_process', async () => {
+    const first = useToolApprovalRequests.getState().requestApproval(
+      'kill-42', 'host_action', 'thread-host-action', undefined,
+      { input: { action: 'kill_process', pid: 42 }, alwaysAsk: true }
+    )
+    useToolApprovalRequests.getState().resolveApproval('kill-42', 'allow-always')
+    await first
+    await expect(useToolApprovalRequests.getState().requestApproval(
+      'kill-99', 'host_action', 'thread-host-action', undefined,
+      { input: { action: 'kill_process', pid: 99 }, alwaysAsk: true }
+    )).resolves.toBe(true)
+    void useToolApprovalRequests.getState().requestApproval(
+      'stop-service', 'host_action', 'thread-host-action', undefined,
+      { input: { action: 'stop_service', name: 'Example' }, alwaysAsk: true }
+    )
+    expect(useToolApprovalRequests.getState().pending['stop-service']).toBeDefined()
+  })
+
+  it('scopes clipboard reads to the chosen conversation and keeps writes gated', async () => {
+    const first = useToolApprovalRequests.getState().requestApproval(
+      'clip-read-1', 'clipboard', 'thread-clipboard', undefined,
+      { input: { action: 'read' }, alwaysAsk: true }
+    )
+    useToolApprovalRequests.getState().resolveApproval('clip-read-1', 'allow-thread')
+    await first
+    await expect(useToolApprovalRequests.getState().requestApproval(
+      'clip-read-2', 'clipboard', 'thread-clipboard', undefined,
+      { input: { action: 'read' }, alwaysAsk: true }
+    )).resolves.toBe(true)
+    void useToolApprovalRequests.getState().requestApproval(
+      'clip-other-thread', 'clipboard', 'another-thread', undefined,
+      { input: { action: 'read' }, alwaysAsk: true }
+    )
+    void useToolApprovalRequests.getState().requestApproval(
+      'clip-write', 'clipboard', 'thread-clipboard', undefined,
+      { input: { action: 'write', text: 'hello' }, alwaysAsk: true }
+    )
+    expect(useToolApprovalRequests.getState().pending['clip-other-thread']).toBeDefined()
+    expect(useToolApprovalRequests.getState().pending['clip-write']).toBeDefined()
+  })
+
+  it('honors an explicit global clipboard-read grant across conversations', async () => {
+    const first = useToolApprovalRequests.getState().requestApproval(
+      'clip-global-1', 'clipboard', 'thread-a', undefined,
+      { input: { action: 'read' }, alwaysAsk: true }
+    )
+    useToolApprovalRequests.getState().resolveApproval('clip-global-1', 'allow-always')
+    await first
+    await expect(useToolApprovalRequests.getState().requestApproval(
+      'clip-global-2', 'clipboard', 'thread-b', undefined,
+      { input: { action: 'read' }, alwaysAsk: true }
+    )).resolves.toBe(true)
+    expect(useToolApproval.getState().approvedSimilarCalls[0].key).toBe('clipboard:read')
+  })
 
   it('stores a pending approval keyed by toolCallId', () => {
     const { result } = renderHook(() => useToolApprovalRequests())
@@ -55,7 +199,13 @@ describe('useToolApprovalRequests', () => {
 
     let p: Promise<boolean>
     act(() => {
-      p = result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github', GH)
+      p = result.current.requestApproval(
+        'tc1',
+        'tool-a',
+        'thread-1',
+        'github',
+        GH
+      )
     })
 
     await expect(p!).resolves.toBe(true)
@@ -175,7 +325,10 @@ describe('useToolApprovalRequests', () => {
     let inside: Promise<boolean>
     act(() => {
       // Inside the second root: runs on the grant.
-      inside = ask('tc-in', 'rm -rf "/data/ws one/build"', ['/p', '/data/ws one'])
+      inside = ask('tc-in', 'rm -rf "/data/ws one/build"', [
+        '/p',
+        '/data/ws one',
+      ])
       // A sibling sharing the root's prefix, and unknown scope (a display
       // label is not a path): both still ask.
       void ask('tc-sib', 'rm -rf "/data/ws one-other"', ['/data/ws one'])
@@ -237,7 +390,11 @@ describe('useToolApprovalRequests', () => {
     let uncounted: Promise<boolean>
     act(() => {
       for (let i = 0; i < 5; i++) {
-        uncounted = result.current.requestApproval(`u${i}`, 'tool-a', 'thread-1')
+        uncounted = result.current.requestApproval(
+          `u${i}`,
+          'tool-a',
+          'thread-1'
+        )
       }
     })
     await expect(uncounted!).resolves.toBe(true)
@@ -257,7 +414,9 @@ describe('useToolApprovalRequests', () => {
     })
 
     await expect(p!).resolves.toBe(true)
-    expect(useToolApproval.getState().isToolApproved('thread-1', 'tool-a')).toBe(false)
+    expect(
+      useToolApproval.getState().isToolApproved('thread-1', 'tool-a')
+    ).toBe(false)
     expect(result.current.pending['tc1']).toBeUndefined()
   })
 
@@ -284,7 +443,13 @@ describe('useToolApprovalRequests', () => {
 
     let p: Promise<boolean>
     act(() => {
-      p = result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github', GH)
+      p = result.current.requestApproval(
+        'tc1',
+        'tool-a',
+        'thread-1',
+        'github',
+        GH
+      )
     })
     act(() => {
       result.current.resolveApproval('tc1', 'allow-always')
@@ -300,7 +465,12 @@ describe('useToolApprovalRequests', () => {
     ).toBe(false)
     // Bound to the definition shown, not the name.
     expect(
-      approval.isToolApproved('thread-2', 'other-tool', 'github', 'sha256:changed')
+      approval.isToolApproved(
+        'thread-2',
+        'other-tool',
+        'github',
+        'sha256:changed'
+      )
     ).toBe(false)
   })
 
@@ -317,7 +487,13 @@ describe('useToolApprovalRequests', () => {
       const { result } = renderHook(() => useToolApprovalRequests())
       let p: Promise<boolean>
       act(() => {
-        p = result.current.requestApproval('tc9', 'tool-a', 'thread-1', 'github', GH)
+        p = result.current.requestApproval(
+          'tc9',
+          'tool-a',
+          'thread-1',
+          'github',
+          GH
+        )
       })
       act(() => {
         result.current.resolveApproval('tc9', 'allow-always')
@@ -354,7 +530,13 @@ describe('useToolApprovalRequests', () => {
 
     let p: Promise<boolean>
     act(() => {
-      p = result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github', GH)
+      p = result.current.requestApproval(
+        'tc1',
+        'tool-a',
+        'thread-1',
+        'github',
+        GH
+      )
     })
 
     await expect(p!).resolves.toBe(true)
@@ -365,7 +547,13 @@ describe('useToolApprovalRequests', () => {
     const { result } = renderHook(() => useToolApprovalRequests())
 
     act(() => {
-      void result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github', GH)
+      void result.current.requestApproval(
+        'tc1',
+        'tool-a',
+        'thread-1',
+        'github',
+        GH
+      )
     })
 
     expect(result.current.pending['tc1']).toMatchObject({
@@ -379,16 +567,25 @@ describe('useToolApprovalRequests', () => {
     const hub = getServiceHub() as unknown as Record<string, unknown>
     const realMcp = hub.mcp
     hub.mcp = () =>
-      ({ serverFingerprints: vi.fn().mockResolvedValue({ github: 'sha256:gh' }) }) as never
+      ({
+        serverFingerprints: vi.fn().mockResolvedValue({ github: 'sha256:gh' }),
+      }) as never
     try {
       act(() => {
-        void result.current.requestApproval('tc1', 'tool-a', 'thread-1', 'github')
+        void result.current.requestApproval(
+          'tc1',
+          'tool-a',
+          'thread-1',
+          'github'
+        )
       })
       await vi.waitFor(() =>
-        expect(useToolApprovalRequests.getState().pending['tc1']).toMatchObject({
-          serverName: 'github',
-          serverFingerprint: 'sha256:gh',
-        })
+        expect(useToolApprovalRequests.getState().pending['tc1']).toMatchObject(
+          {
+            serverName: 'github',
+            serverFingerprint: 'sha256:gh',
+          }
+        )
       )
     } finally {
       hub.mcp = realMcp
@@ -407,7 +604,9 @@ describe('useToolApprovalRequests', () => {
     })
 
     await expect(p!).resolves.toBe(false)
-    expect(useToolApproval.getState().isToolApproved('thread-1', 'tool-a')).toBe(false)
+    expect(
+      useToolApproval.getState().isToolApproved('thread-1', 'tool-a')
+    ).toBe(false)
   })
 
   it('clearPendingForThread resolves matching promises false and removes only that thread', async () => {
@@ -426,7 +625,9 @@ describe('useToolApprovalRequests', () => {
 
     await expect(pA!).resolves.toBe(false)
     expect(result.current.pending['tcA']).toBeUndefined()
-    expect(result.current.pending['tcB']).toMatchObject({ threadId: 'thread-B' })
+    expect(result.current.pending['tcB']).toMatchObject({
+      threadId: 'thread-B',
+    })
 
     act(() => {
       result.current.resolveApproval('tcB', 'allow-once')
@@ -444,6 +645,8 @@ describe('useToolApprovalRequests', () => {
       result.current.clearPendingForThread('thread-Z')
     })
 
-    expect(result.current.pending['tcA']).toMatchObject({ threadId: 'thread-A' })
+    expect(result.current.pending['tcA']).toMatchObject({
+      threadId: 'thread-A',
+    })
   })
 })

@@ -9,23 +9,24 @@ import { I } from '../ui/icons'
 import { act, useApp } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
 import { DownloadCard } from './Models'
+import { t } from '../i18n'
 
 type Modality = NonNullable<HfSearchParams['modality']>
 const MODALITIES: { id: Modality; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'text', label: 'Text' },
-  { id: 'vision', label: 'Vision' },
-  { id: 'audio', label: 'Audio' },
-  { id: 'code', label: 'Code' },
-  { id: 'embeddings', label: 'Embeddings' },
+  { id: 'all', label: t('huggingface.modalities.all') },
+  { id: 'text', label: t('huggingface.modalities.text') },
+  { id: 'vision', label: t('huggingface.modalities.vision') },
+  { id: 'audio', label: t('huggingface.modalities.audio') },
+  { id: 'code', label: t('huggingface.modalities.code') },
+  { id: 'embeddings', label: t('huggingface.modalities.embeddings') },
 ]
 
-const gb = (n: number | null) => (n ? `${(n / 1e9).toFixed(1)} GB` : 'size unknown')
+const gb = (n: number | null) => (n ? `${(n / 1e9).toFixed(1)} GB` : t('huggingface.sizeUnknown'))
 
 function ModelCard({ m }: { m: HfModelCard }) {
   const [author, name] = m.repo.includes('/') ? m.repo.split('/', 2) : [m.author ?? '', m.repo]
   const start = (quant?: string) =>
-    void act('hf.download', { repo: m.repo, ...(quant ? { quant } : {}) }, `Downloading ${name} on the computer`).then(() => invalidate(['models.downloads']))
+    void act('hf.download', { repo: m.repo, ...(quant ? { quant } : {}) }, t('huggingface.downloading', { name })).then(() => invalidate(['models.downloads']))
   return (
     <div className="frame" style={{ padding: '10px 12px', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="hf-card">
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -38,28 +39,28 @@ function ModelCard({ m }: { m: HfModelCard }) {
         {m.installed && (
           <span className="chip ok">
             <span className="d" />
-            installed
+            {t('huggingface.installed')}
           </span>
         )}
       </div>
       <small className="muted">
-        {[m.pipelineTag, `${compact(m.downloads)} downloads`, `${compact(m.likes)} likes`].filter(Boolean).join(' · ')}
+        {[m.pipelineTag, t('huggingface.downloads', { count: compact(m.downloads) }), t('huggingface.likes', { count: compact(m.likes) })].filter(Boolean).join(' · ')}
       </small>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
         {m.variants.map((v) => (
-          <button key={v.quant} type="button" className={`bdg${v.fits ? ' ok' : v.fits === false ? ' warn' : ''}`} style={{ border: 0, cursor: 'pointer' }} onClick={() => start(v.quant)} aria-label={`Download ${v.quant}`}>
+          <button key={v.quant} type="button" className={`bdg${v.fits ? ' ok' : v.fits === false ? ' warn' : ''}`} style={{ border: 0, cursor: 'pointer' }} onClick={() => start(v.quant)} aria-label={t('huggingface.download', { quant: v.quant })}>
             {v.quant} · {gb(v.sizeBytes)}
-            {v.fits ? ' · Fits' : v.fits === false ? ' · Too big' : ''}
+            {v.fits ? ` · ${t('huggingface.fits')}` : v.fits === false ? ` · ${t('huggingface.tooBig')}` : ''}
           </button>
         ))}
-        {m.variants.length === 0 && <span className="bdg">No GGUF files</span>}
+        {m.variants.length === 0 && <span className="bdg">{t('huggingface.noGguf')}</span>}
       </div>
     </div>
   )
 }
 
 export default function HuggingFace() {
-  const computer = useApp((s) => s.computerName) ?? 'the computer'
+  const computer = useApp((s) => s.computerName) ?? t('common.theComputer')
   const [q, setQ] = useState('')
   const [query, setQuery] = useState('')
   const [modality, setModality] = useState<Modality>('all')
@@ -69,13 +70,13 @@ export default function HuggingFace() {
   const fitting = models.filter((m) => m.variants.some((v) => v.fits))
   return (
     <>
-      <TopBack crumb="Models" title="Hugging Face" />
+      <TopBack crumb={t('huggingface.crumb')} title={t('huggingface.title')} />
       <div className="scroll">
         <div className="hfhead">
-          <b>Discover models</b>
+          <b>{t('huggingface.discover')}</b>
           <span className="chip ok">
             <span className="d" />
-            Downloads stay on {computer}
+            {t('huggingface.staysOn', { computer })}
           </span>
           <form
             className="sin"
@@ -86,28 +87,28 @@ export default function HuggingFace() {
             }}
           >
             <I n="search" />
-            <input placeholder="Search Hugging Face" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search Hugging Face" enterKeyHint="search" />
+            <input placeholder={t('huggingface.search')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('huggingface.search')} enterKeyHint="search" />
           </form>
         </div>
         <Pills items={MODALITIES} value={modality} onChange={setModality} />
-        {(downloads.data?.tasks ?? []).filter((t) => !['complete', 'cancelled'].includes(t.status)).map((t) => <DownloadCard key={t.id} t={t} />)}
+        {(downloads.data?.tasks ?? []).filter((task) => !['complete', 'cancelled'].includes(task.status)).map((task) => <DownloadCard key={task.id} task={task} />)}
         {loading && !data && <Loading />}
         {error && !data && <Empty>{error.message}</Empty>}
         {data && (
           <div className="kv" style={{ fontSize: 12, marginBottom: 8 }}>
-            <span>{models.length} results</span>
-            <span>Trending</span>
+            <span>{t('huggingface.results', { count: models.length })}</span>
+            <span>{t('huggingface.trending')}</span>
           </div>
         )}
         {data?.device && fitting.length > 0 && (
           <div className="best">
-            Best for this device · {data.device.name} {Math.round(data.device.vramBytes / 1024 ** 3)} GB
+            {t('huggingface.bestFor', { name: data.device.name, gb: Math.round(data.device.vramBytes / 1024 ** 3) })}
           </div>
         )}
         {[...fitting, ...models.filter((m) => !fitting.includes(m))].map((m) => (
           <ModelCard key={m.repo} m={m} />
         ))}
-        {data && models.length === 0 && <Empty>No models match.</Empty>}
+        {data && models.length === 0 && <Empty>{t('huggingface.noMatch')}</Empty>}
       </div>
     </>
   )

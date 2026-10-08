@@ -5,6 +5,7 @@ import { DictateButton, insertInto } from '../ui/dictate'
 import { openSheet } from '../state/app'
 import type { ComposerModel } from '../state/app'
 import { attachKey, attachments, removeAttachment, type PhoneAttachment } from '../state/attachments'
+import { t } from '../i18n'
 
 const EMPTY: PhoneAttachment[] = []
 
@@ -19,8 +20,8 @@ export function AttachmentChips({ k }: { k: string }) {
           {a.preview ? <img src={a.preview} alt="" /> : <I n={a.desk ? 'monitor' : 'file'} />}
           <span className="nm">{a.name}</span>
           {a.status === 'uploading' && <small>{Math.round(a.progress * 100)}%</small>}
-          {a.status === 'error' && <small className="err">{a.error ?? 'Failed'}</small>}
-          <button type="button" aria-label={`Remove ${a.name}`} onClick={() => removeAttachment(k, a.localId)}>
+          {a.status === 'error' && <small className="err">{a.error ?? t('composer.failed')}</small>}
+          <button type="button" aria-label={t('composer.remove', { name: a.name })} onClick={() => removeAttachment(k, a.localId)}>
             <I n="x" size={12} />
           </button>
         </span>
@@ -39,10 +40,11 @@ export function Composer({
   running,
   onSend,
   top,
-  label = 'Message',
+  label = t('composer.message'),
   seed,
   stopFor,
   allowWhileRunning,
+  onSteer,
 }: {
   /** While running, typed text can still be sent (it queues on the
    * computer); Stop shows when the box is empty. */
@@ -59,6 +61,8 @@ export function Composer({
   /** A run is going: the send button becomes Stop… */
   running?: boolean
   onSend: (text: string) => Promise<boolean | void> | boolean | void
+  /** Deliver text at the active run's next step instead of queueing it. */
+  onSteer?: (text: string) => Promise<boolean | void> | boolean | void
   /** Above the text box (a room's "To" chips). */
   top?: ReactNode
   label?: string
@@ -106,14 +110,24 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [insert?.n])
 
-  const send = async () => {
+  const [sending, setSending] = useState(false)
+  const sendingRef = useRef(false)
+  const send = async (steer = false) => {
     const v = text.trim()
-    if (!v && !hasFiles) return
-    const sent = await onSend(v)
-    // Keep what was typed unless the computer took it.
-    if (sent) {
-      setText('')
-      requestAnimationFrame(grow)
+    if (sendingRef.current || (running && !allowWhileRunning)) return
+    if ((!v && !hasFiles) || (steer && (!running || !onSteer || hasFiles))) return
+    sendingRef.current = true
+    setSending(true)
+    try {
+      const sent = await (steer && onSteer ? onSteer(v) : onSend(v))
+      // Keep newer text typed while the request was in flight.
+      if (sent) {
+        setText((current) => current === text ? '' : current)
+        requestAnimationFrame(grow)
+      }
+    } finally {
+      sendingRef.current = false
+      setSending(false)
     }
   }
 
@@ -135,20 +149,20 @@ export function Composer({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
-              void send()
+              void send((e.ctrlKey || e.metaKey) && !!onSteer && !!running)
             }
           }}
         />
         <div className="crow">
           {top === undefined && (
-            <button type="button" className="ib" onClick={() => openSheet('plus', plus ?? { for: 'home' })} aria-label="Add and options">
+            <button type="button" className="ib" onClick={() => openSheet('plus', plus ?? { for: 'home' })} aria-label={t('composer.options')}>
               <I n="plus" />
             </button>
           )}
           {model !== undefined && (
             <button type="button" className="mp" onClick={() => openSheet('model', { for: modelFor })} data-testid="model-chip">
               {model ? <Avatar id={model.id} name={model.name} provider={model.provider} size={16} /> : <I n="cube" />}
-              <span>{model?.name ?? 'Choose a model'}</span>
+              <span>{model?.name ?? t('chat.chooseModel')}</span>
               <I n="chev" />
             </button>
           )}
@@ -158,7 +172,7 @@ export function Composer({
               type="button"
               className="tokr"
               onClick={() => openSheet('tokens', ctx)}
-              aria-label={`Context window: ${Math.round(ctx.pct)}% used`}
+              aria-label={t('composer.contextUsed', { pct: Math.round(ctx.pct) })}
               data-testid="context-ring"
             >
               <span className="ring" style={{ ['--p' as string]: `${Math.min(100, Math.max(0, ctx.pct))}%` }} />
@@ -174,16 +188,29 @@ export function Composer({
               }, words)
             }
           />
+          {running && allowWhileRunning && onSteer && (
+            <button
+              type="button"
+              className="btn ghost"
+              aria-label={t('composer.steerRun')}
+              title={hasFiles ? t('composer.steerFilesHint') : t('composer.steerHint')}
+              disabled={sending || !text.trim() || hasFiles}
+              onClick={() => void send(true)}
+            >
+              <I n="steer" size={16} />{t('composer.steer')}
+            </button>
+          )}
           {running && !(allowWhileRunning && (text.trim() || hasFiles)) ? (
-            <button type="button" className="send stop" onClick={() => openSheet('stop', stopFor)} aria-label="Stop…">
+            <button type="button" className="send stop" onClick={() => openSheet('stop', stopFor)} aria-label={t('composer.stop')}>
               <I n="sq" />
             </button>
           ) : (
             <button
               type="button"
               className={`send${text.trim() || hasFiles ? '' : ' off'}`}
+              disabled={sending || (!text.trim() && !hasFiles)}
               onClick={() => void send()}
-              aria-label="Send Message"
+              aria-label={running && allowWhileRunning ? t('composer.queue') : t('composer.send')}
             >
               <I n="up" />
             </button>

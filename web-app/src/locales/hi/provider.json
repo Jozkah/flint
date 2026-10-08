@@ -1,5 +1,19 @@
 {
   "addProvider": "प्रदाता जोड़ें",
   "addOpenAIProvider": "OpenAI प्रदाता जोड़ें",
-  "enterNameForProvider": "कृपया प्रदाता का नाम दर्ज करें"
+  "enterNameForProvider": "कृपया प्रदाता का नाम दर्ज करें",
+  "nameLabel": "नाम",
+  "apiTypeLabel": "API फ़ॉर्मेट",
+  "apiTypeOpenAI": "OpenAI-संगत",
+  "apiTypeAnthropic": "Anthropic-संगत",
+  "baseUrlLabel": "बेस URL",
+  "baseUrlPlaceholder": "https://your-endpoint/v1",
+  "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
+  "apiKeyLabel": "API कुंजी",
+  "apiKeyPlaceholder": "अपनी API कुंजी पेस्ट करें",
+  "invalidBaseUrl": "बेस URL एक मान्य http(s) URL होना चाहिए",
+  "globalSettings": "वैश्विक सेटिंग",
+  "stripReasoning": "कॉन्टेक्स्ट से तर्क हटाएँ",
+  "stripReasoningDesc": "इतिहास दोबारा भेजने से पहले पिछली बारियों की सोच/तर्क सामग्री हटाएँ, सभी प्रोवाइडर में। लोकल मॉडल के लिए KV-कैश का दोबारा इस्तेमाल बेहतर होता है, पर कुछ मॉडल (जैसे नए Qwen रिलीज़) बेहतर मल्टी-टर्न तर्क के लिए इसे रखने की सलाह देते हैं।",
+  "providerAlreadyExists": "{{name}} नाम का प्रोवाइडर पहले से मौजूद है।"
 }

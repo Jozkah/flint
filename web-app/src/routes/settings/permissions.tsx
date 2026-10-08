@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { OctagonAlert } from 'lucide-react'
+import { Check, ChevronDown, OctagonAlert } from 'lucide-react'
 import { DecisionScope } from '@/containers/DecisionScope'
 import { route } from '@/constants/routes'
 import { Card, CardItem } from '@/containers/Card'
@@ -12,8 +12,14 @@ import {
 } from '@/hooks/useAutoApproveLimit'
 import { FolderAccessCard } from '@/containers/FolderAccessCard'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { useToolApproval } from '@/hooks/useToolApproval'
+import { useToolApproval, type PermissionMode } from '@/hooks/useToolApproval'
 import { useThreads } from '@/hooks/useThreads'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { getServiceHub } from '@/hooks/useServiceHub'
@@ -28,6 +34,7 @@ import {
   SettingsPageHeader,
 } from '@/containers/SettingsPageHeader'
 import { StatusChip, type StatusTone } from '@/containers/StatusChip'
+import { similarToolCallLabel } from '@/lib/similarToolCall'
 
 // `as any` matches every other settings route: the typed route tree is
 // generated during the build, after this file is typechecked.
@@ -119,11 +126,15 @@ function PermissionsSettings() {
   const approvedTools = useToolApproval((s) => s.approvedTools)
   const approvedMcpTools = useToolApproval((s) => s.approvedMcpTools)
   const approvedToolsGlobal = useToolApproval((s) => s.approvedToolsGlobal)
+  const approvedSimilarCalls = useToolApproval((s) => s.approvedSimilarCalls)
+  const revokeSimilarCall = useToolApproval((s) => s.revokeSimilarCall)
   const approvedServers = useToolApproval((s) => s.approvedServers)
   const invalidatedServers = useToolApproval((s) => s.invalidatedServers)
   const allowAll = useToolApproval((s) => s.allowAllMCPPermissions)
   const revokeToolForThread = useToolApproval((s) => s.revokeToolForThread)
-  const revokeMcpToolForThread = useToolApproval((s) => s.revokeMcpToolForThread)
+  const revokeMcpToolForThread = useToolApproval(
+    (s) => s.revokeMcpToolForThread
+  )
   const revokeToolEverywhere = useToolApproval((s) => s.revokeToolEverywhere)
   const revokeServerTrust = useToolApproval((s) => s.revokeServerTrust)
   const revokeAllowAll = useToolApproval((s) => s.revokeAllowAllMCPPermissions)
@@ -143,6 +154,8 @@ function PermissionsSettings() {
   const [busyServer, setBusyServer] = useState<string | null>(null)
 
   const [history, setHistory] = useState<PermissionAuditRecord[] | null>(null)
+  const permissionMode = useToolApproval((s) => s.permissionMode)
+  const setPermissionMode = useToolApproval((s) => s.setPermissionMode)
   const [historyError, setHistoryError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -228,7 +241,8 @@ function PermissionsSettings() {
       let state: GrantState = 'current'
       if (entry) {
         if (entry.currentFingerprint === null) state = 'missing'
-        else if (entry.currentFingerprint !== entry.fingerprint) state = 'changed'
+        else if (entry.currentFingerprint !== entry.fingerprint)
+          state = 'changed'
       }
       if (state === 'current' && grant) {
         if (!fingerprints) state = entry ? state : 'unknown'
@@ -323,10 +337,64 @@ function PermissionsSettings() {
             <span>{t('permissions:settings.revokeEffect')}</span>
           </>
         }
-        layout={[0, 1, 0, 1, 0, 1, 0]}
+        layout={[0, 1, 0, 1, 0, 1, 0, 0, 1]}
       >
         {/* 0. How long an auto-approved run goes before checking in */}
         <AutoApproveLimitCard />
+
+        <Card
+          anchor="settings-permissions-mode"
+          title={t('permissions:settings.permissionMode')}
+          description={t('permissions:settings.permissionModeDesc')}
+        >
+          <span id="tool-permission-mode-label" className="text-sm font-medium">
+            {t('permissions:settings.approvalBehavior')}
+          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="mt-2 w-full justify-between text-sm"
+                aria-labelledby="tool-permission-mode-label"
+              >
+                {t(
+                  permissionMode === 'ask'
+                    ? 'permissions:settings.modeAsk'
+                    : permissionMode === 'auto-approve'
+                      ? 'permissions:settings.modeAuto'
+                      : 'permissions:settings.modeBypass'
+                )}
+                <ChevronDown aria-hidden className="size-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+              {([
+                ['ask', 'permissions:settings.modeAsk'],
+                ['auto-approve', 'permissions:settings.modeAuto'],
+                ['bypass', 'permissions:settings.modeBypass'],
+              ] as const).map(([mode, label]) => (
+                <DropdownMenuItem
+                  key={mode}
+                  role="menuitemradio"
+                  aria-checked={permissionMode === mode}
+                  onSelect={() => {
+                    if (
+                      mode === 'bypass' &&
+                      !window.confirm(t('permissions:settings.bypassConfirm'))
+                    ) return
+                    setPermissionMode(mode as PermissionMode)
+                  }}
+                >
+                  <span className="flex-1">{t(label)}</span>
+                  {permissionMode === mode && <Check aria-hidden className="size-4" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t('permissions:settings.modeDetails')}
+          </p>
+        </Card>
 
         {/* 1. Allowed in one conversation */}
         <Card
@@ -362,7 +430,7 @@ function PermissionsSettings() {
                     {tools.map((tool) => (
                       <li key={tool} className={ROW}>
                         <span className="min-w-0 break-all text-[13px] font-medium text-foreground">
-                          {t('permissions:settings.toolLabel', { tool })}
+                          {similarToolCallLabel(tool) ?? t('permissions:settings.toolLabel', { tool })}
                         </span>
                         <Button
                           variant="destructive"
@@ -418,11 +486,13 @@ function PermissionsSettings() {
           title={t('permissions:settings.toolsEverywhere')}
           description={t('permissions:settings.toolsEverywhereDesc')}
           aside={
-            <span className="tabular-nums">{approvedToolsGlobal.length}</span>
+            <span className="tabular-nums">{approvedToolsGlobal.length + approvedSimilarCalls.length}</span>
           }
         >
-          {approvedToolsGlobal.length === 0 ? (
-            <p className={EMPTY}>{t('permissions:settings.noToolsEverywhere')}</p>
+          {approvedToolsGlobal.length === 0 && approvedSimilarCalls.length === 0 ? (
+            <p className={EMPTY}>
+              {t('permissions:settings.noToolsEverywhere')}
+            </p>
           ) : (
             <ul className="flex flex-col">
               {approvedToolsGlobal.map((tool) => (
@@ -437,6 +507,21 @@ function PermissionsSettings() {
                       name: tool,
                     })}
                     onClick={() => revokeToolEverywhere(tool)}
+                  >
+                    {t('permissions:settings.revoke')}
+                  </Button>
+                </li>
+              ))}
+              {approvedSimilarCalls.map((grant) => (
+                <li key={grant.key} className={ROW}>
+                  <span className="min-w-0 text-[13px] font-medium text-foreground">
+                    {grant.label}
+                  </span>
+                  <Button
+                    variant="destructive"
+                    className={REVOKE}
+                    aria-label={t('permissions:settings.revokeLabel', { name: grant.label })}
+                    onClick={() => revokeSimilarCall(grant.key)}
                   >
                     {t('permissions:settings.revoke')}
                   </Button>
@@ -462,7 +547,9 @@ function PermissionsSettings() {
             </InlineError>
           )}
           {servers.length === 0 ? (
-            <p className={EMPTY}>{t('permissions:settings.noTrustedServers')}</p>
+            <p className={EMPTY}>
+              {t('permissions:settings.noTrustedServers')}
+            </p>
           ) : (
             <ul className="flex flex-col">
               {servers.map((server) => (
@@ -640,9 +727,7 @@ function PermissionsSettings() {
               })}
             </p>
           ) : history && history.length === 0 ? (
-            <p className={EMPTY}>
-              {t('permissions:settings.historyEmpty')}
-            </p>
+            <p className={EMPTY}>{t('permissions:settings.historyEmpty')}</p>
           ) : history === null ? (
             <p className={EMPTY} aria-busy>
               {t('permissions:settings.loading')}
@@ -680,13 +765,19 @@ function PermissionsSettings() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(historyExpanded ? history : history.slice(0, HISTORY_PREVIEW)).map((record, index) => (
+                  {(historyExpanded
+                    ? history
+                    : history.slice(0, HISTORY_PREVIEW)
+                  ).map((record, index) => (
                     <tr
                       key={`${record.at}-${record.call}-${index}`}
                       className="border-b border-dashed border-border last:border-b-0"
                     >
                       <td className="px-0.5 py-2 align-middle whitespace-nowrap">
-                        <time dateTime={record.at} className="font-mono text-xs text-foreground">
+                        <time
+                          dateTime={record.at}
+                          className="font-mono text-xs text-foreground"
+                        >
                           {formatWhen(record.at)}
                         </time>
                       </td>
@@ -725,7 +816,9 @@ function PermissionsSettings() {
                 >
                   {historyExpanded
                     ? t('permissions:settings.historyShowFewer')
-                    : t('permissions:settings.historyShowAll', { count: history.length })}
+                    : t('permissions:settings.historyShowAll', {
+                        count: history.length,
+                      })}
                 </Button>
               )}
             </div>

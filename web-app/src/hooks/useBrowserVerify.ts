@@ -24,6 +24,7 @@ type BrowserVerifyState = {
   setDraftUrl: (url: string | null) => void
   running: Record<string, Running>
   reports: Record<string, VerifyReport[]>
+  clearReports: (sessionId: string) => void
   start: (
     sessionId: string,
     url: string,
@@ -50,6 +51,12 @@ export const useBrowserVerify = create<BrowserVerifyState>()((set, get) => ({
   setDraftUrl: (draftUrl) => set({ draftUrl }),
   running: {},
   reports: {},
+  clearReports: (sessionId) =>
+    set((s) => {
+      const reports = { ...s.reports }
+      delete reports[sessionId]
+      return { reports }
+    }),
   start: async (sessionId, url, steps, deps = {}) => {
     const id = `bv-${Date.now().toString(36)}-${(counter++).toString(36)}`
     set((s) => ({ running: { ...s.running, [sessionId]: { id, url, steps: [] } } }))

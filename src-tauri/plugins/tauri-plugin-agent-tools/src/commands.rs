@@ -104,6 +104,7 @@ pub struct ToolResult {
 pub enum ApprovalSource {
     Prompted,
     Auto,
+    Bypass,
 }
 
 /// Everything `execute_tool_inner` needs to run a call again, kept by an
@@ -575,6 +576,7 @@ pub async fn memory_delete(
 /// the schemas are never re-typed in TypeScript.
 #[tauri::command]
 pub fn tool_schemas() -> Vec<serde_json::Value> {
+    crate::breadcrumb::note("tool_schemas");
     schema::builtin_tool_schemas()
 }
 
@@ -768,6 +770,7 @@ pub async fn advertised_tool_schemas(
     // `thread`, which never sees them.
     scope: Option<WorkspaceScope>,
 ) -> Result<AdvertisedTools, AgentToolsError> {
+    crate::breadcrumb::note("advertised_tool_schemas");
     let report = environment_readiness(project_root, reported).await?;
     let session_scope = matches!(scope.unwrap_or_default(), WorkspaceScope::Session);
     // A shell that runs but is not POSIX (Windows PowerShell/cmd) grants
@@ -905,6 +908,7 @@ pub async fn execute_tool(
     // or grant allowed it. Only recorded; it never widens what the gate allows.
     approval: Option<ApprovalSource>,
 ) -> Result<ToolResult, AgentToolsError> {
+    crate::breadcrumb::note(&format!("execute_tool {name}"));
     execute_tool_inner(
         data_folder,
         thread_id,
@@ -957,6 +961,7 @@ pub async fn execute_tool_streaming(
     approval: Option<ApprovalSource>,
     on_output: tauri::ipc::Channel<ToolOutputChunk>,
 ) -> Result<ToolResult, AgentToolsError> {
+    crate::breadcrumb::note(&format!("execute_tool_streaming {name}"));
     let sink = output_sink(on_output, call_id.clone());
     execute_tool_inner(
         data_folder,
@@ -1321,6 +1326,36 @@ async fn execute_tool_inner(
         // thread workspace and $HOME is unreadable, so the containment the prompt
         // was protecting is already guaranteed. The gate itself is left alone,
         // because the CLI agent *does* want to prompt here.
+        // The interactive browser acts on a page of the user's own app, which
+        // the ephemeral-workspace reasoning below does not cover: the question
+        // is the renderer's to put to the user, and this surface refuses a
+        // call it did not vouch for. `open` and `evaluate` are asked every
+        // time, so only an answer a person gave counts for them; acting needs
+        // the renderer's approval record (a prompt, or a mode that allows it).
+        // A project `ask` rule is the renderer's blind spot, so it still refuses.
+        Decision::Prompt(PromptKind::Ask)
+            if name == "browser"
+                && matches!(approval, Some(ApprovalSource::Prompted | ApprovalSource::Bypass))
+                && permissions
+                    .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
+                    .is_none() => {}
+        // `host_action` is asked about every time, and only an answer a person
+        // gave counts: the renderer shows the exact target and records the
+        // approval before calling this. A project `ask` rule is the renderer's
+        // blind spot, so it still refuses.
+        Decision::Prompt(PromptKind::Ask)
+            if crate::tools::is_always_ask(&name)
+                && matches!(approval, Some(ApprovalSource::Prompted | ApprovalSource::Bypass))
+                && permissions
+                    .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
+                    .is_none() => {}
+        Decision::Prompt(PromptKind::Write) if name == "browser" && approval.is_none() => {
+            return Err(
+                "tool 'browser' needs user approval before it acts on a page, and none was recorded for this call"
+                    .to_string()
+                    .into(),
+            );
+        }
         Decision::Prompt(PromptKind::Exec) if jail::backend().enforces() => {}
         // Same reasoning for writes, from the other direction. `root` here is
         // always `ensure_thread_workspace`, never a real project: an ephemeral
@@ -1398,6 +1433,9 @@ async fn execute_tool_inner(
         _ => read_roots.first().map(|r| workspace::project_store(r)),
     };
     let mut ctx = ToolContext::new(&root, &store, &enabled)
+        // The desktop shows a browser screenshot beside the transcript and
+        // sends the model a small one.
+        .with_compact_images()
         // The toggle, clamped by the project's `agent.toml` and the machine's
         // policy: either one can turn the shell's network off.
         .with_network(policy.network.allowed && allow_network.unwrap_or(false))
@@ -1543,6 +1581,8 @@ pub async fn fire_post_tool_batch(
     tool_names: Vec<String>,
     allow_network: Option<bool>,
     scope: Option<WorkspaceScope>,
+    // `main` (default) or `subagent`: told to the hook as `FLINT_HOOK_AGENT`.
+    agent: Option<String>,
 ) -> Result<(), AgentToolsError> {
     if tool_names.is_empty() {
         return Ok(());
@@ -1557,9 +1597,10 @@ pub async fn fire_post_tool_batch(
     let network = policy.network.allowed && allow_network.unwrap_or(false);
     // Same confinement the thread's `execute_tool` calls get: sandboxed, with
     // the Flint data folder masked.
-    let _ = crate::hooks::fire_post_tool_batch(
+    let _ = crate::hooks::fire_post_tool_batch_as(
         &root,
         tool_names,
+        agent.as_deref().unwrap_or("main"),
         network,
         false,
         true,
@@ -1792,15 +1833,34 @@ use crate::session_mailbox::{
 };
 
 /// Upsert a Cowork session in the mailbox registry. The project is recomputed
-/// from `folder`, read-only; no folder means the session cannot message.
+/// from `folder`, read-only. `accepts_messages` is the session's opt-out
+/// switch; omitted, a known session keeps its setting.
 #[tauri::command]
 pub async fn mailbox_session_register(
     data_folder: String,
     session_id: String,
     display_name: String,
     folder: Option<String>,
+    accepts_messages: Option<bool>,
 ) -> Result<SessionRecord, MailboxError> {
-    Mailbox::open(Path::new(&data_folder)).register(&session_id, &display_name, folder.as_deref())
+    Mailbox::open(Path::new(&data_folder)).register_with(
+        &session_id,
+        &display_name,
+        folder.as_deref(),
+        accepts_messages,
+    )
+}
+
+/// Send a session's final answer back as the reply to a message its run
+/// handled, unless it already replied. `None` when there was nothing to send.
+#[tauri::command]
+pub async fn mailbox_auto_reply(
+    data_folder: String,
+    from_session_id: String,
+    reply_to: String,
+    text: String,
+) -> Result<Option<SendReceipt>, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).auto_reply(&from_session_id, &reply_to, &text)
 }
 
 /// A run started (`running: true`) or ended.
@@ -1822,6 +1882,21 @@ pub async fn mailbox_session_heartbeat(
     run_id: String,
 ) -> Result<(), MailboxError> {
     Mailbox::open(Path::new(&data_folder)).heartbeat(&session_id, &run_id)
+}
+
+/// A running session stopped on, or resumed from, a tool-approval prompt.
+#[tauri::command]
+pub async fn mailbox_session_waiting(
+    data_folder: String,
+    session_id: String,
+    run_id: Option<String>,
+    waiting: bool,
+) -> Result<(), MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).set_waiting_approval(
+        &session_id,
+        run_id.as_deref(),
+        waiting,
+    )
 }
 
 /// Mark a session deleted; mail to it is refused from then on.
@@ -2008,6 +2083,10 @@ fn recorded_outcome(
             ApprovalSource::Auto => Some((
                 Outcome::Allow,
                 "allowed without asking (mode or standing grant)".to_string(),
+            )),
+            ApprovalSource::Bypass => Some((
+                Outcome::Allow,
+                "allowed without asking (bypass permissions mode)".to_string(),
             )),
         },
         _ => None,
@@ -2381,7 +2460,7 @@ mod tests {
         let root = data.join("ws");
         let write = lookup("write").unwrap();
         let args = json!({"path": "a.txt", "content": "x"});
-        for approval in [Some(ApprovalSource::Prompted), Some(ApprovalSource::Auto), None] {
+        for approval in [Some(ApprovalSource::Prompted), Some(ApprovalSource::Auto), Some(ApprovalSource::Bypass), None] {
             record_permission_decision(
                 &data,
                 "s1",
@@ -2393,13 +2472,15 @@ mod tests {
             );
         }
         let all = crate::audit::read_all(&data);
-        assert_eq!(all.len(), 3, "{all:?}");
+        assert_eq!(all.len(), 4, "{all:?}");
         assert_eq!(all[0].decision, crate::audit::Outcome::Granted);
         assert_eq!(all[0].reason, "approved in the prompt");
         assert_eq!(all[1].decision, crate::audit::Outcome::Allow);
         assert!(all[1].reason.contains("without asking"), "{}", all[1].reason);
-        assert_eq!(all[2].decision, crate::audit::Outcome::Prompt);
-        assert_eq!(all[2].reason, "prompt:Write");
+        assert_eq!(all[2].decision, crate::audit::Outcome::Allow);
+        assert!(all[2].reason.contains("bypass permissions"), "{}", all[2].reason);
+        assert_eq!(all[3].decision, crate::audit::Outcome::Prompt);
+        assert_eq!(all[3].reason, "prompt:Write");
         let _ = std::fs::remove_dir_all(&data);
     }
 

@@ -1087,13 +1087,16 @@ mod win {
         CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
         InitializeProcThreadAttributeList, UpdateProcThreadAttribute, WaitForSingleObject,
         CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
-        LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
+        LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
         PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES, STARTUPINFOEXW,
     };
 
     /// `HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)`: the profile survived a previous
     /// run, which is the normal case for a thread's second command.
     const PROFILE_EXISTS: HRESULT = -2147024713; // 0x800700B7
+
+    /// `SE_GROUP_ENABLED`: marks a capability SID as active in the lowbox token.
+    const SE_GROUP_ENABLED: u32 = 0x0000_0004;
 
     fn wide(s: &OsStr) -> Vec<u16> {
         s.encode_wide().chain(std::iter::once(0)).collect()
@@ -1957,7 +1960,11 @@ mod win {
         }
         Ok(SID_AND_ATTRIBUTES {
             Sid: buffer.as_mut_ptr() as PSID,
-            Attributes: 0,
+            // Windows documents SE_GROUP_ENABLED for every capability passed to
+            // `SECURITY_CAPABILITIES`. With 0 the SID can sit in the token
+            // disabled, and the shell gets socket AccessDenied despite network on.
+            // Only the two network capabilities are built here.
+            Attributes: SE_GROUP_ENABLED,
         })
     }
 
@@ -1978,6 +1985,35 @@ mod win {
             }
         }
         (handles[0], handles[1], handles[2])
+    }
+
+    /// The valid, distinct handles of `candidates`, in order. The kernel rejects
+    /// an `INVALID_HANDLE_VALUE`, a null, or a repeat in a handle list.
+    fn unique_valid_handles(candidates: &[HANDLE]) -> Vec<HANDLE> {
+        let mut out: Vec<HANDLE> = Vec::with_capacity(candidates.len());
+        for &h in candidates {
+            if !h.is_null() && h != INVALID_HANDLE_VALUE && !out.contains(&h) {
+                out.push(h);
+            }
+        }
+        out
+    }
+
+    #[cfg(test)]
+    mod handle_list_tests {
+        use super::*;
+
+        #[test]
+        fn handle_list_keeps_only_valid_distinct_handles() {
+            let a = 4usize as HANDLE;
+            let b = 8usize as HANDLE;
+            assert_eq!(unique_valid_handles(&[a, b, a]), vec![a, b]);
+            assert_eq!(
+                unique_valid_handles(&[INVALID_HANDLE_VALUE, std::ptr::null_mut(), b]),
+                vec![b]
+            );
+            assert!(unique_valid_handles(&[INVALID_HANDLE_VALUE; 3]).is_empty());
+        }
     }
 
     /// Put this process in a kill-on-close job, so the shell -- created inside the
@@ -2073,11 +2109,13 @@ mod win {
         "FLINT_HOOK_TOOL",
         "FLINT_HOOK_TOOL_NAMES",
         "FLINT_HOOK_TOOL_COUNT",
+        "FLINT_HOOK_AGENT",
         "FLINT_PROJECT_ROOT",
         "JAN_HOOK_EVENT",
         "JAN_HOOK_TOOL",
         "JAN_HOOK_TOOL_NAMES",
         "JAN_HOOK_TOOL_COUNT",
+        "JAN_HOOK_AGENT",
         "JAN_PROJECT_ROOT",
     ];
 
@@ -2243,15 +2281,26 @@ mod win {
             Reserved: 0,
         };
 
+        // Only the three std handles may be inherited. With `bInheritHandles`
+        // set and no handle list, the child would receive every inheritable
+        // handle this process holds (pipes to other children, log files).
+        // Distinct and valid only: a repeated or invalid entry makes the
+        // attribute update fail.
+        let (stdin, stdout, stderr) = inheritable_std_handles();
+        let mut inherited = unique_valid_handles(&[stdin, stdout, stderr]);
+        let attribute_count: u32 = if inherited.is_empty() { 1 } else { 2 };
+
         // Two calls: the first only reports the size, the second initializes the
         // buffer we just allocated for it.
         let mut size: usize = 0;
         unsafe {
-            InitializeProcThreadAttributeList(std::ptr::null_mut(), 1, 0, &mut size);
+            InitializeProcThreadAttributeList(std::ptr::null_mut(), attribute_count, 0, &mut size);
         }
         let mut attribute_buffer = vec![0u8; size];
         let attributes = attribute_buffer.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
-        if unsafe { InitializeProcThreadAttributeList(attributes, 1, 0, &mut size) } == 0 {
+        if unsafe { InitializeProcThreadAttributeList(attributes, attribute_count, 0, &mut size) }
+            == 0
+        {
             return Err(LaunchFailure::new(
                 Stage::SandboxPolicy,
                 "InitializeProcThreadAttributeList",
@@ -2285,7 +2334,31 @@ mod win {
             .with_code(code));
         }
 
-        let (stdin, stdout, stderr) = inheritable_std_handles();
+        if !inherited.is_empty() {
+            let listed = unsafe {
+                UpdateProcThreadAttribute(
+                    attributes,
+                    0,
+                    PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+                    inherited.as_mut_ptr() as *const c_void,
+                    inherited.len() * std::mem::size_of::<HANDLE>(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            };
+            if listed == 0 {
+                let message = last_error();
+                let code = last_error_code();
+                unsafe { DeleteProcThreadAttributeList(attributes) };
+                return Err(LaunchFailure::new(
+                    Stage::SandboxPolicy,
+                    "UpdateProcThreadAttribute",
+                    format!("could not restrict inherited handles: {message}"),
+                )
+                .with_code(code));
+            }
+        }
+
         let mut startup: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
         startup.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
         startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
@@ -2310,7 +2383,9 @@ mod win {
                 line.as_mut_ptr(),
                 std::ptr::null(),
                 std::ptr::null(),
-                1,
+                // Inheritance is on only to let the listed std handles through;
+                // with nothing to pass there is nothing to inherit.
+                i32::from(!inherited.is_empty()),
                 // CREATE_NO_WINDOW keeps the confined shell from flashing a
                 // console window: std handles are already redirected to pipes,
                 // so the child never needs a visible console of its own.
@@ -2458,6 +2533,8 @@ mod tests {
         }
         assert!(!win::HOOK_ENV.contains(&"JAN_DATA_FOLDER"));
         assert!(!win::HOOK_ENV.contains(&"JAN_API_KEY"));
+        // The agent tag is one of the two the hook runner sets, by exact name.
+        assert!(win::HOOK_ENV.contains(&"FLINT_HOOK_AGENT") && win::HOOK_ENV.contains(&"JAN_HOOK_AGENT"));
     }
 
     fn ws() -> PathBuf {

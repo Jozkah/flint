@@ -6,6 +6,7 @@ import { useToolAvailable } from './useToolAvailable'
 import { ExtensionManager } from '@/lib/extension'
 import { ExtensionTypeEnum, MCPExtension } from '@janhq/core'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator/mcp-orchestrator'
+import { bumpMcpGeneration } from '@/lib/mcpLiveTools'
 
 export const useTools = () => {
   const updateTools = useAppState((state) => state.updateTools)
@@ -21,6 +22,8 @@ export const useTools = () => {
         // notice via its own TTL, serving stale/reordered tools in the
         // meantime and destabilizing the KV-cache prefix Flint sends.
         mcpOrchestrator.invalidateCache()
+        // Chats and Cowork re-read the tool set at their next request.
+        bumpMcpGeneration()
 
         // Get MCP extension first
         const mcpExtension = ExtensionManager.getInstance().get<MCPExtension>(
@@ -62,14 +65,19 @@ export const useTools = () => {
     }
     setTools()
 
-    let unsubscribe = () => {}
+    let unsubscribe: (() => void) | undefined
+    let cancelled = false
     getServiceHub().events().listen(SystemEvent.MCP_UPDATE, setTools).then((unsub) => {
-      // Unsubscribe from the event when the component unmounts
-      unsubscribe = unsub
+      // listen() can resolve after unmount; drop the subscription then.
+      if (cancelled) unsub()
+      else unsubscribe = unsub
     }).catch((error) => {
       console.error('Failed to set up MCP update listener:', error)
     })
-    return unsubscribe
+    return () => {
+      cancelled = true
+      unsubscribe?.()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 }

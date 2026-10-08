@@ -1,0 +1,64 @@
+{
+  "intentHeading": "Co chcesz zrobić najpierw?",
+  "intentHint": "To decyduje tylko o tym, dokąd zaprowadzi Cię przewodnik. Wszystko inne we Flint pozostaje dostępne.",
+  "intent": {
+    "question": {
+      "title": "Zadaj pytanie",
+      "description": "Porozmawiaj z modelem o czymkolwiek."
+    },
+    "documents": {
+      "title": "Pracuj z dokumentami",
+      "description": "Załącz pliki i pytaj o nie."
+    },
+    "project": {
+      "title": "Zbuduj lub zmień projekt",
+      "description": "Pozwól Flint pracować w folderze na tym komputerze, pytając przed jakąkolwiek zmianą."
+    }
+  },
+  "skipGuide": "Pomiń przewodnik",
+  "resumeNotice": "Witaj ponownie. Możesz kontynuować od miejsca, w którym skończyłeś(-aś).",
+  "processingHeading": "Gdzie przetwarzane są Twoje rozmowy",
+  "processingLocal": "Model lokalny działa na tym komputerze. Twoje wiadomości i pliki zostają tutaj, a konto ani klucz API nie są potrzebne.",
+  "processingRemote": "Zdalny dostawca (na przykład OpenAI) uruchamia model na swoich serwerach. Twoje wiadomości i dołączone pliki są tam wysyłane, a dostawca może naliczać opłaty. Konfigurujesz to samodzielnie w Ustawieniach; Flint nigdy sam nie przełącza się na takiego dostawcę.",
+  "connectRemote": "Połącz zamiast tego zdalnego dostawcę",
+  "guideTitle": {
+    "question": "Pierwsze kroki: zadaj pytanie",
+    "documents": "Pierwsze kroki: pracuj z dokumentami",
+    "project": "Pierwsze kroki: zbuduj lub zmień projekt"
+  },
+  "guideRegion": "Przewodnik pierwszych kroków",
+  "stepDone": "Gotowe",
+  "stepTodo": "Do zrobienia",
+  "step": {
+    "choose-model": {
+      "title": "Wybierz lub połącz model",
+      "body": "Wybierz model za pomocą selektora u góry. Modele lokalne działają na tym komputerze; zdalni dostawcy wymagają własnego konta."
+    },
+    "add-material": {
+      "documents": "Załącz dokument przyciskiem spinacza w polu wiadomości.",
+      "project": "Otwórz Cowork i wybierz folder swojego projektu. Flint pyta przed edycją plików lub uruchamianiem poleceń."
+    },
+    "first-task": {
+      "title": "Wyślij pierwszą wiadomość",
+      "body": "Zadaj pytanie lub opisz zmianę, której chcesz. Ten krok kończy się, gdy rozpocznie się rozmowa."
+    },
+    "review-context": {
+      "title": "Sprawdź, czego użył Flint",
+      "body": "Gdy Flint odpowie, otwórz „Z czego korzysta Flint” w rozmowie, aby zobaczyć, jakie załączniki i instrukcje były dla niego dostępne."
+    },
+    "addMaterialTitle": {
+      "documents": "Dodaj dokument",
+      "project": "Wybierz folder projektu"
+    }
+  },
+  "confirmStep": "Zrobione",
+  "openProviders": "Ustawienia modelu",
+  "openCowork": "Otwórz Cowork",
+  "hideGuide": "Ukryj przewodnik",
+  "guideComplete": "Wszystko gotowe. Otwórz ten przewodnik ponownie w dowolnej chwili w Ustawienia > Ogólne.",
+  "finish": "Zakończ przewodnik",
+  "reopenGuide": "Przewodnik pierwszych kroków",
+  "reopenGuideDescription": "Przejdź ponownie przez wybór modelu, dodawanie materiałów i wykonanie pierwszego zadania.",
+  "reopenGuideAction": "Otwórz przewodnik",
+  "resumeRecent": "Kontynuuj ostatnią rozmowę: {{title}}"
+}

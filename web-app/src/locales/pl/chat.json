@@ -1,15 +1,71 @@
 {
   "welcome": "Cześć, jak się masz?",
   "description": "Jak mogę Ci pomóc?",
+  "startedAt": "Rozpoczęto {{time}}",
+  "home": {
+    "title": "Nowy czat",
+    "notSaved": "Nic nie jest zapisywane, dopóki nie wyślesz",
+    "sub": "Zapytaj o cokolwiek, załącz pliki lub przekaż większe zadanie Cowork.",
+    "suggestionsLabel": "Propozycje",
+    "suggestions": {
+      "explain": "Wyjaśnij ten komunikat o błędzie",
+      "summarise": "Podsumuj dokument, który załączę",
+      "draft": "Napisz notatki do wydania na podstawie listy zmian",
+      "compare": "Porównaj dwa podejścia i poleć jedno"
+    }
+  },
+  "temporaryChat": "Tymczasowy Czat",
+  "temporaryChatDescription": "Rozpocznij tymczasową rozmowę, która nie zostanie zapisana w historii czatów.",
+  "temporaryChatBanner": "Czat tymczasowy — nie zostanie zapisany",
+  "temporaryChatKeep": "Zachowaj ten czat",
+  "temporaryChatLeave": {
+    "title": "Zachować ten czat tymczasowy?",
+    "description": "Ten czat nie jest nigdzie zapisany. Zachowaj go, aby przenieść do historii, lub odrzuć, aby usunąć go na stałe.",
+    "keep": "Zachowaj",
+    "discard": "Odrzuć",
+    "kept": "Czat zapisano w historii",
+    "keepFailed": "Nie udało się zapisać tego czatu",
+    "discardFailed": "Nie udało się odrzucić — generowanie nadal trwa. Zatrzymaj je i spróbuj ponownie.",
+    "reason": {
+      "generation-not-stopped": "Generowanie nadal trwa. Zatrzymaj je i spróbuj ponownie.",
+      "messages-not-persisted": "Nie udało się w pełni zapisać czatu. Nic nie zostało utracone — spróbuj ponownie.",
+      "thread-not-created": "Nie udało się zapisać czatu. Nic nie zostało utracone — spróbuj ponownie.",
+      "error": "Coś poszło nie tak. Twój czat nadal tu jest — spróbuj ponownie."
+    }
+  },
   "status": {
     "empty": "Nie znaleziono czatów"
   },
   "sendMessage": "Wyślij Wiadomość",
   "newConversation": "Nowa Rozmowa",
   "clearHistory": "Wyczyść Historię",
-  "temporaryChat": "Tymczasowy Czat",
-  "temporaryChatDescription": "Rozpocznij tymczasową rozmowę, która nie zostanie zapisana w historii czatów.",
+  "embeddings": {
+    "title": "Przygotowywanie dokumentów",
+    "description": "Indeksowanie załączonych plików, aby można je było przeszukiwać i cytować. W przypadku dużych dokumentów może to chwilę potrwać."
+  },
+  "actions": {
+    "copy": "Kopiuj",
+    "regenerate": "Wygeneruj odpowiedź ponownie",
+    "continue": "Kontynuuj generowanie",
+    "delete": "Usuń",
+    "fork": "Rozgałęź czat od tego miejsca",
+    "copied": "Skopiowano"
+  },
   "done": "Done",
+  "webSources": "Źródła: {{count}}",
+  "webSourcesRead": "Przeczytano: {{count}}",
+  "webSourcesReadFound": "Przeczytano: {{read}} · znaleziono: {{found}}",
+  "reasoning": {
+    "label": "Rozumowanie...",
+    "thinking": "Myślenie",
+    "usingTool": "{{tool}}...",
+    "showFullTimeline": "Pokaż pełną oś czasu",
+    "showCurrentStep": "Pokaż tylko bieżący krok",
+    "thoughtForAWhile": "Myślał przez kilka sekund",
+    "thoughtFor": "Myślał przez {{duration}}",
+    "workedForAWhile": "Pracował przez kilka sekund",
+    "workedFor": "Pracował przez {{duration}}"
+  },
   "split": {
     "open": "Podziel rozmowę",
     "openShort": "Podziel",
@@ -44,17 +100,101 @@
   },
   "transcriptView": {
     "steps_one": "{{count}} krok",
+    "steps_other": "{{count}} kroku",
     "steps_few": "{{count}} kroki",
     "steps_many": "{{count}} kroków",
-    "steps_other": "{{count}} kroku",
-    "working": "Pracuję"
+    "working": "Pracuję",
+    "failed": "Niepowodzenie:",
+    "failedToRun": "Nie udało się uruchomić",
+    "summary": {
+      "failed": "Niepowodzenia: {{count}}",
+      "commands_one": "uruchomiono {{count}} polecenie",
+      "commands_other": "uruchomiono {{count}} polecenia",
+      "commands_few": "uruchomiono {{count}} polecenia",
+      "commands_many": "uruchomiono {{count}} poleceń",
+      "created_one": "utworzono {{count}} plik",
+      "created_other": "utworzono {{count}} pliku",
+      "created_few": "utworzono {{count}} pliki",
+      "created_many": "utworzono {{count}} plików",
+      "edited_one": "edytowano {{count}} plik",
+      "edited_other": "edytowano {{count}} pliku",
+      "edited_few": "edytowano {{count}} pliki",
+      "edited_many": "edytowano {{count}} plików",
+      "read_one": "przeczytano {{count}} plik",
+      "read_other": "przeczytano {{count}} pliku",
+      "read_few": "przeczytano {{count}} pliki",
+      "read_many": "przeczytano {{count}} plików",
+      "searched_one": "przeszukano {{count}} raz",
+      "searched_other": "przeszukano {{count}} razy",
+      "searched_few": "przeszukano {{count}} razy",
+      "searched_many": "przeszukano {{count}} razy",
+      "tools_one": "użyto {{count}} narzędzia",
+      "tools_other": "użyto {{count}} narzędzia",
+      "tools_few": "użyto {{count}} narzędzi",
+      "tools_many": "użyto {{count}} narzędzi"
+    }
   },
-  "actions": {
-    "fork": "Rozgałęź czat od tego miejsca"
+  "widget": {
+    "label": "Widżet",
+    "drawing": "Rysowanie widżetu",
+    "source": "Pokaż źródło",
+    "copy": "Kopiuj HTML",
+    "copied": "Skopiowano HTML.",
+    "copyFailed": "Nie udało się skopiować HTML.",
+    "save": "Zapisz jako plik .html",
+    "expand": "Otwórz w pełnym rozmiarze",
+    "rerun": "Uruchom ponownie",
+    "stalled": "Widżet przestał odpowiadać.",
+    "parked": "Widżet wstrzymany poza ekranem.",
+    "error": "Błąd widżetu:",
+    "viewSource": "Pokaż źródło",
+    "askFix": "Poproś Flint o naprawę",
+    "fixPrompt": "Widżet „{{title}}” pokazuje błąd: {{error}}\nNapraw go i pokaż widżet ponownie.",
+    "refused": "Widżet nie został wyświetlony: {{reason}}",
+    "refusedUnknown": "wywołanie nie powiodło się",
+    "tooLarge": "Ten widżet jest większy niż {{max}} znaków i nie jest rysowany.",
+    "openLink": "Otworzyć {{url}} w przeglądarce?",
+    "cancel": "Anuluj",
+    "busy": "Poczekaj na zakończenie bieżącej odpowiedzi, a następnie spróbuj ponownie.",
+    "noHost": "Ten widok nie może wysyłać wiadomości."
+  },
+  "browserCard": {
+    "opened": "Otwarto w przeglądarce",
+    "ready": "Gotowe do otwarcia",
+    "open": "Otwórz",
+    "more": "Więcej",
+    "copy": "Kopiuj link",
+    "copied": "Skopiowano link.",
+    "failed": "Nie udało się otworzyć przeglądarki."
+  },
+  "regenerateTitle": {
+    "menu": "Wygeneruj tytuł ponownie",
+    "working": "Nadawanie nazwy czatowi...",
+    "done": "Zmieniono nazwę czatu.",
+    "empty": "Nie ma jeszcze z czego nadać nazwy temu czatowi.",
+    "busy": "Wstrzymaj lub zatrzymaj pokój przed zmianą jego nazwy.",
+    "failed": "Nie udało się wygenerować tytułu."
+  },
+  "convertToCowork": {
+    "menu": "Zamień na Cowork",
+    "title": "Zamienić na Cowork?",
+    "description": "Rozmowa stanie się nową sesją Cowork. Co zrobić z tym czatem?",
+    "keep": "Zachowaj czat",
+    "delete": "Usuń czat",
+    "done": "Zamieniono na sesję Cowork.",
+    "failed": "Nie ma czego zamieniać: ten czat nie ma wiadomości."
   },
   "fork": {
     "chat": "Rozgałęź czat",
     "done": "Rozgałęziono do nowego czatu.",
     "failed": "Nie udało się rozgałęzić tego czatu."
+  },
+  "version": {
+    "group": "Wersje wiadomości",
+    "previous": "Poprzednia wersja",
+    "next": "Następna wersja",
+    "previousAt": "Poprzednia wersja (pokazano {{index}} z {{count}})",
+    "nextAt": "Następna wersja (pokazano {{index}} z {{count}})",
+    "position": "Wersja {{index}} z {{count}}"
   }
 }

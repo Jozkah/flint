@@ -1,0 +1,6 @@
+{
+  "groupGeneral": "常规",
+  "groupModelsAndTools": "模型和工具",
+  "advancedSettings": "高级",
+  "advancedSettingsHint": "本地 API 服务器、代理、硬件和智能体工具配置。将它们分组不会改变其工作方式。"
+}

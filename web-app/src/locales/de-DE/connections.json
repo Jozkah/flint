@@ -1,5 +1,23 @@
 {
   "skills": {
+    "whatIs": "Ein Skill ist ein Satz schriftlicher Anweisungen, optional mit Skripten oder Dateien dazu, die der Agent lesen und befolgen kann.",
+    "whereApplies": "Die hier aufgelisteten Skills gehören zu diesem Projektordner (.jan/agent/skills). Wenn du einen Skill ausschaltest, wird er nur in diesem Projekt für den Agenten und in /-Befehlen ausgeblendet.",
+    "toolAccess": "Das Aktivieren eines Skills gewährt keinen neuen Tool-Zugriff. Der Agent liest Skills über die integrierten Skill-Tools (auflisten, lesen, schreiben), die immer ohne Nachfrage erlaubt sind. Ein Skript, das zu einem Skill gehört, läuft nur, wenn der Agent das Befehls-Tool aufruft, das eigenen Berechtigungsregeln folgt.",
+    "stateHelp": "Installiert: Der Skill existiert in diesem Projekt. Aktiviert: Dem Agenten wird er für die Arbeit in diesem Projekt angeboten.",
+    "summary": "{{enabled}} von {{installed}} installierten Skills aktiviert",
+    "state": {
+      "enabled": "Aktiviert",
+      "disabled": "Aus",
+      "enable": "Aktivieren",
+      "disable": "Deaktivieren"
+    },
+    "view": "Ansehen",
+    "edit": "Bearbeiten",
+    "importFailed": "{{name}} konnte nicht importiert werden: {{error}}",
+    "loadHubFailed": "Der Skill-Hub konnte nicht geladen werden: {{error}}",
+    "deleteSkill": "Skill {{name}} löschen",
+    "fromPlugin": "Aus Plugin {{plugin}}",
+    "pluginReadOnly": "Dieser Skill stammt aus dem Plugin {{plugin}} und ist hier schreibgeschützt. Um ihn zu ändern, bearbeite den Quelltext des Plugins und installiere es neu, oder schalte das Plugin unter Plugins aus.",
     "alwaysOn": "Immer an",
     "alwaysActive": "Immer aktiv",
     "alwaysActiveHelp": "Diese Fähigkeit in jeder Unterhaltung befolgen, ohne dass danach gefragt wird."

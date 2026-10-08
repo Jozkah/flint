@@ -2,6 +2,7 @@
   "addProvider": "Sağlayıcı Ekle",
   "addOpenAIProvider": "Özel Sağlayıcı Ekle",
   "enterNameForProvider": "Sağlayıcı adı (örn. my-llm-server)",
+  "nameLabel": "Ad",
   "apiTypeLabel": "API biçimi",
   "apiTypeOpenAI": "OpenAI uyumlu",
   "apiTypeAnthropic": "Anthropic uyumlu",

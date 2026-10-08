@@ -336,7 +336,7 @@ fn call_escapes(
 
 /// `\\?\C:\x` as `C:\x`, so a resolved path reads like the paths rules are
 /// written against. Other paths are returned as they are.
-fn strip_verbatim(path: &Path) -> PathBuf {
+pub(crate) fn strip_verbatim(path: &Path) -> PathBuf {
     let text = path.to_string_lossy();
     match text.strip_prefix(r"\\?\") {
         Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
@@ -554,6 +554,94 @@ pub fn resolve_decision(
             Err(_) => Decision::Allow,
         };
     }
+    // `host_action` ends a process or changes a service. Every call that names
+    // a real action is asked about, each time: no session grant and no mode that
+    // auto-approves covers it. A call the planner refuses is let through to the
+    // handler, which refuses it with the reason and runs nothing.
+    if tool.name == "host_action" {
+        return match crate::tools::host_action::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // `host_build` runs the project's own build scripts outside the sandbox, so
+    // it is asked about every time too.
+    if tool.name == "host_build" {
+        return match crate::tools::host_build::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // The clipboard holds what a person copied a moment ago, and `open_path`
+    // starts a program on their screen: both asked about every time.
+    if tool.name == "computer" {
+        return match crate::tools::computer::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    if tool.name == "clipboard" {
+        return match crate::tools::clipboard::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    if tool.name == "open_path" {
+        return match crate::tools::open_path::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // winget: looking is free, changing a program is asked about every time.
+    if tool.name == "host_package" {
+        return match crate::tools::host_package::plan(args) {
+            Ok(plan) if plan.verb.changes() => Decision::Prompt(PromptKind::Ask),
+            Ok(_) | Err(_) => Decision::Allow,
+        };
+    }
+    // A command in a Linux distribution, or on another machine, is as
+    // powerful as a script: asked about every time.
+    if tool.name == "host_wsl" {
+        return match crate::tools::host_wsl::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    if tool.name == "host_ssh" {
+        return match crate::tools::host_ssh::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // A script runs with the user's own rights, so it is asked about every time.
+    if tool.name == "host_powershell" {
+        return match crate::tools::host_powershell::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // The interactive browser is classified per call (tools/browser_tool.rs):
+    // looking at a page the run already opened runs; acting on it is gated
+    // like a write; opening an address and running script in the page are
+    // asked about every time, because the model chooses which local service
+    // the browser reaches and a script can do what no single click can.
+    if tool.name == "browser" {
+        return match crate::tools::browser_tool::class_of(args) {
+            crate::tools::browser_tool::Class::Read => Decision::Allow,
+            crate::tools::browser_tool::Class::Act => gated(PromptKind::Write, grants),
+            // A file from the run's folders is gated like a write; one from
+            // anywhere else is a write escape (refused where nobody can approve it).
+            crate::tools::browser_tool::Class::Upload => {
+                if call_escapes(tool, args, project_root, scratch, read_roots, grants) {
+                    Decision::Prompt(PromptKind::WriteEscape)
+                } else {
+                    gated(PromptKind::Write, grants)
+                }
+            }
+            crate::tools::browser_tool::Class::Open
+            | crate::tools::browser_tool::Class::Evaluate => Decision::Prompt(PromptKind::Ask),
+        };
+    }
     // Dedicated skill/memory tools act only on the agent's own workspace by a
     // sanitized name, so they never prompt (deny above still wins).
     if crate::tools::is_workspace_tool(tool.name) {
@@ -756,6 +844,83 @@ mod tests {
     }
 
     #[test]
+    fn host_action_is_asked_about_every_time() {
+        let root = unique_root();
+        let mut grants = SessionGrants::default();
+        grants.grant(PromptKind::Write);
+        let decide = |perms: &ToolPermissions, args: serde_json::Value| {
+            resolve_decision(
+                lookup("host_action").unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                perms,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let plain = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let ask = Decision::Prompt(PromptKind::Ask);
+        // A session write grant does not cover it.
+        assert_eq!(decide(&plain, json!({"action": "kill_process", "pid": 4321})), ask);
+        assert_eq!(decide(&plain, json!({"action": "stop_service", "name": "Spooler"})), ask);
+        let build = |args: serde_json::Value| {
+            resolve_decision(
+                lookup("host_build").unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &plain,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        assert_eq!(build(json!({"program": "gradlew", "args": ["build"]})), ask);
+        assert_eq!(build(json!({"program": "bash", "args": ["-c", "x"]})), Decision::Allow);
+        let simple = |tool: &str, args: serde_json::Value| {
+            resolve_decision(
+                lookup(tool).unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &plain,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        assert_eq!(simple("clipboard", json!({"action": "read"})), ask);
+        assert_eq!(simple("clipboard", json!({"action": "write", "text": "x"})), ask);
+        assert_eq!(simple("clipboard", json!({"action": "clear"})), Decision::Allow);
+        assert_eq!(simple("open_path", json!({"path": "docs/a.pdf"})), ask);
+        assert_eq!(simple("open_path", json!({})), Decision::Allow);
+        assert_eq!(simple("host_powershell", json!({"script": "Get-Date"})), ask);
+        assert_eq!(simple("host_powershell", json!({"script": "  "})), Decision::Allow);
+        // winget: looking is free, each change is asked about.
+        assert_eq!(simple("host_package", json!({"action": "list"})), Decision::Allow);
+        assert_eq!(simple("host_package", json!({"action": "outdated"})), Decision::Allow);
+        assert_eq!(simple("host_package", json!({"action": "install", "id": "Git.Git"})), ask);
+        assert_eq!(simple("host_package", json!({"action": "uninstall", "id": "Git.Git"})), ask);
+        assert_eq!(simple("host_package", json!({"action": "upgrade"})), Decision::Allow);
+        assert_eq!(simple("host_wsl", json!({"command": "uname -a"})), ask);
+        assert_eq!(simple("host_wsl", json!({"command": ""})), Decision::Allow);
+        assert_eq!(simple("host_ssh", json!({"host": "devbox", "command": "uptime"})), ask);
+        assert_eq!(simple("host_ssh", json!({"host": "-oProxyCommand=x", "command": "uptime"})), Decision::Allow);
+        // A call the planner refuses reaches the handler, which refuses it.
+        assert_eq!(decide(&plain, json!({"action": "start_program", "name": "calc"})), Decision::Allow);
+        assert_eq!(decide(&plain, json!({"action": "stop_service", "name": "RpcSs"})), Decision::Allow);
+        // An agent.toml deny still wins.
+        let deny = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &s(&["host_action"]), &[]);
+        assert!(matches!(decide(&deny, json!({"action": "kill_process", "pid": 4321})), Decision::HardDeny(_)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn git_calls_are_gated_by_class() {
         let root = unique_root();
         let mut grants = SessionGrants::default();
@@ -798,6 +963,84 @@ mod tests {
         let deny = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &s(&["git"]), &[]);
         assert_eq!(
             with(&deny, json!({"args": ["status"]}), &grants),
+            Decision::HardDeny(DenyReason::Policy)
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn desktop_input_and_capture_require_host_approval() {
+        let root = unique_root();
+        let plain = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let grants = SessionGrants::default();
+        let simple = |tool: &str, args: serde_json::Value| resolve_decision(
+            lookup(tool).unwrap(), &args, &root, None, &[], &plain, &grants,
+            true, &crate::subject::Subject::MainAgent,
+        );
+        for args in [json!({"action":"screenshot"}), json!({"action":"type","x":30,"y":40,"text":"Hello"}), json!({"action":"click","x":30,"y":40})] {
+            assert_eq!(simple("computer", args), Decision::Prompt(PromptKind::Ask));
+        }
+        assert_eq!(simple("computer", json!({"action":"key","keys":["not-a-key"]})), Decision::Allow);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn browser_calls_are_gated_by_class() {
+        let root = unique_root();
+        let mut grants = SessionGrants::default();
+        let with = |perms: &ToolPermissions, args: serde_json::Value, grants: &SessionGrants| {
+            resolve_decision(
+                lookup("browser").unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                perms,
+                grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let plain = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let decide = |args: serde_json::Value, grants: &SessionGrants| with(&plain, args, grants);
+        // Looking at a page the run already opened runs.
+        for a in ["snapshot", "screenshot", "console", "wait", "scroll", "close"] {
+            assert_eq!(decide(json!({"action": a}), &grants), Decision::Allow, "{a}");
+        }
+        // Acting is gated like a write.
+        for a in ["click", "type", "press", "select", "back", "reload", "tab"] {
+            assert_eq!(decide(json!({"action": a, "ref": "e1"}), &grants), Decision::Prompt(PromptKind::Write), "{a}");
+        }
+        // An upload inside the working folder is a write; outside it, an escape.
+        assert_eq!(
+            decide(json!({"action": "upload", "ref": "e1", "path": "a.txt"}), &grants),
+            Decision::Prompt(PromptKind::Write)
+        );
+        assert_eq!(
+            decide(json!({"action": "upload", "ref": "e1", "path": "/etc/passwd"}), &grants),
+            Decision::Prompt(PromptKind::WriteEscape)
+        );
+        assert_eq!(
+            decide(json!({"action": "upload", "ref": "e1", "path": "../outside.txt"}), &grants),
+            Decision::Prompt(PromptKind::WriteEscape)
+        );
+        // Opening an address and running script are asked every time.
+        let open = json!({"action": "open", "url": "http://localhost:3000/"});
+        let eval = json!({"action": "evaluate", "expression": "1"});
+        assert_eq!(decide(open.clone(), &grants), Decision::Prompt(PromptKind::Ask));
+        assert_eq!(decide(eval.clone(), &grants), Decision::Prompt(PromptKind::Ask));
+        // A write grant covers acting, never open or evaluate.
+        grants.grant(PromptKind::Write);
+        assert_eq!(decide(json!({"action": "click", "ref": "e1"}), &grants), Decision::Allow);
+        assert_eq!(decide(open, &grants), Decision::Prompt(PromptKind::Ask));
+        assert_eq!(decide(eval, &grants), Decision::Prompt(PromptKind::Ask));
+        // A misspelt action is not a way to skip the question.
+        assert_ne!(decide(json!({"action": "snapshots"}), &SessionGrants::default()), Decision::Allow);
+        assert_ne!(decide(json!({}), &SessionGrants::default()), Decision::Allow);
+        // An agent.toml deny still wins, even for looking.
+        let deny = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &s(&["browser"]), &[]);
+        assert_eq!(
+            with(&deny, json!({"action": "snapshot"}), &grants),
             Decision::HardDeny(DenyReason::Policy)
         );
         let _ = std::fs::remove_dir_all(&root);

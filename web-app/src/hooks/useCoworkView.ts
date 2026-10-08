@@ -2,12 +2,15 @@ import { create } from 'zustand'
 
 /** Which side panel a session had open. */
 export type CoworkRail =
-  | { kind: 'preview'; path?: string }
+  | { kind: 'preview'; path?: string; root?: string }
   /** `focusPath`: a file to bring into view, e.g. from a tool card. */
   | { kind: 'diff'; focusPath?: string }
   | { kind: 'code' }
   | { kind: 'tasks' }
   | { kind: 'timeline' }
+  /** The agent's own browser, shown read-only (see AgentBrowserWindow). */
+  | { kind: 'browser' }
+  | { kind: 'background' }
   | null
 
 /**

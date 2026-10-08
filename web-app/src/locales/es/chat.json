@@ -1,15 +1,71 @@
 {
   "welcome": "Hola, ¿cómo estás?",
   "description": "¿En qué puedo ayudarte hoy?",
+  "startedAt": "Iniciado {{time}}",
+  "home": {
+    "title": "Chat nuevo",
+    "notSaved": "No se guarda nada hasta que envíes",
+    "sub": "Pregunta lo que quieras, adjunta archivos o encarga una tarea más grande a Cowork.",
+    "suggestionsLabel": "Sugerencias",
+    "suggestions": {
+      "explain": "Explicar este mensaje de error",
+      "summarise": "Resumir un documento que adjunte",
+      "draft": "Redactar notas de versión a partir de una lista de cambios",
+      "compare": "Comparar dos enfoques y recomendar uno"
+    }
+  },
   "temporaryChat": "Chat temporal",
   "temporaryChatDescription": "Inicia una conversación temporal que no se guardará en tu historial de chat.",
+  "temporaryChatBanner": "Chat temporal: no se guardará",
+  "temporaryChatKeep": "Conservar este chat",
+  "temporaryChatLeave": {
+    "title": "¿Conservar este chat temporal?",
+    "description": "Este chat no está guardado en ningún sitio. Consérvalo para moverlo a tu historial o descártalo para eliminarlo definitivamente.",
+    "keep": "Conservar",
+    "discard": "Descartar",
+    "kept": "Chat guardado en tu historial",
+    "keepFailed": "No se pudo guardar este chat",
+    "discardFailed": "No se pudo descartar: la generación sigue en curso. Detenla e inténtalo de nuevo.",
+    "reason": {
+      "generation-not-stopped": "La generación sigue en curso. Detenla e inténtalo de nuevo.",
+      "messages-not-persisted": "No se pudo guardar el chat por completo. No se perdió nada; inténtalo de nuevo.",
+      "thread-not-created": "No se pudo guardar el chat. No se perdió nada; inténtalo de nuevo.",
+      "error": "Algo salió mal. Tu chat sigue aquí; inténtalo de nuevo."
+    }
+  },
   "status": {
     "empty": "No se encontraron chats"
   },
   "sendMessage": "Enviar mensaje",
   "newConversation": "Nueva conversación",
   "clearHistory": "Borrar historial",
+  "embeddings": {
+    "title": "Preparando tus documentos",
+    "description": "Indexando los archivos adjuntos para poder buscarlos y citarlos. Puede tardar un poco con documentos grandes."
+  },
+  "actions": {
+    "copy": "Copiar",
+    "regenerate": "Regenerar respuesta",
+    "continue": "Continuar generando",
+    "delete": "Eliminar",
+    "fork": "Bifurcar el chat desde aquí",
+    "copied": "Copiado"
+  },
   "done": "Done",
+  "webSources": "{{count}} fuente(s)",
+  "webSourcesRead": "{{count}} leída(s)",
+  "webSourcesReadFound": "{{read}} leídas · {{found}} encontradas",
+  "reasoning": {
+    "label": "Razonando...",
+    "thinking": "Pensando",
+    "usingTool": "{{tool}}...",
+    "showFullTimeline": "Mostrar cronología completa",
+    "showCurrentStep": "Mostrar solo el paso actual",
+    "thoughtForAWhile": "Pensó unos segundos",
+    "thoughtFor": "Pensó durante {{duration}}",
+    "workedForAWhile": "Trabajó unos segundos",
+    "workedFor": "Trabajó durante {{duration}}"
+  },
   "split": {
     "open": "Dividir conversación",
     "openShort": "Dividir",
@@ -46,14 +102,92 @@
     "steps_one": "{{count}} paso",
     "steps_many": "{{count}} pasos",
     "steps_other": "{{count}} pasos",
-    "working": "Trabajando"
+    "working": "Trabajando",
+    "failed": "Error:",
+    "failedToRun": "No se pudo ejecutar",
+    "summary": {
+      "failed": "{{count}} con error",
+      "commands_one": "ejecutó {{count}} comando",
+      "commands_many": "ejecutó {{count}} de comandos",
+      "commands_other": "ejecutó {{count}} comandos",
+      "created_one": "creó {{count}} archivo",
+      "created_many": "creó {{count}} de archivos",
+      "created_other": "creó {{count}} archivos",
+      "edited_one": "editó {{count}} archivo",
+      "edited_many": "editó {{count}} de archivos",
+      "edited_other": "editó {{count}} archivos",
+      "read_one": "leyó {{count}} archivo",
+      "read_many": "leyó {{count}} de archivos",
+      "read_other": "leyó {{count}} archivos",
+      "searched_one": "buscó {{count}} vez",
+      "searched_many": "buscó {{count}} de veces",
+      "searched_other": "buscó {{count}} veces",
+      "tools_one": "usó {{count}} herramienta",
+      "tools_many": "usó {{count}} de herramientas",
+      "tools_other": "usó {{count}} herramientas"
+    }
   },
-  "actions": {
-    "fork": "Bifurcar el chat desde aquí"
+  "widget": {
+    "label": "Widget",
+    "drawing": "Dibujando widget",
+    "source": "Ver código fuente",
+    "copy": "Copiar HTML",
+    "copied": "HTML copiado.",
+    "copyFailed": "No se pudo copiar el HTML.",
+    "save": "Guardar como archivo .html",
+    "expand": "Abrir a tamaño completo",
+    "rerun": "Volver a ejecutar",
+    "stalled": "El widget dejó de responder.",
+    "parked": "Widget en pausa mientras está fuera de pantalla.",
+    "error": "Error del widget:",
+    "viewSource": "Ver código fuente",
+    "askFix": "Pedir a Flint que lo corrija",
+    "fixPrompt": "El widget \"{{title}}\" muestra un error: {{error}}\nCorrígelo y vuelve a mostrar el widget.",
+    "refused": "Widget no mostrado: {{reason}}",
+    "refusedUnknown": "la llamada falló",
+    "tooLarge": "Este widget supera los {{max}} caracteres y no se dibuja.",
+    "openLink": "¿Abrir {{url}} en tu navegador?",
+    "cancel": "Cancelar",
+    "busy": "Espera a que termine la respuesta actual y vuelve a intentarlo.",
+    "noHost": "Esta vista no puede enviar mensajes."
+  },
+  "browserCard": {
+    "opened": "Abierto en el navegador",
+    "ready": "Listo para abrir",
+    "open": "Abrir",
+    "more": "Más",
+    "copy": "Copiar enlace",
+    "copied": "Enlace copiado.",
+    "failed": "No se pudo abrir el navegador."
+  },
+  "regenerateTitle": {
+    "menu": "Regenerar título",
+    "working": "Poniendo nombre al chat...",
+    "done": "Chat renombrado.",
+    "empty": "Aún no hay nada a partir de lo que nombrar este chat.",
+    "busy": "Pausa o detén la sala antes de renombrarla.",
+    "failed": "No se pudo generar un título."
+  },
+  "convertToCowork": {
+    "menu": "Convertir en Cowork",
+    "title": "¿Convertir en Cowork?",
+    "description": "La conversación se convierte en una nueva sesión de Cowork. ¿Qué debe pasar con este chat?",
+    "keep": "Conservar chat",
+    "delete": "Eliminar chat",
+    "done": "Convertido en una sesión de Cowork.",
+    "failed": "Nada que convertir: este chat no tiene mensajes."
   },
   "fork": {
     "chat": "Bifurcar chat",
     "done": "Bifurcado en un chat nuevo.",
     "failed": "No se pudo bifurcar este chat."
+  },
+  "version": {
+    "group": "Versiones del mensaje",
+    "previous": "Versión anterior",
+    "next": "Versión siguiente",
+    "previousAt": "Versión anterior (mostrando {{index}} de {{count}})",
+    "nextAt": "Versión siguiente (mostrando {{index}} de {{count}})",
+    "position": "Versión {{index}} de {{count}}"
   }
 }

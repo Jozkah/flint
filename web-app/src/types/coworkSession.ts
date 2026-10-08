@@ -119,6 +119,8 @@ export type CoworkTurn = {
     promptSpeed?: number
     tokenCount?: number
     durationMs?: number
+    /** Where the speed came from: the server, measured, or estimated. */
+    source?: 'server' | 'measured' | 'estimated'
   }
   /**
    * Questions the run asked at this point in the conversation.
@@ -223,6 +225,8 @@ export type Usage = {
   requests?: number
   cache_reported_requests?: number
   cache_hit_requests?: number
+  /** Input of the requests that reported a cache count (the cached share's base). */
+  cache_reported_input_tokens?: number
 }
 
 /**

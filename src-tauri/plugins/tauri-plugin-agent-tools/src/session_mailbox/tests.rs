@@ -261,39 +261,130 @@ fn concurrent_senders_land_every_envelope_exactly_once() {
 }
 
 #[test]
-fn projects_are_isolated_and_folderless_sessions_cannot_message() {
+fn sessions_in_any_project_or_none_can_message_each_other() {
     let fx = Fixture::new("isolation");
     let mb = Mailbox::open(&fx.data);
     pair(&fx, &mb);
     mb.register("c", "Elsewhere", fx.other()).unwrap();
     mb.register("d", "No folder", None).unwrap();
 
-    let listed: Vec<String> = mb
-        .list_sessions("a")
-        .unwrap()
-        .into_iter()
-        .map(|s| s.id)
-        .collect();
-    assert_eq!(listed, ["b"]);
+    let listed = mb.list_sessions("a").unwrap();
+    let ids: Vec<&str> = listed.iter().map(|s| s.id.as_str()).collect();
+    assert_eq!(ids.len(), 3);
+    for id in ["b", "c", "d"] {
+        assert!(ids.contains(&id), "{id} missing from {ids:?}");
+    }
+    let elsewhere = listed.iter().find(|s| s.id == "c").unwrap();
+    assert_eq!(elsewhere.folder.as_deref(), fx.other());
+    assert!(elsewhere.accepts_messages);
+
+    mb.send("a", "c", "hi", None, Origin::Agent).unwrap();
+    mb.send("a", "d", "hi", None, Origin::Agent).unwrap();
+    mb.send("d", "a", "hi from nowhere", None, Origin::Agent).unwrap();
+    assert_eq!(mb.pending("c").unwrap()[0].from.session_id, "a");
+
+    // A session that never registered has no identity to send from or list as.
+    assert_eq!(code_of(mb.list_sessions("ghost")), code::UNKNOWN_SESSION);
     assert_eq!(
-        code_of(mb.send("a", "c", "hi", None, Origin::Agent)),
-        code::NOT_SAME_PROJECT
+        code_of(mb.send("ghost", "a", "hi", None, Origin::Agent)),
+        code::UNKNOWN_SESSION
     );
-    assert_eq!(
-        code_of(mb.send("a", "d", "hi", None, Origin::Agent)),
-        code::NOT_SAME_PROJECT
-    );
-    assert_eq!(code_of(mb.list_sessions("d")), code::NO_PROJECT);
-    assert_eq!(
-        code_of(mb.send("d", "a", "hi", None, Origin::Agent)),
-        code::NO_PROJECT
-    );
-    assert_eq!(code_of(mb.list_sessions("ghost")), code::NO_PROJECT);
     assert_eq!(
         code_of(mb.send("a", "ghost", "hi", None, Origin::Agent)),
         code::UNKNOWN_SESSION
     );
-    assert!(mb.pending("c").unwrap().is_empty());
+}
+
+#[test]
+fn a_final_answer_goes_back_once_and_only_when_the_agent_did_not_reply() {
+    let fx = Fixture::new("auto");
+    let mb = Mailbox::open(&fx.data);
+    pair(&fx, &mb);
+    let asked = mb.send("a", "b", "which chart lib?", None, Origin::Agent).unwrap();
+
+    let sent = mb.auto_reply("b", &asked.message_id, "recharts").unwrap().unwrap();
+    let inbox = mb.pending("a").unwrap();
+    assert_eq!(inbox.len(), 1);
+    assert_eq!(inbox[0].id, sent.message_id);
+    assert_eq!(inbox[0].origin, Origin::Auto);
+    assert_eq!(inbox[0].reply_to.as_deref(), Some(asked.message_id.as_str()));
+    assert_eq!(inbox[0].depth, 1);
+
+    // A second run end for the same message sends nothing more.
+    assert_eq!(mb.auto_reply("b", &asked.message_id, "again").unwrap(), None);
+    assert_eq!(mb.pending("a").unwrap().len(), 1);
+
+    // The agent answered with the tool: nothing is added on top.
+    let asked = mb.send("a", "b", "and the tooltip?", None, Origin::Agent).unwrap();
+    mb.send("b", "a", "in HourlyChart", Some(&asked.message_id), Origin::Agent).unwrap();
+    assert_eq!(mb.auto_reply("b", &asked.message_id, "final").unwrap(), None);
+    assert_eq!(mb.pending("a").unwrap().len(), 2);
+
+    // A reply is never auto-answered, so two sessions cannot chain forever.
+    let reply_id = inbox[0].id.clone();
+    assert_eq!(mb.auto_reply("a", &reply_id, "thanks").unwrap(), None);
+
+    // Unknown messages are refused, and an overlong answer is shortened.
+    assert_eq!(
+        code_of(mb.auto_reply("b", "msg-nope", "x")),
+        code::UNKNOWN_REPLY_TARGET
+    );
+    let asked = mb.send("a", "b", "long one", None, Origin::Agent).unwrap();
+    let long = "lorem ipsum ".repeat(MAX_TEXT_CHARS / 12 + 50);
+    mb.auto_reply("b", &asked.message_id, &long).unwrap().unwrap();
+    let last = mb.pending("a").unwrap().pop().unwrap();
+    assert!(last.text.chars().count() <= MAX_TEXT_CHARS);
+}
+
+#[test]
+fn a_session_can_opt_out_and_opt_back_in() {
+    let fx = Fixture::new("optout");
+    let mb = Mailbox::open(&fx.data);
+    pair(&fx, &mb);
+    mb.register_with("b", "Beta", fx.folder(), Some(false)).unwrap();
+    assert_eq!(
+        code_of(mb.send("a", "b", "hi", None, Origin::Agent)),
+        code::RECIPIENT_OPTED_OUT
+    );
+    assert!(!mb.list_sessions("a").unwrap()[0].accepts_messages);
+    // Registering again without the field (a rename) keeps the choice.
+    mb.register("b", "Beta renamed", fx.folder()).unwrap();
+    assert_eq!(
+        code_of(mb.send("a", "b", "hi", None, Origin::Agent)),
+        code::RECIPIENT_OPTED_OUT
+    );
+    assert!(mb.pending("b").unwrap().is_empty());
+    mb.register_with("b", "Beta renamed", fx.folder(), Some(true)).unwrap();
+    mb.send("a", "b", "hi", None, Origin::Agent).unwrap();
+    // The sender's own opt-out does not stop it from sending.
+    mb.register_with("a", "Alpha", fx.folder(), Some(false)).unwrap();
+    mb.send("a", "b", "still can", None, Origin::Agent).unwrap();
+}
+
+#[test]
+fn a_target_can_be_named_by_title_when_that_is_unambiguous() {
+    let fx = Fixture::new("resolve");
+    let mb = Mailbox::open(&fx.data);
+    mb.register("a", "Weather API / Retry the radar feed", fx.folder()).unwrap();
+    mb.register("s-1", "Dashboard / Hourly chart tooltip", fx.other()).unwrap();
+    mb.register("s-2", "Docs / Changelog", fx.other()).unwrap();
+    mb.register("s-3", "Docs / Changelog", fx.other()).unwrap();
+
+    assert_eq!(mb.resolve_session("a", "s-1").unwrap(), "s-1");
+    assert_eq!(
+        mb.resolve_session("a", "dashboard / hourly chart tooltip").unwrap(),
+        "s-1"
+    );
+    assert_eq!(mb.resolve_session("a", "hourly chart").unwrap(), "s-1");
+    assert_eq!(code_of(mb.resolve_session("a", "Docs")), code::AMBIGUOUS_SESSION);
+    assert_eq!(
+        code_of(mb.resolve_session("a", "Docs / Changelog")),
+        code::AMBIGUOUS_SESSION
+    );
+    assert_eq!(code_of(mb.resolve_session("a", "nothing")), code::UNKNOWN_SESSION);
+    assert_eq!(code_of(mb.resolve_session("a", "  ")), code::UNKNOWN_SESSION);
+    // Never itself.
+    assert_eq!(code_of(mb.resolve_session("a", "Weather")), code::UNKNOWN_SESSION);
 }
 
 #[test]
@@ -732,6 +823,73 @@ fn error_code(out: &str) -> String {
 }
 
 #[tokio::test]
+async fn send_message_names_a_session_by_title_and_can_wait_for_the_answer() {
+    let fx = Fixture::new("ask");
+    let mb = Mailbox::open(&fx.data);
+    mb.register("a", "Weather API", fx.folder()).unwrap();
+    mb.register("b", "Dashboard", fx.other()).unwrap();
+    let root = fx.project.clone();
+    let a = tool_ctx(&root, "a", Some(&fx.data));
+    let b = tool_ctx(&root, "b", Some(&fx.data));
+
+    // Nobody answers: the call returns a timeout outcome, not an error, and
+    // says who the message went to.
+    let sent: serde_json::Value = serde_json::from_str(
+        &call(
+            "send_message",
+            serde_json::json!({"to": "dashboard", "message": "which chart lib?", "wait_seconds": 1}),
+            &a,
+        )
+        .await,
+    )
+    .unwrap();
+    assert_eq!(sent["to"]["session_id"], "b");
+    assert_eq!(sent["to"]["display_name"], "Dashboard");
+    assert_eq!(sent["outcome"], "timeout");
+    let message_id = sent["message_id"].as_str().unwrap().to_string();
+
+    // The answer arrives while a later ask is waiting.
+    let ask = call(
+        "send_message",
+        serde_json::json!({"to": "b", "message": "and the tooltip?", "wait_seconds": 5}),
+        &a,
+    );
+    let answer = async {
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let asked = mb.pending("b").unwrap();
+        let latest = asked.last().unwrap().clone();
+        assert_ne!(latest.id, message_id);
+        call(
+            "send_message",
+            serde_json::json!({"to": "a", "message": "recharts", "reply_to": latest.id}),
+            &b,
+        )
+        .await;
+    };
+    let (answered, ()) = tokio::join!(ask, answer);
+    let answered: serde_json::Value = serde_json::from_str(&answered).unwrap();
+    assert_eq!(answered["outcome"], "reply");
+    assert_eq!(answered["untrusted"], true);
+    assert_eq!(answered["reply"]["text"], "recharts");
+
+    // Bad waits and unknown titles are typed refusals.
+    let out = call(
+        "send_message",
+        serde_json::json!({"to": "b", "message": "x", "wait_seconds": 999}),
+        &a,
+    )
+    .await;
+    assert!(out.contains("invalid_timeout"), "{out}");
+    let out = call(
+        "send_message",
+        serde_json::json!({"to": "no such chat", "message": "x"}),
+        &a,
+    )
+    .await;
+    assert!(out.contains("unknown_session"), "{out}");
+}
+
+#[tokio::test]
 async fn tool_results_label_messages_untrusted() {
     let fx = Fixture::new("tools");
     let mb = Mailbox::open(&fx.data);
@@ -1085,28 +1243,6 @@ fn registering_again_after_a_crash_mid_run_resets_the_stale_running_record() {
 }
 
 #[test]
-fn a_copied_project_id_file_does_not_join_another_project() {
-    let fx = Fixture::new("spoof");
-    for dir in [&fx.project, &fx.other_project] {
-        let id_dir = dir.join(".jan").join("agent");
-        std::fs::create_dir_all(&id_dir).unwrap();
-        std::fs::write(id_dir.join("project-id"), "proj-shared").unwrap();
-    }
-    let mb = Mailbox::open(&fx.data);
-    mb.register("a", "Alpha", fx.folder()).unwrap();
-    mb.register("x", "Intruder", fx.other()).unwrap();
-    mb.register("c", "Same folder", fx.folder()).unwrap();
-
-    let listed: Vec<String> = mb.list_sessions("a").unwrap().into_iter().map(|s| s.id).collect();
-    assert_eq!(listed, vec!["c".to_string()]);
-    assert_eq!(
-        code_of(mb.send("x", "a", "let me in", None, Origin::Agent)),
-        code::NOT_SAME_PROJECT
-    );
-    mb.send("c", "a", "hello", None, Origin::Agent).unwrap();
-}
-
-#[test]
 fn a_corrupt_registry_refuses_writes_and_is_left_untouched() {
     let fx = Fixture::new("corrupt");
     let mb = Mailbox::open(&fx.data);
@@ -1163,4 +1299,53 @@ fn old_read_mail_and_old_outbox_entries_are_compacted() {
     let pending = mb.pending("b").unwrap();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].id, old_unread.message_id);
+}
+
+#[test]
+fn waiting_approval_shows_only_while_running_and_clears_with_the_run() {
+    let fx = Fixture::new("waiting");
+    let mb = Mailbox::open(&fx.data);
+    pair(&fx, &mb);
+    // Idle: a wait is ignored.
+    mb.set_waiting_approval("b", None, true).unwrap();
+    assert!(!mb.list_sessions("a").unwrap()[0].waiting_approval);
+    mb.set_status("b", true, Some("r1")).unwrap();
+    mb.set_waiting_approval("b", Some("r1"), true).unwrap();
+    let listed = mb.list_sessions("a").unwrap();
+    assert_eq!(listed[0].status, SessionStatus::Running);
+    assert!(listed[0].waiting_approval);
+    // A different run cannot change it.
+    mb.set_waiting_approval("b", Some("other"), false).unwrap();
+    assert!(mb.list_sessions("a").unwrap()[0].waiting_approval);
+    mb.set_waiting_approval("b", Some("r1"), false).unwrap();
+    assert!(!mb.list_sessions("a").unwrap()[0].waiting_approval);
+    // Ending the run clears a standing wait.
+    mb.set_waiting_approval("b", Some("r1"), true).unwrap();
+    mb.set_status("b", false, Some("r1")).unwrap();
+    mb.set_status("b", true, Some("r2")).unwrap();
+    assert!(!mb.list_sessions("a").unwrap()[0].waiting_approval);
+}
+
+#[test]
+fn windows_reserved_ids_are_rejected() {
+    for bad in ["CON", "con", "Nul", "aux.txt", "COM1", "lpt9", "prn.log", "abc."] {
+        assert!(!valid_id(bad), "{bad} should be rejected");
+    }
+    for ok in ["com0", "COM10", "console", "lpt", "session-1", "a.b"] {
+        assert!(valid_id(ok), "{ok} should be accepted");
+    }
+}
+
+#[test]
+fn ids_differing_only_by_case_do_not_share_a_mailbox() {
+    let fx = Fixture::new("case_ids");
+    let mb = Mailbox::open(&fx.data);
+    mb.register("01HABCDEF", "upper", fx.folder()).unwrap();
+    assert_eq!(
+        code_of(mb.register("01habcdef", "lower", fx.folder())),
+        code::INVALID_SESSION_ID
+    );
+    // The same id again is an upsert, and an unrelated id still registers.
+    mb.register("01HABCDEF", "upper", fx.folder()).unwrap();
+    mb.register("01HZZZ", "other", fx.folder()).unwrap();
 }

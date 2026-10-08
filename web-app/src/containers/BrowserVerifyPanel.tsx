@@ -70,6 +70,11 @@ export function BrowserVerifyEvidence({ report }: { report: VerifyReport }) {
         })}
         {report.document_status != null ? ` · HTTP ${report.document_status}` : ''}
       </span>
+      {isLocalAppUrl(report.url) && (
+        <a className="w-fit text-acc-text underline underline-offset-2" href={report.url} target="_blank" rel="noopener noreferrer">
+          {report.url}
+        </a>
+      )}
       <StepList steps={report.steps} />
       {report.console_errors.length > 0 && (
         <details data-testid="bv-console">

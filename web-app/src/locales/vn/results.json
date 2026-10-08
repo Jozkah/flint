@@ -1,7 +1,134 @@
 {
+  "status": {
+    "running": "Đang chạy",
+    "completed": "Đã hoàn thành",
+    "failed": "Thất bại",
+    "cancelled": "Đã hủy",
+    "partial": "Xong một phần"
+  },
+  "sections": {
+    "happened": "Điều đã xảy ra",
+    "where": "Kết quả ở đâu",
+    "checked": "Những gì đã được kiểm tra",
+    "unresolved": "Chưa giải quyết",
+    "next": "Các bước tiếp theo"
+  },
+  "headline": {
+    "running": "Lượt chạy vẫn đang diễn ra.",
+    "completedWithChanges": "Lượt chạy đã kết thúc và Flint đã thay đổi các tệp.",
+    "completedNoChanges": "Lượt chạy đã kết thúc mà Flint không thay đổi tệp nào.",
+    "completedChecksFailed": "Lượt chạy đã kết thúc, nhưng một kiểm tra do Flint chạy không đạt.",
+    "finishedIncomplete": "Lượt chạy đã kết thúc, nhưng một phần yêu cầu chưa được thực hiện. Xem mục Chưa giải quyết.",
+    "partial": "Lượt chạy dừng trước khi hoàn tất. Một số việc đã được làm trước đó.",
+    "failed": "Lượt chạy dừng trước khi hoàn tất, và không có gì được hoàn thành.",
+    "cancelled": "Lượt chạy bị dừng trước khi bất cứ điều gì hoàn thành."
+  },
+  "plan": {
+    "progress": "Đã xong {{done}}/{{total}}"
+  },
+  "kept": "Các thay đổi này đã được giữ lại. Dừng một lượt chạy không hoàn tác những gì nó đã làm.",
+  "location": {
+    "sandbox": "Trong sandbox của phiên này, không phải trong kho của bạn.",
+    "worktree": "Trong một worktree riêng do Flint quản lý, không phải trong bản checkout của bạn.",
+    "userCheckout": "Trực tiếp trong thư mục đã đính kèm của bạn.",
+    "none": "Không có cây làm việc nào được đính kèm với lượt chạy này.",
+    "noFiles": "Flint không ghi tệp nào.",
+    "open": "Mở {{path}}"
+  },
+  "checks": {
+    "none": "Flint không chạy bài kiểm thử hay kiểm tra nào.",
+    "kind": {
+      "test": "Kiểm thử",
+      "build": "Build",
+      "lint": "Kiểm tra",
+      "command": "Lệnh"
+    },
+    "outcome": {
+      "passed": "Đạt",
+      "failed": "Không đạt",
+      "didNotFinish": "Chưa xong",
+      "running": "Đang chạy",
+      "notRun": "Chưa chạy",
+      "unknown": "Chưa rõ kết quả"
+    },
+    "exit": "thoát {{code}}",
+    "summary": {
+      "allTestsPassed": "Các kiểm thử tự động đã đạt.",
+      "allChecksPassed": "Các kiểm tra tự động đã đạt. Không có kiểm thử nào được chạy.",
+      "somePassed": "{{passed}}/{{total}} kiểm tra đã đạt.",
+      "failedWithCode": "{{command}} thất bại với mã thoát {{code}}.",
+      "failedNoCode": "{{command}} thất bại mà không có mã thoát.",
+      "didNotFinish_one": "{{count}} kiểm tra chưa xong: nó bị hủy, hết thời gian chờ hoặc bị ngắt.",
+      "didNotFinish_other": "{{count}} kiểm tra chưa xong: chúng bị hủy, hết thời gian chờ hoặc bị ngắt.",
+      "notRun_one": "{{count}} kiểm tra chưa được chạy.",
+      "notRun_other": "{{count}} kiểm tra chưa được chạy.",
+      "unknown_one": "{{count}} kiểm tra không có trạng thái thoát được ghi lại, nên chưa rõ kết quả.",
+      "unknown_other": "{{count}} kiểm tra không có trạng thái thoát được ghi lại, nên chưa rõ kết quả.",
+      "running_one": "{{count}} kiểm tra vẫn đang chạy.",
+      "running_other": "{{count}} kiểm tra vẫn đang chạy.",
+      "visualNotChecked": "Hành vi trực quan và đầu-cuối chưa được kiểm tra."
+    },
+    "otherCommands": "{{count}} lệnh khác cũng đã chạy. Chúng không được tính là kiểm tra.",
+    "completion": {
+      "not-started": "chưa bắt đầu",
+      "running": "vẫn đang chạy",
+      "completed": "đã chạy đến cùng",
+      "cancelled": "đã hủy",
+      "timed-out": "hết thời gian chờ",
+      "interrupted": "bị ngắt"
+    },
+    "limitation": {
+      "exit-status-only": "Chỉ được đánh giá dựa trên trạng thái thoát.",
+      "compound-command": "Nhiều lệnh được nối với nhau; trạng thái áp dụng cho cả chuỗi, không phải từng bước.",
+      "output-truncated": "Đầu ra bị cắt, nên các lỗi sau đó có thể không hiển thị.",
+      "background": "Được khởi động ở nền; trạng thái có thể không phải của tác vụ.",
+      "subset-selected": "Chỉ một phần bộ kiểm thử được chọn.",
+      "no-exit-status": "Không ghi lại trạng thái thoát."
+    },
+    "claimsTitle": "Được trợ lý đề cập, chưa được Flint xác minh:"
+  },
   "unresolved": {
     "stop": {
+      "error": "Lượt chạy kết thúc với lỗi.",
+      "aborted": "Lượt chạy đã bị dừng.",
+      "deadline": "Lượt chạy đạt giới hạn thời gian.",
+      "timeout": "Mô hình đã ngừng phản hồi kịp thời.",
+      "loop": "Lượt chạy bị dừng vì lặp lại chính nó.",
+      "steps": "Lượt chạy đã dùng hết các bước của nó.",
       "tokens": "Lần chạy đã dừng ở giới hạn token (cửa sổ ngữ cảnh hoặc hạn mức của yêu cầu)."
-    }
+    },
+    "refused": "Không được phép: {{tool}} {{target}}",
+    "refusedReadOnly": "Chưa chạy, lượt này là chỉ đọc: {{tool}} {{target}}. Hãy chuyển chế độ sang Hỏi trước khi thay đổi hoặc Tự chủ, rồi bấm Tiếp tục.",
+    "cancelled": "Đã hủy: {{tool}} {{target}}",
+    "failed": "Thất bại: {{tool}} {{target}}",
+    "interrupted": "Chưa xong: {{tool}} {{target}}",
+    "checkFailed": "Không đạt: {{command}}"
+  },
+  "actions": {
+    "openResult": "Mở kết quả",
+    "reviewChanges": "Xem lại thay đổi",
+    "continue": "Tiếp tục",
+    "retry": "Thử lại",
+    "retryNote": "Thử lại sẽ gửi lại yêu cầu gần nhất. Nó không hoàn tác các thay đổi mà lượt chạy đã thực hiện.",
+    "restore": "Quay về một thời điểm trước đó"
+  },
+  "rewind": {
+    "scopeTitle": "Việc khôi phục này thay đổi gì",
+    "scopeTree": "Worktree: {{tree}}",
+    "filesHeading": "Các tệp sẽ được đặt lại ({{count}})",
+    "noFiles": "Không có tệp nào khác với thời điểm này.",
+    "filesUnknown": "Flint không thể liệt kê những tệp sẽ thay đổi.",
+    "safetyNote": "Trước khi khôi phục, Flint lưu trạng thái hiện tại thành một điểm mới, nên việc khôi phục này có thể được hoàn tác.",
+    "boundaries": "Khôi phục tệp không hoàn tác tin nhắn, lần đẩy lên kho từ xa, nội dung đã xuất bản, gói đã cài hay các tác động khác ngoài worktree này. Các lệnh đã chạy không được đảo ngược.",
+    "unrelatedTitle": "Các tệp này đã thay đổi sau điểm mới nhất và không do Flint ghi. Việc khôi phục sẽ ghi đè lên chúng:",
+    "unrelatedConfirm": "Tôi hiểu rằng các chỉnh sửa này sẽ bị ghi đè. Chúng vẫn còn trong điểm đã lưu.",
+    "safetyLabel": "Trước khi khôi phục {{time}}",
+    "safetyFailed": "Không thể lưu trạng thái hiện tại trước, nên không có gì được khôi phục: {{reason}}",
+    "restored": "Đã khôi phục. Trạng thái trước đó đã được lưu thành \"{{label}}\".",
+    "previewDiff": "Xem trước khác biệt",
+    "hideDiff": "Ẩn khác biệt",
+    "previewEmpty": "Không có khác biệt nào để hiển thị.",
+    "previewLoading": "Đang tải khác biệt…",
+    "previewFailed": "Không thể tạo khác biệt: {{reason}}"
   }
 }

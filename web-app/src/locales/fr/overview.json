@@ -1,6 +1,63 @@
 {
-  "col": {
-    "speed": "Vitesse moy."
+  "title": "Aperçu",
+  "morning": "Bonjour",
+  "afternoon": "Bon après-midi",
+  "evening": "Bonsoir",
+  "subWeek": "Voici ce que vos modèles ont fait cette semaine.",
+  "subMonth": "Voici ce que vos modèles ont fait au cours des 30 derniers jours.",
+  "lastWeek": "Semaine dernière",
+  "last30": "30 derniers jours",
+  "vsLastWeek": "par rapport à la semaine dernière",
+  "vsLastMonth": "par rapport aux 30 jours précédents",
+  "options": "Options du tableau de bord",
+  "resetStats": "Réinitialiser les statistiques",
+  "tokens": "Tokens générés",
+  "cost": "Coût estimé",
+  "speed": "Vitesse de génération moy.",
+  "toolSuccess": "Réussite des appels d'outils",
+  "throughput": "Débit de tokens",
+  "throughputAria": "Tokens générés par jour. Utilisez les flèches gauche et droite pour inspecter les jours.",
+  "activity": "Activité récente",
+  "activityRange": "Période d'activité",
+  "today": "Aujourd'hui",
+  "yesterday": "Hier",
+  "thisWeek": "Cette semaine",
+  "searchActivity": "Rechercher dans l'activité",
+  "newActivities": {
+    "today_one": "nouvelle activité aujourd'hui",
+    "today_other": "nouvelles activités aujourd'hui",
+    "yesterday_one": "activité hier",
+    "yesterday_other": "activités hier",
+    "week_one": "activité cette semaine",
+    "week_other": "activités cette semaine",
+    "today_many": "nouvelles activités aujourd'hui",
+    "yesterday_many": "activités hier",
+    "week_many": "activités cette semaine"
   },
-  "tokensPerSecond": "{{value}} t/s"
+  "noActivity": "Rien pour l'instant",
+  "noActivityHint": "Les approbations, échecs d'outils et compactages apparaissent ici au fur et à mesure.",
+  "runs": "Exécutions d'agents",
+  "searchRuns": "Exécution",
+  "filter": "Filtrer",
+  "filterAll": "Toutes les exécutions",
+  "openRun": "Ouvrir l'exécution",
+  "noRuns": "Aucune exécution Cowork pour l'instant",
+  "noRunsHint": "Confiez une tâche plus importante à Cowork et ses exécutions apparaîtront ici.",
+  "openCowork": "Ouvrir Cowork",
+  "col": {
+    "run": "ID d'exécution",
+    "task": "Tâche",
+    "model": "Modèle",
+    "status": "Statut",
+    "started": "Début",
+    "speed": "Vitesse moy.",
+    "tokens": "Tokens"
+  },
+  "tokensPerSecond": "{{value}} t/s",
+  "status": {
+    "running": "En cours",
+    "approval": "Approbation requise",
+    "done": "Terminé",
+    "idle": "Non démarré"
+  }
 }

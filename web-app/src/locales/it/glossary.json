@@ -1,0 +1,23 @@
+{
+  "explain": "Cosa significa \"{{term}}\"?",
+  "worktree": {
+    "term": "Worktree",
+    "definition": "Una copia di lavoro separata del tuo progetto. Flint può apportare modifiche lì senza toccare la copia su cui stai lavorando, e sei tu a decidere cosa tenere."
+  },
+  "context": {
+    "term": "Contesto",
+    "definition": "Le informazioni incluse nella conversazione che il modello legge prima di rispondere: i tuoi messaggi, i file allegati, le istruzioni e tutto ciò che Flint aggiunge."
+  },
+  "mcpServer": {
+    "term": "Server MCP",
+    "definition": "Una connessione che dà a Flint strumenti aggiuntivi, come leggere un database o chiamare un servizio. Alcuni girano su questo computer; altri contattano servizi esterni."
+  },
+  "checkpoint": {
+    "term": "Checkpoint",
+    "definition": "Un punto salvato che può ripristinare lo stato supportato, come i file di progetto modificati da Flint. Non può annullare messaggi già inviati né nulla di ciò che è accaduto fuori da questo computer."
+  },
+  "agent": {
+    "term": "Agente",
+    "definition": "Un assistente al lavoro su un compito: può pianificare, usare strumenti e compiere più passaggi, chiedendo il permesso quando serve."
+  }
+}

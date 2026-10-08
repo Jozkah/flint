@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "Polecenia",
+    "helpTitle": "Dostępne polecenia",
+    "keys": "↑↓ wybierz · Enter/Tab wstaw · Esc zamknij",
+    "empty": "Brak dostępnych tutaj poleceń"
+  },
+  "source": {
+    "plugin": "wtyczka",
+    "pluginNamed": "wtyczka {{plugin}}",
+    "skill": "umiejętność",
+    "builtin": "wbudowane"
+  },
+  "scope": {
+    "project": "projekt",
+    "global": "globalne"
+  },
   "builtin": {
+    "help": "Wyświetl dostępne polecenia",
+    "new": "Rozpocznij nową rozmowę",
+    "newSession": "Rozpocznij nową sesję Cowork",
     "compact": "Podsumuj starsze wiadomości, aby zwolnić okno kontekstu"
-  }
+  },
+  "sent": {
+    "command": "Polecenie",
+    "skill": "Umiejętność",
+    "showCommand": "Pokaż rozwinięte polecenie",
+    "showSkill": "Pokaż wczytaną umiejętność"
+  },
+  "error": "Nie udało się uruchomić {{command}}: {{error}}"
 }

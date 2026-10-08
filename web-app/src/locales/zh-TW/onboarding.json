@@ -1,0 +1,64 @@
+{
+  "intentHeading": "你想先做什麼？",
+  "intentHint": "這只會決定引導帶你前往何處。Flint 中的其他一切仍可使用。",
+  "intent": {
+    "question": {
+      "title": "提問",
+      "description": "與模型聊任何話題。"
+    },
+    "documents": {
+      "title": "處理文件",
+      "description": "附加檔案並針對檔案提問。"
+    },
+    "project": {
+      "title": "建置或修改專案",
+      "description": "讓 Flint 在這台電腦上的資料夾中工作，變更任何內容前都會先詢問。"
+    }
+  },
+  "skipGuide": "略過引導",
+  "resumeNotice": "歡迎回來。你可以從上次中斷的地方繼續。",
+  "processingHeading": "你的對話在何處處理",
+  "processingLocal": "本機模型在這台電腦上執行。你的訊息和檔案會留在本機，不需要帳號或 API 金鑰。",
+  "processingRemote": "遠端供應商（例如 OpenAI）會在其伺服器上執行模型。你的訊息和你附加的任何檔案都會傳送到那裡，供應商可能會向你收費。你需要在「設定」中自行設定；Flint 絕不會自行切換到遠端供應商。",
+  "connectRemote": "改為連線遠端供應商",
+  "guideTitle": {
+    "question": "開始使用：提問",
+    "documents": "開始使用：處理文件",
+    "project": "開始使用：建置或修改專案"
+  },
+  "guideRegion": "入門指南",
+  "stepDone": "已完成",
+  "stepTodo": "待辦",
+  "step": {
+    "choose-model": {
+      "title": "選擇或連線模型",
+      "body": "使用頂端的選擇器選擇模型。本機模型在這台電腦上執行；遠端供應商需要你自己的帳號。"
+    },
+    "add-material": {
+      "documents": "使用訊息方塊中的迴紋針按鈕附加文件。",
+      "project": "開啟 Cowork 並選擇專案資料夾。Flint 在編輯檔案或執行指令之前會先詢問。"
+    },
+    "first-task": {
+      "title": "傳送你的第一則訊息",
+      "body": "提出問題，或描述你想要的變更。對話開始後此步驟即完成。"
+    },
+    "review-context": {
+      "title": "查看 Flint 使用了什麼",
+      "body": "Flint 回答後，在對話中開啟「Flint 正在使用的內容」，查看哪些附件和指示可供它使用。"
+    },
+    "addMaterialTitle": {
+      "documents": "新增文件",
+      "project": "選擇專案資料夾"
+    }
+  },
+  "confirmStep": "我已完成",
+  "openProviders": "模型設定",
+  "openCowork": "開啟 Cowork",
+  "hideGuide": "隱藏引導",
+  "guideComplete": "設定完成。你可以隨時在「設定」>「一般」中重新開啟此引導。",
+  "finish": "完成引導",
+  "reopenGuide": "入門指南",
+  "reopenGuideDescription": "再次完整體驗選擇模型、新增素材和完成第一項任務的流程。",
+  "reopenGuideAction": "開啟引導",
+  "resumeRecent": "繼續上一次對話：{{title}}"
+}

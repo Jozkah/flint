@@ -2,9 +2,18 @@
   "addProvider": "Aggiungi provider",
   "addOpenAIProvider": "Aggiungi provider compatibile con OpenAI",
   "enterNameForProvider": "Nome del provider (es. mio-server-llm)",
+  "nameLabel": "Nome",
+  "apiTypeLabel": "Formato API",
+  "apiTypeOpenAI": "Compatibile con OpenAI",
+  "apiTypeAnthropic": "Compatibile con Anthropic",
   "baseUrlLabel": "URL di base",
   "baseUrlPlaceholder": "https://il-tuo-endpoint/v1",
+  "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "Chiave API (opzionale)",
   "apiKeyPlaceholder": "Incolla la tua chiave API",
-  "invalidBaseUrl": "L'URL di base deve essere un URL http(s) valido"
+  "invalidBaseUrl": "L'URL di base deve essere un URL http(s) valido",
+  "globalSettings": "Impostazioni globali",
+  "stripReasoning": "Rimuovi il ragionamento dal contesto",
+  "stripReasoningDesc": "Rimuovi il contenuto di pensiero/ragionamento dei turni precedenti prima di reinviare la cronologia, per tutti i provider. Migliora il riutilizzo della KV-cache per i modelli locali, ma alcuni modelli (ad es. le versioni Qwen più recenti) consigliano di mantenerlo per un miglior ragionamento multi-turno.",
+  "providerAlreadyExists": "Esiste già un provider chiamato {{name}}."
 }

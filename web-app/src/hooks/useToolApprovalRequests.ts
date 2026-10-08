@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { useToolApproval } from './useToolApproval'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { toast } from 'sonner'
+import { i18n } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
 import { resolveServerFingerprint } from '@/lib/mcpServerIdentity'
 import { ALWAYS_ASK_TOOLS } from '@/lib/sessionMessagingTools'
@@ -15,6 +16,7 @@ import {
   useAutoApproveLimit,
 } from '@/hooks/useAutoApproveLimit'
 import { rememberCommand, repeatCommandKey } from '@/lib/repeatedCommand'
+import { similarToolCall } from '@/lib/similarToolCall'
 
 /**
  * What the prompt can say about a call beyond its name. All optional, so a
@@ -111,9 +113,8 @@ export type PendingApproval = {
   workspaceLabel?: string
   threadIsEphemeral?: boolean
   /**
-   * Asked every time: no ordinary standing grant answers this prompt. The
-   * temporary Git grant below is the one deliberate exception for ordinary
-   * non-destructive remote Git/GitHub operations in this conversation.
+   * Asked every time unless a recognized single-process action has its own
+   * explicit standing grant. Temporary Git grants are another narrow case.
    */
   alwaysAsk?: boolean
   conversationProgram?: string
@@ -148,6 +149,7 @@ type ToolApprovalRequestsState = {
   refusals: Record<string, ApprovalRefusal>
   approvedFingerprints: Record<string, string>
   answeredByPrompt: Record<string, true>
+  bypassedCalls: Record<string, true>
   allowedOnceCommands: Record<string, string[]>
   temporaryGitThreads: Record<string, true>
 
@@ -189,6 +191,39 @@ function bashDestructiveReason(
       ? [label]
       : [])
   return destructiveCommandReason(command, roots)
+}
+
+/** Calls that cannot safely be inferred from a generic tool approval. */
+function sensitiveCall(
+  toolName: string,
+  serverName: string | undefined,
+  input: unknown
+): boolean {
+  if (/^(?:bash|browser_(?:click|type|press|select))$/.test(toolName))
+    return true
+  if (
+    /(?:^|_)(?:approve|grant|permission|create|update|modify|delete|remove|kill|stop|uninstall|shutdown|reboot|format|drop|merge|send|transfer|purchase|payment|publish|deploy|push|execute|exec|run|shell|terminal|upload|move|rename|replace|install)(?:_|$)/i.test(
+      toolName
+    )
+  )
+    return true
+  const action =
+    input && typeof input === 'object' && !Array.isArray(input)
+      ? (input as Record<string, unknown>).action
+      : undefined
+  if (
+    typeof action === 'string' &&
+    /^(?:create|update|modify|delete|remove|kill|stop|uninstall|shutdown|reboot|format|drop|merge|send|transfer|purchase|payment|publish|deploy|push|execute|exec|run|upload|move|rename|replace|install)$/i.test(
+      action
+    )
+  )
+    return true
+  return (
+    !!serverName &&
+    !/^(?:list|get|read|search|find|fetch|query|inspect|describe|status|view|preview)(?:_|$)/i.test(
+      toolName
+    )
+  )
 }
 
 /** A configured remote's name, not a URL or a path (`.`, `..`, `a/b`, `host:x`). */
@@ -281,6 +316,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
     refusals: {},
     approvedFingerprints: {},
     answeredByPrompt: {},
+    bypassedCalls: {},
     allowedOnceCommands: {},
     temporaryGitThreads: {},
 
@@ -306,6 +342,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           return
         }
         const settings = useToolApproval.getState()
+        const permissionMode = settings.permissionMode ?? 'ask'
         const approve = () => {
           if (serverName && serverFingerprint) {
             set((s) => ({
@@ -336,6 +373,51 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               ? `${toolName} approves commands on ${serverName} itself. Only you can approve them, so it is asked about every time.`
               : undefined)
 
+        if (
+          permissionMode === 'auto-approve' &&
+          sensitiveCall(toolName, serverName, context?.input)
+        ) {
+          alwaysAsk = true
+          taskContext ??=
+            'Sensitive tool call: review its action before allowing it.'
+        }
+
+        if (permissionMode === 'bypass') {
+          context?.onDecision?.('allow-once')
+          set((s) => ({
+            bypassedCalls: remember(s.bypassedCalls, [[toolCallId, true]]),
+          }))
+          approve()
+          return
+        }
+
+        const similar = !serverName ? similarToolCall(toolName, context?.input) : null
+        if (similar && (
+          settings.isSimilarCallApproved(similar.key) ||
+          settings.isToolApproved(threadId, similar.key)
+        )) {
+          const limit = useAutoApproveLimit.getState().limit
+          if (!noteAutoApproved(context?.autoApproveStreak ?? threadId, limit)) {
+            approve()
+            return
+          }
+          alwaysAsk = true
+          taskContext = autoApprovePauseReason(limit)
+          resetAutoApproveStreak(context?.autoApproveStreak ?? threadId)
+        }
+
+        if (permissionMode === 'auto-approve' && !alwaysAsk) {
+          const streakKey = context?.autoApproveStreak ?? threadId
+          const limit = useAutoApproveLimit.getState().limit
+          if (!noteAutoApproved(streakKey, limit)) {
+            approve()
+            return
+          }
+          alwaysAsk = true
+          taskContext = autoApprovePauseReason(limit)
+          resetAutoApproveStreak(streakKey)
+        }
+
         // A caller forces the prompt for every remote Git call, and this grant
         // exists to skip exactly that one. It never skips the prompts that are
         // about the tool itself (always-ask tools, self-approval, a destructive
@@ -344,6 +426,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         const temporaryGitKey =
           context?.autoApproveStreak ?? `git-temporary:${threadId}`
         const temporaryGitApproved =
+          !(permissionMode === 'auto-approve' && alwaysAsk) &&
           !ALWAYS_ASK_TOOLS.has(toolName) &&
           !selfApproval &&
           destructive === null &&
@@ -416,8 +499,14 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             : {}),
           ...(context?.onDecision ? { onDecision: context.onDecision } : {}),
           requestedAt: Date.now(),
-          resolve,
+          // Drop the abort listener once answered, so a long-lived signal
+          // does not keep every settled request's closure alive.
+          resolve: (approved) => {
+            signal?.removeEventListener('abort', onAbort)
+            resolve(approved)
+          },
         }
+        const onAbort = () => get().withdrawApproval(entry.requestId)
         set((s) =>
           s.pending[toolCallId]
             ? {
@@ -428,11 +517,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               }
             : { pending: { ...s.pending, [toolCallId]: entry } }
         )
-        signal?.addEventListener(
-          'abort',
-          () => get().withdrawApproval(entry.requestId),
-          { once: true }
-        )
+        signal?.addEventListener('abort', onAbort, { once: true })
       })
     },
 
@@ -480,6 +565,14 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
 
       if (temporaryGit) {
         // Intentionally transient; persisted grants are not changed.
+      } else if (!serverName && similarToolCall(entry.toolName, entry.input) &&
+        decision === 'allow-thread' && !entry.threadIsEphemeral
+      ) {
+        approval.approveToolForThread(entry.threadId, similarToolCall(entry.toolName, entry.input)!.key)
+      } else if (!serverName && similarToolCall(entry.toolName, entry.input) &&
+        decision === 'allow-always'
+      ) {
+        approval.approveSimilarCall(similarToolCall(entry.toolName, entry.input)!)
       } else if (
         ALWAYS_ASK_TOOLS.has(entry.toolName) ||
         (serverName && isSelfApprovalTool(entry.toolName)) ||
@@ -507,7 +600,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             .trustServer(serverName, serverFingerprint)
             .catch((error) => {
               useToolApproval.getState().revokeServer(serverName)
-              toast.error('Could not remember that server', {
+              toast.error(i18n.t('permissions:toast.trustFailed'), {
                 description: errorText(error),
               })
             })
@@ -593,12 +686,12 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         const names = [...new Set(stranded.map((e) => e.toolName))].join(', ')
         toast.warning(
           stranded.length === 1
-            ? `Approval for ${names} was cancelled`
-            : `${stranded.length} approvals (${names}) were cancelled`,
-          {
-            description:
-              'The chat was left before you answered. Send the request again to retry.',
-          }
+            ? i18n.t('permissions:toast.cancelledOne', { names })
+            : i18n.t('permissions:toast.cancelledMany', {
+                count: stranded.length,
+                names,
+              }),
+          { description: i18n.t('permissions:toast.cancelledDescription') }
         )
       }
     },
@@ -657,8 +750,10 @@ export function wasCommandAllowedOnce(
   return key !== null && !!state.allowedOnceCommands[threadId]?.includes(key)
 }
 
-export function approvalSourceFor(toolCallId: string): 'prompted' | 'auto' {
-  return useToolApprovalRequests.getState().answeredByPrompt[toolCallId]
-    ? 'prompted'
-    : 'auto'
+export function approvalSourceFor(
+  toolCallId: string
+): 'prompted' | 'auto' | 'bypass' {
+  const state = useToolApprovalRequests.getState()
+  if (state.bypassedCalls[toolCallId]) return 'bypass'
+  return state.answeredByPrompt[toolCallId] ? 'prompted' : 'auto'
 }

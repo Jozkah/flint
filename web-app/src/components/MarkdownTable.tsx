@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState, type HTMLAttributes } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
+import { useCallback, useEffect, useRef, useState, type HTMLAttributes } from 'react'
 import { ClipboardCopy, Download, Check } from 'lucide-react'
 import {
   DropdownMenu,
@@ -61,7 +62,10 @@ export function MarkdownTable({
   ...props
 }: HTMLAttributes<HTMLTableElement>) {
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), [])
 
   const withTable = useCallback(
     (fn: (rows: string[][]) => void) => {
@@ -79,7 +83,8 @@ export function MarkdownTable({
         try {
           await navigator.clipboard.writeText(text)
           setCopied(true)
-          window.setTimeout(() => setCopied(false), 1500)
+          window.clearTimeout(copiedTimer.current)
+          copiedTimer.current = window.setTimeout(() => setCopied(false), 1500)
         } catch {
           // ignore — clipboard denied
         }
@@ -113,8 +118,8 @@ export function MarkdownTable({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              title="Export table"
-              aria-label="Export table"
+              title={t('common:a11y.exportTable')}
+              aria-label={t('common:a11y.exportTable')}
               className="inline-flex items-center gap-1 rounded-md p-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
             >
               {copied ? <Check size={14} /> : <Download size={14} />}

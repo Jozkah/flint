@@ -124,6 +124,10 @@ fn mode_tag(mode: Mode) -> ModeTag {
     }
 }
 
+/// Durable (not per-pid) directory holding backups of Flint items a migration
+/// overwrote, so `rollback_from_manifest` can restore them after the run.
+const UNDO_DIR_NAME: &str = ".migrate-undo";
+
 /// Tracks what this run created/replaced so a failure can be rolled back.
 struct RunState {
     staging_root: PathBuf,
@@ -140,7 +144,7 @@ impl RunState {
         let pid = std::process::id();
         Self {
             staging_root: flint_config.join(format!(".migrate-staging-{pid}")),
-            rollback_root: flint_config.join(format!(".migrate-rollback-{pid}")),
+            rollback_root: flint_config.join(UNDO_DIR_NAME),
             created: Vec::new(),
             replaced: Vec::new(),
             counter: 0,
@@ -155,8 +159,36 @@ impl RunState {
 
     fn next_rollback(&mut self, name: &str) -> PathBuf {
         self.counter += 1;
-        self.rollback_root
-            .join(format!("{}-{}", self.counter, sanitize(name)))
+        // The timestamp keeps a resumed run from reusing a backup name.
+        self.rollback_root.join(format!(
+            "{}-{}-{}",
+            fsutil::now_ms(),
+            self.counter,
+            sanitize(name)
+        ))
+    }
+
+    /// Continue the undo ledger of an interrupted earlier attempt.
+    fn seed_from(&mut self, m: &manifest::MigrationManifest) {
+        self.created = m.created.clone();
+        self.replaced = m
+            .replaced
+            .iter()
+            .map(|r| (r.dest.clone(), r.backup.clone()))
+            .collect();
+    }
+
+    /// Persist the ledger into the manifest.
+    fn sync_into(&self, m: &mut manifest::MigrationManifest) {
+        m.created = self.created.clone();
+        m.replaced = self
+            .replaced
+            .iter()
+            .map(|(dest, backup)| manifest::ReplacedRecord {
+                dest: dest.clone(),
+                backup: backup.clone(),
+            })
+            .collect();
     }
 
     /// Undo everything this run did: remove created items, restore replaced
@@ -184,7 +216,20 @@ impl RunState {
 
     fn cleanup_scratch(&self) {
         let _ = std::fs::remove_dir_all(&self.staging_root);
+    }
+
+    /// Drop the overwritten-item backups. Only once the ledger that points at
+    /// them is gone (rolled back); a finished run keeps them for a later undo.
+    fn discard_undo(&self) {
         let _ = std::fs::remove_dir_all(&self.rollback_root);
+    }
+}
+
+/// Write a manifest checkpoint. A failure is logged, not fatal: the run can
+/// continue, but a later resume or rollback may know less than it should.
+fn checkpoint(dir: &Path, m: &manifest::MigrationManifest) {
+    if let Err(e) = manifest::write(dir, m) {
+        log::warn!("migration manifest checkpoint failed in {}: {e}", dir.display());
     }
 }
 
@@ -225,6 +270,14 @@ pub fn execute(plan: &MigrationPlan, opts: &ExecuteOpts) -> MigrationResult {
         }
     }
 
+    if matches!(plan.mode, Mode::Copy | Mode::Move) {
+        if let Some(reason) = overlapping_folders(plan) {
+            result.status = Status::Failed;
+            result.error = Some(reason);
+            return result;
+        }
+    }
+
     match plan.mode {
         Mode::Fresh => execute_fresh(plan, &flint_config, &flint_data, &mut result),
         Mode::Reuse => execute_reuse(plan, &flint_config, opts, &mut result),
@@ -232,6 +285,30 @@ pub fn execute(plan: &MigrationPlan, opts: &ExecuteOpts) -> MigrationResult {
     }
 
     result
+}
+
+/// Whether the source and destination data (or config) folders are the same
+/// place or nested in one another. Copying or moving then would read what it
+/// is writing, and a Move would delete the destination. Checked on canonical
+/// paths, before anything is touched.
+fn overlapping_folders(plan: &MigrationPlan) -> Option<String> {
+    let pairs = [
+        ("data", &plan.source_data_folder, &plan.dest_data_folder),
+        ("config", &plan.source_config_dir, &plan.dest_config_dir),
+    ];
+    for (what, src, dst) in pairs {
+        let s = fsutil::canonical_or_lexical(src);
+        let d = fsutil::canonical_or_lexical(dst);
+        if s == d || s.starts_with(&d) || d.starts_with(&s) {
+            return Some(format!(
+                "source and destination {what} folders are the same or nested ({} and {}); \
+                 migration refused",
+                s.display(),
+                d.display()
+            ));
+        }
+    }
+    None
 }
 
 fn build_manifest(plan: &MigrationPlan) -> manifest::MigrationManifest {
@@ -288,7 +365,7 @@ fn execute_fresh(
     }
     let mut m = build_manifest(_plan);
     m.status = Status::InProgress;
-    let _ = manifest::write(flint_config, &m);
+    checkpoint(flint_config, &m);
     m.mark_complete();
     if let Err(e) = manifest::write(flint_config, &m) {
         result.status = Status::Failed;
@@ -306,11 +383,11 @@ fn execute_reuse(
 ) {
     let mut m = build_manifest(plan);
     m.status = Status::InProgress;
-    let _ = manifest::write(flint_config, &m);
+    checkpoint(flint_config, &m);
 
     if !plan.compatible {
         m.mark_failed();
-        let _ = manifest::write(flint_config, &m);
+        checkpoint(flint_config, &m);
         result.status = Status::Failed;
         result.error = Some("source schema newer than supported; reuse refused".to_string());
         return;
@@ -324,7 +401,7 @@ fn execute_reuse(
     // Refuse to reuse a profile another live process is writing.
     if super::lock::is_held_by_other(&reuse_path) {
         m.mark_failed();
-        let _ = manifest::write(flint_config, &m);
+        checkpoint(flint_config, &m);
         result.status = Status::Failed;
         result.error = Some(format!(
             "reuse refused: {} is locked by another process",
@@ -340,14 +417,14 @@ fn execute_reuse(
         Ok(lock) => lock,
         Err(super::lock::LockError::Held(info)) => {
             m.mark_failed();
-            let _ = manifest::write(flint_config, &m);
+            checkpoint(flint_config, &m);
             result.status = Status::Failed;
             result.error = Some(format!("reuse refused: locked by pid {}", info.pid));
             return;
         }
         Err(super::lock::LockError::Io(e)) => {
             m.mark_failed();
-            let _ = manifest::write(flint_config, &m);
+            checkpoint(flint_config, &m);
             result.status = Status::Failed;
             result.error = Some(format!("reuse lock io error: {e}"));
             return;
@@ -383,6 +460,22 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
         return;
     }
 
+    // A Move deletes the source, but copying skips directory links, so what a
+    // link points to would be lost. Refuse before writing anything.
+    if plan.mode == Mode::Move {
+        for item in &plan.items {
+            if let Some(link) = fsutil::find_linked_dir(&item.source) {
+                result.status = Status::Failed;
+                result.error = Some(format!(
+                    "move refused: {} contains a directory link ({}); copy instead, or remove the link first",
+                    item.name,
+                    link.display()
+                ));
+                return;
+            }
+        }
+    }
+
     let flint_config = plan.dest_config_dir.clone();
     let flint_data = plan.dest_data_folder.clone();
     let quarantine_dir = flint_config.join(QUARANTINE_DIR_NAME);
@@ -396,9 +489,10 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
 
     let mut m = build_manifest(plan);
     m.status = Status::InProgress;
-    let _ = manifest::write(&flint_config, &m);
+    checkpoint(&flint_config, &m);
 
     let mut run = RunState::new(&flint_config);
+    run.seed_from(&m);
     let _ = std::fs::create_dir_all(&run.staging_root);
 
     // Group planned items by category, preserving plan order.
@@ -444,6 +538,10 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
                     } else {
                         skipped_count += 1;
                     }
+                    // Persist the undo ledger per item, so a crash mid-category
+                    // still leaves a rollback that knows what was written.
+                    run.sync_into(&mut m);
+                    checkpoint(&flint_config, &m);
                 }
                 Err(e) => {
                     fail_and_rollback(
@@ -477,7 +575,7 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
         m.upsert_result(rec.clone());
         // Checkpoint the manifest after each category so an interruption resumes
         // cleanly.
-        let _ = manifest::write(&flint_config, &m);
+        checkpoint(&flint_config, &m);
 
         result.per_category.push(CategoryResult {
             category,
@@ -498,7 +596,7 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
             Ok(()) => {
                 m.backup_path = Some(backup_root.clone());
                 result.backup_path = Some(backup_root.clone());
-                let _ = manifest::write(&flint_config, &m);
+                checkpoint(&flint_config, &m);
             }
             Err(e) => {
                 fail_and_rollback(plan, &mut m, &run, result, &format!("backup failed: {e}"));
@@ -535,7 +633,14 @@ fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut M
 
     run.cleanup_scratch();
     m.mark_complete();
-    let _ = manifest::write(&flint_config, &m);
+    if let Err(e) = manifest::write(&flint_config, &m) {
+        // The data is in place, but without a Complete manifest the run would
+        // look interrupted. Say so rather than report success.
+        log::error!("final migration manifest write failed: {e}");
+        result.status = Status::Failed;
+        result.error = Some(format!("migration finished but its record could not be saved: {e}"));
+        return;
+    }
     result.status = Status::Complete;
 }
 
@@ -548,8 +653,19 @@ fn fail_and_rollback(
 ) {
     let rolled = run.rollback();
     run.cleanup_scratch();
+    // Rolled-back categories are no longer on disk: forget their done markers
+    // or a resume would skip them and report Complete with data missing.
+    m.results.clear();
+    m.skipped_items.clear();
+    if rolled {
+        m.created.clear();
+        m.replaced.clear();
+        run.discard_undo();
+    } else {
+        run.sync_into(m);
+    }
     m.mark_failed();
-    let _ = manifest::write(&plan.dest_config_dir, m);
+    checkpoint(&plan.dest_config_dir, m);
     result.status = Status::Failed;
     result.rolled_back = rolled;
     result.error = Some(reason.to_string());
@@ -768,29 +884,90 @@ fn rewrite_settings_paths(
     src_config: &Path,
     dst_config: &Path,
 ) {
-    let Ok(text) = std::fs::read_to_string(settings) else {
-        return;
+    let text = match std::fs::read_to_string(settings) {
+        Ok(t) => t,
+        Err(e) => {
+            log::warn!("settings path rewrite: cannot read {}: {e}", settings.display());
+            return;
+        }
     };
-    let mut out = text;
-    for (from, to) in [(src_data, dst_data), (src_config, dst_config)] {
+    let mut value: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("settings path rewrite: {} is not valid JSON: {e}", settings.display());
+            return;
+        }
+    };
+    let pairs = [(src_data, dst_data), (src_config, dst_config)];
+    if !rewrite_value(&mut value, &pairs) {
+        return;
+    }
+    let out = match serde_json::to_string_pretty(&value) {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("settings path rewrite: serialize failed: {e}");
+            return;
+        }
+    };
+    // Temp + rename so a crash never leaves a truncated settings file.
+    let tmp = settings.with_extension("json.tmp");
+    let result = std::fs::write(&tmp, out).and_then(|_| std::fs::rename(&tmp, settings));
+    if let Err(e) = result {
+        let _ = std::fs::remove_file(&tmp);
+        log::warn!("settings path rewrite: cannot write {}: {e}", settings.display());
+    }
+}
+
+/// Rewrite string values that start with a source path (on a path boundary).
+/// Returns whether anything changed.
+fn rewrite_value(value: &mut serde_json::Value, pairs: &[(&Path, &Path)]) -> bool {
+    match value {
+        serde_json::Value::String(s) => {
+            if let Some(new) = rewrite_prefix(s, pairs) {
+                *s = new;
+                true
+            } else {
+                false
+            }
+        }
+        serde_json::Value::Array(items) => {
+            let mut changed = false;
+            for item in items {
+                changed |= rewrite_value(item, pairs);
+            }
+            changed
+        }
+        serde_json::Value::Object(map) => {
+            let mut changed = false;
+            for (_, item) in map.iter_mut() {
+                changed |= rewrite_value(item, pairs);
+            }
+            changed
+        }
+        _ => false,
+    }
+}
+
+fn rewrite_prefix(s: &str, pairs: &[(&Path, &Path)]) -> Option<String> {
+    for (from, to) in pairs {
         let from_native = from.to_string_lossy().to_string();
         let to_native = to.to_string_lossy().to_string();
-        if !from_native.is_empty() {
-            out = out.replace(&from_native, &to_native);
-            // Also handle JSON-escaped backslashes and forward-slash spellings.
-            let from_fwd = from_native.replace('\\', "/");
-            let to_fwd = to_native.replace('\\', "/");
-            if from_fwd != from_native {
-                out = out.replace(&from_fwd, &to_fwd);
-            }
-            let from_esc = from_native.replace('\\', "\\\\");
-            let to_esc = to_native.replace('\\', "\\\\");
-            if from_esc != from_native {
-                out = out.replace(&from_esc, &to_esc);
+        if from_native.is_empty() {
+            continue;
+        }
+        let spellings = [
+            (from_native.clone(), to_native.clone()),
+            (from_native.replace('\\', "/"), to_native.replace('\\', "/")),
+        ];
+        for (f, t) in spellings {
+            if let Some(rest) = s.strip_prefix(&f) {
+                if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') {
+                    return Some(format!("{t}{rest}"));
+                }
             }
         }
     }
-    let _ = std::fs::write(settings, out);
+    None
 }
 
 /// Copy every migrated source item into `backup_root`, preserving its root
@@ -847,33 +1024,70 @@ fn restore_source_from_backup(plan: &MigrationPlan, backup_root: &Path) -> Resul
 /// for Move, restore the JAN source from the backup. Used by the
 /// `migration_rollback` command after the fact (distinct from the in-run
 /// rollback on failure).
+///
+/// Holds the profile lock on the Flint data folder for the whole rollback and
+/// refuses when another live process holds it.
 pub fn rollback_from_manifest(flint_config_dir: &Path) -> Result<(), String> {
     let m = manifest::read(flint_config_dir)?
         .ok_or_else(|| "no manifest to roll back".to_string())?;
-
-    // Remove Flint destination items recorded as done.
-    for rec in &m.results {
-        for entry in super::detect::resolved_entries(
-            rec.category,
-            &super::detect::ResolvedSource {
-                config_dir: m.destination.config_dir.clone(),
-                data_folder: m.destination.data_folder.clone(),
-                location: super::detect::LegacyLocation::DataFolder,
-            },
-        ) {
-            let dest = match entry.root {
-                SourceRoot::Config => m.destination.config_dir.join(&entry.name),
-                SourceRoot::Data => m.destination.data_folder.join(&entry.name),
-            };
-            if dest.exists() {
-                let _ = if dest.is_dir() {
-                    std::fs::remove_dir_all(&dest)
-                } else {
-                    std::fs::remove_file(&dest)
-                };
-            }
-        }
+    let data_folder = m.destination.data_folder.clone();
+    // A lock this process already holds (a Reuse session) stays as it is.
+    let ours = super::lock::read_lock(&data_folder)
+        .is_some_and(|i| i.pid == std::process::id() && !super::lock::is_stale(&i));
+    if ours {
+        return rollback_with_manifest(flint_config_dir, m);
     }
+    let lock = match super::lock::acquire(&data_folder, "flint-rollback") {
+        Ok(lock) => lock,
+        Err(super::lock::LockError::Held(info)) => {
+            return Err(format!(
+                "rollback refused: {} is in use by another Flint process (pid {})",
+                data_folder.display(),
+                info.pid
+            ))
+        }
+        Err(e) => return Err(format!("rollback could not lock the data folder: {e}")),
+    };
+    let result = rollback_with_manifest(flint_config_dir, m);
+    let _ = lock.release();
+    result
+}
+
+fn rollback_with_manifest(flint_config_dir: &Path, m: manifest::MigrationManifest) -> Result<(), String> {
+
+    // Undo only what this migration recorded: remove the items it created and
+    // restore the ones it overwrote. Flint data it never touched (items kept
+    // via KeepFlint, anything added since) is left alone. Paths come from the
+    // manifest file, so refuse any outside the Flint profile.
+    let inside = |p: &Path| {
+        p.starts_with(&m.destination.config_dir) || p.starts_with(&m.destination.data_folder)
+    };
+    for path in &m.created {
+        if !inside(path) {
+            continue;
+        }
+        let _ = if path.is_dir() {
+            std::fs::remove_dir_all(path)
+        } else if path.is_file() {
+            std::fs::remove_file(path)
+        } else {
+            Ok(())
+        };
+    }
+    for rec in &m.replaced {
+        if !inside(&rec.dest) || !rec.backup.exists() {
+            continue;
+        }
+        let _ = if rec.dest.is_dir() {
+            std::fs::remove_dir_all(&rec.dest)
+        } else if rec.dest.is_file() {
+            std::fs::remove_file(&rec.dest)
+        } else {
+            Ok(())
+        };
+        fsutil::copy_tree_preserving_mtime(&rec.backup, &rec.dest).map_err(|e| e.to_string())?;
+    }
+    let _ = std::fs::remove_dir_all(m.destination.config_dir.join(UNDO_DIR_NAME));
 
     // For Move, restore the JAN source from the backup.
     if m.mode == ModeTag::Move {
@@ -896,6 +1110,10 @@ pub fn rollback_from_manifest(flint_config_dir: &Path) -> Result<(), String> {
     }
 
     let mut m = m;
+    m.created.clear();
+    m.replaced.clear();
+    m.results.clear();
+    m.skipped_items.clear();
     m.status = Status::Failed;
     m.finished_at = Some(fsutil::now_ms());
     manifest::write(flint_config_dir, &m)
@@ -1082,8 +1300,16 @@ mod tests {
         assert_eq!(held.holder, "test");
 
         // Now simulate another live process holding the lock -> refuse.
+        #[cfg(windows)]
+        let mut child = std::process::Command::new("ping")
+            .args(["-n", "30", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        #[cfg(not(windows))]
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
         let foreign = super::super::lock::LockInfo {
-            pid: std::process::id().wrapping_add(7),
+            pid: child.id(),
             timestamp_ms: fsutil::now_ms(),
             holder: "other".to_string(),
         };
@@ -1097,6 +1323,8 @@ mod tests {
         let mut p2 = p.clone();
         p2.dest_config_dir = p.dest_config_dir.join("second");
         let r2 = execute(&p2, &ExecuteOpts::with_holder("test"));
+        let _ = child.kill();
+        let _ = child.wait();
         assert_eq!(r2.status, Status::Failed);
         assert!(r2.error.unwrap().contains("locked"));
     }
@@ -1111,15 +1339,20 @@ mod tests {
         let r1 = execute(&p, &opts);
         assert_eq!(r1.status, Status::Failed);
 
-        // Settings should have completed and been checkpointed.
+        // The failed run rolled Settings back, so it must not stay marked done
+        // (a resume would skip it with the files gone).
         let f = flint_paths(&roots);
         let man = manifest::read(&f.config_dir).unwrap().unwrap();
-        assert!(man.is_category_done(Category::Settings));
+        assert!(!man.is_category_done(Category::Settings));
+        assert!(!f.config_dir.join("settings.json").exists());
 
         // Resume with no failure hook: completes without duplicating.
         let r2 = execute(&p, &ExecuteOpts::with_holder("test"));
         assert_eq!(r2.status, Status::Complete, "err={:?}", r2.error);
         assert!(f.data_folder.join("threads/thread_1/thread.json").is_file());
+        // The category rolled back by the failed run must be re-copied, not
+        // skipped on its stale done marker.
+        assert!(f.config_dir.join("settings.json").is_file());
 
         // Third launch is a no-op (idempotent).
         let r3 = execute(&p, &ExecuteOpts::with_holder("test"));
@@ -1192,5 +1425,163 @@ mod tests {
         let flint_data = f.data_folder.to_string_lossy().replace('\\', "/");
         assert!(text.contains(&flint_data), "settings not repointed: {text}");
         assert!(!text.contains(&jan_data));
+    }
+
+    #[test]
+    fn same_or_nested_folders_are_refused_before_touching_anything() {
+        let (_td, roots) = setup();
+        let l = legacy_paths(&roots);
+        let mut p = make_plan(&roots, Mode::Move, Conflict::UseJan);
+        p.dest_data_folder = l.data_folder.clone();
+        let r = execute(&p, &ExecuteOpts::with_holder("test"));
+        assert_eq!(r.status, Status::Failed);
+        assert!(r.error.unwrap().contains("same or nested"));
+        assert!(l.data_folder.exists(), "source must be untouched");
+
+        let mut p = make_plan(&roots, Mode::Copy, Conflict::UseJan);
+        p.dest_data_folder = l.data_folder.join("inside");
+        let r = execute(&p, &ExecuteOpts::with_holder("test"));
+        assert_eq!(r.status, Status::Failed);
+        assert!(!l.data_folder.join("inside").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn move_with_a_directory_link_is_refused() {
+        let (td, roots) = setup();
+        let l = legacy_paths(&roots);
+        let outside = td.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::create_dir_all(l.data_folder.join("threads")).unwrap();
+        std::os::unix::fs::symlink(&outside, l.data_folder.join("threads").join("lnk")).unwrap();
+        let p = make_plan(&roots, Mode::Move, Conflict::UseJan);
+        let r = execute(&p, &ExecuteOpts::with_holder("test"));
+        assert_eq!(r.status, Status::Failed);
+        assert!(r.error.unwrap().contains("directory link"));
+        assert!(outside.exists());
+    }
+
+    #[test]
+    fn settings_rewrite_only_touches_values_with_the_source_prefix() {
+        let td = tempfile::tempdir().unwrap();
+        let settings = td.path().join("settings.json");
+        let src = Path::new("/old/jan/data");
+        let dst = Path::new("/new/flint/data");
+        fs::write(
+            &settings,
+            r#"{"data_folder":"/old/jan/data","nested":{"p":"/old/jan/data/models"},"note":"see /old/jan/data for more","near":"/old/jan/data2","/old/jan/data":"key stays"}"#,
+        )
+        .unwrap();
+        rewrite_settings_paths(&settings, src, dst, Path::new("/c/old"), Path::new("/c/new"));
+        let v: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(v["data_folder"], "/new/flint/data");
+        assert_eq!(v["nested"]["p"], "/new/flint/data/models");
+        assert_eq!(v["note"], "see /old/jan/data for more");
+        assert_eq!(v["near"], "/old/jan/data2");
+        assert_eq!(v["/old/jan/data"], "key stays");
+        assert!(!td.path().join("settings.json.tmp").exists());
+    }
+
+    #[test]
+    fn settings_rewrite_leaves_invalid_json_alone() {
+        let td = tempfile::tempdir().unwrap();
+        let settings = td.path().join("settings.json");
+        fs::write(&settings, "{ not json /old/jan/data").unwrap();
+        rewrite_settings_paths(
+            &settings,
+            Path::new("/old/jan/data"),
+            Path::new("/new"),
+            Path::new("/c/old"),
+            Path::new("/c/new"),
+        );
+        assert_eq!(fs::read_to_string(&settings).unwrap(), "{ not json /old/jan/data");
+    }
+
+    #[test]
+    fn rollback_after_completion_keeps_flint_data_it_did_not_create() {
+        let (_td, roots) = setup();
+        let f = flint_paths(&roots);
+        // Existing Flint item the user keeps, plus one a migration overwrites.
+        fs::create_dir_all(&f.data_folder).unwrap();
+        fs::write(f.data_folder.join("mcp_config.json"), br#"{"mine":1}"#).unwrap();
+
+        let p = make_plan(&roots, Mode::Copy, Conflict::KeepFlint);
+        let r = execute(&p, &ExecuteOpts::with_holder("test"));
+        assert_eq!(r.status, Status::Complete, "err={:?}", r.error);
+        assert!(f.data_folder.join("threads/thread_1/thread.json").is_file());
+
+        rollback_from_manifest(&f.config_dir).unwrap();
+        // Created by the migration: gone. Pre-existing Flint data: untouched.
+        assert!(!f.data_folder.join("threads").exists());
+        assert_eq!(
+            fs::read(f.data_folder.join("mcp_config.json")).unwrap(),
+            br#"{"mine":1}"#
+        );
+    }
+
+    #[test]
+    fn rollback_refuses_while_another_process_holds_the_profile_lock() {
+        let (_td, roots) = setup();
+        let f = flint_paths(&roots);
+        let p = make_plan(&roots, Mode::Copy, Conflict::KeepFlint);
+        let r = execute(&p, &ExecuteOpts::with_holder("test"));
+        assert_eq!(r.status, Status::Complete, "err={:?}", r.error);
+
+        #[cfg(windows)]
+        let mut child = std::process::Command::new("ping")
+            .args(["-n", "30", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        #[cfg(not(windows))]
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let lock_file = f.data_folder.join(super::super::lock::LOCK_FILE_NAME);
+        let foreign = super::super::lock::LockInfo {
+            pid: child.id(),
+            timestamp_ms: fsutil::now_ms(),
+            holder: "other".to_string(),
+        };
+        fs::write(&lock_file, serde_json::to_string(&foreign).unwrap()).unwrap();
+
+        let held = rollback_from_manifest(&f.config_dir);
+        let _ = child.kill();
+        let _ = child.wait();
+        let err = held.expect_err("a held lock must refuse the rollback");
+        assert!(err.contains("another Flint process"), "{err}");
+        assert!(f.data_folder.join("threads/thread_1/thread.json").is_file());
+
+        fs::remove_file(&lock_file).unwrap();
+        rollback_from_manifest(&f.config_dir).unwrap();
+        assert!(!f.data_folder.join("threads").exists());
+        assert!(!lock_file.exists(), "the rollback releases its lock");
+    }
+
+    #[test]
+    fn rollback_after_completion_restores_overwritten_flint_items() {
+        let (_td, roots) = setup();
+        let f = flint_paths(&roots);
+        fs::create_dir_all(&f.data_folder).unwrap();
+        fs::write(f.data_folder.join("mcp_config.json"), br#"{"orig":1}"#).unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(600);
+        let _ = fs::File::options()
+            .write(true)
+            .open(f.data_folder.join("mcp_config.json"))
+            .unwrap()
+            .set_modified(old);
+
+        let p = make_plan(&roots, Mode::Copy, Conflict::UseJan);
+        let r = execute(&p, &ExecuteOpts::with_holder("test"));
+        assert_eq!(r.status, Status::Complete, "err={:?}", r.error);
+        assert_ne!(
+            fs::read(f.data_folder.join("mcp_config.json")).unwrap(),
+            br#"{"orig":1}"#
+        );
+
+        rollback_from_manifest(&f.config_dir).unwrap();
+        assert_eq!(
+            fs::read(f.data_folder.join("mcp_config.json")).unwrap(),
+            br#"{"orig":1}"#
+        );
     }
 }

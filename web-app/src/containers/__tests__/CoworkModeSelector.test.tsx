@@ -11,7 +11,7 @@ import { CoworkModeSelector } from '../CoworkModeSelector'
 /** Radix opens on pointer events jsdom does not fully model. */
 const user = userEvent.setup({ pointerEventsCheck: 0 })
 
-const open = async (mode: 'review' | 'ask' | 'auto' = 'review') => {
+const open = async (mode: 'review' | 'ask' | 'auto' | 'bypass' = 'review') => {
   const onChange = vi.fn()
   render(<CoworkModeSelector mode={mode} onChange={onChange} />)
   await user.click(screen.getByRole('button'))
@@ -27,7 +27,7 @@ describe('CoworkModeSelector', () => {
     )
   })
 
-  it('offers all three modes, each with what it does', async () => {
+  it('offers bypass permissions alongside the other modes', async () => {
     await open()
     const options = await screen.findAllByRole('menuitemradio')
 
@@ -35,6 +35,7 @@ describe('CoworkModeSelector', () => {
       'common:coworkMode.review.labelcommon:coworkMode.review.description',
       'common:coworkMode.ask.labelcommon:coworkMode.ask.description',
       'common:coworkMode.auto.labelcommon:coworkMode.auto.description',
+      'common:coworkMode.bypass.labelcommon:coworkMode.bypass.description',
     ])
   })
 
@@ -46,6 +47,7 @@ describe('CoworkModeSelector', () => {
       'false',
       'true',
       'false',
+      'false',
     ])
   })
 
@@ -56,6 +58,13 @@ describe('CoworkModeSelector', () => {
     await user.click(options[2])
 
     expect(onChange).toHaveBeenCalledWith('auto')
+  })
+
+  it('selects bypass permissions from the menu', async () => {
+    const onChange = await open('auto')
+    const options = await screen.findAllByRole('menuitemradio')
+    await user.click(options[3])
+    expect(onChange).toHaveBeenCalledWith('bypass')
   })
 
   it('says which mode is active for a screen reader', () => {

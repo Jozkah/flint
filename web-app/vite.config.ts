@@ -46,6 +46,18 @@ export default defineConfig(() => {
         '@janhq/mlx-extension': path.resolve(__dirname, '../extensions/mlx-extension/dist/index.js'),
         '@janhq/rag-extension': path.resolve(__dirname, '../extensions/rag-extension/dist/index.js'),
         '@janhq/vector-db-extension': path.resolve(__dirname, '../extensions/vector-db-extension/dist/index.js'),
+        // The browser build has no Tauri bridge: extension and plugin calls to
+        // `invoke` are answered by the Flint server instead.
+        ...(process.env.IS_WEB_APP === 'true'
+          ? {
+              '@tauri-apps/api/core': path.resolve(__dirname, './src/lib/tauriBridgeShim.ts'),
+              '@tauri-apps/api/event': path.resolve(__dirname, './src/lib/tauriEventShim.ts'),
+              '@tauri-apps/api/path': path.resolve(__dirname, './src/lib/tauriPathShim.ts'),
+              // The extension copy that leaves the Tauri packages external, so
+              // the stand-ins above apply to it.
+              '@janhq/llamacpp-extension': path.resolve(__dirname, '../extensions/llamacpp-extension/dist/index.web.js'),
+            }
+          : {}),
       },
     },
     optimizeDeps: {
@@ -63,9 +75,9 @@ export default defineConfig(() => {
       ],
     },
     define: {
-      IS_TAURI: JSON.stringify(process.env.IS_TAURI),
+      IS_TAURI: JSON.stringify(process.env.IS_TAURI === 'true'),
       IS_DEV: JSON.stringify(process.env.IS_DEV),
-      IS_WEB_APP: JSON.stringify(false),
+      IS_WEB_APP: JSON.stringify(process.env.IS_WEB_APP === 'true'),
       IS_MACOS: JSON.stringify(
         process.env.TAURI_ENV_PLATFORM?.includes('darwin') ?? false
       ),

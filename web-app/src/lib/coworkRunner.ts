@@ -164,6 +164,11 @@ export type ToolOutcome = {
    * the model is simply not called again. Never reaches the model.
    */
   endsTurn?: boolean
+  /**
+   * A subagent's whole answer when `output` is a shortened copy of it. Taken
+   * by the dispatcher, which keeps it for `await_task` reads; never sent on.
+   */
+  full?: string
 }
 
 /**
@@ -384,6 +389,20 @@ export function beginRun(
   return handle
 }
 
+/**
+ * Make sure `sid` has a run handle, creating one only when there is none.
+ *
+ * Cowork begins a run per turn. A surface with no such turn (plain chat, a
+ * Room) still needs somewhere for a child's own cancellation to live, or
+ * `registerSubagent` hands back a controller that is already aborted and every
+ * child it starts is cancelled before it begins. Unlike `beginRun` this never
+ * replaces a handle that is already there.
+ */
+export function ensureRun(sid: string, runId: string, outer: AbortController): void {
+  if (handles.has(sid)) return
+  beginRun(sid, runId, outer)
+}
+
 /** Forget a run once it is over, without aborting anything. */
 export function endRun(sid: string, runId?: string): void {
   const handle = handles.get(sid)
@@ -569,6 +588,11 @@ export type StreamSink = {
   onToolStart: (toolCallId: string, toolName: string) => void
   onToolArgsDelta: (toolCallId: string, delta: string) => void
   onToolCall: (call: PendingToolCall) => void
+  /**
+   * Any generated output arrived: text, reasoning or tool-call arguments. The
+   * span between the first and last is what a generation speed divides by.
+   */
+  onOutput?: (chars: number) => void
 }
 
 function stopReason(signal: AbortSignal): unknown {
@@ -650,12 +674,17 @@ export async function consumeStep(
       switch (chunk.type) {
         case 'text-delta':
           result.text += chunk.delta
+          sink.onOutput?.(chunk.delta.length)
           sink.onText(chunk.delta)
+          break
+        case 'reasoning-delta':
+          sink.onOutput?.(chunk.delta?.length ?? 0)
           break
         case 'tool-input-start':
           sink.onToolStart(chunk.toolCallId, chunk.toolName)
           break
         case 'tool-input-delta':
+          sink.onOutput?.(chunk.inputTextDelta?.length ?? 0)
           sink.onToolArgsDelta(chunk.toolCallId, chunk.inputTextDelta)
           break
         case 'tool-input-available': {
@@ -1363,6 +1392,8 @@ export async function runTurn(opts: {
             : undefined,
         path: pathOf(call.input),
         after: outcome.diff,
+        result:
+          typeof outcome.output === 'string' ? outcome.output : undefined,
       })
       if (await yieldToSteering(index)) break
     }

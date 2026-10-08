@@ -1,3 +1,19 @@
 {
-  "noLogs": "Tidak ada log yang tersedia"
+  "noLogs": "Tidak ada log yang tersedia",
+  "noMatch": "Tidak ada baris yang cocok dengan filter",
+  "title": "Log",
+  "serverTitle": "Log server API lokal",
+  "copy": "Salin log",
+  "openFolder": "Buka folder",
+  "copied": "Disalin",
+  "search": "Cari log",
+  "filterLabel": "Filter menurut level",
+  "levelAll": "Semua",
+  "levelError": "Error",
+  "levelWarn": "Peringatan",
+  "levelInfo": "Info",
+  "levelDebug": "Debug",
+  "shown": "{{shown}} dari {{total}} baris",
+  "description": "Semua yang ditulis Flint dan enginenya hari ini. Terbaru lebih dulu.",
+  "serverDescription": "Permintaan ke Server API Lokal yang kompatibel dengan OpenAI. Terbaru lebih dulu."
 }

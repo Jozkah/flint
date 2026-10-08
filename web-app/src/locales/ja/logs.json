@@ -1,3 +1,19 @@
 {
-  "noLogs": "利用可能なログはありません"
+  "noLogs": "利用可能なログはありません",
+  "noMatch": "フィルターに一致する行はありません",
+  "title": "ログ",
+  "serverTitle": "ローカル API サーバーのログ",
+  "copy": "ログをコピー",
+  "openFolder": "フォルダーを開く",
+  "copied": "コピーしました",
+  "search": "ログを検索",
+  "filterLabel": "レベルで絞り込み",
+  "levelAll": "すべて",
+  "levelError": "エラー",
+  "levelWarn": "警告",
+  "levelInfo": "情報",
+  "levelDebug": "デバッグ",
+  "shown": "{{total}} 行中 {{shown}} 行",
+  "description": "本日、Flint とそのエンジンが書き込んだすべての内容です。新しい順に表示します。",
+  "serverDescription": "OpenAI 互換のローカル API サーバーへのリクエストです。新しい順に表示します。"
 }

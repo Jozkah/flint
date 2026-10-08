@@ -1,3 +1,19 @@
 {
-  "noLogs": "Nejsou k dispozici žádné záznamy"
+  "noLogs": "Nejsou k dispozici žádné záznamy",
+  "noMatch": "Filtru neodpovídají žádné řádky",
+  "title": "Protokoly",
+  "serverTitle": "Protokoly lokálního serveru API",
+  "copy": "Kopírovat protokoly",
+  "openFolder": "Otevřít složku",
+  "copied": "Zkopírováno",
+  "search": "Hledat v protokolech",
+  "filterLabel": "Filtrovat podle úrovně",
+  "levelAll": "Vše",
+  "levelError": "Chyby",
+  "levelWarn": "Varování",
+  "levelInfo": "Informace",
+  "levelDebug": "Ladění",
+  "shown": "{{shown}} z {{total}} řádků",
+  "description": "Vše, co dnes Flint a jeho engine zapsaly. Nejnovější nahoře.",
+  "serverDescription": "Požadavky na lokální server API kompatibilní s OpenAI. Nejnovější nahoře."
 }

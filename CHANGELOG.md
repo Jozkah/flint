@@ -123,6 +123,11 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Requests to local models and the local API server on this computer no longer go through a system or VPN proxy.
 - Save dialogs, such as a memory export or saving a code block, suggest the file name instead of showing "Untitled".
 - The duplicate model picker in the Details panel is gone.
+- Fixed Flint closing on the first tool call in the Windows release build. The program ended with `thread 'main' has overflowed its stack`: Windows gives the main thread 1 MB unless the program asks for more, and the optimised release build needed more. It now reserves 8 MB, and the release build fails if the program it produced does not.
+- Fixed every widget showing "Widget stopped responding". The widget announces itself while its own page is still loading, so the frame's `load` event could arrive just after, and Flint took it for the widget navigating away.
+- Fixed the Windows `setup.exe` shipping without the phone app's files. The installer script is generated from `tauri.bundle.windows.nsis.base.template` at every build, so the earlier fix to the generated file was overwritten; the folder is now listed in the base.
+- A crash now leaves a lead in the log. On Windows a fatal exception that a panic hook cannot see, such as a stack overflow or an access violation, is recorded in `crashes/pending.txt` in the data folder: what it was, which thread, where (module and offset) and in which build, how big the thread's stack was, the innermost frames and the last commands the app ran. The next start logs that report as an error, keeps the last eight under `crashes/`, and says so when the previous run ended without any report. Every panic is logged with its place and a backtrace, the main thread's stack size is logged at start (with a warning when it is under 4 MB), and a picture or video model that cannot load in the chat engine is no longer retried at every launch.
+
 
 ### Run summary and opening pages
 
@@ -130,11 +135,14 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Each step inside a folded run is one closed line saying what it did, such as **Read AUDIT.md** or **Failed to run Diffed original vs patched files**, and opens on click. The run's line counts failures, as in **Ran 54 commands, read 4 files (2 failed)**.
 - Added an **`open_in_browser`** tool. The model can put a page in front of the user, shown as an **Opened in Browser** card with an **Open** button and a link menu. A page on this computer opens at once; any other site waits for the user to press **Open**.
 
-### Git approvals
+### Approvals and work modes
 
 - Inline approvals keep **More options** available instead of hiding it when the immediate request only exposes Allow once.
 - Added **Allow all temporarily** for non-destructive remote Git/GitHub operations in the current conversation.
 - Temporary Git trust stays in renderer memory, is never persisted as an Always allow grant, is not offered to temporary chats and never covers destructive Git operations.
+- Cowork's work-mode menu includes **Bypass permissions** for the current session. It resets to **Ask before changes** when Flint restarts; folder boundaries remain enforced.
+- **Settings > Permissions** offers Ask for permission, automatic approval of safe calls with prompts for dangerous calls, and Bypass permissions until Flint closes.
+- Recognized single-process termination calls can be allowed once, for the current conversation or for future similar calls. A saved rule covers other process IDs but keeps `Stop-Process -Id` separate from `Stop-Process -Id -Force`.
 
 ### Privacy and security
 
@@ -183,6 +191,21 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - New Cowork sessions are named automatically by the model from the first prompt, without overwriting a name you set.
 - Reasoning effort in Cowork is saved per session and no longer moves the global model picker, and subagent steps use the parent session's reasoning settings.
 - Added **Describe this project** to the Cowork folder menu.
+- Cowork and chat can read what the shell sandbox cannot see, through tools the app runs outside it. All are read-only and ask for nothing:
+  - `windows_events` reads the Windows Event Log by channel, level, time, event id and source.
+  - `host_query` answers one named question about this computer: processes, services, listening ports and what holds them, disks, system details, installed programs, one registry key (credential values hidden), crash reports, scheduled tasks, startup items, WSL distributions, GPU, network, Windows Update, battery, open windows, devices with driver problems, disk health, the firewall, environment variable names or printers.
+  - `local_http` sends a GET or HEAD to a server on this computer, to check that a dev server answers. It only reaches localhost and does not follow redirects.
+  - `docker` runs `ps`, `images`, `logs`, `top`, `port`, one `stats` sample, `version`, `info` and the `compose` equivalents. Anything that starts, stops, removes, builds or runs is refused and handed to you instead.
+- Tools that can change things on this computer name the exact target in their approval request. Approval behavior follows the selected mode and any matching scoped grant:
+  - `host_action` ends one process (by its number, never by name) or starts, stops or restarts one Windows service. System-critical processes and services, and Flint itself, are refused. A service that needs an administrator fails with Windows' own message.
+  - `host_build` runs `gradle`, `gradlew`, `mvn`, `mvnw` or `dotnet` in the project folder, outside the shell sandbox that cannot run them (no profile-installed Java, no `~/.gradle`, no loopback for the Gradle daemon). It shows the exact command, runs only in a folder the session may write to, stops at a time limit and returns the head and tail of the log with the exit code. It also runs `go`, `cargo`, `npm`, `pnpm`, `yarn`, `make`, `cmake`, `uv` and `bun`.
+  - `clipboard` reads the current clipboard content or replaces it. Read grants can cover later reads; writes continue to ask.
+  - `open_path` opens a project file or folder on your screen, or shows it in Explorer. Programs, scripts and installers are not opened, only shown. The path must be inside the project folder, worktree or session workspace.
+  - `host_powershell` runs a PowerShell script as you, outside the shell sandbox, for what the other host tools do not cover. The question shows the whole script, and it runs without a profile or prompts, in a folder the session may write to, with a time limit (120 seconds by default, 900 at most).
+  - `host_package` looks at the programs installed through winget without asking (list, search, show, outdated) and asks before each install, upgrade or uninstall, naming the exact package. There is no upgrade-everything.
+  - `host_wsl` runs a command inside a WSL distribution and `host_ssh` runs one on another machine over your own SSH keys. Both show the whole command and ask each time. SSH never prompts and never trusts a new host by itself.
+  - `notify_user` shows a desktop notification when something long finishes. It needs no approval and is limited to one every 10 seconds and 30 an hour.
+- Approval requests for command-line and background tools name what will happen (the command, the process, the folder). Only recognized actions offer a scoped standing grant; arbitrary scripts continue to ask. Text from Windows tools keeps its accents and non-Latin letters.
 
 ### Inference and repository targeting
 
@@ -226,6 +249,9 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Studio can make pictures with hosted models as well as the one on this computer: **Where to make it** lists GPT Image 2.5, Gemini image models, Grok Imagine Image and FLUX on Together AI for each provider with an API key. The prompt goes to that provider and the pictures are saved in the same gallery. Hosted runs can be stopped.
 - Discover has an **Images** switch that searches Hugging Face for picture models Studio can run. Pick a weights file and its family (Z-Image, Qwen-Image or FLUX.1) and **Add to Studio**: the text encoder and VAE it needs are downloaded with it and every file is checked against Hugging Face's published checksum. A licence that is not plainly open is shown as a warning chip.
 - Studio shares the graphics card with chat: loading the image model stops the chat models, and starting a chat model stops the image model, which also unloads after ten idle minutes. Cancelling a run stops the engine, and the next run starts it again.
+- Cowork and chat can make pictures: the assistant has a `generate_image` tool that uses the image model loaded in Studio and shows the result in the conversation. It never loads or swaps a model, so a call cannot unload one you are using; with none loaded it says so. The pictures are kept in the Studio gallery. The command line and background jobs have no image engine and answer that it is unavailable.
+- Studio can make pictures on your own servers: an active OpenAI-compatible provider whose model list has a picture model (names such as image, FLUX, diffusion, SDXL, DALL-E, Imagen or Wan) appears under **Where to make it**. It is asked at `/images/generations` and needs no API key.
+- A picture or video model file loaded as a chat model, which the chat engine cannot run, now says to load it from Studio instead of showing the engine's tensor-name error.
 - The Local API Server gained `POST /v1/images/generations` (base64 only, 1 to 4 images, a model that is already loaded) and the OpenAI Videos routes `POST /v1/videos`, `GET /v1/videos/{id}` and `GET /v1/videos/{id}/content`. Image models stay out of `/v1/models`.
 - A chat started from the phone with no model chosen now picks one on the computer, as the desktop does, and says so plainly when nothing can answer. The phone's copy buttons say "Copy failed" when the connection has no clipboard.
 - A reply's token details show **Draft accepted**, for example `75% (30/40)`, when speculative decoding (MTP, DFlash or EAGLE-3) ran, so you can see whether a draft is paying off.
@@ -342,6 +368,28 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Clicks and typing ask for approval in Chat and Cowork, a control that looks like submit or delete asks every time, and a run has an action limit. Unattended runs only reach sites with a saved always-allow rule.
 - The browser tools return a clear message in the command line and in background jobs, where there is no pane, and a hidden or minimized window gets an explanation instead of a hang.
 - Toasts move clear of the Web preview pane, and the pane never covers the approvals chip.
+- The browser is now interactive, with a live agent-browser window, and its approval prompt says what the tool is about to do.
+
+### Subagent delegation
+- Chat, Rooms and Cowork can hand work to subagents. **Settings > Subagents** picks the assistant, work profile and model they use, and the Tasks panel shows each one with its transcript, status and cost.
+- A background subagent can ask its parent a question, tell the parent when it finishes, and be resumed by id with its earlier context.
+- Subagents can run in the background with `await_task`, `task_status` and `cancel_task`, and a Room's subagents are bounded by a token limit.
+
+### Messaging between sessions
+- Sessions in any project can message each other by title, with an opt-out. A message can ask a question and wait for the answer, shown as an **Asked** card.
+- `list_sessions` reports when a session is waiting for approval, and a run's final answer is sent back as the reply when it handled a message.
+
+### Visual widgets
+- Chat, Cowork and Rooms can draw inline charts and widgets in a sandboxed frame, with a **Visual widgets** setting. A frozen or self-navigating widget is replaced by a Re-run placeholder.
+
+### Live MCP tools
+- An MCP server turned on mid-chat reaches the next request in Chat and Cowork, with approval behavior unchanged. A failed server listing is retried.
+
+### Phone and context
+- The phone can answer Cowork questions and every approval, see the computer's other blocking prompts and a stopped run, show the full transcript, regenerate or edit a message, and rename a Cowork session.
+- The context ring is always shown, scales to the model's window and remembers its figures per chat. Generation speed now counts reasoning and tool-argument output.
+- Chats and Cowork can run your Claude Code SessionStart and UserPromptSubmit hooks after an opt-in, and Claude Code imports stay linked to `~/.claude`.
+- Title and summary agents fall back through your model chain, and a refused write points to `request_access` write mode.
 
 ## Core Flint capabilities
 

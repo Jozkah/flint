@@ -10,7 +10,14 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }))
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    custom: vi.fn(),
+    dismiss: vi.fn(),
+  },
+}))
 vi.mock('@/hooks/useThreads', () => ({
   useThreads: (sel: (s: { threads: Record<string, unknown> }) => unknown) =>
     sel({ threads: {} }),

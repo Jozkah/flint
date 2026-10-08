@@ -52,15 +52,15 @@ describe('a short reply still gets a speed', () => {
 })
 
 describe('speedStats', () => {
-  it('gives the latest measurable reply and a token-weighted average', () => {
+  it('gives the latest measurable reply and the tokens-over-time average', () => {
     const stats = speedStats([
-      { tokenSpeed: 100, tokenCount: 100, durationMs: 1000 },
-      { tokenSpeed: 50, tokenCount: 300, durationMs: 6000 },
-      { tokenSpeed: 900, tokenCount: 3, durationMs: 4 }, // too short to time
+      { tokenSpeed: 100, tokenCount: 100, durationMs: 1000, source: 'server' },
+      { tokenSpeed: 50, tokenCount: 300, durationMs: 6000, source: 'measured' },
+      { tokenSpeed: 900, tokenCount: 3, durationMs: 4, source: 'server' }, // too short to time
       undefined,
     ])
     expect(stats.last).toBe(50)
-    expect(stats.average).toBeCloseTo((100 * 100 + 50 * 300) / 400)
+    expect(stats.average).toBeCloseTo(400 / 7, 5)
   })
 
   it('is empty when nothing could be measured', () => {

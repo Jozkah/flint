@@ -1,6 +1,60 @@
 {
-  "col": {
-    "speed": "平均速度"
+  "title": "概览",
+  "morning": "早上好",
+  "afternoon": "下午好",
+  "evening": "晚上好",
+  "subWeek": "这是你的模型本周所做的事情。",
+  "subMonth": "这是你的模型过去 30 天所做的事情。",
+  "lastWeek": "上周",
+  "last30": "过去 30 天",
+  "vsLastWeek": "与上周相比",
+  "vsLastMonth": "与前 30 天相比",
+  "options": "仪表盘选项",
+  "resetStats": "重置统计数据",
+  "tokens": "已生成 Token",
+  "cost": "估算费用",
+  "speed": "平均生成速度",
+  "toolSuccess": "工具调用成功率",
+  "throughput": "Token 吞吐量",
+  "throughputAria": "每天生成的 token 数。使用左右方向键查看各天。",
+  "activity": "最新活动",
+  "activityRange": "活动范围",
+  "today": "今天",
+  "yesterday": "昨天",
+  "thisWeek": "本周",
+  "searchActivity": "搜索活动",
+  "newActivities": {
+    "today_one": "今天的新活动",
+    "today_other": "今天的新活动",
+    "yesterday_one": "昨天的活动",
+    "yesterday_other": "昨天的活动",
+    "week_one": "本周的活动",
+    "week_other": "本周的活动"
   },
-  "tokensPerSecond": "{{value}} t/s"
+  "noActivity": "暂无内容",
+  "noActivityHint": "批准、工具失败和压缩会在发生时显示在这里。",
+  "runs": "智能体运行",
+  "searchRuns": "运行",
+  "filter": "筛选",
+  "filterAll": "所有运行",
+  "openRun": "打开运行",
+  "noRuns": "还没有 Cowork 运行",
+  "noRunsHint": "把更大的任务交给 Cowork，它的运行就会显示在这里。",
+  "openCowork": "打开 Cowork",
+  "col": {
+    "run": "运行 ID",
+    "task": "任务",
+    "model": "模型",
+    "status": "状态",
+    "started": "开始时间",
+    "speed": "平均速度",
+    "tokens": "Token"
+  },
+  "tokensPerSecond": "{{value}} t/s",
+  "status": {
+    "running": "运行中",
+    "approval": "需要批准",
+    "done": "已完成",
+    "idle": "未开始"
+  }
 }

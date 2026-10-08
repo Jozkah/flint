@@ -271,17 +271,35 @@ export function createMailboxDelivery(
     }
   }
 
+  /** Held mail that a wake-up may release now, given the loop guard. */
+  const wakeable = (sid: string) => {
+    const { lastRunWasWake } = useSessionMessaging.getState()
+    return queueOf(sid).filter(
+      (m) => m.held && m.from && !(m.from.depth > 0 && lastRunWasWake[sid])
+    )
+  }
+
   /**
    * Release this session's held mail if Automatic wake-ups allow it: the
-   * setting is on, the session is the one in view, and it is idle. A reply
-   * (`depth > 0`) is not auto-released while the session's last run was
-   * itself a wake-up, so two sessions cannot wake each other in a loop.
+   * setting is not turned off for it, it is idle, and it is in view. A session
+   * that is not in view is brought into a split-view pane beside the one being
+   * used, because a run can only be started by a session that is on screen;
+   * the pane's arrival comes back through here. A reply (`depth > 0`) is not
+   * auto-released while the session's last run was itself a wake-up, so two
+   * sessions cannot wake each other in a loop.
    */
   const applyAutoWake = (sid: string) => {
     const { autoWake, lastRunWasWake } = useSessionMessaging.getState()
-    if (!autoWake[sid]) return
-    if (!isSessionInView(sid)) return
+    if (autoWake[sid] === false) return
     if (isRunning(sid)) return
+    if (!isSessionInView(sid)) {
+      if (wakeable(sid).length > 0) {
+        useSplitConversation
+          .getState()
+          .addPane({ kind: 'cowork', refId: sid })
+      }
+      return
+    }
     let released = false
     for (const m of queueOf(sid)) {
       if (!m.held || !m.from) continue
@@ -395,8 +413,11 @@ export function createMailboxDelivery(
     })
     const offSettings = useSessionMessaging.subscribe((state, prev) => {
       if (state.autoWake === prev.autoWake) return
-      for (const sid of Object.keys(state.autoWake)) {
-        if (!prev.autoWake[sid]) applyAutoWake(sid)
+      // Turning wake-ups back on for a session releases what waited for it.
+      for (const sid of Object.keys(prev.autoWake)) {
+        if (prev.autoWake[sid] === false && state.autoWake[sid] !== false) {
+          applyAutoWake(sid)
+        }
       }
     })
     return () => {

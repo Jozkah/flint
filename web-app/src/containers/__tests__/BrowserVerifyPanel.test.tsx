@@ -30,6 +30,12 @@ const found = async () => ({ found: true, path: '/usr/bin/chromium', name: 'Chro
 describe('BrowserVerifyPanel', () => {
   beforeEach(() => useBrowserVerify.setState({ running: {}, reports: {}, draftUrl: null }))
 
+  it('clears old verification errors when a new run starts', () => {
+    useBrowserVerify.setState({ reports: { s1: [{ id: 'old', outcome: 'error' } as VerifyReport] } })
+    useBrowserVerify.getState().clearReports('s1')
+    expect(useBrowserVerify.getState().reports.s1).toBeUndefined()
+  })
+
   it('explains a missing browser and offers to choose one', async () => {
     render(
       <BrowserVerifyPanel
@@ -123,6 +129,7 @@ describe('BrowserVerifyEvidence', () => {
       />
     )
     expect(screen.getByTestId('bv-evidence').getAttribute('data-outcome')).toBe('failed')
+    expect(screen.getByRole('link', { name: 'http://localhost:5173/' })).toHaveAttribute('href', 'http://localhost:5173/')
     expect(screen.getByTestId('bv-steps').textContent).toContain('Open http://localhost:5173/')
     expect(screen.getByTestId('bv-console').textContent).toContain('boom')
     expect(screen.getByTestId('bv-blocked').textContent).toContain('https://evil.example/')

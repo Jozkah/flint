@@ -31,5 +31,11 @@
   "personality": "Личность",
   "capabilities": "Возможности",
   "instructionsDateHint": "Совет: Используйте {{current_date}} для вставки текущей даты.",
-  "maxToolSteps": "Максимум шагов инструмента"
+  "maxToolSteps": "Максимум шагов инструмента",
+  "setAsDefault": "Сделать ассистентом по умолчанию",
+  "isDefault": "По умолчанию",
+  "defaultAssistantSection": "Ассистент по умолчанию",
+  "defaultAssistantDesc": "Используется при начале нового чата",
+  "allAssistants": "Все ассистенты",
+  "lastUsed": "Последнее использование"
 }

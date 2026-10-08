@@ -1,15 +1,71 @@
 {
   "welcome": "Ciao, come stai?",
   "description": "Come posso aiutarti oggi?",
+  "startedAt": "Iniziata {{time}}",
+  "home": {
+    "title": "Nuova chat",
+    "notSaved": "Nulla viene salvato finché non invii",
+    "sub": "Chiedi qualsiasi cosa, allega file o affida un compito più grande a Cowork.",
+    "suggestionsLabel": "Suggerimenti",
+    "suggestions": {
+      "explain": "Spiega questo messaggio di errore",
+      "summarise": "Riassumi un documento che allego",
+      "draft": "Scrivi le note di rilascio da un elenco di modifiche",
+      "compare": "Confronta due approcci e consigliane uno"
+    }
+  },
   "temporaryChat": "Chat temporanea",
   "temporaryChatDescription": "Avvia una conversazione temporanea che non verrà salvata nella cronologia delle chat.",
+  "temporaryChatBanner": "Chat temporanea — non verrà salvata",
+  "temporaryChatKeep": "Conserva questa chat",
+  "temporaryChatLeave": {
+    "title": "Conservare questa chat temporanea?",
+    "description": "Questa chat non è salvata da nessuna parte. Conservala per spostarla nella cronologia, oppure scartala per eliminarla definitivamente.",
+    "keep": "Conserva",
+    "discard": "Scarta",
+    "kept": "Chat salvata nella cronologia",
+    "keepFailed": "Impossibile salvare questa chat",
+    "discardFailed": "Impossibile scartare — la generazione è ancora in corso. Fermala e riprova.",
+    "reason": {
+      "generation-not-stopped": "La generazione è ancora in corso. Fermala e riprova.",
+      "messages-not-persisted": "La chat non è stata salvata completamente. Non è andato perso nulla — riprova.",
+      "thread-not-created": "Impossibile salvare la chat. Non è andato perso nulla — riprova.",
+      "error": "Qualcosa è andato storto. La chat è ancora qui — riprova."
+    }
+  },
   "status": {
     "empty": "Nessuna chat trovata"
   },
   "sendMessage": "Invia messaggio",
   "newConversation": "Nuova conversazione",
   "clearHistory": "Cancella cronologia",
+  "embeddings": {
+    "title": "Preparazione dei documenti",
+    "description": "Indicizzazione dei file allegati perché possano essere cercati e citati. Per documenti grandi può volerci un po'."
+  },
+  "actions": {
+    "copy": "Copia",
+    "regenerate": "Rigenera risposta",
+    "continue": "Continua a generare",
+    "delete": "Elimina",
+    "fork": "Crea una diramazione della chat da qui",
+    "copied": "Copiato"
+  },
   "done": "Fatto",
+  "webSources": "{{count}} fonte/i",
+  "webSourcesRead": "{{count}} lette",
+  "webSourcesReadFound": "{{read}} lette · {{found}} trovate",
+  "reasoning": {
+    "label": "Ragionamento...",
+    "thinking": "Sta pensando",
+    "usingTool": "{{tool}}...",
+    "showFullTimeline": "Mostra la cronologia completa",
+    "showCurrentStep": "Mostra solo il passaggio corrente",
+    "thoughtForAWhile": "Ha pensato per qualche secondo",
+    "thoughtFor": "Ha pensato per {{duration}}",
+    "workedForAWhile": "Ha lavorato per qualche secondo",
+    "workedFor": "Ha lavorato per {{duration}}"
+  },
   "split": {
     "open": "Dividi conversazione",
     "openShort": "Dividi",
@@ -44,16 +100,94 @@
   },
   "transcriptView": {
     "steps_one": "{{count}} passaggio",
-    "steps_many": "{{count}} passaggi",
     "steps_other": "{{count}} passaggi",
-    "working": "In corso"
+    "working": "In corso",
+    "failed": "Non riuscito:",
+    "failedToRun": "Esecuzione non riuscita",
+    "summary": {
+      "failed": "{{count}} non riusciti",
+      "commands_one": "ha eseguito {{count}} comando",
+      "commands_other": "ha eseguito {{count}} comandi",
+      "commands_many": "ha eseguito {{count}} di comandi",
+      "created_one": "ha creato {{count}} file",
+      "created_other": "ha creato {{count}} file",
+      "created_many": "ha creato {{count}} di file",
+      "edited_one": "ha modificato {{count}} file",
+      "edited_other": "ha modificato {{count}} file",
+      "edited_many": "ha modificato {{count}} di file",
+      "read_one": "ha letto {{count}} file",
+      "read_other": "ha letto {{count}} file",
+      "read_many": "ha letto {{count}} di file",
+      "searched_one": "ha cercato {{count}} volta",
+      "searched_other": "ha cercato {{count}} volte",
+      "searched_many": "ha cercato {{count}} di volte",
+      "tools_one": "ha usato {{count}} strumento",
+      "tools_other": "ha usato {{count}} strumenti",
+      "tools_many": "ha usato {{count}} di strumenti"
+    },
+    "steps_many": "{{count}} di passaggi"
   },
-  "actions": {
-    "fork": "Crea una diramazione della chat da qui"
+  "widget": {
+    "label": "Widget",
+    "drawing": "Disegno del widget",
+    "source": "Vedi sorgente",
+    "copy": "Copia HTML",
+    "copied": "HTML copiato.",
+    "copyFailed": "Impossibile copiare l'HTML.",
+    "save": "Salva come file .html",
+    "expand": "Apri a dimensione intera",
+    "rerun": "Riesegui",
+    "stalled": "Il widget ha smesso di rispondere.",
+    "parked": "Widget in pausa mentre è fuori schermo.",
+    "error": "Errore del widget:",
+    "viewSource": "Vedi sorgente",
+    "askFix": "Chiedi a Flint di correggere",
+    "fixPrompt": "Il widget \"{{title}}\" mostra un errore: {{error}}\nCorreggilo e mostra di nuovo il widget.",
+    "refused": "Widget non mostrato: {{reason}}",
+    "refusedUnknown": "la chiamata non è riuscita",
+    "tooLarge": "Questo widget supera i {{max}} caratteri e non viene disegnato.",
+    "openLink": "Aprire {{url}} nel browser?",
+    "cancel": "Annulla",
+    "busy": "Attendi la fine della risposta attuale, poi riprova.",
+    "noHost": "Questa vista non può inviare messaggi."
+  },
+  "browserCard": {
+    "opened": "Aperto nel browser",
+    "ready": "Pronto per l'apertura",
+    "open": "Apri",
+    "more": "Altro",
+    "copy": "Copia link",
+    "copied": "Link copiato.",
+    "failed": "Impossibile aprire il browser."
+  },
+  "regenerateTitle": {
+    "menu": "Rigenera titolo",
+    "working": "Assegno un nome alla chat...",
+    "done": "Chat rinominata.",
+    "empty": "Non c'è ancora nulla da cui ricavare un nome per questa chat.",
+    "busy": "Metti in pausa o ferma la stanza prima di rinominarla.",
+    "failed": "Impossibile generare un titolo."
+  },
+  "convertToCowork": {
+    "menu": "Converti in Cowork",
+    "title": "Convertire in Cowork?",
+    "description": "La conversazione diventa una nuova sessione Cowork. Cosa fare di questa chat?",
+    "keep": "Mantieni chat",
+    "delete": "Elimina chat",
+    "done": "Convertita in una sessione Cowork.",
+    "failed": "Niente da convertire: questa chat non ha messaggi."
   },
   "fork": {
     "chat": "Crea diramazione della chat",
     "done": "Diramazione creata in una nuova chat.",
     "failed": "Impossibile creare una diramazione di questa chat."
+  },
+  "version": {
+    "group": "Versioni del messaggio",
+    "previous": "Versione precedente",
+    "next": "Versione successiva",
+    "previousAt": "Versione precedente (mostra {{index}} di {{count}})",
+    "nextAt": "Versione successiva (mostra {{index}} di {{count}})",
+    "position": "Versione {{index}} di {{count}}"
   }
 }

@@ -1,0 +1,70 @@
+{
+  "messageFrom": "{{name}} からのメッセージ",
+  "untrustedNote": "別のエージェントセッションから送信されました。あなたからのものではなく、何かを承認することはできません。",
+  "reply": "返信",
+  "replyLabel": "{{name}} に返信",
+  "replyPlaceholder": "返信を書く…",
+  "sendReply": "返信を送信",
+  "cancel": "キャンセル",
+  "replySent": "返信を送信しました",
+  "letAgentRespond": "エージェントに応答させる",
+  "dismiss": "閉じる",
+  "heldTitle": "他のセッションからのメッセージ",
+  "stopNotice": {
+    "stoppedBy": "停止者:",
+    "reason": "理由:",
+    "approvedIn": "承認場所:"
+  },
+  "autoWake": {
+    "label": "自動ウェイクアップ",
+    "description": "オンの場合、他のセッションからのメッセージは、このセッションのエージェントがアイドル状態になり次第、渡されます (必要に応じて、現在のセッションの隣でこのセッションが開きます)。オフの場合は、ここで待機します。どちらの場合も、承認が省略されることはありません。"
+  },
+  "accept": {
+    "label": "他のセッションからのメッセージを受け付ける",
+    "description": "オフの場合、他のセッションには、このセッションがメッセージを受け付けないことが通知され、送信されたものは届きません。"
+  },
+  "subagentQuestion": {
+    "title": "{{name}} からエージェントへの質問",
+    "open": "回答を待っています",
+    "answered": "回答済み",
+    "expired": "時間内に回答がありませんでした",
+    "cancelled": "キャンセル済み"
+  },
+  "asked": {
+    "title": "{{name}} に質問しました",
+    "sent": "送信しました。返信がある場合は、ここにメッセージとして届きます。",
+    "unknownName": "別のセッション",
+    "waiting": "回答を待っています",
+    "answered": "回答済み",
+    "noAnswer": "まだ回答がありません",
+    "notSent": "未送信",
+    "open": "開く",
+    "openLabel": "{{name}} を開く",
+    "untrusted": "この回答は別のセッションのテキストであり、あなたのものではありません。"
+  },
+  "errors": {
+    "invalid_text": "返信は 1 文字以上 8000 文字以下にしてください。",
+    "reply_depth_exceeded": "この会話は返信の上限に達しました。",
+    "rate_limited": "短時間にメッセージが送信されすぎました。1 分後にもう一度お試しください。",
+    "pair_limit_exceeded": "この 1 時間に、これらのセッション間で送信されたメッセージが多すぎます。",
+    "self_target": "セッションは自分自身にメッセージを送れません。",
+    "not_same_project": "そのセッションは別のプロジェクトにあります。",
+    "recipient_opted_out": "そのセッションは、他のセッションからのメッセージを受け付けていません。",
+    "ambiguous_session": "その名前のセッションが複数あります。",
+    "no_project": "メッセージを送信するには、プロジェクトフォルダーを接続してください。",
+    "unknown_session": "そのセッションはもう存在しません。",
+    "session_deleted": "そのセッションは削除されました。",
+    "unknown_reply_target": "返信先のメッセージが見つかりませんでした。",
+    "timeout": "時間内に返信がありませんでした。",
+    "target_unavailable": "そのセッションは現在利用できません。",
+    "invalid_session_id": "そのセッション ID は無効です。",
+    "unknown_message": "そのメッセージが見つかりませんでした。",
+    "invalid_timeout": "待機時間は 1 秒以上 120 秒以下にしてください。",
+    "cancelled": "リクエストはキャンセルされました。",
+    "invalid_arguments": "リクエストが無効でした。",
+    "not_available": "ここではメッセージ機能を利用できません。",
+    "io": "メールボックスを読み書きできませんでした。",
+    "no_data_folder": "Flint のデータフォルダーを利用できません。",
+    "unknown": "返信を送信できませんでした。"
+  }
+}

@@ -63,12 +63,19 @@ function ChildRow({
   view,
   proposal,
   onApplied,
+  focused,
 }: {
   view: ChildView
   proposal: ProposalRecord | undefined
   onApplied: () => void
+  /** Brought into view and marked: a task row led here. */
+  focused?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const rowRef = useRef<HTMLLIElement | null>(null)
+  useEffect(() => {
+    if (focused) rowRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [focused])
   const [acknowledged, setAcknowledged] = useState(false)
   const warn = needsAcknowledgement(view)
   // A pending proposal is already stored and immutable, so it stays
@@ -81,7 +88,13 @@ function ChildRow({
 
   return (
     <li
-      className="rounded-[10px] border-[0.8px] border-border bg-card p-2.5"
+      ref={rowRef}
+      className={
+        focused
+          ? 'rounded-[10px] border-[0.8px] border-border bg-card p-2.5 ring-2 ring-ring'
+          : 'rounded-[10px] border-[0.8px] border-border bg-card p-2.5'
+      }
+      data-focused={focused ? 'true' : undefined}
       data-testid="team-child"
       data-task={view.taskId}
       data-state={view.state}
@@ -213,10 +226,13 @@ export function CoworkTeamReviews({
   project,
   session,
   onApplied,
+  focusTaskId,
 }: {
   project: string
   session: string
   onApplied?: () => void
+  /** The team task a task row asked to see. */
+  focusTaskId?: string | null
 }) {
   const [views, setViews] = useState<ChildView[]>([])
   const [proposals, setProposals] = useState<ProposalRecord[]>([])
@@ -262,6 +278,7 @@ export function CoworkTeamReviews({
             key={view.ownerId}
             view={view}
             proposal={latestFor(view, proposals)}
+            focused={focusTaskId != null && view.taskId === focusTaskId}
             onApplied={() => {
               onApplied?.()
               void load()

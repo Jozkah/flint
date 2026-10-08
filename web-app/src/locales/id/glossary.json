@@ -1,0 +1,23 @@
+{
+  "explain": "Apa arti \"{{term}}\"?",
+  "worktree": {
+    "term": "Worktree",
+    "definition": "Salinan kerja terpisah dari proyek Anda. Flint dapat membuat perubahan di sana tanpa menyentuh salinan yang sedang Anda kerjakan, dan Anda yang memutuskan apa yang dipertahankan."
+  },
+  "context": {
+    "term": "Konteks",
+    "definition": "Informasi yang disertakan dalam percakapan yang dibaca model sebelum menjawab: pesan Anda, file terlampir, instruksi, dan apa pun yang ditambahkan Flint."
+  },
+  "mcpServer": {
+    "term": "Server MCP",
+    "definition": "Koneksi yang memberi Flint alat tambahan, seperti membaca database atau memanggil layanan. Sebagian berjalan di komputer ini; sebagian menghubungi layanan eksternal."
+  },
+  "checkpoint": {
+    "term": "Checkpoint",
+    "definition": "Titik tersimpan yang dapat memulihkan status yang didukung, seperti file proyek yang diubah Flint. Tidak dapat membatalkan pesan yang sudah terkirim atau apa pun yang terjadi di luar komputer ini."
+  },
+  "agent": {
+    "term": "Agen",
+    "definition": "Asisten yang mengerjakan sebuah tugas: dapat merencanakan, memakai alat, dan menempuh beberapa langkah, meminta izin bila diperlukan."
+  }
+}

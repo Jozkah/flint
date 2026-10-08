@@ -10,9 +10,11 @@ import {
   RotateCcw,
   X,
 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
+import { DownloadProgress } from '@/components/ui/download-progress'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { route } from '@/constants/routes'
 import {
   cancelHuggingFaceBundle,
@@ -64,6 +66,7 @@ export function HuggingFaceDownloadAction({
   className,
 }: HuggingFaceDownloadActionProps) {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const token = useGeneralSetting((state) => state.huggingfaceToken)
   const serviceHub = useServiceHub()
   const providers = useModelProvider((state) => state.providers)
@@ -79,6 +82,26 @@ export function HuggingFaceDownloadAction({
   const updateAvailable = installed && hasHuggingFaceUpdate(modelId, revision)
   const bundleId = `hf:${providerName}:${modelId}`
   const task = useHuggingFaceDownloads((state) => state.tasks[bundleId])
+
+  // Let the bar land on "Ready" for a moment before the row turns to Installed.
+  const inProgress = Boolean(
+    task && ['downloading', 'queued', 'verifying', 'importing'].includes(task.status)
+  )
+  const wasInProgress = useRef(false)
+  const [holdReady, setHoldReady] = useState(false)
+  useEffect(() => {
+    if (inProgress) {
+      wasInProgress.current = true
+      setHoldReady(false)
+      return
+    }
+    if (!wasInProgress.current) return
+    wasInProgress.current = false
+    if (task?.status !== 'complete' && !installed) return
+    setHoldReady(true)
+    const id = setTimeout(() => setHoldReady(false), 1600)
+    return () => clearTimeout(id)
+  }, [inProgress, task?.status, installed])
 
   const useModel = () => {
     navigate({
@@ -141,36 +164,74 @@ export function HuggingFaceDownloadAction({
     }
   }
 
-  if (task && ['downloading', 'queued', 'verifying', 'importing'].includes(task.status)) {
-    const percent = Math.round(task.progress * 100)
+  if (holdReady && !inProgress) {
     return (
-      <div className={cn('flex min-w-0 items-center gap-2', compact ? 'w-40' : 'w-56', className)}>
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-            <span className="truncate">
-              {task.status === 'importing'
-                ? 'Installing…'
-                : task.status === 'verifying'
-                  ? 'Verifying…'
-                  : `${percent}%`}
-            </span>
-            {!compact && task.total && (
-              <span className="shrink-0 tabular-nums">
-                {formatModelBytes(task.downloaded)} / {formatModelBytes(task.total)}
-                {task.status === 'downloading' && task.bytesPerSecond
-                  ? ` · ${formatModelBytes(task.bytesPerSecond)}/s${
-                      secondsRemaining(task.downloaded, task.total, task.bytesPerSecond) !== null
-                        ? ` · ${formatEta(
-                            secondsRemaining(task.downloaded, task.total, task.bytesPerSecond) as number
-                          )} left`
-                        : ''
-                    }`
-                  : ''}
-              </span>
-            )}
-          </div>
-          <Progress value={task.progress * 100} className="h-1.5" />
-        </div>
+      <div
+        className={cn(
+          'flex min-w-0 items-center gap-2',
+          compact ? 'w-44' : 'w-56',
+          className
+        )}
+      >
+        <DownloadProgress
+          className="min-w-0 flex-1"
+          percent={100}
+          done
+          compact={compact}
+          downloadingLabel={t('common:motionMedia.downloading')}
+          readyLabel={t('common:motionMedia.ready')}
+        />
+      </div>
+    )
+  }
+
+  if (task && inProgress) {
+    const percent = task.progress * 100
+    const eta =
+      task.status === 'downloading' && task.total && task.bytesPerSecond
+        ? secondsRemaining(task.downloaded, task.total, task.bytesPerSecond)
+        : null
+    const rate =
+      task.status === 'downloading' && task.bytesPerSecond
+        ? `${formatModelBytes(task.bytesPerSecond)}/s${eta !== null ? ` · ${formatEta(eta)} left` : ''}`
+        : undefined
+    const stateLabel =
+      task.status === 'importing'
+        ? 'Installing…'
+        : task.status === 'verifying'
+          ? 'Verifying…'
+          : null
+    return (
+      <div
+        className={cn(
+          'flex min-w-0 items-center gap-2',
+          compact ? 'w-44' : 'w-56',
+          className
+        )}
+      >
+        <DownloadProgress
+          className="min-w-0 flex-1"
+          percent={percent}
+          idle={task.status !== 'downloading'}
+          label={
+            stateLabel ? (
+              <span className="truncate">{stateLabel}</span>
+            ) : undefined
+          }
+          sizeText={
+            compact
+              ? task.status === 'downloading' && task.bytesPerSecond
+                ? `${formatModelBytes(task.bytesPerSecond)}/s`
+                : undefined
+              : task.total
+                ? `${formatModelBytes(task.downloaded)} / ${formatModelBytes(task.total)}`
+                : undefined
+          }
+          rateText={rate}
+          compact={compact}
+          downloadingLabel={t('common:motionMedia.downloading')}
+          readyLabel={t('common:motionMedia.ready')}
+        />
         {task.status === 'downloading' && (
           <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => void pauseHuggingFaceBundle(bundleId)} title="Pause download">
             <Pause className="size-3.5" />
@@ -195,20 +256,25 @@ export function HuggingFaceDownloadAction({
 
   if (task?.status === 'error') {
     return (
-      <div className={cn('flex items-center gap-2', className)} title={task.error}>
-        <Button variant="outline" size="sm" onClick={() => void retryHuggingFaceBundle(bundleId)}>
+      <div className={cn('flex max-w-72 items-center gap-2', className)} title={task.error}>
+        <span className="min-w-0 line-clamp-2 text-right text-xs text-destructive">
+          Download failed{task.error ? `: ${task.error}` : ''}
+        </span>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={() => void retryHuggingFaceBundle(bundleId)}>
           <RotateCcw className="size-3.5" /> Retry
         </Button>
-        {!compact && <span className="max-w-48 truncate text-xs text-destructive">{task.error}</span>}
       </div>
     )
   }
 
-  if (installed && !updateAvailable) {
+  if (task?.status === 'complete' || (installed && !updateAvailable)) {
     return (
-      <Button size="sm" onClick={useModel} className={className}>
-        <Check className="size-3.5" /> New Chat
-      </Button>
+      <div className={cn('flex items-center gap-2', className)}>
+        <span className="flex items-center gap-1 text-xs text-emerald-500">
+          <Check className="size-3.5" /> Installed
+        </span>
+        <Button size="sm" onClick={useModel}>New Chat</Button>
+      </div>
     )
   }
 

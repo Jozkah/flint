@@ -24,6 +24,7 @@
     "searchWeb": "Flint wants to search the web",
     "useExternalTool": "Flint wants to use {{tool}} from {{server}}",
     "readTarget": "Flint wants to read {{target}}",
+    "browserAgent": "Flint wants to use its browser: {{what}}",
     "browserClick": "Flint wants to click {{control}} on {{page}}",
     "browserType": "Flint wants to type \"{{text}}\" into {{control}} on {{page}}",
     "browserPress": "Flint wants to press {{keyName}} on {{page}}",
@@ -32,6 +33,8 @@
     "startHelper": "Flint wants to start a helper agent",
     "stopSession": "Flint wants to stop the run in session {{session}}",
     "useTool": "Flint wants to use {{tool}}",
+    "readClipboard": "Flint wants to read the clipboard",
+    "writeClipboard": "Flint wants to replace clipboard content",
     "gitLocal": "Flint wants to run {{command}}",
     "gitLocalIn": "Flint wants to run {{command}} in {{workspace}}",
     "gitRemote": "Flint wants to run {{command}}, which changes {{target}}",
@@ -48,6 +51,8 @@
     "helper": "The helper works on its own with the tools this session has.",
     "stopSession": "That session's current run stops at once, as if its Stop button were pressed. Its transcript records that this session stopped it and why. Flint asks every time.",
     "unknown": "Flint cannot tell what this tool does. Check the technical details before allowing it.",
+    "readClipboard": "Clipboard content becomes part of this conversation. Future clipboard content may differ from what is there now.",
+    "writeClipboard": "It replaces what is currently on your clipboard.",
     "gitLocal": "It changes this repository's files, branches or history on this computer.",
     "gitRemote": "It sends changes to a remote repository that other people can see. Flint asks every time unless you temporarily allow ordinary remote Git actions for this conversation.",
     "gitDestructive": "What it removes or overwrites may not be recoverable."
@@ -64,17 +69,23 @@
     "noBroaderOptions": "No broader safe approval is available for this request.",
     "allowAlwaysServer": "Always allow {{server}}",
     "allowAlwaysTool": "Always allow {{tool}}",
+    "allowSimilar": "Always allow: {{action}}",
+    "allowSimilarThread": "Allow in this conversation: {{action}}",
     "onceExplanation": "Only this request. Flint asks again next time.",
     "threadExplanation": "This tool, in this conversation, until you revoke it.",
     "threadProgramExplanation": "Reruns of {{program}} outside the sandbox, in this conversation only. Nothing is remembered after it.",
     "alwaysServerExplanation": "Every tool from {{server}}, in every conversation, until you revoke it.",
     "alwaysToolExplanation": "{{tool}}, in every conversation, until you revoke it.",
+    "allowSimilarExplanation": "Future single-process calls matching {{action}} run without asking, including different process IDs. Other scripts still ask. Revoke this in Settings > Permissions.",
+    "allowClipboardReadExplanation": "Flint can read future clipboard content in every conversation without asking, until you revoke this in Settings > Permissions. Writing to the clipboard still asks.",
+    "allowSimilarThreadExplanation": "Future calls matching {{action}} run without asking in this conversation. Revoke this in Settings > Permissions.",
     "broader": "Broader"
   },
   "request": {
     "title": "Permission request",
     "affects": "Affects",
     "reason": "Why",
+    "script": "Script",
     "consequences": "What allowing it means",
     "chooseScope": "Choose how far this permission goes",
     "technicalDetails": "Technical details",
@@ -185,7 +196,15 @@
     "autoApproveLimit": "Pause long unattended runs",
     "autoApproveLimitLabel": "Check in after this many calls in a row",
     "autoApproveLimitDesc": "When tool calls run without asking, Flint stops and asks you after {{count}} in a row. 0 turns the pause off (maximum {{max}}).",
-    "autoApproveLimitOff": "Off: tool calls that run without asking never pause for a check-in."
+    "autoApproveLimitOff": "Off: tool calls that run without asking never pause for a check-in.",
+    "permissionMode": "Tool permission mode",
+    "permissionModeDesc": "Applies to built-in and connected tools. Sandbox and access boundaries still apply.",
+    "approvalBehavior": "Approval behavior",
+    "modeAsk": "Ask for permission",
+    "modeAuto": "Auto approve safe calls; ask for dangerous calls",
+    "modeBypass": "Bypass permissions until Flint closes",
+    "modeDetails": "Auto approve asks for destructive commands, host actions, remote changes, and other sensitive calls. Bypass skips those approval prompts too.",
+    "bypassConfirm": "Bypass permissions approves every tool call without asking, including destructive commands and actions on your computer. Enable until Flint closes?"
   },
   "badge": {
     "reachesRemote": "Reaches {{target}}",
@@ -195,5 +214,11 @@
   "warning": {
     "gitDestructive": "Destructive: {{why}}. Check the command, remote and branch before allowing it.",
     "selfApproval": "{{tool}} approves commands on {{server}} itself, which would let the model answer for you. Flint asks about it every time and never remembers the answer."
+  },
+  "toast": {
+    "trustFailed": "Could not remember that server",
+    "cancelledOne": "Approval for {{names}} was cancelled",
+    "cancelledMany": "{{count}} approvals ({{names}}) were cancelled",
+    "cancelledDescription": "The chat was left before you answered. Send the request again to retry."
   }
 }

@@ -424,10 +424,14 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
             vec![capability::FS_WRITE]
         }
         "read" | "ls" | "find" | "grep" | "screenshot" | "memory_list" | "memory_read"
-        | "skill_list" | "skill_read" | "message_check" | "git_inspect" => vec![capability::FS_READ],
+        | "skill_list" | "skill_read" | "message_check" | "git_inspect" | "windows_events" | "host_query" | "local_http" | "docker" | "host_action" | "host_build" | "clipboard" | "open_path" | "computer" | "host_powershell" | "host_package" | "host_wsl" | "host_ssh" | "notify_user" => vec![capability::FS_READ],
         // Runs the host's git/gh directly (no shell, no sandbox); each call is
         // confined and classified by the tool itself and the gate.
         "git" => vec![capability::FS_READ],
+        // Runs an installed browser against a local app with a temporary
+        // profile: no project file is read or written, and whether a browser
+        // is installed is answered by the tool itself, with how to fix it.
+        "browser" => vec![capability::FS_READ],
         // The mailbox is files under the data folder; nothing beyond a usable
         // local disk is needed. Scope (session only) is decided separately.
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" => {
@@ -438,7 +442,7 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
         // has it. What fences it is the per-call approval, not the disk.
         "stop_session" => vec![capability::FS_READ],
         // Answered by the desktop: a prompt, and Flint's plugin state.
-        "request_access" | "list_plugins" | "open_in_browser" => vec![capability::FS_READ],
+        "request_access" | "list_plugins" | "open_in_browser" | "generate_image" => vec![capability::FS_READ],
         // Answered by the desktop's web layer, or refused plainly elsewhere.
         n if crate::tools::is_browser_tool(n) => vec![capability::FS_READ],
         // The web tools reach the network, which is a per-run policy decision
@@ -640,7 +644,18 @@ pub fn probe_sandbox(now_ms: i64) -> ComponentReport {
         now_ms,
     )
     .granting(&[capability::SANDBOX_ENFORCED])
-    .detailed(vec![format!("backend={}", backend.as_str())])
+    .detailed({
+        let mut details = vec![format!("backend={}", backend.as_str())];
+        if crate::tools::jail::network_shares_host_namespace() {
+            details.push(
+                "network sandboxing shares the host network namespace (install pasta to \
+                 isolate it): with the network allowed, host abstract unix sockets \
+                 are reachable"
+                    .to_string(),
+            );
+        }
+        details
+    })
 }
 
 /// Probe the shell by starting one.

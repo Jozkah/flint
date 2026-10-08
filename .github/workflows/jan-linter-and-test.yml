@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.base_ref }}
       - name: Use Node.js 20.x
@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.base_ref }}
 
@@ -105,7 +105,7 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Getting the repo
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Installing node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -146,7 +146,7 @@ jobs:
     runs-on: windows-desktop-${{ matrix.antivirus-tools }}
     steps:
       - name: Getting the repo
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Installing node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -183,7 +183,7 @@ jobs:
     runs-on: 'windows-latest'
     steps:
       - name: Getting the repo
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: install dependencies
         run: |
@@ -225,7 +225,7 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Getting the repo
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Every third-party action must be pinned to a full 40-hex commit SHA
       # (#194). Local actions (`uses: ./...`) and docker:// references are exempt.
@@ -251,6 +251,12 @@ jobs:
       # shell expands the globs because node 20's --test does not (#37).
       - name: Script tests
         run: node --test scripts/*.test.mjs scripts/agent-harness/*.test.mjs
+
+      # Every locale must have every namespace and key English has, with the
+      # same {{placeholders}}. Keys a locale has but English does not are
+      # warnings.
+      - name: Locale parity
+        run: node scripts/check-locale-parity.mjs
 
       - name: Install Tauri dependencies
         run: |
@@ -289,7 +295,7 @@ jobs:
     continue-on-error: true
     steps:
       - name: Getting the repo
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Installing node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

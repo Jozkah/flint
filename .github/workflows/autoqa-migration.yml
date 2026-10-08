@@ -48,7 +48,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Python 3.13
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -62,10 +62,13 @@ jobs:
 
       - name: Download OLD and NEW installers
         shell: powershell
+        env:
+          INPUT_OLD_WINDOWS_INSTALLER: ${{ inputs.old_windows_installer }}
+          INPUT_NEW_WINDOWS_INSTALLER: ${{ inputs.new_windows_installer }}
         run: |
           # Download OLD installer using existing script
           .\autoqa\scripts\windows_download.ps1 `
-            -WorkflowInputUrl "${{ inputs.old_windows_installer }}" `
+            -WorkflowInputUrl "$env:INPUT_OLD_WINDOWS_INSTALLER" `
             -WorkflowInputIsNightly "false" `
             -RepoVariableUrl "" `
             -RepoVariableIsNightly "" `
@@ -78,7 +81,7 @@ jobs:
 
           # Download NEW installer using existing script
           .\autoqa\scripts\windows_download.ps1 `
-            -WorkflowInputUrl "${{ inputs.new_windows_installer }}" `
+            -WorkflowInputUrl "$env:INPUT_NEW_WINDOWS_INSTALLER" `
             -WorkflowInputIsNightly "false" `
             -RepoVariableUrl "" `
             -RepoVariableIsNightly "" `
@@ -104,15 +107,17 @@ jobs:
         working-directory: autoqa
         shell: powershell
         env:
+          INPUT_MIGRATION_TEST_CASE: ${{ inputs.migration_test_case }}
+          INPUT_MAX_TURNS: ${{ inputs.max_turns }}
           RP_TOKEN: ${{ secrets.RP_TOKEN }}
           ENABLE_REPORTPORTAL: 'true'
           RP_ENDPOINT: 'https://reportportal.menlo.ai'
           RP_PROJECT: 'default_personal'
         run: |
-          $case = "${{ inputs.migration_test_case }}"
+          $case = "$env:INPUT_MIGRATION_TEST_CASE"
           $caseArg = ""
           if ($case -and $case.Trim() -ne "") { $caseArg = "--migration-test-case `"$case`"" }
-          python main.py --enable-migration-test --old-version "$env:OLD_VERSION" --new-version "$env:NEW_VERSION" --max-turns ${{ inputs.max_turns }} $caseArg
+          python main.py --enable-migration-test --old-version "$env:OLD_VERSION" --new-version "$env:NEW_VERSION" --max-turns "$env:INPUT_MAX_TURNS" $caseArg
 
       - name: Upload screen recordings
         if: always()
@@ -142,7 +147,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Python 3.13
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -184,11 +189,14 @@ jobs:
           ./autoqa/scripts/ubuntu_cleanup.sh
 
       - name: Download OLD and NEW installers
+        env:
+          INPUT_OLD_UBUNTU_INSTALLER: ${{ inputs.old_ubuntu_installer }}
+          INPUT_NEW_UBUNTU_INSTALLER: ${{ inputs.new_ubuntu_installer }}
         run: |
           set -e
           # Download OLD installer using existing script
           ./autoqa/scripts/ubuntu_download.sh \
-            "${{ inputs.old_ubuntu_installer }}" \
+            "$INPUT_OLD_UBUNTU_INSTALLER" \
             "false" \
             "" \
             "" \
@@ -198,7 +206,7 @@ jobs:
 
           # Download NEW installer using existing script
           ./autoqa/scripts/ubuntu_download.sh \
-            "${{ inputs.new_ubuntu_installer }}" \
+            "$INPUT_NEW_UBUNTU_INSTALLER" \
             "false" \
             "" \
             "" \
@@ -217,11 +225,14 @@ jobs:
 
       - name: Run migration tests (Ubuntu)
         working-directory: autoqa
+        env:
+          INPUT_MIGRATION_TEST_CASE: ${{ inputs.migration_test_case }}
+          INPUT_MAX_TURNS: ${{ inputs.max_turns }}
         run: |
-          case="${{ inputs.migration_test_case }}"
+          case="$INPUT_MIGRATION_TEST_CASE"
           caseArg=""
           if [ -n "${case}" ]; then caseArg="--migration-test-case \"${case}\""; fi
-          xvfb-run -a python main.py --enable-migration-test --old-version "${OLD_VERSION}" --new-version "${NEW_VERSION}" --max-turns ${{ inputs.max_turns }} ${caseArg}
+          xvfb-run -a python main.py --enable-migration-test --old-version "${OLD_VERSION}" --new-version "${NEW_VERSION}" --max-turns "$INPUT_MAX_TURNS" ${caseArg}
 
       - name: Upload screen recordings
         if: always()
@@ -250,7 +261,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Python 3.13
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -267,11 +278,14 @@ jobs:
           ./autoqa/scripts/macos_cleanup.sh
 
       - name: Download OLD and NEW installers
+        env:
+          INPUT_OLD_MACOS_INSTALLER: ${{ inputs.old_macos_installer }}
+          INPUT_NEW_MACOS_INSTALLER: ${{ inputs.new_macos_installer }}
         run: |
           set -e
           # Download OLD installer using existing script
           ./autoqa/scripts/macos_download.sh \
-            "${{ inputs.old_macos_installer }}" \
+            "$INPUT_OLD_MACOS_INSTALLER" \
             "false" \
             "" \
             "" \
@@ -281,7 +295,7 @@ jobs:
 
           # Download NEW installer using existing script
           ./autoqa/scripts/macos_download.sh \
-            "${{ inputs.new_macos_installer }}" \
+            "$INPUT_NEW_MACOS_INSTALLER" \
             "false" \
             "" \
             "" \
@@ -300,11 +314,14 @@ jobs:
 
       - name: Run migration tests (macOS)
         working-directory: autoqa
+        env:
+          INPUT_MIGRATION_TEST_CASE: ${{ inputs.migration_test_case }}
+          INPUT_MAX_TURNS: ${{ inputs.max_turns }}
         run: |
-          case="${{ inputs.migration_test_case }}"
+          case="$INPUT_MIGRATION_TEST_CASE"
           caseArg=""
           if [ -n "${case}" ]; then caseArg="--migration-test-case \"${case}\""; fi
-          python main.py --enable-migration-test --old-version "${OLD_VERSION}" --new-version "${NEW_VERSION}" --max-turns ${{ inputs.max_turns }} ${caseArg}
+          python main.py --enable-migration-test --old-version "${OLD_VERSION}" --new-version "${NEW_VERSION}" --max-turns "$INPUT_MAX_TURNS" ${caseArg}
 
       - name: Upload screen recordings
         if: always()

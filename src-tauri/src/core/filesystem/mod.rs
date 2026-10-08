@@ -1,8 +1,10 @@
+pub mod asset_scope;
 pub mod commands;
 pub mod export_file;
 pub mod group_folders;
 pub mod helpers;
 pub mod models;
+pub mod settings_backup;
 pub mod session_path;
 
 #[cfg(test)]

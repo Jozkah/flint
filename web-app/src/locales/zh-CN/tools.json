@@ -1,14 +1,22 @@
 {
   "toolApproval": {
+    "needsApproval": "此工具需要您的批准才能运行。",
+    "proposedChange": "此操作将做出的更改",
+    "childActionLabel": "操作",
+    "childAction": "{{origin}} 想要运行 {{tool}}",
+    "childResourcesLabel": "服务器",
+    "childScopeLabel": "范围",
+    "childScope": "“允许一次”只允许这一次调用。下一次调用会再次询问。",
+    "childDenyLabel": "如果你拒绝",
+    "childDeny": "该工具不会运行，并且会告知此次运行该调用被拒绝。",
     "deny": "拒绝",
     "allowOnce": "允许一次",
-    "needsApproval": "此工具需要您的批准才能运行。",
-    "title": "工具调用请求",
-    "description": "助手想要使用工具：",
-    "securityNotice": "安全警告：恶意的工具或对话内容可能会诱使助手尝试有害操作。在批准之前，请仔细审查每个工具调用。",
     "allowInThread": "在会话中允许",
     "allowServerAlways": "始终允许 {{server}}",
     "allowToolAlways": "始终允许 {{tool}}",
+    "title": "工具调用请求",
+    "description": "助手想要使用工具：",
+    "securityNotice": "安全警告：恶意的工具或对话内容可能会诱使助手尝试有害操作。在批准之前，请仔细审查每个工具调用。",
     "permissionScope": "您可以仅允许一次，或每次都允许。",
     "alwaysAllow": "始终允许",
     "approvalNeeded": "需要批准",
@@ -56,10 +64,13 @@
     "exitCode": "退出码 {{code}}",
     "terminated": "已终止",
     "outputTruncated": "输出已截断；仅显示最后几行。",
+    "ranUnsandboxed": "已在沙盒外运行",
+    "firstAttempt": "第一次尝试（在沙盒中）",
+    "pollingJob": "正在等待后台作业 {{id}}",
     "pathPlaceholder": "路径",
     "reading": "正在读取...",
     "workspaceRoot": "工作区根目录",
-    "ranUnsandboxed": "已在沙盒外运行",
-    "firstAttempt": "第一次尝试（在沙盒中）"
+    "matches": "{{count}} 个匹配项",
+    "testsPassed": "{{count}} 个通过"
   }
 }

@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "Commandes",
+    "helpTitle": "Commandes disponibles",
+    "keys": "↑↓ choisir · Entrée/Tab insérer · Échap fermer",
+    "empty": "Aucune commande disponible ici"
+  },
+  "source": {
+    "plugin": "plugin",
+    "pluginNamed": "plugin {{plugin}}",
+    "skill": "compétence",
+    "builtin": "intégrée"
+  },
+  "scope": {
+    "project": "projet",
+    "global": "globale"
+  },
   "builtin": {
+    "help": "Lister les commandes disponibles",
+    "new": "Démarrer une nouvelle conversation",
+    "newSession": "Démarrer une nouvelle session Cowork",
     "compact": "Résumer les anciens messages pour libérer la fenêtre de contexte"
-  }
+  },
+  "sent": {
+    "command": "Commande",
+    "skill": "Compétence",
+    "showCommand": "Afficher la commande développée",
+    "showSkill": "Afficher la compétence chargée"
+  },
+  "error": "Impossible d'exécuter {{command}} : {{error}}"
 }

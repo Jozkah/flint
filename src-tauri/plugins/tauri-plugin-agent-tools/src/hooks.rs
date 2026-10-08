@@ -49,6 +49,29 @@ pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
 /// The most hook output kept, per hook, in what is shown or recorded.
 pub const MAX_OUTPUT: usize = 4096;
 
+/// Environment variables a hook receives on top of the minimal set the bash
+/// tool gets. These are locations, identity and platform facts a script
+/// normally reads (`%APPDATA%`, `%USERNAME%`, `ProgramFiles(x86)`, `XDG_*`);
+/// none of them carries a credential. Everything else in the host environment
+/// stays out, so a provider key or `SSH_AUTH_SOCK` never reaches a hook.
+const HOOK_ENV_EXTRA: &[&str] = &[
+    "APPDATA",
+    "USERNAME",
+    "USERDOMAIN",
+    "ALLUSERSPROFILE",
+    "PUBLIC",
+    "CommonProgramW6432",
+    "COMPUTERNAME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "LC_ALL",
+    "LC_CTYPE",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+];
+
 /// Where in a run a hook runs.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -596,6 +619,18 @@ async fn execute(
     let work = async move {
         use jan_process::CommandConsole;
         let mut cmd = tokio::process::Command::new(shell.program.clone());
+        // A hook gets the same minimal environment as the `bash` tool, never
+        // the host's: a provider key or `SSH_AUTH_SOCK` in the app's
+        // environment must not reach a script a repository chose.
+        cmd.env_clear();
+        for key in crate::tools::proc::SANDBOX_ENV_ALLOW
+            .iter()
+            .chain(HOOK_ENV_EXTRA)
+        {
+            if let Some(val) = std::env::var_os(key) {
+                cmd.env(key, val);
+            }
+        }
         cmd.args(shell.args.clone())
             .arg(&command)
             .current_dir(&root)
@@ -726,6 +761,26 @@ pub async fn run_post_tool_batch(
     tool_names: &[String],
     ctx: &Context<'_>,
 ) -> Decision {
+    run_post_tool_batch_as(hooks, tool_names, "main", ctx).await
+}
+
+/// Which agent's turn a `post-tool-batch` hook is told about.
+///
+/// Anything but `subagent` is `main`: the value is set by the harness, never by
+/// a model, and a hook only branches on these two spellings.
+pub fn hook_agent(agent: &str) -> &'static str {
+    if agent == "subagent" { "subagent" } else { "main" }
+}
+
+/// [`run_post_tool_batch`], telling the hook whether the turn was the main
+/// agent's or a subagent's (`FLINT_HOOK_AGENT`). Observe-only either way.
+pub async fn run_post_tool_batch_as(
+    hooks: &[Hook],
+    tool_names: &[String],
+    agent: &str,
+    ctx: &Context<'_>,
+) -> Decision {
+    let agent = hook_agent(agent).to_string();
     let batch: Vec<Hook> = hooks
         .iter()
         .filter(|h| {
@@ -744,6 +799,8 @@ pub async fn run_post_tool_batch(
         ("FLINT_HOOK_TOOL_COUNT", count.clone()),
         ("JAN_HOOK_TOOL_NAMES", joined),
         ("JAN_HOOK_TOOL_COUNT", count),
+        ("FLINT_HOOK_AGENT", agent.clone()),
+        ("JAN_HOOK_AGENT", agent),
     ];
     let mut decision = run_with_env(&batch, Event::PostToolBatch, None, ctx, &extra).await;
     decision.blocked = None;
@@ -768,12 +825,27 @@ pub fn fire_post_tool_batch(
     sandbox: bool,
     mask_root: Option<&Path>,
 ) -> Option<tokio::task::JoinHandle<()>> {
+    fire_post_tool_batch_as(project_root, tool_names, "main", allow_network, home_readonly, sandbox, mask_root)
+}
+
+/// [`fire_post_tool_batch`] for a turn of `agent` (`main` or `subagent`), so a
+/// hook can tell them apart through `FLINT_HOOK_AGENT`.
+pub fn fire_post_tool_batch_as(
+    project_root: &Path,
+    tool_names: Vec<String>,
+    agent: &str,
+    allow_network: bool,
+    home_readonly: bool,
+    sandbox: bool,
+    mask_root: Option<&Path>,
+) -> Option<tokio::task::JoinHandle<()>> {
     if tool_names.is_empty() || !config_path(project_root).is_file() {
         return None;
     }
     let runtime = tokio::runtime::Handle::try_current().ok()?;
     let root = project_root.to_path_buf();
     let mask = mask_root.map(Path::to_path_buf);
+    let agent = hook_agent(agent);
     Some(runtime.spawn(async move {
         let hooks = match load(&root) {
             Ok(hooks) => hooks,
@@ -790,7 +862,7 @@ pub fn fire_post_tool_batch(
             mask_root: mask.as_deref(),
             cancel: None,
         };
-        let decision = run_post_tool_batch(&hooks, &tool_names, &ctx).await;
+        let decision = run_post_tool_batch_as(&hooks, &tool_names, agent, &ctx).await;
         for failure in decision.runs.iter().filter_map(|r| r.error.as_ref()) {
             eprintln!("post-tool-batch hook failed (ignored): {}", failure.message);
         }
@@ -972,6 +1044,35 @@ mod tests {
         // A batch with none of the hook's tools does not run it.
         let skipped = run_post_tool_batch(&hooks, &["bash".to_string()], &ctx(&root)).await;
         assert!(skipped.runs.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_batch_hook_is_told_whether_the_turn_was_the_main_agents_or_a_subagents() {
+        let root = dir("batch-agent");
+        let out = root.join("seen");
+        let out_path = out.display().to_string().replace('\\', "/");
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"echo $FLINT_HOOK_AGENT:$JAN_HOOK_AGENT:$FLINT_HOOK_TOOL_COUNT >> '{out_path}'\"\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let names = vec!["read".to_string()];
+        // The default is the main agent, so existing callers are unchanged.
+        let d = run_post_tool_batch(&hooks, &names, &ctx(&root)).await;
+        assert!(d.runs[0].ok, "{:?}", d.runs[0].error);
+        let d = run_post_tool_batch_as(&hooks, &names, "subagent", &ctx(&root)).await;
+        assert!(d.runs[0].ok && d.blocked.is_none());
+        // Only the two spellings exist: anything else is the main agent.
+        run_post_tool_batch_as(&hooks, &names, "../etc", &ctx(&root)).await;
+        let seen = std::fs::read_to_string(&out).unwrap();
+        let lines: Vec<&str> = seen.lines().map(str::trim).collect();
+        assert_eq!(lines, vec!["main:main:1", "subagent:subagent:1", "main:main:1"]);
+        assert_eq!(hook_agent("subagent"), "subagent");
+        assert_eq!(hook_agent("main"), "main");
+        assert_eq!(hook_agent(""), "main");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1173,6 +1274,49 @@ mod tests {
         assert!(decision.allowed());
         let seen = std::fs::read_to_string(&out).unwrap_or_default();
         assert!(seen.contains("pre-tool bash"), "{seen:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The host's secrets stay out of a hook's environment.
+    #[tokio::test]
+    async fn a_hook_does_not_inherit_the_host_environment() {
+        let root = dir("env-secret");
+        let out = root.join("secret.txt");
+        let out_path = out.display().to_string().replace('\\', "/");
+        // A unique name no other test reads.
+        std::env::set_var("FLINT_TEST_HOOK_SECRET", "hunter2");
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"pre-tool\"\ncommand = \"echo \\\"[$FLINT_TEST_HOOK_SECRET]\\\" > '{out_path}'\"\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let decision = run(&hooks, Event::PreTool, Some("bash"), &ctx(&root)).await;
+        assert!(decision.allowed());
+        let seen = std::fs::read_to_string(&out).unwrap_or_default();
+        assert!(!seen.contains("hunter2"), "{seen:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The plain, credential-free variables a script reads do reach a hook.
+    #[tokio::test]
+    async fn a_hook_keeps_the_plain_platform_variables_scripts_read() {
+        let root = dir("env-extra");
+        let out = root.join("extra.txt");
+        let out_path = out.display().to_string().replace('\\', "/");
+        std::env::set_var("XDG_CACHE_HOME", "kept-cache");
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"pre-tool\"\ncommand = \"echo \\\"[$XDG_CACHE_HOME]\\\" > '{out_path}'\"\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let decision = run(&hooks, Event::PreTool, Some("bash"), &ctx(&root)).await;
+        assert!(decision.allowed());
+        let seen = std::fs::read_to_string(&out).unwrap_or_default();
+        assert!(seen.contains("kept-cache"), "{seen:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

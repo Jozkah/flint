@@ -1,0 +1,6 @@
+{
+  "groupGeneral": "General",
+  "groupModelsAndTools": "Models i eines",
+  "advancedSettings": "Avançat",
+  "advancedSettingsHint": "Servidor d'API local, servidor intermediari, maquinari i configuració de les eines de l'agent. Agrupar-los no canvia res de com funcionen."
+}

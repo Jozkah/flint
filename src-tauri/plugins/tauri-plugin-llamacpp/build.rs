@@ -43,6 +43,7 @@ const COMMANDS: &[&str] = &[
     "read_gguf_metadata",
     "find_gguf_tensors",
     "is_model_supported",
+    "sha256_file",
 ];
 
 fn main() {
@@ -690,7 +691,49 @@ mod engine {
         }
     }
 
+    /// A build tree records the absolute path of the compiler, archiver and
+    /// linker it was configured with. After a toolchain upgrade or move (an
+    /// LLVM 19 install replaced by 22, say) those paths no longer exist, and
+    /// ninja then fails every link step with "The system cannot find the path
+    /// specified" instead of reconfiguring. Wiping is safe: everything in
+    /// there is derived.
+    fn discard_missing_toolchain(build_dir: &Path) {
+        let Ok(text) = fs::read_to_string(build_dir.join("CMakeCache.txt")) else {
+            return;
+        };
+        const TOOLS: [&str; 6] = [
+            "CMAKE_C_COMPILER",
+            "CMAKE_CXX_COMPILER",
+            "CMAKE_AR",
+            "CMAKE_RANLIB",
+            "CMAKE_LINKER",
+            "CMAKE_MAKE_PROGRAM",
+        ];
+        for line in text.lines() {
+            let Some((key, rest)) = line.split_once(':') else {
+                continue;
+            };
+            if !TOOLS.contains(&key) {
+                continue;
+            }
+            let Some((_, value)) = rest.split_once('=') else {
+                continue;
+            };
+            let value = value.trim();
+            // Only absolute paths: a bare name is resolved from PATH at run
+            // time, and `-NOTFOUND` means the configure already failed.
+            if Path::new(value).is_absolute() && !Path::new(value).exists() {
+                println!(
+                    "cargo:warning={key} ({value}) no longer exists; discarding the cmake cache"
+                );
+                let _ = fs::remove_dir_all(build_dir);
+                return;
+            }
+        }
+    }
+
     fn discard_foreign_cache(build_dir: &Path, src: &Path) {
+        discard_missing_toolchain(build_dir);
         discard_other_generator(build_dir);
         let cache = build_dir.join("CMakeCache.txt");
         let Ok(text) = fs::read_to_string(&cache) else {
@@ -722,6 +765,7 @@ mod engine {
     /// generated wrapper (whose path is stable), so the value that identifies
     /// the source is the cached `JAN_GGML_SRC`.
     fn discard_stale_ggml_cache(build_dir: &Path, ggml_src: &Path) {
+        discard_missing_toolchain(build_dir);
         discard_other_generator(build_dir);
         let cache = build_dir.join("CMakeCache.txt");
         let Ok(text) = fs::read_to_string(&cache) else {

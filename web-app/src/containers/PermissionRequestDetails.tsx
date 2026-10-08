@@ -129,6 +129,18 @@ export function PermissionRequestDetails({
               <dd className="min-w-0 break-words">{request.reason}</dd>
             </>
           )}
+          {request.script && (
+            <>
+              <dt className="text-muted-foreground">
+                {t('permissions:request.script')}
+              </dt>
+              <dd className="min-w-0">
+                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs leading-[19px] shadow-[inset_0_0_0_0.8px_var(--border)]">
+                  <code>{request.script}</code>
+                </pre>
+              </dd>
+            </>
+          )}
           {request.consequences.length > 0 && (
             <>
               <dt className="text-muted-foreground">
@@ -192,6 +204,15 @@ export function PermissionRequestDetails({
             {request.reason}
           </dd>
         </dl>
+      )}
+
+      {request.script && (
+        <div className="space-y-1">
+          <h4 className={LABEL}>{t('permissions:request.script')}</h4>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
+            <code>{request.script}</code>
+          </pre>
+        </div>
       )}
 
       {request.consequences.length > 0 && (

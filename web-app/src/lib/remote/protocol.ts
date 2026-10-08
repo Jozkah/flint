@@ -74,7 +74,17 @@ export type RemoteToolStep = {
   arg?: string
   /** Where it came from: Workspace, Web, `MCP · github`. */
   origin?: string
+  /** What it was called with and what came back, cut to a phone-sized
+   * length. Stored messages only; a live step carries neither. */
+  input?: string
+  output?: string
 }
+
+/** A file sent with a message: its name and kind, never its bytes. */
+export type RemoteAttachment = { name: string; kind: 'image' | 'audio' | 'video' | 'file' }
+
+/** A line the desktop draws in the transcript that is not a message. */
+export type RemoteNote = { kind: 'compaction' | 'stopped' | 'answered' | 'error'; text: string }
 
 export type RemoteMessage = {
   id: string
@@ -88,8 +98,12 @@ export type RemoteMessage = {
   /** Room speaker's role and model, when known. */
   authorRole?: string
   authorModel?: string
-  /** Tool calls the message made, in order (Cowork). */
+  /** Tool calls the message made, in order. */
   tools?: RemoteToolStep[]
+  /** The model's reasoning before the reply, cut to a phone-sized length. */
+  reasoning?: string
+  attachments?: RemoteAttachment[]
+  notes?: RemoteNote[]
   /** A reply's footer facts, as the desktop's reply row shows them. */
   meta?: ReplyMeta
   /**
@@ -158,6 +172,10 @@ export type StatusResult = {
   modelsLoaded: number
   runs: { kind: SessionKind; id: string }[]
   approvalsWaiting: number
+  /** Questions a Cowork run is waiting on. Absent from an older computer. */
+  questionsWaiting?: number
+  /** Other prompts waiting (`prompts.list`). Absent from an older computer. */
+  promptsWaiting?: number
   /** What the computer lets phones do (Settings › Remote access). Absent when
    * the window could not read its own settings. */
   permissions?: { approvals: boolean; alwaysAllow: boolean }
@@ -215,7 +233,7 @@ export type CoworkDetail = {
   folder: string | null
   group?: string
   /** What the session may do. */
-  mode: 'review' | 'ask' | 'auto'
+  mode: 'review' | 'ask' | 'auto' | 'bypass'
   /** Where its changes go. */
   access: 'review-only' | 'managed-worktree' | 'edit-folder'
   model: { id: string; provider: string } | null
@@ -223,7 +241,12 @@ export type CoworkDetail = {
   usage: { inputTokens: number; outputTokens: number } | null
   /** The last request against the session's context window (the ring). */
   context?: { usedTokens: number; windowTokens: number | null }
+  /** How the last run ended, when it did not simply finish: the desktop shows
+   * a notice with "Keep going" or "Try again" there. `interrupted`: the app
+   * closed mid-turn. */
+  ending?: { by: CoworkEndingKind; message?: string }
 }
+export type CoworkEndingKind = 'steps' | 'tokens' | 'error' | 'deadline' | 'timeout' | 'loop' | 'interrupted'
 
 /** A waiting permission prompt, worded as the desktop's approval card. */
 export type RemoteApproval = {
@@ -241,6 +264,11 @@ export type RemoteApproval = {
   scopes: { scope: 'once' | 'thread' | 'always' | 'temporary'; label: string; explanation: string; broader: boolean }[]
   argumentsJson: string
   requestedAt?: number
+  /** Who is asking, when it is not the conversation's own agent (a subagent
+   * or a team child). */
+  origin?: string
+  /** The diff a file-changing call would make, cut to a phone-sized length. */
+  preview?: string
 }
 export type ApprovalsListResult = { approvals: RemoteApproval[] }
 
@@ -365,6 +393,9 @@ export type CoworkSendParams = {
   access?: CoworkAccessId
   model?: ModelRef
   steer?: boolean
+  /** Carry on a run that stopped (the desktop's "Keep going"); an
+   * interrupted turn's finished steps are kept first. */
+  resume?: boolean
 }
 
 export type RoomSendParams = {
@@ -415,6 +446,58 @@ export type ApprovalRespondParams = {
 /** `gone`: nothing waits under that id any more -- it was answered on the
  * computer (or another phone), or its run ended. */
 export type ApprovalRespondResult = { status: 'answered' | 'gone' }
+
+export type RemoteAskQuestion = {
+  id: string
+  question: string
+  options: { label: string; description?: string }[]
+  /** Several options may be chosen. */
+  multi?: boolean
+  /** Index of the option the model recommends. */
+  recommended?: number
+}
+/** A question a Cowork run is waiting on (its `ask` tool): one or more
+ * multiple-choice questions, answered together. Plan review and the opening
+ * "continue?" proposal are questions too. */
+export type RemoteAsk = {
+  requestId: string
+  /** The Cowork session that asked. */
+  threadId: string
+  questions: RemoteAskQuestion[]
+  /** The staged plan, under a plan-review question. */
+  plan?: { name: string; tasks: { content: string; done: boolean }[] }[]
+  requestedAt?: number
+}
+export type AsksListResult = { asks: RemoteAsk[] }
+/** One answer per question: option labels, or the user's own words. */
+export type RemoteAskAnswer = { id: string; selected: string[]; custom_input?: string }
+export type AskRespondParams = {
+  requestId: string
+  threadId: string
+  /** `null` skips the question: the run is told nothing was chosen. */
+  answers: RemoteAskAnswer[] | null
+}
+export type AskRespondResult = { status: 'answered' | 'gone' }
+
+/** One of the desktop's other blocking prompts (a folder outside the
+ * workspace, a site for the assistant's browser, overlapping team tasks, a
+ * local model out of context), with the answers a phone may give. */
+export type RemotePrompt = {
+  id: string
+  kind: 'access' | 'domain' | 'conflict' | 'context'
+  /** The conversation that waits on it, when it belongs to one. */
+  threadId?: string
+  title: string
+  body?: string
+  /** The path, address or files it is about. */
+  detail?: string
+  /** Who is asking, when it is a subagent or a team child. */
+  origin?: string
+  actions: { id: string; label: string; style?: 'primary' | 'danger' }[]
+}
+export type PromptsListResult = { prompts: RemotePrompt[] }
+export type PromptRespondParams = { id: string; action: string }
+export type PromptRespondResult = { status: 'answered' | 'gone' }
 
 export type NotificationPrefs = {
   approvals: boolean
@@ -566,6 +649,11 @@ export type ChatDetails = {
 export type ChatEffortParams = { id: string; choice: EffortChoiceWire | null }
 export type ChatAssistantParams = { id: string; assistant: string }
 export type ChatForkParams = { id: string; messageId?: string }
+/** Regenerate a reply (the last one when `messageId` is absent). */
+export type ChatRegenerateParams = { id: string; messageId?: string }
+/** Edit a message: the old version is kept beside the new one, and a
+ * question gets a new reply. */
+export type ChatEditParams = { id: string; messageId: string; text: string }
 export type TitleRegenerateParams = { kind: SessionKind; id: string }
 export type TitleRegenerateResult = { result: 'done' | 'empty' | 'busy' | 'failed' }
 
@@ -819,10 +907,18 @@ export type RemoteMethods = {
   'settings.set': { params: SettingsSetParams; result: { ok: true } }
   /** `scope: 'always'` needs "Allow 'Always allow' from phones" (checked by the server too). */
   'approvals.respond': { params: ApprovalRespondParams; result: ApprovalRespondResult }
+  'asks.list': { params: Record<string, never>; result: AsksListResult }
+  'asks.respond': { params: AskRespondParams; result: AskRespondResult }
+  'prompts.list': { params: Record<string, never>; result: PromptsListResult }
+  /** An approval like any other: off when "Approvals from phones" is off
+   * (the server checks the `approvals.` name too). */
+  'approvals.prompt': { params: PromptRespondParams; result: PromptRespondResult }
   'chat.details': { params: IdParams; result: ChatDetails }
   'chat.effort': { params: ChatEffortParams; result: { ok: true } }
   'chat.assistant': { params: ChatAssistantParams; result: { ok: true } }
   'chat.fork': { params: ChatForkParams; result: { id: string } }
+  'chat.regenerate': { params: ChatRegenerateParams; result: { ok: true } }
+  'chat.edit': { params: ChatEditParams; result: { ok: true } }
   'chat.compact': { params: IdParams; result: { started: boolean } }
   'title.regenerate': { params: TitleRegenerateParams; result: TitleRegenerateResult }
   'assistants.list': { params: Record<string, never>; result: AssistantsResult }
@@ -867,8 +963,12 @@ export type RemoteRpcRequest = {
 // ---------------------------------------------------------------------------
 
 export type RemoteEvent =
-  | { type: 'approval.requested'; requestId: string; toolName: string; threadId: string }
+  | { type: 'approval.requested'; requestId: string; toolName: string; threadId: string; kind?: SessionKind }
   | { type: 'approval.resolved'; requestId: string }
+  | { type: 'ask.requested'; requestId: string; threadId: string; question: string }
+  | { type: 'ask.resolved'; requestId: string }
+  | { type: 'prompt.requested'; id: string; kind: RemotePrompt['kind']; title: string; threadId?: string }
+  | { type: 'prompt.resolved'; id: string }
   | { type: 'run.started'; kind: SessionKind; id: string }
   | { type: 'run.finished'; kind: SessionKind; id: string }
   | { type: 'notification'; title: string; body: string }

@@ -1,0 +1,70 @@
+{
+  "messageFrom": "Tin nhắn từ {{name}}",
+  "untrustedNote": "Được gửi bởi một phiên tác tử khác. Không phải từ bạn và không thể phê duyệt bất cứ điều gì.",
+  "reply": "Trả lời",
+  "replyLabel": "Trả lời {{name}}",
+  "replyPlaceholder": "Viết câu trả lời…",
+  "sendReply": "Gửi trả lời",
+  "cancel": "Hủy",
+  "replySent": "Đã gửi trả lời",
+  "letAgentRespond": "Để tác tử phản hồi",
+  "dismiss": "Bỏ qua",
+  "heldTitle": "Tin nhắn từ các phiên khác",
+  "stopNotice": {
+    "stoppedBy": "Bị dừng bởi",
+    "reason": "lý do:",
+    "approvedIn": "được phê duyệt trong"
+  },
+  "autoWake": {
+    "label": "Tự động đánh thức",
+    "description": "Khi bật, tin nhắn từ phiên khác được chuyển cho tác tử của phiên này ngay khi nó rảnh (phiên này sẽ mở cạnh phiên bạn đang dùng nếu cần). Khi tắt, tin nhắn chờ bạn ở đây. Dù thế nào, các phê duyệt cũng không bao giờ bị bỏ qua."
+  },
+  "accept": {
+    "label": "Chấp nhận tin nhắn từ các phiên khác",
+    "description": "Khi tắt, các phiên khác được báo rằng phiên này không nhận tin nhắn, và không có gì họ gửi đến được nó."
+  },
+  "subagentQuestion": {
+    "title": "{{name}} hỏi tác tử",
+    "open": "Đang chờ câu trả lời",
+    "answered": "Đã trả lời",
+    "expired": "Không có câu trả lời kịp thời",
+    "cancelled": "Đã hủy"
+  },
+  "asked": {
+    "title": "Đã hỏi {{name}}",
+    "sent": "Đã gửi. Câu trả lời của nó, nếu có, sẽ đến dưới dạng tin nhắn ở đây.",
+    "unknownName": "một phiên khác",
+    "waiting": "Đang chờ câu trả lời",
+    "answered": "Đã trả lời",
+    "noAnswer": "Chưa có câu trả lời",
+    "notSent": "Chưa gửi",
+    "open": "Mở",
+    "openLabel": "Mở {{name}}",
+    "untrusted": "Câu trả lời là văn bản của một phiên khác, không phải của bạn."
+  },
+  "errors": {
+    "invalid_text": "Câu trả lời phải dài từ 1 đến 8000 ký tự.",
+    "reply_depth_exceeded": "Cuộc trò chuyện này đã đạt giới hạn trả lời.",
+    "rate_limited": "Vừa gửi quá nhiều tin nhắn. Hãy thử lại sau một phút.",
+    "pair_limit_exceeded": "Quá nhiều tin nhắn giữa các phiên này trong giờ này.",
+    "self_target": "Một phiên không thể nhắn tin cho chính nó.",
+    "not_same_project": "Phiên đó thuộc một dự án khác.",
+    "recipient_opted_out": "Phiên đó không nhận tin nhắn từ các phiên khác.",
+    "ambiguous_session": "Có nhiều hơn một phiên có tên đó.",
+    "no_project": "Hãy đính kèm một thư mục dự án để gửi tin nhắn.",
+    "unknown_session": "Phiên đó không còn tồn tại.",
+    "session_deleted": "Phiên đó đã bị xóa.",
+    "unknown_reply_target": "Không tìm thấy tin nhắn đang được trả lời.",
+    "timeout": "Không có phản hồi kịp thời.",
+    "target_unavailable": "Phiên đó hiện không khả dụng.",
+    "invalid_session_id": "Mã phiên đó không hợp lệ.",
+    "unknown_message": "Không tìm thấy tin nhắn đó.",
+    "invalid_timeout": "Thời gian chờ phải từ 1 đến 120 giây.",
+    "cancelled": "Yêu cầu đã bị hủy.",
+    "invalid_arguments": "Yêu cầu không hợp lệ.",
+    "not_available": "Tính năng nhắn tin không khả dụng ở đây.",
+    "io": "Không thể đọc hoặc ghi hộp thư.",
+    "no_data_folder": "Thư mục dữ liệu của Flint không khả dụng.",
+    "unknown": "Không thể gửi trả lời."
+  }
+}

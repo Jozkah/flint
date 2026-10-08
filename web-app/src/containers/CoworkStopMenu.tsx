@@ -5,8 +5,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
-  PopoverTrigger,
 } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { errorText } from '@/lib/errorText'
@@ -115,9 +115,9 @@ export function CoworkStopMenu({
           onStopCurrent()
           report(choice, await stop({ session: sessionId, run: runId }))
         } else {
-          // Abort this chat's renderer loop and stop its backend activity.
-          onStopCurrent()
-          report(choice, await stop({ session: sessionId }))
+          // Stop every renderer run and every backend task.
+          onStopAll()
+          report(choice, await stop({}))
         }
         close()
         triggerRef.current?.focus()
@@ -149,7 +149,7 @@ export function CoworkStopMenu({
         if (!next) setConfirming(false)
       }}
     >
-      <PopoverTrigger asChild>
+      <PopoverAnchor asChild>
         <button
           ref={triggerRef}
           type="button"
@@ -157,13 +157,14 @@ export function CoworkStopMenu({
           aria-haspopup="menu"
           aria-expanded={open}
           data-testid="cowork-stop"
+          onClick={() => setOpen((wasOpen) => !wasOpen)}
           // Fixed size so it cannot grow or shift the token and context
           // indicators beside it while a response streams.
           className="grid size-7 shrink-0 place-items-center rounded-lg border-[0.8px] border-destructive/40 text-destructive outline-none transition-[background-color,transform] duration-150 ease-expo hover:bg-destructive/10 focus-visible:ring-[3px] focus-visible:ring-destructive/30 active:scale-95 data-[state=open]:bg-destructive/10 pointer-coarse:size-11"
         >
           <Square className="size-3 fill-current" aria-hidden />
         </button>
-      </PopoverTrigger>
+      </PopoverAnchor>
       {/* Anchored and small. No overlay: stopping is not a modal decision, and
           dimming the app to ask it would hide the work being stopped. */}
       <PopoverContent

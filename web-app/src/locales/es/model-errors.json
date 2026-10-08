@@ -3,5 +3,30 @@
   "description": "Este chat está alcanzando el límite de memoria de la IA, como una pizarra que se llena. Podemos expandir la ventana de memoria (llamada tamaño de contexto) para que recuerde más, pero puede usar más memoria de tu computadora. También podemos truncar la entrada, lo que significa que olvidará parte del historial del chat para hacer espacio para nuevos mensajes.",
   "increaseContextSizeDescription": "¿Deseas aumentar el tamaño del contexto?",
   "truncateInput": "Truncar entrada",
-  "increaseContextSize": "Aumentar tamaño del contexto"
+  "increaseContextSize": "Aumentar tamaño del contexto",
+  "lastRequestOverflowed": "La última solicitud desbordó la ventana de contexto.",
+  "contextOverflowDetail": "Esta solicitud necesitaba {{request}} tokens, pero la ventana de contexto del modelo solo admite {{context}}.",
+  "contextOverflowGeneric": "La solicitud supera el tamaño de contexto disponible.",
+  "engine": {
+    "unknown": "El motor del modelo informó de un error inesperado.",
+    "MODEL_LOAD_FAILED": "No se pudo cargar el modelo.",
+    "MODEL_ARCH_NOT_SUPPORTED": "La arquitectura de este modelo no es compatible con el motor actual. Actualizar el motor desde Ajustes puede añadir compatibilidad.",
+    "MODEL_LOAD_TIMED_OUT": "El modelo tardó demasiado en cargarse y se detuvo. Un modelo más pequeño o un tamaño de contexto menor suele ayudar.",
+    "MISSING_SHARED_LIBRARY": "Falta una biblioteca que necesita el motor, por lo que no puede iniciarse.",
+    "GPU_DRIVER_TOO_OLD": "El controlador de tu GPU es demasiado antiguo para este motor. Actualizar el controlador o cambiar al motor de CPU en Ajustes lo solucionará.",
+    "OUT_OF_MEMORY": "No hay memoria suficiente para ejecutar este modelo. Un modelo más pequeño o un tamaño de contexto menor suele ayudar.",
+    "INVALID_ARGUMENT": "Uno de los ajustes del modelo no es válido.",
+    "IO_ERROR": "No se pudo leer o escribir un archivo al iniciar el modelo.",
+    "INTERNAL_ERROR": "Algo salió mal dentro de Flint al iniciar el modelo."
+  },
+  "engineMissingLibraries": "Faltan: {{libraries}}",
+  "engineReportedDetail": "El motor informó: {{detail}}",
+  "startModelFailed": "No se pudo iniciar el modelo: {{reason}}",
+  "createModelFailed": "No se pudo crear el modelo: {{reason}}",
+  "noRunningSession": "No se encontró ninguna sesión en ejecución para el modelo: {{model}}",
+  "serverPortOccupied": "Puerto en uso",
+  "serverPortOccupiedDescription": "El puerto {{port}} ya está en uso. Prueba con otro puerto.",
+  "serverInvalidModelPath": "Ruta del modelo no válida o inaccesible",
+  "serverStartModelFailed": "No se pudo iniciar el modelo",
+  "serverStartFailed": "No se pudo iniciar el servidor"
 }

@@ -167,6 +167,10 @@ yarn build
 
 The installers end up in the same `src-tauri/target/release/bundle/` folder.
 
+`yarn build` stops at once, with a message, if the engine
+(`src-tauri/resources/bin/flint-llama-worker`) has not been built. Set
+`FLINT_SKIP_ENGINE_CHECK=1` to bypass that check.
+
 ## Updating to the latest code
 
 ```bash

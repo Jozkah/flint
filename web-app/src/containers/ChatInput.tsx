@@ -1,10 +1,12 @@
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
+import { toAssetUrl } from '@/lib/assetPath'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { currentDescriber } from '@/lib/imageDescription'
 import { ImageViewer } from '@/components/ImageViewer'
 import { needsWeb } from '@/lib/needsWeb'
 import TextareaAutosize from 'react-textarea-autosize'
+import { RichComposerEditor, type RichComposerHandle } from '@/containers/RichComposerEditor'
 import { cn, formatBytes, getModelDisplayName } from '@/lib/utils'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useThreads } from '@/hooks/useThreads'
@@ -63,6 +65,7 @@ import { getLastUsedModel } from '@/utils/getModelToStart'
 import { resolveReplyModel } from '@/lib/resolveReplyModel'
 import { fitImageFileToLimit } from '@/lib/imageResize'
 import { VoiceInputButton } from '@/containers/VoiceInputButton'
+import { DropRim } from '@/components/ui/drop-rim'
 import {
   useConversationModel,
   type ModelSelection,
@@ -83,6 +86,7 @@ import {
   type SettingWrite,
 } from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
+import { useModelToolsEnabled } from '@/hooks/useThreadToolGrants'
 import {
   THINKING_BUDGET_LEVELS,
   DEFAULT_THINKING_BUDGET_LEVEL,
@@ -125,7 +129,6 @@ import { useAttachments } from '@/hooks/useAttachments'
 import { toast } from 'sonner'
 import { requestChatCompaction } from '@/lib/chatCompaction'
 import { isPlatformTauri } from '@/lib/platform/utils'
-import { shouldShowTokenCounter } from '@/lib/tokenCounterVisibility'
 import { useAttachmentIngestionPrompt } from '@/hooks/useAttachmentIngestionPrompt'
 import {
   NEW_THREAD_ATTACHMENT_KEY,
@@ -353,7 +356,6 @@ const videoMimeForExt = (ext: string | undefined): string => {
 
 const ChatInput = memo(function ChatInput({
   className,
-  initialMessage,
   projectId,
   projectAssistantId,
   onSubmit,
@@ -384,6 +386,25 @@ const ChatInput = memo(function ChatInput({
   slashBuiltins,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const richComposerRef = useRef<RichComposerHandle>(null)
+  const [richFormatting, setRichFormatting] = useState(true)
+  const richFormattingRef = useRef(richFormatting)
+  richFormattingRef.current = richFormatting
+  const focusComposer = useCallback(() => {
+    if (richFormattingRef.current) richComposerRef.current?.focus()
+    else textareaRef.current?.focus()
+  }, [])
+  // Taking focus on mount or a thread change must not pull it out of another
+  // field the person is already typing in (a parameter input, a dialog).
+  const focusComposerUnlessTyping = useCallback(() => {
+    const active = document.activeElement
+    const typing =
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      (active instanceof HTMLElement && active.isContentEditable)
+    if (typing && active !== textareaRef.current) return
+    focusComposer()
+  }, [focusComposer])
   const [isFocused, setIsFocused] = useState(false)
   // The control row is absolutely positioned at the bottom of the composer, so
   // the composer must reserve exactly as much space as the row occupies. The
@@ -690,7 +711,7 @@ const ChatInput = memo(function ChatInput({
       filePickerCursorPos.current = null
 
       // Focus back on textarea
-      setTimeout(() => textareaRef.current?.focus(), 0)
+      setTimeout(() => focusComposer(), 0)
     },
     [prompt, setPrompt]
   )
@@ -735,7 +756,7 @@ const ChatInput = memo(function ChatInput({
           aliases: useReferenceAliases.getState().list(workingDir),
         })
       )
-      setTimeout(() => textareaRef.current?.focus(), 0)
+      setTimeout(() => focusComposer(), 0)
     },
     [aliasDraft, workingDir, filePickerQuery, referenceSkills, referenceAgents]
   )
@@ -743,7 +764,7 @@ const ChatInput = memo(function ChatInput({
   const handleAliasCancel = useCallback(() => {
     setAliasDraft(null)
     setAliasError(null)
-    setTimeout(() => textareaRef.current?.focus(), 0)
+    setTimeout(() => focusComposer(), 0)
   }, [])
 
   // Resolve @path references in the prompt text, returning the resolved content
@@ -827,6 +848,7 @@ const ChatInput = memo(function ChatInput({
   const threadModelSelection = useConversationModel()
   const conversationModel = modelSelection ?? threadModelSelection
   const selectedModel = conversationModel.selectedModel
+  const toolsEnabled = useModelToolsEnabled(selectedModel, currentThreadId)
 
   /** The general picker handles images; audio and video have their own entries. */
   const attachmentAccept = acceptAttribute({
@@ -873,17 +895,16 @@ const ChatInput = memo(function ChatInput({
         }
       : undefined)
 
-  const tokenCounterVisible =
-    !hideTokenCounter &&
-    shouldShowTokenCounter({
-      hasSelectedModel: !!selectedModel,
-      isAgentMode: effectiveAgentMode,
-      isInitialMessage: !!initialMessage,
-      hasMessages: (threadMessages?.length ?? 0) > 0,
-      hasPromptText: prompt.trim().length > 0,
-      hasReportedUsage:
-        (tokenSource?.usage?.totalTokens ?? 0) > 0 || !!tokenSource?.contextError,
+  // The counter's "Set a price" link: the model's provider settings.
+  const openPriceSettings = (providerName: string) =>
+    void router.navigate({
+      to: route.settings.providers,
+      params: { providerName },
     })
+
+  // Always there, so its slot never shifts the controls beside it; with
+  // nothing counted yet it is an empty ring.
+  const tokenCounterVisible = !hideTokenCounter
   const [selectedAssistantId, setSelectedAssistantId] = useState<
     string | undefined
   >(loading ? undefined : projectAssistantId || currentAssistant?.id || '')
@@ -1367,9 +1388,9 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when component mounts
   useEffect(() => {
-    if (takeFocus && textareaRef.current) {
-      textareaRef.current.focus()
-    }
+    if (!takeFocus) return
+    const timer = setTimeout(focusComposerUnlessTyping, 0)
+    return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1381,20 +1402,24 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when thread changes
   useEffect(() => {
-    if (takeFocus && textareaRef.current) {
-      textareaRef.current.focus()
-    }
+    if (!takeFocus) return
+    const timer = setTimeout(focusComposerUnlessTyping, 0)
+    return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentThreadId])
 
   // Focus when streaming content finishes
   useEffect(() => {
-    if (takeFocus && chatStatus !== 'submitted' && textareaRef.current) {
-      // Small delay to ensure UI has updated
-      setTimeout(() => {
-        textareaRef.current?.focus()
-      }, 10)
-    }
+    if (!takeFocus || chatStatus !== 'ready') return
+    // A status update must not steal focus from a parameter input or menu.
+    // Radix dismisses the sampler when focus moves outside its content.
+    const timer = setTimeout(() => {
+      const active = document.activeElement
+      if (!active || active === document.body || active === textareaRef.current) {
+        focusComposer()
+      }
+    }, 10)
+    return () => clearTimeout(timer)
   }, [chatStatus, takeFocus])
 
   const stopStreaming = useCallback(
@@ -2181,9 +2206,7 @@ const ChatInput = memo(function ChatInput({
       }
     }
 
-    if (textareaRef.current) {
-      textareaRef.current.focus()
-    }
+    focusComposer()
   }
 
   const decodeAudioDuration = (dataUrl: string): Promise<number | undefined> =>
@@ -2306,7 +2329,7 @@ const ChatInput = memo(function ChatInput({
       void processAudioFiles(Array.from(files))
       if (audioInputRef.current) audioInputRef.current.value = ''
     }
-    if (textareaRef.current) textareaRef.current.focus()
+    focusComposer()
   }
 
   const openAudioPicker = useCallback(async () => {
@@ -2321,8 +2344,7 @@ const ChatInput = memo(function ChatInput({
           const files: File[] = []
           for (const path of paths) {
             try {
-              const { convertFileSrc } = await import('@tauri-apps/api/core')
-              const fileUrl = convertFileSrc(path)
+              const fileUrl = await toAssetUrl(path)
               const response = await fetch(fileUrl)
               if (!response.ok) throw new Error(response.statusText)
               const blob = await response.blob()
@@ -2344,7 +2366,7 @@ const ChatInput = memo(function ChatInput({
       } catch (error) {
         console.error('Failed to open audio dialog:', error)
       }
-      if (textareaRef.current) textareaRef.current.focus()
+      focusComposer()
     } else {
       audioInputRef.current?.click()
     }
@@ -2445,7 +2467,7 @@ const ChatInput = memo(function ChatInput({
       void processVideoFiles(Array.from(files))
       if (videoInputRef.current) videoInputRef.current.value = ''
     }
-    if (textareaRef.current) textareaRef.current.focus()
+    focusComposer()
   }
 
   const openVideoPicker = useCallback(async () => {
@@ -2460,8 +2482,7 @@ const ChatInput = memo(function ChatInput({
           const files: File[] = []
           for (const path of paths) {
             try {
-              const { convertFileSrc } = await import('@tauri-apps/api/core')
-              const fileUrl = convertFileSrc(path)
+              const fileUrl = await toAssetUrl(path)
               const response = await fetch(fileUrl)
               if (!response.ok) throw new Error(response.statusText)
               const blob = await response.blob()
@@ -2484,7 +2505,7 @@ const ChatInput = memo(function ChatInput({
       } catch (error) {
         console.error('Failed to open video dialog:', error)
       }
-      if (textareaRef.current) textareaRef.current.focus()
+      focusComposer()
     } else {
       videoInputRef.current?.click()
     }
@@ -2510,9 +2531,8 @@ const ChatInput = memo(function ChatInput({
 
           for (const path of paths) {
             try {
-              // Use Tauri's convertFileSrc to create a valid URL for the file
-              const { convertFileSrc } = await import('@tauri-apps/api/core')
-              const fileUrl = convertFileSrc(path)
+              // Grant asset access (paths outside the static scope), then build the URL
+              const fileUrl = await toAssetUrl(path)
 
               // Fetch the file as blob
               const response = await fetch(fileUrl)
@@ -2550,9 +2570,7 @@ const ChatInput = memo(function ChatInput({
         console.error('Failed to open file dialog:', error)
       }
 
-      if (textareaRef.current) {
-        textareaRef.current.focus()
-      }
+      focusComposer()
     } else {
       // Fallback to input click for web
       fileInputRef.current?.click()
@@ -2897,7 +2915,8 @@ const ChatInput = memo(function ChatInput({
               // A clear focus: a stronger edge, a soft ring, and the box lifts.
               isFocused &&
                 'border-border-strong shadow-[0_0_0_3px_color-mix(in_oklab,var(--ring)_18%,transparent),0_12px_30px_-12px_rgba(0,0,0,.25)] motion-safe:-translate-y-0.5',
-              isDragOver && 'border-acc ring-3 ring-ring/30 bg-acc-tint'
+              // The dashed rim below draws the edge while files are dragged over.
+              isDragOver && 'border-transparent'
             )}
             data-drop-zone="true"
             onDragEnter={handleDragEnter}
@@ -2905,6 +2924,7 @@ const ChatInput = memo(function ChatInput({
             onDragOver={handleDragOver}
             onDrop={handleDrop}
           >
+            <DropRim active={isDragOver} />
             {attachments.length > 0 && (
               <div className="flex flex-col gap-2 p-2 pb-0">
                 {/* Attachments as chips: a thumbnail or kind icon, the name,
@@ -3075,7 +3095,7 @@ const ChatInput = memo(function ChatInput({
                       // Put the text back in the input for editing, remove from queue
                       setPrompt(queued.text)
                       removeQueuedMessage(queued.id)
-                      textareaRef.current?.focus()
+                      focusComposer()
                     },
                     onRemove: removeQueuedMessage,
                     // A held message (its run failed or was stopped) waits
@@ -3089,6 +3109,13 @@ const ChatInput = memo(function ChatInput({
                       (isStreaming || threadBusy) && !msg.held && !msg.from
                         ? (id) =>
                             useMessageQueue.getState().steerNow(queueId, id)
+                        : undefined,
+                    // Already steering and the run still works: stop the
+                    // run (steering stays queued, not held) and the end-of-run
+                    // sender hands it over first, as the immediate next turn.
+                    onSteerNow:
+                      (isStreaming || threadBusy) && msg.steer && !msg.held
+                        ? () => stopStreaming(currentThreadId ?? '')
                         : undefined,
                     onMoveUp:
                       index > 0
@@ -3114,12 +3141,67 @@ const ChatInput = memo(function ChatInput({
                   onActiveChange={slashCommands.setActiveIndex}
                   onSelect={(item) => {
                     setPrompt(slashCommands.pick(item))
-                    textareaRef.current?.focus()
+                    focusComposer()
                   }}
                 />
               </div>
             )}
-            <TextareaAutosize
+            <div className="flex justify-end px-3 pt-1">
+              <button
+                type="button"
+                className="text-[11px] text-muted-foreground hover:text-foreground"
+                onClick={() => setRichFormatting((value) => !value)}
+                aria-label={richFormatting ? 'Use plain text editor' : 'Use rich text editor'}
+              >
+                {richFormatting ? 'Plain text' : 'Rich text'}
+              </button>
+            </div>
+            {richFormatting ? (
+              <RichComposerEditor
+                ref={richComposerRef}
+                value={prompt}
+                onChange={(markdown) => {
+                  filePickerCursorPos.current = /(?<![A-Za-z0-9_])@[\w./:-]*$/.test(markdown)
+                    ? markdown.length
+                    : null
+                  handlePromptChange(markdown)
+                  slashCommands.onTextChange(markdown)
+                }}
+                onSend={(markdown, steer) => {
+                  if (!ingestingAny && (markdown.trim() || hasSendableMedia)) {
+                    void handleSendMessage(markdown, { steer })
+                  }
+                }}
+                onPaste={handlePaste}
+                onKeyDownCapture={(event) => {
+                  if (event.nativeEvent.isComposing) return
+                  if (slashCommands.open) {
+                    const selection = slashCommands.onKeyDown(event)
+                    if (typeof selection === 'string') setPrompt(selection)
+                    if (event.defaultPrevented) return
+                  }
+                  if (filePickerOpen && !aliasDraft) {
+                    const count = filePickerEntries.length
+                    const active = filePickerEntries[Math.min(referenceActive, count - 1)]
+                    if (count > 0 && event.key === 'ArrowDown') {
+                      event.preventDefault()
+                      setReferenceActive((index) => (index + 1) % count)
+                    } else if (count > 0 && event.key === 'ArrowUp') {
+                      event.preventDefault()
+                      setReferenceActive((index) => (index - 1 + count) % count)
+                    } else if (active && (event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
+                      event.preventDefault()
+                      handleFilePickerSelect(active)
+                    } else if (event.key === 'Escape') {
+                      event.preventDefault()
+                      handleFilePickerClose()
+                    }
+                  }
+                }}
+                placeholder={t('common:placeholder.chatInput')}
+                className={className}
+              />
+            ) : <TextareaAutosize
               dir="auto"
               ref={textareaRef}
               minRows={2}
@@ -3271,7 +3353,7 @@ const ChatInput = memo(function ChatInput({
                 rows < maxRows && 'scrollbar-hide',
                 className
               )}
-            />
+            />}
             {/* @path file reference picker popover */}
             {/* Shown wherever a folder is attached -- Cowork included, which
                 is not "agent mode" -- because that folder is all it offers. */}
@@ -3370,7 +3452,7 @@ const ChatInput = memo(function ChatInput({
                     {/* RAG document attachments - desktop-only via dialog; shown when feature enabled */}
                     <DropdownMenuItem
                         onClick={() => {
-                          if (selectedModel?.capabilities?.includes('tools'))
+                          if (toolsEnabled)
                             void handleAttachDocsIngest()
                           else
                             requestCapabilities(
@@ -3408,7 +3490,7 @@ const ChatInput = memo(function ChatInput({
                     <>
                 <AssistantSwitcher
                   assistants={assistants}
-                  currentThread={currentThread}
+                  currentThread={slashSurface === 'cowork' ? undefined : currentThread}
                   selectedAssistantId={selectedAssistantId}
                   setSelectedAssistantId={setSelectedAssistantId}
                         updateCurrentThreadAssistant={
@@ -3420,7 +3502,7 @@ const ChatInput = memo(function ChatInput({
                   modelId={selectedModel?.id}
                   assistantSwitcher={{
                     assistants,
-                    currentThread,
+                    currentThread: slashSurface === 'cowork' ? undefined : currentThread,
                     selectedAssistantId,
                     setSelectedAssistantId,
                     updateCurrentThreadAssistant,
@@ -3447,7 +3529,7 @@ const ChatInput = memo(function ChatInput({
 
                       {showToolControls &&
                         selectedModel &&
-                        !selectedModel.capabilities?.includes('tools') && (
+                        !toolsEnabled && (
                           <Button
                             variant="ghost"
                             size="icon-xs"
@@ -3463,7 +3545,7 @@ const ChatInput = memo(function ChatInput({
                         )}
 
                       {showToolControls &&
-                        selectedModel?.capabilities?.includes('tools') &&
+                        toolsEnabled &&
                   hasActiveMCPServers &&
                   (MCPToolComponent ? (
                     // Use custom MCP component
@@ -3471,8 +3553,7 @@ const ChatInput = memo(function ChatInput({
                       tools={tools}
                       hasActiveMCPServers={hasActiveMCPServers}
                       selectedModelHasTools={
-                              selectedModel?.capabilities?.includes('tools') ??
-                              false
+                              toolsEnabled
                       }
                       MCPToolComponent={MCPToolComponent}
                     />
@@ -3520,7 +3601,7 @@ const ChatInput = memo(function ChatInput({
                   ))}
 
                       {!effectiveAgentMode &&
-                        selectedModel?.capabilities?.includes('tools') && (
+                        toolsEnabled && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -3795,6 +3876,7 @@ const ChatInput = memo(function ChatInput({
                     source={tokenSource}
                     compact={true}
                     onCompact={compactFromCounter}
+                    onSetPrice={openPriceSettings}
                   />
                 </div>
               )}
@@ -3990,6 +4072,7 @@ const ChatInput = memo(function ChatInput({
             messages={threadMessages || []}
             source={tokenSource}
             onCompact={compactFromCounter}
+            onSetPrice={openPriceSettings}
           />
         </div>
       )}

@@ -31,5 +31,11 @@
   "personality": "Personnalité",
   "capabilities": "Capacités",
   "instructionsDateHint": "Conseil : Utilisez {{current_date}} pour insérer la date d'aujourd'hui.",
-  "maxToolSteps": "Limite d’étapes de l’outil"
+  "maxToolSteps": "Limite d’étapes de l’outil",
+  "setAsDefault": "Définir comme assistant par défaut",
+  "isDefault": "Par défaut",
+  "defaultAssistantSection": "Assistant par défaut",
+  "defaultAssistantDesc": "Utilisé au début d'une nouvelle discussion",
+  "allAssistants": "Tous les assistants",
+  "lastUsed": "Dernière utilisation"
 }

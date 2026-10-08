@@ -557,6 +557,8 @@ pub async fn execute_builtin(
         match tool.name {
             "read" => read_or_list(args, ctx).await,
             "screenshot" => screenshot(args, project_root, scratch, ctx.read_roots).await,
+            "browser" => crate::tools::browser_tool::run(args, ctx).await,
+            "computer" => crate::tools::computer::run(args).await,
             _ => (execute_text(tool, args, ctx).await, None),
         }
     };
@@ -648,8 +650,25 @@ pub(crate) async fn execute_text(
         "web_search" => crate::tools::web::web_search(args).await,
         "web_fetch" => crate::tools::web::web_fetch(args, ctx.read_roots).await,
         "git_inspect" => crate::tools::git_native::git_inspect(args, ctx.read_roots).await,
+        "windows_events" => crate::tools::win_events::windows_events(args).await,
+        "host_query" => crate::tools::host_read::host_query(args).await,
+        "host_action" => crate::tools::host_action::host_action(args).await,
+        "host_build" => crate::tools::host_build::run(args, ctx).await,
+        "clipboard" => crate::tools::clipboard::clipboard(args).await,
+        "computer" => crate::tools::computer::run(args).await.0,
+        "open_path" => crate::tools::open_path::run(args, ctx).await,
+        "host_powershell" => crate::tools::host_powershell::run(args, ctx).await,
+        "host_package" => crate::tools::host_package::host_package(args).await,
+        "host_wsl" => crate::tools::host_wsl::run(args, ctx).await,
+        "host_ssh" => crate::tools::host_ssh::run(args).await,
+        "notify_user" => crate::tools::notify_user::notify_user(args).await,
+        "local_http" => crate::tools::local_http::local_http(args).await,
+        "docker" => crate::tools::docker_tool::docker(args).await,
         "git_clone" => crate::tools::git_native::git_clone(args, ctx).await,
         "git" => crate::tools::git_tool::run(args, ctx).await,
+        // The interactive confined browser; its screenshot image travels only
+        // through `execute_builtin`, so this text-only path drops it.
+        "browser" => crate::tools::browser_tool::run(args, ctx).await.0,
         // Cross-session messaging. Refuses unless the dispatcher bound this
         // call to a session and a mailbox (desktop, session scope only).
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" | "stop_session" => {
@@ -667,6 +686,12 @@ pub(crate) async fn execute_text(
             "unavailable",
             serde_json::json!({
                 "message": "The browser is opened by the Flint desktop app; this surface                             cannot open one. Give the user the address instead.",
+            }),
+        ),
+        "generate_image" => crate::access::result_json(
+            "unavailable",
+            serde_json::json!({
+                "message": "Images are made by the image engine in the Flint desktop app;                             this surface has no access to it. Tell the user what you                             wanted to generate.",
             }),
         ),
         // Reaching this arm means the call came from a surface with no browser
@@ -914,7 +939,9 @@ pub async fn execute_builtin_with_diff(
             let diff = format_after_edit(args, ctx, before.as_deref(), diff).await;
             (content, diff, images)
         }
-        "read" => {
+        // Tools that can hand the model an image. `screenshot` and `browser`
+        // were missing here, so their pictures were dropped on this path.
+        "read" | "screenshot" | "browser" | "computer" => {
             let (content, images) = execute_builtin(tool, args, ctx).await;
             (content, None, images)
         }
@@ -3327,7 +3354,10 @@ pub async fn render_html_png(
 
     let Some(chrome) = chrome_binary() else {
         return Err(
-            "no Chrome/Chromium binary found (set CHROME_PATH to point at one)".to_string(),
+            "no Chrome, Edge, Brave or other Chromium-based browser was found. Install one, or set \
+             FLINT_BROWSER_PATH (or CHROME_PATH) to its full executable path; Flint does not \
+             download a browser"
+                .to_string(),
         );
     };
 
@@ -6377,6 +6407,7 @@ on_failure = \"warn\"
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::tools::gate::NetworkPolicy::open(),
             &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
@@ -6407,6 +6438,7 @@ on_failure = \"warn\"
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::tools::gate::NetworkPolicy::open(),
             &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
@@ -8648,6 +8680,7 @@ on_failure = \"warn\"
 
     /// The Cowork proposal card is filed under the proposing chat's id, so an
     /// agent-made proposal must list with `source_session_id` == its session.
+    #[cfg(feature = "tauri")]
     #[tokio::test]
     async fn a_proposed_memory_lists_under_the_session_that_proposed_it() {
         let root = unique_root();

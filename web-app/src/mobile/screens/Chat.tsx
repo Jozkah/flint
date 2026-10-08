@@ -5,7 +5,9 @@ import { Composer } from '../shell/Composer'
 import { I } from '../ui/icons'
 import { Empty, Loading } from '../ui/bits'
 import { AssistantMessage, UserBubble, VersionNav } from '../ui/messages'
-import { PendingBubble, QueueBar, StreamingMessage } from '../ui/live'
+import { PendingBubble, QueueBar, ResolvedLine, StreamingMessage } from '../ui/live'
+import { ApprovalCard } from '../ui/ApprovalCard'
+import { PromptCard } from '../ui/PromptCard'
 import { client, openSheet, sendMessage, toast } from '../state/app'
 import { forkFrom, stepVersion } from '../state/controls'
 import { effortStops, stopLabel } from '../ui/effort'
@@ -14,6 +16,7 @@ import { useSessions } from '../state/sessions'
 import { pendingFor, prunePending, useLive } from '../state/live'
 import { useFollow, useStickToBottom } from '../ui/hooks'
 import { copyToClipboard } from '@/lib/clipboard'
+import { t } from '../i18n'
 
 const PAGE = 100
 
@@ -21,10 +24,10 @@ function AuxiliaryMessage({ m }: { m: RemoteMessage }) {
   return (
     <div className="msg frame" data-message-role={m.role} style={{ padding: '10px 12px', marginBottom: 12 }}>
       <div className="lbl" style={{ marginBottom: 5 }}>
-        {m.role === 'system' ? 'System' : 'Tool'}
+        {m.role === 'system' ? t('chat.system') : t('chat.tool')}
       </div>
       <div className="prose" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-        {m.text || (m.role === 'tool' ? 'Tool event' : 'System message')}
+        {m.text || (m.role === 'tool' ? t('chat.toolEvent') : t('chat.systemMessage'))}
       </div>
     </div>
   )
@@ -36,6 +39,16 @@ export default function Chat({ id }: { id: string }) {
   const { data, loading, error } = useRpc('thread.messages', { id, kind: 'chat', limit: PAGE })
   const queue = useRpc('thread.queue', { id })
   const details = useRpc('chat.details', { id })
+  // A chat's tool calls ask too (MCP tools, web search): answer them here.
+  const status = useRpc('status', {})
+  const approvals = useRpc('approvals.list', {}, (status.data?.approvalsWaiting ?? 0) > 0)
+  const mine = (approvals.data?.approvals ?? []).filter((a) => a.threadId === id)
+  const promptList = useRpc('prompts.list', {}, (status.data?.promptsWaiting ?? 0) > 0)
+  const prompts = (promptList.data?.prompts ?? []).filter((p) => p.threadId === id)
+  const resolvedAll = useLive((s) => s.resolved)
+  const resolved = Object.entries(resolvedAll).filter(
+    ([rid, r]) => r.threadId === id && !mine.some((a) => a.requestId === rid) && !prompts.some((p) => p.id === rid)
+  )
   const det = details.data
   const stream = useLive((s) => s.streams[id])
   const pendingAll = useLive((s) => s.pending)
@@ -74,7 +87,7 @@ export default function Chat({ id }: { id: string }) {
   }, [id, data, olderStart])
 
   const streamShown = stream && !allMessages.some((m) => m.id === stream.messageId) ? stream : null
-  const ref = useStickToBottom(messages.length + pending.length + (streamShown?.text.length ?? 0))
+  const ref = useStickToBottom(messages.length + pending.length + mine.length + (streamShown?.text.length ?? 0))
   const running = session?.status === 'running' || Boolean(stream && !stream.done)
   const earlier = olderStart ?? data?.start ?? 0
 
@@ -104,7 +117,7 @@ export default function Chat({ id }: { id: string }) {
         if (el) el.scrollTop += el.scrollHeight - previousHeight
       })
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Could not load earlier messages')
+      toast(e instanceof Error ? e.message : t('chat.loadEarlierFailed'))
     } finally {
       setLoadingOlder(false)
     }
@@ -116,32 +129,37 @@ export default function Chat({ id }: { id: string }) {
         crumb={
           <>
             {running && <span className="sd run" style={{ width: 6, height: 6 }} />}
-            Chats{session?.group ? ` · ${session.group}` : ''}
+            {t('chat.crumb')}{session?.group ? ` · ${session.group}` : ''}
           </>
         }
-        title={session?.title || 'Chat'}
+        title={session?.title || t('chat.untitled')}
         menu={() => openSheet('threadmenu', { id, title: session?.title })}
       />
       <div className="scroll" ref={ref} data-testid="chat-scroll">
         {earlier > 0 && (
           <button type="button" className="btn ghost" style={{ alignSelf: 'center', margin: '4px 0 16px' }} disabled={loadingOlder} onClick={() => void loadEarlier()}>
-            {loadingOlder ? 'Loading earlier messages…' : `Load ${Math.min(PAGE, earlier)} earlier message${Math.min(PAGE, earlier) === 1 ? '' : 's'}`}
+            {loadingOlder ? t('chat.loadingEarlier') : t('chat.loadEarlier', { count: Math.min(PAGE, earlier) })}
           </button>
         )}
         {loading && !data && <Loading />}
         {error && !data && <Empty>{error.message}</Empty>}
         {det?.modelMissing && (
           <div className="notice" data-testid="model-gone">
-            <b>A model is no longer available</b>
-            <span>{det.model?.name ?? 'This chat’s model'} was removed from the computer.</span>
-            <button type="button" className="btn sm" onClick={() => openSheet('modelgone', { id, name: det.model?.name })}>Choose a model</button>
+            <b>{t('chat.modelGoneTitle')}</b>
+            <span>{t('chat.modelGoneBody', { name: det.model?.name ?? t('chat.thisModel') })}</span>
+            <button type="button" className="btn sm" onClick={() => openSheet('modelgone', { id, name: det.model?.name })}>{t('chat.chooseModel')}</button>
           </div>
         )}
-        {data && allMessages.length === 0 && !pending.length && !streamShown && <Empty>No messages yet.</Empty>}
+        {data && allMessages.length === 0 && !pending.length && !streamShown && <Empty>{t('chat.noMessages')}</Empty>}
         {allMessages.map((m) =>
           m.role === 'user' ? (
             <Fragment key={m.id}>
-              <UserBubble text={m.text} />
+              <UserBubble text={m.text} attachments={m.attachments} />
+              <div className="macts user">
+                <button type="button" className="ib" aria-label={t('chat.messageActions')} onClick={() => openSheet('msgmenu', { id, messageId: m.id, text: m.text, role: 'user' })}>
+                  <I n="more" />
+                </button>
+              </div>
               <VersionNav versions={m.versions} onStep={(d) => void stepOf(m.id)(d)} />
             </Fragment>
           ) : m.role === 'assistant' ? (
@@ -155,19 +173,19 @@ export default function Chat({ id }: { id: string }) {
                   <button
                     type="button"
                     className="ib"
-                    aria-label="Copy"
+                    aria-label={t('common.copy')}
                     onClick={() =>
                       void copyToClipboard(m.text).then((ok) =>
-                        toast(ok ? 'Copied' : 'Copy failed')
+                        toast(ok ? t('common.copied') : t('common.copyFailed'))
                       )
                     }
                   >
                     <I n="copy" />
                   </button>
-                  <button type="button" className="ib" aria-label="Fork chat from here" onClick={() => void forkFrom(id, m.id)}>
+                  <button type="button" className="ib" aria-label={t('chat.forkFromHere')} onClick={() => void forkFrom(id, m.id)}>
                     <I n="fork" />
                   </button>
-                  <button type="button" className="ib" aria-label="Message actions" onClick={() => openSheet('msgmenu', { id, messageId: m.id, text: m.text })}>
+                  <button type="button" className="ib" aria-label={t('chat.messageActions')} onClick={() => openSheet('msgmenu', { id, messageId: m.id, text: m.text })}>
                     <I n="more" />
                   </button>
                 </div>
@@ -182,10 +200,19 @@ export default function Chat({ id }: { id: string }) {
           <PendingBubble key={p.clientId} p={p} />
         ))}
         {streamShown && <StreamingMessage s={streamShown} />}
+        {mine.map((a) => (
+          <ApprovalCard key={a.requestId} a={a} />
+        ))}
+        {prompts.map((p) => (
+          <PromptCard key={p.id} p={p} />
+        ))}
+        {resolved.map(([rid, r]) => (
+          <ResolvedLine key={rid} r={r} />
+        ))}
       </div>
       <QueueBar items={queue.data?.items ?? []} />
       <Composer
-        placeholder="Ask me anything..."
+        placeholder={t('chat.placeholder')}
         model={undefined}
         modelFor="chat"
         plus={{ for: 'chat', id }}
@@ -194,6 +221,7 @@ export default function Chat({ id }: { id: string }) {
         stopFor={{ kind: 'chat', id }}
         allowWhileRunning
         onSend={async (text) => (await sendMessage('chat.send', { id, text })) !== undefined}
+        onSteer={async (text) => (await sendMessage('chat.send', { id, text, steer: true })) !== undefined}
       />
       <div className="runrow">
         {det?.effort && (
@@ -203,10 +231,10 @@ export default function Chat({ id }: { id: string }) {
         )}
         <button type="button" className="rq" onClick={() => openSheet('profile', { id })}>
           <I n="wand" size={13} />
-          {det?.assistant.auto ? 'Auto' : (det?.assistant.name ?? 'Auto')}
+          {det?.assistant.auto ? t('chat.auto') : (det?.assistant.name ?? t('chat.auto'))}
         </button>
         <button type="button" className="rq rm2" onClick={() => openSheet('model', { for: 'chat', id })}>
-          <span>{det?.model?.name ?? 'Model'}</span>
+          <span>{det?.model?.name ?? t('chat.model')}</span>
         </button>
       </div>
     </>

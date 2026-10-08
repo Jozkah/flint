@@ -31,6 +31,31 @@ fn main() {
         tauri_build::build();
     }
 
+    // The commit that built this binary, for the crash report: an offset in a
+    // module only means something against the build that produced it.
+    if let Ok(output) = std::process::Command::new("git").args(["rev-parse", "--short=12", "HEAD"]).output() {
+        let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if output.status.success() && !sha.is_empty() {
+            println!("cargo:rustc-env=FLINT_GIT_SHA={sha}");
+        }
+    }
+
+    // Windows gives a program's main thread a 1 MB stack unless the linker asks
+    // for more (Linux and macOS give the main thread 8 MB). Tauri runs its
+    // command dispatch and window-event handling on that thread, and in the
+    // size-optimised release build (thin LTO, one inlined dispatcher) the
+    // frames of that path no longer fit: the app died with `thread 'main' has
+    // overflowed its stack` as soon as a model's tool call arrived, on every
+    // machine running the release installer, while debug builds (which do not
+    // inline the same way) never showed it. Reserving 8 MB costs address space
+    // only. The release workflow checks the built exe for it
+    // (scripts/check-main-thread-stack.mjs).
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+    {
+        println!("cargo:rustc-link-arg-bins=/STACK:8388608");
+    }
+
     // Give test and example binaries the manifest `tauri_build` embeds only in
     // the application binary.
     //

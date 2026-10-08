@@ -85,7 +85,7 @@ export async function gateStopSession(
       isError: true,
     }
   }
-  if (!ctx.onApprove) {
+  if (!ctx.onApprove && ctx.mode !== 'bypass') {
     return toolError(
       'not_available',
       'stop_session needs the approval of the user of a Cowork session, and nothing here can ask for it.'
@@ -139,11 +139,13 @@ export async function gateStopSession(
     agent: ctx.activity?.agent ?? '',
     resource: `session:${peer.id}`,
   }
-  await recordToolActivity({ ...permission, phase: 'awaiting-permission' })
+  if (ctx.mode !== 'bypass') {
+    await recordToolActivity({ ...permission, phase: 'awaiting-permission' })
+  }
   let allowed = false
   try {
-    allowed = await unlessStopped(
-      ctx.onApprove(
+    allowed = ctx.mode === 'bypass' || await unlessStopped(
+      ctx.onApprove!(
         call.toolCallId,
         STOP_SESSION_TOOL_NAME,
         // What the prompt names: the session by its title, and the reason.

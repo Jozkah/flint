@@ -370,6 +370,9 @@ impl Timeouts {
             "web_search" | "web_fetch" => self.net_secs,
             "read" | "ls" | "find" | "grep" | "write" | "edit" => self.filesystem_secs,
             name if name.starts_with("mcp") || name.contains('.') => self.mcp_secs,
+            // Starting a browser, loading a page and letting it settle.
+            "browser" => self.default_secs.max(90),
+            "computer" => self.default_secs.max(120), // portal consent can require user interaction
             _ => self.default_secs,
         };
         Duration::from_secs(secs)

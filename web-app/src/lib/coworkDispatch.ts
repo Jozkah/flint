@@ -1,4 +1,16 @@
+import { pushNotice } from '@/lib/coworkRunNotices'
+import {
+  ANSWER_SUBAGENT_TOOL_NAME,
+  answerSubagent,
+} from '@/lib/coworkSubagentQuestions'
 import { executeAgentTool, previewAgentChange } from '@/lib/agentTools'
+import { getServiceHub } from '@/hooks/useServiceHub'
+import { useToolAvailable } from '@/hooks/useToolAvailable'
+import {
+  approvalSourceFor,
+  useToolApprovalRequests,
+} from '@/hooks/useToolApprovalRequests'
+import { deriveToolOutputCap } from '@/lib/context-manager'
 import { destructiveCommandReason } from '@/lib/destructiveCommand'
 import { isReadOnlyCommand } from '@/lib/readOnlyCommand'
 import { normalizeEditInput } from '@/lib/coworkEditInput'
@@ -17,8 +29,18 @@ import {
   TEAM_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
+import { isolatedTaskAsTeam } from '@/lib/coworkTeam'
+import {
+  BACKGROUND_TASK_TOOLS,
+  omitFull,
+  runBackgroundTool,
+  type BackgroundTasks,
+} from '@/lib/coworkBackgroundTasks'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
 import { isBrowserTool } from '@/lib/browserAgent'
+import { BROWSER_TOOL_NAME } from '@/lib/browserTool'
+import { isVisualizeTool } from '@/lib/visualize/constants'
+import { executeVisualizeTool } from '@/lib/visualize/tools'
 import { attribute, sealed } from '@/lib/coworkPrompt'
 import {
   isMissingPathError,
@@ -58,6 +80,7 @@ import {
   type GitPlan,
 } from '@/lib/gitTool'
 import { usePrStatusStore } from '@/stores/pr-status-store'
+import type { DelegationNudge } from '@/lib/delegationNudge'
 import { recordSessionPr } from '@/lib/prClaimBackfill'
 import { attributeGitInput } from '@/lib/gitAttribution'
 
@@ -86,6 +109,23 @@ export type DispatchContext = {
   /** Mirrors the advertised set. Refused when off, so a call to a tool that was
    * never advertised cannot reach the network the user switched off. */
   webSearch: boolean
+  /**
+   * The MCP server a tool of this request belongs to. Only the tools the run
+   * advertised from a connected server answer; any other name is not MCP.
+   */
+  mcpServerFor?: (toolName: string) => string | undefined
+  /**
+   * Puts one MCP call to the user, with its server named so the standing
+   * trust for that server applies. Absent, an MCP call is refused: the gate
+   * failing open would make a tool that appeared mid-chat auto-approved.
+   */
+  onApproveMcp?: (
+    toolCallId: string,
+    toolName: string,
+    input: unknown,
+    server: string,
+    signal?: AbortSignal
+  ) => Promise<boolean>
   /** Applies one `todo` operation and persists the result. */
   onTodo: (input: unknown) => Promise<ToolOutcome>
   /** Suspends until the user answers, or the run is aborted. */
@@ -140,6 +180,12 @@ export type DispatchContext = {
     state: string
     trigger?: string
   }[]
+  /**
+   * Which workspace namespace the tools run in. Cowork's `session` is the
+   * default; plain chat passes `thread`, so a delegated child works in the
+   * same workspace as the conversation that asked for it.
+   */
+  scope?: 'thread' | 'session'
   /** Where this session may write. Absent is Review only. */
   access?: AccessMode
   /** The user's confirmation to edit the attached folder, when given. */
@@ -156,8 +202,21 @@ export type DispatchContext = {
    * an activity row, or anything a user or model can read.
    */
   writeGrant?: string | null
+  /**
+   * Gives a model that keeps reading a survey itself a one-line pointer to
+   * the delegation tool (see `DelegationNudge`). Only the run's own dispatcher
+   * has one; a child's has none.
+   */
+  nudge?: DelegationNudge
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
+  /**
+   * This run's background tasks (`task` with `background: true`). Absent for a
+   * subagent's own dispatcher: a child starts, awaits and stops nothing.
+   */
+  tasks?: BackgroundTasks
+  /** Stop one child by its call id; false when there was nothing to stop. */
+  cancelChild?: (callId: string) => boolean
   /**
    * Runs a declared task graph as several children.
    *
@@ -339,6 +398,112 @@ function deniedByUser(toolName: string): ToolOutcome {
 }
 
 /**
+ * One call to a tool of a connected MCP server.
+ *
+ * Gated like the chat's: the call is put to the user unless a grant they made
+ * already covers this server, whenever the server appeared. The backend then
+ * checks its own trust record, and a ticket minted from this approval is what
+ * lets an untrusted server's single call through.
+ */
+async function callMcpTool(
+  call: PendingToolCall,
+  server: string,
+  ctx: DispatchContext,
+  signal?: AbortSignal
+): Promise<ToolOutcome> {
+  const { toolName } = call
+  if (isReadOnly(ctx.mode)) return planRefusal(toolName)
+  // The disabled list filters what is advertised, not what runs: a call the
+  // model repeats from earlier in the conversation must not slip past it.
+  if (useToolAvailable.getState().isToolDisabled(server, toolName)) {
+    return { output: `Tool '${toolName}' is disabled.`, isError: true }
+  }
+  const permission = {
+    call: call.toolCallId,
+    tool: toolName,
+    session: ctx.sessionId,
+    run: ctx.activity?.run ?? '',
+    invocation: ctx.activity?.invocation ?? '',
+    agent: ctx.activity?.agent ?? '',
+    resource: resourceOf(call.input),
+  }
+  // The unasked streak is left to the approval queue: it counts a call a grant
+  // answers and starts over only when it prompts. Resetting here would let a
+  // trusted server's calls never reach the limit.
+  await recordToolActivity({ ...permission, phase: 'awaiting-permission' })
+  if (!ctx.onApproveMcp) {
+    await recordToolActivity({
+      ...permission,
+      phase: 'refused',
+      detail: 'nothing could present the request',
+    })
+    return deniedByUser(toolName)
+  }
+  let allowed = false
+  try {
+    allowed = await unlessStopped(
+      ctx.onApproveMcp(call.toolCallId, toolName, call.input, server, signal),
+      signal
+    )
+  } catch {
+    allowed = false
+  }
+  if (signal?.aborted) {
+    await recordToolActivity({
+      ...permission,
+      phase: 'cancelled',
+      detail: `approval withdrawn: ${stopReason(signal)}`,
+    })
+    return {
+      output:
+        `\`${toolName}\` was not run: the run was stopped while it was ` +
+        'waiting for approval.',
+      isError: true,
+    }
+  }
+  // Who decided, so a call that ran without a click can be told apart from one
+  // the person allowed: 'prompted' is the card's own button, 'auto' a standing
+  // grant that already covered this server.
+  await recordToolActivity({
+    ...permission,
+    phase: allowed ? 'allowed' : 'refused',
+    ...(allowed ? { detail: `decided by ${approvalSourceFor(call.toolCallId)}` } : {}),
+  })
+  if (!allowed) return deniedByUser(toolName)
+
+  try {
+    const mcp = getServiceHub().mcp()
+    const fingerprint = useToolApprovalRequests
+      .getState()
+      .takeApprovedFingerprint?.(call.toolCallId)
+    const approvalTicket = await mcp
+      .allowOnceForServer(server, toolName, fingerprint)
+      .catch(() => undefined)
+    const result = await mcp.callTool({
+      toolName,
+      serverName: server,
+      arguments: (call.input ?? {}) as object,
+      approvalTicket,
+      maxOutputChars: deriveToolOutputCap(undefined),
+    })
+    const failure = result.error
+      ? String(result.error)
+      : (result as { isError?: unknown }).isError === true
+        ? JSON.stringify(result.content ?? '')
+        : undefined
+    if (failure) return { output: failure, isError: true }
+    return {
+      output: (result.content ?? []).map((c) => c.text).join('\n'),
+    }
+  } catch (error) {
+    return {
+      output: error instanceof Error ? error.message : String(error),
+      isError: true,
+    }
+  }
+}
+
+/**
  * Route one tool call, recording its whole life on the way. AH-050.
  *
  * Every tool call in the app arrives here -- the main agent's, a subagent's, a
@@ -354,8 +519,11 @@ export async function dispatchCoworkTool(
     call,
     { session: ctx.sessionId, run: '', ...(ctx.activity ?? {}) },
     signal,
-    () => routeCoworkTool(call, ctx, signal)
+    () => boundedToolCall(call, ctx, signal)
   )
+  // A hint rides on the result the model is about to read, so it is read.
+  const hint = ctx.nudge?.observe(call.toolName)
+  if (hint && !outcome.isError) outcome.output = `${outcome.output}\n\n[${hint}]`
   // A pull request the call opened or named is this session's, whatever
   // branch the attached folder has checked out.
   if (!outcome.isError) {
@@ -366,6 +534,50 @@ export async function dispatchCoworkTool(
     }
   }
   return outcome
+}
+
+const READ_ONLY_TIMEOUT_MS = 45_000
+const BOUNDED_READ_TOOLS = new Set([
+  'read', 'ls', 'find', 'grep', 'web_search', 'web_fetch',
+])
+
+/** Stop waiting when the run stops; bound reads that can otherwise hold a turn forever. */
+function boundedToolCall(
+  call: PendingToolCall,
+  ctx: DispatchContext,
+  signal?: AbortSignal
+): Promise<ToolOutcome> {
+  if (signal?.aborted) {
+    return Promise.resolve({ output: 'Tool stopped before it returned.', isError: true })
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (outcome: ToolOutcome) => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      signal?.removeEventListener('abort', stop)
+      resolve(outcome)
+    }
+    const stop = () => finish({ output: 'Tool stopped before it returned.', isError: true })
+    const timer = BOUNDED_READ_TOOLS.has(call.toolName)
+      ? setTimeout(
+          () => finish({
+            output: `ERROR: ${call.toolName} timed out after 45 seconds`,
+            isError: true,
+          }),
+          READ_ONLY_TIMEOUT_MS
+        )
+      : undefined
+    signal?.addEventListener('abort', stop, { once: true })
+    void routeCoworkTool(call, ctx, signal).then(finish, (error) => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      signal?.removeEventListener('abort', stop)
+      reject(error)
+    })
+  })
 }
 
 /** Resolves `false` as soon as `signal` aborts, whatever `answer` does. */
@@ -424,6 +636,122 @@ export function refreshPrStatusAfterGit(
     void usePrStatusStore.getState().refresh(folder, true, ctx.sessionId)
   }
   return folders
+}
+
+/**
+ * `task` and the tools that manage its background children, for any surface
+ * that offers delegation: Cowork's dispatcher, plain chat and Rooms all route
+ * these calls here so a child is started, awaited, stopped and capped the same
+ * way wherever it was asked for.
+ */
+export async function routeDelegationTool(
+  call: PendingToolCall,
+  ctx: Pick<
+    DispatchContext,
+    'tasks' | 'onTask' | 'onTeam' | 'trackSubagent' | 'cancelChild'
+  > & { sessionId?: string },
+  signal?: AbortSignal
+): Promise<ToolOutcome> {
+  const { toolName } = call
+  // Collecting, checking on and stopping this run's background tasks.
+  if (BACKGROUND_TASK_TOOLS.has(toolName)) {
+    if (!ctx.tasks) {
+      return {
+        output: 'You cannot manage background tasks. Do this work yourself.',
+        isError: true,
+      }
+    }
+    return await runBackgroundTool(toolName, call.input, ctx.tasks, { signal })
+  }
+  if (toolName === TASK_TOOL_NAME) {
+    const taskInput = (
+      call.input && typeof call.input === 'object' ? call.input : {}
+    ) as Record<string, unknown>
+    if (taskInput.background === true && ctx.tasks) {
+      if (taskInput.isolate === true) {
+        return {
+          output:
+            'ERROR: `background` cannot be combined with `isolate`. Run the isolated task in the foreground, or put it in a `team`.',
+          isError: true,
+        }
+      }
+      // Held for as long as the child lives, not just for this call: the
+      // child inherits this run's authority until it is done.
+      const childDone = ctx.trackSubagent?.()
+      const id = call.toolCallId
+      const name =
+        typeof taskInput.subagent_name === 'string'
+          ? taskInput.subagent_name
+          : 'subagent'
+      ctx.tasks.start(
+        id,
+        name,
+        async () => {
+          try {
+            const done = await ctx.onTask(id, call.input)
+            // Pushed to the parent at its next step boundary, so it need not
+            // poll `task_status`. A stop the user asked for is not news.
+            if (ctx.sessionId && !(done.isError && /cancelled/i.test(done.output))) {
+              const preview = done.output.replace(/\s+/g, ' ').slice(0, 160)
+              pushNotice(
+                ctx.sessionId,
+                `Background subagent '${name}' (task_id=${id}) ${done.isError ? 'failed' : 'finished'}: "${preview}". ` +
+                  'Read the full answer with await_task.'
+              )
+            }
+            return done
+          } catch (e) {
+            if (ctx.sessionId) {
+              pushNotice(
+                ctx.sessionId,
+                `Background subagent '${name}' (task_id=${id}) failed to run.`
+              )
+            }
+            throw e
+          } finally {
+            childDone?.()
+          }
+        },
+        () => ctx.cancelChild?.(id) ?? false
+      )
+      return {
+        output:
+          `Task started in the background. task_id=${id}. Keep working; call await_task with this task_id to collect its answer, ` +
+          'task_status to check on it, or cancel_task to stop it. The run waits for it before it ends.',
+      }
+    }
+    // `isolate: true` is a team of one. The team path already provisions a
+    // checkout for a task, records it for review, refuses when the project
+    // cannot be isolated, and settles it afterwards; a second implementation
+    // for a lone `task` would be a copy that drifts.
+    const asTeam = ctx.onTeam ? isolatedTaskAsTeam(call.input) : null
+    if (asTeam && 'error' in asTeam) {
+      return { output: `ERROR: ${asTeam.error}`, isError: true }
+    }
+    if (asTeam && ctx.onTeam) {
+      const teamDone = ctx.trackSubagent?.()
+      try {
+        return await ctx.onTeam(call.toolCallId, asTeam)
+      } finally {
+        teamDone?.()
+      }
+    }
+    const childDone = ctx.trackSubagent?.()
+    try {
+      const done = await ctx.onTask(call.toolCallId, call.input)
+      // A cut answer is kept for `await_task` reads; the whole text never
+      // travels with the outcome.
+      return ctx.tasks
+        ? ctx.tasks.collect(call.toolCallId, done)
+        : omitFull(done)
+    } finally {
+      childDone?.()
+    }
+  }
+  return {
+    output: `ERROR: \`${toolName}\` is not a delegation tool.`,
+    isError: true,
+  }
 }
 
 /**
@@ -532,7 +860,7 @@ async function routeCoworkTool(
     // push, a pull request or a destructive command is asked about always.
     const gitOwnTree =
       !!git &&
-      ctx.mode === 'auto' &&
+      (ctx.mode === 'auto' || ctx.mode === 'bypass') &&
       gitInsideSessionTree(git.plan.cwd, ctx.worktreePath, !!ctx.writeGrant)
     const needsApproval = git
       ? !git.alwaysAsk && (decision.needsApproval || !gitOwnTree)
@@ -540,7 +868,7 @@ async function routeCoworkTool(
     // In Auto mode, a file write inside the session's own worktree or sandbox
     // is the run's ordinary work: it never pauses the run to ask.
     const ownTree =
-      ctx.mode === 'auto' &&
+      (ctx.mode === 'auto' || ctx.mode === 'bypass') &&
       writesInsideSessionTree(
         toolName,
         call.input,
@@ -548,13 +876,16 @@ async function routeCoworkTool(
         ctx.worktreePath
       )
     const overLimit =
+      ctx.mode !== 'bypass' &&
       !git?.alwaysAsk &&
       !needsApproval &&
       !readOnlyShell &&
       !destructive &&
       !ownTree &&
       noteAutoApproved(ctx.sessionId, useAutoApproveLimit.getState().limit)
-    const gitReason = git?.alwaysAsk
+    // Only the approval card shows these facts; bypass never asks, so it must
+    // not spend git round trips collecting them.
+    const gitReason = git?.alwaysAsk && ctx.mode !== 'bypass'
       ? [
           git.reason,
           await gitRemoteFacts(git.plan, async (args) => {
@@ -565,7 +896,7 @@ async function routeCoworkTool(
               {
                 readOnlyProject: ctx.readOnlyFolder,
                 extraProjects: ctx.extraFolders,
-                scope: 'session',
+                scope: ctx.scope ?? 'session',
                 writeGrant: ctx.writeGrant,
                 // Its own call id, derived from the call it describes, so
                 // the audit tells this lookup apart from the push itself.
@@ -593,7 +924,7 @@ async function routeCoworkTool(
           }
         : undefined
 
-    if (needsApproval || forced) {
+    if (ctx.mode !== 'bypass' && (needsApproval || forced)) {
       resetAutoApproveStreak(ctx.sessionId)
       // Recorded separately from the outcome: "the user was asked" and "the
       // user said no" are different facts, and a refused call that was never
@@ -629,7 +960,7 @@ async function routeCoworkTool(
         const preview =
           toolName === 'write' || toolName === 'edit'
             ? await previewAgentChange(toolName, call.input, ctx.sessionId, {
-                scope: 'session',
+                scope: ctx.scope ?? 'session',
                 writeGrant: ctx.writeGrant,
               })
             : undefined
@@ -695,13 +1026,16 @@ async function routeCoworkTool(
     if (toolName === ASK_TOOL_NAME) {
       return await ctx.onAsk(call.toolCallId, call.input)
     }
-    if (toolName === TASK_TOOL_NAME) {
-      const childDone = ctx.trackSubagent?.()
-      try {
-        return await ctx.onTask(call.toolCallId, call.input)
-      } finally {
-        childDone?.()
+    if (toolName === ANSWER_SUBAGENT_TOOL_NAME) {
+      // The parent's side only: a child's dispatcher has no team.
+      if (!ctx.onTeam) {
+        return { output: 'You cannot answer subagent questions.', isError: true }
       }
+      return answerSubagent(ctx.sessionId, call.input)
+    }
+    // `task` and the tools that manage its background children.
+    if (toolName === TASK_TOOL_NAME || BACKGROUND_TASK_TOOLS.has(toolName)) {
+      return await routeDelegationTool(call, ctx, signal)
     }
     if (toolName === TEAM_TOOL_NAME) {
       // A subagent's dispatcher has no team, so the call is refused by name
@@ -729,6 +1063,16 @@ async function routeCoworkTool(
     // Review mode changes nothing: a click or a keystroke can.
     if (isReviewDeniedBrowserTool(toolName) && isReadOnly(ctx.mode)) {
       return planRefusal(toolName)
+    }
+
+    const mcpServer = ctx.mcpServerFor?.(toolName)
+    if (mcpServer) return await callMcpTool(call, mcpServer, ctx, signal)
+
+    if (isVisualizeTool(toolName)) {
+      const viz = executeVisualizeTool(toolName, call.input, ctx.sessionId)
+      return viz.error !== undefined
+        ? { output: viz.error, isError: true }
+        : { output: viz.content ?? '' }
     }
 
     if (WEB_TOOL_NAMES.has(toolName)) {
@@ -789,12 +1133,13 @@ async function routeCoworkTool(
       result = await executeAgentTool(toolName, call.input, ctx.sessionId, {
         readOnlyProject: ctx.readOnlyFolder,
         extraProjects: ctx.extraFolders,
-        scope: 'session',
+        scope: ctx.scope ?? 'session',
         writeGrant: ctx.writeGrant,
         // The run the change belongs to, so it can be undone from it (AH-202).
         undoRun: ctx.activity?.run,
         // And the call, so what its command uses is kept against both (AH-174).
         callId: call.toolCallId,
+        ...(ctx.mode === 'bypass' ? { approvalSource: 'bypass' as const } : {}),
         // And who is making it, so every change it journals names its agent
         // (AH-110) -- the primary agent, a named subagent, or a role.
         actor: actorFor(ctx.activity),
@@ -806,7 +1151,7 @@ async function routeCoworkTool(
         // Browser tools ask the user themselves (domain, action, submit).
         // Auto mode has nobody to ask: they then run only on sites a saved
         // rule or the project's allowed domains already cover.
-        ...(isBrowserTool(toolName)
+        ...(isBrowserTool(toolName) || toolName === BROWSER_TOOL_NAME
           ? {
               signal,
               unattended: ctx.mode === 'auto',
@@ -814,7 +1159,9 @@ async function routeCoworkTool(
               // grants apply, a subagent is named, and stopping the run
               // withdraws the question.
               approve: ({ context, url, alwaysAsk, input }) =>
-                ctx.onApprove
+                ctx.mode === 'bypass'
+                  ? Promise.resolve(true)
+                  : ctx.onApprove
                   ? unlessStopped(
                       ctx.onApprove(
                         call.toolCallId,
@@ -856,7 +1203,9 @@ async function routeCoworkTool(
         failure: result.error,
         failureResources: result.resources,
         program: commandProgram(call.input),
-        ask: onApprove
+        ask: ctx.mode === 'bypass'
+          ? () => Promise.resolve(true)
+          : onApprove
           ? () =>
               unlessStopped(
                 onApprove(call.toolCallId, toolName, call.input, undefined, signal, {

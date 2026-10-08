@@ -24,6 +24,8 @@ import { useThreads } from '@/hooks/useThreads'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
 import { useAppState } from '@/hooks/useAppState'
+import { AgentBrowserWindow } from '@/containers/AgentBrowserWindow'
+import { useBrowserToolMirror } from '@/hooks/useBrowserToolMirror'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useActiveMessages } from '@/hooks/useActiveMessages'
@@ -32,6 +34,7 @@ import { useChatSessions } from '@/stores/chat-session-store'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ExtensionManager } from '@/lib/extension'
 import { extractFilesFromPrompt, type FileMetadata } from '@/lib/fileMetadata'
+import { contextUsage } from '@/lib/contextUsage'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import { cn, isLocalProvider } from '@/lib/utils'
 import {
@@ -165,7 +168,7 @@ function StateChip({ state, label }: { state: string; label: string }) {
 function ContextWindowMeter({ threadId }: { threadId: string }) {
   const { t } = useTranslation()
   const threadMessages = useActiveMessages(threadId)
-  const { tokenCount, maxTokens, percentage } = useTokensCount(
+  const { tokenCount, maxTokens } = useTokensCount(
     threadMessages ?? [],
     { threadId }
   )
@@ -190,18 +193,15 @@ function ContextWindowMeter({ threadId }: { threadId: string }) {
       maximumFractionDigits: 1,
     }).format(n)
   const exact = (n: number) => n.toLocaleString()
-  const clamp = (n: number) => Math.max(0, Math.min(100, n))
 
   const known = !!maxTokens && maxTokens > 0
-  const percent =
-    typeof percentage === 'number' ? Math.round(clamp(percentage)) : undefined
-  const usedPct = known ? clamp((tokenCount / maxTokens!) * 100) : 0
   // The room auto-compact keeps free for the next request: the orange part.
   const reserve =
     known && policy.auto ? effectiveReserve(maxTokens!, policy) : 0
-  const reservePct = known
-    ? Math.min(100 - usedPct, (reserve / maxTokens!) * 100)
-    : 0
+  const usage = contextUsage(tokenCount, maxTokens, reserve)
+  const percent = known ? Math.round(usage.pct) : undefined
+  const usedPct = usage.pct
+  const reservePct = known ? Math.min(100 - usedPct, usage.share(reserve) * 100) : 0
   const free = known ? Math.max(0, maxTokens! - tokenCount - reserve) : 0
 
   const summary =
@@ -246,7 +246,7 @@ function ContextWindowMeter({ threadId }: { threadId: string }) {
         <span className="flex items-center gap-1.5">
           {percent !== undefined && tokenCount > 0 && (
             <b className="font-medium text-foreground tabular-nums">
-              {`${clamp(percentage as number).toFixed(1)}%`}
+              {`${usage.pct.toFixed(1)}%`}
             </b>
           )}
           <ChevronDown
@@ -265,7 +265,7 @@ function ContextWindowMeter({ threadId }: { threadId: string }) {
             ? t('context:contextWindow.meter', { percent })
             : t('context:contextWindow.unknown')
         }
-        className="flex h-2 w-full shrink-0 overflow-hidden rounded-full bg-track"
+        className="flex h-1.5 w-full shrink-0 overflow-hidden rounded-full bg-track"
       >
         {known && tokenCount > 0 && (
           <>
@@ -892,6 +892,13 @@ export function WhatJanIsUsingPanel({
         messages={messages}
         modelId={selectedModel?.id}
         className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:320ms]"
+      />
+      {/* The agent's own browser, when it has one open: fills what is left of the
+          column, like the in-app preview fills its panel. */}
+      <AgentBrowserWindow
+        sessionId={threadId}
+        onHide={() => useBrowserToolMirror.getState().clear(threadId)}
+        className="min-h-[300px] flex-1"
       />
     </aside>
   )

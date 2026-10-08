@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "Asistanın {{host}} sitesini kullanmasına izin verilsin mi?",
+    "description": "Asistan, henüz onaylamadığınız bir sitede tarayıcı panelini kullanmak istiyor.",
+    "urlLabel": "Tam adres",
+    "urlHint": "? işaretinden sonrası dahil adresin tamamını kontrol edin. Adresler konuşmanızdaki bilgileri dışarı taşıyabilir.",
+    "wantsLabel": "Şunu yapmak istiyor",
+    "wants": {
+      "browser_open": "bu sayfayı aç",
+      "browser_read_text": "bu sayfayı oku",
+      "browser_snapshot": "bu sayfanın denetimlerine bak",
+      "browser_screenshot": "bu sayfanın resmini çek",
+      "browser_scroll": "bu sayfayı kaydır",
+      "browser_click": "bu sayfada tıkla",
+      "browser_type": "bu sayfaya yaz",
+      "browser_press": "bu sayfada bir tuşa bas",
+      "browser_select": "bu sayfada bir seçenek seç"
+    },
+    "origin": "{{origin}} tarafından istendi",
+    "scopeLabel": "Ne kadar süre",
+    "once": "Yalnızca bu ziyaret",
+    "onceHint": "Asistan başka bir siteye geçtiğinde veya 15 dakika sonra sona erer.",
+    "session": "Flint kapanana kadar",
+    "always": "Her zaman",
+    "alwaysHint": "Kaydedilir. Ayarlar > Ajan araçları bölümünden kaldırabilirsiniz.",
+    "subdomains": "{{base}} alt alan adlarına da izin ver",
+    "allow": "İzin ver",
+    "deny": "Şimdi değil",
+    "never": "Bu siteye asla izin verme",
+    "more": "{{count}} tane daha bekliyor",
+    "warning": "Asistan sayfadaki her şeyi okuyabilir ve sayfadaki metin onu yanıltmaya çalışabilir."
+  },
+  "settings": {
+    "title": "Tarayıcı",
+    "enabled": "Asistanın tarayıcı panelini kullanmasına izin ver",
+    "enabledDesc": "Yerleşik tarayıcı panelinde sayfaları açmak, okumak ve onayınızla tıklamak ve yazmak için araçlar ekler. Aynı paneli siz de görürsünüz. Her site ilk seferde sorar; yerel ve özel ağ adresleri asla açılmaz.",
+    "maxActions": "Çalıştırma başına eylem",
+    "maxActionsDesc": "Bir çalıştırmanın durmak zorunda kalmadan önce yapabileceği tıklama, tuş vuruşu ve seçim sayısı.",
+    "rulesTitle": "Kayıtlı site kuralları",
+    "rulesDesc": "Her zaman izin verdiğiniz veya engellediğiniz siteler. example.com için bir kural yalnızca o siteyi kapsar; *.example.com alt alan adlarını kapsar.",
+    "empty": "Henüz kayıtlı kural yok. Her zaman izin ver veya Asla izin verme seçeneğini seçtiğinizde bir site burada görünür.",
+    "allow": "İzin verildi",
+    "deny": "Engellendi",
+    "privateOk": "Yerel adres",
+    "remove": "Kaldır",
+    "removed": "Kural kaldırıldı",
+    "removeFailed": "Kural kaldırılamadı: {{error}}",
+    "addPlaceholder": "example.com veya *.example.com",
+    "addLabel": "Site",
+    "addVerdict": "Kural",
+    "addPrivate": "Bunun yerel veya özel ağ adresi olmasına izin ver (geliştirme sunucusu için)",
+    "add": "Kural ekle",
+    "added": "Kural kaydedildi",
+    "addFailed": "Kural kaydedilemedi: {{error}}",
+    "pointer": "İşaretçiyi göster",
+    "pointerDesc": "Tarayıcı panelinde, asistanın tıkladığı veya yazdığı yere kayan ve onunla birlikte kaydıran bir imleç çizer. Kapalı: hiçbir şey çizilmez ve hiçbir şey gecikmez.",
+    "reduceMotion": "Hareketi azalt",
+    "reduceMotionDesc": "Kayma veya parıltı darbesi yok: işaretçi doğrudan hedefine atlar.",
+    "reduceSystem": "Sistemi izle",
+    "reduceOn": "Her zaman azalt",
+    "reduceOff": "Asla azaltma",
+    "grantsTitle": "Şimdilik onaylananlar",
+    "grantsNone": "Kaydedilmeden hiçbir şey onaylanmaz. Kayıtlı kurallarda olmayan her site sorar.",
+    "grantsDesc": "Bu oturum veya bu ziyaret için izin verdiğiniz siteler. Kaydedilmezler ve Flint kapandığında sona ererler.",
+    "grantScope": {
+      "session": "bu oturum",
+      "once": "bu ziyaret"
+    },
+    "grantAge": "{{minutes}} dk önce",
+    "forgetGrants": "Bu oturumun onaylarını unut"
+  },
+  "card": {
+    "screenshot": "Tarayıcı panelinin ekran görüntüsü"
+  },
+  "pane": {
+    "driving": "Asistan bu tarayıcıyı kullanıyor",
+    "takeOver": "Devral",
+    "paused": "Asistan duraklatıldı",
+    "handBack": "Geri ver",
+    "blocked": "Bir sayfa engellendi: {{reason}}"
+  }
+}

@@ -3,5 +3,30 @@
   "description": "Tento chat se blíží k limitu paměti AI, jako tabule, která se plní. Můžeme rozšířit paměťové okno (nazývané velikost kontextu), aby si pamatoval více, ale může to využít více paměti vašeho počítače. Můžeme také zkrátit vstup, což znamená, že zapomene část historie chatu, aby uvolnil místo pro nové zprávy.",
   "increaseContextSizeDescription": "Chcete zvýšit velikost kontextu?",
   "truncateInput": "Zkrátit vstup",
-  "increaseContextSize": "Zvýšit velikost kontextu"
+  "increaseContextSize": "Zvýšit velikost kontextu",
+  "lastRequestOverflowed": "Poslední požadavek přetekl kontextové okno.",
+  "contextOverflowDetail": "Tento požadavek potřeboval {{request}} tokenů, ale kontextové okno modelu pojme jen {{context}}.",
+  "contextOverflowGeneric": "Požadavek překračuje dostupnou velikost kontextu.",
+  "engine": {
+    "unknown": "Engine modelu nahlásil neočekávanou chybu.",
+    "MODEL_LOAD_FAILED": "Model se nepodařilo načíst.",
+    "MODEL_ARCH_NOT_SUPPORTED": "Architektura tohoto modelu není současným enginem podporována. Aktualizace enginu v Nastavení může podporu přidat.",
+    "MODEL_LOAD_TIMED_OUT": "Načítání modelu trvalo příliš dlouho a bylo zastaveno. Obvykle pomůže menší model nebo menší velikost kontextu.",
+    "MISSING_SHARED_LIBRARY": "Chybí knihovna, kterou engine potřebuje, takže se nemůže spustit.",
+    "GPU_DRIVER_TOO_OLD": "Ovladač vaší grafické karty je pro tento engine příliš starý. Pomůže aktualizace ovladače nebo přepnutí na engine pro CPU v Nastavení.",
+    "OUT_OF_MEMORY": "Pro spuštění tohoto modelu není dost paměti. Obvykle pomůže menší model nebo menší velikost kontextu.",
+    "INVALID_ARGUMENT": "Jedno z nastavení modelu není platné.",
+    "IO_ERROR": "Při spouštění modelu se nepodařilo přečíst nebo zapsat soubor.",
+    "INTERNAL_ERROR": "Při spouštění modelu se uvnitř Flintu něco pokazilo."
+  },
+  "engineMissingLibraries": "Chybí: {{libraries}}",
+  "engineReportedDetail": "Engine nahlásil: {{detail}}",
+  "startModelFailed": "Model se nepodařilo spustit: {{reason}}",
+  "createModelFailed": "Model se nepodařilo vytvořit: {{reason}}",
+  "noRunningSession": "Pro model nebyla nalezena žádná běžící relace: {{model}}",
+  "serverPortOccupied": "Port je používán",
+  "serverPortOccupiedDescription": "Port {{port}} je již používán. Zkuste jiný port.",
+  "serverInvalidModelPath": "Neplatná nebo nedostupná cesta k modelu",
+  "serverStartModelFailed": "Model se nepodařilo spustit",
+  "serverStartFailed": "Server se nepodařilo spustit"
 }

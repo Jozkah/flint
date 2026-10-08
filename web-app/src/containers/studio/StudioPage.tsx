@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { useAssetUrl } from '@/lib/assetPath'
 import {
   ArrowLeftRight,
   Box,
@@ -48,6 +48,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
+import { RefineFrame } from '@/components/ui/refine-frame'
+import { refineStatusFor } from '@/lib/refine-frame'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Segmented } from '@/components/ui/segmented'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -60,12 +63,14 @@ import {
 import { ImageViewer, type ViewerImage } from '@/components/ImageViewer'
 import { EnginePage, PageHead } from '@/containers/engine/EngineKit'
 import { useStudio } from '@/hooks/useStudio'
+import { useServiceHub } from '@/hooks/useServiceHub'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useFitContext } from '@/hooks/useFitContext'
 import { cn } from '@/lib/utils'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 import {
   cloudTargets,
+  customCloudTargets,
   generateCloudImages,
   type CloudTarget,
 } from '@/lib/studio/cloud'
@@ -95,9 +100,12 @@ import {
   type GalleryItem,
   type StudioKind,
   type StudioModel,
+  type StudioLora,
 } from '@/lib/studio/studio'
 
 const BUILDS: Array<{ id: EngineBuild; label: string; note: string }> = [
+  { id: 'linux-vulkan-x64', label: 'Any graphics card', note: 'About 38 MB. NVIDIA, AMD or Intel with a Vulkan driver.' },
+  { id: 'linux-cpu-x64', label: 'No graphics card', note: 'About 25 MB. Very slow.' },
   {
     id: 'win-vulkan-x64',
     label: 'Any graphics card',
@@ -131,6 +139,7 @@ type Form = {
   count: number
   seconds: number
   accepted: boolean
+  loras: StudioLora[]
 }
 
 const CUSTOM = -1
@@ -147,9 +156,10 @@ const EMPTY_FORM: Form = {
   count: 1,
   seconds: VIDEO_SECONDS[VIDEO_SECONDS.length - 1],
   accepted: false,
+  loras: [],
 }
 
-/** The hosted image models that can be used now: the providers with an API key set. */
+/** The hosted image models that can be used now: the providers with an API key set, and picture models on the user's own servers. */
 function useCloudTargets(kind: StudioKind): CloudTarget[] {
   const providers = useModelProvider((s) => s.providers)
   return useMemo(() => {
@@ -159,7 +169,7 @@ function useCloudTargets(kind: StudioKind): CloudTarget[] {
         .filter((p) => p.active && providerHasRemoteApiKeys(p))
         .map((p) => p.provider)
     )
-    return cloudTargets(configured)
+    return [...cloudTargets(configured), ...customCloudTargets(providers)]
   }, [providers, kind])
 }
 
@@ -378,7 +388,9 @@ function EngineSetup() {
   const status = useStudio((s) => s.status)
   const installing = useStudio((s) => s.installing)
   const install = useStudio((s) => s.installEngine)
-  const [build, setBuild] = useState<EngineBuild>('win-vulkan-x64')
+  const builds = BUILDS.filter((b) => (status?.engineBuilds ?? ['win-vulkan-x64', 'win-cuda12-x64', 'win-cpu-x64']).includes(b.id))
+  const [selected, setBuild] = useState<EngineBuild | null>(null)
+  const build = builds.find((b) => b.id === selected)?.id ?? builds[0]?.id
   if (!status) return null
   if (!status.supported) {
     return (
@@ -386,8 +398,7 @@ function EngineSetup() {
         <FrameHeader title="Not available on this system yet" />
         <FrameBody className="p-3.5">
           <p className="text-[13px] text-muted-foreground">
-            Image and video generation works on Windows for now. It is not built
-            for this system yet.
+            Local image and video generation currently requires Windows x64 or Linux x64.
           </p>
         </FrameBody>
       </Frame>
@@ -407,7 +418,7 @@ function EngineSetup() {
           its published checksum, and runs only while you generate.
         </p>
         <div className="grid gap-2 sm:grid-cols-3">
-          {BUILDS.map((b) => (
+          {builds.map((b) => (
             <button
               key={b.id}
               type="button"
@@ -434,7 +445,7 @@ function EngineSetup() {
           </div>
         )}
         <div>
-          <Button disabled={!!installing} onClick={() => void install(build)}>
+          <Button disabled={!!installing || !build} onClick={() => { if (build) void install(build) }}>
             {installing ? 'Installing…' : 'Download and install'}
           </Button>
         </div>
@@ -502,7 +513,7 @@ function CustomSize({
         </button>
       </div>
       <p className="text-xs leading-snug text-muted-foreground">
-        Multiples of 16, from {limits.min} to {limits.max} pixels.
+        Multiples of 16, up to {limits.max} pixels.
         {kind === 'video'
           ? ' Big clips need a lot of memory.'
           : ' Big pictures need more memory and time.'}
@@ -513,6 +524,7 @@ function CustomSize({
 
 /** A small look at a result, for the strip under the prompt and for the gallery. */
 function Thumb({ item, className }: { item: GalleryItem; className?: string }) {
+  const convertFileSrc = useAssetUrl()
   const src = convertFileSrc(item.path)
   return item.kind === 'video' ? (
     <video
@@ -546,6 +558,7 @@ export function VideoDialog({
   item: GalleryItem | null
   onClose: () => void
 }) {
+  const convertFileSrc = useAssetUrl()
   const remove = useStudio((s) => s.remove)
   const archiveOn = useArchiveEnabled()
   if (!item) return null
@@ -828,6 +841,23 @@ function SettingsPanel({
   targets: CloudTarget[]
 }) {
   const job = useStudio((s) => s.job)
+  const serviceHub = useServiceHub()
+  const [availableLoras, setAvailableLoras] = useState<string[]>([])
+  useEffect(() => {
+    void studioApi.listLoras().then(setAvailableLoras).catch(() => {})
+  }, [])
+  const importLora = async () => {
+    try {
+      const path = await serviceHub.dialog().open({ multiple: false, directory: false })
+      if (typeof path !== 'string') return
+      const name = await studioApi.importLora(path)
+      setAvailableLoras(await studioApi.listLoras())
+      setForm({ loras: [...form.loras, { name, multiplier: 1 }] })
+      toast.success(`${name} imported`)
+    } catch (error) {
+      toast.error(String(error))
+    }
+  }
   const hosted = targets.find((t) => t.key === form.cloud)
   const { hardware } = useFitContext()
   const sizes = kind === 'video' ? VIDEO_SIZES : IMAGE_SIZES
@@ -862,7 +892,7 @@ function SettingsPanel({
           <PanelButton
             disabled={running}
             onClick={() => {
-              setForm({ sizeIndex: 0, count: 1, seed: '', negative: '', accepted: false })
+              setForm({ sizeIndex: 0, count: 1, seed: '', negative: '', accepted: false, loras: [] })
               setNegativeOn(false)
             }}
           >
@@ -997,6 +1027,43 @@ function SettingsPanel({
             </button>
             {advanced && (
               <div className="flex flex-col gap-3 motion-safe:animate-rise-in">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className={label}>LoRA adapters</span>
+                    <PanelButton disabled={running} onClick={() => void importLora()}>Import .safetensors</PanelButton>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Use adapters made for selected local model family.</p>
+                  {availableLoras.map((name) => {
+                    const selected = form.loras.find((lora) => lora.name === name)
+                    return (
+                      <div key={name} className="flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          aria-label={`Use ${name}`}
+                          checked={!!selected}
+                          disabled={running}
+                          onChange={(event) => setForm({ loras: event.target.checked
+                            ? [...form.loras, { name, multiplier: 1 }]
+                            : form.loras.filter((lora) => lora.name !== name) })}
+                        />
+                        <span className="min-w-0 flex-1 truncate" title={name}>{name}</span>
+                        {selected && <Input
+                          type="number"
+                          min="0"
+                          max="2"
+                          step="0.1"
+                          value={selected.multiplier}
+                          aria-label={`${name} strength`}
+                          disabled={running}
+                          onChange={(event) => setForm({ loras: form.loras.map((lora) => lora.name === name
+                            ? { ...lora, multiplier: Number(event.target.value) }
+                            : lora) })}
+                          className="h-8 w-20"
+                        />}
+                      </div>
+                    )
+                  })}
+                </div>
                 <label className="flex items-center gap-2.5 text-[13px] text-secondary-foreground">
                   <Switch
                     checked={negativeShown}
@@ -1071,6 +1138,7 @@ function PromptPanel({
   targets: CloudTarget[]
   onRemix: (item: GalleryItem) => void
 }) {
+  const convertFileSrc = useAssetUrl()
   const hosted = targets.find((t) => t.key === form.cloud)
   const providerSettings = useModelProvider((s) =>
     hosted ? s.providers.find((p) => p.provider === hosted.provider.provider) : undefined
@@ -1093,7 +1161,38 @@ function PromptPanel({
   const latest = items[0]
   const percent = Math.round((job?.fraction ?? 0) * 100)
   const examples = EXAMPLE_PROMPTS[kind]
-  const mac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
+  const mac =
+    typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
+  const { t } = useTranslation()
+  const storeError = useStudio((s) => s.error)
+  // A failed run keeps its Retry on the stage until the next one starts.
+  const [failedRun, setFailedRun] = useState(false)
+  const [wasRunning, setWasRunning] = useState(running)
+  if (running !== wasRunning) {
+    setWasRunning(running)
+    setFailedRun(!running && !!storeError)
+  }
+  const refineStatus = running
+    ? refineStatusFor(job)
+    : failedRun && storeError && latest
+      ? 'error'
+      : 'complete'
+  const etaText =
+    !job?.remote && job?.startedAt && job.fraction > 0.05 && job.fraction < 0.97
+      ? ` · about ${formatEta(((Date.now() - job.startedAt) / 1000) * ((1 - job.fraction) / job.fraction))} left`
+      : ''
+  const stageDetail = job ? (
+    <>
+      <span className="line-clamp-1 block max-w-full">{jobPrompt}</span>
+      <span>
+        {job.remote
+          ? `Waiting for ${job.remote}…`
+          : `${phaseLabel(job.phase)} · ${percent}%`}
+        {etaText}
+      </span>
+    </>
+  ) : null
+  const showFrame = kind === 'image' && (running || !!latest)
 
   const start = async () => {
     const text = form.prompt.trim()
@@ -1124,6 +1223,7 @@ function PromptPanel({
       width: size.width,
       height: size.height,
       seed: parseSeed(form.seed),
+      lora: form.loras,
     }
     const ok = await generate(kind, text, () =>
       kind === 'video'
@@ -1238,7 +1338,27 @@ function PromptPanel({
               : { height: 'min(40vh, 320px)' }
           }
         >
-          {latest ? (
+          {showFrame ? (
+            <RefineFrame
+              className="absolute inset-0"
+              src={latest ? convertFileSrc(latest.path) : null}
+              alt={latest?.recipe.prompt ?? ''}
+              status={refineStatus}
+              fraction={job?.fraction ?? 0}
+              detail={stageDetail}
+              onStop={() => void cancel()}
+              onRetry={() => void start()}
+              labels={{
+                queued: t('common:motionMedia.queued'),
+                generating: t('common:motionMedia.generating'),
+                refining: t('common:motionMedia.refining'),
+                complete: t('common:motionMedia.ready'),
+                error: t('common:motionMedia.failed'),
+                stop: t('common:motionMedia.stop'),
+                retry: t('common:motionMedia.retry'),
+              }}
+            />
+          ) : latest ? (
             kind === 'video' && !running ? (
               <video
                 key={latest.id}
@@ -1316,32 +1436,44 @@ function PromptPanel({
               </DropdownMenu>
             </div>
           )}
-          <div
-            aria-hidden={!running}
-            className={cn(
-              'absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-gradient-to-t from-black/70 to-transparent p-4 pt-12 text-white transition-opacity duration-300',
-              running ? 'opacity-100' : 'pointer-events-none opacity-0'
-            )}
-          >
-            <p className="line-clamp-1 text-xs opacity-80">{jobPrompt}</p>
-            <Progress
-              value={job?.remote ? 100 : percent}
-              className={cn('h-1 bg-white/25', job?.remote && 'motion-safe:animate-pulse')}
-            />
-            <div className="flex items-center justify-between gap-3 text-xs">
-              <span className="tabular-nums">
-                {job?.remote
-                  ? `Waiting for ${job.remote}…`
-                  : `${phaseLabel(job?.phase ?? 'queued')} · ${percent}%`}
-                {!job?.remote && job?.startedAt && job.fraction > 0.05 && job.fraction < 0.97
-                  ? ` · about ${formatEta(((Date.now() - job.startedAt) / 1000) * ((1 - job.fraction) / job.fraction))} left`
-                  : ''}
-              </span>
-              <Button variant="secondary" size="sm" onClick={() => void cancel()}>
-                <Square className="size-3" /> Stop
-              </Button>
+          {!showFrame && (
+            <div
+              aria-hidden={!running}
+              className={cn(
+                'absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-gradient-to-t from-black/70 to-transparent p-4 pt-12 text-white transition-opacity duration-300',
+                running ? 'opacity-100' : 'pointer-events-none opacity-0'
+              )}
+            >
+              <p className="line-clamp-1 text-xs opacity-80">{jobPrompt}</p>
+              <Progress
+                value={job?.remote ? 100 : percent}
+                className={cn(
+                  'h-1 bg-white/25',
+                  job?.remote && 'motion-safe:animate-pulse'
+                )}
+              />
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="tabular-nums">
+                  {job?.remote
+                    ? `Waiting for ${job.remote}…`
+                    : `${phaseLabel(job?.phase ?? 'queued')} · ${percent}%`}
+                  {!job?.remote &&
+                  job?.startedAt &&
+                  job.fraction > 0.05 &&
+                  job.fraction < 0.97
+                    ? ` · about ${formatEta(((Date.now() - job.startedAt) / 1000) * ((1 - job.fraction) / job.fraction))} left`
+                    : ''}
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void cancel()}
+                >
+                  <Square className="size-3" /> Stop
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <button
@@ -1753,6 +1885,7 @@ function GenerationsPanel({
 }
 
 export function StudioPage() {
+  const convertFileSrc = useAssetUrl()
   const status = useStudio((s) => s.status)
   const error = useStudio((s) => s.error)
   const refresh = useStudio((s) => s.refresh)
@@ -1795,6 +1928,7 @@ export function StudioPage() {
       sizeIndex: form.sizeIndex === CUSTOM ? CUSTOM : 0,
       cloud: '',
       localModel: '',
+      loras: [],
     })
   }
 
@@ -1810,6 +1944,7 @@ export function StudioPage() {
       localModel: status?.models.some((m) => m.id === item.recipe.modelId)
         ? item.recipe.modelId
         : '',
+      loras: item.recipe.lora ?? [],
       // The exact size it was made at: a standard shape when it is one,
       // else the custom boxes, so a remix never quietly changes the size.
       ...(sizes.some(
@@ -1853,7 +1988,7 @@ export function StudioPage() {
             name: `studio-${g.recipe.seed}`,
           }))
         : [],
-    [shown, kind]
+    [shown, kind, convertFileSrc]
   )
 
   return (

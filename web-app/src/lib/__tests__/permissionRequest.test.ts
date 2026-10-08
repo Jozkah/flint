@@ -327,6 +327,36 @@ describe('git tool prompts', () => {
     const req = describePermissionRequest({ toolName: 'bash', input: {}, alwaysAsk: true })
     expect(req.scopesOffered).toEqual(['allow-once'])
   })
+
+  it('offers a scoped standing grant for a recognized process stop', () => {
+    const req = describePermissionRequest({
+      toolName: 'host_powershell',
+      input: { script: 'Stop-Process -Id 42' },
+      alwaysAsk: true,
+    })
+    expect(req.scopesOffered).toEqual(['allow-once', 'allow-thread', 'allow-always'])
+    expect(req.scopeExplanations['allow-always']?.explanation.key)
+      .toBe('permissions:scope.allowSimilarExplanation')
+  })
+
+  it('shows PowerShell command as code beside a short Why', () => {
+    const req = describePermissionRequest({
+      toolName: 'host_powershell',
+      input: { script: '$file = "notes.txt"\nGet-Content $file', cwd: 'C:\\work' },
+      taskContext: 'PowerShell on this computer: Run this script as you: ...',
+    })
+    expect(req.reason).toBe('Run PowerShell as you, outside the sandbox, in C:\\work.')
+    expect(req.script).toBe('$file = "notes.txt"\nGet-Content $file')
+  })
+
+  it('explains clipboard read and offers narrow conversation and global grants', () => {
+    const read = describePermissionRequest({ toolName: 'clipboard', input: { action: 'read' }, alwaysAsk: true })
+    expect(read.action.key).toBe('permissions:action.readClipboard')
+    expect(read.consequences[0].key).toBe('permissions:consequence.readClipboard')
+    expect(read.scopesOffered).toEqual(['allow-once', 'allow-thread', 'allow-always'])
+    const write = describePermissionRequest({ toolName: 'clipboard', input: { action: 'write', text: 'x' }, alwaysAsk: true })
+    expect(write.scopesOffered).toEqual(['allow-once'])
+  })
 })
 
 describe('self-approval MCP tools', () => {

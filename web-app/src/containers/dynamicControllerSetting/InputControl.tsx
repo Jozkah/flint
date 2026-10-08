@@ -73,10 +73,10 @@ export function InputControl({
         />
         <Button
           variant="outline"
-          size="icon-sm"
+          size="icon"
           type="button"
           aria-label="Decrement"
-          className='shrink-0 rounded-none'
+          className='h-8 w-8 shrink-0 rounded-none'
           onClick={() => handleNumberAdjustment(-step)}
           disabled={min !== undefined && numericValue <= min}
         >
@@ -84,10 +84,10 @@ export function InputControl({
         </Button>
         <Button
           variant="outline"
-          size="icon-sm"
+          size="icon"
           type="button"
           aria-label="Increment"
-          className='shrink-0 rounded-r-md'
+          className='h-8 w-8 shrink-0 rounded-r-md'
           onClick={() => handleNumberAdjustment(step)}
           disabled={max !== undefined && numericValue >= max}
         >

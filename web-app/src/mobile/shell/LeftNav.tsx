@@ -6,6 +6,7 @@ import { closeAll, go, openSheet, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { byKind, grouped, reachLabel, useSessions } from '../state/sessions'
 import type { Route } from '../state/router'
+import { t } from '../i18n'
 
 const CHATS_SHOWN = 12
 
@@ -28,7 +29,7 @@ function SessionRow({ s, active }: { s: SessionSummary; active: boolean }) {
     >
       {s.kind === 'room' && s.status === 'running' ? <I n="loader" size={12} spin="slow" /> : <StatusDot s={s} />}
       <span className="tx">
-        <b style={{ fontWeight: s.status === 'idle' || s.status === 'done' ? 400 : 500 }}>{s.title || 'Untitled'}</b>
+        <b style={{ fontWeight: s.status === 'idle' || s.status === 'done' ? 400 : 500 }}>{s.title || t('common.untitled')}</b>
       </span>
       {s.status === 'waiting' && s.kind === 'cowork' && (
         <span className="cnt" style={{ color: 'var(--warning)' }}>
@@ -41,7 +42,7 @@ function SessionRow({ s, active }: { s: SessionSummary; active: boolean }) {
 
 export function LeftNav() {
   const route = useApp((s) => s.route)
-  const computer = useApp((s) => s.computerName) ?? 'Your computer'
+  const computer = useApp((s) => s.computerName) ?? t('common.yourComputerCap')
   const conn = useApp((s) => s.conn)
   const { sessions } = useSessions()
   const status = useRpc('status', {})
@@ -69,29 +70,29 @@ export function LeftNav() {
       <div className="brand">
         <FlintMark />
         <b>Flint</b>
-        <button type="button" className="ib" onClick={closeAll} aria-label="Close">
+        <button type="button" className="ib" onClick={closeAll} aria-label={t('rightpanel.close')}>
           <D n="sidebar-right" />
         </button>
       </div>
       <div className="gline" />
       <button type="button" className="srch" onClick={() => openSheet('palette')}>
         <D n="search" />
-        Search anything
+        {t('nav.search')}
       </button>
       <div className="navs">
         <div className="ng">
-          <span>Workspace</span>
+          <span>{t('common.workspace')}</span>
         </div>
         <button type="button" className={`row${act('overview')}`} onClick={() => go({ name: 'overview' })}>
           <D n="sb-dashboard" />
           <span className="tx">
-            <b style={{ fontWeight: 400 }}>Overview</b>
+            <b style={{ fontWeight: 400 }}>{t('nav.overview')}</b>
           </span>
         </button>
         <button type="button" className={`row${act('home')}`} onClick={() => go({ name: 'home', mode: 'chat' })}>
           <D n="x-edit" />
           <span className="tx">
-            <b style={{ fontWeight: 400 }}>New chat</b>
+            <b style={{ fontWeight: 400 }}>{t('home.title')}</b>
           </span>
         </button>
         <button
@@ -102,7 +103,7 @@ export function LeftNav() {
         >
           <D n="x-cowork" />
           <span className="tx">
-            <b style={{ fontWeight: 400 }}>Cowork</b>
+            <b style={{ fontWeight: 400 }}>{t('home.modes.cowork')}</b>
           </span>
           {activeCowork > 0 && <span className="cnt">{activeCowork}</span>}
           <span
@@ -110,7 +111,7 @@ export function LeftNav() {
             tabIndex={0}
             className="ib"
             style={{ width: 24, height: 24 }}
-            aria-label="Cowork menu"
+            aria-label={t('nav.coworkMenu')}
             onClick={(e) => {
               e.stopPropagation()
               openSheet('coworkmenu')
@@ -124,7 +125,7 @@ export function LeftNav() {
           <div className="sub">
             <button type="button" className="row" onClick={() => go({ name: 'home', mode: 'cowork' })}>
               <I n="plus" size={13} />
-              New session
+              {t('nav.newSession')}
             </button>
             {cw.groups.map(([g, list]) => (
               <div key={g} style={{ display: 'contents' }}>
@@ -145,7 +146,7 @@ export function LeftNav() {
         <button type="button" className={`row${act('rooms')}`} onClick={() => go({ name: 'rooms' })}>
           <D n="x-rooms" />
           <span className="tx">
-            <b style={{ fontWeight: 400 }}>Rooms</b>
+            <b style={{ fontWeight: 400 }}>{t('rooms.title')}</b>
           </span>
           {rooms.length > 0 && <span className="cnt">{rooms.length}</span>}
         </button>
@@ -159,63 +160,63 @@ export function LeftNav() {
         <button type="button" className={`row${act('library')}`} onClick={() => go({ name: 'library' })}>
           <D n="x-library" />
           <span className="tx">
-            <b style={{ fontWeight: 400 }}>Library</b>
+            <b style={{ fontWeight: 400 }}>{t('library.title')}</b>
           </span>
         </button>
         <button type="button" className={`row${act('studio')}`} onClick={() => go({ name: 'studio' })}>
           <D n="x-palette" />
           <span className="tx">
-            <b style={{ fontWeight: 400 }}>Studio</b>
+            <b style={{ fontWeight: 400 }}>{t('studio.title')}</b>
           </span>
         </button>
         <button type="button" className={`row${act('archive')}`} onClick={() => go({ name: 'archive' })}>
           <D n="x-disk" />
           <span className="tx">
-            <b style={{ fontWeight: 400 }}>Archive</b>
+            <b style={{ fontWeight: 400 }}>{t('archive.title')}</b>
           </span>
         </button>
 
         <div className="ng">
-          <span>Engine</span>
+          <span>{t('models.crumb')}</span>
         </div>
         <button type="button" className={`row${act('models')}`} onClick={() => go({ name: 'models' })}>
           <D n="x-cube" />
           <span className="tx">
-            <b style={{ fontWeight: 400 }}>Models</b>
+            <b style={{ fontWeight: 400 }}>{t('models.title')}</b>
           </span>
           {models.data && <span className="cnt">{models.data.models.length}</span>}
         </button>
         <button type="button" className={`row${act('tools')}`} onClick={() => go({ name: 'tools' })}>
           <D n="flow" />
           <span className="tx">
-            <b style={{ fontWeight: 400 }}>Tools &amp; MCP</b>
+            <b style={{ fontWeight: 400 }}>{t('tools.title')}</b>
           </span>
         </button>
         <button type="button" className={`row${act('system')}`} onClick={() => go({ name: 'system' })}>
           <D n="x-monitor" />
           <span className="tx">
-            <b style={{ fontWeight: 400 }}>System Monitor</b>
+            <b style={{ fontWeight: 400 }}>{t('system.title')}</b>
           </span>
         </button>
 
         <div className="ng">
-          <span>Chats</span>
-          <button type="button" className="ib" onClick={() => go({ name: 'home', mode: 'chat' })} aria-label="New chat">
+          <span>{t('chat.crumb')}</span>
+          <button type="button" className="ib" onClick={() => go({ name: 'home', mode: 'chat' })} aria-label={t('home.title')}>
             <I n="plus" />
           </button>
-          <button type="button" className="ib" onClick={() => openSheet('palette')} aria-label="Search chats">
+          <button type="button" className="ib" onClick={() => openSheet('palette')} aria-label={t('nav.searchChats')}>
             <I n="search" />
           </button>
-          <button type="button" className="ib" onClick={() => openSheet('chatfilter')} aria-label="Filter">
+          <button type="button" className="ib" onClick={() => openSheet('chatfilter')} aria-label={t('nav.filter')}>
             <I n="sliders" />
           </button>
         </div>
-        {chats.length === 0 && <div className="gh">No chats yet</div>}
+        {chats.length === 0 && <div className="gh">{t('nav.noChats')}</div>}
         {chats.some((s) => s.pinned) && (
           <>
             <div className="gh" data-testid="pinned">
               <I n="pin" />
-              Pinned
+              {t('nav.pinned')}
             </div>
             {chats
               .filter((s) => s.pinned)
@@ -235,13 +236,13 @@ export function LeftNav() {
             ))}
           </div>
         ))}
-        {ch.loose.length > 0 && ch.groups.length > 0 && <div className="gh">Ungrouped</div>}
+        {ch.loose.length > 0 && ch.groups.length > 0 && <div className="gh">{t('nav.ungrouped')}</div>}
         {ch.loose.map((s) => (
           <SessionRow key={s.id} s={s} active={isActive({ name: 'chat', id: s.id })} />
         ))}
         {!allChats && chats.length > CHATS_SHOWN && (
           <button type="button" className="row" style={{ color: 'var(--muted-foreground)', fontSize: 12 }} onClick={() => setAllChats(true)}>
-            Show {chats.length - CHATS_SHOWN} more
+            {t('nav.showMore', { count: chats.length - CHATS_SHOWN })}
           </button>
         )}
       </div>
@@ -253,7 +254,7 @@ export function LeftNav() {
         >
           <D n="sb-settings" />
           <span className="tx">
-            <b style={{ fontWeight: 400 }}>Settings</b>
+            <b style={{ fontWeight: 400 }}>{t('settings.title')}</b>
           </span>
         </button>
         <button type="button" className="stat" onClick={() => openSheet('conn')} data-testid="connection-card">
@@ -265,10 +266,10 @@ export function LeftNav() {
             <b>{computer}</b>
             <small>
               {conn === 'connected'
-                ? `${loaded} ${loaded === 1 ? 'model' : 'models'} loaded · ${reachLabel()}`
+                ? t('nav.connected', { count: loaded, via: reachLabel() })
                 : conn === 'connecting'
-                  ? `Connecting · ${reachLabel()}`
-                  : `Offline · ${reachLabel()}`}
+                  ? t('nav.connecting', { via: reachLabel() })
+                  : t('nav.offline', { via: reachLabel() })}
             </small>
           </span>
           <I n="chev" style={{ transform: 'rotate(180deg)', color: 'var(--muted-foreground)' }} />

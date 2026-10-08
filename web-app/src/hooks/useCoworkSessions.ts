@@ -8,6 +8,7 @@ import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
+import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
@@ -302,6 +303,11 @@ type CoworkSessionsState = {
    */
   forkSession: (id: string, throughTurn?: number) => string | null
   /**
+   * Create a session from the turns of a converted chat. Unbound like a fork:
+   * no folder, no access, no grants. Returns the new session's id.
+   */
+  createFromTurns: (title: string, turns: CoworkTurn[]) => string
+  /**
    * Create a session from an export. AH-203.
    *
    * A new id, no folder, no access; questions left pending come back stale.
@@ -527,6 +533,21 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         return forkId
       },
 
+      createFromTurns: (title, turns) => {
+        const id = crypto.randomUUID()
+        const session: CoworkSession = {
+          id,
+          title: title.trim() || DEFAULT_SESSION_TITLE,
+          folder: null,
+          turns,
+          messages: coworkTurnsToUIMessages(turns, id),
+          updated: now(),
+          createdAt: now(),
+        }
+        set((s) => ({ sessions: [session, ...s.sessions], currentId: id }))
+        return id
+      },
+
       dismissHandoff: (id) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
@@ -632,7 +653,13 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // Attaching, switching and detaching all land here, so the code panel is
       // pruned in the same update: a tab from the old project must never be
       // left to re-resolve its relative path inside the new one.
-      setFolder: (id, folder) =>
+      setFolder: (id, folder) => {
+        const current = get().sessions.find((session) => session.id === id)
+        if (current && current.folder !== folder) {
+          // Session records are keyed by id. Never carry previous folder's
+          // checkout into a newly attached project.
+          useCoworkWorktrees.getState().forget(id)
+        }
         set((s) => ({
           sessions: s.sessions.map((x) =>
             x.id === id
@@ -681,7 +708,8 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
                 }
               : x
           ),
-        })),
+        }))
+      },
 
       // Changing which folders are attached withdraws the access agreed for the
       // old set, as changing the primary does: a grant covers the folders it
@@ -940,7 +968,10 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // the model to see; the saved session keeps only the text of the result.
       partialize: (state) => ({
         ...state,
-        sessions: state.sessions.map(stripSessionToolImages),
+        sessions: state.sessions.map((session) => {
+          const saved = stripSessionToolImages(session)
+          return saved.mode === 'bypass' ? { ...saved, mode: 'ask' as const } : saved
+        }),
       }),
       // Blank sessions left over from earlier launches are dropped as the
       // store loads, except the one that is selected.

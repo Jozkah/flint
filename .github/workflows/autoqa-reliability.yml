@@ -55,7 +55,7 @@ jobs:
       DEFAULT_IS_NIGHTLY: 'false'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Python 3.13
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -64,15 +64,20 @@ jobs:
 
       - name: Clean existing Jan installations
         shell: powershell
+        env:
+          INPUT_IS_NIGHTLY: ${{ inputs.is_nightly }}
         run: |
-          .\autoqa\scripts\windows_cleanup.ps1 -IsNightly "${{ inputs.is_nightly }}"
+          .\autoqa\scripts\windows_cleanup.ps1 -IsNightly "$env:INPUT_IS_NIGHTLY"
 
       - name: Download/Prepare Jan app
         shell: powershell
+        env:
+          INPUT_JAN_APP_WINDOWS_SOURCE: ${{ inputs.jan_app_windows_source }}
+          INPUT_IS_NIGHTLY: ${{ inputs.is_nightly }}
         run: |
           .\autoqa\scripts\windows_download.ps1 `
-            -WorkflowInputUrl "${{ inputs.jan_app_windows_source }}" `
-            -WorkflowInputIsNightly "${{ inputs.is_nightly }}" `
+            -WorkflowInputUrl "$env:INPUT_JAN_APP_WINDOWS_SOURCE" `
+            -WorkflowInputIsNightly "$env:INPUT_IS_NIGHTLY" `
             -RepoVariableUrl "${{ vars.JAN_APP_URL }}" `
             -RepoVariableIsNightly "${{ vars.IS_NIGHTLY }}" `
             -DefaultUrl "$env:DEFAULT_JAN_APP_URL" `
@@ -92,11 +97,15 @@ jobs:
       - name: Run reliability tests
         working-directory: autoqa
         shell: powershell
+        env:
+          INPUT_RELIABILITY_RUNS: ${{ inputs.reliability_runs }}
+          INPUT_RELIABILITY_PHASE: ${{ inputs.reliability_phase }}
+          INPUT_RELIABILITY_TEST_PATH: ${{ inputs.reliability_test_path }}
         run: |
-          $runs = "${{ inputs.reliability_runs }}"
+          $runs = "$env:INPUT_RELIABILITY_RUNS"
           $runsArg = ""
           if ([int]$runs -gt 0) { $runsArg = "--reliability-runs $runs" }
-          python main.py --enable-reliability-test --reliability-phase "${{ inputs.reliability_phase }}" --reliability-test-path "${{ inputs.reliability_test_path }}" $runsArg
+          python main.py --enable-reliability-test --reliability-phase "$env:INPUT_RELIABILITY_PHASE" --reliability-test-path "$env:INPUT_RELIABILITY_TEST_PATH" $runsArg
 
       - name: Upload screen recordings
         if: always()
@@ -117,5 +126,7 @@ jobs:
       - name: Cleanup after tests
         if: always()
         shell: powershell
+        env:
+          INPUT_IS_NIGHTLY: ${{ inputs.is_nightly }}
         run: |
-          .\autoqa\scripts\windows_post_cleanup.ps1 -IsNightly "${{ inputs.is_nightly }}"
+          .\autoqa\scripts\windows_post_cleanup.ps1 -IsNightly "$env:INPUT_IS_NIGHTLY"

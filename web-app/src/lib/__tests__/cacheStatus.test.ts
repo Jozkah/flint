@@ -135,9 +135,10 @@ describe('cache status, from provider-reported counts only', () => {
 describe('several requests: a turn or a session', () => {
   it('keeps a hit when another request did not report the cache', () => {
     const turn = combineTokenUsage(openai(1000, 900), openai(1100, undefined))
-    // No cached total can be claimed for both...
-    expect(turn.cachedInputTokens).toBeUndefined()
-    // ...but one request did read from the cache, and the flag says so.
+    // The cached count is over the requests that reported it, with their input kept beside it...
+    expect(turn.cachedInputTokens).toBe(900)
+    expect(turn.cacheReportedInputTokens).toBe(1000)
+    // ...and one request did read from the cache, so the flag says so.
     expect(cacheStatus(turn)).toBe('reused')
     expect([turn.requests, turn.cacheReportedRequests, turn.cacheHitRequests]).toEqual([2, 1, 1])
   })

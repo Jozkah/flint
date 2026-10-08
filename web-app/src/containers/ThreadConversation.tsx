@@ -1,8 +1,9 @@
+import { useModelToolsEnabled } from '@/hooks/useThreadToolGrants'
 import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
 import { switchedFromOf } from '@/lib/assistantSwitch'
 import { loadThreadMessages } from '@/lib/threadPrefetch'
 import { markConversationOpened } from '@/lib/messageEntry'
-import { useRemoteComposer } from '@/lib/remote/composer'
+import { useRemoteChatActions, useRemoteComposer } from '@/lib/remote/composer'
 import { chatLiveReply } from '@/lib/remote/live'
 import { reportLiveReply } from '@/lib/remote/streams'
 import { addSnapshotSink } from '@/lib/providerFetch'
@@ -26,6 +27,13 @@ import { ExportItems, ExportSubmenu } from '@/components/ExportMenu'
 import { docFromThread } from '@/lib/exportDoc'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
+import { ChatTasks } from '@/containers/ChatTasks'
+import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
+import {
+  CHAT_DELEGATION_TOOL_NAMES,
+  runChatDelegation,
+  stopChatDelegation,
+} from '@/lib/chatDelegation'
 import { ChatWorkProfilePicker } from '@/containers/ChatWorkProfilePicker'
 import { forkThread } from '@/lib/forkThread'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
@@ -106,6 +114,7 @@ import {
   isContextOverflowMessage,
   parseContextOverflow,
 } from '@/utils/error'
+import { PREFLIGHT_CONTEXT_ERROR_PREFIX } from '@/lib/contextEstimate'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
 import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionDivider'
@@ -168,6 +177,14 @@ import {
   notifyToolBatch,
 } from '@/lib/agentTools'
 import { browserCallOptions } from '@/lib/browserAgent'
+import { hostCallOptions } from '@/lib/hostAsked'
+import { closeBrowserSession } from '@/lib/browserTool'
+import {
+  VISUALIZE_TOOL_NAMES,
+  isVisualizeTool,
+} from '@/lib/visualize/constants'
+import { executeVisualizeTool } from '@/lib/visualize/tools'
+import { WidgetHostContext, type WidgetHost } from '@/lib/visualize/hostContext'
 import { chatFolderToolOptions, chatFoldersOf } from '@/lib/chatFolders'
 import { PathRootsContext } from '@/lib/codeOpen'
 import { ChatFoldersChip } from '@/containers/ChatFoldersChip'
@@ -224,6 +241,9 @@ import {
   useSplitConversation,
 } from '@/hooks/useSplitConversation'
 
+/** How long the chat stays idle before its agent browser is closed. */
+const BROWSER_IDLE_CLOSE_MS = 3000
+
 const CHAT_STATUS = {
   STREAMING: 'streaming',
   SUBMITTED: 'submitted',
@@ -243,7 +263,11 @@ function isAutoAllowedTool(toolName: string): boolean {
   return (
     useAppState.getState().ragToolNames.has(toolName) ||
     isNativeWebTool(toolName) ||
-    AGENT_TOOL_NAMES.has(toolName)
+    isVisualizeTool(toolName) ||
+    AGENT_TOOL_NAMES.has(toolName) ||
+    // Handing a job to a subagent asks for nothing itself; what the child then
+    // does is gated call by call, in Ask mode.
+    CHAT_DELEGATION_TOOL_NAMES.has(toolName)
   )
 }
 
@@ -410,6 +434,7 @@ export function ThreadConversation({
   // This conversation's model: in a split pane its own thread's, otherwise
   // the global picker, exactly as before.
   const { selectedModel, selectedProvider } = useConversationModel()
+  const toolsEnabled = useModelToolsEnabled(selectedModel, threadId)
   const getProviderByName = useModelProvider((state) => state.getProviderByName)
   // The same selection, read at call time from callbacks.
   const getModelSelection = useCallback(
@@ -490,6 +515,9 @@ export function ThreadConversation({
   const contextBannerMessage = useMemo(() => {
     const raw = contextLimitError?.message
     if (!raw) return undefined
+    // Flint's own pre-flight check: its message names the window and where it
+    // came from, which the generic line would hide.
+    if (raw.startsWith(PREFLIGHT_CONTEXT_ERROR_PREFIX)) return raw
     const info = parseContextOverflow(raw)
     if (info)
       return t('model-errors:contextOverflowDetail', {
@@ -816,6 +844,11 @@ export function ThreadConversation({
       // we await that already-started promise here rather than prompting again.
       toolCallAbortController.current = new AbortController()
       const signal = toolCallAbortController.current.signal
+      // Stopping the chat ends its agent browser at once, not when a tool call
+      // it was waiting on finally returns.
+      signal.addEventListener('abort', () => void closeBrowserSession(threadId), {
+        once: true,
+      })
 
       // The loop guard's history spans the whole reply to the user's
       // message, however many assistant message ids its steps are given.
@@ -1039,6 +1072,8 @@ export function ThreadConversation({
 
             if (isNativeWebTool(toolName)) {
               result = await executeWebTool(toolName, toolCall.input)
+            } else if (isVisualizeTool(toolName)) {
+              result = executeVisualizeTool(toolName, toolCall.input, threadId)
             } else if (AGENT_TOOL_NAMES.has(toolName)) {
               const agentResult = await executeAgentTool(
                 toolName,
@@ -1054,6 +1089,9 @@ export function ThreadConversation({
                   // The browser tools ask the user themselves, and the question
                   // has to sit under this call's card to be answerable there.
                   ...browserCallOptions(toolName, toolCall.toolCallId),
+                  // The host tools ask too, and their question has to carry
+                  // this call's id to appear under its card.
+                  ...hostCallOptions(toolName, toolCall.toolCallId),
                   taskLabel:
                     useThreads.getState().threads[threadId]?.title ||
                     'This conversation',
@@ -1115,6 +1153,21 @@ export function ThreadConversation({
                   ? { error: settled.output, resources: settled.resources }
                   : { content: settled.output, resources: settled.resources }
               }
+            } else if (CHAT_DELEGATION_TOOL_NAMES.has(toolName)) {
+              // The Cowork `task` family on the chat's own footing.
+              const delegated = await runChatDelegation(
+                threadId,
+                getModelSelection().selectedModel?.id ?? '',
+                {
+                  toolCallId: toolCall.toolCallId,
+                  toolName,
+                  input: toolCall.input,
+                },
+                signal
+              )
+              result = delegated.isError
+                ? { error: delegated.output.replace(/^ERROR:\s*/, '') }
+                : { content: delegated.output }
             } else if (ragToolNames.has(toolName)) {
               result = await serviceHub.rag().callTool({
                 toolName,
@@ -1182,6 +1235,7 @@ export function ThreadConversation({
                   ...mcpToolNames,
                   ...ragToolNames,
                   ...AGENT_TOOL_NAMES,
+                  ...VISUALIZE_TOOL_NAMES,
                 ]),
               }
             }
@@ -1215,6 +1269,9 @@ export function ThreadConversation({
                 : result.isError
                   ? JSON.stringify(result.content ?? '')
                   : undefined,
+              result: result.isError
+                ? undefined
+                : JSON.stringify(result.content ?? ''),
             })
 
             if (result.error) {
@@ -1449,6 +1506,18 @@ export function ThreadConversation({
     void reloadMemoryProposals()
   }, [status, reloadMemoryProposals])
 
+  // The agent's browser (the `browser` tool) ends with the run. The chat's tool
+  // loop runs in `onFinish`, with the stream already `ready` while a tool waits
+  // for the user's approval or runs: the thread is marked busy for exactly that
+  // time. So the browser is closed only once the chat is idle (or errored) AND
+  // not busy, and has stayed so for a moment between the loop's steps.
+  useEffect(() => {
+    if ((status !== 'ready' && status !== 'error') || threadBusy) return
+    const id = threadId
+    const timer = setTimeout(() => void closeBrowserSession(id), BROWSER_IDLE_CLOSE_MS)
+    return () => clearTimeout(timer)
+  }, [status, threadId, threadBusy])
+
   // Global disabled-tools set; re-run the effect below when it changes.
   const disabledTools = useToolAvailable((state) => state.disabledTools)
 
@@ -1476,8 +1545,7 @@ export function ThreadConversation({
 
       const hasDocuments = hasThreadDocuments || hasProjectDocuments
       const ragFeatureAvailable = Boolean(useAttachments.getState().enabled)
-      const modelSupportsTools =
-        selectedModel?.capabilities?.includes('tools') ?? false
+      const modelSupportsTools = toolsEnabled
 
       updateRagToolsAvailability(
         hasDocuments,
@@ -1490,7 +1558,7 @@ export function ThreadConversation({
   }, [
     thread?.metadata?.hasDocuments,
     thread?.metadata?.project?.id,
-    selectedModel?.capabilities,
+    toolsEnabled,
     updateRagToolsAvailability,
     disabledTools, // Re-run when tools are enabled/disabled
   ])
@@ -1668,6 +1736,11 @@ export function ThreadConversation({
       toolCallAbortController.current?.abort()
       toolCallAbortController.current = null
       approvalPromises.clear()
+      // Leaving the thread ends its agent browser.
+      void closeBrowserSession(threadId)
+      // Children this conversation started stop with it: nothing is left
+      // running for a chat the person has left.
+      stopChatDelegation(threadId)
       useToolApprovalRequests
         .getState()
         .clearPendingForThread(threadId, { notify: true })
@@ -1946,6 +2019,22 @@ export function ThreadConversation({
       })
     },
     [sendMessage, threadId, addMessage]
+  )
+
+  // A widget's button sends its prompt as the user's next message, once the
+  // current reply is done. Read through a ref so the host value stays stable.
+  const widgetBusyRef = useRef(false)
+  widgetBusyRef.current =
+    status === CHAT_STATUS.STREAMING || status === CHAT_STATUS.SUBMITTED
+  const widgetHost = useMemo<WidgetHost>(
+    () => ({
+      sendPrompt: (text) => {
+        if (widgetBusyRef.current) return false
+        void sendQueuedMessage(text)
+        return true
+      },
+    }),
+    [sendQueuedMessage]
   )
 
   sendSteeringRef.current = (text) => {
@@ -2245,6 +2334,9 @@ export function ThreadConversation({
   )
 
   // Handle delete message
+  // A paired phone regenerates and edits through these same handlers.
+  useRemoteChatActions(threadId, { regenerate: handleRegenerate, edit: handleEditMessage })
+
   const handleDeleteMessage = useCallback(
     (messageId: string) => {
       // Re-link what hangs below the message before it goes. Deleting only the
@@ -2507,8 +2599,12 @@ export function ThreadConversation({
   // Released (Send on a held chip) or newly queued messages. Read so the
   // sender below runs when the user releases one after an error, when the
   // status does not change.
-  const readyQueued = useMessageQueue(
-    (s) => s.getQueue(threadId).filter((m) => !m.held).length
+  // Counted only while the chat can send: a message queued or steered during
+  // a run must not re-render this whole conversation just to bump a number
+  // the sender below ignores until the run ends.
+  const canSendQueued = status === 'ready' || status === 'error'
+  const readyQueued = useMessageQueue((s) =>
+    canSendQueued ? s.getQueue(threadId).filter((m) => !m.held).length : 0
   )
 
   useEffect(() => {
@@ -2817,6 +2913,7 @@ export function ThreadConversation({
 
   return (
     <PathRootsContext.Provider value={chatPathRoots}>
+    <WidgetHostContext.Provider value={widgetHost}>
     <div
       className={cn(
         'flex h-full min-h-0 flex-col',
@@ -3112,11 +3209,15 @@ export function ThreadConversation({
                             </Button>
                           ) : (
                             <div className="mt-3 space-y-2">
-                              <p className="text-sm text-fg-2">
-                                This model's context window is set by its server,
-                                so Flint cannot enlarge it. Start a new chat, shorten
-                                the conversation, or raise the limit on the server.
-                              </p>
+                              {!contextLimitError?.message?.startsWith(
+                                PREFLIGHT_CONTEXT_ERROR_PREFIX
+                              ) && (
+                                <p className="text-sm text-fg-2">
+                                  This model's context window is set by its server,
+                                  so Flint cannot enlarge it. Start a new chat, shorten
+                                  the conversation, or raise the limit on the server.
+                                </p>
+                              )}
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -3159,6 +3260,9 @@ export function ThreadConversation({
             isSplit ? 'px-3' : 'px-4'
           )}
         >
+          {/* Approvals a subagent raises have no tool card to sit under. */}
+          <CoworkChildApprovals sessionId={threadId} />
+          <ChatTasks threadId={threadId} />
           <ChatInput
             model={threadModel}
             // Under the composer, as in Cowork. A phone keeps it in the header.
@@ -3169,7 +3273,11 @@ export function ThreadConversation({
             }
             groupOptions
             onSubmit={handleSubmit}
-            onStop={stop}
+            onStop={() => {
+              // Stop is for the whole turn, subagents it started included.
+              stopChatDelegation(threadId)
+              stop()
+            }}
             chatStatus={effectiveStatus}
             // Named, not inferred from the current thread: in a split the
             // current thread is the other pane half the time.
@@ -3200,6 +3308,7 @@ export function ThreadConversation({
         </div>
       </div>
     </div>
+    </WidgetHostContext.Provider>
     </PathRootsContext.Provider>
   )
 }
