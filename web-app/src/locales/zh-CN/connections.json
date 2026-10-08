@@ -1,5 +1,23 @@
 {
   "skills": {
+    "whatIs": "技能是一组书面说明，可附带脚本或文件，智能体可以读取并遵循。",
+    "whereApplies": "此处列出的技能属于此项目文件夹（.jan/agent/skills）。关闭技能只会在此项目中对智能体和 / 命令隐藏它。",
+    "toolAccess": "启用技能不会授予新的工具访问权限。智能体通过内置技能工具（列出、读取、写入）读取技能，这些工具始终无需询问即可使用。技能包含的脚本只有在智能体调用命令工具时才会运行，而命令工具遵循自己的权限规则。",
+    "stateHelp": "已安装：该技能存在于此项目中。已启用：在此项目中工作时会向智能体提供它。",
+    "summary": "已启用 {{enabled}} / {{installed}} 个已安装技能",
+    "state": {
+      "enabled": "已启用",
+      "disabled": "已关闭",
+      "enable": "启用",
+      "disable": "停用"
+    },
+    "view": "查看",
+    "edit": "编辑",
+    "importFailed": "无法导入 {{name}}：{{error}}",
+    "loadHubFailed": "无法加载技能中心：{{error}}",
+    "deleteSkill": "删除技能 {{name}}",
+    "fromPlugin": "来自插件 {{plugin}}",
+    "pluginReadOnly": "此技能来自插件 {{plugin}}，在此处为只读。要更改它，请编辑插件源码并重新安装插件，或在“插件”中关闭该插件。",
     "alwaysOn": "始终开启",
     "alwaysActive": "始终启用",
     "alwaysActiveHelp": "在每次对话中自动遵循此技能，无需提示。"

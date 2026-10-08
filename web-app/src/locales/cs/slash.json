@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "Příkazy",
+    "helpTitle": "Dostupné příkazy",
+    "keys": "↑↓ vybrat · Enter/Tab vložit · Esc zavřít",
+    "empty": "Zde nejsou dostupné žádné příkazy"
+  },
+  "source": {
+    "plugin": "plugin",
+    "pluginNamed": "plugin {{plugin}}",
+    "skill": "dovednost",
+    "builtin": "vestavěný"
+  },
+  "scope": {
+    "project": "projekt",
+    "global": "globální"
+  },
   "builtin": {
+    "help": "Vypsat dostupné příkazy",
+    "new": "Zahájit novou konverzaci",
+    "newSession": "Zahájit novou relaci Cowork",
     "compact": "Shrnout starší zprávy a uvolnit kontextové okno"
-  }
+  },
+  "sent": {
+    "command": "Příkaz",
+    "skill": "Dovednost",
+    "showCommand": "Zobrazit rozbalený příkaz",
+    "showSkill": "Zobrazit načtenou dovednost"
+  },
+  "error": "Příkaz {{command}} se nepodařilo spustit: {{error}}"
 }

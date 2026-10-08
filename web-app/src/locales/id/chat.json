@@ -1,15 +1,71 @@
 {
   "welcome": "Hai, apa kabar?",
   "description": "Ada yang bisa saya bantu hari ini?",
+  "startedAt": "Dimulai {{time}}",
+  "home": {
+    "title": "Obrolan baru",
+    "notSaved": "Tidak ada yang disimpan sampai Anda mengirim",
+    "sub": "Tanyakan apa saja, lampirkan file, atau serahkan tugas yang lebih besar ke Cowork.",
+    "suggestionsLabel": "Saran",
+    "suggestions": {
+      "explain": "Jelaskan pesan error ini",
+      "summarise": "Ringkas dokumen yang saya lampirkan",
+      "draft": "Susun catatan rilis dari daftar perubahan",
+      "compare": "Bandingkan dua pendekatan dan rekomendasikan satu"
+    }
+  },
   "temporaryChat": "Obrolan Sementara",
   "temporaryChatDescription": "Mulai percakapan sementara yang tidak akan disimpan ke riwayat obrolan Anda.",
+  "temporaryChatBanner": "Obrolan sementara — tidak akan disimpan",
+  "temporaryChatKeep": "Simpan obrolan ini",
+  "temporaryChatLeave": {
+    "title": "Simpan obrolan sementara ini?",
+    "description": "Obrolan ini tidak disimpan di mana pun. Simpan untuk memindahkannya ke riwayat, atau buang untuk menghapusnya secara permanen.",
+    "keep": "Simpan",
+    "discard": "Buang",
+    "kept": "Obrolan disimpan ke riwayat Anda",
+    "keepFailed": "Tidak dapat menyimpan obrolan ini",
+    "discardFailed": "Tidak dapat membuang — pembuatan jawaban masih berjalan. Hentikan lalu coba lagi.",
+    "reason": {
+      "generation-not-stopped": "Pembuatan jawaban masih berjalan. Hentikan lalu coba lagi.",
+      "messages-not-persisted": "Obrolan tidak dapat disimpan sepenuhnya. Tidak ada yang hilang — silakan coba lagi.",
+      "thread-not-created": "Obrolan tidak dapat disimpan. Tidak ada yang hilang — silakan coba lagi.",
+      "error": "Terjadi kesalahan. Obrolan Anda masih ada — silakan coba lagi."
+    }
+  },
   "status": {
     "empty": "Tidak Ada Obrolan Ditemukan"
   },
   "sendMessage": "Kirim Pesan",
   "newConversation": "Percakapan Baru",
   "clearHistory": "Hapus Riwayat",
+  "embeddings": {
+    "title": "Menyiapkan dokumen Anda",
+    "description": "Mengindeks file terlampir agar dapat dicari dan dikutip. Dokumen besar mungkin butuh waktu sebentar."
+  },
+  "actions": {
+    "copy": "Salin",
+    "regenerate": "Buat ulang jawaban",
+    "continue": "Lanjutkan pembuatan",
+    "delete": "Hapus",
+    "fork": "Cabangkan obrolan dari sini",
+    "copied": "Disalin"
+  },
   "done": "Done",
+  "webSources": "{{count}} sumber",
+  "webSourcesRead": "{{count}} dibaca",
+  "webSourcesReadFound": "{{read}} dibaca · {{found}} ditemukan",
+  "reasoning": {
+    "label": "Bernalar...",
+    "thinking": "Berpikir",
+    "usingTool": "{{tool}}...",
+    "showFullTimeline": "Tampilkan linimasa lengkap",
+    "showCurrentStep": "Tampilkan langkah saat ini saja",
+    "thoughtForAWhile": "Berpikir selama beberapa detik",
+    "thoughtFor": "Berpikir selama {{duration}}",
+    "workedForAWhile": "Bekerja selama beberapa detik",
+    "workedFor": "Bekerja selama {{duration}}"
+  },
   "split": {
     "open": "Bagi percakapan",
     "openShort": "Bagi",
@@ -44,14 +100,71 @@
   },
   "transcriptView": {
     "steps_other": "{{count}} langkah",
-    "working": "Bekerja"
+    "working": "Bekerja",
+    "failed": "Gagal:",
+    "failedToRun": "Gagal dijalankan",
+    "summary": {
+      "failed": "{{count}} gagal",
+      "commands_other": "menjalankan {{count}} perintah",
+      "created_other": "membuat {{count}} file",
+      "edited_other": "mengedit {{count}} file",
+      "read_other": "membaca {{count}} file",
+      "searched_other": "mencari {{count}} kali",
+      "tools_other": "memakai {{count}} alat"
+    }
   },
-  "actions": {
-    "fork": "Cabangkan obrolan dari sini"
+  "widget": {
+    "label": "Widget",
+    "drawing": "Menggambar widget",
+    "source": "Lihat sumber",
+    "copy": "Salin HTML",
+    "copied": "HTML disalin.",
+    "copyFailed": "Tidak dapat menyalin HTML.",
+    "save": "Simpan sebagai file .html",
+    "expand": "Buka ukuran penuh",
+    "rerun": "Jalankan ulang",
+    "stalled": "Widget berhenti merespons.",
+    "parked": "Widget dijeda saat di luar layar.",
+    "error": "Error widget:",
+    "viewSource": "Lihat sumber",
+    "askFix": "Minta Flint memperbaiki",
+    "fixPrompt": "Widget \"{{title}}\" menampilkan error: {{error}}\nTolong perbaiki dan tampilkan widget lagi.",
+    "refused": "Widget tidak ditampilkan: {{reason}}",
+    "refusedUnknown": "panggilan gagal",
+    "tooLarge": "Widget ini lebih besar dari {{max}} karakter dan tidak digambar.",
+    "openLink": "Buka {{url}} di browser Anda?",
+    "cancel": "Batal",
+    "busy": "Tunggu balasan saat ini selesai, lalu coba lagi.",
+    "noHost": "Tampilan ini tidak dapat mengirim pesan."
+  },
+  "browserCard": {
+    "opened": "Dibuka di Browser",
+    "ready": "Siap dibuka",
+    "open": "Buka",
+    "more": "Lainnya",
+    "copy": "Salin tautan",
+    "copied": "Tautan disalin.",
+    "failed": "Tidak dapat membuka browser."
+  },
+  "regenerateTitle": {
+    "menu": "Buat ulang judul",
+    "working": "Menamai obrolan...",
+    "done": "Nama obrolan diubah.",
+    "empty": "Belum ada bahan untuk menamai obrolan ini.",
+    "busy": "Jeda atau hentikan ruang sebelum mengganti namanya.",
+    "failed": "Tidak dapat membuat judul."
   },
   "fork": {
     "chat": "Cabangkan obrolan",
     "done": "Dicabangkan ke obrolan baru.",
     "failed": "Tidak dapat mencabangkan obrolan ini."
+  },
+  "version": {
+    "group": "Versi pesan",
+    "previous": "Versi sebelumnya",
+    "next": "Versi berikutnya",
+    "previousAt": "Versi sebelumnya (menampilkan {{index}} dari {{count}})",
+    "nextAt": "Versi berikutnya (menampilkan {{index}} dari {{count}})",
+    "position": "Versi {{index}} dari {{count}}"
   }
 }

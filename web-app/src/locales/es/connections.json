@@ -1,5 +1,23 @@
 {
   "skills": {
+    "whatIs": "Una skill es un conjunto de instrucciones escritas, opcionalmente con scripts o archivos adjuntos, que el agente puede leer y seguir.",
+    "whereApplies": "Las skills que aparecen aquí pertenecen a esta carpeta de proyecto (.jan/agent/skills). Desactivar una skill la oculta del agente y de los comandos / solo en este proyecto.",
+    "toolAccess": "Activar una skill no concede acceso a nuevas herramientas. El agente lee las skills mediante las herramientas de skills integradas (listar, leer, escribir), que siempre se permiten sin preguntar. Un script incluido en una skill solo se ejecuta si el agente llama a la herramienta de comandos, que sigue sus propias reglas de permisos.",
+    "stateHelp": "Instalada: la skill existe en este proyecto. Activada: se le ofrece al agente para trabajar en este proyecto.",
+    "summary": "{{enabled}} de {{installed}} skills instaladas activadas",
+    "state": {
+      "enabled": "Activada",
+      "disabled": "Desactivada",
+      "enable": "Activar",
+      "disable": "Desactivar"
+    },
+    "view": "Ver",
+    "edit": "Editar",
+    "importFailed": "No se pudo importar {{name}}: {{error}}",
+    "loadHubFailed": "No se pudo cargar el hub de skills: {{error}}",
+    "deleteSkill": "Eliminar la skill {{name}}",
+    "fromPlugin": "Del plugin {{plugin}}",
+    "pluginReadOnly": "Esta skill proviene del plugin {{plugin}} y aquí es de solo lectura. Para cambiarla, edita el código fuente del plugin y reinstálalo, o desactiva el plugin en Plugins.",
     "alwaysOn": "Siempre activa",
     "alwaysActive": "Siempre activa",
     "alwaysActiveHelp": "Sigue esta habilidad en todas las conversaciones, sin que se lo pidan."

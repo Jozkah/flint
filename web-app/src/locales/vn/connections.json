@@ -1,5 +1,23 @@
 {
   "skills": {
+    "whatIs": "Kỹ năng là một tập hướng dẫn bằng văn bản, có thể kèm tập lệnh hoặc tệp, mà tác tử có thể đọc và làm theo.",
+    "whereApplies": "Các kỹ năng liệt kê ở đây thuộc thư mục dự án này (.jan/agent/skills). Tắt một kỹ năng sẽ ẩn nó khỏi tác tử và khỏi các lệnh / chỉ trong dự án này.",
+    "toolAccess": "Bật một kỹ năng không cấp thêm quyền truy cập công cụ. Tác tử đọc kỹ năng qua các công cụ kỹ năng tích hợp (liệt kê, đọc, ghi), luôn được phép mà không cần hỏi. Tập lệnh trong kỹ năng chỉ chạy nếu tác tử gọi công cụ lệnh, vốn tuân theo quy tắc quyền riêng của nó.",
+    "stateHelp": "Đã cài: kỹ năng có trong dự án này. Đã bật: tác tử được đề xuất dùng nó cho công việc trong dự án này.",
+    "summary": "Đã bật {{enabled}}/{{installed}} kỹ năng đã cài",
+    "state": {
+      "enabled": "Đã bật",
+      "disabled": "Tắt",
+      "enable": "Bật",
+      "disable": "Tắt"
+    },
+    "view": "Xem",
+    "edit": "Sửa",
+    "importFailed": "Không thể nhập {{name}}: {{error}}",
+    "loadHubFailed": "Không thể tải kho kỹ năng: {{error}}",
+    "deleteSkill": "Xóa kỹ năng {{name}}",
+    "fromPlugin": "Từ plugin {{plugin}}",
+    "pluginReadOnly": "Kỹ năng này đến từ plugin {{plugin}} và ở đây chỉ đọc. Để thay đổi, hãy chỉnh sửa mã nguồn của plugin rồi cài lại plugin, hoặc tắt plugin trong mục Plugin.",
     "alwaysOn": "Luôn bật",
     "alwaysActive": "Luôn hoạt động",
     "alwaysActiveHelp": "Luôn làm theo kỹ năng này trong mọi cuộc trò chuyện mà không cần yêu cầu."

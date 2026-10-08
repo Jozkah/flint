@@ -1,0 +1,64 @@
+{
+  "intentHeading": "Apa yang ingin Anda lakukan lebih dulu?",
+  "intentHint": "Ini hanya menentukan ke mana panduan membawa Anda. Semua hal lain di Flint tetap tersedia.",
+  "intent": {
+    "question": {
+      "title": "Ajukan pertanyaan",
+      "description": "Mengobrol dengan model tentang apa saja."
+    },
+    "documents": {
+      "title": "Bekerja dengan dokumen",
+      "description": "Lampirkan file dan tanyakan tentangnya."
+    },
+    "project": {
+      "title": "Bangun atau ubah proyek",
+      "description": "Biarkan Flint bekerja di folder di komputer ini, dan bertanya sebelum mengubah apa pun."
+    }
+  },
+  "skipGuide": "Lewati panduan",
+  "resumeNotice": "Selamat datang kembali. Anda dapat melanjutkan dari terakhir kali.",
+  "processingHeading": "Di mana percakapan Anda diproses",
+  "processingLocal": "Model lokal berjalan di komputer ini. Pesan dan file Anda tetap di sini, dan tidak perlu akun atau kunci API.",
+  "processingRemote": "Provider jarak jauh (misalnya OpenAI) menjalankan model di servernya. Pesan dan file apa pun yang Anda sertakan dikirim ke sana, dan provider mungkin menagih Anda. Anda menyiapkannya sendiri di Pengaturan; Flint tidak pernah beralih ke provider semacam itu sendiri.",
+  "connectRemote": "Hubungkan provider jarak jauh sebagai gantinya",
+  "guideTitle": {
+    "question": "Memulai: ajukan pertanyaan",
+    "documents": "Memulai: bekerja dengan dokumen",
+    "project": "Memulai: bangun atau ubah proyek"
+  },
+  "guideRegion": "Panduan memulai",
+  "stepDone": "Selesai",
+  "stepTodo": "Belum",
+  "step": {
+    "choose-model": {
+      "title": "Pilih atau hubungkan model",
+      "body": "Pilih model dengan pemilih di bagian atas. Model lokal berjalan di komputer ini; provider jarak jauh memerlukan akunnya sendiri."
+    },
+    "add-material": {
+      "documents": "Lampirkan dokumen dengan tombol penjepit kertas di kotak pesan.",
+      "project": "Buka Cowork dan pilih folder proyek Anda. Flint bertanya sebelum mengedit file atau menjalankan perintah."
+    },
+    "first-task": {
+      "title": "Kirim pesan pertama Anda",
+      "body": "Tanyakan sesuatu, atau jelaskan perubahan yang Anda inginkan. Langkah ini selesai saat percakapan dimulai."
+    },
+    "review-context": {
+      "title": "Periksa yang dipakai Flint",
+      "body": "Setelah Flint menjawab, buka \"Yang dipakai Flint\" dalam percakapan untuk melihat lampiran dan instruksi apa yang tersedia baginya."
+    },
+    "addMaterialTitle": {
+      "documents": "Tambahkan dokumen",
+      "project": "Pilih folder proyek"
+    }
+  },
+  "confirmStep": "Sudah saya lakukan",
+  "openProviders": "Pengaturan model",
+  "openCowork": "Buka Cowork",
+  "hideGuide": "Sembunyikan panduan",
+  "guideComplete": "Semua siap. Buka kembali panduan ini kapan saja dari Pengaturan > Umum.",
+  "finish": "Selesaikan panduan",
+  "reopenGuide": "Panduan memulai",
+  "reopenGuideDescription": "Telusuri lagi cara memilih model, menambahkan materi, dan menyelesaikan tugas pertama.",
+  "reopenGuideAction": "Buka panduan",
+  "resumeRecent": "Lanjutkan percakapan terakhir Anda: {{title}}"
+}

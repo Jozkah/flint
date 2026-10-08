@@ -3,5 +3,30 @@
   "description": "이 채팅이 AI의 메모리 한도에 도달하고 있습니다. 마치 화이트보드가 가득 차는 것과 같습니다. 메모리 창(컨텍스트 크기라고 함)을 확장하여 더 많은 내용을 기억하게 할 수 있지만, 컴퓨터의 메모리를 더 많이 사용할 수 있습니다. 또는 입력을 잘라낼 수도 있는데, 이는 새 메시지를 위한 공간을 만들기 위해 이전 대화 기록의 일부를 삭제함을 의미합니다.",
   "increaseContextSizeDescription": "컨텍스트 크기를 늘리시겠습니까?",
   "truncateInput": "입력 잘라내기",
-  "increaseContextSize": "컨텍스트 크기 늘리기"
+  "increaseContextSize": "컨텍스트 크기 늘리기",
+  "lastRequestOverflowed": "마지막 요청이 컨텍스트 창을 초과했습니다.",
+  "contextOverflowDetail": "이 요청에는 토큰 {{request}}개가 필요했지만 모델의 컨텍스트 창은 {{context}}개만 담을 수 있습니다.",
+  "contextOverflowGeneric": "요청이 사용 가능한 컨텍스트 크기를 초과합니다.",
+  "engine": {
+    "unknown": "모델 엔진이 예기치 않은 오류를 보고했습니다.",
+    "MODEL_LOAD_FAILED": "모델을 로드할 수 없습니다.",
+    "MODEL_ARCH_NOT_SUPPORTED": "현재 엔진은 이 모델의 아키텍처를 지원하지 않습니다. 설정에서 엔진을 업데이트하면 지원이 추가될 수 있습니다.",
+    "MODEL_LOAD_TIMED_OUT": "모델 로드에 너무 오래 걸려 중지되었습니다. 더 작은 모델이나 더 작은 컨텍스트 크기가 보통 도움이 됩니다.",
+    "MISSING_SHARED_LIBRARY": "엔진에 필요한 라이브러리가 없어 시작할 수 없습니다.",
+    "GPU_DRIVER_TOO_OLD": "GPU 드라이버가 이 엔진에 비해 너무 오래되었습니다. 드라이버를 업데이트하거나 설정에서 CPU 엔진으로 전환하면 해결됩니다.",
+    "OUT_OF_MEMORY": "이 모델을 실행할 메모리가 부족합니다. 더 작은 모델이나 더 작은 컨텍스트 크기가 보통 도움이 됩니다.",
+    "INVALID_ARGUMENT": "모델 설정 중 하나가 올바르지 않습니다.",
+    "IO_ERROR": "모델을 시작하는 동안 파일을 읽거나 쓸 수 없었습니다.",
+    "INTERNAL_ERROR": "모델을 시작하는 동안 Flint 내부에서 문제가 발생했습니다."
+  },
+  "engineMissingLibraries": "누락: {{libraries}}",
+  "engineReportedDetail": "엔진 보고: {{detail}}",
+  "startModelFailed": "모델을 시작하지 못했습니다: {{reason}}",
+  "createModelFailed": "모델을 만들지 못했습니다: {{reason}}",
+  "noRunningSession": "모델 {{model}}의 실행 중인 세션을 찾을 수 없습니다",
+  "serverPortOccupied": "포트 사용 중",
+  "serverPortOccupiedDescription": "포트 {{port}}을(를) 이미 사용 중입니다. 다른 포트를 시도하세요.",
+  "serverInvalidModelPath": "모델 경로가 올바르지 않거나 접근할 수 없습니다",
+  "serverStartModelFailed": "모델을 시작하지 못했습니다",
+  "serverStartFailed": "서버를 시작하지 못했습니다"
 }

@@ -1,0 +1,116 @@
+{
+  "triggerLabel": "Este modelo vai rodar neste dispositivo? {{status}}. Mostrar detalhes",
+  "title": "Este modelo vai rodar neste dispositivo?",
+  "subtitle": "O que foi medido aqui e o que é apenas estimado.",
+  "measuredHeading": "Medido neste dispositivo",
+  "estimateHeading": "Estimativa",
+  "evidence": {
+    "ran-successfully": "Rodou com sucesso neste dispositivo com estas configurações.",
+    "failed-with-settings": "Falhou neste dispositivo com estas configurações. Outras configurações podem funcionar.",
+    "unsupported": "Não suportado por este runtime: o motor llama.cpp desta versão do Flint não reconhece a arquitetura do modelo. Mudar configurações não ajudará; uma atualização do app pode ajudar.",
+    "stale": "Testado antes, mas algo mudou desde então, então esse resultado pode não se aplicar.",
+    "not-tested": "Não testado neste dispositivo."
+  },
+  "verdict": {
+    "fits": "Estimado para caber na memória.",
+    "fits-partial-offload": "Estimado para caber, com parte do modelo rodando na CPU. Vai funcionar, mas responder mais devagar.",
+    "tight": "Pode exigir ajuste das configurações: sobraria muito pouca memória. Um tamanho de contexto menor ajuda.",
+    "exceeds": "Estimado para não caber. As estimativas podem estar erradas; você ainda pode tentar ou testar.",
+    "unknown": "Informações insuficientes para estimar."
+  },
+  "memoryModel": {
+    "unified": "Memória unificada: {{ram}} compartilhados pela CPU e pela GPU. Por padrão, a GPU pode usar cerca de {{gpu}} dela.",
+    "discrete-gpu": "Memória de GPU dedicada de {{vram}} mais {{ram}} de memória do sistema. As camadas que não cabem na GPU rodam na CPU.",
+    "integrated-gpu": "Os gráficos integrados compartilham os {{ram}} de memória do sistema, então ela é contada uma vez.",
+    "cpu-only": "Nenhuma GPU foi detectada para este runtime: o modelo roda na CPU usando {{ram}} de memória do sistema.",
+    "unknown": "A memória do dispositivo ainda não foi detectada."
+  },
+  "showReasons": "Mostrar como isto foi estimado",
+  "breakdown": {
+    "weights": "Arquivo do modelo",
+    "kvCache": "Memória da conversa para {{tokens}} tokens",
+    "mmproj": "Componente de visão",
+    "overhead": "Sobrecarga do runtime",
+    "total": "Necessidade estimada",
+    "budget": "Disponível estimado",
+    "otherLoaded": "Já usado por outros modelos carregados"
+  },
+  "assumption": {
+    "kv-from-metadata": "A memória da conversa é calculada a partir da arquitetura do próprio modelo e dos tipos de cache configurados.",
+    "kv-heuristic": "Não foi possível ler a arquitetura do modelo, então a memória da conversa é aproximada a partir do tamanho do arquivo.",
+    "kv-sliding-window-midpoint": "Este modelo mantém apenas os tokens recentes em algumas camadas; a divisão exata é desconhecida, então o ponto médio é usado.",
+    "context-capped-to-trained": "O tamanho do contexto é limitado ao que o modelo foi treinado para suportar.",
+    "unified-gpu-working-set": "O macOS limita por padrão quanta memória unificada a GPU usa; além disso, as camadas rodam na CPU.",
+    "integrated-gpu-shares-ram": "A memória dos gráficos integrados faz parte da memória do sistema e não é somada a ela.",
+    "discrete-vram-reserve": "Cerca de 512 MB por GPU dedicada são deixados para o driver e o monitor.",
+    "system-reserve": "Cerca de 2 GB de memória do sistema são deixados para o sistema operacional e outros apps.",
+    "runtime-overhead": "Buffers de computação e o runtime são estimados em 300 MB mais 2% do arquivo do modelo.",
+    "cpu-only-by-setting": "As camadas de GPU estão definidas como 0, então a GPU não é usada.",
+    "other-models-loaded": "Os modelos já carregados são subtraídos, mas onde eles estão (GPU ou CPU) não é observável.",
+    "mmap-not-counted": "O carregamento com mapeamento de memória pode permitir que um modelo inicie com menos memória que a mostrada, com grande custo de velocidade; isso não é contado.",
+    "mmproj-unknown": "Existe um componente de visão, mas seu tamanho é desconhecido."
+  },
+  "uncertainty": {
+    "low": "Confiança: razoavelmente boa. O uso real ainda pode diferir.",
+    "medium": "Confiança: moderada. Testar neste dispositivo dá uma resposta real.",
+    "high": "Confiança: baixa. O resultado está perto do limite ou se apoia em suposições aproximadas; teste para saber."
+  },
+  "difference": {
+    "settings": "As configurações mudaram desde o teste: {{keys}}.",
+    "runtime": "O app foi atualizado desde o teste ({{recorded}} para {{current}}).",
+    "device": "A configuração de memória ou GPU do dispositivo mudou.",
+    "modelFile": "O arquivo do modelo mudou."
+  },
+  "otherSuccess": "Ele rodou neste dispositivo com um tamanho de contexto de {{context}}.",
+  "testScope": "Um teste comprova apenas uma resposta curta com as configurações usadas. Conversas mais longas, contexto maior ou outros modelos carregados ainda podem esgotar a memória.",
+  "testedAt": "Testado {{when}} com {{settings}}.",
+  "defaultSettings": "configurações padrão",
+  "metric": {
+    "load": "Tempo de carregamento",
+    "generation": "Velocidade de geração",
+    "prompt": "Velocidade de leitura do prompt"
+  },
+  "test": {
+    "run": "Testar neste dispositivo",
+    "runAgain": "Testar novamente",
+    "cancel": "Cancelar teste",
+    "running": "Testando: carregando o modelo e pedindo uma resposta curta…",
+    "succeeded": "Teste aprovado: o modelo carregou e respondeu.",
+    "failed": "O teste falhou: {{reason}}",
+    "cancelled": "Teste cancelado. Nada que o teste carregou continua carregado.",
+    "cancelledNotReleased": "Teste cancelado, mas não foi possível descarregar o modelo. Descarregue-o nas configurações do modelo.",
+    "notReleased": "Não foi possível descarregar o modelo depois; ele ainda está usando memória.",
+    "couldNotRun": "Não foi possível executar o teste: {{reason}}",
+    "blockedBusy": "Não testado: {{models}} está escrevendo uma resposta, e o teste teria que descarregá-lo. Tente novamente quando ele terminar. Nada foi alterado.",
+    "blockedInProgress": "Outro teste de modelo já está em execução. Nada foi alterado.",
+    "restored": "{{models}} foi carregado novamente.",
+    "notRestored": "Não foi possível carregar {{models}} novamente; carregue-o nas configurações do modelo.",
+    "needsConfirmation": "O teste precisa descarregar outro modelo primeiro.",
+    "confirmUnload": "Para testar, o Flint precisa descarregar {{models}}. Qualquer resposta que ele esteja gerando será interrompida. Ele não é recarregado automaticamente.",
+    "unloadAndTest": "Descarregar e testar",
+    "dontTest": "Não testar"
+  },
+  "testExplainer": "O teste usa o arquivo do modelo que já está neste dispositivo; nada é baixado. Ele carrega o modelo com suas configurações atuais, pede uma resposta de uma palavra e o descarrega de novo se ele não estava carregado.",
+  "adjustSettings": "Ajustar configurações",
+  "setDefault": "Usar em novos chats",
+  "removeDefault": "Parar de usar em novos chats",
+  "hideHint": "Ocultar esta dica",
+  "showHint": "Mostrar esta dica",
+  "badge": {
+    "worked": "Funcionou aqui",
+    "unsupported": "Não suportado por este runtime",
+    "default": "Padrão"
+  },
+  "location": {
+    "local": "Roda neste dispositivo ou na sua rede",
+    "remote": "Remoto: as mensagens são enviadas a este provedor"
+  },
+  "providerSettings": "Configurações de {{provider}}",
+  "memoryBars": "Necessidade de memória estimada comparada com o que está disponível",
+  "picker": {
+    "local": "Neste computador ou na sua rede",
+    "remote": "Provedores em nuvem",
+    "remoteHint": "as mensagens saem deste computador",
+    "inUse": "Em uso aqui: {{model}} · {{provider}}"
+  }
+}

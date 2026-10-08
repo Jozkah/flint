@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "Vols deixar que l'assistent usi {{host}}?",
+    "description": "L'assistent vol usar el tauler del navegador en un lloc que encara no has aprovat.",
+    "urlLabel": "Adreça completa",
+    "urlHint": "Comprova tota l'adreça, inclòs el que hi ha després del ?. Les adreces poden treure informació de la teva conversa.",
+    "wantsLabel": "Vol",
+    "wants": {
+      "browser_open": "obrir aquesta pàgina",
+      "browser_read_text": "llegir aquesta pàgina",
+      "browser_snapshot": "mirar els controls d'aquesta pàgina",
+      "browser_screenshot": "fer una captura d'aquesta pàgina",
+      "browser_scroll": "desplaçar aquesta pàgina",
+      "browser_click": "fer clic en aquesta pàgina",
+      "browser_type": "escriure en aquesta pàgina",
+      "browser_press": "prémer una tecla en aquesta pàgina",
+      "browser_select": "triar una opció en aquesta pàgina"
+    },
+    "origin": "Sol·licitat per {{origin}}",
+    "scopeLabel": "Durant quant de temps",
+    "once": "Només aquesta visita",
+    "onceHint": "Acaba quan l'assistent passa a un altre lloc, o al cap de 15 minuts.",
+    "session": "Fins que es tanqui Flint",
+    "always": "Sempre",
+    "alwaysHint": "Es desa. Ho pots eliminar a Configuració > Eines de l'agent.",
+    "subdomains": "Permet també els subdominis de {{base}}",
+    "allow": "Permet",
+    "deny": "Ara no",
+    "never": "No permetis mai aquest lloc",
+    "more": "{{count}} més en espera",
+    "warning": "L'assistent pot llegir tot el que hi ha a la pàgina, i el text d'una pàgina pot intentar enganyar-lo."
+  },
+  "settings": {
+    "title": "Navegador",
+    "enabled": "Deixa que l'assistent usi el tauler del navegador",
+    "enabledDesc": "Afegeix eines per obrir pàgines, llegir-les i, amb la teva aprovació, fer clic i escriure al tauler del navegador integrat. Veus el mateix tauler. Cada lloc ho demana la primera vegada; les adreces locals i de xarxa privada no s'obren mai.",
+    "maxActions": "Accions per execució",
+    "maxActionsDesc": "Clics, tecles i seleccions que pot fer una execució abans d'haver d'aturar-se.",
+    "rulesTitle": "Regles de llocs desades",
+    "rulesDesc": "Llocs que has permès sempre o has bloquejat. Una regla per a example.com cobreix només aquest lloc; *.example.com cobreix els seus subdominis.",
+    "empty": "Encara no hi ha regles desades. Un lloc apareix aquí quan tries Permet sempre o No permetis mai.",
+    "allow": "Permès",
+    "deny": "Bloquejat",
+    "privateOk": "Adreça local",
+    "remove": "Elimina",
+    "removed": "S'ha eliminat la regla",
+    "removeFailed": "No s'ha pogut eliminar la regla: {{error}}",
+    "addPlaceholder": "example.com o *.example.com",
+    "addLabel": "Lloc",
+    "addVerdict": "Regla",
+    "addPrivate": "Permet que sigui una adreça local o de xarxa privada (per a un servidor de desenvolupament)",
+    "add": "Afegeix regla",
+    "added": "S'ha desat la regla",
+    "addFailed": "No s'ha pogut desar la regla: {{error}}",
+    "pointer": "Mostra el punter",
+    "pointerDesc": "Dibuixa un cursor al tauler del navegador que llisca fins a allò on l'assistent fa clic o escriu, i es desplaça amb ell. Desactivat: no es dibuixa res i no hi ha cap retard.",
+    "reduceMotion": "Redueix el moviment",
+    "reduceMotionDesc": "Sense lliscament ni pulsació de llum: el punter salta al seu destí.",
+    "reduceSystem": "Segueix el sistema",
+    "reduceOn": "Redueix sempre",
+    "reduceOff": "No redueixis mai",
+    "grantsTitle": "Aprovat de moment",
+    "grantsNone": "No hi ha res aprovat sense estar desat. Tots els llocs que no són a les regles desades ho demanen.",
+    "grantsDesc": "Llocs que has permès per a aquesta sessió o aquesta visita. No es desen i acaben quan es tanca Flint.",
+    "grantScope": {
+      "session": "aquesta sessió",
+      "once": "aquesta visita"
+    },
+    "grantAge": "fa {{minutes}} min",
+    "forgetGrants": "Oblida les aprovacions d'aquesta sessió"
+  },
+  "card": {
+    "screenshot": "Captura del tauler del navegador"
+  },
+  "pane": {
+    "driving": "L'assistent està usant aquest navegador",
+    "takeOver": "Pren el control",
+    "paused": "Assistent en pausa",
+    "handBack": "Retorna el control",
+    "blocked": "S'ha bloquejat una pàgina: {{reason}}"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "intentHeading": "你想先做什么？",
+  "intentHint": "这只决定引导带你去哪里。Flint 中的其他一切仍然可用。",
+  "intent": {
+    "question": {
+      "title": "提问",
+      "description": "与模型聊任何话题。"
+    },
+    "documents": {
+      "title": "处理文档",
+      "description": "附加文件并就其提问。"
+    },
+    "project": {
+      "title": "构建或修改项目",
+      "description": "让 Flint 在这台电脑上的文件夹中工作，更改任何内容前都会先询问。"
+    }
+  },
+  "skipGuide": "跳过引导",
+  "resumeNotice": "欢迎回来。你可以从上次中断的地方继续。",
+  "processingHeading": "你的对话在哪里处理",
+  "processingLocal": "本地模型在这台电脑上运行。你的消息和文件保留在本机，无需账户或 API 密钥。",
+  "processingRemote": "远程提供商（例如 OpenAI）在其服务器上运行模型。你的消息和你附加的任何文件都会发送到那里，提供商可能会向你收费。你需要在“设置”中自行配置；Flint 绝不会自行切换到远程提供商。",
+  "connectRemote": "改为连接远程提供商",
+  "guideTitle": {
+    "question": "入门：提问",
+    "documents": "入门：处理文档",
+    "project": "入门：构建或修改项目"
+  },
+  "guideRegion": "入门指南",
+  "stepDone": "已完成",
+  "stepTodo": "待办",
+  "step": {
+    "choose-model": {
+      "title": "选择或连接模型",
+      "body": "使用顶部的选择器选择模型。本地模型在这台电脑上运行；远程提供商需要你自己的账户。"
+    },
+    "add-material": {
+      "documents": "使用消息框中的回形针按钮附加文档。",
+      "project": "打开 Cowork 并选择项目文件夹。Flint 在编辑文件或运行命令之前会先询问。"
+    },
+    "first-task": {
+      "title": "发送你的第一条消息",
+      "body": "提出问题，或描述你想要的更改。对话开始后此步骤即完成。"
+    },
+    "review-context": {
+      "title": "查看 Flint 使用了什么",
+      "body": "Flint 回答后，在对话中打开“Flint 正在使用的内容”，查看哪些附件和指令对它可用。"
+    },
+    "addMaterialTitle": {
+      "documents": "添加文档",
+      "project": "选择项目文件夹"
+    }
+  },
+  "confirmStep": "我已完成",
+  "openProviders": "模型设置",
+  "openCowork": "打开 Cowork",
+  "hideGuide": "隐藏引导",
+  "guideComplete": "设置完成。你可以随时在“设置”>“常规”中重新打开此引导。",
+  "finish": "完成引导",
+  "reopenGuide": "入门指南",
+  "reopenGuideDescription": "再次完整体验选择模型、添加材料和完成第一个任务的流程。",
+  "reopenGuideAction": "打开引导",
+  "resumeRecent": "继续上一次对话：{{title}}"
+}

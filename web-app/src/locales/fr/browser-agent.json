@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "Autoriser l'assistant à utiliser {{host}} ?",
+    "description": "L'assistant souhaite utiliser le volet navigateur sur un site que vous n'avez pas encore approuvé.",
+    "urlLabel": "Adresse complète",
+    "urlHint": "Vérifiez l'adresse entière, y compris ce qui suit le ?. Les adresses peuvent faire sortir des informations de votre conversation.",
+    "wantsLabel": "Il souhaite",
+    "wants": {
+      "browser_open": "ouvrir cette page",
+      "browser_read_text": "lire cette page",
+      "browser_snapshot": "examiner les commandes de cette page",
+      "browser_screenshot": "prendre une capture de cette page",
+      "browser_scroll": "faire défiler cette page",
+      "browser_click": "cliquer sur cette page",
+      "browser_type": "saisir du texte sur cette page",
+      "browser_press": "appuyer sur une touche sur cette page",
+      "browser_select": "choisir une option sur cette page"
+    },
+    "origin": "Demandé par {{origin}}",
+    "scopeLabel": "Pendant combien de temps",
+    "once": "Cette visite uniquement",
+    "onceHint": "Prend fin quand l'assistant passe à un autre site, ou après 15 minutes.",
+    "session": "Jusqu'à la fermeture de Flint",
+    "always": "Toujours",
+    "alwaysHint": "Enregistré. Vous pouvez le retirer dans Paramètres > Outils de l'agent.",
+    "subdomains": "Autoriser aussi les sous-domaines de {{base}}",
+    "allow": "Autoriser",
+    "deny": "Pas maintenant",
+    "never": "Ne jamais autoriser ce site",
+    "more": "{{count}} autres en attente",
+    "warning": "L'assistant peut lire tout ce qui se trouve sur la page, et le texte d'une page peut tenter de l'induire en erreur."
+  },
+  "settings": {
+    "title": "Navigateur",
+    "enabled": "Autoriser l'assistant à utiliser le volet navigateur",
+    "enabledDesc": "Ajoute des outils pour ouvrir des pages, les lire et, avec votre accord, cliquer et saisir du texte dans le volet navigateur intégré. Vous voyez le même volet. Chaque site demande une autorisation la première fois ; les adresses locales et de réseau privé ne sont jamais ouvertes.",
+    "maxActions": "Actions par exécution",
+    "maxActionsDesc": "Clics, frappes et sélections qu'une exécution peut effectuer avant de devoir s'arrêter.",
+    "rulesTitle": "Règles de sites enregistrées",
+    "rulesDesc": "Sites que vous avez toujours autorisés, ou bloqués. Une règle pour example.com ne couvre que ce site ; *.example.com couvre ses sous-domaines.",
+    "empty": "Aucune règle enregistrée. Un site apparaît ici lorsque vous choisissez Toujours autoriser ou Ne jamais autoriser.",
+    "allow": "Autorisé",
+    "deny": "Bloqué",
+    "privateOk": "Adresse locale",
+    "remove": "Retirer",
+    "removed": "Règle retirée",
+    "removeFailed": "Impossible de retirer la règle : {{error}}",
+    "addPlaceholder": "example.com ou *.example.com",
+    "addLabel": "Site",
+    "addVerdict": "Règle",
+    "addPrivate": "Autoriser une adresse locale ou de réseau privé (pour un serveur de développement)",
+    "add": "Ajouter la règle",
+    "added": "Règle enregistrée",
+    "addFailed": "Impossible d'enregistrer la règle : {{error}}",
+    "pointer": "Afficher le pointeur",
+    "pointerDesc": "Dessine un curseur dans le volet navigateur qui glisse vers l'élément sur lequel l'assistant clique ou saisit du texte, et défile avec lui. Désactivé : rien n'est dessiné et rien n'est retardé.",
+    "reduceMotion": "Réduire les animations",
+    "reduceMotionDesc": "Pas de glissement ni de pulsation lumineuse : le pointeur saute directement à sa cible.",
+    "reduceSystem": "Suivre le système",
+    "reduceOn": "Toujours réduire",
+    "reduceOff": "Ne jamais réduire",
+    "grantsTitle": "Approuvés pour l'instant",
+    "grantsNone": "Rien n'est approuvé sans être enregistré. Chaque site absent des règles enregistrées demande une autorisation.",
+    "grantsDesc": "Sites que vous avez autorisés pour cette session ou cette visite. Ils ne sont pas enregistrés et prennent fin à la fermeture de Flint.",
+    "grantScope": {
+      "session": "cette session",
+      "once": "cette visite"
+    },
+    "grantAge": "il y a {{minutes}} min",
+    "forgetGrants": "Oublier les approbations de cette session"
+  },
+  "card": {
+    "screenshot": "Capture du volet navigateur"
+  },
+  "pane": {
+    "driving": "L'assistant utilise ce navigateur",
+    "takeOver": "Reprendre la main",
+    "paused": "Assistant en pause",
+    "handBack": "Rendre la main",
+    "blocked": "Une page a été bloquée : {{reason}}"
+  }
+}

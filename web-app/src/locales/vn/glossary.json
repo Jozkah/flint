@@ -1,0 +1,23 @@
+{
+  "explain": "\"{{term}}\" nghĩa là gì?",
+  "worktree": {
+    "term": "Worktree (cây làm việc)",
+    "definition": "Một bản sao làm việc riêng của dự án. Flint có thể thay đổi ở đó mà không động đến bản bạn đang làm việc, và bạn quyết định giữ lại phần nào."
+  },
+  "context": {
+    "term": "Ngữ cảnh",
+    "definition": "Thông tin được đưa vào cuộc trò chuyện mà mô hình đọc trước khi trả lời: tin nhắn của bạn, tệp đính kèm, hướng dẫn và mọi thứ Flint thêm vào."
+  },
+  "mcpServer": {
+    "term": "Máy chủ MCP",
+    "definition": "Một kết nối giúp Flint có thêm công cụ, chẳng hạn đọc cơ sở dữ liệu hoặc gọi một dịch vụ. Một số chạy trên máy tính này; một số liên lạc với dịch vụ bên ngoài."
+  },
+  "checkpoint": {
+    "term": "Điểm kiểm tra",
+    "definition": "Một điểm đã lưu có thể khôi phục trạng thái được hỗ trợ, chẳng hạn các tệp dự án mà Flint đã thay đổi. Nó không thể hoàn tác các tin nhắn đã gửi hay bất cứ điều gì xảy ra bên ngoài máy tính này."
+  },
+  "agent": {
+    "term": "Tác tử",
+    "definition": "Một trợ lý làm việc trên một nhiệm vụ: có thể lập kế hoạch, dùng công cụ và thực hiện nhiều bước, xin phép khi cần."
+  }
+}

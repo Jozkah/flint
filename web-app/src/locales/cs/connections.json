@@ -1,5 +1,23 @@
 {
   "skills": {
+    "whatIs": "Dovednost je sada psaných pokynů, případně se skripty nebo soubory vedle nich, které agent může číst a řídit se jimi.",
+    "whereApplies": "Zde uvedené dovednosti patří do této složky projektu (.jan/agent/skills). Vypnutí dovednosti ji skryje před agentem a z příkazů / pouze v tomto projektu.",
+    "toolAccess": "Povolení dovednosti nepřidává žádný nový přístup k nástrojům. Agent čte dovednosti pomocí vestavěných nástrojů pro dovednosti (výpis, čtení, zápis), které jsou vždy povoleny bez dotazu. Skript, který dovednost obsahuje, se spustí jen tehdy, když agent zavolá příkazový nástroj, který se řídí vlastními pravidly oprávnění.",
+    "stateHelp": "Nainstalováno: dovednost existuje v tomto projektu. Povoleno: agentovi se nabízí pro práci v tomto projektu.",
+    "summary": "Povoleno {{enabled}} z {{installed}} nainstalovaných dovedností",
+    "state": {
+      "enabled": "Povoleno",
+      "disabled": "Vypnuto",
+      "enable": "Povolit",
+      "disable": "Zakázat"
+    },
+    "view": "Zobrazit",
+    "edit": "Upravit",
+    "importFailed": "Import {{name}} se nepodařil: {{error}}",
+    "loadHubFailed": "Centrum dovedností se nepodařilo načíst: {{error}}",
+    "deleteSkill": "Smazat dovednost {{name}}",
+    "fromPlugin": "Z pluginu {{plugin}}",
+    "pluginReadOnly": "Tato dovednost pochází z pluginu {{plugin}} a je zde jen pro čtení. Chcete-li ji změnit, upravte zdroj pluginu a nainstalujte jej znovu, nebo plugin vypněte v části Pluginy.",
     "alwaysOn": "Vždy zapnuto",
     "alwaysActive": "Vždy aktivní",
     "alwaysActiveHelp": "Řiď se touto dovedností v každé konverzaci, i když o to nikdo nežádá."

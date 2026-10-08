@@ -1,0 +1,6 @@
+{
+  "groupGeneral": "Général",
+  "groupModelsAndTools": "Modèles et outils",
+  "advancedSettings": "Avancé",
+  "advancedSettingsHint": "Serveur d'API local, proxy, matériel et configuration des outils de l'agent. Les regrouper ne change rien à leur fonctionnement."
+}

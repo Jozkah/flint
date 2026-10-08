@@ -1,0 +1,23 @@
+{
+  "explain": "\"{{term}}\" ne demek?",
+  "worktree": {
+    "term": "Worktree (çalışma ağacı)",
+    "definition": "Projenizin ayrı bir çalışma kopyası. Flint, üzerinde çalıştığınız kopyaya dokunmadan burada değişiklik yapabilir; neyin saklanacağına siz karar verirsiniz."
+  },
+  "context": {
+    "term": "Bağlam",
+    "definition": "Modelin cevap vermeden önce okuduğu, konuşmaya dahil edilen bilgiler: mesajlarınız, eklenen dosyalar, talimatlar ve Flint'in eklediği her şey."
+  },
+  "mcpServer": {
+    "term": "MCP sunucusu",
+    "definition": "Flint'e veritabanı okumak veya bir hizmeti çağırmak gibi ek araçlar sağlayan bir bağlantı. Bazıları bu bilgisayarda çalışır; bazıları harici hizmetlere bağlanır."
+  },
+  "checkpoint": {
+    "term": "Kontrol noktası",
+    "definition": "Flint'in değiştirdiği proje dosyaları gibi desteklenen durumu geri yükleyebilen kayıtlı bir nokta. Zaten gönderilmiş mesajları veya bu bilgisayarın dışında olan hiçbir şeyi geri alamaz."
+  },
+  "agent": {
+    "term": "Ajan",
+    "definition": "Bir görev üzerinde çalışan asistan: plan yapabilir, araçları kullanabilir ve gerektiğinde izin isteyerek birkaç adım atabilir."
+  }
+}

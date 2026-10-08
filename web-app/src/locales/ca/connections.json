@@ -1,5 +1,23 @@
 {
   "skills": {
+    "whatIs": "Una habilitat és un conjunt d'instruccions escrites, opcionalment amb scripts o fitxers al costat, que l'agent pot llegir i seguir.",
+    "whereApplies": "Les habilitats que es llisten aquí pertanyen a aquesta carpeta de projecte (.jan/agent/skills). Desactivar una habilitat l'amaga de l'agent i de les ordres / només en aquest projecte.",
+    "toolAccess": "Activar una habilitat no dona accés a cap eina nova. L'agent llegeix les habilitats mitjançant les eines d'habilitats integrades (llistar, llegir, escriure), que sempre estan permeses sense preguntar. Un script que inclogui una habilitat només s'executa si l'agent crida l'eina d'ordres, que segueix les seves pròpies regles de permisos.",
+    "stateHelp": "Instal·lada: l'habilitat existeix en aquest projecte. Activada: s'ofereix a l'agent per al treball en aquest projecte.",
+    "summary": "{{enabled}} de {{installed}} habilitats instal·lades activades",
+    "state": {
+      "enabled": "Activada",
+      "disabled": "Desactivada",
+      "enable": "Activa",
+      "disable": "Desactiva"
+    },
+    "view": "Mostra",
+    "edit": "Edita",
+    "importFailed": "No s'ha pogut importar {{name}}: {{error}}",
+    "loadHubFailed": "No s'ha pogut carregar el centre d'habilitats: {{error}}",
+    "deleteSkill": "Suprimeix l'habilitat {{name}}",
+    "fromPlugin": "Del connector {{plugin}}",
+    "pluginReadOnly": "Aquesta habilitat ve del connector {{plugin}} i aquí és de només lectura. Per canviar-la, edita el codi font del connector i reinstal·la'l, o desactiva el connector a Connectors.",
     "alwaysOn": "Sempre activa",
     "alwaysActive": "Sempre activa",
     "alwaysActiveHelp": "Segueix aquesta habilitat a totes les converses, sense que ho demanin."

@@ -1,0 +1,64 @@
+{
+  "intentHeading": "Què t'agradaria fer primer?",
+  "intentHint": "Això només decideix on et porta la guia. Tota la resta de Flint continua disponible.",
+  "intent": {
+    "question": {
+      "title": "Fer una pregunta",
+      "description": "Xateja amb un model sobre qualsevol tema."
+    },
+    "documents": {
+      "title": "Treballar amb documents",
+      "description": "Adjunta fitxers i pregunta sobre ells."
+    },
+    "project": {
+      "title": "Crear o canviar un projecte",
+      "description": "Deixa que Flint treballi en una carpeta d'aquest ordinador, preguntant abans de canviar res."
+    }
+  },
+  "skipGuide": "Omet la guia",
+  "resumeNotice": "Et donem la benvinguda de nou. Pots continuar per on ho havies deixat.",
+  "processingHeading": "On es processen les teves converses",
+  "processingLocal": "Un model local s'executa en aquest ordinador. Els teus missatges i fitxers hi romanen, i no cal cap compte ni clau d'API.",
+  "processingRemote": "Un proveïdor remot (per exemple OpenAI) executa el model als seus servidors. Els teus missatges i els fitxers que incloguis s'hi envien, i el proveïdor et pot cobrar. Ho configures tu mateix a la Configuració; Flint mai canvia a un per compte propi.",
+  "connectRemote": "Connecta un proveïdor remot",
+  "guideTitle": {
+    "question": "Primers passos: fer una pregunta",
+    "documents": "Primers passos: treballar amb documents",
+    "project": "Primers passos: crear o canviar un projecte"
+  },
+  "guideRegion": "Guia de primers passos",
+  "stepDone": "Fet",
+  "stepTodo": "Pendent",
+  "step": {
+    "choose-model": {
+      "title": "Tria o connecta un model",
+      "body": "Tria un model amb el selector de dalt. Els models locals s'executen en aquest ordinador; els proveïdors remots necessiten el seu propi compte."
+    },
+    "add-material": {
+      "documents": "Adjunta un document amb el botó del clip al quadre de missatge.",
+      "project": "Obre Cowork i tria la carpeta del teu projecte. Flint pregunta abans d'editar fitxers o executar ordres."
+    },
+    "first-task": {
+      "title": "Envia el teu primer missatge",
+      "body": "Pregunta alguna cosa o descriu el canvi que vols. Aquest pas es completa quan s'inicia una conversa."
+    },
+    "review-context": {
+      "title": "Comprova què ha usat Flint",
+      "body": "Quan Flint respongui, obre \"Què usa Flint\" a la conversa per veure quins adjunts i instruccions tenia disponibles."
+    },
+    "addMaterialTitle": {
+      "documents": "Afegeix un document",
+      "project": "Tria una carpeta de projecte"
+    }
+  },
+  "confirmStep": "Ja ho he fet",
+  "openProviders": "Configuració del model",
+  "openCowork": "Obre Cowork",
+  "hideGuide": "Amaga la guia",
+  "guideComplete": "Ja ho tens tot a punt. Pots tornar a obrir aquesta guia quan vulguis des de Configuració > General.",
+  "finish": "Finalitza la guia",
+  "reopenGuide": "Guia de primers passos",
+  "reopenGuideDescription": "Torna a fer el recorregut per triar un model, afegir material i completar una primera tasca.",
+  "reopenGuideAction": "Obre la guia",
+  "resumeRecent": "Continua la teva última conversa: {{title}}"
+}

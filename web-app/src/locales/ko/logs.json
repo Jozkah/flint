@@ -1,3 +1,19 @@
 {
-  "noLogs": "사용 가능한 로그 없음"
+  "noLogs": "사용 가능한 로그 없음",
+  "noMatch": "필터와 일치하는 줄이 없습니다",
+  "title": "로그",
+  "serverTitle": "로컬 API 서버 로그",
+  "copy": "로그 복사",
+  "openFolder": "폴더 열기",
+  "copied": "복사됨",
+  "search": "로그 검색",
+  "filterLabel": "수준별 필터",
+  "levelAll": "전체",
+  "levelError": "오류",
+  "levelWarn": "경고",
+  "levelInfo": "정보",
+  "levelDebug": "디버그",
+  "shown": "{{total}}줄 중 {{shown}}줄",
+  "description": "오늘 Flint와 엔진이 기록한 모든 내용입니다. 최신순입니다.",
+  "serverDescription": "OpenAI 호환 로컬 API 서버로 들어온 요청입니다. 최신순입니다."
 }

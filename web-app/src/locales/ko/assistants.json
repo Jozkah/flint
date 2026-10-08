@@ -36,5 +36,6 @@
   "isDefault": "기본값",
   "defaultAssistantSection": "기본 어시스턴트",
   "defaultAssistantDesc": "새 채팅을 시작할 때 사용됩니다",
-  "allAssistants": "모든 어시스턴트"
+  "allAssistants": "모든 어시스턴트",
+  "lastUsed": "마지막 사용"
 }

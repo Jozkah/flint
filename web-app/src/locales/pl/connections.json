@@ -1,5 +1,23 @@
 {
   "skills": {
+    "whatIs": "Umiejętność to zestaw pisemnych instrukcji, opcjonalnie ze skryptami lub plikami obok, które agent może przeczytać i wykonać.",
+    "whereApplies": "Wymienione tutaj umiejętności należą do folderu tego projektu (.jan/agent/skills). Wyłączenie umiejętności ukrywa ją przed agentem i przed poleceniami / tylko w tym projekcie.",
+    "toolAccess": "Włączenie umiejętności nie nadaje nowego dostępu do narzędzi. Agent czyta umiejętności przez wbudowane narzędzia umiejętności (list, read, write), które są zawsze dozwolone bez pytania. Skrypt dołączony do umiejętności uruchamia się tylko wtedy, gdy agent wywoła narzędzie poleceń, które podlega własnym regułom uprawnień.",
+    "stateHelp": "Zainstalowana: umiejętność istnieje w tym projekcie. Włączona: agent otrzymuje ją do pracy w tym projekcie.",
+    "summary": "Włączone umiejętności: {{enabled}} z {{installed}} zainstalowanych",
+    "state": {
+      "enabled": "Włączona",
+      "disabled": "Wyłączona",
+      "enable": "Włącz",
+      "disable": "Wyłącz"
+    },
+    "view": "Wyświetl",
+    "edit": "Edytuj",
+    "importFailed": "Nie udało się zaimportować {{name}}: {{error}}",
+    "loadHubFailed": "Nie udało się wczytać huba umiejętności: {{error}}",
+    "deleteSkill": "Usuń umiejętność {{name}}",
+    "fromPlugin": "Z wtyczki {{plugin}}",
+    "pluginReadOnly": "Ta umiejętność pochodzi z wtyczki {{plugin}} i jest tutaj tylko do odczytu. Aby ją zmienić, edytuj źródło wtyczki i zainstaluj ją ponownie lub wyłącz wtyczkę w Wtyczkach.",
     "alwaysOn": "Zawsze włączona",
     "alwaysActive": "Zawsze aktywna",
     "alwaysActiveHelp": "Stosuj tę umiejętność w każdej rozmowie, bez proszenia."

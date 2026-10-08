@@ -1,6 +1,60 @@
 {
-  "col": {
-    "speed": "Ort. hız"
+  "title": "Genel bakış",
+  "morning": "Günaydın",
+  "afternoon": "İyi günler",
+  "evening": "İyi akşamlar",
+  "subWeek": "Modellerinizin bu hafta yaptıkları burada.",
+  "subMonth": "Modellerinizin son 30 günde yaptıkları burada.",
+  "lastWeek": "Geçen hafta",
+  "last30": "Son 30 gün",
+  "vsLastWeek": "geçen haftaya göre",
+  "vsLastMonth": "önceki 30 güne göre",
+  "options": "Pano seçenekleri",
+  "resetStats": "İstatistikleri sıfırla",
+  "tokens": "Üretilen token",
+  "cost": "Tahmini maliyet",
+  "speed": "Ort. üretim hızı",
+  "toolSuccess": "Araç çağrısı başarısı",
+  "throughput": "Token verimi",
+  "throughputAria": "Günlük üretilen token. Günleri incelemek için sol ve sağ ok tuşlarını kullanın.",
+  "activity": "Son etkinlik",
+  "activityRange": "Etkinlik aralığı",
+  "today": "Bugün",
+  "yesterday": "Dün",
+  "thisWeek": "Bu hafta",
+  "searchActivity": "Etkinlikte ara",
+  "newActivities": {
+    "today_one": "bugün yeni etkinlik",
+    "today_other": "bugün yeni etkinlik",
+    "yesterday_one": "dün etkinlik",
+    "yesterday_other": "dün etkinlik",
+    "week_one": "bu hafta etkinlik",
+    "week_other": "bu hafta etkinlik"
   },
-  "tokensPerSecond": "{{value}} t/s"
+  "noActivity": "Henüz bir şey yok",
+  "noActivityHint": "Onaylar, araç hataları ve sıkıştırmalar gerçekleştikçe burada görünür.",
+  "runs": "Ajan çalıştırmaları",
+  "searchRuns": "Çalıştırma",
+  "filter": "Filtre",
+  "filterAll": "Tüm çalıştırmalar",
+  "openRun": "Çalıştırmayı aç",
+  "noRuns": "Henüz Cowork çalıştırması yok",
+  "noRunsHint": "Cowork'e daha büyük bir görev verin, çalıştırmaları burada görünür.",
+  "openCowork": "Cowork'ü aç",
+  "col": {
+    "run": "Çalıştırma kimliği",
+    "task": "Görev",
+    "model": "Model",
+    "status": "Durum",
+    "started": "Başlangıç",
+    "speed": "Ort. hız",
+    "tokens": "Token"
+  },
+  "tokensPerSecond": "{{value}} t/s",
+  "status": {
+    "running": "Çalışıyor",
+    "approval": "Onay gerekiyor",
+    "done": "Bitti",
+    "idle": "Başlamadı"
+  }
 }

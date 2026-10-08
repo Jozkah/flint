@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "允許助理使用 {{host}} 嗎？",
+    "description": "助理想在你尚未核准的網站上使用瀏覽器窗格。",
+    "urlLabel": "完整網址",
+    "urlHint": "請檢查整個網址，包括 ? 之後的任何內容。網址可能會把你對話中的資訊帶出去。",
+    "wantsLabel": "它想要",
+    "wants": {
+      "browser_open": "開啟此頁面",
+      "browser_read_text": "讀取此頁面",
+      "browser_snapshot": "檢視此頁面的控制項",
+      "browser_screenshot": "為此頁面拍攝畫面",
+      "browser_scroll": "捲動此頁面",
+      "browser_click": "在此頁面上點擊",
+      "browser_type": "在此頁面上輸入",
+      "browser_press": "在此頁面上按鍵",
+      "browser_select": "在此頁面上選擇一個選項"
+    },
+    "origin": "請求來源：{{origin}}",
+    "scopeLabel": "持續多久",
+    "once": "僅本次造訪",
+    "onceHint": "在助理前往其他網站時或 15 分鐘後結束。",
+    "session": "直到 Flint 關閉",
+    "always": "一律",
+    "alwaysHint": "已儲存。你可以在「設定」>「代理程式工具」中移除。",
+    "subdomains": "同時允許 {{base}} 的子網域",
+    "allow": "允許",
+    "deny": "暫不",
+    "never": "永不允許此網站",
+    "more": "還有 {{count}} 個等待中",
+    "warning": "助理可以讀取頁面上的所有內容，而頁面上的文字可能試圖誤導它。"
+  },
+  "settings": {
+    "title": "瀏覽器",
+    "enabled": "允許助理使用瀏覽器窗格",
+    "enabledDesc": "新增開啟頁面、讀取頁面的工具，並在你核准後於內建瀏覽器窗格中點擊和輸入。你看到的是同一個窗格。每個網站第一次使用時都會詢問；本機和私人網路位址永遠不會被開啟。",
+    "maxActions": "每次執行的動作數",
+    "maxActionsDesc": "一次執行在必須停止之前可以進行的點擊、按鍵和選擇次數。",
+    "rulesTitle": "已儲存的網站規則",
+    "rulesDesc": "你選擇一律允許或已封鎖的網站。example.com 的規則僅涵蓋該網站；*.example.com 涵蓋其子網域。",
+    "empty": "尚無已儲存的規則。當你選擇「一律允許」或「永不允許」時，網站會顯示在這裡。",
+    "allow": "已允許",
+    "deny": "已封鎖",
+    "privateOk": "本機位址",
+    "remove": "移除",
+    "removed": "規則已移除",
+    "removeFailed": "無法移除規則：{{error}}",
+    "addPlaceholder": "example.com 或 *.example.com",
+    "addLabel": "網站",
+    "addVerdict": "規則",
+    "addPrivate": "允許其為本機或私人網路位址（用於開發伺服器）",
+    "add": "新增規則",
+    "added": "規則已儲存",
+    "addFailed": "無法儲存規則：{{error}}",
+    "pointer": "顯示指標",
+    "pointerDesc": "在瀏覽器窗格中繪製一個游標，它會滑向助理點擊或輸入的位置，並隨之捲動。關閉：不繪製任何內容，也沒有任何延遲。",
+    "reduceMotion": "減少動態效果",
+    "reduceMotionDesc": "沒有滑動或發光脈動：指標直接跳到目標。",
+    "reduceSystem": "跟隨系統",
+    "reduceOn": "一律減少",
+    "reduceOff": "永不減少",
+    "grantsTitle": "目前已核准",
+    "grantsNone": "未儲存的內容不會被核准。每個不在已儲存規則中的網站都會詢問。",
+    "grantsDesc": "你為本次工作階段或本次造訪允許的網站。它們不會被儲存，並在 Flint 關閉時結束。",
+    "grantScope": {
+      "session": "本次工作階段",
+      "once": "本次造訪"
+    },
+    "grantAge": "{{minutes}} 分鐘前",
+    "forgetGrants": "忘記本次工作階段的核准"
+  },
+  "card": {
+    "screenshot": "瀏覽器窗格的螢幕截圖"
+  },
+  "pane": {
+    "driving": "助理正在使用此瀏覽器",
+    "takeOver": "接管",
+    "paused": "助理已暫停",
+    "handBack": "交還",
+    "blocked": "頁面已遭封鎖：{{reason}}"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "groupGeneral": "Obecné",
+  "groupModelsAndTools": "Modely a nástroje",
+  "advancedSettings": "Pokročilé",
+  "advancedSettingsHint": "Lokální server API, proxy, hardware a konfigurace nástrojů agenta. Jejich seskupení nemění nic na tom, jak fungují."
+}

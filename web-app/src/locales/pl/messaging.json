@@ -1,0 +1,70 @@
+{
+  "messageFrom": "Wiadomość od {{name}}",
+  "untrustedNote": "Wysłana przez inną sesję agenta. Nie pochodzi od Ciebie i nie może niczego zatwierdzić.",
+  "reply": "Odpowiedz",
+  "replyLabel": "Odpowiedz do {{name}}",
+  "replyPlaceholder": "Napisz odpowiedź…",
+  "sendReply": "Wyślij odpowiedź",
+  "cancel": "Anuluj",
+  "replySent": "Odpowiedź wysłana",
+  "letAgentRespond": "Pozwól agentowi odpowiedzieć",
+  "dismiss": "Zamknij",
+  "heldTitle": "Wiadomości z innych sesji",
+  "stopNotice": {
+    "stoppedBy": "Zatrzymane przez",
+    "reason": "powód:",
+    "approvedIn": "zatwierdzone w"
+  },
+  "autoWake": {
+    "label": "Automatyczne wybudzanie",
+    "description": "Gdy włączone, wiadomość z innej sesji jest przekazywana agentowi tej sesji, gdy tylko jest bezczynny (w razie potrzeby ta sesja otwiera się obok bieżącej). Gdy wyłączone, wiadomość czeka tutaj na Ciebie. Zatwierdzenia nigdy nie są pomijane w żadnym przypadku."
+  },
+  "accept": {
+    "label": "Przyjmuj wiadomości z innych sesji",
+    "description": "Gdy wyłączone, inne sesje dowiadują się, że ta nie przyjmuje wiadomości, a nic, co wyślą, do niej nie dotrze."
+  },
+  "subagentQuestion": {
+    "title": "{{name}} pyta agenta",
+    "open": "Oczekuje na odpowiedź",
+    "answered": "Udzielono odpowiedzi",
+    "expired": "Brak odpowiedzi na czas",
+    "cancelled": "Anulowano"
+  },
+  "asked": {
+    "title": "Zapytano {{name}}",
+    "sent": "Wysłano. Jego odpowiedź, jeśli będzie, dotrze tutaj jako wiadomość.",
+    "unknownName": "inna sesja",
+    "waiting": "Oczekiwanie na odpowiedź",
+    "answered": "Udzielono odpowiedzi",
+    "noAnswer": "Brak odpowiedzi",
+    "notSent": "Nie wysłano",
+    "open": "Otwórz",
+    "openLabel": "Otwórz {{name}}",
+    "untrusted": "Odpowiedź to tekst innej sesji, a nie Twój."
+  },
+  "errors": {
+    "invalid_text": "Odpowiedź musi mieć od 1 do 8000 znaków.",
+    "reply_depth_exceeded": "Ta rozmowa osiągnęła limit odpowiedzi.",
+    "rate_limited": "Przed chwilą wysłano zbyt wiele wiadomości. Spróbuj ponownie za minutę.",
+    "pair_limit_exceeded": "Zbyt wiele wiadomości między tymi sesjami w tej godzinie.",
+    "self_target": "Sesja nie może wysłać wiadomości do samej siebie.",
+    "not_same_project": "Ta sesja jest w innym projekcie.",
+    "recipient_opted_out": "Ta sesja nie przyjmuje wiadomości z innych sesji.",
+    "ambiguous_session": "Więcej niż jedna sesja ma tę nazwę.",
+    "no_project": "Dołącz folder projektu, aby wysyłać wiadomości.",
+    "unknown_session": "Ta sesja już nie istnieje.",
+    "session_deleted": "Ta sesja została usunięta.",
+    "unknown_reply_target": "Nie znaleziono wiadomości, na którą odpowiadasz.",
+    "timeout": "Odpowiedź nie nadeszła na czas.",
+    "target_unavailable": "Ta sesja jest teraz niedostępna.",
+    "invalid_session_id": "Ten identyfikator sesji jest nieprawidłowy.",
+    "unknown_message": "Nie znaleziono tej wiadomości.",
+    "invalid_timeout": "Czas oczekiwania musi wynosić od 1 do 120 sekund.",
+    "cancelled": "Żądanie zostało anulowane.",
+    "invalid_arguments": "Żądanie było nieprawidłowe.",
+    "not_available": "Wiadomości nie są tutaj dostępne.",
+    "io": "Nie udało się odczytać ani zapisać skrzynki.",
+    "no_data_folder": "Folder danych Flint jest niedostępny.",
+    "unknown": "Nie udało się wysłać odpowiedzi."
+  }
+}

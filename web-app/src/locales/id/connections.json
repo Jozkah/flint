@@ -1,5 +1,23 @@
 {
   "skills": {
+    "whatIs": "Skill adalah sekumpulan instruksi tertulis, opsional disertai skrip atau file, yang dapat dibaca dan diikuti agen.",
+    "whereApplies": "Skill yang tercantum di sini milik folder proyek ini (.jan/agent/skills). Mematikan skill menyembunyikannya dari agen dan dari perintah / hanya di proyek ini.",
+    "toolAccess": "Mengaktifkan skill tidak memberi akses alat baru. Agen membaca skill lewat alat skill bawaan (list, read, write), yang selalu diizinkan tanpa bertanya. Skrip yang disertakan skill hanya berjalan jika agen memanggil alat perintah, yang mengikuti aturan izinnya sendiri.",
+    "stateHelp": "Terpasang: skill ada di proyek ini. Aktif: agen ditawari skill itu untuk pekerjaan di proyek ini.",
+    "summary": "{{enabled}} dari {{installed}} skill terpasang aktif",
+    "state": {
+      "enabled": "Aktif",
+      "disabled": "Mati",
+      "enable": "Aktifkan",
+      "disable": "Nonaktifkan"
+    },
+    "view": "Lihat",
+    "edit": "Edit",
+    "importFailed": "Tidak dapat mengimpor {{name}}: {{error}}",
+    "loadHubFailed": "Tidak dapat memuat hub skill: {{error}}",
+    "deleteSkill": "Hapus skill {{name}}",
+    "fromPlugin": "Dari plugin {{plugin}}",
+    "pluginReadOnly": "Skill ini berasal dari plugin {{plugin}} dan hanya-baca di sini. Untuk mengubahnya, edit sumber plugin lalu pasang ulang plugin, atau matikan plugin di Plugin.",
     "alwaysOn": "Selalu aktif",
     "alwaysActive": "Selalu aktif",
     "alwaysActiveHelp": "Ikuti skill ini di setiap percakapan tanpa perlu diminta."

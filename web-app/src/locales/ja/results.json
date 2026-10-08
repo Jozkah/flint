@@ -1,7 +1,134 @@
 {
+  "status": {
+    "running": "実行中",
+    "completed": "完了",
+    "failed": "失敗",
+    "cancelled": "キャンセル済み",
+    "partial": "一部完了"
+  },
+  "sections": {
+    "happened": "何が起きたか",
+    "where": "結果の場所",
+    "checked": "確認した内容",
+    "unresolved": "未解決",
+    "next": "次のステップ"
+  },
+  "headline": {
+    "running": "実行はまだ続いています。",
+    "completedWithChanges": "実行が完了し、Flint がファイルを変更しました。",
+    "completedNoChanges": "実行が完了しました。Flint はファイルを変更していません。",
+    "completedChecksFailed": "実行は完了しましたが、Flint が実行したチェックの 1 つが合格しませんでした。",
+    "finishedIncomplete": "実行は完了しましたが、リクエストの一部が実行されませんでした。「未解決」をご覧ください。",
+    "partial": "実行は完了前に停止しました。先にいくつかの作業が行われました。",
+    "failed": "実行は完了前に停止し、何も完了しませんでした。",
+    "cancelled": "何も完了しないうちに、実行が停止されました。"
+  },
+  "plan": {
+    "progress": "{{total}} 件中 {{done}} 件が完了"
+  },
+  "kept": "これらの変更は保持されました。実行を停止しても、すでに行われたことは元に戻りません。",
+  "location": {
+    "sandbox": "このセッションのサンドボックス内で、リポジトリ内ではありません。",
+    "worktree": "Flint が管理する別のワークツリー内で、お使いのチェックアウト内ではありません。",
+    "userCheckout": "接続したフォルダーに直接。",
+    "none": "この実行には作業ツリーが接続されていませんでした。",
+    "noFiles": "Flint はファイルを書き込みませんでした。",
+    "open": "{{path}} を開く"
+  },
+  "checks": {
+    "none": "Flint が実行したテストやチェックはありません。",
+    "kind": {
+      "test": "テスト",
+      "build": "ビルド",
+      "lint": "チェック",
+      "command": "コマンド"
+    },
+    "outcome": {
+      "passed": "合格",
+      "failed": "失敗",
+      "didNotFinish": "未完了",
+      "running": "実行中",
+      "notRun": "未実行",
+      "unknown": "結果不明"
+    },
+    "exit": "終了コード {{code}}",
+    "summary": {
+      "allTestsPassed": "自動テストに合格しました。",
+      "allChecksPassed": "自動チェックに合格しました。テストは実行されていません。",
+      "somePassed": "{{total}} 件のチェックのうち {{passed}} 件に合格しました。",
+      "failedWithCode": "{{command}} は終了コード {{code}} で失敗しました。",
+      "failedNoCode": "{{command}} は、終了コードなしで失敗しました。",
+      "didNotFinish_one": "{{count}} 件のチェックが完了しませんでした。キャンセル、タイムアウト、または中断されました。",
+      "didNotFinish_other": "{{count}} 件のチェックが完了しませんでした。キャンセル、タイムアウト、または中断されました。",
+      "notRun_one": "{{count}} 件のチェックが実行されませんでした。",
+      "notRun_other": "{{count}} 件のチェックが実行されませんでした。",
+      "unknown_one": "{{count}} 件のチェックは終了ステータスが記録されていないため、結果は不明です。",
+      "unknown_other": "{{count}} 件のチェックは終了ステータスが記録されていないため、結果は不明です。",
+      "running_one": "{{count}} 件のチェックがまだ実行中です。",
+      "running_other": "{{count}} 件のチェックがまだ実行中です。",
+      "visualNotChecked": "見た目とエンドツーエンドの動作は確認されていません。"
+    },
+    "otherCommands": "ほかに {{count}} 個のコマンドも実行されました。これらはチェックとしては数えられません。",
+    "completion": {
+      "not-started": "未開始",
+      "running": "実行中",
+      "completed": "最後まで実行",
+      "cancelled": "キャンセル済み",
+      "timed-out": "タイムアウト",
+      "interrupted": "中断"
+    },
+    "limitation": {
+      "exit-status-only": "終了ステータスのみで判定されています。",
+      "compound-command": "複数のコマンドが連結されていました。ステータスは各ステップではなく、連結全体のものです。",
+      "output-truncated": "出力が切り詰められたため、後半の失敗が見えない場合があります。",
+      "background": "バックグラウンドで開始されました。ステータスはジョブのものではない場合があります。",
+      "subset-selected": "テストスイートの一部のみが選択されました。",
+      "no-exit-status": "終了ステータスが記録されていません。"
+    },
+    "claimsTitle": "アシスタントが言及したもので、Flint は検証していません:"
+  },
   "unresolved": {
     "stop": {
+      "error": "実行はエラーで終了しました。",
+      "aborted": "実行は停止されました。",
+      "deadline": "実行は制限時間に達しました。",
+      "timeout": "モデルが時間内に応答しなくなりました。",
+      "loop": "実行は、同じことを繰り返したため停止されました。",
+      "steps": "実行はすべてのステップを使い切りました。",
       "tokens": "実行はトークン上限（コンテキストウィンドウまたはリクエストの割り当て）で停止しました。"
-    }
+    },
+    "refused": "許可されていません: {{tool}} {{target}}",
+    "refusedReadOnly": "このターンは読み取り専用のため実行されませんでした: {{tool}} {{target}}。モードを「変更前に確認」または「自律」に切り替えてから、「続ける」を選んでください。",
+    "cancelled": "キャンセル済み: {{tool}} {{target}}",
+    "failed": "失敗: {{tool}} {{target}}",
+    "interrupted": "未完了: {{tool}} {{target}}",
+    "checkFailed": "合格しませんでした: {{command}}"
+  },
+  "actions": {
+    "openResult": "結果を開く",
+    "reviewChanges": "変更をレビュー",
+    "continue": "続ける",
+    "retry": "もう一度試す",
+    "retryNote": "「もう一度試す」は、直近のリクエストをもう一度送信します。実行がすでに行った変更は元に戻りません。",
+    "restore": "以前の時点に戻る"
+  },
+  "rewind": {
+    "scopeTitle": "この復元で変更されるもの",
+    "scopeTree": "ワークツリー: {{tree}}",
+    "filesHeading": "元に戻されるファイル ({{count}})",
+    "noFiles": "この時点と異なるファイルはありません。",
+    "filesUnknown": "Flint は、どのファイルが変更されるか一覧表示できませんでした。",
+    "safetyNote": "復元の前に、Flint は現在の状態を新しいポイントとして保存するため、この復元は取り消せます。",
+    "boundaries": "ファイルを復元しても、メッセージ、リモートへのプッシュ、公開済みのコンテンツ、インストール済みのパッケージ、このワークツリー外のその他の影響は元に戻りません。すでに実行されたコマンドは取り消されません。",
+    "unrelatedTitle": "これらのファイルは、最新のポイントの後に変更されたもので、Flint が書き込んだものではありません。復元すると上書きされます:",
+    "unrelatedConfirm": "これらの編集が上書きされることを理解しました。保存されたポイントには残ります。",
+    "safetyLabel": "{{time}} の復元前",
+    "safetyFailed": "先に現在の状態を保存できなかったため、何も復元されませんでした: {{reason}}",
+    "restored": "復元しました。その前の状態は「{{label}}」として保存されました。",
+    "previewDiff": "差分をプレビュー",
+    "hideDiff": "差分を非表示",
+    "previewEmpty": "表示できる差分はありません。",
+    "previewLoading": "差分を読み込んでいます…",
+    "previewFailed": "差分を作成できませんでした: {{reason}}"
   }
 }

@@ -1,6 +1,60 @@
 {
-  "col": {
-    "speed": "平均速度"
+  "title": "概要",
+  "morning": "おはようございます",
+  "afternoon": "こんにちは",
+  "evening": "こんばんは",
+  "subWeek": "今週のモデルの動きです。",
+  "subMonth": "過去 30 日間のモデルの動きです。",
+  "lastWeek": "先週",
+  "last30": "過去 30 日間",
+  "vsLastWeek": "先週比",
+  "vsLastMonth": "前の 30 日間比",
+  "options": "ダッシュボードのオプション",
+  "resetStats": "統計をリセット",
+  "tokens": "生成トークン数",
+  "cost": "推定コスト",
+  "speed": "平均生成速度",
+  "toolSuccess": "ツール呼び出しの成功率",
+  "throughput": "トークンスループット",
+  "throughputAria": "1 日あたりの生成トークン数。左右の矢印キーで日ごとに確認できます。",
+  "activity": "最新のアクティビティ",
+  "activityRange": "アクティビティの範囲",
+  "today": "今日",
+  "yesterday": "昨日",
+  "thisWeek": "今週",
+  "searchActivity": "アクティビティを検索",
+  "newActivities": {
+    "today_one": "件の新しいアクティビティ (今日)",
+    "today_other": "件の新しいアクティビティ (今日)",
+    "yesterday_one": "件のアクティビティ (昨日)",
+    "yesterday_other": "件のアクティビティ (昨日)",
+    "week_one": "件のアクティビティ (今週)",
+    "week_other": "件のアクティビティ (今週)"
   },
-  "tokensPerSecond": "{{value}} t/s"
+  "noActivity": "まだ何もありません",
+  "noActivityHint": "承認、ツールの失敗、圧縮は、発生するとここに表示されます。",
+  "runs": "エージェントの実行",
+  "searchRuns": "実行",
+  "filter": "フィルター",
+  "filterAll": "すべての実行",
+  "openRun": "実行を開く",
+  "noRuns": "Cowork の実行はまだありません",
+  "noRunsHint": "より大きなタスクを Cowork に任せると、その実行がここに表示されます。",
+  "openCowork": "Cowork を開く",
+  "col": {
+    "run": "実行 ID",
+    "task": "タスク",
+    "model": "モデル",
+    "status": "ステータス",
+    "started": "開始",
+    "speed": "平均速度",
+    "tokens": "トークン"
+  },
+  "tokensPerSecond": "{{value}} t/s",
+  "status": {
+    "running": "実行中",
+    "approval": "承認が必要",
+    "done": "完了",
+    "idle": "未開始"
+  }
 }

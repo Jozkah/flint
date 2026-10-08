@@ -1,0 +1,70 @@
+{
+  "messageFrom": "Messaggio da {{name}}",
+  "untrustedNote": "Inviato da un'altra sessione agente. Non viene da te e non può approvare nulla.",
+  "reply": "Rispondi",
+  "replyLabel": "Rispondi a {{name}}",
+  "replyPlaceholder": "Scrivi una risposta…",
+  "sendReply": "Invia risposta",
+  "cancel": "Annulla",
+  "replySent": "Risposta inviata",
+  "letAgentRespond": "Lascia rispondere l'agente",
+  "dismiss": "Ignora",
+  "heldTitle": "Messaggi da altre sessioni",
+  "stopNotice": {
+    "stoppedBy": "Fermato da",
+    "reason": "motivo:",
+    "approvedIn": "approvato in"
+  },
+  "autoWake": {
+    "label": "Risvegli automatici",
+    "description": "Se attivo, un messaggio da un'altra sessione viene passato all'agente di questa sessione non appena è inattivo (se serve, questa sessione si apre accanto a quella in cui ti trovi). Se disattivo, attende qui che tu lo veda. Le approvazioni non vengono mai saltate in nessuno dei due casi."
+  },
+  "accept": {
+    "label": "Accetta messaggi da altre sessioni",
+    "description": "Se disattivo, alle altre sessioni viene detto che questa non accetta messaggi, e nulla di ciò che inviano la raggiunge."
+  },
+  "subagentQuestion": {
+    "title": "{{name}} chiede all'agente",
+    "open": "In attesa di una risposta",
+    "answered": "Risposto",
+    "expired": "Nessuna risposta in tempo",
+    "cancelled": "Annullato"
+  },
+  "asked": {
+    "title": "Ha chiesto a {{name}}",
+    "sent": "Inviato. La sua risposta, se c'è, arriva qui come messaggio.",
+    "unknownName": "un'altra sessione",
+    "waiting": "In attesa della risposta",
+    "answered": "Risposto",
+    "noAnswer": "Ancora nessuna risposta",
+    "notSent": "Non inviato",
+    "open": "Apri",
+    "openLabel": "Apri {{name}}",
+    "untrusted": "La risposta è il testo di un'altra sessione, non tuo."
+  },
+  "errors": {
+    "invalid_text": "La risposta deve essere lunga tra 1 e 8000 caratteri.",
+    "reply_depth_exceeded": "Questa conversazione ha raggiunto il suo limite di risposte.",
+    "rate_limited": "Sono stati inviati troppi messaggi proprio ora. Riprova tra un minuto.",
+    "pair_limit_exceeded": "Troppi messaggi tra queste sessioni in quest'ora.",
+    "self_target": "Una sessione non può scrivere a se stessa.",
+    "not_same_project": "Quella sessione è in un progetto diverso.",
+    "recipient_opted_out": "Quella sessione non accetta messaggi da altre sessioni.",
+    "ambiguous_session": "Più di una sessione ha quel nome.",
+    "no_project": "Allega una cartella di progetto per inviare messaggi.",
+    "unknown_session": "Quella sessione non esiste più.",
+    "session_deleted": "Quella sessione è stata eliminata.",
+    "unknown_reply_target": "Il messaggio a cui si risponde non è stato trovato.",
+    "timeout": "Nessuna risposta è arrivata in tempo.",
+    "target_unavailable": "Quella sessione non è disponibile in questo momento.",
+    "invalid_session_id": "L'id di quella sessione non è valido.",
+    "unknown_message": "Quel messaggio non è stato trovato.",
+    "invalid_timeout": "Il tempo di attesa deve essere compreso tra 1 e 120 secondi.",
+    "cancelled": "La richiesta è stata annullata.",
+    "invalid_arguments": "La richiesta non era valida.",
+    "not_available": "I messaggi non sono disponibili qui.",
+    "io": "Non è stato possibile leggere o scrivere la casella dei messaggi.",
+    "no_data_folder": "La cartella dati di Flint non è disponibile.",
+    "unknown": "Non è stato possibile inviare la risposta."
+  }
+}

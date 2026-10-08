@@ -1,7 +1,134 @@
 {
+  "status": {
+    "running": "Läuft",
+    "completed": "Abgeschlossen",
+    "failed": "Fehlgeschlagen",
+    "cancelled": "Abgebrochen",
+    "partial": "Teilweise erledigt"
+  },
+  "sections": {
+    "happened": "Was passiert ist",
+    "where": "Wo das Ergebnis liegt",
+    "checked": "Was geprüft wurde",
+    "unresolved": "Offen",
+    "next": "Nächste Schritte"
+  },
+  "headline": {
+    "running": "Der Lauf ist noch im Gange.",
+    "completedWithChanges": "Der Lauf ist beendet, und Flint hat Dateien geändert.",
+    "completedNoChanges": "Der Lauf ist beendet, ohne dass Flint Dateien geändert hat.",
+    "completedChecksFailed": "Der Lauf ist beendet, aber eine von Flint ausgeführte Prüfung ist nicht bestanden worden.",
+    "finishedIncomplete": "Der Lauf ist beendet, aber ein Teil der Anfrage wurde nicht erledigt. Siehe „Offen“.",
+    "partial": "Der Lauf wurde vor dem Abschluss gestoppt. Zuvor wurde etwas Arbeit erledigt.",
+    "failed": "Der Lauf wurde vor dem Abschluss gestoppt, und nichts wurde fertiggestellt.",
+    "cancelled": "Der Lauf wurde gestoppt, bevor etwas fertiggestellt war."
+  },
+  "plan": {
+    "progress": "{{done}} von {{total}} erledigt"
+  },
+  "kept": "Diese Änderungen wurden behalten. Das Stoppen eines Laufs macht nicht rückgängig, was er bereits getan hat.",
+  "location": {
+    "sandbox": "In der Sandbox dieser Sitzung, nicht in deinem Repository.",
+    "worktree": "In einem separaten Worktree, den Flint verwaltet, nicht in deinem Checkout.",
+    "userCheckout": "Direkt in deinem angehängten Ordner.",
+    "none": "Diesem Lauf war kein Arbeitsverzeichnis angehängt.",
+    "noFiles": "Flint hat keine Dateien geschrieben.",
+    "open": "{{path}} öffnen"
+  },
+  "checks": {
+    "none": "Flint hat keine Tests oder Prüfungen ausgeführt.",
+    "kind": {
+      "test": "Test",
+      "build": "Build",
+      "lint": "Prüfung",
+      "command": "Befehl"
+    },
+    "outcome": {
+      "passed": "Bestanden",
+      "failed": "Fehlgeschlagen",
+      "didNotFinish": "Nicht abgeschlossen",
+      "running": "Läuft",
+      "notRun": "Nicht ausgeführt",
+      "unknown": "Ergebnis unbekannt"
+    },
+    "exit": "Exit {{code}}",
+    "summary": {
+      "allTestsPassed": "Automatisierte Tests bestanden.",
+      "allChecksPassed": "Automatisierte Prüfungen bestanden. Es wurden keine Tests ausgeführt.",
+      "somePassed": "{{passed}} von {{total}} Prüfungen bestanden.",
+      "failedWithCode": "{{command}} ist mit Exit-Code {{code}} fehlgeschlagen.",
+      "failedNoCode": "{{command}} ist ohne Exit-Code fehlgeschlagen.",
+      "didNotFinish_one": "{{count}} Prüfung wurde nicht abgeschlossen: Sie wurde abgebrochen, lief in ein Timeout oder wurde unterbrochen.",
+      "didNotFinish_other": "{{count}} Prüfungen wurden nicht abgeschlossen: Sie wurden abgebrochen, liefen in ein Timeout oder wurden unterbrochen.",
+      "notRun_one": "{{count}} Prüfung wurde nicht ausgeführt.",
+      "notRun_other": "{{count}} Prüfungen wurden nicht ausgeführt.",
+      "unknown_one": "Für {{count}} Prüfung wurde kein Exit-Status erfasst, daher ist ihr Ergebnis unbekannt.",
+      "unknown_other": "Für {{count}} Prüfungen wurde kein Exit-Status erfasst, daher sind ihre Ergebnisse unbekannt.",
+      "running_one": "{{count}} Prüfung läuft noch.",
+      "running_other": "{{count}} Prüfungen laufen noch.",
+      "visualNotChecked": "Visuelles Verhalten und Ende-zu-Ende-Verhalten wurden nicht geprüft."
+    },
+    "otherCommands": "{{count}} weitere(r) Befehl(e) wurde(n) ebenfalls ausgeführt. Sie zählen nicht als Prüfungen.",
+    "completion": {
+      "not-started": "nicht gestartet",
+      "running": "läuft noch",
+      "completed": "vollständig durchgelaufen",
+      "cancelled": "abgebrochen",
+      "timed-out": "Timeout",
+      "interrupted": "unterbrochen"
+    },
+    "limitation": {
+      "exit-status-only": "Nur anhand des Exit-Status beurteilt.",
+      "compound-command": "Mehrere Befehle wurden verkettet; der Status gilt für die gesamte Kette, nicht für jeden Schritt.",
+      "output-truncated": "Die Ausgabe wurde abgeschnitten, daher sind spätere Fehler möglicherweise nicht sichtbar.",
+      "background": "Im Hintergrund gestartet; der Status stammt möglicherweise nicht vom Job.",
+      "subset-selected": "Nur ein Teil der Testsuite wurde ausgewählt.",
+      "no-exit-status": "Es wurde kein Exit-Status erfasst."
+    },
+    "claimsTitle": "Vom Assistenten erwähnt, von Flint nicht verifiziert:"
+  },
   "unresolved": {
     "stop": {
+      "error": "Der Lauf endete mit einem Fehler.",
+      "aborted": "Der Lauf wurde gestoppt.",
+      "deadline": "Der Lauf hat sein Zeitlimit erreicht.",
+      "timeout": "Das Modell hat nicht rechtzeitig geantwortet.",
+      "loop": "Der Lauf wurde gestoppt, weil er sich wiederholte.",
+      "steps": "Der Lauf hat alle seine Schritte verbraucht.",
       "tokens": "Der Lauf wurde an einem Token-Limit gestoppt (dem Kontextfenster oder dem Kontingent der Anfrage)."
-    }
+    },
+    "refused": "Nicht erlaubt: {{tool}} {{target}}",
+    "refusedReadOnly": "Nicht ausgeführt, dieser Durchgang war schreibgeschützt: {{tool}} {{target}}. Wechsle den Modus zu „Vor Änderungen fragen“ oder „Autonom“ und wähle dann „Fortfahren“.",
+    "cancelled": "Abgebrochen: {{tool}} {{target}}",
+    "failed": "Fehlgeschlagen: {{tool}} {{target}}",
+    "interrupted": "Nicht abgeschlossen: {{tool}} {{target}}",
+    "checkFailed": "Nicht bestanden: {{command}}"
+  },
+  "actions": {
+    "openResult": "Ergebnis öffnen",
+    "reviewChanges": "Änderungen prüfen",
+    "continue": "Fortfahren",
+    "retry": "Erneut versuchen",
+    "retryNote": "„Erneut versuchen“ sendet die letzte Anfrage noch einmal. Änderungen, die der Lauf bereits vorgenommen hat, werden dadurch nicht rückgängig gemacht.",
+    "restore": "Zu einem früheren Punkt zurückkehren"
+  },
+  "rewind": {
+    "scopeTitle": "Was diese Wiederherstellung ändert",
+    "scopeTree": "Worktree: {{tree}}",
+    "filesHeading": "Dateien, die zurückgesetzt werden ({{count}})",
+    "noFiles": "Keine Dateien weichen von diesem Punkt ab.",
+    "filesUnknown": "Flint konnte nicht auflisten, welche Dateien sich ändern werden.",
+    "safetyNote": "Vor der Wiederherstellung speichert Flint den aktuellen Zustand als neuen Punkt, sodass sich diese Wiederherstellung rückgängig machen lässt.",
+    "boundaries": "Das Wiederherstellen von Dateien macht Nachrichten, Remote-Pushes, veröffentlichte Inhalte, installierte Pakete oder andere Auswirkungen außerhalb dieses Worktrees nicht rückgängig. Bereits ausgeführte Befehle werden nicht umgekehrt.",
+    "unrelatedTitle": "Diese Dateien wurden nach dem letzten Punkt geändert und nicht von Flint geschrieben. Die Wiederherstellung überschreibt sie:",
+    "unrelatedConfirm": "Ich verstehe, dass diese Änderungen überschrieben werden. Sie bleiben im gespeicherten Punkt erhalten.",
+    "safetyLabel": "Vor der Wiederherstellung {{time}}",
+    "safetyFailed": "Der aktuelle Zustand konnte nicht zuerst gespeichert werden, daher wurde nichts wiederhergestellt: {{reason}}",
+    "restored": "Wiederhergestellt. Der Zustand davor wurde als „{{label}}“ gespeichert.",
+    "previewDiff": "Diff-Vorschau",
+    "hideDiff": "Diff ausblenden",
+    "previewEmpty": "Keine Unterschiede anzuzeigen.",
+    "previewLoading": "Diff wird geladen …",
+    "previewFailed": "Der Diff konnte nicht erstellt werden: {{reason}}"
   }
 }

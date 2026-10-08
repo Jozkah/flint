@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "Permitir que o assistente use {{host}}?",
+    "description": "O assistente quer usar o painel do navegador em um site que você ainda não aprovou.",
+    "urlLabel": "Endereço completo",
+    "urlHint": "Confira o endereço inteiro, incluindo o que vem depois do ?. Endereços podem levar informações da sua conversa para fora.",
+    "wantsLabel": "Ele quer",
+    "wants": {
+      "browser_open": "abrir esta página",
+      "browser_read_text": "ler esta página",
+      "browser_snapshot": "ver os controles desta página",
+      "browser_screenshot": "tirar uma captura desta página",
+      "browser_scroll": "rolar esta página",
+      "browser_click": "clicar nesta página",
+      "browser_type": "digitar nesta página",
+      "browser_press": "pressionar uma tecla nesta página",
+      "browser_select": "escolher uma opção nesta página"
+    },
+    "origin": "Solicitado por {{origin}}",
+    "scopeLabel": "Por quanto tempo",
+    "once": "Somente esta visita",
+    "onceHint": "Termina quando o assistente passa para outro site, ou após 15 minutos.",
+    "session": "Até o Flint fechar",
+    "always": "Sempre",
+    "alwaysHint": "Salvo. Você pode remover em Configurações > Ferramentas do agente.",
+    "subdomains": "Permitir também subdomínios de {{base}}",
+    "allow": "Permitir",
+    "deny": "Agora não",
+    "never": "Nunca permitir este site",
+    "more": "Mais {{count}} aguardando",
+    "warning": "O assistente pode ler tudo na página, e o texto de uma página pode tentar enganá-lo."
+  },
+  "settings": {
+    "title": "Navegador",
+    "enabled": "Permitir que o assistente use o painel do navegador",
+    "enabledDesc": "Adiciona ferramentas para abrir páginas, lê-las e, com sua aprovação, clicar e digitar no painel do navegador integrado. Você vê o mesmo painel. Cada site pergunta na primeira vez; endereços locais e de rede privada nunca são abertos.",
+    "maxActions": "Ações por execução",
+    "maxActionsDesc": "Cliques, teclas e seleções que uma execução pode fazer antes de precisar parar.",
+    "rulesTitle": "Regras de sites salvas",
+    "rulesDesc": "Sites que você permitiu sempre ou bloqueou. Uma regra para example.com cobre apenas esse site; *.example.com cobre seus subdomínios.",
+    "empty": "Nenhuma regra salva ainda. Um site aparece aqui quando você escolhe Sempre permitir ou Nunca permitir.",
+    "allow": "Permitido",
+    "deny": "Bloqueado",
+    "privateOk": "Endereço local",
+    "remove": "Remover",
+    "removed": "Regra removida",
+    "removeFailed": "Não foi possível remover a regra: {{error}}",
+    "addPlaceholder": "example.com ou *.example.com",
+    "addLabel": "Site",
+    "addVerdict": "Regra",
+    "addPrivate": "Permitir que seja um endereço local ou de rede privada (para um servidor de desenvolvimento)",
+    "add": "Adicionar regra",
+    "added": "Regra salva",
+    "addFailed": "Não foi possível salvar a regra: {{error}}",
+    "pointer": "Mostrar o ponteiro",
+    "pointerDesc": "Desenha um cursor no painel do navegador que desliza até o que o assistente clica ou digita, e rola junto. Desativado: nada é desenhado e nada é atrasado.",
+    "reduceMotion": "Reduzir movimento",
+    "reduceMotionDesc": "Sem deslizamento nem pulso de brilho: o ponteiro salta para o alvo.",
+    "reduceSystem": "Seguir o sistema",
+    "reduceOn": "Sempre reduzir",
+    "reduceOff": "Nunca reduzir",
+    "grantsTitle": "Aprovados por enquanto",
+    "grantsNone": "Nada é aprovado sem ser salvo. Todo site fora das regras salvas pergunta.",
+    "grantsDesc": "Sites que você permitiu para esta sessão ou esta visita. Não são salvos e terminam quando o Flint fecha.",
+    "grantScope": {
+      "session": "esta sessão",
+      "once": "esta visita"
+    },
+    "grantAge": "há {{minutes}} min",
+    "forgetGrants": "Esquecer as aprovações desta sessão"
+  },
+  "card": {
+    "screenshot": "Captura do painel do navegador"
+  },
+  "pane": {
+    "driving": "O assistente está usando este navegador",
+    "takeOver": "Assumir o controle",
+    "paused": "Assistente pausado",
+    "handBack": "Devolver",
+    "blocked": "Uma página foi bloqueada: {{reason}}"
+  }
+}

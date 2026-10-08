@@ -1,0 +1,6 @@
+{
+  "groupGeneral": "일반",
+  "groupModelsAndTools": "모델 및 도구",
+  "advancedSettings": "고급",
+  "advancedSettingsHint": "로컬 API 서버, 프록시, 하드웨어, 에이전트 도구 구성입니다. 묶어 두어도 동작 방식은 바뀌지 않습니다."
+}

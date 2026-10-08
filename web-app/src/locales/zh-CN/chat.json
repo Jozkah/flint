@@ -1,28 +1,64 @@
 {
   "welcome": "嗨，你好吗？",
   "description": "今天我能为您做些什么？",
+  "startedAt": "开始于 {{time}}",
+  "home": {
+    "title": "新聊天",
+    "notSaved": "发送之前不会保存任何内容",
+    "sub": "随便问点什么，附加文件，或把更大的任务交给 Cowork。",
+    "suggestionsLabel": "建议",
+    "suggestions": {
+      "explain": "解释这条错误消息",
+      "summarise": "总结我附加的文档",
+      "draft": "根据更改列表起草发布说明",
+      "compare": "比较两种方案并推荐其中一种"
+    }
+  },
+  "temporaryChat": "临时聊天",
+  "temporaryChatDescription": "开始一个临时对话，不会保存到您的聊天历史记录中。",
+  "temporaryChatBanner": "临时聊天 — 不会被保存",
+  "temporaryChatKeep": "保留此聊天",
+  "temporaryChatLeave": {
+    "title": "保留此临时聊天？",
+    "description": "此聊天没有保存在任何地方。保留它以移入你的历史记录，或丢弃它以永久删除。",
+    "keep": "保留",
+    "discard": "丢弃",
+    "kept": "聊天已保存到你的历史记录",
+    "keepFailed": "无法保存此聊天",
+    "discardFailed": "无法丢弃 — 仍在生成。请先停止，然后重试。",
+    "reason": {
+      "generation-not-stopped": "仍在生成。请先停止，然后重试。",
+      "messages-not-persisted": "聊天未能完整保存。没有丢失任何内容 — 请重试。",
+      "thread-not-created": "聊天无法保存。没有丢失任何内容 — 请重试。",
+      "error": "出了点问题。你的聊天仍在这里 — 请重试。"
+    }
+  },
   "status": {
     "empty": "未找到聊天"
   },
   "sendMessage": "发送消息",
   "newConversation": "新对话",
   "clearHistory": "清除历史记录",
-  "temporaryChat": "临时聊天",
-  "temporaryChatDescription": "开始一个临时对话，不会保存到您的聊天历史记录中。",
-  "done": "Done",
   "embeddings": {
     "title": "正在准备您的文档",
     "description": "正在为附加文件建立索引，以便进行搜索和引用。大文档可能需要一些时间。"
   },
   "actions": {
+    "copy": "复制",
     "regenerate": "重新生成回复",
     "continue": "继续生成",
-    "fork": "从此处分叉对话"
+    "delete": "删除",
+    "fork": "从此处分叉对话",
+    "copied": "已复制"
   },
+  "done": "Done",
   "webSources": "{{count}} 个来源",
+  "webSourcesRead": "已读取 {{count}} 个",
+  "webSourcesReadFound": "已读取 {{read}} 个 · 找到 {{found}} 个",
   "reasoning": {
     "label": "推理中...",
     "thinking": "思考中",
+    "usingTool": "{{tool}}...",
     "showFullTimeline": "显示完整时间线",
     "showCurrentStep": "仅显示当前步骤",
     "thoughtForAWhile": "思考了几秒钟",
@@ -63,12 +99,79 @@
     "recentRooms": "房间"
   },
   "transcriptView": {
+    "steps_one": "{{count}} 步",
     "steps_other": "{{count}} 个步骤",
-    "working": "处理中"
+    "working": "处理中",
+    "failed": "失败：",
+    "failedToRun": "运行失败",
+    "summary": {
+      "failed": "{{count}} 个失败",
+      "commands_one": "运行了 {{count}} 条命令",
+      "commands_other": "运行了 {{count}} 条命令",
+      "created_one": "创建了 {{count}} 个文件",
+      "created_other": "创建了 {{count}} 个文件",
+      "edited_one": "编辑了 {{count}} 个文件",
+      "edited_other": "编辑了 {{count}} 个文件",
+      "read_one": "读取了 {{count}} 个文件",
+      "read_other": "读取了 {{count}} 个文件",
+      "searched_one": "搜索了 {{count}} 次",
+      "searched_other": "搜索了 {{count}} 次",
+      "tools_one": "使用了 {{count}} 个工具",
+      "tools_other": "使用了 {{count}} 个工具"
+    }
+  },
+  "widget": {
+    "label": "小组件",
+    "drawing": "正在绘制小组件",
+    "source": "查看源码",
+    "copy": "复制 HTML",
+    "copied": "HTML 已复制。",
+    "copyFailed": "无法复制 HTML。",
+    "save": "另存为 .html 文件",
+    "expand": "以完整尺寸打开",
+    "rerun": "重新运行",
+    "stalled": "小组件已停止响应。",
+    "parked": "小组件在屏幕外时已暂停。",
+    "error": "小组件错误：",
+    "viewSource": "查看源码",
+    "askFix": "请 Flint 修复",
+    "fixPrompt": "小组件“{{title}}”显示错误：{{error}}\n请修复它并再次显示该小组件。",
+    "refused": "未显示小组件：{{reason}}",
+    "refusedUnknown": "调用失败",
+    "tooLarge": "此小组件超过 {{max}} 个字符，未绘制。",
+    "openLink": "要在浏览器中打开 {{url}} 吗？",
+    "cancel": "取消",
+    "busy": "请等待当前回复完成，然后重试。",
+    "noHost": "此视图无法发送消息。"
+  },
+  "browserCard": {
+    "opened": "已在浏览器中打开",
+    "ready": "可以打开",
+    "open": "打开",
+    "more": "更多",
+    "copy": "复制链接",
+    "copied": "链接已复制。",
+    "failed": "无法打开浏览器。"
+  },
+  "regenerateTitle": {
+    "menu": "重新生成标题",
+    "working": "正在为聊天命名...",
+    "done": "聊天已重命名。",
+    "empty": "目前还没有内容可用来为此聊天命名。",
+    "busy": "重命名之前请先暂停或停止房间。",
+    "failed": "无法生成标题。"
   },
   "fork": {
     "chat": "分叉对话",
     "done": "已分叉为新对话。",
     "failed": "无法分叉此对话。"
+  },
+  "version": {
+    "group": "消息版本",
+    "previous": "上一个版本",
+    "next": "下一个版本",
+    "previousAt": "上一个版本（显示第 {{index}} 个，共 {{count}} 个）",
+    "nextAt": "下一个版本（显示第 {{index}} 个，共 {{count}} 个）",
+    "position": "第 {{index}} 个版本，共 {{count}} 个"
   }
 }

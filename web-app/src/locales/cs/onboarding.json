@@ -1,0 +1,64 @@
+{
+  "intentHeading": "Co byste chtěli udělat jako první?",
+  "intentHint": "Tohle jen určuje, kam vás průvodce zavede. Vše ostatní ve Flintu zůstává dostupné.",
+  "intent": {
+    "question": {
+      "title": "Položit otázku",
+      "description": "Chatujte s modelem o čemkoli."
+    },
+    "documents": {
+      "title": "Pracovat s dokumenty",
+      "description": "Přiložte soubory a ptejte se na ně."
+    },
+    "project": {
+      "title": "Vytvořit nebo změnit projekt",
+      "description": "Nechte Flint pracovat ve složce na tomto počítači; než cokoli změní, zeptá se."
+    }
+  },
+  "skipGuide": "Přeskočit průvodce",
+  "resumeNotice": "Vítejte zpět. Můžete pokračovat tam, kde jste skončili.",
+  "processingHeading": "Kde se vaše konverzace zpracovávají",
+  "processingLocal": "Lokální model běží na tomto počítači. Vaše zprávy a soubory zůstávají zde a není potřeba žádný účet ani klíč API.",
+  "processingRemote": "Vzdálený poskytovatel (například OpenAI) provozuje model na svých serverech. Vaše zprávy a všechny soubory, které přiložíte, se tam odesílají a poskytovatel vám může účtovat poplatky. Nastavujete to sami v Nastavení; Flint na něj nikdy nepřepne sám.",
+  "connectRemote": "Raději připojit vzdáleného poskytovatele",
+  "guideTitle": {
+    "question": "Začínáme: položit otázku",
+    "documents": "Začínáme: práce s dokumenty",
+    "project": "Začínáme: vytvořit nebo změnit projekt"
+  },
+  "guideRegion": "Průvodce začátky",
+  "stepDone": "Hotovo",
+  "stepTodo": "K provedení",
+  "step": {
+    "choose-model": {
+      "title": "Vyberte nebo připojte model",
+      "body": "Vyberte model pomocí výběru nahoře. Lokální modely běží na tomto počítači; vzdálení poskytovatelé vyžadují vlastní účet."
+    },
+    "add-material": {
+      "documents": "Přiložte dokument tlačítkem se sponkou v poli zprávy.",
+      "project": "Otevřete Cowork a vyberte složku svého projektu. Flint se zeptá, než upraví soubory nebo spustí příkazy."
+    },
+    "first-task": {
+      "title": "Pošlete první zprávu",
+      "body": "Na něco se zeptejte nebo popište změnu, kterou chcete. Tento krok se dokončí, když začne konverzace."
+    },
+    "review-context": {
+      "title": "Zkontrolujte, co Flint použil",
+      "body": "Poté, co Flint odpoví, otevřete v konverzaci „Co Flint používá“ a zjistěte, které přílohy a pokyny měl k dispozici."
+    },
+    "addMaterialTitle": {
+      "documents": "Přidejte dokument",
+      "project": "Vyberte složku projektu"
+    }
+  },
+  "confirmStep": "Udělal(a) jsem to",
+  "openProviders": "Nastavení modelu",
+  "openCowork": "Otevřít Cowork",
+  "hideGuide": "Skrýt průvodce",
+  "guideComplete": "Máte hotovo. Tohoto průvodce můžete kdykoli znovu otevřít v Nastavení > Obecné.",
+  "finish": "Dokončit průvodce",
+  "reopenGuide": "Průvodce začátky",
+  "reopenGuideDescription": "Znovu projděte výběr modelu, přidání materiálu a dokončení prvního úkolu.",
+  "reopenGuideAction": "Otevřít průvodce",
+  "resumeRecent": "Pokračovat v poslední konverzaci: {{title}}"
+}

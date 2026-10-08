@@ -1,6 +1,63 @@
 {
-  "col": {
-    "speed": "Veloc. média"
+  "title": "Visão geral",
+  "morning": "Bom dia",
+  "afternoon": "Boa tarde",
+  "evening": "Boa noite",
+  "subWeek": "Veja o que seus modelos fizeram esta semana.",
+  "subMonth": "Veja o que seus modelos fizeram nos últimos 30 dias.",
+  "lastWeek": "Semana passada",
+  "last30": "Últimos 30 dias",
+  "vsLastWeek": "vs semana passada",
+  "vsLastMonth": "vs 30 dias anteriores",
+  "options": "Opções do painel",
+  "resetStats": "Redefinir estatísticas",
+  "tokens": "Tokens gerados",
+  "cost": "Custo estimado",
+  "speed": "Velocidade média de geração",
+  "toolSuccess": "Sucesso das chamadas de ferramenta",
+  "throughput": "Vazão de tokens",
+  "throughputAria": "Tokens gerados por dia. Use as teclas de seta para a esquerda e para a direita para inspecionar os dias.",
+  "activity": "Atividade recente",
+  "activityRange": "Período da atividade",
+  "today": "Hoje",
+  "yesterday": "Ontem",
+  "thisWeek": "Esta semana",
+  "searchActivity": "Pesquisar atividade",
+  "newActivities": {
+    "today_one": "nova atividade hoje",
+    "today_other": "novas atividades hoje",
+    "today_many": "de novas atividades hoje",
+    "yesterday_one": "atividade ontem",
+    "yesterday_other": "atividades ontem",
+    "yesterday_many": "de atividades ontem",
+    "week_one": "atividade esta semana",
+    "week_other": "atividades esta semana",
+    "week_many": "de atividades esta semana"
   },
-  "tokensPerSecond": "{{value}} t/s"
+  "noActivity": "Nada ainda",
+  "noActivityHint": "Aprovações, falhas de ferramentas e compactações aparecem aqui conforme acontecem.",
+  "runs": "Execuções do agente",
+  "searchRuns": "Execução",
+  "filter": "Filtro",
+  "filterAll": "Todas as execuções",
+  "openRun": "Abrir execução",
+  "noRuns": "Nenhuma execução do Cowork ainda",
+  "noRunsHint": "Entregue uma tarefa maior ao Cowork e suas execuções aparecem aqui.",
+  "openCowork": "Abrir Cowork",
+  "col": {
+    "run": "ID da execução",
+    "task": "Tarefa",
+    "model": "Modelo",
+    "status": "Status",
+    "started": "Iniciada",
+    "speed": "Veloc. média",
+    "tokens": "Tokens"
+  },
+  "tokensPerSecond": "{{value}} t/s",
+  "status": {
+    "running": "Em execução",
+    "approval": "Precisa de aprovação",
+    "done": "Concluída",
+    "idle": "Não iniciada"
+  }
 }

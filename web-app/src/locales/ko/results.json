@@ -1,7 +1,134 @@
 {
+  "status": {
+    "running": "실행 중",
+    "completed": "완료됨",
+    "failed": "실패",
+    "cancelled": "취소됨",
+    "partial": "일부 완료"
+  },
+  "sections": {
+    "happened": "진행 내용",
+    "where": "결과 위치",
+    "checked": "확인한 내용",
+    "unresolved": "미해결",
+    "next": "다음 단계"
+  },
+  "headline": {
+    "running": "실행이 아직 진행 중입니다.",
+    "completedWithChanges": "실행이 끝났으며 Flint가 파일을 변경했습니다.",
+    "completedNoChanges": "Flint가 파일을 변경하지 않고 실행이 끝났습니다.",
+    "completedChecksFailed": "실행이 끝났지만 Flint가 실행한 검사 하나가 통과하지 못했습니다.",
+    "finishedIncomplete": "실행이 끝났지만 요청의 일부가 수행되지 않았습니다. 미해결을 확인하세요.",
+    "partial": "실행이 끝나기 전에 중지되었습니다. 일부 작업은 먼저 수행되었습니다.",
+    "failed": "실행이 끝나기 전에 중지되었으며 완료된 작업이 없습니다.",
+    "cancelled": "아무것도 완료되기 전에 실행이 중지되었습니다."
+  },
+  "plan": {
+    "progress": "{{total}}개 중 {{done}}개 완료"
+  },
+  "kept": "이 변경 사항은 유지되었습니다. 실행을 중지해도 이미 한 작업은 취소되지 않습니다.",
+  "location": {
+    "sandbox": "저장소가 아니라 이 세션의 샌드박스에 있습니다.",
+    "worktree": "체크아웃이 아니라 Flint가 관리하는 별도 워크트리에 있습니다.",
+    "userCheckout": "연결된 폴더에 직접 있습니다.",
+    "none": "이번 실행에는 연결된 작업 트리가 없습니다.",
+    "noFiles": "Flint가 쓴 파일이 없습니다.",
+    "open": "{{path}} 열기"
+  },
+  "checks": {
+    "none": "Flint가 실행한 테스트나 검사가 없습니다.",
+    "kind": {
+      "test": "테스트",
+      "build": "빌드",
+      "lint": "검사",
+      "command": "명령"
+    },
+    "outcome": {
+      "passed": "통과",
+      "failed": "실패",
+      "didNotFinish": "끝나지 않음",
+      "running": "실행 중",
+      "notRun": "실행 안 됨",
+      "unknown": "결과 알 수 없음"
+    },
+    "exit": "종료 {{code}}",
+    "summary": {
+      "allTestsPassed": "자동화된 테스트를 통과했습니다.",
+      "allChecksPassed": "자동화된 검사를 통과했습니다. 실행된 테스트는 없습니다.",
+      "somePassed": "검사 {{total}}개 중 {{passed}}개 통과.",
+      "failedWithCode": "{{command}}이(가) 종료 코드 {{code}}(으)로 실패했습니다.",
+      "failedNoCode": "{{command}}이(가) 종료 코드 없이 실패했습니다.",
+      "didNotFinish_one": "검사 {{count}}개가 끝나지 않았습니다. 취소되었거나 시간 초과 또는 중단되었습니다.",
+      "didNotFinish_other": "검사 {{count}}개가 끝나지 않았습니다. 취소되었거나 시간 초과 또는 중단되었습니다.",
+      "notRun_one": "검사 {{count}}개가 실행되지 않았습니다.",
+      "notRun_other": "검사 {{count}}개가 실행되지 않았습니다.",
+      "unknown_one": "검사 {{count}}개에 기록된 종료 상태가 없어 결과를 알 수 없습니다.",
+      "unknown_other": "검사 {{count}}개에 기록된 종료 상태가 없어 결과를 알 수 없습니다.",
+      "running_one": "검사 {{count}}개가 아직 실행 중입니다.",
+      "running_other": "검사 {{count}}개가 아직 실행 중입니다.",
+      "visualNotChecked": "시각적 동작과 엔드 투 엔드 동작은 확인되지 않았습니다."
+    },
+    "otherCommands": "다른 명령 {{count}}개도 실행되었습니다. 검사로 집계되지 않습니다.",
+    "completion": {
+      "not-started": "시작 안 됨",
+      "running": "아직 실행 중",
+      "completed": "끝까지 실행됨",
+      "cancelled": "취소됨",
+      "timed-out": "시간 초과",
+      "interrupted": "중단됨"
+    },
+    "limitation": {
+      "exit-status-only": "종료 상태로만 판단했습니다.",
+      "compound-command": "여러 명령이 연결되어 있어 상태는 각 단계가 아니라 전체 연결에 대한 것입니다.",
+      "output-truncated": "출력이 잘려 이후의 실패가 보이지 않을 수 있습니다.",
+      "background": "백그라운드에서 시작되어 상태가 작업의 상태가 아닐 수 있습니다.",
+      "subset-selected": "테스트 모음의 일부만 선택되었습니다.",
+      "no-exit-status": "기록된 종료 상태가 없습니다."
+    },
+    "claimsTitle": "어시스턴트가 언급했으며 Flint가 확인하지 않음:"
+  },
   "unresolved": {
     "stop": {
+      "error": "실행이 오류와 함께 끝났습니다.",
+      "aborted": "실행이 중지되었습니다.",
+      "deadline": "실행이 제한 시간에 도달했습니다.",
+      "timeout": "모델이 제때 응답하지 않았습니다.",
+      "loop": "같은 동작을 반복해 실행이 중지되었습니다.",
+      "steps": "실행이 모든 단계를 사용했습니다.",
       "tokens": "실행이 토큰 한도(컨텍스트 창 또는 요청 할당량)에서 중지되었습니다."
-    }
+    },
+    "refused": "허용되지 않음: {{tool}} {{target}}",
+    "refusedReadOnly": "실행 안 됨, 이번 턴은 읽기 전용: {{tool}} {{target}}. 모드를 변경 전에 확인 또는 자율로 전환한 뒤 계속하세요.",
+    "cancelled": "취소됨: {{tool}} {{target}}",
+    "failed": "실패: {{tool}} {{target}}",
+    "interrupted": "끝나지 않음: {{tool}} {{target}}",
+    "checkFailed": "통과하지 못함: {{command}}"
+  },
+  "actions": {
+    "openResult": "결과 열기",
+    "reviewChanges": "변경 사항 검토",
+    "continue": "계속",
+    "retry": "다시 시도",
+    "retryNote": "다시 시도는 마지막 요청을 다시 보냅니다. 실행이 이미 한 변경은 취소되지 않습니다.",
+    "restore": "이전 시점으로 되돌아가기"
+  },
+  "rewind": {
+    "scopeTitle": "이 복원으로 변경되는 것",
+    "scopeTree": "워크트리: {{tree}}",
+    "filesHeading": "되돌려질 파일({{count}})",
+    "noFiles": "이 시점과 다른 파일이 없습니다.",
+    "filesUnknown": "Flint가 변경될 파일을 나열할 수 없었습니다.",
+    "safetyNote": "복원하기 전에 Flint가 현재 상태를 새 시점으로 저장하므로 이 복원은 취소할 수 있습니다.",
+    "boundaries": "파일을 복원해도 메시지, 원격 푸시, 게시된 콘텐츠, 설치된 패키지, 이 워크트리 밖의 다른 영향은 취소되지 않습니다. 이미 실행된 명령은 되돌려지지 않습니다.",
+    "unrelatedTitle": "이 파일들은 최신 시점 이후 변경되었으며 Flint가 쓴 것이 아닙니다. 복원하면 덮어씁니다:",
+    "unrelatedConfirm": "이 편집이 덮어써진다는 것을 이해합니다. 저장된 시점에는 계속 남아 있습니다.",
+    "safetyLabel": "{{time}} 복원 전",
+    "safetyFailed": "먼저 현재 상태를 저장할 수 없어 복원하지 않았습니다: {{reason}}",
+    "restored": "복원했습니다. 그 이전 상태는 \"{{label}}\"(으)로 저장되었습니다.",
+    "previewDiff": "diff 미리 보기",
+    "hideDiff": "diff 숨기기",
+    "previewEmpty": "표시할 차이가 없습니다.",
+    "previewLoading": "diff 불러오는 중…",
+    "previewFailed": "diff를 만들 수 없습니다: {{reason}}"
   }
 }

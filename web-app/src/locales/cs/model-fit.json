@@ -1,0 +1,116 @@
+{
+  "triggerLabel": "Poběží tento model na tomto zařízení? {{status}}. Zobrazit podrobnosti",
+  "title": "Poběží tento model na tomto zařízení?",
+  "subtitle": "Co zde bylo změřeno a co je jen odhad.",
+  "measuredHeading": "Změřeno na tomto zařízení",
+  "estimateHeading": "Odhad",
+  "evidence": {
+    "ran-successfully": "Na tomto zařízení s těmito nastaveními úspěšně běžel.",
+    "failed-with-settings": "Na tomto zařízení s těmito nastaveními selhal. Jiná nastavení mohou fungovat.",
+    "unsupported": "Tímto runtime nepodporováno: engine llama.cpp v této verzi Flintu nerozpoznává architekturu modelu. Změna nastavení nepomůže; pomoci může aktualizace aplikace.",
+    "stale": "Dříve otestováno, ale od té doby se něco změnilo, takže tento výsledek nemusí platit.",
+    "not-tested": "Na tomto zařízení netestováno."
+  },
+  "verdict": {
+    "fits": "Odhadem se vejde do paměti.",
+    "fits-partial-offload": "Odhadem se vejde, přičemž část modelu poběží na CPU. Bude fungovat, ale odpovídat pomaleji.",
+    "tight": "Může vyžadovat upravená nastavení: zbývalo by velmi málo paměti. Pomůže menší velikost kontextu.",
+    "exceeds": "Odhadem se nevejde. Odhady mohou být nepřesné; můžete to přesto zkusit nebo otestovat.",
+    "unknown": "Na odhad není dost informací."
+  },
+  "memoryModel": {
+    "unified": "Sjednocená paměť: {{ram}} sdílených CPU a GPU. Ve výchozím nastavení může GPU použít asi {{gpu}} z ní.",
+    "discrete-gpu": "Vyhrazená paměť GPU {{vram}} plus {{ram}} systémové paměti. Vrstvy, které se nevejdou na GPU, běží na CPU.",
+    "integrated-gpu": "Integrovaná grafika sdílí {{ram}} systémové paměti, takže se počítá jednou.",
+    "cpu-only": "Pro tento runtime nebylo zjištěno žádné GPU: model běží na CPU s využitím {{ram}} systémové paměti.",
+    "unknown": "Paměť zařízení zatím nebyla zjištěna."
+  },
+  "showReasons": "Zobrazit, jak byl odhad vytvořen",
+  "breakdown": {
+    "weights": "Soubor modelu",
+    "kvCache": "Paměť konverzace pro {{tokens}} tokenů",
+    "mmproj": "Komponenta vidění",
+    "overhead": "Režie runtime",
+    "total": "Odhadovaná potřeba",
+    "budget": "Odhadem k dispozici",
+    "otherLoaded": "Již využito jinými načtenými modely"
+  },
+  "assumption": {
+    "kv-from-metadata": "Paměť konverzace se počítá z architektury samotného modelu a nastavených typů cache.",
+    "kv-heuristic": "Architekturu modelu se nepodařilo přečíst, takže se paměť konverzace odhaduje z velikosti souboru.",
+    "kv-sliding-window-midpoint": "Tento model v některých vrstvách uchovává jen nedávné tokeny; přesné rozdělení není známo, proto se použije střed.",
+    "context-capped-to-trained": "Velikost kontextu je omezena na to, na co byl model trénován.",
+    "unified-gpu-working-set": "macOS ve výchozím nastavení omezuje, kolik sjednocené paměti GPU používá; nad tuto hranici běží vrstvy na CPU.",
+    "integrated-gpu-shares-ram": "Paměť integrované grafiky je součástí systémové paměti a nepřičítá se k ní.",
+    "discrete-vram-reserve": "Asi 512 MB na každé vyhrazené GPU se ponechává pro ovladač a zobrazení.",
+    "system-reserve": "Asi 2 GB systémové paměti se ponechává pro operační systém a další aplikace.",
+    "runtime-overhead": "Výpočetní buffery a runtime se odhadují na 300 MB plus 2 % souboru modelu.",
+    "cpu-only-by-setting": "Vrstvy GPU jsou nastaveny na 0, takže se GPU nepoužívá.",
+    "other-models-loaded": "Již načtené modely se odečítají, ale kde sídlí (GPU nebo CPU), nelze zjistit.",
+    "mmap-not-counted": "Načítání mapováním do paměti může umožnit spuštění modelu s méně pamětí, než je uvedeno, za cenu velkého zpomalení; to se nepočítá.",
+    "mmproj-unknown": "Komponenta vidění existuje, ale její velikost není známa."
+  },
+  "uncertainty": {
+    "low": "Spolehlivost: poměrně dobrá. Skutečné použití se může stále lišit.",
+    "medium": "Spolehlivost: střední. Test na tomto zařízení poskytne skutečnou odpověď.",
+    "high": "Spolehlivost: nízká. Výsledek je blízko limitu nebo stojí na hrubých předpokladech; pro jistotu jej otestujte."
+  },
+  "difference": {
+    "settings": "Nastavení se od testu změnila: {{keys}}.",
+    "runtime": "Aplikace byla od testu aktualizována ({{recorded}} na {{current}}).",
+    "device": "Konfigurace paměti nebo GPU zařízení se změnila.",
+    "modelFile": "Soubor modelu se změnil."
+  },
+  "otherSuccess": "Na tomto zařízení běžel s velikostí kontextu {{context}}.",
+  "testScope": "Test prokáže jen krátkou odpověď s použitými nastaveními. Delší konverzace, větší kontext nebo jiné načtené modely mohou stále vyčerpat paměť.",
+  "testedAt": "Testováno {{when}} s {{settings}}.",
+  "defaultSettings": "výchozí nastavení",
+  "metric": {
+    "load": "Doba načítání",
+    "generation": "Rychlost generování",
+    "prompt": "Rychlost čtení promptu"
+  },
+  "test": {
+    "run": "Otestovat na tomto zařízení",
+    "runAgain": "Otestovat znovu",
+    "cancel": "Zrušit test",
+    "running": "Testování: načítání modelu a žádost o krátkou odpověď…",
+    "succeeded": "Test prošel: model se načetl a odpověděl.",
+    "failed": "Test selhal: {{reason}}",
+    "cancelled": "Test zrušen. Nic z toho, co test načetl, již není načteno.",
+    "cancelledNotReleased": "Test zrušen, ale model se nepodařilo uvolnit. Uvolněte jej v nastavení modelu.",
+    "notReleased": "Model se poté nepodařilo uvolnit; stále používá paměť.",
+    "couldNotRun": "Test se nepodařilo spustit: {{reason}}",
+    "blockedBusy": "Netestováno: {{models}} píše odpověď a test by jej musel uvolnit. Zkuste to znovu po dokončení. Nic se nezměnilo.",
+    "blockedInProgress": "Jiný test modelu již běží. Nic se nezměnilo.",
+    "restored": "{{models}} byl znovu načten.",
+    "notRestored": "{{models}} se nepodařilo znovu načíst; načtěte jej v nastavení modelu.",
+    "needsConfirmation": "Test nejprve potřebuje uvolnit jiný model.",
+    "confirmUnload": "Pro test musí Flint uvolnit {{models}}. Odpověď, kterou právě generuje, se zastaví. Automaticky se znovu nenačte.",
+    "unloadAndTest": "Uvolnit a otestovat",
+    "dontTest": "Netestovat"
+  },
+  "testExplainer": "Test používá soubor modelu, který už je na tomto zařízení; nic se nestahuje. Načte model s jeho aktuálními nastaveními, požádá o jednoslovnou odpověď a znovu jej uvolní, pokud nebyl načten již dříve.",
+  "adjustSettings": "Upravit nastavení",
+  "setDefault": "Použít pro nové chaty",
+  "removeDefault": "Přestat používat pro nové chaty",
+  "hideHint": "Skrýt tuto nápovědu",
+  "showHint": "Zobrazit tuto nápovědu",
+  "badge": {
+    "worked": "Zde fungoval",
+    "unsupported": "Tímto runtime nepodporováno",
+    "default": "Výchozí"
+  },
+  "location": {
+    "local": "Běží na tomto zařízení nebo ve vaší síti",
+    "remote": "Vzdálený: zprávy se odesílají tomuto poskytovateli"
+  },
+  "providerSettings": "Nastavení {{provider}}",
+  "memoryBars": "Odhadovaná potřeba paměti ve srovnání s dostupnou",
+  "picker": {
+    "local": "Na tomto počítači nebo ve vaší síti",
+    "remote": "Cloudoví poskytovatelé",
+    "remoteHint": "zprávy opouštějí tento počítač",
+    "inUse": "Zde používáno: {{model}} · {{provider}}"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "groupGeneral": "一般",
+  "groupModelsAndTools": "モデルとツール",
+  "advancedSettings": "詳細設定",
+  "advancedSettingsHint": "ローカル API サーバー、プロキシ、ハードウェア、エージェントツールの設定です。まとめても、それらの動作は何も変わりません。"
+}

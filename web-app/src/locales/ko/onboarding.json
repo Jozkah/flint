@@ -1,0 +1,64 @@
+{
+  "intentHeading": "먼저 무엇을 하고 싶으신가요?",
+  "intentHint": "가이드가 안내할 위치만 정해집니다. Flint의 나머지 기능은 모두 계속 사용할 수 있습니다.",
+  "intent": {
+    "question": {
+      "title": "질문하기",
+      "description": "모델과 무엇이든 대화하세요."
+    },
+    "documents": {
+      "title": "문서 작업",
+      "description": "파일을 첨부하고 그에 대해 물어보세요."
+    },
+    "project": {
+      "title": "프로젝트 만들기 또는 변경",
+      "description": "Flint가 이 컴퓨터의 폴더에서 작업하도록 하되, 변경하기 전에 먼저 묻습니다."
+    }
+  },
+  "skipGuide": "가이드 건너뛰기",
+  "resumeNotice": "다시 오신 것을 환영합니다. 중단한 곳에서 이어서 진행할 수 있습니다.",
+  "processingHeading": "대화가 처리되는 위치",
+  "processingLocal": "로컬 모델은 이 컴퓨터에서 실행됩니다. 메시지와 파일은 이곳에 머무르며 계정이나 API 키가 필요하지 않습니다.",
+  "processingRemote": "원격 공급자(예: OpenAI)는 자사 서버에서 모델을 실행합니다. 메시지와 포함한 파일이 그곳으로 전송되며 공급자가 요금을 청구할 수 있습니다. 설정에서 직접 지정하며 Flint가 스스로 전환하는 일은 없습니다.",
+  "connectRemote": "대신 원격 공급자 연결",
+  "guideTitle": {
+    "question": "시작하기: 질문하기",
+    "documents": "시작하기: 문서 작업",
+    "project": "시작하기: 프로젝트 만들기 또는 변경"
+  },
+  "guideRegion": "시작 가이드",
+  "stepDone": "완료",
+  "stepTodo": "할 일",
+  "step": {
+    "choose-model": {
+      "title": "모델 선택 또는 연결",
+      "body": "상단의 선택기로 모델을 고르세요. 로컬 모델은 이 컴퓨터에서 실행되며, 원격 공급자는 자체 계정이 필요합니다."
+    },
+    "add-material": {
+      "documents": "메시지 상자의 클립 버튼으로 문서를 첨부하세요.",
+      "project": "Cowork를 열고 프로젝트 폴더를 선택하세요. 파일을 편집하거나 명령을 실행하기 전에 Flint가 먼저 묻습니다."
+    },
+    "first-task": {
+      "title": "첫 메시지 보내기",
+      "body": "무언가를 묻거나 원하는 변경 사항을 설명하세요. 대화가 시작되면 이 단계가 완료됩니다."
+    },
+    "review-context": {
+      "title": "Flint가 사용한 것 확인",
+      "body": "Flint가 답한 뒤 대화에서 \"Flint가 사용 중인 것\"을 열어 어떤 첨부 파일과 지침을 사용할 수 있었는지 확인하세요."
+    },
+    "addMaterialTitle": {
+      "documents": "문서 추가",
+      "project": "프로젝트 폴더 선택"
+    }
+  },
+  "confirmStep": "완료했습니다",
+  "openProviders": "모델 설정",
+  "openCowork": "Cowork 열기",
+  "hideGuide": "가이드 숨기기",
+  "guideComplete": "설정이 끝났습니다. 설정 > 일반에서 언제든 이 가이드를 다시 열 수 있습니다.",
+  "finish": "가이드 마치기",
+  "reopenGuide": "시작 가이드",
+  "reopenGuideDescription": "모델 선택, 자료 추가, 첫 작업 완료까지의 과정을 다시 살펴봅니다.",
+  "reopenGuideAction": "가이드 열기",
+  "resumeRecent": "마지막 대화 이어가기: {{title}}"
+}

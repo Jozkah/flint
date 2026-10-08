@@ -3,5 +3,30 @@
   "description": "Obrolan ini hampir mencapai batas memori AI, seperti papan tulis yang mulai penuh. Kita bisa memperluas jendela memori (disebut ukuran konteks) agar AI dapat mengingat lebih banyak, tetapi ini mungkin akan menggunakan lebih banyak memori komputer Anda. Kita juga bisa memotong input, artinya sebagian riwayat obrolan akan dilupakan untuk memberi ruang pada pesan baru.",
   "increaseContextSizeDescription": "Apakah Anda ingin memperbesar ukuran konteks?",
   "truncateInput": "Potong Input",
-  "increaseContextSize": "Perbesar Ukuran Konteks"
+  "increaseContextSize": "Perbesar Ukuran Konteks",
+  "lastRequestOverflowed": "Permintaan terakhir melampaui jendela konteks.",
+  "contextOverflowDetail": "Permintaan ini membutuhkan {{request}} token, tetapi jendela konteks model hanya menampung {{context}}.",
+  "contextOverflowGeneric": "Permintaan melebihi ukuran konteks yang tersedia.",
+  "engine": {
+    "unknown": "Engine model melaporkan error tak terduga.",
+    "MODEL_LOAD_FAILED": "Model tidak dapat dimuat.",
+    "MODEL_ARCH_NOT_SUPPORTED": "Arsitektur model ini tidak didukung oleh engine saat ini. Memperbarui engine dari Pengaturan mungkin menambah dukungan.",
+    "MODEL_LOAD_TIMED_OUT": "Model terlalu lama dimuat dan dihentikan. Model yang lebih kecil atau ukuran konteks yang lebih kecil biasanya membantu.",
+    "MISSING_SHARED_LIBRARY": "Library yang dibutuhkan engine tidak ada, sehingga tidak dapat dimulai.",
+    "GPU_DRIVER_TOO_OLD": "Driver GPU Anda terlalu lama untuk engine ini. Memperbarui driver, atau beralih ke engine CPU di Pengaturan, akan memperbaikinya.",
+    "OUT_OF_MEMORY": "Memori tidak cukup untuk menjalankan model ini. Model yang lebih kecil atau ukuran konteks yang lebih kecil biasanya membantu.",
+    "INVALID_ARGUMENT": "Salah satu pengaturan model tidak valid.",
+    "IO_ERROR": "Sebuah file tidak dapat dibaca atau ditulis saat memulai model.",
+    "INTERNAL_ERROR": "Terjadi kesalahan di dalam Flint saat memulai model."
+  },
+  "engineMissingLibraries": "Hilang: {{libraries}}",
+  "engineReportedDetail": "Engine melaporkan: {{detail}}",
+  "startModelFailed": "Gagal memulai model: {{reason}}",
+  "createModelFailed": "Gagal membuat model: {{reason}}",
+  "noRunningSession": "Tidak ada sesi berjalan untuk model: {{model}}",
+  "serverPortOccupied": "Port sedang dipakai",
+  "serverPortOccupiedDescription": "Port {{port}} sudah dipakai. Silakan coba port lain.",
+  "serverInvalidModelPath": "Path model tidak valid atau tidak dapat diakses",
+  "serverStartModelFailed": "Gagal memulai model",
+  "serverStartFailed": "Gagal memulai server"
 }
