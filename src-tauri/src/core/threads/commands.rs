@@ -1,18 +1,15 @@
 use std::fs;
 use tauri::Runtime;
-use uuid::Uuid;
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use super::db;
 use super::helpers::{
-    append_message_line_if_new, get_lock_for_thread, read_messages_from_file, should_use_sqlite,
-    update_thread_metadata, write_file_atomically, write_messages_to_file,
+    read_messages_from_file, should_use_sqlite, update_thread_metadata,
 };
 use super::{
     constants::THREADS_FILE,
     utils::{
-        ensure_data_dirs, ensure_thread_dir_exists, get_data_dir, get_messages_path,
-        get_thread_dir, get_thread_metadata_path, validate_thread_id,
+        ensure_data_dirs, get_data_dir, get_thread_metadata_path, validate_thread_id,
     },
 };
 use crate::core::app::commands::get_jan_data_folder_path;
