@@ -838,7 +838,9 @@ pub fn build_app() -> tauri::App {
                     }
                 });
             }
-            app.handle().plugin(
+            // A log folder that cannot be written must not stop the app from
+            // starting; it just runs without a log file.
+            if let Err(e) = app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)
                     // The plugin defaults to a 40 KB cap and KeepOne, which
@@ -880,7 +882,9 @@ pub fn build_app() -> tauri::App {
                         }),
                     ])
                     .build(),
-            )?;
+            ) {
+                eprintln!("could not start logging: {e}");
+            }
             for (level, text) in crash_notes {
                 log::log!(level, "{text}");
             }
@@ -957,7 +961,9 @@ pub fn build_app() -> tauri::App {
             #[cfg(all(feature = "deep-link", any(windows, target_os = "linux")))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
-                app.deep_link().register_all()?;
+                if let Err(e) = app.deep_link().register_all() {
+                    log::warn!("could not register the deep link scheme: {e}");
+                }
             }
 
             // Initialize SQLite database for mobile platforms
@@ -974,7 +980,9 @@ pub fn build_app() -> tauri::App {
             setup_mcp(app);
             #[cfg(desktop)]
             setup::setup_jan_cli(app.handle().clone(), stored_version != app_version);
-            setup::setup_theme_listener(app)?;
+            if let Err(e) = setup::setup_theme_listener(app) {
+                log::warn!("could not watch the system theme: {e}");
+            }
             // Scheduled tasks: catch-up pass now, then a tick every 30s.
             #[cfg(desktop)]
             core::schedule::driver::start(app.handle().clone());
@@ -1135,4 +1143,19 @@ mod startup_guard_tests {
         }
     }
 
+    #[test]
+    fn optional_setup_steps_cannot_abort_startup_and_every_exit_marks_clean() {
+        // The needles are built from pieces so this test does not match itself.
+        for needle in [
+            ["register_all()", "?;"].concat(),
+            ["setup_theme_listener(app)", "?;"].concat(),
+        ] {
+            assert_eq!(SOURCE.matches(needle.as_str()).count(), 0, "`{needle}` aborts startup");
+        }
+        let mark = ["mark_clean", "_exit(&get_jan"].concat();
+        assert!(
+            SOURCE.matches(mark.as_str()).count() >= 3,
+            "confirm_exit and both exit paths must mark a clean exit"
+        );
+    }
 }
