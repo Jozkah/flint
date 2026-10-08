@@ -1095,6 +1095,9 @@ mod win {
     /// run, which is the normal case for a thread's second command.
     const PROFILE_EXISTS: HRESULT = -2147024713; // 0x800700B7
 
+    /// `SE_GROUP_ENABLED`: marks a capability SID as active in the lowbox token.
+    const SE_GROUP_ENABLED: u32 = 0x0000_0004;
+
     fn wide(s: &OsStr) -> Vec<u16> {
         s.encode_wide().chain(std::iter::once(0)).collect()
     }
@@ -1957,7 +1960,11 @@ mod win {
         }
         Ok(SID_AND_ATTRIBUTES {
             Sid: buffer.as_mut_ptr() as PSID,
-            Attributes: 0,
+            // Windows documents SE_GROUP_ENABLED for every capability passed to
+            // `SECURITY_CAPABILITIES`. With 0 the SID can sit in the token
+            // disabled, and the shell gets socket AccessDenied despite network on.
+            // Only the two network capabilities are built here.
+            Attributes: SE_GROUP_ENABLED,
         })
     }
 

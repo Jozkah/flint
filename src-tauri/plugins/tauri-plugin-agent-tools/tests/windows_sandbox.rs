@@ -254,6 +254,71 @@ fn the_network_is_denied_when_the_policy_denies_it() {
     );
 }
 
+/// Fetch `http://1.1.1.1/` from inside the sandbox with the system `curl.exe`
+/// and return the HTTP status it printed (`000` when no connection was made).
+/// A literal IP keeps DNS out of it: this is about the socket itself.
+///
+/// Loopback cannot stand in for the target: an AppContainer is isolated from
+/// loopback whatever capabilities it holds, so a listener on `127.0.0.1` is
+/// unreachable with network on as well as off.
+fn sandbox_http_status(sandbox: &Sandbox, allow_network: bool) -> String {
+    let curl = cmd_exe().with_file_name("curl.exe");
+    let out = sandbox.run(
+        &curl,
+        &[
+            "-s",
+            "-o",
+            "NUL",
+            "--connect-timeout",
+            "8",
+            "--max-time",
+            "12",
+            "-w",
+            "%{http_code}",
+            "http://1.1.1.1/",
+        ],
+        allow_network,
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// Whether this machine can reach the internet at all, so the network scenarios
+/// below do not fail on an offline runner.
+fn host_is_online() -> bool {
+    use std::net::{SocketAddr, TcpStream};
+    use std::time::Duration;
+    let addr: SocketAddr = "1.1.1.1:80".parse().unwrap();
+    TcpStream::connect_timeout(&addr, Duration::from_secs(5)).is_ok()
+}
+
+/// With the policy allowing the network, the confined shell can open an outbound
+/// socket. The capability SIDs must be enabled in the token for that to hold.
+#[test]
+fn the_network_is_reachable_when_the_policy_allows_it() {
+    if !host_is_online() {
+        eprintln!("skipped: this machine cannot reach 1.1.1.1");
+        return;
+    }
+    let sandbox = Sandbox::new("net-on");
+    let status = sandbox_http_status(&sandbox, true);
+    assert!(
+        status.len() == 3 && status != "000",
+        "no outbound connection with network allowed (curl status {status:?})"
+    );
+}
+
+/// The same request with the network denied makes no connection.
+#[test]
+fn an_outbound_connection_fails_when_the_policy_denies_the_network() {
+    if !host_is_online() {
+        eprintln!("skipped: this machine cannot reach 1.1.1.1");
+        return;
+    }
+    let sandbox = Sandbox::new("net-off-connect");
+    let status = sandbox_http_status(&sandbox, false);
+    assert_eq!(status, "000", "a connection was made with network denied");
+}
+
 /// Scenarios 4 and 11, which are the bug report itself.
 ///
 /// Git Bash under `C:\Program Files` is reachable, readable and executable by
