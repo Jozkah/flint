@@ -238,6 +238,9 @@ try {
   await rpc('settings_remove', { key: 'smoke_marker' })
   check('rpc settings removal', (await (await rpc('settings_get', { key: 'smoke_marker' })).json()) === null)
   check('rpc hardware for the extension', (await (await rpc('plugin:hardware|get_system_info')).json()).cpu !== undefined)
+  for (const reserved of ['auth.json', 'server.json']) {
+    check(`rpc will not touch the server's own ${reserved}`, (await rpc('read_file_sync', { args: [join(data, 'web-server', reserved)] })).status === 400 && (await rpc('write_file_sync', { args: [join(data, 'web-server', reserved), '{}'] })).status === 400)
+  }
   check('rpc refuses an unknown command', (await rpc('factory_reset')).status === 404)
   const viaRpc = await (await rpc('plugin:llamacpp|start_engine', { presetPath: preset, modelsMax: 1, slotCacheMib: 0, envs: {} })).json()
   check('rpc starts the engine with the plugin argument names', viaRpc.port === enginePort && viaRpc.api_key?.length === 64)

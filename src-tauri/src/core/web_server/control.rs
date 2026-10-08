@@ -312,8 +312,12 @@ pub fn start_background(
         }
         std::thread::sleep(Duration::from_millis(150));
     }
+    // Never leave a server running that the starter could not confirm.
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = fs::remove_file(run_file_path(data_folder));
     Err(format!(
-        "the server did not come up within {}s. Last log lines:\n{}",
+        "the server did not come up within {}s and was stopped. Last log lines:\n{}",
         wait.as_secs(),
         log_tail(&log, 8)
     ))

@@ -1391,6 +1391,10 @@ pub async fn serve(options: Options) -> io::Result<()> {
     for host in &options.allowed_hosts {
         hosts.insert(host.to_ascii_lowercase());
     }
+    // The server's own address as an IP literal, which `flint stop` and the
+    // background starter use to reach it. A name an attacker controls can never
+    // be this, so it does not weaken the check against DNS rebinding.
+    hosts.insert(listener.local_addr()?.to_string());
     let (auth, bootstrap) = AuthStore::open(options.auth_file)?;
     let settings_store = settings::Store::new(&options.data_folder);
     let bus = events::Bus::new();

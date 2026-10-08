@@ -57,11 +57,19 @@ pub fn confine(data_folder: &Path, raw: &str) -> Result<PathBuf, String> {
     }
     let base = settle(data_folder);
     let target = settle(&data_path(data_folder, raw));
-    if target.starts_with(&base) {
-        Ok(target)
-    } else {
-        Err("path is outside the data folder".into())
+    if !target.starts_with(&base) {
+        return Err("path is outside the data folder".into());
     }
+    // `web-server/` holds the server's own files: the hashed credential and
+    // sessions, the run record with the shutdown secret, the log and the
+    // settings. A signed-in browser must not be able to read or rewrite them
+    // (rewriting `auth.json` would make a stolen session permanent). Uploads
+    // live there too and stay reachable.
+    let private = base.join("web-server");
+    if target.starts_with(&private) && !target.starts_with(private.join("uploads")) {
+        return Err("path is reserved for the server".into());
+    }
+    Ok(target)
 }
 
 fn first_arg(args: &Value) -> Result<&str, String> {
@@ -217,6 +225,20 @@ mod tests {
         assert!(confine(data.path(), climb.to_str().unwrap()).is_err());
         assert!(confine(data.path(), "file://../../etc/passwd").is_err());
         assert!(confine(data.path(), "").is_err());
+        for reserved in ["auth.json", "server.json", "server.log", "settings.json"] {
+            let path = data.path().join("web-server").join(reserved);
+            assert!(confine(data.path(), path.to_str().unwrap()).is_err(), "{reserved}");
+            assert!(confine(data.path(), &format!("file://web-server/{reserved}")).is_err(), "{reserved} via file://");
+            let sneaky = data.path().join("web-server").join("uploads").join("..").join(reserved);
+            assert!(confine(data.path(), sneaky.to_str().unwrap()).is_err(), "{reserved} via uploads/..");
+        }
+        assert!(confine(data.path(), data.path().join("web-server").to_str().unwrap()).is_err());
+        let upload = data.path().join("web-server").join("uploads").join("abc").join("a.txt");
+        assert!(confine(data.path(), upload.to_str().unwrap()).is_ok());
+        let auth = data.path().join("web-server").join("auth.json");
+        assert!(call(data.path(), "write_file_sync", &args(json!([auth, "x"]))).is_err());
+        assert!(call(data.path(), "rm", &args(json!([data.path().join("web-server").join("server.json")]))).is_err());
+        assert!(call(data.path(), "read_file_sync", &args(json!([data.path().join("web-server").join("server.json")]))).is_err());
         assert!(call(data.path(), "read_file_sync", &args(json!([outside.path().join("secret.txt")]))).is_err());
         assert!(call(data.path(), "rm", &args(json!([data.path()]))).is_err());
     }

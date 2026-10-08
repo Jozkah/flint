@@ -25,10 +25,17 @@ function dispatch(event: string, payload: unknown): void {
 
 const LINE_BREAK = String.fromCharCode(10)
 let streaming = false
+/** The open event connection, so it can be closed when nobody is listening. */
+let connection: AbortController | null = null
+
+function anyListeners(): boolean {
+  return [...listeners.values()].some((set) => set.size > 0)
+}
 
 /** Read one connection of the server's event stream until it ends. */
 async function readStream(): Promise<'ended' | 'unavailable'> {
-  const response = await fetch('/api/v1/events', { credentials: 'same-origin' })
+  connection = new AbortController()
+  const response = await fetch('/api/v1/events', { credentials: 'same-origin', signal: connection.signal })
   const type = response.headers?.get('content-type') ?? ''
   if (!response.ok || response.redirected || !response.body || !type.includes('text/event-stream')) {
     return 'unavailable'
@@ -61,7 +68,7 @@ async function readStream(): Promise<'ended' | 'unavailable'> {
 /** Keep the stream open while anyone is listening. */
 async function keepStreaming(): Promise<void> {
   let delay = 1000
-  while ([...listeners.values()].some((set) => set.size > 0)) {
+  while (anyListeners()) {
     try {
       const outcome = await readStream()
       // Not signed in (or no event stream here): stop asking so often.
@@ -87,6 +94,8 @@ export async function listen<T>(event: string, handler: EventCallback<T>): Promi
   ensureStreaming()
   return () => {
     set.delete(handler as EventCallback<unknown>)
+    // The last listener is gone: close the connection instead of holding it open.
+    if (!anyListeners()) connection?.abort()
   }
 }
 

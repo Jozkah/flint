@@ -57,6 +57,8 @@ jobs:
           src/services/__tests__/browserAdapters.test.ts
           src/lib/__tests__/providerFetch
           src/lib/__tests__/hostInvoke.test.ts
+          src/lib/__tests__/tauriBridgeShim.test.ts
+          src/lib/__tests__/tauriEventShim.test.ts
           --maxWorkers=2
 
       - name: Server unit tests
