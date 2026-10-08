@@ -9,6 +9,7 @@ import {
   getProxyConfig,
   truncateToTokenBudget,
   modelFileProblem,
+  assertSha256Matches,
 } from './util'
 import { getBackendSecret, getBackendSetting } from './backend-settings'
 
@@ -787,5 +788,22 @@ describe('modelFileProblem', () => {
     expect(modelFileProblem({ ...base, exists: true, size: 100, expectedSize: 100 })).toBeNull()
     expect(modelFileProblem({ ...base, exists: true, size: 5 })).toBeNull()
     expect(modelFileProblem({ ...base, exists: true, size: 5, expectedSize: 0 })).toBeNull()
+  })
+})
+
+describe('assertSha256Matches', () => {
+  const h = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+  it('passes on equal digests regardless of case and whitespace', () => {
+    expect(() => assertSha256Matches('model', h.toUpperCase(), h)).not.toThrow()
+    expect(() => assertSha256Matches('model', ` ${h} `, h)).not.toThrow()
+  })
+  it('skips when nothing was supplied', () => {
+    expect(() => assertSha256Matches('model', undefined, h)).not.toThrow()
+    expect(() => assertSha256Matches('model', '', h)).not.toThrow()
+  })
+  it('throws a clear error on mismatch', () => {
+    expect(() => assertSha256Matches('model', 'deadbeef', h)).toThrow(
+      /SHA-256 mismatch for the model file/
+    )
   })
 })

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
+import { toAssetUrl } from '@/lib/assetPath'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { switchedFromOf } from '@/lib/assistantSwitch'
 import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
@@ -1385,10 +1386,9 @@ export function CoworkPage() {
         sandboxMissing: async (rel) => {
           const abs = workspacePath ? resolveInRoot(workspacePath, rel) : null
           if (!abs) return false
-          const read = await readTextBounded(
-            serviceHub.core().convertFileSrc(abs),
-            { maxBytes: 4096 }
-          )
+          const read = await readTextBounded(await toAssetUrl(abs), {
+            maxBytes: 4096,
+          })
           return read.status === 'missing'
         },
       }),
@@ -1416,6 +1416,29 @@ export function CoworkPage() {
         (r): r is string => typeof r === 'string' && r.length > 0
       ),
     [workspacePath, treeRoot, folder, extraFolders]
+  )
+  /**
+   * A path in the run summary: the Code panel or preview where one can show
+   * it, otherwise the system's default app, so no listed file is a dead label.
+   */
+  const openSummaryPath = useCallback(
+    (path: string) => {
+      if (shouldOpenInCode(path) || previewKindFor(path) !== 'file') {
+        openToolPath(path)
+        return
+      }
+      const absolute = absoluteChangePath(path, 'session', {
+        treeRoot,
+        workspacePath,
+        resolved: resolveToolPath(path),
+      })
+      if (!absolute) return
+      void serviceHub
+        .opener()
+        .openPath(absolute, pathLinkRoots)
+        .catch((e) => toast.error(errorText(e)))
+    },
+    [openToolPath, treeRoot, workspacePath, resolveToolPath, serviceHub, pathLinkRoots]
   )
   /** Show a changed file in Changes. */
   const openToolDiff = useCallback(
@@ -5920,14 +5943,14 @@ export function CoworkPage() {
                       <CoworkRunSummary
                         outcome={runOutcome}
                         browserChecks={browserReports}
-                        canOpenPath={(path) => shouldOpenInCode(path) || previewKindFor(path) !== 'file'}
+                        canOpenPath={() => true}
                         onOpenPath={
                           runOutcome.resultLocation.destination ===
                             'repository' && treeRoot
-                            ? (path) => openToolPath(`${treeRoot}/${path}`)
+                            ? (path) => openSummaryPath(`${treeRoot}/${path}`)
                             : runOutcome.resultLocation.destination ===
                                 'sandbox'
-                              ? openToolPath
+                              ? openSummaryPath
                               : undefined
                         }
                         onReviewChanges={() => openRail({ kind: 'diff' })}

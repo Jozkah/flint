@@ -66,21 +66,25 @@ let listening = false
 function listenOnce(): void {
   if (listening) return
   listening = true
-  void listen<{ job_id: string; phase: string; fraction: number }>('diffusion-progress', ({ payload }) => {
+  // A failed subscription (no Tauri bridge on a preview or web surface, a
+  // transient error) must not leave the flag set, or the listeners are never
+  // registered again and the rejection goes unhandled.
+  void Promise.all([
+  listen<{ job_id: string; phase: string; fraction: number }>('diffusion-progress', ({ payload }) => {
     const job = useStudio.getState().job
     if (job) {
       useStudio.setState({ job: { ...job, phase: payload.phase, fraction: payload.fraction } })
     }
-  })
-  void listen<{ stage: string; downloaded: number; total: number }>('diffusion-install-progress', ({ payload }) => {
+  }),
+  listen<{ stage: string; downloaded: number; total: number }>('diffusion-install-progress', ({ payload }) => {
     useStudio.setState({
       installing: { stage: payload.stage, downloaded: payload.downloaded, total: payload.total },
     })
-  })
-  void listen('diffusion-state', () => {
+  }),
+  listen('diffusion-state', () => {
     void useStudio.getState().refresh()
-  })
-  void listen<{ taskId: string; downloaded: number }>('huggingface-download-progress', ({ payload }) => {
+  }),
+  listen<{ taskId: string; downloaded: number }>('huggingface-download-progress', ({ payload }) => {
     // The downloader serialises this event in camelCase.
     const task = parseDownloadTask(payload.taskId)
     if (!task) return
@@ -93,6 +97,9 @@ function listenOnce(): void {
         total: model.totalBytes,
       },
     })
+  }),
+  ]).catch(() => {
+    listening = false
   })
 }
 

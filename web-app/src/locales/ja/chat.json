@@ -1,8 +1,38 @@
 {
   "welcome": "こんにちは、何かお手伝いできることはありますか？",
   "description": "今日はどのようなご用件でしょうか？",
+  "startedAt": "{{time}} に開始",
+  "home": {
+    "title": "新しいチャット",
+    "notSaved": "送信するまで何も保存されません",
+    "sub": "何でも質問したり、ファイルを添付したり、大きなタスクを Cowork に任せたりできます。",
+    "suggestionsLabel": "提案",
+    "suggestions": {
+      "explain": "このエラーメッセージを説明して",
+      "summarise": "添付したドキュメントを要約して",
+      "draft": "変更点の一覧からリリースノートを下書きして",
+      "compare": "2 つの方法を比較して、おすすめを教えて"
+    }
+  },
   "temporaryChat": "一時的なチャット",
   "temporaryChatDescription": "チャット履歴に保存されない一時的な会話を開始します。",
+  "temporaryChatBanner": "一時チャット — 保存されません",
+  "temporaryChatKeep": "このチャットを保存",
+  "temporaryChatLeave": {
+    "title": "この一時チャットを保存しますか?",
+    "description": "このチャットはどこにも保存されていません。保存すると履歴に移動し、破棄すると完全に削除されます。",
+    "keep": "保存",
+    "discard": "破棄",
+    "kept": "チャットを履歴に保存しました",
+    "keepFailed": "このチャットを保存できませんでした",
+    "discardFailed": "破棄できませんでした。生成がまだ実行中です。停止してからもう一度お試しください。",
+    "reason": {
+      "generation-not-stopped": "生成がまだ実行中です。停止してからもう一度お試しください。",
+      "messages-not-persisted": "チャットを完全には保存できませんでした。失われたものはありません。もう一度お試しください。",
+      "thread-not-created": "チャットを保存できませんでした。失われたものはありません。もう一度お試しください。",
+      "error": "問題が発生しました。チャットはそのまま残っています。もう一度お試しください。"
+    }
+  },
   "status": {
     "empty": "チャットが見つかりません"
   },
@@ -13,7 +43,29 @@
     "title": "ドキュメントを準備しています",
     "description": "添付ファイルを検索・引用できるようにインデックスを作成しています。大きなドキュメントの場合は少し時間がかかることがあります。"
   },
+  "actions": {
+    "copy": "コピー",
+    "regenerate": "応答を再生成",
+    "continue": "生成を続ける",
+    "delete": "削除",
+    "fork": "ここからチャットを分岐",
+    "copied": "コピーしました"
+  },
   "done": "Done",
+  "webSources": "{{count}} 件のソース",
+  "webSourcesRead": "{{count}} 件を読み取り済み",
+  "webSourcesReadFound": "{{read}} 件を読み取り済み · {{found}} 件を検出",
+  "reasoning": {
+    "label": "推論中...",
+    "thinking": "考え中",
+    "usingTool": "{{tool}}...",
+    "showFullTimeline": "タイムライン全体を表示",
+    "showCurrentStep": "現在のステップのみ表示",
+    "thoughtForAWhile": "数秒間考えました",
+    "thoughtFor": "{{duration}} 考えました",
+    "workedForAWhile": "数秒間作業しました",
+    "workedFor": "{{duration}} 作業しました"
+  },
   "split": {
     "open": "会話を分割",
     "openShort": "分割",
@@ -47,15 +99,79 @@
     "recentRooms": "ルーム"
   },
   "transcriptView": {
+    "steps_one": "{{count}} ステップ",
     "steps_other": "{{count}} ステップ",
-    "working": "作業中"
+    "working": "作業中",
+    "failed": "失敗:",
+    "failedToRun": "実行に失敗しました",
+    "summary": {
+      "failed": "{{count}} 件が失敗",
+      "commands_one": "{{count}} 個のコマンドを実行",
+      "commands_other": "{{count}} 個のコマンドを実行",
+      "created_one": "{{count}} 個のファイルを作成",
+      "created_other": "{{count}} 個のファイルを作成",
+      "edited_one": "{{count}} 個のファイルを編集",
+      "edited_other": "{{count}} 個のファイルを編集",
+      "read_one": "{{count}} 個のファイルを読み取り",
+      "read_other": "{{count}} 個のファイルを読み取り",
+      "searched_one": "{{count}} 回検索",
+      "searched_other": "{{count}} 回検索",
+      "tools_one": "{{count}} 個のツールを使用",
+      "tools_other": "{{count}} 個のツールを使用"
+    }
   },
-  "actions": {
-    "fork": "ここからチャットを分岐"
+  "widget": {
+    "label": "ウィジェット",
+    "drawing": "ウィジェットを描画中",
+    "source": "ソースを表示",
+    "copy": "HTML をコピー",
+    "copied": "HTML をコピーしました。",
+    "copyFailed": "HTML をコピーできませんでした。",
+    "save": ".html ファイルとして保存",
+    "expand": "フルサイズで開く",
+    "rerun": "再実行",
+    "stalled": "ウィジェットが応答しなくなりました。",
+    "parked": "画面外のためウィジェットを一時停止しました。",
+    "error": "ウィジェットのエラー:",
+    "viewSource": "ソースを表示",
+    "askFix": "Flint に修正を依頼",
+    "fixPrompt": "ウィジェット「{{title}}」でエラーが表示されています: {{error}}\n修正して、もう一度ウィジェットを表示してください。",
+    "refused": "ウィジェットを表示できません: {{reason}}",
+    "refusedUnknown": "呼び出しに失敗しました",
+    "tooLarge": "このウィジェットは {{max}} 文字を超えているため、描画されません。",
+    "openLink": "{{url}} をブラウザーで開きますか?",
+    "cancel": "キャンセル",
+    "busy": "現在の返信が完了するまで待ってから、もう一度お試しください。",
+    "noHost": "この画面ではメッセージを送信できません。"
+  },
+  "browserCard": {
+    "opened": "ブラウザーで開きました",
+    "ready": "開く準備ができました",
+    "open": "開く",
+    "more": "その他",
+    "copy": "リンクをコピー",
+    "copied": "リンクをコピーしました。",
+    "failed": "ブラウザーを開けませんでした。"
+  },
+  "regenerateTitle": {
+    "menu": "タイトルを再生成",
+    "working": "チャットに名前を付けています...",
+    "done": "チャット名を変更しました。",
+    "empty": "まだチャット名の元になる内容がありません。",
+    "busy": "名前を変更する前に、ルームを一時停止または停止してください。",
+    "failed": "タイトルを生成できませんでした。"
   },
   "fork": {
     "chat": "チャットを分岐",
     "done": "新しいチャットに分岐しました。",
     "failed": "このチャットを分岐できませんでした。"
+  },
+  "version": {
+    "group": "メッセージのバージョン",
+    "previous": "前のバージョン",
+    "next": "次のバージョン",
+    "previousAt": "前のバージョン ({{count}} 件中 {{index}} 件目を表示)",
+    "nextAt": "次のバージョン ({{count}} 件中 {{index}} 件目を表示)",
+    "position": "バージョン {{index}} / {{count}}"
   }
 }

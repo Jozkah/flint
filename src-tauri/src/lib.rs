@@ -56,6 +56,7 @@ macro_rules! invoke_commands_with_extras {
         core::diffusion::commands::diffusion_guess_family,
         core::diffusion::commands::diffusion_add_custom_model,
         core::diffusion::commands::diffusion_remove_custom_model,
+        core::filesystem::asset_scope::allow_asset_path,
         core::filesystem::commands::join_path,
         core::filesystem::commands::mkdir,
         core::filesystem::commands::exists_sync,
@@ -97,6 +98,7 @@ macro_rules! invoke_commands_with_extras {
         core::server::provider_secrets::get_secret,
         // System commands
         core::system::commands::relaunch,
+        core::system::shutdown::shutdown_for_update,
         core::system::commands::open_app_directory,
         core::system::commands::factory_reset,
         core::system::commands::take_pending_webdata_reset,
@@ -420,6 +422,9 @@ async fn confirm_exit<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) {
         // RunEvent::Exit, which exit(0) skips; a force quit left the profile
         // refused as "held" for hours.
         core::migration::lock::release_session_locks();
+        // exit(0) also skips the clean-exit mark, so the next start would log
+        // "previous run did not shut down cleanly" for a normal quit.
+        core::crash_trace::mark_clean_exit(&get_jan_data_folder_path(app_handle.clone()));
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         std::process::exit(0);
     });
@@ -635,8 +640,14 @@ pub fn build_app() -> tauri::App {
     let builder = if cfg!(debug_assertions) && std::env::var_os("FLINT_ALLOW_MULTI_INSTANCE").is_some() {
         builder
     } else {
-        builder.plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
-            println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
+        builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // argv can carry deep-link URLs with tokens, so it is not logged.
+            log::info!("a second instance was launched; focusing the main window");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
             // when defining deep link schemes at runtime, you must also check `argv` here
         }))
     };
@@ -827,7 +838,9 @@ pub fn build_app() -> tauri::App {
                     }
                 });
             }
-            app.handle().plugin(
+            // A log folder that cannot be written must not stop the app from
+            // starting; it just runs without a log file.
+            if let Err(e) = app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)
                     // The plugin defaults to a 40 KB cap and KeepOne, which
@@ -869,7 +882,9 @@ pub fn build_app() -> tauri::App {
                         }),
                     ])
                     .build(),
-            )?;
+            ) {
+                eprintln!("could not start logging: {e}");
+            }
             for (level, text) in crash_notes {
                 log::log!(level, "{text}");
             }
@@ -887,6 +902,19 @@ pub fn build_app() -> tauri::App {
             // listener starts now, with the settings they left.
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             core::remote::commands::init(app.handle());
+            // A Jan up to 0.8.4 leaves its llama-server router running across an
+            // in-app update; that version cannot be fixed, so reap it here.
+            #[cfg(not(any(target_os = "ios", target_os = "android")))]
+            {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                tauri::async_runtime::spawn_blocking(move || {
+                    let killed = core::system::orphans::sweep_orphaned_engines(&data_folder);
+                    if killed > 0 {
+                        log::warn!("Reaped {killed} engine process(es) left by a previous Jan");
+                    }
+                });
+            }
+
             // Start migration
             let mut store_path = get_jan_data_folder_path(app.handle().clone());
             store_path.push("store.json");
@@ -933,7 +961,9 @@ pub fn build_app() -> tauri::App {
             #[cfg(all(feature = "deep-link", any(windows, target_os = "linux")))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
-                app.deep_link().register_all()?;
+                if let Err(e) = app.deep_link().register_all() {
+                    log::warn!("could not register the deep link scheme: {e}");
+                }
             }
 
             // Initialize SQLite database for mobile platforms
@@ -950,7 +980,9 @@ pub fn build_app() -> tauri::App {
             setup_mcp(app);
             #[cfg(desktop)]
             setup::setup_jan_cli(app.handle().clone(), stored_version != app_version);
-            setup::setup_theme_listener(app)?;
+            if let Err(e) = setup::setup_theme_listener(app) {
+                log::warn!("could not watch the system theme: {e}");
+            }
             // Scheduled tasks: catch-up pass now, then a tick every 30s.
             #[cfg(desktop)]
             core::schedule::driver::start(app.handle().clone());
@@ -1069,46 +1101,61 @@ pub fn run_app(app: tauri::App) {
             });
 
             if cleanup_already_running {
+                // The cleanup (a shutdown for an update, or a force quit) ran
+                // earlier; this is still the end of a clean run.
+                core::crash_trace::mark_clean_exit(&get_jan_data_folder_path(app_handle.clone()));
                 return;
             }
 
             // Run cleanup synchronously and WAIT for it to complete
             tokio::task::block_in_place(|| {
-                tauri::async_runtime::block_on(async {
-                    use crate::core::mcp::helpers::background_cleanup_mcp_servers;
-                    use tauri_plugin_llamacpp::cleanup_llama_processes;
-
-                    let state = app_handle.state::<AppState>();
-
-                    // Increase timeout to 10 seconds and log if it times out
-                    let cleanup_future = background_cleanup_mcp_servers(&app_handle, &state);
-                    match tokio::time::timeout(tokio::time::Duration::from_secs(10), cleanup_future)
-                        .await
-                    {
-                        Ok(_) => log::info!("MCP cleanup completed successfully"),
-                        Err(_) => log::warn!("MCP cleanup timed out after 10 seconds"),
-                    }
-
-                    if let Err(e) = cleanup_llama_processes(app_handle.clone()).await {
-                        log::warn!("Failed to shut down the llama.cpp engine: {}", e);
-                    } else {
-                        log::info!("llama.cpp engine shut down successfully");
-                    }
-
-                    #[cfg(target_os = "macos")]
-                    {
-                        use tauri_plugin_mlx::cleanup_mlx_processes;
-                        if let Err(e) = cleanup_mlx_processes(app_handle.clone()).await {
-                            log::warn!("Failed to cleanup MLX processes: {}", e);
-                        } else {
-                            log::info!("MLX processes cleaned up successfully");
-                        }
-                    }
-
-                    log::info!("App cleanup completed");
-                    core::crash_trace::mark_clean_exit(&get_jan_data_folder_path(app_handle.clone()));
-                });
+                tauri::async_runtime::block_on(core::system::shutdown::shutdown_cleanup(
+                    &app_handle,
+                ));
+                core::crash_trace::mark_clean_exit(&get_jan_data_folder_path(app_handle.clone()));
             });
         }
     });
+}
+
+/// The setup block is easy to lose in a merge with the upstream app, and losing
+/// it fails silently: a Windows window that is created hidden and never shown,
+/// remote access that never starts, a previous crash that is never logged.
+#[cfg(test)]
+mod startup_guard_tests {
+    const SOURCE: &str = include_str!("lib.rs");
+
+    #[test]
+    fn setup_shows_the_window_and_starts_the_services_it_always_did() {
+        for call in [
+            "core::window_state::restore_and_show(",
+            "core::window_state::install(",
+            "suppress_beforeunload_dialog(&window);",
+            "core::remote::commands::init(app.handle());",
+            "for (level, text) in crash_notes {",
+        ] {
+            // The test's own list contains each string once; the setup block
+            // must supply a second occurrence.
+            assert!(
+                SOURCE.matches(call).count() >= 2,
+                "startup no longer runs `{call}`"
+            );
+        }
+    }
+
+    #[test]
+    fn optional_setup_steps_cannot_abort_startup_and_every_exit_marks_clean() {
+        // The needles are built from pieces so this test does not match itself.
+        for needle in [
+            ["register_all()", "?;"].concat(),
+            ["setup_theme_listener(app)", "?;"].concat(),
+        ] {
+            assert_eq!(SOURCE.matches(needle.as_str()).count(), 0, "`{needle}` aborts startup");
+        }
+        let mark = ["mark_clean", "_exit(&get_jan"].concat();
+        assert!(
+            SOURCE.matches(mark.as_str()).count() >= 3,
+            "confirm_exit and both exit paths must mark a clean exit"
+        );
+    }
 }

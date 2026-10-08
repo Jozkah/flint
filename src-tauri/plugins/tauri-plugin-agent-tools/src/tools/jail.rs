@@ -317,8 +317,39 @@ pub fn can_confine_write_roots(backend: Backend, roots: &[PathBuf], owned: Optio
 }
 
 pub fn backend() -> Backend {
-    static BACKEND: OnceLock<Backend> = OnceLock::new();
-    *BACKEND.get_or_init(detect)
+    static BACKEND: std::sync::Mutex<Option<Backend>> = std::sync::Mutex::new(None);
+    let mut slot = BACKEND.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(cached) = *slot {
+        return cached;
+    }
+    let (found, cacheable) = detect_cacheable();
+    // A probe that timed out says nothing about whether bubblewrap works (a
+    // loaded machine, a cold disk), so it is retried on the next call instead
+    // of withholding the sandbox for the whole session.
+    if cacheable {
+        *slot = Some(found);
+    }
+    found
+}
+
+/// [`detect`] plus whether the answer may be remembered.
+fn detect_cacheable() -> (Backend, bool) {
+    #[cfg(target_os = "linux")]
+    {
+        if !matches!(
+            crate::compat_env::var_os("AGENT_SANDBOX"),
+            Some(f) if f.eq_ignore_ascii_case("none") || f.eq_ignore_ascii_case("off")
+        ) {
+            if let Some(path) = bwrap_path() {
+                return match bwrap_probe(&path) {
+                    Probe::Usable => (Backend::Bubblewrap, true),
+                    Probe::Unusable => (Backend::None, true),
+                    Probe::TimedOut => (Backend::None, false),
+                };
+            }
+        }
+    }
+    (detect(), true)
 }
 
 fn detect() -> Backend {
@@ -378,15 +409,24 @@ pub fn scratch_env_path(backend: Backend, policy: &Policy) -> Option<PathBuf> {
 /// which case the caller must not run the command.
 pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
     match backend() {
-        Backend::Bubblewrap => Some(ShellConfig {
-            program: bwrap_path()?,
-            args: bwrap_args(policy, cfg),
-            via_stdin: cfg.via_stdin,
-            description: cfg.description,
-            // The wrapper is a different program; the command language the
-            // command string will meet is still the wrapped shell's.
-            flavor: cfg.flavor,
-        }),
+        Backend::Bubblewrap => {
+            let bwrap = bwrap_path()?;
+            let inner = bwrap_args(policy, cfg);
+            // With the network allowed, run the whole bwrap invocation inside
+            // pasta's own network namespace when pasta is installed, so the
+            // `--share-net` below shares that one and not the host's.
+            let (program, args) = match pasta_path().filter(|_| policy.allow_network) {
+                Some(pasta) => (pasta, pasta_wrap_args(&bwrap, &inner)),
+                None => (bwrap, inner),
+            };
+            Some(ShellConfig {
+                program,
+                args,
+                via_stdin: cfg.via_stdin,
+                description: cfg.description,
+                flavor: cfg.flavor,
+            })
+        }
         Backend::Seatbelt => Some(ShellConfig {
             program: PathBuf::from(seatbelt_program()),
             args: seatbelt_args(policy, cfg),
@@ -465,40 +505,158 @@ fn bwrap_path() -> Option<PathBuf> {
     None
 }
 
+/// Result of the bubblewrap probe.
+#[cfg(target_os = "linux")]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum Probe {
+    Usable,
+    Unusable,
+    /// The probe did not finish in time; says nothing about usability.
+    TimedOut,
+}
+
+#[cfg(target_os = "linux")]
+fn bwrap_usable(path: &Path) -> bool {
+    bwrap_probe(path) == Probe::Usable
+}
+
 /// bubblewrap needs unprivileged user namespaces, which some distros and all of
 /// WSL1 disable. Probe with a trivial sandbox rather than inferring from kernel
 /// version, and treat a hang as unusable so a broken setup cannot wedge startup.
+/// The probe runs `sh -c :` rather than `/bin/true`, which does not exist on
+/// NixOS; the deadline is generous because a cold start can be slow.
 #[cfg(target_os = "linux")]
-fn bwrap_usable(path: &Path) -> bool {
-    use std::process::{Command, Stdio};
+fn bwrap_probe(path: &Path) -> Probe {
+    use std::process::Command;
+
+    let shell = if Path::new("/bin/sh").exists() {
+        PathBuf::from("/bin/sh")
+    } else {
+        super::proc::which("sh").unwrap_or_else(|| PathBuf::from("/bin/sh"))
+    };
+    let mut cmd = Command::new(path);
+    cmd.args(["--unshare-all", "--ro-bind", "/", "/"])
+        .arg(&shell)
+        .args(["-c", ":"]);
+    run_probe(cmd)
+}
+
+/// Run a probe command to completion under a 5 second deadline.
+#[cfg(target_os = "linux")]
+fn run_probe(mut cmd: std::process::Command) -> Probe {
+    use std::process::Stdio;
     use std::time::{Duration, Instant};
 
-    let Ok(mut child) = Command::new(path)
-        .args(["--unshare-all", "--ro-bind", "/", "/", "/bin/true"])
+    let Ok(mut child) = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
     else {
-        return false;
+        return Probe::Unusable;
     };
-    let deadline = Instant::now() + Duration::from_millis(500);
+    let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         match child.try_wait() {
-            Ok(Some(status)) => return status.success(),
+            Ok(Some(status)) => {
+                return if status.success() {
+                    Probe::Usable
+                } else {
+                    Probe::Unusable
+                }
+            }
             Ok(None) if Instant::now() >= deadline => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return false;
+                return Probe::TimedOut;
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(20)),
             Err(_) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return false;
+                return Probe::Unusable;
             }
         }
     }
+}
+
+/// Arguments for `pasta` that run `bwrap` + its argv in a fresh user and network
+/// namespace with outbound connectivity (`--config-net`), so the bwrap
+/// `--share-net` shares that namespace instead of the host's. `--no-map-gw`
+/// keeps the gateway address from reaching host loopback services.
+pub fn pasta_wrap_args(bwrap: &Path, bwrap_argv: &[String]) -> Vec<String> {
+    let mut args: Vec<String> = ["--config-net", "-q", "--no-map-gw", "--"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    args.push(bwrap.to_string_lossy().to_string());
+    args.extend(bwrap_argv.iter().cloned());
+    args
+}
+
+/// The user-mode network helper, when one is installed and a nested sandbox
+/// under it actually starts. A definite answer is remembered; a probe that
+/// timed out is retried on the next call.
+#[cfg(target_os = "linux")]
+fn pasta_path() -> Option<PathBuf> {
+    static SLOT: Mutex<Option<Option<PathBuf>>> = Mutex::new(None);
+    let mut slot = SLOT.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(cached) = slot.as_ref() {
+        return cached.clone();
+    }
+    let bwrap = bwrap_path()?;
+    let Some(pasta) = ["/usr/bin/pasta", "/bin/pasta", "/usr/local/bin/pasta"]
+        .into_iter()
+        .map(PathBuf::from)
+        .find(|p| p.is_file())
+        .or_else(|| super::proc::which("pasta"))
+    else {
+        *slot = Some(None);
+        return None;
+    };
+    let shell = if Path::new("/bin/sh").exists() {
+        PathBuf::from("/bin/sh")
+    } else {
+        super::proc::which("sh").unwrap_or_else(|| PathBuf::from("/bin/sh"))
+    };
+    let inner: Vec<String> = [
+        "--unshare-all",
+        "--share-net",
+        "--ro-bind",
+        "/",
+        "/",
+        &shell.to_string_lossy(),
+        "-c",
+        ":",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let mut cmd = std::process::Command::new(&pasta);
+    cmd.args(pasta_wrap_args(&bwrap, &inner));
+    match run_probe(cmd) {
+        Probe::Usable => {
+            *slot = Some(Some(pasta.clone()));
+            Some(pasta)
+        }
+        Probe::Unusable => {
+            *slot = Some(None);
+            None
+        }
+        Probe::TimedOut => None,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn pasta_path() -> Option<PathBuf> {
+    None
+}
+
+/// True when a network-enabled bubblewrap sandbox sits in the host network
+/// namespace (no usable `pasta`), which leaves abstract unix sockets reachable.
+/// Surfaced in the sandbox readiness details.
+pub fn network_shares_host_namespace() -> bool {
+    backend() == Backend::Bubblewrap && pasta_path().is_none()
 }
 
 fn push(args: &mut Vec<String>, parts: &[&str]) {
@@ -527,8 +685,9 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     push(&mut args, &["--dev", "/dev"]);
     // An empty tmpfs over `/run` (Jozkah/jan#210). The read-only root bind
     // leaves `/run/user/$UID` visible, and a read-only mount does not stop
-    // `connect()` on a pathname unix socket, nor does `--unshare-all` (such
-    // sockets live in the filesystem, not the network namespace). Left
+    // `connect()` on a pathname unix socket, nor does `--unshare-all` for
+    // *pathname* sockets (they live in the filesystem; abstract sockets are
+    // network-namespace scoped, see the `--share-net` note below). Left
     // visible, the session D-Bus and the `systemd --user` socket let a command
     // run `systemd-run --user` and start a process outside the sandbox; the
     // ssh-agent/keyring sockets there hand out the user's credentials.
@@ -629,6 +788,16 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     // Drops the network, pid, ipc, uts and cgroup namespaces along with the
     // user namespace; --share-net selectively restores networking.
     push(&mut args, &["--unshare-all"]);
+    // --share-net keeps whatever network namespace bwrap itself runs in. Linux
+    // *abstract* unix sockets (names starting with `@`, e.g. some D-Bus, X11
+    // and snap/portal endpoints) live in that namespace, not the filesystem,
+    // so `--tmpfs /run` does not hide them. `wrap` therefore starts bwrap
+    // inside `pasta --config-net` when pasta is installed: the namespace
+    // shared here is pasta's private one, which holds no host abstract
+    // sockets. Without pasta, residual risk: the host namespace is shared and
+    // `connect()` to a host abstract socket works (reported through
+    // `network_shares_host_namespace`). With the network denied,
+    // --unshare-all gives a fresh namespace and they are unreachable.
     if policy.allow_network {
         push(&mut args, &["--share-net"]);
     }
@@ -686,7 +855,8 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
          (allow file-write-data\n\
          \x20 (require-all (path \"/dev/null\") (vnode-type CHARACTER-DEVICE)))\n\
          ; Reads: open, minus the user's home, plus the workspace back.\n\
-         (allow file-read*)\n",
+         (allow file-read*)\n\
+         (deny file-read* (subpath \"/Volumes\") (subpath \"/Users/Shared\"))\n",
     );
     if home_dir().is_some() && !policy.home_readonly {
         p.push_str("(deny file-read* (subpath (param \"HOME_ROOT\")))\n");
@@ -1347,7 +1517,7 @@ fn wait_or_kill(
                 // every run waits on. `kill_tree` now walks the tree itself.
                 // Then the process directly, in case the tree walk could not
                 // open it. The drain threads end when the pipes close.
-                let _ = super::proc::kill_tree(child.id());
+                let _ = super::proc::kill_tree_child(&mut child);
                 let _ = child.kill();
                 let _ = child.wait();
                 return None;
@@ -1915,6 +2085,53 @@ mod tests {
 
         let args = seatbelt_args(&policy().with_read_roots(vec![PathBuf::from(repo)]), &cfg());
         assert!(args.iter().any(|a| a == &format!("-DREAD_ROOT_0={repo}")));
+    }
+
+    #[test]
+    fn seatbelt_denies_external_volumes_before_the_workspace_is_allowed() {
+        let deny = "(deny file-read* (subpath \"/Volumes\") (subpath \"/Users/Shared\"))";
+        let p = seatbelt_policy(&policy());
+        let d = p.find(deny).expect("volumes deny");
+        assert!(p.find("(allow file-read*)\n").expect("open read") < d);
+        let ws = p
+            .find("(allow file-read* (subpath (param \"WORKSPACE\")))")
+            .expect("workspace allow");
+        assert!(d < ws, "a workspace under /Volumes must be re-allowed: {p}");
+
+        let q = seatbelt_policy(
+            &Policy::new(Path::new("/Volumes/Ext/proj"), false)
+                .with_read_roots(vec![PathBuf::from("/Volumes/Ext/ref")])
+                .with_write_roots(vec![PathBuf::from("/Volumes/Ext/wt")]),
+        );
+        let d = q.find(deny).expect("volumes deny");
+        for allow in [
+            "(allow file-read* (subpath (param \"WORKSPACE\")))",
+            "(allow file-read* (subpath (param \"READ_ROOT_0\")))",
+            "(allow file-read* (subpath (param \"WRITE_ROOT_0\")))",
+        ] {
+            assert!(d < q.find(allow).expect(allow), "{allow}: {q}");
+        }
+    }
+
+    #[test]
+    fn seatbelt_security_server_lookup_needs_the_network() {
+        assert!(!seatbelt_policy(&policy()).contains("com.apple.SecurityServer"));
+        let online = Policy::new(Path::new("/data/agent-workspace/threads/t1"), true);
+        assert!(seatbelt_policy(&online).contains("com.apple.SecurityServer"));
+    }
+
+    #[test]
+    fn pasta_wraps_the_whole_bwrap_invocation() {
+        let inner = vec!["--share-net".to_string(), "--".to_string(), "sh".to_string()];
+        let args = pasta_wrap_args(Path::new("/usr/bin/bwrap"), &inner);
+        let line = joined(&args);
+        assert!(
+            line.starts_with("--config-net -q --no-map-gw -- /usr/bin/bwrap --share-net -- sh"),
+            "{line}"
+        );
+        let real = bwrap_args(&Policy::new(Path::new("/data/ws"), true), &cfg());
+        assert!(real.iter().any(|a| a == "--share-net"));
+        assert!(pasta_wrap_args(Path::new("bwrap"), &real).ends_with(&real));
     }
 
     /// sandbox-exec refuses a profile that references a parameter no `-D`

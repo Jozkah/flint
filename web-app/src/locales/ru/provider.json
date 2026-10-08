@@ -1,5 +1,19 @@
 {
   "addProvider": "Добавить поставщика",
   "addOpenAIProvider": "Добавить поставщика OpenAI",
-  "enterNameForProvider": "Введите имя поставщика"
+  "enterNameForProvider": "Введите имя поставщика",
+  "nameLabel": "Название",
+  "apiTypeLabel": "Формат API",
+  "apiTypeOpenAI": "Совместимый с OpenAI",
+  "apiTypeAnthropic": "Совместимый с Anthropic",
+  "baseUrlLabel": "Базовый URL",
+  "baseUrlPlaceholder": "https://your-endpoint/v1",
+  "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
+  "apiKeyLabel": "API-ключ",
+  "apiKeyPlaceholder": "Вставьте свой API-ключ",
+  "invalidBaseUrl": "Базовый URL должен быть корректным http(s) URL",
+  "globalSettings": "Глобальные настройки",
+  "stripReasoning": "Удалять рассуждения из контекста",
+  "stripReasoningDesc": "Удалять содержимое мышления/рассуждений из предыдущих ходов перед повторной отправкой истории, для всех провайдеров. Улучшает повторное использование KV-кэша для локальных моделей, но некоторые модели (например, новые версии Qwen) рекомендуют сохранять его для более качественных многоходовых рассуждений.",
+  "providerAlreadyExists": "Провайдер с именем {{name}} уже существует."
 }

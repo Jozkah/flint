@@ -202,6 +202,26 @@ const BLOCKED_EXTRA_ARGS = new Set([
   'webui-config-file',
 ])
 
+/**
+ * Sibling options the exact set above would miss: draft/vocoder/vision model
+ * paths, Hugging Face downloads (`hf-repo-draft`, `hf-file-v`...), the `no-`
+ * negations of the web UI and model options, and the router's model options.
+ * `model-` is blocked as a whole prefix; none of its members is safe to let a
+ * user redirect.
+ */
+const BLOCKED_EXTRA_ARG_PATTERN =
+  /^(no-)?(hf-|model(-|$)|models-|webui|mmproj(-url)?$|api-key|ssl-)/
+
+export function isBlockedExtraArg(key: string): boolean {
+  return BLOCKED_EXTRA_ARGS.has(key) || BLOCKED_EXTRA_ARG_PATTERN.test(key)
+}
+
+/** A token is a flag only when it looks like one; `-1` and `-0.5` are values. */
+const FLAG_LIKE = /^-{1,2}[A-Za-z]/
+function isValueToken(t: string | undefined): t is string {
+  return t !== undefined && t !== '' && !FLAG_LIKE.test(t)
+}
+
 function splitArgs(text: string): string[] {
   const tokens: string[] = []
   let current = ''
@@ -257,15 +277,15 @@ export function extraArgsToIni(text: unknown): {
     // A single-dash short flag has no INI key; only long options are supported.
     if (!token.startsWith('--')) {
       skipped.push(token)
-      if (eq === -1 && tokens[i + 1] && !tokens[i + 1].startsWith('-')) i++
+      if (eq === -1 && isValueToken(tokens[i + 1])) i++
       continue
     }
     key = key.toLowerCase()
-    if (value === undefined && tokens[i + 1] && !tokens[i + 1].startsWith('-')) {
+    if (value === undefined && isValueToken(tokens[i + 1])) {
       value = tokens[i + 1]
       i++
     }
-    if (BLOCKED_EXTRA_ARGS.has(key)) {
+    if (isBlockedExtraArg(key)) {
       skipped.push(`--${key}`)
       continue
     }

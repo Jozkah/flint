@@ -3,5 +3,30 @@
   "description": "Aquest xat s’està acostant al límit de memòria de l’IA, com una pissarra que s’omple. Podem ampliar la finestra de memòria (la mida del context) perquè recordi més coses, però pot consumir més memòria del teu ordinador. També podem truncar l’entrada, és a dir, oblidar part de l’historial per fer lloc a missatges nous.",
   "increaseContextSizeDescription": "Vols augmentar la mida del context?",
   "truncateInput": "Escurça l’entrada",
-  "increaseContextSize": "Augmenta la mida del context"
+  "increaseContextSize": "Augmenta la mida del context",
+  "lastRequestOverflowed": "L'última sol·licitud ha desbordat la finestra de context.",
+  "contextOverflowDetail": "Aquesta sol·licitud necessitava {{request}} tokens, però la finestra de context del model només en té {{context}}.",
+  "contextOverflowGeneric": "La sol·licitud supera la mida de context disponible.",
+  "engine": {
+    "unknown": "El motor del model ha informat d'un error inesperat.",
+    "MODEL_LOAD_FAILED": "No s'ha pogut carregar el model.",
+    "MODEL_ARCH_NOT_SUPPORTED": "El motor actual no admet l'arquitectura d'aquest model. Actualitzar el motor des de la Configuració pot afegir-ne el suport.",
+    "MODEL_LOAD_TIMED_OUT": "El model ha trigat massa a carregar-se i s'ha aturat. Normalment ajuda un model més petit o una mida de context més petita.",
+    "MISSING_SHARED_LIBRARY": "Falta una biblioteca que el motor necessita, de manera que no es pot iniciar.",
+    "GPU_DRIVER_TOO_OLD": "El controlador de la teva GPU és massa antic per a aquest motor. Actualitzar el controlador, o canviar al motor de CPU a la Configuració, ho solucionarà.",
+    "OUT_OF_MEMORY": "No hi ha prou memòria per executar aquest model. Normalment ajuda un model més petit o una mida de context més petita.",
+    "INVALID_ARGUMENT": "Un dels paràmetres del model no és vàlid.",
+    "IO_ERROR": "No s'ha pogut llegir ni escriure un fitxer en iniciar el model.",
+    "INTERNAL_ERROR": "Alguna cosa ha anat malament dins de Flint en iniciar el model."
+  },
+  "engineMissingLibraries": "Falta: {{libraries}}",
+  "engineReportedDetail": "El motor ha informat: {{detail}}",
+  "startModelFailed": "No s'ha pogut iniciar el model: {{reason}}",
+  "createModelFailed": "No s'ha pogut crear el model: {{reason}}",
+  "noRunningSession": "No s'ha trobat cap sessió en execució per al model: {{model}}",
+  "serverPortOccupied": "Port en ús",
+  "serverPortOccupiedDescription": "El port {{port}} ja està en ús. Prova amb un port diferent.",
+  "serverInvalidModelPath": "Ruta del model no vàlida o inaccessible",
+  "serverStartModelFailed": "No s'ha pogut iniciar el model",
+  "serverStartFailed": "No s'ha pogut iniciar el servidor"
 }

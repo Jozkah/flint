@@ -1,7 +1,138 @@
 {
+  "status": {
+    "running": "Em execução",
+    "completed": "Concluída",
+    "failed": "Falhou",
+    "cancelled": "Cancelada",
+    "partial": "Parcialmente concluída"
+  },
+  "sections": {
+    "happened": "O que aconteceu",
+    "where": "Onde está o resultado",
+    "checked": "O que foi verificado",
+    "unresolved": "Pendências",
+    "next": "Próximos passos"
+  },
+  "headline": {
+    "running": "A execução ainda está em andamento.",
+    "completedWithChanges": "A execução terminou e o Flint alterou arquivos.",
+    "completedNoChanges": "A execução terminou sem o Flint alterar nenhum arquivo.",
+    "completedChecksFailed": "A execução terminou, mas uma verificação que o Flint executou não passou.",
+    "finishedIncomplete": "A execução terminou, mas parte da solicitação não foi feita. Veja Pendências.",
+    "partial": "A execução parou antes de terminar. Algum trabalho foi feito antes.",
+    "failed": "A execução parou antes de terminar, e nada foi concluído.",
+    "cancelled": "A execução foi interrompida antes de qualquer coisa ser concluída."
+  },
+  "plan": {
+    "progress": "{{done}} de {{total}} concluídos"
+  },
+  "kept": "Estas alterações foram mantidas. Interromper uma execução não desfaz o que ela já fez.",
+  "location": {
+    "sandbox": "No sandbox desta sessão, não no seu repositório.",
+    "worktree": "Em um worktree separado que o Flint gerencia, não no seu checkout.",
+    "userCheckout": "Diretamente na pasta anexada.",
+    "none": "Nenhuma árvore de trabalho foi anexada a esta execução.",
+    "noFiles": "O Flint não gravou nenhum arquivo.",
+    "open": "Abrir {{path}}"
+  },
+  "checks": {
+    "none": "Nenhum teste ou verificação foi executado pelo Flint.",
+    "kind": {
+      "test": "Teste",
+      "build": "Build",
+      "lint": "Verificação",
+      "command": "Comando"
+    },
+    "outcome": {
+      "passed": "Aprovado",
+      "failed": "Falhou",
+      "didNotFinish": "Não terminou",
+      "running": "Em execução",
+      "notRun": "Não executado",
+      "unknown": "Resultado desconhecido"
+    },
+    "exit": "saída {{code}}",
+    "summary": {
+      "allTestsPassed": "Os testes automatizados passaram.",
+      "allChecksPassed": "As verificações automatizadas passaram. Nenhum teste foi executado.",
+      "somePassed": "{{passed}} de {{total}} verificações passaram.",
+      "failedWithCode": "{{command}} falhou com código de saída {{code}}.",
+      "failedNoCode": "{{command}} falhou sem um código de saída.",
+      "didNotFinish_one": "{{count}} verificação não terminou: foi cancelada, expirou ou foi interrompida.",
+      "didNotFinish_other": "{{count}} verificações não terminaram: foram canceladas, expiraram ou foram interrompidas.",
+      "didNotFinish_many": "{{count}} de verificações não terminaram: foram canceladas, expiraram ou foram interrompidas.",
+      "notRun_one": "{{count}} verificação não foi executada.",
+      "notRun_other": "{{count}} verificações não foram executadas.",
+      "notRun_many": "{{count}} de verificações não foram executadas.",
+      "unknown_one": "{{count}} verificação não tem status de saída registrado, então seu resultado é desconhecido.",
+      "unknown_other": "{{count}} verificações não têm status de saída registrado, então seus resultados são desconhecidos.",
+      "unknown_many": "{{count}} de verificações não têm status de saída registrado, então seus resultados são desconhecidos.",
+      "running_one": "{{count}} verificação ainda está em execução.",
+      "running_other": "{{count}} verificações ainda estão em execução.",
+      "running_many": "{{count}} de verificações ainda estão em execução.",
+      "visualNotChecked": "O comportamento visual e de ponta a ponta não foi verificado."
+    },
+    "otherCommands": "{{count}} outro(s) comando(s) também foram executados. Eles não são contados como verificações.",
+    "completion": {
+      "not-started": "não iniciado",
+      "running": "ainda em execução",
+      "completed": "executado até o fim",
+      "cancelled": "cancelado",
+      "timed-out": "expirou",
+      "interrupted": "interrompido"
+    },
+    "limitation": {
+      "exit-status-only": "Avaliado apenas pelo status de saída.",
+      "compound-command": "Vários comandos foram encadeados; o status cobre a cadeia, não cada etapa.",
+      "output-truncated": "A saída foi cortada, então falhas posteriores podem não ser visíveis.",
+      "background": "Iniciado em segundo plano; o status pode não ser o do job.",
+      "subset-selected": "Apenas parte da suíte de testes foi selecionada.",
+      "no-exit-status": "Nenhum status de saída foi registrado."
+    },
+    "claimsTitle": "Mencionado pelo assistente, não verificado pelo Flint:"
+  },
   "unresolved": {
     "stop": {
+      "error": "A execução terminou com um erro.",
+      "aborted": "A execução foi interrompida.",
+      "deadline": "A execução atingiu o limite de tempo.",
+      "timeout": "O modelo parou de responder a tempo.",
+      "loop": "A execução foi interrompida por se repetir.",
+      "steps": "A execução usou todas as suas etapas.",
       "tokens": "A execução parou em um limite de tokens (a janela de contexto ou a cota da solicitação)."
-    }
+    },
+    "refused": "Não permitido: {{tool}} {{target}}",
+    "refusedReadOnly": "Não executado, este turno era somente leitura: {{tool}} {{target}}. Mude o modo para Perguntar antes de alterar ou Autônomo e depois Continue.",
+    "cancelled": "Cancelado: {{tool}} {{target}}",
+    "failed": "Falhou: {{tool}} {{target}}",
+    "interrupted": "Não terminou: {{tool}} {{target}}",
+    "checkFailed": "Não passou: {{command}}"
+  },
+  "actions": {
+    "openResult": "Abrir resultado",
+    "reviewChanges": "Revisar alterações",
+    "continue": "Continuar",
+    "retry": "Tentar novamente",
+    "retryNote": "Tentar novamente envia a última requisição de novo. Não desfaz as alterações que a execução já fez.",
+    "restore": "Voltar a um ponto anterior"
+  },
+  "rewind": {
+    "scopeTitle": "O que esta restauração altera",
+    "scopeTree": "Worktree: {{tree}}",
+    "filesHeading": "Arquivos que serão restaurados ({{count}})",
+    "noFiles": "Nenhum arquivo difere deste ponto.",
+    "filesUnknown": "O Flint não conseguiu listar quais arquivos serão alterados.",
+    "safetyNote": "Antes de restaurar, o Flint salva o estado atual como um novo ponto, para que esta restauração possa ser desfeita.",
+    "boundaries": "Restaurar arquivos não desfaz mensagens, pushes remotos, conteúdo publicado, pacotes instalados nem outros efeitos fora deste worktree. Comandos que já foram executados não são revertidos.",
+    "unrelatedTitle": "Estes arquivos mudaram depois do último ponto e não foram gravados pelo Flint. A restauração os sobrescreverá:",
+    "unrelatedConfirm": "Entendo que estas edições serão sobrescritas. Elas continuam disponíveis no ponto salvo.",
+    "safetyLabel": "Antes de restaurar {{time}}",
+    "safetyFailed": "Não foi possível salvar o estado atual primeiro, então nada foi restaurado: {{reason}}",
+    "restored": "Restaurado. O estado anterior foi salvo como \"{{label}}\".",
+    "previewDiff": "Pré-visualizar diff",
+    "hideDiff": "Ocultar diff",
+    "previewEmpty": "Nenhuma diferença para mostrar.",
+    "previewLoading": "Carregando diff…",
+    "previewFailed": "Não foi possível montar o diff: {{reason}}"
   }
 }

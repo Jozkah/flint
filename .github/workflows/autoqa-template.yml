@@ -56,7 +56,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Python 3.13
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -72,13 +72,19 @@ jobs:
 
       - name: Clean existing Jan installations
         shell: powershell
+        env:
+          INPUT_IS_NIGHTLY: ${{ inputs.is_nightly }}
         run: |
-          .\autoqa\scripts\windows_cleanup.ps1 -IsNightly "${{ inputs.is_nightly }}"
+          .\autoqa\scripts\windows_cleanup.ps1 -IsNightly "$env:INPUT_IS_NIGHTLY"
 
       - name: Download/Prepare Jan app
         shell: powershell
+        env:
+          INPUT_SOURCE_TYPE: ${{ inputs.source_type }}
+          INPUT_IS_NIGHTLY: ${{ inputs.is_nightly }}
+          INPUT_JAN_APP_WINDOWS_SOURCE: ${{ inputs.jan_app_windows_source }}
         run: |
-          if ("${{ inputs.source_type }}" -eq "local") {
+          if ("$env:INPUT_SOURCE_TYPE" -eq "local") {
             # Find the exe file in the artifact
             $exeFile = Get-ChildItem -Path "${{ runner.temp }}/windows-artifact" -Recurse -Filter "*.exe" | Select-Object -First 1
             if ($exeFile) {
@@ -86,7 +92,7 @@ jobs:
               Copy-Item -Path $exeFile.FullName -Destination "$env:TEMP\jan-installer.exe" -Force
               Write-Host "[SUCCESS] Installer copied to: $env:TEMP\jan-installer.exe"
               # Don't set JAN_APP_PATH here - let the install script set it to the correct installed app path
-              echo "IS_NIGHTLY=${{ inputs.is_nightly }}" >> $env:GITHUB_ENV
+              echo "IS_NIGHTLY=$env:INPUT_IS_NIGHTLY" >> $env:GITHUB_ENV
             } else {
               Write-Error "[FAILED] No .exe file found in artifact"
               exit 1
@@ -94,8 +100,8 @@ jobs:
           } else {
             # Use the existing download script for URLs
             .\autoqa\scripts\windows_download.ps1 `
-              -WorkflowInputUrl "${{ inputs.jan_app_windows_source }}" `
-              -WorkflowInputIsNightly "${{ inputs.is_nightly }}" `
+              -WorkflowInputUrl "$env:INPUT_JAN_APP_WINDOWS_SOURCE" `
+              -WorkflowInputIsNightly "$env:INPUT_IS_NIGHTLY" `
               -RepoVariableUrl "${{ vars.JAN_APP_URL }}" `
               -RepoVariableIsNightly "${{ vars.IS_NIGHTLY }}" `
               -DefaultUrl "$env:DEFAULT_JAN_APP_URL" `
@@ -161,8 +167,10 @@ jobs:
       - name: Cleanup after tests
         if: always()
         shell: powershell
+        env:
+          INPUT_IS_NIGHTLY: ${{ inputs.is_nightly }}
         run: |
-          .\autoqa\scripts\windows_post_cleanup.ps1 -IsNightly "${{ inputs.is_nightly }}"
+          .\autoqa\scripts\windows_post_cleanup.ps1 -IsNightly "$env:INPUT_IS_NIGHTLY"
 
   ubuntu:
     runs-on: ubuntu-22-04-nvidia-gpu
@@ -174,7 +182,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Python 3.13
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -222,8 +230,12 @@ jobs:
           ./autoqa/scripts/ubuntu_cleanup.sh
 
       - name: Download/Prepare Jan app
+        env:
+          INPUT_SOURCE_TYPE: ${{ inputs.source_type }}
+          INPUT_IS_NIGHTLY: ${{ inputs.is_nightly }}
+          INPUT_JAN_APP_UBUNTU_SOURCE: ${{ inputs.jan_app_ubuntu_source }}
         run: |
-          if [ "${{ inputs.source_type }}" = "local" ]; then
+          if [ "$INPUT_SOURCE_TYPE" = "local" ]; then
             # Find the deb file in the artifact
             DEB_FILE=$(find "${{ runner.temp }}/ubuntu-artifact" -name "*.deb" -type f | head -1)
             if [ -n "$DEB_FILE" ]; then
@@ -231,8 +243,8 @@ jobs:
               cp "$DEB_FILE" "/tmp/jan-installer.deb"
               echo "[SUCCESS] Installer copied to: /tmp/jan-installer.deb"
               echo "JAN_APP_PATH=/tmp/jan-installer.deb" >> $GITHUB_ENV
-              echo "IS_NIGHTLY=${{ inputs.is_nightly }}" >> $GITHUB_ENV
-              if [ "${{ inputs.is_nightly }}" = "true" ]; then
+              echo "IS_NIGHTLY=$INPUT_IS_NIGHTLY" >> $GITHUB_ENV
+              if [ "$INPUT_IS_NIGHTLY" = "true" ]; then
                 echo "JAN_PROCESS_NAME=Flint-Desktop-nightly" >> $GITHUB_ENV
               else
                 echo "JAN_PROCESS_NAME=Flint-Desktop" >> $GITHUB_ENV
@@ -244,8 +256,8 @@ jobs:
           else
             # Use the existing download script for URLs
             ./autoqa/scripts/ubuntu_download.sh \
-              "${{ inputs.jan_app_ubuntu_source }}" \
-              "${{ inputs.is_nightly }}" \
+              "$INPUT_JAN_APP_UBUNTU_SOURCE" \
+              "$INPUT_IS_NIGHTLY" \
               "${{ vars.JAN_APP_URL_LINUX }}" \
               "${{ vars.IS_NIGHTLY }}" \
               "$DEFAULT_JAN_APP_URL" \
@@ -253,7 +265,7 @@ jobs:
             
             # Set the correct environment variables for the test runner
             echo "JAN_APP_PATH=/tmp/jan-installer.deb" >> $GITHUB_ENV
-            if [ "${{ inputs.is_nightly }}" = "true" ]; then
+            if [ "$INPUT_IS_NIGHTLY" = "true" ]; then
               echo "JAN_PROCESS_NAME=Flint-Desktop-nightly" >> $GITHUB_ENV
             else
               echo "JAN_PROCESS_NAME=Flint-Desktop" >> $GITHUB_ENV
@@ -320,7 +332,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Python 3.13
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -344,8 +356,12 @@ jobs:
           ./autoqa/scripts/macos_cleanup.sh
 
       - name: Download/Prepare Jan app
+        env:
+          INPUT_SOURCE_TYPE: ${{ inputs.source_type }}
+          INPUT_IS_NIGHTLY: ${{ inputs.is_nightly }}
+          INPUT_JAN_APP_MACOS_SOURCE: ${{ inputs.jan_app_macos_source }}
         run: |
-          if [ "${{ inputs.source_type }}" = "local" ]; then
+          if [ "$INPUT_SOURCE_TYPE" = "local" ]; then
             # Find the dmg file in the artifact
             DMG_FILE=$(find "${{ runner.temp }}/macos-artifact" -name "*.dmg" -type f | head -1)
             if [ -n "$DMG_FILE" ]; then
@@ -353,8 +369,8 @@ jobs:
               cp "$DMG_FILE" "/tmp/jan-installer.dmg"
               echo "[SUCCESS] Installer copied to: /tmp/jan-installer.dmg"
               echo "JAN_APP_PATH=/tmp/jan-installer.dmg" >> $GITHUB_ENV
-              echo "IS_NIGHTLY=${{ inputs.is_nightly }}" >> $GITHUB_ENV
-              if [ "${{ inputs.is_nightly }}" = "true" ]; then
+              echo "IS_NIGHTLY=$INPUT_IS_NIGHTLY" >> $GITHUB_ENV
+              if [ "$INPUT_IS_NIGHTLY" = "true" ]; then
                 echo "PROCESS_NAME=Flint-Desktop-nightly" >> $GITHUB_ENV
               else
                 echo "PROCESS_NAME=Flint-Desktop" >> $GITHUB_ENV
@@ -366,8 +382,8 @@ jobs:
           else
             # Use the existing download script for URLs
             ./autoqa/scripts/macos_download.sh \
-              "${{ inputs.jan_app_macos_source }}" \
-              "${{ inputs.is_nightly }}" \
+              "$INPUT_JAN_APP_MACOS_SOURCE" \
+              "$INPUT_IS_NIGHTLY" \
               "${{ vars.JAN_APP_URL }}" \
               "${{ vars.IS_NIGHTLY }}" \
               "$DEFAULT_JAN_APP_URL" \
@@ -375,7 +391,7 @@ jobs:
             
             # Set the correct environment variables for the test runner
             echo "JAN_APP_PATH=/tmp/jan-installer.dmg" >> $GITHUB_ENV
-            if [ "${{ inputs.is_nightly }}" = "true" ]; then
+            if [ "$INPUT_IS_NIGHTLY" = "true" ]; then
               echo "PROCESS_NAME=Flint-Desktop-nightly" >> $GITHUB_ENV
             else
               echo "PROCESS_NAME=Flint-Desktop" >> $GITHUB_ENV

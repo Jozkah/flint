@@ -18,6 +18,7 @@ import os
 import sys
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -398,6 +399,25 @@ class SdkTest(unittest.TestCase):
         import tempfile
 
         return tempfile.mkdtemp(prefix="jan-sdk-missing-")
+
+
+class RuntimeSpawnTest(unittest.TestCase):
+    """Needs no runtime binary: the spawn is replaced."""
+
+    def test_the_runtime_pipes_are_decoded_as_utf8_not_the_locale_codec(self) -> None:
+        # The runtime writes UTF-8. Under a cp1252 locale the default codec
+        # garbles non-ASCII output, and an undefined byte kills the reader.
+        captured: dict = {}
+
+        def fake_popen(*_args, **kwargs):
+            captured.update(kwargs)
+            raise OSError("stop here")
+
+        with mock.patch("jan_agent_sdk.runtime.subprocess.Popen", fake_popen):
+            with self.assertRaises(JanRuntimeError):
+                JanRuntime.start(bin="jan-fake", env=os.environ)
+        self.assertEqual(captured.get("encoding"), "utf-8")
+        self.assertEqual(captured.get("errors"), "replace")
 
 
 if __name__ == "__main__":

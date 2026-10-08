@@ -873,7 +873,9 @@ async function routeCoworkTool(
       !destructive &&
       !ownTree &&
       noteAutoApproved(ctx.sessionId, useAutoApproveLimit.getState().limit)
-    const gitReason = git?.alwaysAsk
+    // Only the approval card shows these facts; bypass never asks, so it must
+    // not spend git round trips collecting them.
+    const gitReason = git?.alwaysAsk && ctx.mode !== 'bypass'
       ? [
           git.reason,
           await gitRemoteFacts(git.plan, async (args) => {

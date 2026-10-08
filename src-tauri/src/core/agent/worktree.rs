@@ -556,24 +556,19 @@ pub fn ensure(
 
 /// Resolve the repository's local default branch without contacting a remote.
 /// A remote HEAD points at its branch name; the local branch is the merge
-/// target, so it must exist before we choose it.
-fn default_branch(repo: &Path) -> Result<String, String> {
+/// target, so it must exist before we choose it. `None` when no default can be
+/// found locally (a repository whose only branch is `develop`, or whose
+/// `origin/HEAD` names a branch with no local copy).
+fn default_branch(repo: &Path) -> Option<String> {
     let remote_default = run(repo, &["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
         .ok()
         .and_then(|name| name.strip_prefix("origin/").map(str::to_string));
-    if let Some(name) = remote_default {
-        if run(repo, &["rev-parse", "--verify", &format!("refs/heads/{name}^{{commit}}")]).is_ok() {
-            return Ok(name);
-        }
-        return Err(format!("The default branch {name} is not available locally. Check it out before creating a Cowork worktree."));
-    }
     let configured = run(repo, &["config", "--get", "init.defaultBranch"]).ok();
-    for name in configured.into_iter().chain(["main".into(), "master".into()]) {
-        if run(repo, &["rev-parse", "--verify", &format!("refs/heads/{name}^{{commit}}")]).is_ok() {
-            return Ok(name);
-        }
-    }
-    Err("Could not find a local default branch. Create or check out main/master, or choose a base branch explicitly.".into())
+    remote_default
+        .into_iter()
+        .chain(configured)
+        .chain(["main".to_string(), "master".to_string()])
+        .find(|name| run(repo, &["rev-parse", "--verify", &format!("refs/heads/{name}^{{commit}}")]).is_ok())
 }
 
 /// How a new worktree is named and what it starts from.
@@ -678,9 +673,23 @@ pub fn ensure_with(
             (sha, local.then(|| base.to_string()))
         }
         _ => {
-            let base = default_branch(repo)?;
-            let sha = run(repo, &["rev-parse", "--verify", &format!("refs/heads/{base}^{{commit}}")])?;
-            (sha, Some(base))
+            match default_branch(repo) {
+                Some(base) => {
+                    let sha = run(repo, &["rev-parse", "--verify", &format!("refs/heads/{base}^{{commit}}")])?;
+                    (sha, Some(base))
+                }
+                None => {
+                    // No default branch to start from: use what is checked out.
+                    let sha = run(repo, &["rev-parse", "--verify", "HEAD^{commit}"])
+                        .map_err(|_| "This repository has no commits yet, so a worktree cannot be created.".to_string())?;
+                    let branch = current_branch(repo);
+                    notes.push(match &branch {
+                        Some(b) => format!("No default branch was found, so this worktree started from the checked-out branch {b}."),
+                        None => "No default branch was found, so this worktree started from the checked-out commit.".to_string(),
+                    });
+                    (sha, branch)
+                }
+            }
         }
     };
     let branch_exists = run(
@@ -1744,15 +1753,16 @@ mod tests {
     }
 
     /// A stopped operation in the checkout no longer blocks a worktree: it is
-    /// built from HEAD's commit, clean, and the record says what it did not
+    /// built from the default branch's commit (HEAD is detached mid-rebase and
+    /// is not the base), clean, and the record says what it did not
     /// carry. The operation in the checkout is left exactly where it was.
     fn assert_created_despite(f: &Fixture, op: &str, session: &str) {
         let stopped = operation_in_progress(&f.repo).expect("operation detected");
         assert_eq!(stopped.operation, op);
         assert_eq!(stopped.unresolved, vec!["a.txt".to_string()]);
-        let head = run(&f.repo, &["rev-parse", "HEAD"]).unwrap();
-        let record = ensure(&f.repo, &f.worktrees, session).expect("created from HEAD");
-        assert_eq!(record.base_sha, head);
+        let base = run(&f.repo, &["rev-parse", "refs/heads/main"]).unwrap();
+        let record = ensure(&f.repo, &f.worktrees, session).expect("created from main");
+        assert_eq!(record.base_sha, base);
         assert!(
             record
                 .notes
@@ -1961,6 +1971,18 @@ mod tests {
         assert_eq!(record.base_sha, main);
         assert!(!PathBuf::from(&record.path).join("old-topic.txt").exists());
         assert_eq!(current_branch(&f.repo).as_deref(), Some("old-topic"));
+    }
+
+    #[test]
+    fn a_repository_with_only_a_develop_branch_still_gets_a_worktree() {
+        let f = fixture();
+        git_in(&f.repo, &["checkout", "-q", "-b", "develop"]);
+        git_in(&f.repo, &["branch", "-q", "-D", "main"]);
+        let develop = run(&f.repo, &["rev-parse", "develop"]).unwrap();
+        let record = ensure(&f.repo, &f.worktrees, "s-develop").unwrap();
+        assert_eq!(record.base_branch.as_deref(), Some("develop"));
+        assert_eq!(record.base_sha, develop);
+        assert!(record.notes.iter().any(|n| n.contains("No default branch")), "{:?}", record.notes);
     }
 
     #[test]

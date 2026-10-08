@@ -377,11 +377,16 @@ const resetAll = () => {
 const getTextarea = () =>
   screen.getByTestId('chat-input') as HTMLTextAreaElement
 
-// Shared render helper that returns last rerender handle
-const renderInput = (props: any = {}) =>
-  render(
+// Shared render helper that returns last rerender handle. The composer opens
+// as a rich editor; these tests drive the plain textarea, so switch to it.
+const renderInput = (props: any = {}) => {
+  const view = render(
     <ChatInput onSubmit={props.onSubmit} onStop={props.onStop} {...props} />
   )
+  const plain = screen.queryByRole('button', { name: 'Use plain text editor' })
+  if (plain) fireEvent.click(plain)
+  return view
+}
 
 describe('ChatInput', () => {
   beforeEach(() => {

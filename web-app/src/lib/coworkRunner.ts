@@ -1392,6 +1392,8 @@ export async function runTurn(opts: {
             : undefined,
         path: pathOf(call.input),
         after: outcome.diff,
+        result:
+          typeof outcome.output === 'string' ? outcome.output : undefined,
       })
       if (await yieldToSteering(index)) break
     }

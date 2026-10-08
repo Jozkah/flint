@@ -1,6 +1,57 @@
 {
-  "col": {
-    "speed": "Rata-rata kecepatan"
+  "title": "Ringkasan",
+  "morning": "Selamat pagi",
+  "afternoon": "Selamat siang",
+  "evening": "Selamat malam",
+  "subWeek": "Ini yang dilakukan model Anda minggu ini.",
+  "subMonth": "Ini yang dilakukan model Anda selama 30 hari terakhir.",
+  "lastWeek": "Minggu lalu",
+  "last30": "30 hari terakhir",
+  "vsLastWeek": "dibanding minggu lalu",
+  "vsLastMonth": "dibanding 30 hari sebelumnya",
+  "options": "Opsi dasbor",
+  "resetStats": "Reset statistik",
+  "tokens": "Token Dihasilkan",
+  "cost": "Perkiraan Biaya",
+  "speed": "Rata-rata Kecepatan Pembuatan",
+  "toolSuccess": "Keberhasilan Panggilan Alat",
+  "throughput": "Throughput Token",
+  "throughputAria": "Token yang dihasilkan per hari. Gunakan tombol panah kiri dan kanan untuk memeriksa hari.",
+  "activity": "Aktivitas Terbaru",
+  "activityRange": "Rentang aktivitas",
+  "today": "Hari ini",
+  "yesterday": "Kemarin",
+  "thisWeek": "Minggu ini",
+  "searchActivity": "Cari aktivitas",
+  "newActivities": {
+    "today_other": "aktivitas baru hari ini",
+    "yesterday_other": "aktivitas kemarin",
+    "week_other": "aktivitas minggu ini"
   },
-  "tokensPerSecond": "{{value}} t/s"
+  "noActivity": "Belum ada",
+  "noActivityHint": "Persetujuan, kegagalan alat, dan pemadatan muncul di sini saat terjadi.",
+  "runs": "Eksekusi Agen",
+  "searchRuns": "Eksekusi",
+  "filter": "Filter",
+  "filterAll": "Semua eksekusi",
+  "openRun": "Buka eksekusi",
+  "noRuns": "Belum ada eksekusi Cowork",
+  "noRunsHint": "Serahkan tugas yang lebih besar ke Cowork dan eksekusinya muncul di sini.",
+  "openCowork": "Buka Cowork",
+  "col": {
+    "run": "ID Eksekusi",
+    "task": "Tugas",
+    "model": "Model",
+    "status": "Status",
+    "started": "Dimulai",
+    "speed": "Rata-rata kecepatan",
+    "tokens": "Token"
+  },
+  "tokensPerSecond": "{{value}} t/s",
+  "status": {
+    "running": "Berjalan",
+    "approval": "Perlu persetujuan",
+    "done": "Selesai",
+    "idle": "Belum dimulai"
+  }
 }

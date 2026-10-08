@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "Izinkan asisten memakai {{host}}?",
+    "description": "Asisten ingin memakai panel browser di situs yang belum Anda setujui.",
+    "urlLabel": "Alamat lengkap",
+    "urlHint": "Periksa seluruh alamat, termasuk apa pun setelah tanda ?. Alamat dapat membawa informasi keluar dari percakapan Anda.",
+    "wantsLabel": "Ingin",
+    "wants": {
+      "browser_open": "membuka halaman ini",
+      "browser_read_text": "membaca halaman ini",
+      "browser_snapshot": "melihat kontrol halaman ini",
+      "browser_screenshot": "mengambil gambar halaman ini",
+      "browser_scroll": "menggulir halaman ini",
+      "browser_click": "mengklik di halaman ini",
+      "browser_type": "mengetik di halaman ini",
+      "browser_press": "menekan tombol di halaman ini",
+      "browser_select": "memilih opsi di halaman ini"
+    },
+    "origin": "Diminta oleh {{origin}}",
+    "scopeLabel": "Berapa lama",
+    "once": "Kunjungan ini saja",
+    "onceHint": "Berakhir saat asisten pindah ke situs lain, atau setelah 15 menit.",
+    "session": "Sampai Flint ditutup",
+    "always": "Selalu",
+    "alwaysHint": "Disimpan. Anda dapat menghapusnya di Pengaturan > Alat agen.",
+    "subdomains": "Izinkan juga subdomain dari {{base}}",
+    "allow": "Izinkan",
+    "deny": "Jangan sekarang",
+    "never": "Jangan pernah izinkan situs ini",
+    "more": "{{count}} lagi menunggu",
+    "warning": "Asisten dapat membaca semua yang ada di halaman, dan teks di halaman dapat mencoba menyesatkannya."
+  },
+  "settings": {
+    "title": "Browser",
+    "enabled": "Izinkan asisten memakai panel browser",
+    "enabledDesc": "Menambahkan alat untuk membuka halaman, membacanya, dan, dengan persetujuan Anda, mengklik dan mengetik di panel browser bawaan. Anda melihat panel yang sama. Setiap situs meminta izin pertama kali; alamat lokal dan jaringan privat tidak pernah dibuka.",
+    "maxActions": "Tindakan per eksekusi",
+    "maxActionsDesc": "Klik, ketukan tombol, dan pilihan yang boleh dilakukan satu eksekusi sebelum harus berhenti.",
+    "rulesTitle": "Aturan situs tersimpan",
+    "rulesDesc": "Situs yang selalu Anda izinkan, atau blokir. Aturan untuk example.com hanya mencakup situs itu; *.example.com mencakup subdomainnya.",
+    "empty": "Belum ada aturan tersimpan. Situs muncul di sini saat Anda memilih Selalu izinkan atau Jangan pernah izinkan.",
+    "allow": "Diizinkan",
+    "deny": "Diblokir",
+    "privateOk": "Alamat lokal",
+    "remove": "Hapus",
+    "removed": "Aturan dihapus",
+    "removeFailed": "Tidak dapat menghapus aturan: {{error}}",
+    "addPlaceholder": "example.com atau *.example.com",
+    "addLabel": "Situs",
+    "addVerdict": "Aturan",
+    "addPrivate": "Izinkan ini menjadi alamat lokal atau jaringan privat (untuk server dev)",
+    "add": "Tambah aturan",
+    "added": "Aturan disimpan",
+    "addFailed": "Tidak dapat menyimpan aturan: {{error}}",
+    "pointer": "Tampilkan penunjuk",
+    "pointerDesc": "Menggambar kursor di panel browser yang meluncur ke elemen yang diklik atau diketik asisten, dan ikut menggulir. Mati: tidak ada yang digambar dan tidak ada yang tertunda.",
+    "reduceMotion": "Kurangi gerakan",
+    "reduceMotionDesc": "Tanpa peluncuran atau denyut cahaya: penunjuk langsung melompat ke targetnya.",
+    "reduceSystem": "Ikuti sistem",
+    "reduceOn": "Selalu kurangi",
+    "reduceOff": "Jangan pernah kurangi",
+    "grantsTitle": "Disetujui untuk sementara",
+    "grantsNone": "Tidak ada yang disetujui tanpa disimpan. Setiap situs yang tidak ada di aturan tersimpan akan meminta izin.",
+    "grantsDesc": "Situs yang Anda izinkan untuk sesi atau kunjungan ini. Tidak disimpan dan berakhir saat Flint ditutup.",
+    "grantScope": {
+      "session": "sesi ini",
+      "once": "kunjungan ini"
+    },
+    "grantAge": "{{minutes}} mnt lalu",
+    "forgetGrants": "Lupakan persetujuan sesi ini"
+  },
+  "card": {
+    "screenshot": "Tangkapan layar panel browser"
+  },
+  "pane": {
+    "driving": "Asisten sedang memakai browser ini",
+    "takeOver": "Ambil alih",
+    "paused": "Asisten dijeda",
+    "handBack": "Serahkan kembali",
+    "blocked": "Sebuah halaman diblokir: {{reason}}"
+  }
+}

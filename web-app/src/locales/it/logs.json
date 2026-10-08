@@ -1,3 +1,19 @@
 {
-  "noLogs": "Nessun log disponibile"
+  "noLogs": "Nessun log disponibile",
+  "noMatch": "Nessuna riga corrisponde al filtro",
+  "title": "Log",
+  "serverTitle": "Log del server API locale",
+  "copy": "Copia log",
+  "openFolder": "Apri cartella",
+  "copied": "Copiato",
+  "search": "Cerca nei log",
+  "filterLabel": "Filtra per livello",
+  "levelAll": "Tutti",
+  "levelError": "Errori",
+  "levelWarn": "Avvisi",
+  "levelInfo": "Info",
+  "levelDebug": "Debug",
+  "shown": "{{shown}} di {{total}} righe",
+  "description": "Tutto ciò che Flint e il suo motore hanno scritto oggi. Prima i più recenti.",
+  "serverDescription": "Richieste al server API locale compatibile con OpenAI. Prima i più recenti."
 }

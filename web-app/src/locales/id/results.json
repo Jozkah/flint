@@ -1,7 +1,130 @@
 {
+  "status": {
+    "running": "Berjalan",
+    "completed": "Selesai",
+    "failed": "Gagal",
+    "cancelled": "Dibatalkan",
+    "partial": "Sebagian selesai"
+  },
+  "sections": {
+    "happened": "Yang terjadi",
+    "where": "Lokasi hasil",
+    "checked": "Yang diperiksa",
+    "unresolved": "Belum selesai",
+    "next": "Langkah berikutnya"
+  },
+  "headline": {
+    "running": "Eksekusi masih berjalan.",
+    "completedWithChanges": "Eksekusi selesai dan Flint mengubah file.",
+    "completedNoChanges": "Eksekusi selesai tanpa Flint mengubah file apa pun.",
+    "completedChecksFailed": "Eksekusi selesai, tetapi satu pemeriksaan yang dijalankan Flint tidak lulus.",
+    "finishedIncomplete": "Eksekusi selesai, tetapi sebagian permintaan belum dikerjakan. Lihat Belum selesai.",
+    "partial": "Eksekusi berhenti sebelum selesai. Sebagian pekerjaan sudah dilakukan.",
+    "failed": "Eksekusi berhenti sebelum selesai, dan tidak ada yang rampung.",
+    "cancelled": "Eksekusi dihentikan sebelum ada yang rampung."
+  },
+  "plan": {
+    "progress": "{{done}} dari {{total}} selesai"
+  },
+  "kept": "Perubahan ini dipertahankan. Menghentikan eksekusi tidak membatalkan apa yang sudah dilakukannya.",
+  "location": {
+    "sandbox": "Di sandbox sesi ini, bukan di repositori Anda.",
+    "worktree": "Di worktree terpisah yang dikelola Flint, bukan di checkout Anda.",
+    "userCheckout": "Langsung di folder terlampir Anda.",
+    "none": "Tidak ada pohon kerja yang dilampirkan pada eksekusi ini.",
+    "noFiles": "Flint tidak menulis file apa pun.",
+    "open": "Buka {{path}}"
+  },
+  "checks": {
+    "none": "Tidak ada tes atau pemeriksaan yang dijalankan Flint.",
+    "kind": {
+      "test": "Tes",
+      "build": "Build",
+      "lint": "Pemeriksaan",
+      "command": "Perintah"
+    },
+    "outcome": {
+      "passed": "Lulus",
+      "failed": "Gagal",
+      "didNotFinish": "Tidak selesai",
+      "running": "Berjalan",
+      "notRun": "Tidak dijalankan",
+      "unknown": "Hasil tidak diketahui"
+    },
+    "exit": "exit {{code}}",
+    "summary": {
+      "allTestsPassed": "Tes otomatis lulus.",
+      "allChecksPassed": "Pemeriksaan otomatis lulus. Tidak ada tes yang dijalankan.",
+      "somePassed": "{{passed}} dari {{total}} pemeriksaan lulus.",
+      "failedWithCode": "{{command}} gagal dengan kode exit {{code}}.",
+      "failedNoCode": "{{command}} gagal tanpa kode exit.",
+      "didNotFinish_other": "{{count}} pemeriksaan tidak selesai: dibatalkan, habis waktu, atau terputus.",
+      "notRun_other": "{{count}} pemeriksaan tidak dijalankan.",
+      "unknown_other": "{{count}} pemeriksaan tidak memiliki status exit yang tercatat, jadi hasilnya tidak diketahui.",
+      "running_other": "{{count}} pemeriksaan masih berjalan.",
+      "visualNotChecked": "Perilaku visual dan end-to-end belum diperiksa."
+    },
+    "otherCommands": "{{count}} perintah lain juga dijalankan. Tidak dihitung sebagai pemeriksaan.",
+    "completion": {
+      "not-started": "belum dimulai",
+      "running": "masih berjalan",
+      "completed": "berjalan sampai selesai",
+      "cancelled": "dibatalkan",
+      "timed-out": "habis waktu",
+      "interrupted": "terputus"
+    },
+    "limitation": {
+      "exit-status-only": "Dinilai hanya dari status exit-nya.",
+      "compound-command": "Beberapa perintah dirangkai; statusnya mencakup rangkaian, bukan tiap langkah.",
+      "output-truncated": "Keluaran terpotong, jadi kegagalan berikutnya mungkin tidak terlihat.",
+      "background": "Dimulai di latar belakang; statusnya mungkin bukan milik pekerjaan itu.",
+      "subset-selected": "Hanya sebagian rangkaian tes yang dipilih.",
+      "no-exit-status": "Tidak ada status exit yang dicatat."
+    },
+    "claimsTitle": "Disebutkan oleh asisten, tidak diverifikasi oleh Flint:"
+  },
   "unresolved": {
     "stop": {
+      "error": "Eksekusi berakhir dengan error.",
+      "aborted": "Eksekusi dihentikan.",
+      "deadline": "Eksekusi mencapai batas waktunya.",
+      "timeout": "Model berhenti merespons tepat waktu.",
+      "loop": "Eksekusi dihentikan karena mengulang dirinya sendiri.",
+      "steps": "Eksekusi memakai semua langkahnya.",
       "tokens": "Run berhenti di batas token (jendela konteks atau jatah permintaan)."
-    }
+    },
+    "refused": "Tidak diizinkan: {{tool}} {{target}}",
+    "refusedReadOnly": "Tidak dijalankan, giliran ini hanya-baca: {{tool}} {{target}}. Ganti mode ke Tanya sebelum mengubah atau Otonom, lalu Lanjutkan.",
+    "cancelled": "Dibatalkan: {{tool}} {{target}}",
+    "failed": "Gagal: {{tool}} {{target}}",
+    "interrupted": "Tidak selesai: {{tool}} {{target}}",
+    "checkFailed": "Tidak lulus: {{command}}"
+  },
+  "actions": {
+    "openResult": "Buka hasil",
+    "reviewChanges": "Tinjau perubahan",
+    "continue": "Lanjutkan",
+    "retry": "Coba lagi",
+    "retryNote": "Coba lagi mengirim ulang permintaan terakhir. Tidak membatalkan perubahan yang sudah dibuat eksekusi.",
+    "restore": "Kembali ke titik sebelumnya"
+  },
+  "rewind": {
+    "scopeTitle": "Yang diubah pemulihan ini",
+    "scopeTree": "Worktree: {{tree}}",
+    "filesHeading": "File yang akan dikembalikan ({{count}})",
+    "noFiles": "Tidak ada file yang berbeda dari titik ini.",
+    "filesUnknown": "Flint tidak dapat mendaftar file mana yang akan berubah.",
+    "safetyNote": "Sebelum memulihkan, Flint menyimpan status saat ini sebagai titik baru, sehingga pemulihan ini dapat dibatalkan.",
+    "boundaries": "Memulihkan file tidak membatalkan pesan, push jarak jauh, konten yang dipublikasikan, paket yang dipasang, atau efek lain di luar worktree ini. Perintah yang sudah berjalan tidak dibalik.",
+    "unrelatedTitle": "File ini berubah setelah titik terbaru dan tidak ditulis oleh Flint. Pemulihan akan menimpanya:",
+    "unrelatedConfirm": "Saya mengerti suntingan ini akan ditimpa. Suntingan tetap tersedia di titik yang disimpan.",
+    "safetyLabel": "Sebelum pemulihan {{time}}",
+    "safetyFailed": "Status saat ini tidak dapat disimpan terlebih dahulu, jadi tidak ada yang dipulihkan: {{reason}}",
+    "restored": "Dipulihkan. Status sebelumnya disimpan sebagai \"{{label}}\".",
+    "previewDiff": "Pratinjau diff",
+    "hideDiff": "Sembunyikan diff",
+    "previewEmpty": "Tidak ada perbedaan untuk ditampilkan.",
+    "previewLoading": "Memuat diff…",
+    "previewFailed": "Tidak dapat membuat diff: {{reason}}"
   }
 }

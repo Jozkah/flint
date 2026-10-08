@@ -1,0 +1,116 @@
+{
+  "triggerLabel": "Apakah model ini akan berjalan di perangkat ini? {{status}}. Tampilkan detail",
+  "title": "Apakah model ini akan berjalan di perangkat ini?",
+  "subtitle": "Apa yang telah diukur di sini, dan apa yang hanya perkiraan.",
+  "measuredHeading": "Diukur di perangkat ini",
+  "estimateHeading": "Perkiraan",
+  "evidence": {
+    "ran-successfully": "Berhasil berjalan di perangkat ini dengan pengaturan ini.",
+    "failed-with-settings": "Gagal di perangkat ini dengan pengaturan ini. Pengaturan lain mungkin berhasil.",
+    "unsupported": "Tidak didukung oleh runtime ini: engine llama.cpp di versi Flint ini tidak mengenali arsitektur model. Mengubah pengaturan tidak akan membantu; pembaruan aplikasi mungkin.",
+    "stale": "Pernah diuji, tetapi ada yang berubah sejak itu, jadi hasil tersebut mungkin tidak berlaku.",
+    "not-tested": "Belum diuji di perangkat ini."
+  },
+  "verdict": {
+    "fits": "Diperkirakan muat di memori.",
+    "fits-partial-offload": "Diperkirakan muat, dengan sebagian model berjalan di CPU. Akan berfungsi tetapi merespons lebih lambat.",
+    "tight": "Mungkin memerlukan pengaturan yang disesuaikan: sisa memori sangat sedikit. Ukuran konteks yang lebih kecil membantu.",
+    "exceeds": "Diperkirakan tidak muat. Perkiraan bisa salah; Anda tetap bisa mencoba atau mengujinya.",
+    "unknown": "Informasi tidak cukup untuk memperkirakan."
+  },
+  "memoryModel": {
+    "unified": "Memori terpadu: {{ram}} dipakai bersama oleh CPU dan GPU. Secara default GPU dapat memakai sekitar {{gpu}} darinya.",
+    "discrete-gpu": "Memori GPU khusus {{vram}} ditambah {{ram}} memori sistem. Layer yang tidak muat di GPU berjalan di CPU.",
+    "integrated-gpu": "Grafis terintegrasi berbagi {{ram}} memori sistem, jadi dihitung sekali.",
+    "cpu-only": "Tidak ada GPU yang terdeteksi untuk runtime ini: model berjalan di CPU dengan {{ram}} memori sistem.",
+    "unknown": "Memori perangkat belum terdeteksi."
+  },
+  "showReasons": "Tampilkan cara perkiraan ini dibuat",
+  "breakdown": {
+    "weights": "File model",
+    "kvCache": "Memori percakapan untuk {{tokens}} token",
+    "mmproj": "Komponen visi",
+    "overhead": "Overhead runtime",
+    "total": "Perkiraan kebutuhan",
+    "budget": "Perkiraan tersedia",
+    "otherLoaded": "Sudah dipakai model lain yang dimuat"
+  },
+  "assumption": {
+    "kv-from-metadata": "Memori percakapan dihitung dari arsitektur model itu sendiri dan tipe cache yang dikonfigurasi.",
+    "kv-heuristic": "Arsitektur model tidak dapat dibaca, jadi memori percakapan diperkirakan dari ukuran file.",
+    "kv-sliding-window-midpoint": "Model ini hanya menyimpan token terbaru di sebagian layer; pembagian pastinya tidak diketahui, jadi titik tengah dipakai.",
+    "context-capped-to-trained": "Ukuran konteks dibatasi pada apa yang dilatihkan untuk model.",
+    "unified-gpu-working-set": "macOS membatasi seberapa banyak memori terpadu yang dipakai GPU secara default; di luar itu, layer berjalan di CPU.",
+    "integrated-gpu-shares-ram": "Memori grafis terintegrasi adalah bagian dari memori sistem dan tidak ditambahkan di atasnya.",
+    "discrete-vram-reserve": "Sekitar 512 MB per GPU khusus disisakan untuk driver dan layar.",
+    "system-reserve": "Sekitar 2 GB memori sistem disisakan untuk sistem operasi dan aplikasi lain.",
+    "runtime-overhead": "Buffer komputasi dan runtime diperkirakan 300 MB ditambah 2% dari file model.",
+    "cpu-only-by-setting": "Layer GPU diatur ke 0, jadi GPU tidak dipakai.",
+    "other-models-loaded": "Model yang sudah dimuat dikurangkan, tetapi lokasinya (GPU atau CPU) tidak dapat diamati.",
+    "mmap-not-counted": "Pemuatan dengan memory-map dapat membuat model mulai dengan memori lebih sedikit dari yang ditampilkan, dengan biaya kecepatan besar; itu tidak dihitung.",
+    "mmproj-unknown": "Komponen visi ada tetapi ukurannya tidak diketahui."
+  },
+  "uncertainty": {
+    "low": "Keyakinan: cukup baik. Pemakaian nyata masih bisa berbeda.",
+    "medium": "Keyakinan: sedang. Pengujian di perangkat ini memberi jawaban nyata.",
+    "high": "Keyakinan: rendah. Hasilnya dekat dengan batas atau bertumpu pada asumsi kasar; uji untuk mengetahuinya."
+  },
+  "difference": {
+    "settings": "Pengaturan berubah sejak pengujian: {{keys}}.",
+    "runtime": "Aplikasi diperbarui sejak pengujian ({{recorded}} ke {{current}}).",
+    "device": "Konfigurasi memori atau GPU perangkat berubah.",
+    "modelFile": "File model berubah."
+  },
+  "otherSuccess": "Model ini pernah berjalan di perangkat ini dengan ukuran konteks {{context}}.",
+  "testScope": "Pengujian hanya membuktikan balasan singkat dengan pengaturan yang dipakai. Percakapan lebih panjang, konteks lebih besar, atau model lain yang dimuat masih bisa kehabisan memori.",
+  "testedAt": "Diuji {{when}} dengan {{settings}}.",
+  "defaultSettings": "pengaturan default",
+  "metric": {
+    "load": "Waktu pemuatan",
+    "generation": "Kecepatan pembuatan",
+    "prompt": "Kecepatan membaca prompt"
+  },
+  "test": {
+    "run": "Uji di perangkat ini",
+    "runAgain": "Uji lagi",
+    "cancel": "Batalkan pengujian",
+    "running": "Menguji: memuat model dan meminta balasan singkat…",
+    "succeeded": "Pengujian lulus: model dimuat dan membalas.",
+    "failed": "Pengujian gagal: {{reason}}",
+    "cancelled": "Pengujian dibatalkan. Tidak ada yang dimuat pengujian yang masih termuat.",
+    "cancelledNotReleased": "Pengujian dibatalkan, tetapi model tidak dapat dibongkar. Bongkar dari pengaturan model.",
+    "notReleased": "Model tidak dapat dibongkar setelahnya; masih memakai memori.",
+    "couldNotRun": "Pengujian tidak dapat berjalan: {{reason}}",
+    "blockedBusy": "Tidak diuji: {{models}} sedang menulis balasan, dan pengujian harus membongkarnya. Coba lagi setelah selesai. Tidak ada yang diubah.",
+    "blockedInProgress": "Pengujian model lain sedang berjalan. Tidak ada yang diubah.",
+    "restored": "{{models}} dimuat kembali.",
+    "notRestored": "{{models}} tidak dapat dimuat kembali; muat dari pengaturan model.",
+    "needsConfirmation": "Pengujian perlu membongkar model lain terlebih dahulu.",
+    "confirmUnload": "Untuk menguji, Flint harus membongkar {{models}}. Balasan apa pun yang sedang dibuat akan berhenti. Model tidak dimuat ulang otomatis.",
+    "unloadAndTest": "Bongkar dan uji",
+    "dontTest": "Jangan uji"
+  },
+  "testExplainer": "Pengujian memakai file model yang sudah ada di perangkat ini; tidak ada yang diunduh. Model dimuat dengan pengaturan saat ini, diminta membalas satu kata, lalu dibongkar lagi jika sebelumnya belum dimuat.",
+  "adjustSettings": "Sesuaikan pengaturan",
+  "setDefault": "Pakai untuk obrolan baru",
+  "removeDefault": "Berhenti memakai untuk obrolan baru",
+  "hideHint": "Sembunyikan petunjuk ini",
+  "showHint": "Tampilkan petunjuk ini",
+  "badge": {
+    "worked": "Berhasil di sini",
+    "unsupported": "Tidak didukung runtime ini",
+    "default": "Default"
+  },
+  "location": {
+    "local": "Berjalan di perangkat ini atau jaringan Anda",
+    "remote": "Jarak jauh: pesan dikirim ke provider ini"
+  },
+  "providerSettings": "Pengaturan {{provider}}",
+  "memoryBars": "Perkiraan kebutuhan memori dibandingkan dengan yang tersedia",
+  "picker": {
+    "local": "Di komputer ini atau jaringan Anda",
+    "remote": "Provider cloud",
+    "remoteHint": "pesan keluar dari komputer ini",
+    "inUse": "Dipakai di sini: {{model}} · {{provider}}"
+  }
+}

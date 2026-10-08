@@ -1,0 +1,116 @@
+{
+  "triggerLabel": "Bu model bu cihazda çalışır mı? {{status}}. Ayrıntıları göster",
+  "title": "Bu model bu cihazda çalışır mı?",
+  "subtitle": "Burada nelerin ölçüldüğü ve nelerin yalnızca tahmin edildiği.",
+  "measuredHeading": "Bu cihazda ölçüldü",
+  "estimateHeading": "Tahmin",
+  "evidence": {
+    "ran-successfully": "Bu cihazda bu ayarlarla başarıyla çalıştı.",
+    "failed-with-settings": "Bu cihazda bu ayarlarla başarısız oldu. Başka ayarlar işe yarayabilir.",
+    "unsupported": "Bu çalışma zamanı tarafından desteklenmiyor: Flint'in bu sürümündeki llama.cpp motoru modelin mimarisini tanımıyor. Ayarları değiştirmek yardımcı olmaz; bir uygulama güncellemesi olabilir.",
+    "stale": "Daha önce test edildi, ancak o zamandan beri bir şey değişti; bu nedenle bu sonuç geçerli olmayabilir.",
+    "not-tested": "Bu cihazda test edilmedi."
+  },
+  "verdict": {
+    "fits": "Belleğe sığacağı tahmin ediliyor.",
+    "fits-partial-offload": "Sığacağı tahmin ediliyor; modelin bir kısmı CPU üzerinde çalışacak. Çalışır ancak daha yavaş yanıt verir.",
+    "tight": "Ayarların düzeltilmesi gerekebilir: çok az bellek kalacak. Daha küçük bir bağlam boyutu yardımcı olur.",
+    "exceeds": "Sığmayacağı tahmin ediliyor. Tahminler yanlış olabilir; yine de deneyebilir veya test edebilirsiniz.",
+    "unknown": "Tahmin için yeterli bilgi yok."
+  },
+  "memoryModel": {
+    "unified": "Birleşik bellek: CPU ve GPU tarafından paylaşılan {{ram}}. Varsayılan olarak GPU bunun yaklaşık {{gpu}} kadarını kullanabilir.",
+    "discrete-gpu": "{{vram}} ayrılmış GPU belleği artı {{ram}} sistem belleği. GPU'ya sığmayan katmanlar CPU üzerinde çalışır.",
+    "integrated-gpu": "Tümleşik grafikler {{ram}} sistem belleğini paylaşır, bu nedenle bir kez sayılır.",
+    "cpu-only": "Bu çalışma zamanı için GPU algılanmadı: model, {{ram}} sistem belleği kullanarak CPU üzerinde çalışır.",
+    "unknown": "Cihaz belleği henüz algılanmadı."
+  },
+  "showReasons": "Bunun nasıl tahmin edildiğini göster",
+  "breakdown": {
+    "weights": "Model dosyası",
+    "kvCache": "{{tokens}} token için konuşma belleği",
+    "mmproj": "Görme bileşeni",
+    "overhead": "Çalışma zamanı ek yükü",
+    "total": "Tahmini gereksinim",
+    "budget": "Tahmini kullanılabilir",
+    "otherLoaded": "Yüklü diğer modeller tarafından zaten kullanılıyor"
+  },
+  "assumption": {
+    "kv-from-metadata": "Konuşma belleği, modelin kendi mimarisinden ve yapılandırılmış önbellek türlerinden hesaplanır.",
+    "kv-heuristic": "Modelin mimarisi okunamadı, bu nedenle konuşma belleği dosya boyutundan yaklaşık olarak hesaplandı.",
+    "kv-sliding-window-midpoint": "Bu model bazı katmanlarda yalnızca son token'ları tutar; kesin dağılım bilinmediğinden orta nokta kullanılır.",
+    "context-capped-to-trained": "Bağlam boyutu, modelin eğitildiği değerle sınırlandırılır.",
+    "unified-gpu-working-set": "macOS, GPU'nun varsayılan olarak kullandığı birleşik bellek miktarını sınırlar; bunun ötesinde katmanlar CPU üzerinde çalışır.",
+    "integrated-gpu-shares-ram": "Tümleşik grafik belleği sistem belleğinin bir parçasıdır ve üzerine eklenmez.",
+    "discrete-vram-reserve": "Her ayrılmış GPU için yaklaşık 512 MB sürücü ve ekran için ayrılır.",
+    "system-reserve": "İşletim sistemi ve diğer uygulamalar için yaklaşık 2 GB sistem belleği bırakılır.",
+    "runtime-overhead": "Hesaplama tamponları ve çalışma zamanı, 300 MB artı model dosyasının %2'si olarak tahmin edilir.",
+    "cpu-only-by-setting": "GPU katmanları 0 olarak ayarlı, bu nedenle GPU kullanılmıyor.",
+    "other-models-loaded": "Zaten yüklü modeller çıkarılır, ancak nerede durdukları (GPU veya CPU) gözlemlenemez.",
+    "mmap-not-counted": "Bellek eşlemeli yükleme, bir modelin gösterilenden daha az bellekle başlamasını sağlayabilir, ancak büyük bir hız kaybına neden olur; bu hesaba katılmaz.",
+    "mmproj-unknown": "Bir görme bileşeni var ancak boyutu bilinmiyor."
+  },
+  "uncertainty": {
+    "low": "Güven: makul düzeyde iyi. Gerçek kullanım yine de farklı olabilir.",
+    "medium": "Güven: orta. Bu cihazda test etmek gerçek bir cevap verir.",
+    "high": "Güven: düşük. Sonuç sınıra yakın veya kaba varsayımlara dayanıyor; öğrenmek için test edin."
+  },
+  "difference": {
+    "settings": "Testten sonra ayarlar değişti: {{keys}}.",
+    "runtime": "Uygulama testten sonra güncellendi ({{recorded}} sürümünden {{current}} sürümüne).",
+    "device": "Cihazın bellek veya GPU yapılandırması değişti.",
+    "modelFile": "Model dosyası değişti."
+  },
+  "otherSuccess": "Bu cihazda {{context}} bağlam boyutuyla çalıştı.",
+  "testScope": "Bir test yalnızca kullanılan ayarlarla kısa bir yanıtı kanıtlar. Daha uzun konuşmalar, daha büyük bağlam veya yüklü diğer modeller yine de belleği tüketebilir.",
+  "testedAt": "{{when}} tarihinde {{settings}} ile test edildi.",
+  "defaultSettings": "varsayılan ayarlar",
+  "metric": {
+    "load": "Yükleme süresi",
+    "generation": "Üretim hızı",
+    "prompt": "İstem okuma hızı"
+  },
+  "test": {
+    "run": "Bu cihazda test et",
+    "runAgain": "Yeniden test et",
+    "cancel": "Testi iptal et",
+    "running": "Test ediliyor: model yükleniyor ve kısa bir yanıt isteniyor…",
+    "succeeded": "Test başarılı: model yüklendi ve yanıt verdi.",
+    "failed": "Test başarısız: {{reason}}",
+    "cancelled": "Test iptal edildi. Testin yüklediği hiçbir şey hâlâ yüklü değil.",
+    "cancelledNotReleased": "Test iptal edildi, ancak model boşaltılamadı. Model ayarlarından boşaltın.",
+    "notReleased": "Model sonrasında boşaltılamadı; hâlâ bellek kullanıyor.",
+    "couldNotRun": "Test çalıştırılamadı: {{reason}}",
+    "blockedBusy": "Test edilmedi: {{models}} bir yanıt yazıyor ve test için onu boşaltmak gerekecekti. Bitince tekrar deneyin. Hiçbir şey değiştirilmedi.",
+    "blockedInProgress": "Başka bir model testi zaten çalışıyor. Hiçbir şey değiştirilmedi.",
+    "restored": "{{models}} yeniden yüklendi.",
+    "notRestored": "{{models}} yeniden yüklenemedi; model ayarlarından yükleyin.",
+    "needsConfirmation": "Test için önce başka bir modelin boşaltılması gerekiyor.",
+    "confirmUnload": "Test etmek için Flint'in {{models}} modelini boşaltması gerekiyor. Ürettiği yanıt duracak. Otomatik olarak yeniden yüklenmez.",
+    "unloadAndTest": "Boşalt ve test et",
+    "dontTest": "Test etme"
+  },
+  "testExplainer": "Test, bu cihazda zaten bulunan model dosyasını kullanır; hiçbir şey indirilmez. Modeli mevcut ayarlarıyla yükler, tek kelimelik bir yanıt ister ve zaten yüklü değilse tekrar boşaltır.",
+  "adjustSettings": "Ayarları düzenle",
+  "setDefault": "Yeni sohbetler için kullan",
+  "removeDefault": "Yeni sohbetler için kullanmayı bırak",
+  "hideHint": "Bu ipucunu gizle",
+  "showHint": "Bu ipucunu göster",
+  "badge": {
+    "worked": "Burada çalıştı",
+    "unsupported": "Bu çalışma zamanı tarafından desteklenmiyor",
+    "default": "Varsayılan"
+  },
+  "location": {
+    "local": "Bu cihazda veya ağınızda çalışır",
+    "remote": "Uzak: mesajlar bu sağlayıcıya gönderilir"
+  },
+  "providerSettings": "{{provider}} ayarları",
+  "memoryBars": "Tahmini bellek gereksinimi ile mevcut bellek karşılaştırması",
+  "picker": {
+    "local": "Bu bilgisayarda veya ağınızda",
+    "remote": "Bulut sağlayıcıları",
+    "remoteHint": "mesajlar bu bilgisayardan çıkar",
+    "inUse": "Burada kullanımda: {{model}} · {{provider}}"
+  }
+}

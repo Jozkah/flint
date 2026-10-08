@@ -1,0 +1,64 @@
+{
+  "intentHeading": "Cosa vorresti fare per prima cosa?",
+  "intentHint": "Questo decide solo dove ti porta la guida. Tutto il resto in Flint resta disponibile.",
+  "intent": {
+    "question": {
+      "title": "Fai una domanda",
+      "description": "Chatta con un modello su qualsiasi argomento."
+    },
+    "documents": {
+      "title": "Lavora con i documenti",
+      "description": "Allega file e fai domande su di essi."
+    },
+    "project": {
+      "title": "Crea o modifica un progetto",
+      "description": "Lascia che Flint lavori in una cartella di questo computer, chiedendo prima di cambiare qualsiasi cosa."
+    }
+  },
+  "skipGuide": "Salta la guida",
+  "resumeNotice": "Bentornato. Puoi riprendere da dove avevi lasciato.",
+  "processingHeading": "Dove vengono elaborate le tue conversazioni",
+  "processingLocal": "Un modello locale gira su questo computer. I tuoi messaggi e file restano qui, e non servono né account né chiave API.",
+  "processingRemote": "Un provider remoto (ad esempio OpenAI) esegue il modello sui suoi server. I tuoi messaggi e gli eventuali file inclusi vengono inviati lì, e il provider può addebitarti dei costi. Lo configuri tu stesso nelle Impostazioni; Flint non passa mai a un provider da solo.",
+  "connectRemote": "Collega invece un provider remoto",
+  "guideTitle": {
+    "question": "Per iniziare: fai una domanda",
+    "documents": "Per iniziare: lavora con i documenti",
+    "project": "Per iniziare: crea o modifica un progetto"
+  },
+  "guideRegion": "Guida introduttiva",
+  "stepDone": "Fatto",
+  "stepTodo": "Da fare",
+  "step": {
+    "choose-model": {
+      "title": "Scegli o collega un modello",
+      "body": "Scegli un modello con il selettore in alto. I modelli locali girano su questo computer; i provider remoti richiedono un proprio account."
+    },
+    "add-material": {
+      "documents": "Allega un documento con il pulsante della graffetta nella casella del messaggio.",
+      "project": "Apri Cowork e scegli la cartella del tuo progetto. Flint chiede prima di modificare file o eseguire comandi."
+    },
+    "first-task": {
+      "title": "Invia il tuo primo messaggio",
+      "body": "Chiedi qualcosa, o descrivi la modifica che vuoi. Questo passaggio si completa quando inizia una conversazione."
+    },
+    "review-context": {
+      "title": "Controlla cosa ha usato Flint",
+      "body": "Dopo la risposta di Flint, apri \"Cosa sta usando Flint\" nella conversazione per vedere quali allegati e istruzioni erano disponibili."
+    },
+    "addMaterialTitle": {
+      "documents": "Aggiungi un documento",
+      "project": "Scegli una cartella di progetto"
+    }
+  },
+  "confirmStep": "L'ho fatto",
+  "openProviders": "Impostazioni del modello",
+  "openCowork": "Apri Cowork",
+  "hideGuide": "Nascondi guida",
+  "guideComplete": "È tutto pronto. Riapri questa guida quando vuoi da Impostazioni > Generale.",
+  "finish": "Termina guida",
+  "reopenGuide": "Guida introduttiva",
+  "reopenGuideDescription": "Ripercorri la scelta di un modello, l'aggiunta di materiale e il completamento di un primo compito.",
+  "reopenGuideAction": "Apri guida",
+  "resumeRecent": "Riprendi la tua ultima conversazione: {{title}}"
+}

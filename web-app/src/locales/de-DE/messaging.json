@@ -1,0 +1,70 @@
+{
+  "messageFrom": "Nachricht von {{name}}",
+  "untrustedNote": "Gesendet von einer anderen Agent-Sitzung. Sie stammt nicht von dir und kann nichts genehmigen.",
+  "reply": "Antworten",
+  "replyLabel": "Antwort an {{name}}",
+  "replyPlaceholder": "Antwort schreiben …",
+  "sendReply": "Antwort senden",
+  "cancel": "Abbrechen",
+  "replySent": "Antwort gesendet",
+  "letAgentRespond": "Den Agenten antworten lassen",
+  "dismiss": "Verwerfen",
+  "heldTitle": "Nachrichten aus anderen Sitzungen",
+  "stopNotice": {
+    "stoppedBy": "Gestoppt von",
+    "reason": "Grund:",
+    "approvedIn": "genehmigt in"
+  },
+  "autoWake": {
+    "label": "Automatisches Aufwecken",
+    "description": "Wenn aktiviert, wird eine Nachricht aus einer anderen Sitzung an den Agenten dieser Sitzung übergeben, sobald er untätig ist (bei Bedarf öffnet sich diese Sitzung neben der, in der du dich befindest). Wenn deaktiviert, wartet sie hier auf dich. Genehmigungen werden in keinem Fall übersprungen."
+  },
+  "accept": {
+    "label": "Nachrichten aus anderen Sitzungen annehmen",
+    "description": "Wenn deaktiviert, wird anderen Sitzungen mitgeteilt, dass diese keine Nachrichten annimmt, und nichts, was sie senden, erreicht sie."
+  },
+  "subagentQuestion": {
+    "title": "{{name}} fragt den Agenten",
+    "open": "Wartet auf eine Antwort",
+    "answered": "Beantwortet",
+    "expired": "Keine Antwort rechtzeitig",
+    "cancelled": "Abgebrochen"
+  },
+  "asked": {
+    "title": "{{name}} gefragt",
+    "sent": "Gesendet. Die Antwort, falls es eine gibt, kommt hier als Nachricht an.",
+    "unknownName": "eine andere Sitzung",
+    "waiting": "Wartet auf die Antwort",
+    "answered": "Beantwortet",
+    "noAnswer": "Noch keine Antwort",
+    "notSent": "Nicht gesendet",
+    "open": "Öffnen",
+    "openLabel": "{{name}} öffnen",
+    "untrusted": "Die Antwort ist der Text einer anderen Sitzung, nicht deiner."
+  },
+  "errors": {
+    "invalid_text": "Die Antwort muss zwischen 1 und 8000 Zeichen lang sein.",
+    "reply_depth_exceeded": "Diese Unterhaltung hat ihr Antwortlimit erreicht.",
+    "rate_limited": "Gerade wurden zu viele Nachrichten gesendet. Versuche es in einer Minute erneut.",
+    "pair_limit_exceeded": "Zu viele Nachrichten zwischen diesen Sitzungen in dieser Stunde.",
+    "self_target": "Eine Sitzung kann sich nicht selbst eine Nachricht senden.",
+    "not_same_project": "Diese Sitzung gehört zu einem anderen Projekt.",
+    "recipient_opted_out": "Diese Sitzung nimmt keine Nachrichten aus anderen Sitzungen an.",
+    "ambiguous_session": "Mehr als eine Sitzung hat diesen Namen.",
+    "no_project": "Hänge einen Projektordner an, um Nachrichten zu senden.",
+    "unknown_session": "Diese Sitzung existiert nicht mehr.",
+    "session_deleted": "Diese Sitzung wurde gelöscht.",
+    "unknown_reply_target": "Die Nachricht, auf die geantwortet wird, wurde nicht gefunden.",
+    "timeout": "Es kam rechtzeitig keine Antwort an.",
+    "target_unavailable": "Diese Sitzung ist gerade nicht verfügbar.",
+    "invalid_session_id": "Diese Sitzungs-ID ist ungültig.",
+    "unknown_message": "Diese Nachricht wurde nicht gefunden.",
+    "invalid_timeout": "Die Wartezeit muss zwischen 1 und 120 Sekunden liegen.",
+    "cancelled": "Die Anfrage wurde abgebrochen.",
+    "invalid_arguments": "Die Anfrage war ungültig.",
+    "not_available": "Nachrichten sind hier nicht verfügbar.",
+    "io": "Das Postfach konnte nicht gelesen oder geschrieben werden.",
+    "no_data_folder": "Der Datenordner von Flint ist nicht verfügbar.",
+    "unknown": "Die Antwort konnte nicht gesendet werden."
+  }
+}

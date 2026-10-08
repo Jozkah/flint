@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { useToolApproval } from './useToolApproval'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { toast } from 'sonner'
+import { i18n } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
 import { resolveServerFingerprint } from '@/lib/mcpServerIdentity'
 import { ALWAYS_ASK_TOOLS } from '@/lib/sessionMessagingTools'
@@ -498,8 +499,14 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             : {}),
           ...(context?.onDecision ? { onDecision: context.onDecision } : {}),
           requestedAt: Date.now(),
-          resolve,
+          // Drop the abort listener once answered, so a long-lived signal
+          // does not keep every settled request's closure alive.
+          resolve: (approved) => {
+            signal?.removeEventListener('abort', onAbort)
+            resolve(approved)
+          },
         }
+        const onAbort = () => get().withdrawApproval(entry.requestId)
         set((s) =>
           s.pending[toolCallId]
             ? {
@@ -510,11 +517,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               }
             : { pending: { ...s.pending, [toolCallId]: entry } }
         )
-        signal?.addEventListener(
-          'abort',
-          () => get().withdrawApproval(entry.requestId),
-          { once: true }
-        )
+        signal?.addEventListener('abort', onAbort, { once: true })
       })
     },
 
@@ -597,7 +600,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             .trustServer(serverName, serverFingerprint)
             .catch((error) => {
               useToolApproval.getState().revokeServer(serverName)
-              toast.error('Could not remember that server', {
+              toast.error(i18n.t('permissions:toast.trustFailed'), {
                 description: errorText(error),
               })
             })
@@ -683,12 +686,12 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         const names = [...new Set(stranded.map((e) => e.toolName))].join(', ')
         toast.warning(
           stranded.length === 1
-            ? `Approval for ${names} was cancelled`
-            : `${stranded.length} approvals (${names}) were cancelled`,
-          {
-            description:
-              'The chat was left before you answered. Send the request again to retry.',
-          }
+            ? i18n.t('permissions:toast.cancelledOne', { names })
+            : i18n.t('permissions:toast.cancelledMany', {
+                count: stranded.length,
+                names,
+              }),
+          { description: i18n.t('permissions:toast.cancelledDescription') }
         )
       }
     },

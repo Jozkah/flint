@@ -1,3 +1,19 @@
 {
-  "noLogs": "Aucun journal disponible"
+  "noLogs": "Aucun journal disponible",
+  "noMatch": "Aucune ligne ne correspond au filtre",
+  "title": "Journaux",
+  "serverTitle": "Journaux du serveur d'API local",
+  "copy": "Copier les journaux",
+  "openFolder": "Ouvrir le dossier",
+  "copied": "Copié",
+  "search": "Rechercher dans les journaux",
+  "filterLabel": "Filtrer par niveau",
+  "levelAll": "Tous",
+  "levelError": "Erreurs",
+  "levelWarn": "Avertissements",
+  "levelInfo": "Infos",
+  "levelDebug": "Débogage",
+  "shown": "{{shown}} lignes sur {{total}}",
+  "description": "Tout ce que Flint et son moteur ont écrit aujourd'hui. Les plus récents en premier.",
+  "serverDescription": "Requêtes adressées au serveur d'API local compatible OpenAI. Les plus récentes en premier."
 }

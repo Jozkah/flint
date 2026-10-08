@@ -3,5 +3,30 @@
   "description": "Temu czatowi zaczyna brakować pamięci SI. To trochę jak tablica, która jest już zapisana. Można udostępnić więcej pamięci (zwiększyć rozmiar kontekstu), ale to zwiększy zużycie pamięci komputera. Można też przyciąć wejście, co oznacza zapomnienie części historii czatu, celem zwolnienia miejsca dla nowych wiadomości.",
   "increaseContextSizeDescription": "Czy chcesz zwiększyć rozmiar kontekstu?",
   "truncateInput": "Przytnij Wejście",
-  "increaseContextSize": "Zwiększ Rozmiar Kontekstu"
+  "increaseContextSize": "Zwiększ Rozmiar Kontekstu",
+  "lastRequestOverflowed": "Ostatnie żądanie przekroczyło okno kontekstu.",
+  "contextOverflowDetail": "To żądanie wymagało {{request}} tokenów, ale okno kontekstu modelu mieści tylko {{context}}.",
+  "contextOverflowGeneric": "Żądanie przekracza dostępny rozmiar kontekstu.",
+  "engine": {
+    "unknown": "Silnik modelu zgłosił nieoczekiwany błąd.",
+    "MODEL_LOAD_FAILED": "Nie udało się wczytać modelu.",
+    "MODEL_ARCH_NOT_SUPPORTED": "Architektura tego modelu nie jest obsługiwana przez bieżący silnik. Aktualizacja silnika w Ustawieniach może dodać obsługę.",
+    "MODEL_LOAD_TIMED_OUT": "Wczytywanie modelu trwało zbyt długo i zostało zatrzymane. Zwykle pomaga mniejszy model lub mniejszy rozmiar kontekstu.",
+    "MISSING_SHARED_LIBRARY": "Brakuje biblioteki potrzebnej silnikowi, więc nie może się uruchomić.",
+    "GPU_DRIVER_TOO_OLD": "Sterownik GPU jest zbyt stary dla tego silnika. Zaktualizowanie sterownika lub przełączenie na silnik CPU w Ustawieniach rozwiąże problem.",
+    "OUT_OF_MEMORY": "Brakuje pamięci do uruchomienia tego modelu. Zwykle pomaga mniejszy model lub mniejszy rozmiar kontekstu.",
+    "INVALID_ARGUMENT": "Jedno z ustawień modelu jest nieprawidłowe.",
+    "IO_ERROR": "Nie udało się odczytać ani zapisać pliku podczas uruchamiania modelu.",
+    "INTERNAL_ERROR": "Coś poszło nie tak wewnątrz Flint podczas uruchamiania modelu."
+  },
+  "engineMissingLibraries": "Brakuje: {{libraries}}",
+  "engineReportedDetail": "Silnik zgłosił: {{detail}}",
+  "startModelFailed": "Nie udało się uruchomić modelu: {{reason}}",
+  "createModelFailed": "Nie udało się utworzyć modelu: {{reason}}",
+  "noRunningSession": "Nie znaleziono uruchomionej sesji dla modelu: {{model}}",
+  "serverPortOccupied": "Port jest zajęty",
+  "serverPortOccupiedDescription": "Port {{port}} jest już zajęty. Spróbuj użyć innego portu.",
+  "serverInvalidModelPath": "Nieprawidłowa lub niedostępna ścieżka modelu",
+  "serverStartModelFailed": "Nie udało się uruchomić modelu",
+  "serverStartFailed": "Nie udało się uruchomić serwera"
 }

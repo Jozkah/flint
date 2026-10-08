@@ -31,5 +31,11 @@
   "personality": "Osobowość",
   "capabilities": "Możliwości",
   "instructionsDateHint": "Wskazówka: Użyj {{current_date}} do wstawienia dzisiejszej daty.",
-  "maxToolSteps": "Maks. liczba kroków narzędzia"
+  "maxToolSteps": "Maks. liczba kroków narzędzia",
+  "setAsDefault": "Ustaw jako domyślnego asystenta",
+  "isDefault": "Domyślny",
+  "defaultAssistantSection": "Domyślny asystent",
+  "defaultAssistantDesc": "Używany przy rozpoczynaniu nowego czatu",
+  "allAssistants": "Wszyscy asystenci",
+  "lastUsed": "Ostatnio używany"
 }

@@ -1,0 +1,186 @@
+/* motion-controls: keyframes and helpers for the animation polish pass (owned by one change set) */
+
+/* ---- tooltip: pop in/out, plain fade when motion is reduced ---- */
+.flint-tip[data-state='delayed-open'],
+.flint-tip[data-state='instant-open'] {
+  animation: flint-tip-in 160ms var(--expo) both;
+}
+.flint-tip[data-state='closed'] {
+  animation: flint-tip-out 130ms var(--expo) both;
+}
+/* The glide moves the box with the Web Animations API; the pop would fight it. */
+.flint-tip[data-glide][data-state] {
+  animation: flint-tip-fade 120ms ease-out both;
+}
+.flint-tip[data-glide][data-state='closed'] {
+  animation: flint-tip-fade-out 100ms ease-out both;
+}
+html.reduce-motion .flint-tip[data-state='delayed-open'],
+html.reduce-motion .flint-tip[data-state='instant-open'] {
+  animation: flint-tip-fade 120ms ease-out both;
+}
+html.reduce-motion .flint-tip[data-state='closed'] {
+  animation: flint-tip-fade-out 100ms ease-out both;
+}
+@keyframes flint-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.94);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+@keyframes flint-tip-out {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+    filter: blur(2px);
+  }
+}
+@keyframes flint-tip-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes flint-tip-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---- slider: glide with overshoot, 1:1 while dragging, value bubble ---- */
+.flint-slider:not([data-dragging]) [data-slot='slider-range'] {
+  transition:
+    left 260ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    right 260ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    top 260ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    bottom 260ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.flint-slider:not([data-dragging]) > span:has(> [data-slot='slider-thumb']) {
+  transition:
+    left 260ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    top 260ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    bottom 260ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.flint-slider-thumb {
+  transform: scale(var(--flint-sx, 1), calc(1 / var(--flint-sx, 1)));
+}
+.flint-slider-bubble {
+  opacity: 0;
+  filter: blur(2px);
+  translate: 0 6px;
+  /* Undo the thumb's stretch so the text keeps its shape. */
+  transform: translateX(-50%)
+    scale(calc(1 / var(--flint-sx, 1)), var(--flint-sx, 1));
+  transform-origin: 50% 100%;
+  transition:
+    opacity 180ms var(--expo),
+    filter 180ms var(--expo),
+    translate 180ms var(--expo);
+}
+.flint-slider-bubble::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  background: inherit;
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+.flint-slider[data-hot] .flint-slider-bubble,
+.flint-slider-thumb:focus-visible .flint-slider-bubble {
+  opacity: 1;
+  filter: none;
+  translate: 0 0;
+}
+html.reduce-motion .flint-slider-thumb {
+  transform: none;
+}
+html.reduce-motion .flint-slider-bubble {
+  filter: none;
+  translate: 0 0;
+  transform: translateX(-50%);
+  transition: opacity 150ms ease;
+}
+html.reduce-motion .flint-slider [data-slot='slider-range'],
+html.reduce-motion .flint-slider > span:has(> [data-slot='slider-thumb']) {
+  transition: none;
+}
+
+/* ---- model combobox: pop in/out, glide highlight ---- */
+.flint-combo-menu[data-state='open'] {
+  animation: flint-combo-in 180ms var(--expo) both;
+}
+.flint-combo-menu[data-state='closed'] {
+  animation: flint-combo-out 120ms var(--expo) both;
+  pointer-events: none;
+}
+.flint-combo-menu[data-side='bottom'] {
+  transform-origin: top;
+}
+.flint-combo-menu[data-side='top'] {
+  transform-origin: bottom;
+}
+.flint-combo-pill {
+  opacity: 0;
+  transition:
+    transform 220ms var(--expo),
+    height 220ms var(--expo),
+    opacity 150ms ease;
+}
+.flint-combo-pill[data-visible] {
+  opacity: 1;
+}
+/* First appearance lands on the row instead of sliding from the last spot. */
+.flint-combo-pill[data-jump] {
+  transition: opacity 150ms ease;
+}
+html.reduce-motion .flint-combo-pill,
+html.reduce-motion .flint-combo-pill[data-jump] {
+  transition: none;
+}
+html.reduce-motion .flint-combo-menu[data-state='open'] {
+  animation: flint-combo-fade-in 120ms ease-out both;
+}
+html.reduce-motion .flint-combo-menu[data-state='closed'] {
+  animation: flint-combo-fade-out 100ms ease-out both;
+}
+@keyframes flint-combo-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes flint-combo-out {
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+@keyframes flint-combo-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes flint-combo-fade-out {
+  to {
+    opacity: 0;
+  }
+}

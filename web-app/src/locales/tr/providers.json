@@ -7,6 +7,7 @@
   "engineCommit": "Commit",
   "refreshModelsError": "Sağlayıcının model getirmek için temel URL'si ve en az bir API anahtarı yapılandırılmış olmalıdır.",
   "refreshModelsSuccess": "{{provider}} üzerinden {{count}} yeni model eklendi.",
+  "refreshModelsRemoved": "Sunucunun artık listelemediği {{count}} model kaldırıldı.",
   "noNewModels": "Yeni model bulunamadı. Kullanılabilir tüm modeller zaten eklenmiş.",
   "refreshModelsFailed": "{{provider}} üzerinden model getirilemedi. Lütfen API anahtarınızı ve temel URL'nizi kontrol edin.",
   "models": "Modeller",
@@ -35,8 +36,29 @@
   "importModelError": "Model içe aktarılamadı:",
   "stop": "Durdur",
   "start": "Başlat",
+  "status": {
+    "loading": "Yükleniyor",
+    "loaded": "Yüklü",
+    "failed": "Başarısız",
+    "available": "Kullanılabilir · yüklü değil",
+    "needsApiKey": "API anahtarı gerekli",
+    "connected": "Bağlı"
+  },
+  "table": {
+    "name": "Ad",
+    "file": "Dosya",
+    "size": "Boyut",
+    "context": "Bağlam",
+    "status": "Durum",
+    "actions": "Eylemler"
+  },
+  "openProvider": "{{provider}} ayarlarını aç",
+  "useProvider": "{{provider}} kullan",
+  "editModelLabel": "{{modelId}} modelini düzenle",
+  "addModelLabel": "Model ekle",
   "noModelFound": "Model bulunamadı",
   "noModelFoundDesc": "Kullanılabilir modeller burada listelenecek. Henüz modeliniz yoksa indirmek için Hub'ı ziyaret edin.",
+  "browseHuggingFace": "Hugging Face'e göz at",
   "noModelFoundRemoteDesc": "Kullanılabilir modeller burada listelenecek. Sağlayıcıdan model getirmek için yukarıdaki yenile düğmesini kullanın veya + düğmesiyle elle ekleyin.",
   "configuration": "Yapılandırma",
   "apiEndpoint": "API Uç Noktası",
@@ -85,6 +107,16 @@
   "editModel": {
     "title": "Modeli Düzenle: {{modelId}}",
     "description": "Aşağıdaki seçenekleri açıp kapatarak model yeteneklerini yapılandırın.",
+    "inputCost": "Girdi maliyeti (1M token başına USD)",
+    "outputCost": "Çıktı maliyeti (1M token başına USD)",
+    "cachedInputCost": "Önbelleğe alınmış girdi maliyeti (1M token başına USD)",
+    "cacheWriteCost": "Önbellek yazma maliyeti (1M token başına USD)",
+    "costHelp": "Bilinen modeller için yerleşik fiyatı kullanmak üzere boş bırakın; yerel modeller ücretsizdir. Boş bırakılan önbelleğe alınmış girdi veya önbellek yazma fiyatı girdi fiyatı üzerinden ücretlendirilir.",
+    "displayName": "Görünen ad",
+    "displayNamePlaceholder": "Bir görünen ad girin",
+    "displayNameHelp": "Bu modelin listelendiği her yerde gösterilir. İstekler yine özgün tanımlayıcıyı, {{modelId}}, kullanır.",
+    "displayNameEmpty": "Bir ad girin veya ona geri dönmek için model tanımlayıcısını yazın.",
+    "displayNameDuplicate": "Bu sağlayıcının başka bir modeli zaten bu adı kullanıyor.",
     "capabilities": "Yetenekler",
     "tools": "Araçlar",
     "vision": "Görüntü",
@@ -103,7 +135,8 @@
   "enterNameForProvider": "Sağlayıcı için ad girin",
   "baseUrl": {
     "title": "Temel URL",
-    "azureDescription": "Azure OpenAI uç noktanız. YOUR-RESOURCE-NAME'i Azure kaynak adınızla değiştirin."
+    "azureDescription": "Azure OpenAI uç noktanız. YOUR-RESOURCE-NAME'i Azure kaynak adınızla değiştirin.",
+    "qwenDescription": "Model Studio uç noktanız. Bir anahtar yalnızca oluşturulduğu bölgede çalışır: Singapur için https://dashscope-intl.aliyuncs.com/compatible-mode/v1, anakara Çin için https://dashscope.aliyuncs.com/compatible-mode/v1 kullanın."
   },
   "apiKeys": {
     "title": "API anahtarları",
@@ -121,6 +154,30 @@
     "addKey": "Anahtar ekle",
     "removeKey": "Anahtarı kaldır"
   },
+  "dataFolderUnavailable": "{{path}} veri klasörü bu çalıştırmada kullanılamadı, bu nedenle Flint varsayılan klasöründeki modelleri gösteriyor. Orada saklanan modeller silinmez: o klasör yeniden kullanılabilir olduğunda geri gelirler. Ayarlar > Genel bölümüne bakın.",
+  "customHeaders": {
+    "title": "Özel üstbilgiler",
+    "description": "Bu sağlayıcıya yapılan her istekle gönderilen ek HTTP üstbilgileri; örneğin bir ağ geçidi kiracısı veya abonelik anahtarı. API anahtarının yerini alamazlar.",
+    "namePlaceholder": "Üstbilgi adı",
+    "valuePlaceholder": "Değer",
+    "enabled": "Bu üstbilgiyi gönder",
+    "enabledHint": "Üstbilgiyi kaldırmadan göndermeyi durdurmak için kapatın.",
+    "secret": "Gizli",
+    "secretHint": "Sistem kimlik bilgisi deposunda saklanır, asla ayarlarda değil, ve günlüklerde gizlenir.",
+    "add": "Üstbilgi ekle",
+    "remove": "Üstbilgiyi kaldır",
+    "saveFailed": "Üstbilgi kaydedilemedi: {{error}}",
+    "errors": {
+      "empty-name": "Bir üstbilgi adı girin.",
+      "invalid-name": "Üstbilgi adı yalnızca harfler, rakamlar ve ! # $ % & ' * + - . ^ _ ` | ~ karakterlerini içerebilir, boşluk olamaz.",
+      "reserved": "Flint bu üstbilgiyi kendisi ayarlar; burada değiştirilemez.",
+      "duplicate": "Bu üstbilgi yukarıda zaten ayarlı.",
+      "empty-value": "Bir değer girin.",
+      "invalid-value": "Bir değer satır sonu veya başka denetim karakterleri içeremez.",
+      "too-long": "Çok uzun.",
+      "too-many": "Çok fazla üstbilgi."
+    }
+  },
   "cardMenu": {
     "actions": "{{provider}} için eylemler",
     "edit": "Ayarları düzenle",
@@ -131,11 +188,13 @@
   },
   "removeProvider": {
     "confirmTitle": "{{provider}} kaldırılsın mı?",
-    "confirmDescription": "{{provider}} ve {{count}} modeli, kayıtlı API anahtarıyla birlikte Flint'ten kaldırılacak.",
+    "confirmDescription_one": "{{provider}} ve {{count}} modeli, kayıtlı API anahtarıyla birlikte Flint'ten kaldırılacak.",
+    "confirmDescription_other": "{{provider}} ve {{count}} modeli, kayıtlı API anahtarıyla birlikte Flint'ten kaldırılacak.",
     "keepsHistory": "Modellerini kullanan sohbetler, oturumlar, odalar ve asistanlar geçmişlerini korur; model kullanılamaz olarak görünür.",
     "cancel": "İptal",
     "remove": "Kaldır",
-    "success": "{{provider}} kaldırıldı."
+    "success": "{{provider}} kaldırıldı.",
+    "confirmDescription": "{{provider}} ve {{count}} modeli, kayıtlı API anahtarıyla birlikte Flint'ten kaldırılacak."
   },
   "renameProvider": {
     "title": "Sağlayıcıyı yeniden adlandır",

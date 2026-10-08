@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { useAssetUrl } from '@/lib/assetPath'
 import {
   ArrowLeftRight,
   Box,
@@ -48,6 +48,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
+import { RefineFrame } from '@/components/ui/refine-frame'
+import { refineStatusFor } from '@/lib/refine-frame'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Segmented } from '@/components/ui/segmented'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -521,6 +524,7 @@ function CustomSize({
 
 /** A small look at a result, for the strip under the prompt and for the gallery. */
 function Thumb({ item, className }: { item: GalleryItem; className?: string }) {
+  const convertFileSrc = useAssetUrl()
   const src = convertFileSrc(item.path)
   return item.kind === 'video' ? (
     <video
@@ -554,6 +558,7 @@ export function VideoDialog({
   item: GalleryItem | null
   onClose: () => void
 }) {
+  const convertFileSrc = useAssetUrl()
   const remove = useStudio((s) => s.remove)
   const archiveOn = useArchiveEnabled()
   if (!item) return null
@@ -1133,6 +1138,7 @@ function PromptPanel({
   targets: CloudTarget[]
   onRemix: (item: GalleryItem) => void
 }) {
+  const convertFileSrc = useAssetUrl()
   const hosted = targets.find((t) => t.key === form.cloud)
   const providerSettings = useModelProvider((s) =>
     hosted ? s.providers.find((p) => p.provider === hosted.provider.provider) : undefined
@@ -1155,7 +1161,38 @@ function PromptPanel({
   const latest = items[0]
   const percent = Math.round((job?.fraction ?? 0) * 100)
   const examples = EXAMPLE_PROMPTS[kind]
-  const mac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
+  const mac =
+    typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
+  const { t } = useTranslation()
+  const storeError = useStudio((s) => s.error)
+  // A failed run keeps its Retry on the stage until the next one starts.
+  const [failedRun, setFailedRun] = useState(false)
+  const [wasRunning, setWasRunning] = useState(running)
+  if (running !== wasRunning) {
+    setWasRunning(running)
+    setFailedRun(!running && !!storeError)
+  }
+  const refineStatus = running
+    ? refineStatusFor(job)
+    : failedRun && storeError && latest
+      ? 'error'
+      : 'complete'
+  const etaText =
+    !job?.remote && job?.startedAt && job.fraction > 0.05 && job.fraction < 0.97
+      ? ` · about ${formatEta(((Date.now() - job.startedAt) / 1000) * ((1 - job.fraction) / job.fraction))} left`
+      : ''
+  const stageDetail = job ? (
+    <>
+      <span className="line-clamp-1 block max-w-full">{jobPrompt}</span>
+      <span>
+        {job.remote
+          ? `Waiting for ${job.remote}…`
+          : `${phaseLabel(job.phase)} · ${percent}%`}
+        {etaText}
+      </span>
+    </>
+  ) : null
+  const showFrame = kind === 'image' && (running || !!latest)
 
   const start = async () => {
     const text = form.prompt.trim()
@@ -1301,7 +1338,27 @@ function PromptPanel({
               : { height: 'min(40vh, 320px)' }
           }
         >
-          {latest ? (
+          {showFrame ? (
+            <RefineFrame
+              className="absolute inset-0"
+              src={latest ? convertFileSrc(latest.path) : null}
+              alt={latest?.recipe.prompt ?? ''}
+              status={refineStatus}
+              fraction={job?.fraction ?? 0}
+              detail={stageDetail}
+              onStop={() => void cancel()}
+              onRetry={() => void start()}
+              labels={{
+                queued: t('common:motionMedia.queued'),
+                generating: t('common:motionMedia.generating'),
+                refining: t('common:motionMedia.refining'),
+                complete: t('common:motionMedia.ready'),
+                error: t('common:motionMedia.failed'),
+                stop: t('common:motionMedia.stop'),
+                retry: t('common:motionMedia.retry'),
+              }}
+            />
+          ) : latest ? (
             kind === 'video' && !running ? (
               <video
                 key={latest.id}
@@ -1379,32 +1436,44 @@ function PromptPanel({
               </DropdownMenu>
             </div>
           )}
-          <div
-            aria-hidden={!running}
-            className={cn(
-              'absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-gradient-to-t from-black/70 to-transparent p-4 pt-12 text-white transition-opacity duration-300',
-              running ? 'opacity-100' : 'pointer-events-none opacity-0'
-            )}
-          >
-            <p className="line-clamp-1 text-xs opacity-80">{jobPrompt}</p>
-            <Progress
-              value={job?.remote ? 100 : percent}
-              className={cn('h-1 bg-white/25', job?.remote && 'motion-safe:animate-pulse')}
-            />
-            <div className="flex items-center justify-between gap-3 text-xs">
-              <span className="tabular-nums">
-                {job?.remote
-                  ? `Waiting for ${job.remote}…`
-                  : `${phaseLabel(job?.phase ?? 'queued')} · ${percent}%`}
-                {!job?.remote && job?.startedAt && job.fraction > 0.05 && job.fraction < 0.97
-                  ? ` · about ${formatEta(((Date.now() - job.startedAt) / 1000) * ((1 - job.fraction) / job.fraction))} left`
-                  : ''}
-              </span>
-              <Button variant="secondary" size="sm" onClick={() => void cancel()}>
-                <Square className="size-3" /> Stop
-              </Button>
+          {!showFrame && (
+            <div
+              aria-hidden={!running}
+              className={cn(
+                'absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-gradient-to-t from-black/70 to-transparent p-4 pt-12 text-white transition-opacity duration-300',
+                running ? 'opacity-100' : 'pointer-events-none opacity-0'
+              )}
+            >
+              <p className="line-clamp-1 text-xs opacity-80">{jobPrompt}</p>
+              <Progress
+                value={job?.remote ? 100 : percent}
+                className={cn(
+                  'h-1 bg-white/25',
+                  job?.remote && 'motion-safe:animate-pulse'
+                )}
+              />
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="tabular-nums">
+                  {job?.remote
+                    ? `Waiting for ${job.remote}…`
+                    : `${phaseLabel(job?.phase ?? 'queued')} · ${percent}%`}
+                  {!job?.remote &&
+                  job?.startedAt &&
+                  job.fraction > 0.05 &&
+                  job.fraction < 0.97
+                    ? ` · about ${formatEta(((Date.now() - job.startedAt) / 1000) * ((1 - job.fraction) / job.fraction))} left`
+                    : ''}
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void cancel()}
+                >
+                  <Square className="size-3" /> Stop
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <button
@@ -1816,6 +1885,7 @@ function GenerationsPanel({
 }
 
 export function StudioPage() {
+  const convertFileSrc = useAssetUrl()
   const status = useStudio((s) => s.status)
   const error = useStudio((s) => s.error)
   const refresh = useStudio((s) => s.refresh)
@@ -1918,7 +1988,7 @@ export function StudioPage() {
             name: `studio-${g.recipe.seed}`,
           }))
         : [],
-    [shown, kind]
+    [shown, kind, convertFileSrc]
   )
 
   return (

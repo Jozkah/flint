@@ -841,16 +841,20 @@ function MCPServersDesktop() {
     refreshConnectedServers()
 
     let unlisten: (() => void) | undefined
+    let cancelled = false
     const setupListener = async () => {
-      unlisten = await listen(SystemEvent.MCP_UPDATE, () => {
+      const fn = await listen(SystemEvent.MCP_UPDATE, () => {
         refreshConnectedServers()
       })
+      if (cancelled) fn()
+      else unlisten = fn
     }
     setupListener().catch((error) =>
       console.error('Failed to set up MCP update listener:', error)
     )
 
     return () => {
+      cancelled = true
       unlisten?.()
     }
   }, [refreshConnectedServers])

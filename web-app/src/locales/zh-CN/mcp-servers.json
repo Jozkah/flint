@@ -27,8 +27,103 @@
   "deleteServer": {
     "title": "删除 MCP 服务器",
     "description": "您确定要删除 MCP 服务器 {{serverName}} 吗？此操作无法撤销。",
+    "approvalsRemoved": "你给予此服务器的所有批准都会被移除，同时移除其存储的登录信息。之后用相同名称添加的服务器不会带有任何批准。你过去决定的记录会保留。",
+    "disableInstead": "如果想保留配置及其批准但停止使用该服务器，请改为将其关闭。",
     "delete": "删除",
-    "success": "MCP 服务器 {{serverName}} 删除成功"
+    "success": "MCP 服务器 {{serverName}} 删除成功",
+    "forgetFailed": "{{serverName}} 已删除，但 Flint 无法移除它的批准或登录信息"
+  },
+  "renameServer": {
+    "approvalsReset": "{{oldName}} 的批准不会转移到 {{newName}}",
+    "approvalsResetDesc": "其存储的登录信息也已清除。Flint 在使用它的工具之前会再次询问。",
+    "forgetFailed": "{{oldName}} 已重命名，但 Flint 无法移除存储在旧名称下的批准或登录信息"
+  },
+  "approval": {
+    "changedSinceApproval": "配置在你批准后已更改。请重新开启自动批准以续期。",
+    "autoApproveFailed": "无法更改 {{serverName}} 的自动批准"
+  },
+  "validation": {
+    "nameRequired": "请输入服务器名称。",
+    "nameDuplicate": "已存在同名服务器。",
+    "nameInvalidChars": "名称不能包含“::”或控制字符。",
+    "commandRequired": "请输入启动服务器的命令，例如 npx 或 uvx。",
+    "commandHasSpaces": "命令包含空格。如果这是完整的命令行，请在此只放程序，其余作为参数添加。",
+    "argUnbalancedQuotes": "此参数有未配对的引号。参数按原样传递，不经过 shell，因此引号不会被移除。",
+    "urlRequired": "请输入服务器 URL。",
+    "urlInvalid": "这不是有效的 URL。",
+    "urlScheme": "URL 必须以 http:// 或 https:// 开头。",
+    "timeoutInvalid": "请输入大于 0 的整数秒数，或留空。",
+    "headerNameRequired": "请为此值输入标头名称。",
+    "headerNameInvalid": "标头名称不能包含空格或特殊字符。",
+    "headerNameDuplicate": "此标头已设置。",
+    "envKeyRequired": "请为此值输入变量名。",
+    "envKeyInvalid": "使用字母、数字和下划线，且不能以数字开头。",
+    "envKeyDuplicate": "此变量已设置。",
+    "fixErrors": "请修正高亮显示的字段后再保存。"
+  },
+  "connection": {
+    "statusLabel": "状态：",
+    "toggleLabel": "开启或关闭 {{serverName}}",
+    "enable": "启用服务器",
+    "disable": "停用服务器",
+    "state": {
+      "notInstalled": "未配置",
+      "disabled": "关",
+      "connecting": "正在启动…",
+      "connected": "运行中",
+      "needsAuthorization": "需要登录",
+      "failed": "失败",
+      "notConnected": "已开启，但未连接",
+      "stopped": "已停止 · 需要时启动"
+    },
+    "nextStep": {
+      "checkCommand": "检查命令是否已安装并能在 PATH 中找到，然后重新开启服务器。",
+      "checkUrl": "检查 URL 是否正确以及服务器是否可访问，然后重新开启。",
+      "authorize": "登录此服务器，然后重新开启。",
+      "retry": "重新开启服务器以重试。"
+    },
+    "retry": "重试",
+    "notListedAfterStart": "服务器已启动，但未被列为已连接。",
+    "toolsAvailable_one": "{{count}} 个工具可用：{{names}}",
+    "toolsAvailable_other": "{{count}} 个工具可用：{{names}}",
+    "toolsNone": "已连接，但此服务器没有提供工具。",
+    "toolsLoading": "正在加载工具列表...",
+    "toolsWhenConnected": "连接后其工具即可使用。",
+    "appliesToChats": "仅当聊天所选模型支持工具时，工具才会到达该聊天。单个工具可以从聊天输入框的工具菜单中关闭，这些开关适用于所有聊天。"
+  },
+  "details": {
+    "toggle": "关于此服务器",
+    "whatItDoes": "它的作用",
+    "noDescription": "此服务器未提供描述。",
+    "runsWhere": "运行位置",
+    "runsWhereLocalProcess": "以你的用户权限在这台电脑上运行一个程序。",
+    "runsWhereLocalEndpoint": "连接到这台电脑或你本地网络上的服务器（{{host}}）。",
+    "runsWhereRemoteService": "联系位于 {{host}} 的外部服务。",
+    "runsWhereUnresolved": "连接到 {{host}}。它是否在你的网络上取决于该名称的解析方式。",
+    "externalYes": "工具请求（包括你要求它处理的内容）会发送到该服务。",
+    "externalDepends": "Flint 看不到服务器做了什么，因此服务器本身可能会联系其他服务。",
+    "access": "授予它的内容",
+    "accessCommand": "运行：{{command}}",
+    "accessEnv": "环境变量（仅名称）：{{names}}",
+    "accessHeaders": "发送标头（仅名称）：{{names}}",
+    "accessHost": "到 {{host}} 的网络连接",
+    "accessNone": "除连接本身外没有其他内容。",
+    "appliesTo": "适用范围",
+    "setup": "需要设置",
+    "setupNone": "无需其他操作。",
+    "setupAuthorization": "登录此服务器。当前状态：{{state}}。",
+    "setupBrowserExtension": "在基于 Chrome 的浏览器中安装 Flint Browser Extension。",
+    "setupMissingCommand": "添加要运行的命令。",
+    "setupMissingUrl": "添加服务器 URL。",
+    "usage": "如何使用",
+    "usageExample": "连接后，在聊天中请求其工具能完成的事情。除非你已允许，否则 Flint 会在调用工具前询问。",
+    "toolNames": "工具：{{names}}",
+    "effects": "关闭、清除登录或删除",
+    "effectDisable": "关闭：保持已配置但不启动，因此其工具在所有聊天中都不可用。批准会保留。",
+    "effectClearAuth": "清除身份验证：忘记存储的登录信息并断开连接。服务器保持开启，保留其批准，并在你再次登录后重新连接。",
+    "effectRemove": "删除：停止服务器，移除其配置，并移除它拥有的所有批准和存储的登录信息。重命名也会重置批准，更改其命令、参数、URL、环境或标头名称则意味着需要重新批准。",
+    "generate": "生成",
+    "generateLabel": "使用 AI 为 {{serverName}} 生成描述"
   },
   "editJson": {
     "title": "编辑 MCP 服务器的 JSON：{{serverName}}",
@@ -40,6 +135,7 @@
     "errorServerName": "服务器名称为必填项，不能为空",
     "errorMissingServerNameKey": "JSON 必须按 {\"serverName\": {config}} 格式结构化 - 缺少服务器名称键",
     "errorInvalidType": "服务器 '{{serverName}}' 的类型 '{{type}}' 无效。类型必须是 'stdio'、'http' 或 'sse'",
+    "errorNameDuplicate": "已存在名为“{{serverName}}”的服务器。请改为编辑该服务器，或使用不同的名称。",
     "save": "保存"
   },
   "checkParams": "请根据教程检查参数。",
@@ -49,7 +145,12 @@
   "findMore": "在以下位置查找更多 MCP 服务器",
   "allowPermissions": "允许所有 MCP 工具权限",
   "allowPermissionsDesc": "启用后，所有 MCP 工具调用都将自动批准，而不会显示权限对话框。此设置全局适用于所有对话，包括新聊天。",
+  "autoApproveServer": "自动批准此服务器的工具",
   "noServers": "未找到 MCP 服务器",
+  "searchPlaceholder": "搜索 MCP 服务器...",
+  "noSearchResults": "没有与“{{query}}”匹配的 MCP 服务器",
+  "expandServer": "展开服务器详情",
+  "collapseServer": "收起服务器详情",
   "args": "参数",
   "env": "环境",
   "serverStatusActive": "服务器 {{serverKey}} 激活成功",
@@ -59,6 +160,8 @@
     "description": "配置 Flint 如何管理和重试 MCP 服务器。",
     "toolCallTimeout": "工具调用超时时间（秒）",
     "toolCallTimeoutDesc": "在超时前等待 MCP 工具响应的最长时间。",
+    "maxToolOutputChars": "工具输出最大字符数",
+    "maxToolOutputCharsDesc": "对话中保留的最长工具结果。超出此限制的内容将被截断并标记为已截断，以防止单个过大的结果耗尽模型的上下文。设为 0 可完整保留结果。",
     "smartToolRouting": "智能 MCP 工具路由",
     "smartToolRoutingDesc": "启用后，Flint 会在加载工具前先选择相关的 MCP 服务器。关闭则始终加载完整的 MCP 工具列表。",
     "useLightweightRouterModel": "使用独立模型进行路由",
@@ -68,9 +171,7 @@
     "selectRouterModelPlaceholder": "选择路由模型…",
     "routerModelSearchPlaceholder": "搜索模型…",
     "routerModelEmptyList": "没有可用的轻量模型。请添加更小的模型，或在「模型」中配置 API 密钥。",
-    "routerModelEmptySearch": "没有与「{{query}}」匹配的结果。",
-    "maxToolOutputChars": "工具输出最大字符数",
-    "maxToolOutputCharsDesc": "对话中保留的最长工具结果。超出此限制的内容将被截断并标记为已截断，以防止单个过大的结果耗尽模型的上下文。设为 0 可完整保留结果。"
+    "routerModelEmptySearch": "没有与「{{query}}」匹配的结果。"
   },
   "auth": {
     "label": "认证：",
@@ -80,7 +181,9 @@
       "authenticated": "已认证",
       "expired": "已过期",
       "staleResource": "针对其他 URL 签发",
-      "unauthenticated": "未认证"
+      "unauthenticated": "未认证",
+      "scopeMismatch": "范围已更改，请重新登录",
+      "invalidScopes": "配置中的 OAuth 范围无效"
     },
     "expiresIn": "{{duration}} 后过期",
     "authenticate": "登录",
@@ -96,7 +199,54 @@
     "nothingToClear": "{{serverName}} 没有存储的凭据",
     "clearFailed": "无法清除 {{serverName}} 的凭据",
     "renew": "续期会话",
-    "expiredAgo": "{{duration}} 前已过期"
+    "expiredAgo": "{{duration}} 前已过期",
+    "scopesDeclared": "请求：{{scopes}}",
+    "scopesGranted": "已授予：{{scopes}}",
+    "scopesNone": "无范围"
+  },
+  "serverLog": {
+    "title": "MCP 服务器 {{serverName}} 的日志",
+    "description": "此服务器输出到其错误流的内容，最新的在最后。写入任何内容之前都会移除机密信息。",
+    "empty": "此服务器没有输出任何内容。",
+    "refresh": "刷新"
+  },
+  "describe": {
+    "title": "使用 AI 生成描述",
+    "titleOne": "使用 AI 描述 {{serverName}}",
+    "settingTitle": "使用 AI 生成描述",
+    "settingDesc": "让模型根据每个服务器的工具列表撰写“关于此服务器”文本。保存之前你会审阅每段文本。",
+    "open": "生成...",
+    "intro": "所选模型会收到每个服务器的名称和工具列表（名称、描述、参数）。在你接受之前不会保存任何内容。",
+    "model": "模型",
+    "scope": "服务器",
+    "scopeEmpty": "仅无描述的",
+    "scopeAll": "所有服务器",
+    "targetCount_one": "将为 {{count}} 个服务器生成描述。",
+    "targetCount_other": "将为 {{count}} 个服务器生成描述。",
+    "review": "审阅",
+    "current": "当前：{{text}}",
+    "editLabel": "为 {{serverName}} 生成的描述",
+    "accept": "接受",
+    "reject": "拒绝",
+    "accepted": "已接受",
+    "rejected": "已拒绝",
+    "pending": "需要你决定：将替换你的描述",
+    "generate": "生成",
+    "cancel": "取消生成",
+    "cancelled": "已取消",
+    "save_one": "保存 {{count}} 个",
+    "save_other": "保存 {{count}} 个",
+    "skippedNoTools": "工具未知；请先开启一次服务器，以便 Flint 读取它们",
+    "status": {
+      "queued": "等待中",
+      "running": "正在生成...",
+      "done": "可供审阅",
+      "skipped": "已跳过：{{reason}}",
+      "failed": "失败：{{reason}}"
+    }
+  },
+  "selfApproval": {
+    "note": "此服务器可以批准它自己的命令（{{names}}）。Flint 会就对这些工具的每次调用询问你，并且从不自动批准它们。"
   },
   "mention": {
     "offTitle": "{{serverName}} 已关闭",
@@ -104,5 +254,10 @@
     "enable": "启用",
     "enabled": "{{serverName}} 已开启。请重新发送请求以使用其工具。",
     "failed": "无法启用 {{serverName}}：{{error}}"
+  },
+  "lifecycle": {
+    "startWithFlint": "随 Flint 启动",
+    "start": "启动",
+    "stop": "停止"
   }
 }

@@ -10,6 +10,7 @@ import Home from '../screens/Home'
 import Chat from '../screens/Chat'
 import Cowork from '../screens/Cowork'
 import Room from '../screens/Room'
+import { t } from '../i18n'
 
 // Conversation screens are eager: opening a thread should never swap the
 // whole viewport for a loading placeholder. Less frequently used screens can
@@ -120,7 +121,7 @@ function Push() {
           <span className="tx">
             <b>
               {push.title}
-              <span>now</span>
+              <span>{t('shell.now')}</span>
             </b>
             {push.body}
             {push.requestId && (
@@ -134,7 +135,7 @@ function Push() {
                     if (push.requestId) void respond({ requestId: push.requestId, threadId: push.route && 'id' in push.route ? String(push.route.id) : '' }, 'deny')
                   }}
                 >
-                  Deny
+                  {t('common.deny')}
                 </button>
                 <button
                   type="button"
@@ -145,7 +146,7 @@ function Push() {
                     if (push.requestId) void respond({ requestId: push.requestId, threadId: push.route && 'id' in push.route ? String(push.route.id) : '' }, 'allow')
                   }}
                 >
-                  Allow once
+                  {t('common.allowOnce')}
                 </button>
               </span>
             )}
@@ -190,10 +191,10 @@ export function Shell() {
         </Suspense>
       </div>
       <div className={`scrim${drawer ? ' on' : ''}`} onClick={closeAll} />
-      <nav className={`drawer l${drawer === 'left' ? ' open' : ''}`} aria-label="Navigation" aria-hidden={drawer !== 'left'} inert={drawer !== 'left'}>
+      <nav className={`drawer l${drawer === 'left' ? ' open' : ''}`} aria-label={t('shell.navigation')} aria-hidden={drawer !== 'left'} inert={drawer !== 'left'}>
         <LeftNav />
       </nav>
-      <aside className={`drawer r${drawer === 'right' ? ' open' : ''}`} aria-label="Panel" aria-hidden={drawer !== 'right'} inert={drawer !== 'right'}>
+      <aside className={`drawer r${drawer === 'right' ? ' open' : ''}`} aria-label={t('shell.panel')} aria-hidden={drawer !== 'right'} inert={drawer !== 'right'}>
         {drawer === 'right' && (
           <Suspense fallback={null}>
             <RightPanel />

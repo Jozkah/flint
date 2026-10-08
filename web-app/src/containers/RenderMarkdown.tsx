@@ -30,6 +30,7 @@ import { InlinePathLink } from '@/containers/message/InlinePathLink'
 import { PATH_HREF_PREFIX } from '@/lib/pathOpen'
 import { remarkFileRefs, FILE_REF_HREF_PREFIX } from '@/lib/coworkFileRefs'
 import { MarkdownTable } from '@/components/MarkdownTable'
+import { decodeWebCiteHref } from '@/lib/webUrl'
 
 const WEB_CITE_MARKER = /\[\[cite:\s*([^\]\s]+?)\s*\]\]/g
 
@@ -268,7 +269,8 @@ function RenderMarkdownComponent({
         )
       }
       if (typeof href === 'string' && href.startsWith('#webcite-')) {
-        const url = decodeURIComponent(href.slice('#webcite-'.length))
+        const url = decodeWebCiteHref(href)
+        if (!url) return <>{children}</>
         return <WebCitationChip messageId={messageId} url={url} />
       }
       return <a {...props}>{children}</a>

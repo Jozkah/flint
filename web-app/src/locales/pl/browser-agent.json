@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "Zezwolić asystentowi na korzystanie z {{host}}?",
+    "description": "Asystent chce użyć panelu przeglądarki na witrynie, której jeszcze nie zatwierdzono.",
+    "urlLabel": "Pełny adres",
+    "urlHint": "Sprawdź cały adres, łącznie z tym, co następuje po znaku ?. Adresy mogą wynosić informacje z Twojej rozmowy.",
+    "wantsLabel": "Chce",
+    "wants": {
+      "browser_open": "otworzyć tę stronę",
+      "browser_read_text": "przeczytać tę stronę",
+      "browser_snapshot": "zobaczyć elementy sterujące tej strony",
+      "browser_screenshot": "zrobić zrzut tej strony",
+      "browser_scroll": "przewijać tę stronę",
+      "browser_click": "klikać na tej stronie",
+      "browser_type": "pisać na tej stronie",
+      "browser_press": "nacisnąć klawisz na tej stronie",
+      "browser_select": "wybrać opcję na tej stronie"
+    },
+    "origin": "Prosi: {{origin}}",
+    "scopeLabel": "Na jak długo",
+    "once": "Tylko ta wizyta",
+    "onceHint": "Kończy się, gdy asystent przejdzie na inną witrynę, lub po 15 minutach.",
+    "session": "Do zamknięcia Flint",
+    "always": "Zawsze",
+    "alwaysHint": "Zapisano. Możesz to usunąć w Ustawienia > Narzędzia agenta.",
+    "subdomains": "Zezwól także na subdomeny {{base}}",
+    "allow": "Zezwól",
+    "deny": "Nie teraz",
+    "never": "Nigdy nie zezwalaj na tę witrynę",
+    "more": "Oczekuje jeszcze: {{count}}",
+    "warning": "Asystent może czytać wszystko na stronie, a tekst na stronie może próbować go zmylić."
+  },
+  "settings": {
+    "title": "Przeglądarka",
+    "enabled": "Zezwalaj asystentowi na korzystanie z panelu przeglądarki",
+    "enabledDesc": "Dodaje narzędzia do otwierania stron, czytania ich oraz, za Twoją zgodą, klikania i pisania we wbudowanym panelu przeglądarki. Widzisz ten sam panel. Każda witryna pyta przy pierwszym użyciu; adresy lokalne i z sieci prywatnej nigdy nie są otwierane.",
+    "maxActions": "Akcje na uruchomienie",
+    "maxActionsDesc": "Liczba kliknięć, naciśnięć klawiszy i wyborów, jakie może wykonać jedno uruchomienie, zanim będzie musiało się zatrzymać.",
+    "rulesTitle": "Zapisane reguły witryn",
+    "rulesDesc": "Witryny, na które zawsze zezwolono lub które zablokowano. Reguła dla example.com obejmuje tylko tę witrynę; *.example.com obejmuje jej subdomeny.",
+    "empty": "Brak zapisanych reguł. Witryna pojawi się tutaj, gdy wybierzesz Zawsze zezwalaj lub Nigdy nie zezwalaj.",
+    "allow": "Dozwolona",
+    "deny": "Zablokowana",
+    "privateOk": "Adres lokalny",
+    "remove": "Usuń",
+    "removed": "Usunięto regułę",
+    "removeFailed": "Nie udało się usunąć reguły: {{error}}",
+    "addPlaceholder": "example.com lub *.example.com",
+    "addLabel": "Witryna",
+    "addVerdict": "Reguła",
+    "addPrivate": "Zezwól, aby był to adres lokalny lub z sieci prywatnej (dla serwera deweloperskiego)",
+    "add": "Dodaj regułę",
+    "added": "Zapisano regułę",
+    "addFailed": "Nie udało się zapisać reguły: {{error}}",
+    "pointer": "Pokaż wskaźnik",
+    "pointerDesc": "Rysuje w panelu przeglądarki kursor, który płynie do miejsca, w które asystent klika lub pisze, i przewija razem z nim. Wyłączone: nic nie jest rysowane i nic nie jest opóźniane.",
+    "reduceMotion": "Ogranicz animacje",
+    "reduceMotionDesc": "Bez płynnego przesuwania i pulsującej poświaty: wskaźnik przeskakuje do celu.",
+    "reduceSystem": "Zgodnie z systemem",
+    "reduceOn": "Zawsze ograniczaj",
+    "reduceOff": "Nigdy nie ograniczaj",
+    "grantsTitle": "Zatwierdzone na razie",
+    "grantsNone": "Nic nie jest zatwierdzone bez zapisania. Każda witryna spoza zapisanych reguł pyta o zgodę.",
+    "grantsDesc": "Witryny, na które zezwolono na tę sesję lub tę wizytę. Nie są zapisywane i wygasają po zamknięciu Flint.",
+    "grantScope": {
+      "session": "ta sesja",
+      "once": "ta wizyta"
+    },
+    "grantAge": "{{minutes}} min temu",
+    "forgetGrants": "Zapomnij zatwierdzenia z tej sesji"
+  },
+  "card": {
+    "screenshot": "Zrzut ekranu panelu przeglądarki"
+  },
+  "pane": {
+    "driving": "Asystent używa tej przeglądarki",
+    "takeOver": "Przejmij",
+    "paused": "Asystent wstrzymany",
+    "handBack": "Oddaj",
+    "blocked": "Zablokowano stronę: {{reason}}"
+  }
+}

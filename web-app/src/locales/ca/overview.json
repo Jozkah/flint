@@ -1,6 +1,63 @@
 {
-  "col": {
-    "speed": "Vel. mitjana"
+  "title": "Resum",
+  "morning": "Bon dia",
+  "afternoon": "Bona tarda",
+  "evening": "Bon vespre",
+  "subWeek": "Això és el que han fet els teus models aquesta setmana.",
+  "subMonth": "Això és el que han fet els teus models en els darrers 30 dies.",
+  "lastWeek": "Setmana passada",
+  "last30": "Darrers 30 dies",
+  "vsLastWeek": "respecte a la setmana passada",
+  "vsLastMonth": "respecte als 30 dies anteriors",
+  "options": "Opcions del tauler",
+  "resetStats": "Restableix les estadístiques",
+  "tokens": "Tokens generats",
+  "cost": "Cost estimat",
+  "speed": "Velocitat mitjana de generació",
+  "toolSuccess": "Èxit de les crides d'eines",
+  "throughput": "Rendiment de tokens",
+  "throughputAria": "Tokens generats per dia. Usa les fletxes esquerra i dreta per inspeccionar els dies.",
+  "activity": "Activitat més recent",
+  "activityRange": "Interval d'activitat",
+  "today": "Avui",
+  "yesterday": "Ahir",
+  "thisWeek": "Aquesta setmana",
+  "searchActivity": "Cerca activitat",
+  "newActivities": {
+    "today_one": "activitat nova avui",
+    "today_many": "d'activitats noves avui",
+    "today_other": "activitats noves avui",
+    "yesterday_one": "activitat ahir",
+    "yesterday_many": "d'activitats ahir",
+    "yesterday_other": "activitats ahir",
+    "week_one": "activitat aquesta setmana",
+    "week_many": "d'activitats aquesta setmana",
+    "week_other": "activitats aquesta setmana"
   },
-  "tokensPerSecond": "{{value}} t/s"
+  "noActivity": "Encara res",
+  "noActivityHint": "Les aprovacions, els errors d'eines i les compactacions apareixen aquí a mesura que passen.",
+  "runs": "Execucions d'agent",
+  "searchRuns": "Execució",
+  "filter": "Filtra",
+  "filterAll": "Totes les execucions",
+  "openRun": "Obre l'execució",
+  "noRuns": "Encara no hi ha execucions de Cowork",
+  "noRunsHint": "Encarrega una tasca més gran a Cowork i les seves execucions apareixeran aquí.",
+  "openCowork": "Obre Cowork",
+  "col": {
+    "run": "ID d'execució",
+    "task": "Tasca",
+    "model": "Model",
+    "status": "Estat",
+    "started": "Iniciada",
+    "speed": "Vel. mitjana",
+    "tokens": "Tokens"
+  },
+  "tokensPerSecond": "{{value}} t/s",
+  "status": {
+    "running": "En execució",
+    "approval": "Necessita aprovació",
+    "done": "Feta",
+    "idle": "No iniciada"
+  }
 }

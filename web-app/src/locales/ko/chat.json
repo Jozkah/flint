@@ -1,15 +1,71 @@
 {
   "welcome": "안녕하세요, 오늘 기분은 어떠신가요?",
   "description": "오늘 무엇을 도와드릴까요?",
+  "startedAt": "{{time}}에 시작됨",
+  "home": {
+    "title": "새 채팅",
+    "notSaved": "보내기 전에는 아무것도 저장되지 않습니다",
+    "sub": "무엇이든 물어보고, 파일을 첨부하거나, 더 큰 작업은 Cowork에 맡기세요.",
+    "suggestionsLabel": "추천",
+    "suggestions": {
+      "explain": "이 오류 메시지 설명해 줘",
+      "summarise": "첨부한 문서 요약해 줘",
+      "draft": "변경 사항 목록으로 릴리스 노트 초안 작성해 줘",
+      "compare": "두 가지 방식을 비교하고 하나 추천해 줘"
+    }
+  },
   "temporaryChat": "임시 채팅",
   "temporaryChatDescription": "채팅 기록에 저장되지 않는 임시 대화를 시작합니다.",
+  "temporaryChatBanner": "임시 채팅 — 저장되지 않습니다",
+  "temporaryChatKeep": "이 채팅 유지",
+  "temporaryChatLeave": {
+    "title": "이 임시 채팅을 유지할까요?",
+    "description": "이 채팅은 어디에도 저장되지 않았습니다. 유지하면 기록으로 옮기고, 삭제하면 영구 삭제됩니다.",
+    "keep": "유지",
+    "discard": "삭제",
+    "kept": "채팅을 기록에 저장했습니다",
+    "keepFailed": "이 채팅을 저장할 수 없습니다",
+    "discardFailed": "삭제할 수 없습니다 — 아직 생성 중입니다. 중지한 뒤 다시 시도하세요.",
+    "reason": {
+      "generation-not-stopped": "아직 생성 중입니다. 중지한 뒤 다시 시도하세요.",
+      "messages-not-persisted": "채팅을 완전히 저장하지 못했습니다. 잃어버린 내용은 없으니 다시 시도하세요.",
+      "thread-not-created": "채팅을 저장하지 못했습니다. 잃어버린 내용은 없으니 다시 시도하세요.",
+      "error": "문제가 발생했습니다. 채팅은 그대로 있으니 다시 시도하세요."
+    }
+  },
   "status": {
     "empty": "대화 내역이 없습니다"
   },
   "sendMessage": "메시지 보내기",
   "newConversation": "새 대화",
   "clearHistory": "대화 기록 삭제",
+  "embeddings": {
+    "title": "문서 준비 중",
+    "description": "첨부한 파일을 검색하고 인용할 수 있도록 색인을 만들고 있습니다. 큰 문서는 시간이 걸릴 수 있습니다."
+  },
+  "actions": {
+    "copy": "복사",
+    "regenerate": "응답 다시 생성",
+    "continue": "계속 생성",
+    "delete": "삭제",
+    "fork": "여기서 채팅 분기",
+    "copied": "복사됨"
+  },
   "done": "Done",
+  "webSources": "출처 {{count}}개",
+  "webSourcesRead": "{{count}}개 읽음",
+  "webSourcesReadFound": "{{read}}개 읽음 · {{found}}개 발견",
+  "reasoning": {
+    "label": "추론 중...",
+    "thinking": "생각 중",
+    "usingTool": "{{tool}}...",
+    "showFullTimeline": "전체 타임라인 보기",
+    "showCurrentStep": "현재 단계만 보기",
+    "thoughtForAWhile": "몇 초 동안 생각함",
+    "thoughtFor": "{{duration}} 동안 생각함",
+    "workedForAWhile": "몇 초 동안 작업함",
+    "workedFor": "{{duration}} 동안 작업함"
+  },
   "split": {
     "open": "대화 분할",
     "openShort": "분할",
@@ -43,15 +99,79 @@
     "recentRooms": "룸"
   },
   "transcriptView": {
+    "steps_one": "{{count}}단계",
     "steps_other": "{{count}}단계",
-    "working": "작업 중"
+    "working": "작업 중",
+    "failed": "실패:",
+    "failedToRun": "실행하지 못함",
+    "summary": {
+      "failed": "{{count}}개 실패",
+      "commands_one": "명령 {{count}}개 실행",
+      "commands_other": "명령 {{count}}개 실행",
+      "created_one": "파일 {{count}}개 생성",
+      "created_other": "파일 {{count}}개 생성",
+      "edited_one": "파일 {{count}}개 편집",
+      "edited_other": "파일 {{count}}개 편집",
+      "read_one": "파일 {{count}}개 읽음",
+      "read_other": "파일 {{count}}개 읽음",
+      "searched_one": "{{count}}회 검색",
+      "searched_other": "{{count}}회 검색",
+      "tools_one": "도구 {{count}}개 사용",
+      "tools_other": "도구 {{count}}개 사용"
+    }
   },
-  "actions": {
-    "fork": "여기서 채팅 분기"
+  "widget": {
+    "label": "위젯",
+    "drawing": "위젯 그리는 중",
+    "source": "소스 보기",
+    "copy": "HTML 복사",
+    "copied": "HTML을 복사했습니다.",
+    "copyFailed": "HTML을 복사할 수 없습니다.",
+    "save": ".html 파일로 저장",
+    "expand": "전체 크기로 열기",
+    "rerun": "다시 실행",
+    "stalled": "위젯이 응답하지 않습니다.",
+    "parked": "화면 밖에서 위젯이 일시 중지되었습니다.",
+    "error": "위젯 오류:",
+    "viewSource": "소스 보기",
+    "askFix": "Flint에게 수정 요청",
+    "fixPrompt": "\"{{title}}\" 위젯에 오류가 표시됩니다: {{error}}\n수정한 뒤 위젯을 다시 보여 주세요.",
+    "refused": "위젯을 표시하지 않았습니다: {{reason}}",
+    "refusedUnknown": "호출에 실패했습니다",
+    "tooLarge": "이 위젯은 {{max}}자보다 커서 그리지 않습니다.",
+    "openLink": "브라우저에서 {{url}}을(를) 열까요?",
+    "cancel": "취소",
+    "busy": "현재 답변이 끝날 때까지 기다린 뒤 다시 시도하세요.",
+    "noHost": "이 보기에서는 메시지를 보낼 수 없습니다."
+  },
+  "browserCard": {
+    "opened": "브라우저에서 열림",
+    "ready": "열 준비됨",
+    "open": "열기",
+    "more": "더 보기",
+    "copy": "링크 복사",
+    "copied": "링크를 복사했습니다.",
+    "failed": "브라우저를 열 수 없습니다."
+  },
+  "regenerateTitle": {
+    "menu": "제목 다시 생성",
+    "working": "채팅 이름 짓는 중...",
+    "done": "채팅 이름을 변경했습니다.",
+    "empty": "아직 이름을 지을 만한 내용이 없습니다.",
+    "busy": "이름을 바꾸기 전에 룸을 일시 중지하거나 중지하세요.",
+    "failed": "제목을 생성할 수 없습니다."
   },
   "fork": {
     "chat": "채팅 분기",
     "done": "새 채팅으로 분기했습니다.",
     "failed": "이 채팅을 분기하지 못했습니다."
+  },
+  "version": {
+    "group": "메시지 버전",
+    "previous": "이전 버전",
+    "next": "다음 버전",
+    "previousAt": "이전 버전({{count}}개 중 {{index}}번째 표시 중)",
+    "nextAt": "다음 버전({{count}}개 중 {{index}}번째 표시 중)",
+    "position": "버전 {{index}}/{{count}}"
   }
 }

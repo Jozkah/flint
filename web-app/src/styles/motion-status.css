@@ -1,0 +1,23 @@
+/* motion-status: keyframes and helpers for the animation polish pass (owned by one change set) */
+
+/* Undo toast: amber outline that burns away around the card. */
+.undo-rim {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, #d97706 60%, transparent));
+}
+.undo-rim-path {
+  fill: none;
+  stroke: #d97706;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: undo-burn 4000ms linear forwards;
+}
+.undo-rim-paused {
+  animation-play-state: paused;
+}
+@keyframes undo-burn {
+  to {
+    stroke-dashoffset: -1;
+  }
+}

@@ -1,8 +1,16 @@
 name: Flint Release
 
-# Scheduled runs build an unsigned prerelease from main. Manual runs attach
-# bundles to an existing release. Stable release tags never move automatically.
+# Scheduled runs build an unsigned prerelease from main, at most twice a day and
+# only when main moved. Every push to main also builds, but only keeps the bundles
+# as workflow artifacts (no release). Manual runs attach bundles to an existing
+# release. Stable release tags never move automatically.
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'website/**'
+      - 'docs/**'
+      - '**/*.md'
   schedule:
     - cron: '0 0,12 * * *'
       timezone: Europe/Lisbon
@@ -17,12 +25,13 @@ on:
         default: false
 
 # Serialize release uploads; midnight and noon get separate Lisbon-time tags.
+# A newer push to main cancels the superseded artifact-only build.
 concurrency:
-  group: flint-release-${{ github.event_name == 'schedule' && 'nightly' || github.event.inputs.tag }}
-  cancel-in-progress: false
+  group: flint-release-${{ github.event_name == 'push' && format('push-{0}', github.ref) || github.event_name == 'schedule' && 'nightly' || github.event.inputs.tag }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -40,9 +49,12 @@ jobs:
   prepare:
     name: Prepare release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       ref: ${{ steps.release.outputs.ref }}
+      skip: ${{ steps.release.outputs.skip }}
     steps:
       - name: Create nightly draft or check existing release
         id: release
@@ -50,28 +62,73 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            # Artifact-only build of this exact commit; no release is created.
+            tag="nightly-ci-${GITHUB_SHA::7}"
+            ref="$GITHUB_SHA"
+          elif [ "$GITHUB_EVENT_NAME" = schedule ]; then
             # A draft release does not create its Git tag until publication.
             # Build the event's immutable main commit, not the pending tag.
             ref="$GITHUB_SHA"
             slot="$(TZ=Europe/Lisbon date +%Y%m%d-%H)"
             tag="nightly-$slot"
-            # Keep nightly notes cumulative since the latest stable release.
-            # Comparing with a previous nightly would hide unreleased changes.
+            # Notes list only changes new since the previous nightly; changes
+            # already shipped in older nightlies sit in a collapsed section.
             baseline="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
               --limit 1 --json tagName --jq '.[0].tagName // empty')"
             if [ -z "$baseline" ]; then
               echo "Cannot generate nightly notes without a stable release baseline" >&2
               exit 1
             fi
+            # The previous nightly comes from Git tags, so it is found even if its
+            # release was deleted. Nothing new on main since it means no build.
+            last="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/nightly-" \
+              --jq '.[] | "\(.ref | ltrimstr("refs/tags/")) \(.object.sha)"' | sort | grep -v "^$tag " | tail -n 1 || true)"
+            previous="${last% *}"
+            if [ -n "$last" ] && [ "${last#* }" = "$GITHUB_SHA" ]; then
+              echo "No commits since $previous; skipping this nightly"
+              echo "tag=$tag" >> "$GITHUB_OUTPUT"
+              echo "ref=$ref" >> "$GITHUB_OUTPUT"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               echo "Reusing existing nightly release $tag"
             else
+              notes_for() {
+                gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$tag" \
+                  -f target_commitish="$GITHUB_SHA" -f previous_tag_name="$1" --jq .body | grep '^\* ' \
+                  | sed -E "s# by @${GITHUB_REPOSITORY_OWNER} in (https://[^ ]+)# (\1)#" || true
+              }
+              all="$(notes_for "$baseline")"
+              if [ -n "$previous" ]; then
+                new="$(notes_for "$previous")"
+                printf '%s\n' "$new" > "$RUNNER_TEMP/new-notes.txt"
+                old="$(printf '%s\n' "$all" | grep -vxFf "$RUNNER_TEMP/new-notes.txt" || true)"
+              else
+                new="$all"
+                old=""
+              fi
+              {
+                echo "Unsigned desktop bundles built from $GITHUB_SHA. Changes since $baseline (not included in the stable release)."
+                echo
+                echo "## What's Changed"
+                echo "${new:-No new changes since the previous nightly.}"
+                if [ -n "$old" ]; then
+                  echo
+                  echo "<details><summary>Present from older nightly builds</summary>"
+                  echo
+                  echo "$old"
+                  echo
+                  echo "</details>"
+                fi
+                echo
+                echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$baseline...$tag"
+              } > "$RUNNER_TEMP/notes.md"
               gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
                 --target "$GITHUB_SHA" --draft --prerelease --latest=false \
-                --title "Flint nightly $(TZ=Europe/Lisbon date +%Y-%m-%d\ %H:00) Lisbon" \
-                --generate-notes --notes-start-tag "$baseline" \
-                --notes "Unsigned desktop bundles built from $GITHUB_SHA. Changes since $baseline (not included in the stable release)."
+                --title "Flint nightly $(TZ=Europe/Lisbon date +%Y-%m-%d\ %H:00)" \
+                --notes-file "$RUNNER_TEMP/notes.md"
             fi
           else
             tag="$INPUT_TAG"
@@ -80,10 +137,12 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build (${{ matrix.name }})
     needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 240
     env:
@@ -116,7 +175,7 @@ jobs:
         shell: bash
     steps:
       - name: Check out the release commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
 
@@ -244,11 +303,6 @@ jobs:
             dist-sha256-${{ matrix.name }}.txt
           if-no-files-found: error
 
-      - name: Upload the bundles to the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
-
       - name: Upload the engine build log
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -257,11 +311,64 @@ jobs:
           path: src-tauri/target/engine-build.log
           if-no-files-found: ignore
 
-  publish-nightly:
-    name: Publish nightly prerelease
-    if: github.event_name == 'schedule'
+  # The build jobs run with a read-only token. Only this job, which runs no
+  # repository code, may write to the release.
+  upload-release:
+    name: Upload the bundles to the release
+    if: github.event_name != 'push' && needs.prepare.outputs.skip != 'true'
     needs: [prepare, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the bundles
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: flint-${{ needs.prepare.outputs.tag }}-*
+          path: bundles
+          merge-multiple: true
+
+      - name: Upload the bundles to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          shopt -s nullglob
+          files=(bundles/dist/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::no bundles were downloaded"
+            exit 1
+          fi
+          gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+
+  # Nightly prereleases pile up: keep the newest few and anything younger than
+  # two weeks.
+  prune-nightly:
+    name: Prune old nightly prereleases
+    if: github.event_name == 'schedule'
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete nightlies older than 14 days, keeping the newest 3
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cutoff="$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          old="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 300             --json tagName,createdAt,isPrerelease             --jq "[.[] | select((.tagName | test(\"^nightly-[0-9]\")) and .isPrerelease)] | sort_by(.createdAt) | reverse | .[3:] | .[] | select(.createdAt < \"$cutoff\") | .tagName")"
+          for tag in $old; do
+            echo "Deleting $tag"
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          done
+
+  publish-nightly:
+    name: Publish nightly prerelease
+    if: github.event_name == 'schedule' && needs.prepare.outputs.skip != 'true'
+    needs: [prepare, build, upload-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Publish complete nightly release
         env:

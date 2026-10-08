@@ -1,15 +1,71 @@
 {
   "welcome": "Ahoj, jak se máte?",
   "description": "Jak vám dnes mohu pomoci?",
+  "startedAt": "Zahájeno {{time}}",
+  "home": {
+    "title": "Nový chat",
+    "notSaved": "Nic se neuloží, dokud neodešlete",
+    "sub": "Ptejte se na cokoli, přikládejte soubory nebo svěřte větší úkol Coworku.",
+    "suggestionsLabel": "Návrhy",
+    "suggestions": {
+      "explain": "Vysvětli tuto chybovou zprávu",
+      "summarise": "Shrň dokument, který přiložím",
+      "draft": "Navrhni poznámky k vydání ze seznamu změn",
+      "compare": "Porovnej dva přístupy a jeden doporuč"
+    }
+  },
   "temporaryChat": "Dočasný chat",
   "temporaryChatDescription": "Začněte dočasnou konverzaci, která nebude uložena do vaší historie chatů.",
+  "temporaryChatBanner": "Dočasný chat — nebude uložen",
+  "temporaryChatKeep": "Ponechat tento chat",
+  "temporaryChatLeave": {
+    "title": "Ponechat tento dočasný chat?",
+    "description": "Tento chat není nikde uložen. Ponechte ho, aby se přesunul do historie, nebo ho zahoďte a smažte natrvalo.",
+    "keep": "Ponechat",
+    "discard": "Zahodit",
+    "kept": "Chat uložen do historie",
+    "keepFailed": "Tento chat se nepodařilo uložit",
+    "discardFailed": "Zahodit nelze — generování stále běží. Zastavte ho a zkuste to znovu.",
+    "reason": {
+      "generation-not-stopped": "Generování stále běží. Zastavte ho a zkuste to znovu.",
+      "messages-not-persisted": "Chat se nepodařilo uložit celý. Nic se neztratilo — zkuste to prosím znovu.",
+      "thread-not-created": "Chat se nepodařilo uložit. Nic se neztratilo — zkuste to prosím znovu.",
+      "error": "Něco se pokazilo. Váš chat tu stále je — zkuste to prosím znovu."
+    }
+  },
   "status": {
     "empty": "Nebyly nalezeny žádné chaty"
   },
   "sendMessage": "Odeslat zprávu",
   "newConversation": "Nová konverzace",
   "clearHistory": "Vymazat historii",
+  "embeddings": {
+    "title": "Příprava vašich dokumentů",
+    "description": "Indexování přiložených souborů, aby v nich šlo vyhledávat a citovat z nich. U velkých dokumentů to může chvíli trvat."
+  },
+  "actions": {
+    "copy": "Kopírovat",
+    "regenerate": "Vygenerovat odpověď znovu",
+    "continue": "Pokračovat v generování",
+    "delete": "Smazat",
+    "fork": "Rozvětvit chat odsud",
+    "copied": "Zkopírováno"
+  },
   "done": "Done",
+  "webSources": "Zdroje: {{count}}",
+  "webSourcesRead": "přečteno: {{count}}",
+  "webSourcesReadFound": "přečteno {{read}} · nalezeno {{found}}",
+  "reasoning": {
+    "label": "Uvažování...",
+    "thinking": "Přemýšlí",
+    "usingTool": "{{tool}}...",
+    "showFullTimeline": "Zobrazit celou časovou osu",
+    "showCurrentStep": "Zobrazit jen aktuální krok",
+    "thoughtForAWhile": "Přemýšlel několik sekund",
+    "thoughtFor": "Přemýšlel {{duration}}",
+    "workedForAWhile": "Pracoval několik sekund",
+    "workedFor": "Pracoval {{duration}}"
+  },
   "split": {
     "open": "Rozdělit konverzaci",
     "openShort": "Rozdělit",
@@ -47,14 +103,89 @@
     "steps_few": "{{count}} kroky",
     "steps_many": "{{count}} kroku",
     "steps_other": "{{count}} kroků",
-    "working": "Pracuji"
+    "working": "Pracuji",
+    "failed": "Selhalo:",
+    "failedToRun": "Spuštění selhalo",
+    "summary": {
+      "failed": "selhalo: {{count}}",
+      "commands_one": "spustil {{count}} příkaz",
+      "commands_few": "spustil {{count}} příkazy",
+      "commands_many": "spustil {{count}} příkazu",
+      "commands_other": "spustil {{count}} příkazů",
+      "created_one": "vytvořil {{count}} soubor",
+      "created_few": "vytvořil {{count}} soubory",
+      "created_many": "vytvořil {{count}} souboru",
+      "created_other": "vytvořil {{count}} souborů",
+      "edited_one": "upravil {{count}} soubor",
+      "edited_few": "upravil {{count}} soubory",
+      "edited_many": "upravil {{count}} souboru",
+      "edited_other": "upravil {{count}} souborů",
+      "read_one": "přečetl {{count}} soubor",
+      "read_few": "přečetl {{count}} soubory",
+      "read_many": "přečetl {{count}} souboru",
+      "read_other": "přečetl {{count}} souborů",
+      "searched_one": "hledal {{count}}krát",
+      "searched_few": "hledal {{count}}krát",
+      "searched_many": "hledal {{count}}krát",
+      "searched_other": "hledal {{count}}krát",
+      "tools_one": "použil {{count}} nástroj",
+      "tools_few": "použil {{count}} nástroje",
+      "tools_many": "použil {{count}} nástroje",
+      "tools_other": "použil {{count}} nástrojů"
+    }
   },
-  "actions": {
-    "fork": "Rozvětvit chat odsud"
+  "widget": {
+    "label": "Widget",
+    "drawing": "Vykreslování widgetu",
+    "source": "Zobrazit zdroj",
+    "copy": "Kopírovat HTML",
+    "copied": "HTML zkopírováno.",
+    "copyFailed": "HTML se nepodařilo zkopírovat.",
+    "save": "Uložit jako soubor .html",
+    "expand": "Otevřít v plné velikosti",
+    "rerun": "Spustit znovu",
+    "stalled": "Widget přestal reagovat.",
+    "parked": "Widget pozastaven mimo obrazovku.",
+    "error": "Chyba widgetu:",
+    "viewSource": "Zobrazit zdroj",
+    "askFix": "Požádat Flint o opravu",
+    "fixPrompt": "Widget „{{title}}“ zobrazuje chybu: {{error}}\nOpravte ho a zobrazte widget znovu.",
+    "refused": "Widget nebyl zobrazen: {{reason}}",
+    "refusedUnknown": "volání selhalo",
+    "tooLarge": "Tento widget je větší než {{max}} znaků a nevykresluje se.",
+    "openLink": "Otevřít {{url}} v prohlížeči?",
+    "cancel": "Zrušit",
+    "busy": "Počkejte, až aktuální odpověď skončí, a zkuste to znovu.",
+    "noHost": "Toto zobrazení nemůže odesílat zprávy."
+  },
+  "browserCard": {
+    "opened": "Otevřeno v prohlížeči",
+    "ready": "Připraveno k otevření",
+    "open": "Otevřít",
+    "more": "Více",
+    "copy": "Kopírovat odkaz",
+    "copied": "Odkaz zkopírován.",
+    "failed": "Prohlížeč se nepodařilo otevřít."
+  },
+  "regenerateTitle": {
+    "menu": "Vygenerovat název znovu",
+    "working": "Pojmenovávání chatu...",
+    "done": "Chat přejmenován.",
+    "empty": "Zatím není z čeho chat pojmenovat.",
+    "busy": "Před přejmenováním místnost pozastavte nebo zastavte.",
+    "failed": "Název se nepodařilo vygenerovat."
   },
   "fork": {
     "chat": "Rozvětvit chat",
     "done": "Rozvětveno do nového chatu.",
     "failed": "Tento chat se nepodařilo rozvětvit."
+  },
+  "version": {
+    "group": "Verze zprávy",
+    "previous": "Předchozí verze",
+    "next": "Další verze",
+    "previousAt": "Předchozí verze (zobrazena {{index}} z {{count}})",
+    "nextAt": "Další verze (zobrazena {{index}} z {{count}})",
+    "position": "Verze {{index}} z {{count}}"
   }
 }

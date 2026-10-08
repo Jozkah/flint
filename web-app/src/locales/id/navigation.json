@@ -1,0 +1,6 @@
+{
+  "groupGeneral": "Umum",
+  "groupModelsAndTools": "Model dan alat",
+  "advancedSettings": "Lanjutan",
+  "advancedSettingsHint": "Server API lokal, proxy, perangkat keras, dan konfigurasi alat agen. Mengelompokkannya tidak mengubah cara kerjanya."
+}

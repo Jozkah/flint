@@ -73,3 +73,26 @@ export const faviconUrl = (url: string): string | null => {
     return null
   }
 }
+
+/** True only for absolute http(s) URLs; anything else is not safe to link. */
+export const isHttpUrl = (url: string): boolean => {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' || u.protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The URL inside a `#webcite-<encoded url>` href, or null when the payload is
+ * malformed (bad percent-encoding) or not http(s).
+ */
+export const decodeWebCiteHref = (href: string): string | null => {
+  try {
+    const url = decodeURIComponent(href.slice('#webcite-'.length))
+    return isHttpUrl(url) ? url : null
+  } catch {
+    return null
+  }
+}

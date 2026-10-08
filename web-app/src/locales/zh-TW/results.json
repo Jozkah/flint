@@ -1,7 +1,134 @@
 {
+  "status": {
+    "running": "執行中",
+    "completed": "已完成",
+    "failed": "失敗",
+    "cancelled": "已取消",
+    "partial": "部分完成"
+  },
+  "sections": {
+    "happened": "發生了什麼",
+    "where": "結果在哪裡",
+    "checked": "檢查了什麼",
+    "unresolved": "未解決",
+    "next": "後續步驟"
+  },
+  "headline": {
+    "running": "執行仍在進行。",
+    "completedWithChanges": "執行已結束，Flint 變更了檔案。",
+    "completedNoChanges": "執行已結束，Flint 沒有變更任何檔案。",
+    "completedChecksFailed": "執行已結束，但 Flint 執行的一項檢查未通過。",
+    "finishedIncomplete": "執行已結束，但請求的一部分未完成。請參閱「未解決」。",
+    "partial": "執行在完成前停止。之前已完成了一些工作。",
+    "failed": "執行在完成前停止，沒有任何內容完成。",
+    "cancelled": "執行在任何內容完成之前被停止。"
+  },
+  "plan": {
+    "progress": "已完成 {{done}} / {{total}}"
+  },
+  "kept": "這些變更已保留。停止執行不會復原它已經做過的事。",
+  "location": {
+    "sandbox": "在此工作階段的沙箱中，而不是在你的儲存庫中。",
+    "worktree": "在由 Flint 管理的獨立工作樹中，而不是在你的簽出副本中。",
+    "userCheckout": "直接在你連結的資料夾中。",
+    "none": "此次執行沒有連結工作樹。",
+    "noFiles": "Flint 沒有寫入任何檔案。",
+    "open": "開啟 {{path}}"
+  },
+  "checks": {
+    "none": "Flint 沒有執行任何測試或檢查。",
+    "kind": {
+      "test": "測試",
+      "build": "建置",
+      "lint": "檢查",
+      "command": "指令"
+    },
+    "outcome": {
+      "passed": "通過",
+      "failed": "失敗",
+      "didNotFinish": "未完成",
+      "running": "執行中",
+      "notRun": "未執行",
+      "unknown": "結果未知"
+    },
+    "exit": "結束碼 {{code}}",
+    "summary": {
+      "allTestsPassed": "自動化測試已通過。",
+      "allChecksPassed": "自動化檢查已通過。未執行任何測試。",
+      "somePassed": "{{total}} 項檢查中有 {{passed}} 項通過。",
+      "failedWithCode": "{{command}} 失敗，結束碼為 {{code}}。",
+      "failedNoCode": "{{command}} 失敗，沒有結束碼。",
+      "didNotFinish_one": "{{count}} 項檢查未完成：已被取消、逾時或中斷。",
+      "didNotFinish_other": "{{count}} 項檢查未完成：已被取消、逾時或中斷。",
+      "notRun_one": "{{count}} 項檢查未執行。",
+      "notRun_other": "{{count}} 項檢查未執行。",
+      "unknown_one": "{{count}} 項檢查沒有記錄結束狀態，因此結果未知。",
+      "unknown_other": "{{count}} 項檢查沒有記錄結束狀態，因此結果未知。",
+      "running_one": "{{count}} 項檢查仍在執行。",
+      "running_other": "{{count}} 項檢查仍在執行。",
+      "visualNotChecked": "尚未檢查視覺效果和端對端行為。"
+    },
+    "otherCommands": "另外還執行了 {{count}} 個其他指令。它們不計為檢查。",
+    "completion": {
+      "not-started": "未開始",
+      "running": "仍在執行",
+      "completed": "執行至完成",
+      "cancelled": "已取消",
+      "timed-out": "已逾時",
+      "interrupted": "已中斷"
+    },
+    "limitation": {
+      "exit-status-only": "僅根據結束狀態判斷。",
+      "compound-command": "多個指令被串接；狀態涵蓋整條鏈，而不是每一步。",
+      "output-truncated": "輸出被截斷，因此後面的失敗可能不可見。",
+      "background": "在背景啟動；狀態可能不是該工作的狀態。",
+      "subset-selected": "僅選擇了測試套件的一部分。",
+      "no-exit-status": "未記錄結束狀態。"
+    },
+    "claimsTitle": "由助理提到，未經 Flint 驗證："
+  },
   "unresolved": {
     "stop": {
+      "error": "執行因錯誤而結束。",
+      "aborted": "執行已被停止。",
+      "deadline": "執行達到了時間限制。",
+      "timeout": "模型未能及時回應。",
+      "loop": "執行因重複自身而被停止。",
+      "steps": "執行用完了所有步驟。",
       "tokens": "執行在權杖上限處停止（上下文視窗或要求額度）。"
-    }
+    },
+    "refused": "不允許：{{tool}} {{target}}",
+    "refusedReadOnly": "未執行，此輪為唯讀：{{tool}} {{target}}。請將模式切換為「變更前詢問」或「自主」，然後點擊「繼續」。",
+    "cancelled": "已取消：{{tool}} {{target}}",
+    "failed": "失敗：{{tool}} {{target}}",
+    "interrupted": "未完成：{{tool}} {{target}}",
+    "checkFailed": "未通過：{{command}}"
+  },
+  "actions": {
+    "openResult": "開啟結果",
+    "reviewChanges": "檢視變更",
+    "continue": "繼續",
+    "retry": "重試",
+    "retryNote": "「重試」會再次傳送上一個請求。它不會復原執行已經做出的變更。",
+    "restore": "回到較早的時間點"
+  },
+  "rewind": {
+    "scopeTitle": "此次還原會變更什麼",
+    "scopeTree": "工作樹：{{tree}}",
+    "filesHeading": "將被放回的檔案（{{count}}）",
+    "noFiles": "沒有檔案與此時間點不同。",
+    "filesUnknown": "Flint 無法列出哪些檔案會變更。",
+    "safetyNote": "還原之前，Flint 會將目前狀態儲存為新的時間點，因此可以復原此次還原。",
+    "boundaries": "還原檔案不會復原訊息、遠端推送、已發布的內容、已安裝的套件，或此工作樹之外的其他影響。已經執行的指令不會被復原。",
+    "unrelatedTitle": "這些檔案在最近的時間點之後發生了變更，且不是由 Flint 寫入的。還原會覆寫它們：",
+    "unrelatedConfirm": "我了解這些編輯將被覆寫。它們仍保留在已儲存的時間點中。",
+    "safetyLabel": "還原前 {{time}}",
+    "safetyFailed": "無法先儲存目前狀態，因此未還原任何內容：{{reason}}",
+    "restored": "已還原。之前的狀態已儲存為「{{label}}」。",
+    "previewDiff": "預覽差異",
+    "hideDiff": "隱藏差異",
+    "previewEmpty": "沒有可顯示的差異。",
+    "previewLoading": "正在載入差異…",
+    "previewFailed": "無法產生差異：{{reason}}"
   }
 }

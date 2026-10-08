@@ -4,6 +4,7 @@
 import type { PushPrefs } from '@/lib/remote/protocol'
 import { client } from './app'
 import { registerServiceWorker } from '../sw/register'
+import { t } from '../i18n'
 
 export const DEFAULT_PUSH: PushPrefs = {
   approvals: true,
@@ -77,7 +78,7 @@ export const withOffset = (p: PushPrefs): PushPrefs => ({ ...p, utcOffsetMinutes
  * subscription. Returns a message on failure. */
 export async function enablePush(prefs: PushPrefs): Promise<string | null> {
   const perm = await Notification.requestPermission()
-  if (perm !== 'granted') return 'Notifications are blocked for this site. Allow them in the browser or system settings.'
+  if (perm !== 'granted') return t('push.blocked')
   const reg = (await registerServiceWorker()) ?? (await navigator.serviceWorker.ready)
   const { key } = await client().rpc('push.vapidKey', {})
   const existing = await reg.pushManager.getSubscription()
@@ -85,7 +86,7 @@ export async function enablePush(prefs: PushPrefs): Promise<string | null> {
     existing ??
     (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToBytes(key) }))
   const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } }
-  if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) return 'This browser gave an incomplete subscription.'
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) return t('push.incomplete')
   await client().rpc('push.subscribe', {
     subscription: { endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } },
     prefs: withOffset(prefs),
@@ -105,8 +106,8 @@ export async function disablePush(): Promise<void> {
 export function supportText(s: PushSupport): string | null {
   if (s.ok) return null
   if (s.why === 'ios-home-screen')
-    return 'On iPhone and iPad, notifications need iOS 16.4 or later and Flint added to the Home Screen: Share > Add to Home Screen, then open it from there.'
+    return t('push.ios')
   if (s.why === 'insecure')
-    return 'Notifications need a trusted HTTPS address: Tailscale with its certificate, or a certificate you installed. A self-signed certificate on home Wi-Fi does not count, even after you accept it.'
-  return 'This browser does not support web notifications.'
+    return t('push.insecure')
+  return t('push.unsupported')
 }

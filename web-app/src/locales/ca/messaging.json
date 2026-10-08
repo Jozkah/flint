@@ -1,0 +1,70 @@
+{
+  "messageFrom": "Missatge de {{name}}",
+  "untrustedNote": "Enviat per una altra sessió d'agent. No és teu i no pot aprovar res.",
+  "reply": "Respon",
+  "replyLabel": "Respon a {{name}}",
+  "replyPlaceholder": "Escriu una resposta…",
+  "sendReply": "Envia la resposta",
+  "cancel": "Cancel·la",
+  "replySent": "Resposta enviada",
+  "letAgentRespond": "Deixa que l'agent respongui",
+  "dismiss": "Descarta",
+  "heldTitle": "Missatges d'altres sessions",
+  "stopNotice": {
+    "stoppedBy": "Aturat per",
+    "reason": "motiu:",
+    "approvedIn": "aprovat a"
+  },
+  "autoWake": {
+    "label": "Activacions automàtiques",
+    "description": "Quan està activat, un missatge d'una altra sessió es lliura a l'agent d'aquesta sessió tan bon punt està inactiu (aquesta sessió s'obre al costat de la que tens oberta si cal). Quan està desactivat, espera aquí que hi facis alguna cosa. Les aprovacions no s'ometen mai en cap dels dos casos."
+  },
+  "accept": {
+    "label": "Accepta missatges d'altres sessions",
+    "description": "Quan està desactivat, es diu a les altres sessions que aquesta no accepta missatges, i res del que enviïn hi arriba."
+  },
+  "subagentQuestion": {
+    "title": "{{name}} pregunta a l'agent",
+    "open": "Esperant una resposta",
+    "answered": "Respost",
+    "expired": "Cap resposta a temps",
+    "cancelled": "Cancel·lat"
+  },
+  "asked": {
+    "title": "Ha preguntat a {{name}}",
+    "sent": "Enviat. La seva resposta, si n'hi ha, arribarà aquí com a missatge.",
+    "unknownName": "una altra sessió",
+    "waiting": "Esperant la resposta",
+    "answered": "Respost",
+    "noAnswer": "Encara no hi ha resposta",
+    "notSent": "No enviat",
+    "open": "Obre",
+    "openLabel": "Obre {{name}}",
+    "untrusted": "La resposta és text d'una altra sessió, no teu."
+  },
+  "errors": {
+    "invalid_text": "La resposta ha de tenir entre 1 i 8000 caràcters.",
+    "reply_depth_exceeded": "Aquesta conversa ha arribat al seu límit de respostes.",
+    "rate_limited": "S'han enviat massa missatges fa un moment. Torna-ho a provar d'aquí a un minut.",
+    "pair_limit_exceeded": "Massa missatges entre aquestes sessions aquesta hora.",
+    "self_target": "Una sessió no es pot enviar missatges a si mateixa.",
+    "not_same_project": "Aquesta sessió és en un altre projecte.",
+    "recipient_opted_out": "Aquesta sessió no accepta missatges d'altres sessions.",
+    "ambiguous_session": "Més d'una sessió té aquest nom.",
+    "no_project": "Adjunta una carpeta de projecte per enviar missatges.",
+    "unknown_session": "Aquesta sessió ja no existeix.",
+    "session_deleted": "Aquesta sessió s'ha suprimit.",
+    "unknown_reply_target": "No s'ha trobat el missatge al qual es respon.",
+    "timeout": "No ha arribat cap resposta a temps.",
+    "target_unavailable": "Aquesta sessió no està disponible ara mateix.",
+    "invalid_session_id": "Aquest identificador de sessió no és vàlid.",
+    "unknown_message": "No s'ha trobat aquest missatge.",
+    "invalid_timeout": "El temps d'espera ha de ser d'entre 1 i 120 segons.",
+    "cancelled": "La sol·licitud s'ha cancel·lat.",
+    "invalid_arguments": "La sol·licitud no era vàlida.",
+    "not_available": "La missatgeria no està disponible aquí.",
+    "io": "No s'ha pogut llegir ni escriure la bústia.",
+    "no_data_folder": "La carpeta de dades de Flint no està disponible.",
+    "unknown": "No s'ha pogut enviar la resposta."
+  }
+}

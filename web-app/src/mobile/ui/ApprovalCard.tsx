@@ -8,6 +8,8 @@ import { useLive } from '../state/live'
 import { usePhonePermissions } from './hooks'
 import { ResolvedLine } from './live'
 import { respond } from './respond'
+import { SlideCommit } from './slide-commit'
+import { t } from '../i18n'
 
 export function ApprovalCard({ a }: { a: RemoteApproval }) {
   const resolved = useLive((s) => s.resolved[a.requestId])
@@ -16,15 +18,15 @@ export function ApprovalCard({ a }: { a: RemoteApproval }) {
   return (
     <div className="ap2" data-testid="approval-card">
       <div className="aph">
-        <span>Approval needed</span>
+        <span>{t('approval.needed')}</span>
         <span className="aptool">{a.toolName}</span>
-        {a.origin && <span className="apfrom">from {a.origin}</span>}
+        {a.origin && <span className="apfrom">{t('common.from', { origin: a.origin })}</span>}
       </div>
       <div className="apt">{a.title}</div>
       {a.subject && <div className="apcmd">{a.subject}</div>}
       {a.preview && (
         <details className="apdiff" data-testid="approval-diff">
-          <summary>What would change</summary>
+          <summary>{t('approval.whatWouldChange')}</summary>
           <pre>
             {a.preview.split('\n').map((line, i) => (
               <span key={i} className={line.startsWith('+') ? 'add' : line.startsWith('-') ? 'del' : undefined}>
@@ -39,13 +41,13 @@ export function ApprovalCard({ a }: { a: RemoteApproval }) {
         <dl className="apdl">
           {a.why && (
             <>
-              <dt>Why</dt>
+              <dt>{t('approval.why')}</dt>
               <dd>{a.why}</dd>
             </>
           )}
           {a.consequences.length > 0 && (
             <>
-              <dt>What allowing it means</dt>
+              <dt>{t('approval.whatAllowingMeans')}</dt>
               <dd>{a.consequences.join(' ')}</dd>
             </>
           )}
@@ -53,20 +55,24 @@ export function ApprovalCard({ a }: { a: RemoteApproval }) {
       )}
       <div className="apf">
         <button type="button" className="apdet" onClick={() => openSheet('permdetails', { approval: a })}>
-          Permission details
+          {t('approval.details')}
         </button>
         <span style={{ flex: 1 }} />
         {perms.approvals ? (
           <>
             <button type="button" className="btn dan" onClick={() => void respond(a, 'deny')}>
-              Deny
+              {t('common.deny')}
             </button>
-            <button type="button" className="btn pri" onClick={() => void respond(a, 'allow')}>
-              Allow once
-            </button>
+            <SlideCommit
+              label={t('common.allowOnce')}
+              errorLabel={t('common.didNotWorkRetry')}
+              doneLabel={t('common.allowed')}
+              testId="approval-allow"
+              onCommit={async () => (await respond(a, 'allow')) !== undefined}
+            />
           </>
         ) : (
-          <span className="apnote">Answer this on the computer</span>
+          <span className="apnote">{t('approval.answerOnComputer')}</span>
         )}
       </div>
     </div>

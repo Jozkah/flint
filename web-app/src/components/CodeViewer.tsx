@@ -197,12 +197,16 @@ export function CodeViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealLine?.line, revealLine?.at, html])
 
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(copiedTimer.current), [])
+
   const copy = useCallback(
     async (what: 'code' | 'path') => {
       try {
         await navigator.clipboard.writeText(what === 'code' ? content : relPath)
         setCopied(what)
-        setTimeout(() => setCopied(null), 2000)
+        clearTimeout(copiedTimer.current)
+        copiedTimer.current = setTimeout(() => setCopied(null), 2000)
       } catch {
         // Clipboard unavailable; the button simply does nothing visible.
       }

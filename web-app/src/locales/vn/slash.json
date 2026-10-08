@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "Lệnh",
+    "helpTitle": "Các lệnh khả dụng",
+    "keys": "↑↓ chọn · Enter/Tab chèn · Esc đóng",
+    "empty": "Không có lệnh nào khả dụng ở đây"
+  },
+  "source": {
+    "plugin": "plugin",
+    "pluginNamed": "plugin {{plugin}}",
+    "skill": "kỹ năng",
+    "builtin": "tích hợp sẵn"
+  },
+  "scope": {
+    "project": "dự án",
+    "global": "toàn cục"
+  },
   "builtin": {
+    "help": "Liệt kê các lệnh khả dụng",
+    "new": "Bắt đầu cuộc trò chuyện mới",
+    "newSession": "Bắt đầu phiên Cowork mới",
     "compact": "Tóm tắt các tin nhắn cũ để giải phóng cửa sổ ngữ cảnh"
-  }
+  },
+  "sent": {
+    "command": "Lệnh",
+    "skill": "Kỹ năng",
+    "showCommand": "Hiện lệnh đã mở rộng",
+    "showSkill": "Hiện kỹ năng đã tải"
+  },
+  "error": "Không thể chạy {{command}}: {{error}}"
 }

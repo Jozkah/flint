@@ -79,6 +79,13 @@ pub struct DestInfo {
     pub data_folder: PathBuf,
 }
 
+/// A Flint item overwritten by a migration, with the backup of the original.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplacedRecord {
+    pub dest: PathBuf,
+    pub backup: PathBuf,
+}
+
 /// The migration manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MigrationManifest {
@@ -90,6 +97,14 @@ pub struct MigrationManifest {
     pub mode: ModeTag,
     pub results: Vec<CategoryResultRecord>,
     pub skipped_items: Vec<SkippedRecord>,
+    /// Destination paths this migration created (did not exist before). The
+    /// undo ledger: a later rollback removes only these, never other Flint data.
+    #[serde(default)]
+    pub created: Vec<PathBuf>,
+    /// Destination items this migration overwrote, with a backup of each
+    /// original, so a rollback can restore them.
+    #[serde(default)]
+    pub replaced: Vec<ReplacedRecord>,
     pub backup_path: Option<PathBuf>,
     /// For Reuse mode: the JAN path Flint was pointed at.
     pub reuse_path: Option<PathBuf>,
@@ -115,6 +130,8 @@ impl MigrationManifest {
             mode,
             results: Vec::new(),
             skipped_items: Vec::new(),
+            created: Vec::new(),
+            replaced: Vec::new(),
             backup_path: None,
             reuse_path: None,
             status: Status::Pending,
@@ -226,6 +243,8 @@ pub fn mark_dismissed(flint_config_dir: &Path) -> Result<(), String> {
                 mode: ModeTag::Fresh,
                 results: Vec::new(),
                 skipped_items: Vec::new(),
+                created: Vec::new(),
+                replaced: Vec::new(),
                 backup_path: None,
                 reuse_path: None,
                 status: Status::Dismissed,

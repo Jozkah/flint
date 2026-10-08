@@ -1,15 +1,71 @@
 {
   "welcome": "Olá, como você está?",
   "description": "Como posso ajudá-lo hoje?",
+  "startedAt": "Iniciado {{time}}",
+  "home": {
+    "title": "Novo chat",
+    "notSaved": "Nada é salvo até você enviar",
+    "sub": "Pergunte qualquer coisa, anexe arquivos ou passe uma tarefa maior para o Cowork.",
+    "suggestionsLabel": "Sugestões",
+    "suggestions": {
+      "explain": "Explicar esta mensagem de erro",
+      "summarise": "Resumir um documento que eu anexar",
+      "draft": "Redigir notas de versão a partir de uma lista de alterações",
+      "compare": "Comparar duas abordagens e recomendar uma"
+    }
+  },
   "temporaryChat": "Chat Temporário",
   "temporaryChatDescription": "Inicie uma conversa temporária que não será salva no seu histórico de chat.",
+  "temporaryChatBanner": "Chat temporário — não será salvo",
+  "temporaryChatKeep": "Manter este chat",
+  "temporaryChatLeave": {
+    "title": "Manter este chat temporário?",
+    "description": "Este chat não está salvo em lugar nenhum. Mantenha-o para movê-lo para o seu histórico ou descarte-o para excluí-lo em definitivo.",
+    "keep": "Manter",
+    "discard": "Descartar",
+    "kept": "Chat salvo no seu histórico",
+    "keepFailed": "Não foi possível salvar este chat",
+    "discardFailed": "Não foi possível descartar — a geração ainda está em execução. Pare-a e tente novamente.",
+    "reason": {
+      "generation-not-stopped": "A geração ainda está em execução. Pare-a e tente novamente.",
+      "messages-not-persisted": "Não foi possível salvar o chat por completo. Nada foi perdido — tente novamente.",
+      "thread-not-created": "Não foi possível salvar o chat. Nada foi perdido — tente novamente.",
+      "error": "Algo deu errado. Seu chat continua aqui — tente novamente."
+    }
+  },
   "status": {
     "empty": "Nenhum Chat Encontrado"
   },
   "sendMessage": "Enviar Mensagem",
   "newConversation": "Nova Conversa",
   "clearHistory": "Limpar Histórico",
+  "embeddings": {
+    "title": "Preparando seus documentos",
+    "description": "Indexando os arquivos anexados para que possam ser pesquisados e citados. Pode levar um momento para documentos grandes."
+  },
+  "actions": {
+    "copy": "Copiar",
+    "regenerate": "Gerar resposta novamente",
+    "continue": "Continuar gerando",
+    "delete": "Excluir",
+    "fork": "Ramificar o chat a partir daqui",
+    "copied": "Copiado"
+  },
   "done": "Done",
+  "webSources": "{{count}} fonte(s)",
+  "webSourcesRead": "{{count}} lida(s)",
+  "webSourcesReadFound": "{{read}} lida(s) · {{found}} encontrada(s)",
+  "reasoning": {
+    "label": "Raciocinando...",
+    "thinking": "Pensando",
+    "usingTool": "{{tool}}...",
+    "showFullTimeline": "Mostrar linha do tempo completa",
+    "showCurrentStep": "Mostrar somente a etapa atual",
+    "thoughtForAWhile": "Pensou por alguns segundos",
+    "thoughtFor": "Pensou por {{duration}}",
+    "workedForAWhile": "Trabalhou por alguns segundos",
+    "workedFor": "Trabalhou por {{duration}}"
+  },
   "split": {
     "open": "Dividir conversa",
     "openShort": "Dividir",
@@ -44,16 +100,85 @@
   },
   "transcriptView": {
     "steps_one": "{{count}} etapa",
-    "steps_many": "{{count}} etapas",
     "steps_other": "{{count}} etapas",
-    "working": "Trabalhando"
+    "steps_many": "{{count}} etapas",
+    "working": "Trabalhando",
+    "failed": "Falhou:",
+    "failedToRun": "Falha ao executar",
+    "summary": {
+      "failed": "{{count}} com falha",
+      "commands_one": "executou {{count}} comando",
+      "commands_other": "executou {{count}} comandos",
+      "commands_many": "executou {{count}} de comandos",
+      "created_one": "criou {{count}} arquivo",
+      "created_other": "criou {{count}} arquivos",
+      "created_many": "criou {{count}} de arquivos",
+      "edited_one": "editou {{count}} arquivo",
+      "edited_other": "editou {{count}} arquivos",
+      "edited_many": "editou {{count}} de arquivos",
+      "read_one": "leu {{count}} arquivo",
+      "read_other": "leu {{count}} arquivos",
+      "read_many": "leu {{count}} de arquivos",
+      "searched_one": "pesquisou {{count}} vez",
+      "searched_other": "pesquisou {{count}} vezes",
+      "searched_many": "pesquisou {{count}} de vezes",
+      "tools_one": "usou {{count}} ferramenta",
+      "tools_other": "usou {{count}} ferramentas",
+      "tools_many": "usou {{count}} de ferramentas"
+    }
   },
-  "actions": {
-    "fork": "Ramificar o chat a partir daqui"
+  "widget": {
+    "label": "Widget",
+    "drawing": "Desenhando widget",
+    "source": "Ver código-fonte",
+    "copy": "Copiar HTML",
+    "copied": "HTML copiado.",
+    "copyFailed": "Não foi possível copiar o HTML.",
+    "save": "Salvar como arquivo .html",
+    "expand": "Abrir em tamanho real",
+    "rerun": "Executar novamente",
+    "stalled": "O widget parou de responder.",
+    "parked": "Widget pausado enquanto fora da tela.",
+    "error": "Erro no widget:",
+    "viewSource": "Ver código-fonte",
+    "askFix": "Pedir ao Flint para corrigir",
+    "fixPrompt": "O widget \"{{title}}\" mostra um erro: {{error}}\nCorrija-o e mostre o widget novamente.",
+    "refused": "Widget não exibido: {{reason}}",
+    "refusedUnknown": "a chamada falhou",
+    "tooLarge": "Este widget tem mais de {{max}} caracteres e não é desenhado.",
+    "openLink": "Abrir {{url}} no seu navegador?",
+    "cancel": "Cancelar",
+    "busy": "Aguarde a resposta atual terminar e tente novamente.",
+    "noHost": "Esta visualização não pode enviar mensagens."
+  },
+  "browserCard": {
+    "opened": "Aberto no Navegador",
+    "ready": "Pronto para abrir",
+    "open": "Abrir",
+    "more": "Mais",
+    "copy": "Copiar link",
+    "copied": "Link copiado.",
+    "failed": "Não foi possível abrir o navegador."
+  },
+  "regenerateTitle": {
+    "menu": "Gerar título novamente",
+    "working": "Dando nome ao chat...",
+    "done": "Chat renomeado.",
+    "empty": "Ainda não há nada para dar nome a este chat.",
+    "busy": "Pause ou pare a sala antes de renomeá-la.",
+    "failed": "Não foi possível gerar um título."
   },
   "fork": {
     "chat": "Ramificar chat",
     "done": "Ramificado em um novo chat.",
     "failed": "Não foi possível ramificar este chat."
+  },
+  "version": {
+    "group": "Versões da mensagem",
+    "previous": "Versão anterior",
+    "next": "Próxima versão",
+    "previousAt": "Versão anterior (mostrando {{index}} de {{count}})",
+    "nextAt": "Próxima versão (mostrando {{index}} de {{count}})",
+    "position": "Versão {{index}} de {{count}}"
   }
 }

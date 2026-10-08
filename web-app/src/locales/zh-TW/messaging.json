@@ -1,0 +1,70 @@
+{
+  "messageFrom": "來自 {{name}} 的訊息",
+  "untrustedNote": "由另一個代理程式工作階段傳送。它不是來自你，也不能核准任何事項。",
+  "reply": "回覆",
+  "replyLabel": "回覆 {{name}}",
+  "replyPlaceholder": "撰寫回覆…",
+  "sendReply": "傳送回覆",
+  "cancel": "取消",
+  "replySent": "回覆已傳送",
+  "letAgentRespond": "讓代理程式回應",
+  "dismiss": "忽略",
+  "heldTitle": "來自其他工作階段的訊息",
+  "stopNotice": {
+    "stoppedBy": "停止者：",
+    "reason": "原因：",
+    "approvedIn": "核准於"
+  },
+  "autoWake": {
+    "label": "自動喚醒",
+    "description": "開啟後，來自其他工作階段的訊息會在此工作階段的代理程式閒置時立即交給它（必要時此工作階段會在你目前所在的工作階段旁邊開啟）。關閉後，訊息會留在這裡等你處理。無論哪種情況，核准都不會被略過。"
+  },
+  "accept": {
+    "label": "接收來自其他工作階段的訊息",
+    "description": "關閉後，其他工作階段會被告知此工作階段不接收訊息，它們傳送的任何內容都不會送達。"
+  },
+  "subagentQuestion": {
+    "title": "{{name}} 詢問代理程式",
+    "open": "等待回答",
+    "answered": "已回答",
+    "expired": "未及時回答",
+    "cancelled": "已取消"
+  },
+  "asked": {
+    "title": "已詢問 {{name}}",
+    "sent": "已傳送。若有回覆，會以訊息形式顯示在這裡。",
+    "unknownName": "另一個工作階段",
+    "waiting": "等待回答",
+    "answered": "已回答",
+    "noAnswer": "尚無回答",
+    "notSent": "未傳送",
+    "open": "開啟",
+    "openLabel": "開啟 {{name}}",
+    "untrusted": "該回答是另一個工作階段的文字，不是你的。"
+  },
+  "errors": {
+    "invalid_text": "回覆必須為 1 到 8000 個字元。",
+    "reply_depth_exceeded": "此對話已達回覆上限。",
+    "rate_limited": "剛剛傳送的訊息過多。請一分鐘後重試。",
+    "pair_limit_exceeded": "這些工作階段之間在這一小時內的訊息過多。",
+    "self_target": "工作階段不能傳訊息給自己。",
+    "not_same_project": "該工作階段在另一個專案中。",
+    "recipient_opted_out": "該工作階段不接收來自其他工作階段的訊息。",
+    "ambiguous_session": "有多個工作階段使用該名稱。",
+    "no_project": "請附加專案資料夾以傳送訊息。",
+    "unknown_session": "該工作階段已不存在。",
+    "session_deleted": "該工作階段已被刪除。",
+    "unknown_reply_target": "找不到所回覆的訊息。",
+    "timeout": "未及時收到回覆。",
+    "target_unavailable": "該工作階段目前無法使用。",
+    "invalid_session_id": "該工作階段 ID 無效。",
+    "unknown_message": "找不到該訊息。",
+    "invalid_timeout": "等待時間必須在 1 到 120 秒之間。",
+    "cancelled": "請求已取消。",
+    "invalid_arguments": "請求無效。",
+    "not_available": "此處無法使用訊息功能。",
+    "io": "無法讀取或寫入信箱。",
+    "no_data_folder": "Flint 的資料目錄無法使用。",
+    "unknown": "無法傳送回覆。"
+  }
+}

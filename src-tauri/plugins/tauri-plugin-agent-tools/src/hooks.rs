@@ -49,6 +49,29 @@ pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
 /// The most hook output kept, per hook, in what is shown or recorded.
 pub const MAX_OUTPUT: usize = 4096;
 
+/// Environment variables a hook receives on top of the minimal set the bash
+/// tool gets. These are locations, identity and platform facts a script
+/// normally reads (`%APPDATA%`, `%USERNAME%`, `ProgramFiles(x86)`, `XDG_*`);
+/// none of them carries a credential. Everything else in the host environment
+/// stays out, so a provider key or `SSH_AUTH_SOCK` never reaches a hook.
+const HOOK_ENV_EXTRA: &[&str] = &[
+    "APPDATA",
+    "USERNAME",
+    "USERDOMAIN",
+    "ALLUSERSPROFILE",
+    "PUBLIC",
+    "CommonProgramW6432",
+    "COMPUTERNAME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "LC_ALL",
+    "LC_CTYPE",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+];
+
 /// Where in a run a hook runs.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -596,6 +619,18 @@ async fn execute(
     let work = async move {
         use jan_process::CommandConsole;
         let mut cmd = tokio::process::Command::new(shell.program.clone());
+        // A hook gets the same minimal environment as the `bash` tool, never
+        // the host's: a provider key or `SSH_AUTH_SOCK` in the app's
+        // environment must not reach a script a repository chose.
+        cmd.env_clear();
+        for key in crate::tools::proc::SANDBOX_ENV_ALLOW
+            .iter()
+            .chain(HOOK_ENV_EXTRA)
+        {
+            if let Some(val) = std::env::var_os(key) {
+                cmd.env(key, val);
+            }
+        }
         cmd.args(shell.args.clone())
             .arg(&command)
             .current_dir(&root)
@@ -1239,6 +1274,49 @@ mod tests {
         assert!(decision.allowed());
         let seen = std::fs::read_to_string(&out).unwrap_or_default();
         assert!(seen.contains("pre-tool bash"), "{seen:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The host's secrets stay out of a hook's environment.
+    #[tokio::test]
+    async fn a_hook_does_not_inherit_the_host_environment() {
+        let root = dir("env-secret");
+        let out = root.join("secret.txt");
+        let out_path = out.display().to_string().replace('\\', "/");
+        // A unique name no other test reads.
+        std::env::set_var("FLINT_TEST_HOOK_SECRET", "hunter2");
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"pre-tool\"\ncommand = \"echo \\\"[$FLINT_TEST_HOOK_SECRET]\\\" > '{out_path}'\"\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let decision = run(&hooks, Event::PreTool, Some("bash"), &ctx(&root)).await;
+        assert!(decision.allowed());
+        let seen = std::fs::read_to_string(&out).unwrap_or_default();
+        assert!(!seen.contains("hunter2"), "{seen:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The plain, credential-free variables a script reads do reach a hook.
+    #[tokio::test]
+    async fn a_hook_keeps_the_plain_platform_variables_scripts_read() {
+        let root = dir("env-extra");
+        let out = root.join("extra.txt");
+        let out_path = out.display().to_string().replace('\\', "/");
+        std::env::set_var("XDG_CACHE_HOME", "kept-cache");
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"pre-tool\"\ncommand = \"echo \\\"[$XDG_CACHE_HOME]\\\" > '{out_path}'\"\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let decision = run(&hooks, Event::PreTool, Some("bash"), &ctx(&root)).await;
+        assert!(decision.allowed());
+        let seen = std::fs::read_to_string(&out).unwrap_or_default();
+        assert!(seen.contains("kept-cache"), "{seen:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

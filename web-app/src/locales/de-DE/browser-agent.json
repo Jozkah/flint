@@ -1,0 +1,82 @@
+{
+  "domain": {
+    "title": "Dem Assistenten {{host}} erlauben?",
+    "description": "Der Assistent möchte den Browserbereich auf einer Seite nutzen, die du noch nicht freigegeben hast.",
+    "urlLabel": "Vollständige Adresse",
+    "urlHint": "Prüfe die gesamte Adresse, auch alles nach dem ?. Adressen können Informationen aus deiner Unterhaltung nach außen tragen.",
+    "wantsLabel": "Er möchte",
+    "wants": {
+      "browser_open": "diese Seite öffnen",
+      "browser_read_text": "diese Seite lesen",
+      "browser_snapshot": "die Bedienelemente dieser Seite ansehen",
+      "browser_screenshot": "ein Bild dieser Seite aufnehmen",
+      "browser_scroll": "diese Seite scrollen",
+      "browser_click": "auf dieser Seite klicken",
+      "browser_type": "auf dieser Seite tippen",
+      "browser_press": "auf dieser Seite eine Taste drücken",
+      "browser_select": "auf dieser Seite eine Option auswählen"
+    },
+    "origin": "Angefragt von {{origin}}",
+    "scopeLabel": "Wie lange",
+    "once": "Nur dieser Besuch",
+    "onceHint": "Endet, wenn der Assistent zu einer anderen Seite wechselt, oder nach 15 Minuten.",
+    "session": "Bis Flint geschlossen wird",
+    "always": "Immer",
+    "alwaysHint": "Wird gespeichert. Du kannst die Regel unter Einstellungen > Agent-Tools entfernen.",
+    "subdomains": "Auch Subdomains von {{base}} erlauben",
+    "allow": "Erlauben",
+    "deny": "Jetzt nicht",
+    "never": "Diese Seite nie erlauben",
+    "more": "{{count}} weitere warten",
+    "warning": "Der Assistent kann alles auf der Seite lesen, und Text auf einer Seite kann versuchen, ihn in die Irre zu führen."
+  },
+  "settings": {
+    "title": "Browser",
+    "enabled": "Dem Assistenten den Browserbereich erlauben",
+    "enabledDesc": "Fügt Tools hinzu, um Seiten zu öffnen, zu lesen und mit deiner Zustimmung im integrierten Browserbereich zu klicken und zu tippen. Du siehst denselben Bereich. Jede Seite fragt beim ersten Mal nach; lokale Adressen und Adressen im privaten Netzwerk werden nie geöffnet.",
+    "maxActions": "Aktionen pro Durchlauf",
+    "maxActionsDesc": "Klicks, Tastenanschläge und Auswahlen, die ein Durchlauf ausführen darf, bevor er anhalten muss.",
+    "rulesTitle": "Gespeicherte Seitenregeln",
+    "rulesDesc": "Seiten, die du dauerhaft erlaubt oder blockiert hast. Eine Regel für example.com gilt nur für diese Seite; *.example.com gilt für ihre Subdomains.",
+    "empty": "Noch keine gespeicherten Regeln. Eine Seite erscheint hier, wenn du „Immer erlauben“ oder „Nie erlauben“ wählst.",
+    "allow": "Erlaubt",
+    "deny": "Blockiert",
+    "privateOk": "Lokale Adresse",
+    "remove": "Entfernen",
+    "removed": "Regel entfernt",
+    "removeFailed": "Die Regel konnte nicht entfernt werden: {{error}}",
+    "addPlaceholder": "example.com oder *.example.com",
+    "addLabel": "Seite",
+    "addVerdict": "Regel",
+    "addPrivate": "Erlauben, dass dies eine lokale Adresse oder eine Adresse im privaten Netzwerk ist (für einen Dev-Server)",
+    "add": "Regel hinzufügen",
+    "added": "Regel gespeichert",
+    "addFailed": "Die Regel konnte nicht gespeichert werden: {{error}}",
+    "pointer": "Zeiger anzeigen",
+    "pointerDesc": "Zeichnet im Browserbereich einen Cursor, der zu dem gleitet, worauf der Assistent klickt oder tippt, und mit ihm scrollt. Aus: Es wird nichts gezeichnet und nichts verzögert.",
+    "reduceMotion": "Bewegung reduzieren",
+    "reduceMotionDesc": "Kein Gleiten und kein Leuchtpuls: Der Zeiger springt direkt zum Ziel.",
+    "reduceSystem": "Dem System folgen",
+    "reduceOn": "Immer reduzieren",
+    "reduceOff": "Nie reduzieren",
+    "grantsTitle": "Vorläufig freigegeben",
+    "grantsNone": "Nichts ist freigegeben, ohne gespeichert zu sein. Jede Seite, die nicht in den gespeicherten Regeln steht, fragt nach.",
+    "grantsDesc": "Seiten, die du für diese Sitzung oder diesen Besuch erlaubt hast. Sie werden nicht gespeichert und enden, wenn Flint geschlossen wird.",
+    "grantScope": {
+      "session": "diese Sitzung",
+      "once": "dieser Besuch"
+    },
+    "grantAge": "vor {{minutes}} Min.",
+    "forgetGrants": "Freigaben dieser Sitzung vergessen"
+  },
+  "card": {
+    "screenshot": "Screenshot des Browserbereichs"
+  },
+  "pane": {
+    "driving": "Der Assistent verwendet diesen Browser",
+    "takeOver": "Übernehmen",
+    "paused": "Assistent pausiert",
+    "handBack": "Zurückgeben",
+    "blocked": "Eine Seite wurde blockiert: {{reason}}"
+  }
+}

@@ -2,14 +2,16 @@ import { useState } from 'react'
 import type { SessionSummary } from '@/lib/remote/protocol'
 import { TopMain } from '../shell/TopBar'
 import { I } from '../ui/icons'
+import { Tx } from '../ui/trans'
 import { Avatar, Empty, Loading, Pills } from '../ui/bits'
 import { ago, compact } from '../ui/format'
 import { go, openSheet } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { byKind, useSessions } from '../state/sessions'
 import { ROOM_STATUS } from '../shell/labels'
+import { t } from '../i18n'
 
-const MODE = { 'round-robin': 'Round-robin', 'user-selected': 'You choose', 'moderator-selected': 'Moderator chooses' } as const
+const MODE = { 'round-robin': t('rooms.mode.roundRobin'), 'user-selected': t('rooms.mode.userSelected'), 'moderator-selected': t('rooms.mode.moderatorSelected') } as const
 
 function RoomCard({ s }: { s: SessionSummary }) {
   const { data: room } = useRpc('rooms.get', { id: s.id })
@@ -17,10 +19,10 @@ function RoomCard({ s }: { s: SessionSummary }) {
   return (
     <div className="rc" role="button" onClick={() => go({ name: 'room', id: s.id })} data-testid="room-card">
       <h3>
-        {s.title || 'Untitled room'}
+        {s.title || t('rooms.untitled')}
         <span
           role="button"
-          aria-label="Room menu"
+          aria-label={t('rooms.menu')}
           onClick={(e) => {
             e.stopPropagation()
             openSheet('roommenu', { id: s.id, title: s.title })
@@ -33,12 +35,12 @@ function RoomCard({ s }: { s: SessionSummary }) {
         {status === 'running' ? (
           <span className="chip">
             <I n="loader" size={11} spin="slow" />
-            Running
+            {t('rooms.running')}
           </span>
         ) : status === 'awaiting-user' ? (
           <span className="chip warn">
             <I n="shield" size={11} />
-            Waiting for you
+            {t('rooms.waitingForYou')}
           </span>
         ) : (
           <span className={`chip${status === 'completed' ? ' ok' : ''}`}>
@@ -63,9 +65,9 @@ function RoomCard({ s }: { s: SessionSummary }) {
         <>
           <div className="kv">
             <span>
-              Turn <b style={{ color: 'var(--foreground)' }}>{room.usage.turns}</b> of {room.limits.maxTurns}
+              <Tx k="rooms.turnOf" parts={{ turn: <b style={{ color: 'var(--foreground)' }}>{room.usage.turns}</b>, max: room.limits.maxTurns }} />
             </span>
-            <span className="muted">{compact(room.usage.tokens)} tokens</span>
+            <span className="muted">{t('rooms.tokens', { count: compact(room.usage.tokens) })}</span>
           </div>
           <div className="meter">
             <i style={{ width: `${Math.min(100, (room.usage.turns / Math.max(1, room.limits.maxTurns)) * 100)}%` }} />
@@ -74,7 +76,7 @@ function RoomCard({ s }: { s: SessionSummary }) {
       )}
       <div className="kv">
         <span className="subtle" style={{ fontSize: 11.5 }}>
-          Updated {ago(s.updatedAt)}
+          {t('rooms.updated', { when: ago(s.updatedAt) })}
         </span>
         <span />
       </div>
@@ -94,45 +96,45 @@ export default function Rooms() {
   )
   return (
     <>
-      <TopMain crumb="Workspace" title="Rooms" />
+      <TopMain crumb={t('common.workspace')} title={t('rooms.title')} />
       <div className="scroll">
         <div className="ph">
-          <h2>Rooms</h2>
-          <p>Discussions between several models, with you in control.</p>
+          <h2>{t('rooms.title')}</h2>
+          <p>{t('rooms.intro')}</p>
         </div>
         <div className="kpis">
           <div className="kpi">
             <small>
-              Running <I n="play" size={12} />
+              {t('rooms.running')} <I n="play" size={12} />
             </small>
             <b>{running}</b>
-            <em>{paused} paused</em>
+            <em>{t('rooms.paused', { count: paused })}</em>
           </div>
           <div className="kpi">
             <small>
-              Waiting for you <I n="bell" size={12} />
+              {t('rooms.waitingForYou')} <I n="bell" size={12} />
             </small>
             <b>{waiting}</b>
-            <em style={waiting ? { color: 'var(--warning)' } : undefined}>{waiting ? 'Needs your pick or reply' : 'Nothing waiting'}</em>
+            <em style={waiting ? { color: 'var(--warning)' } : undefined}>{waiting ? t('rooms.needsPick') : t('rooms.nothingWaiting')}</em>
           </div>
         </div>
         <Pills
           items={[
-            { id: 'all', label: 'All' },
-            { id: 'active', label: 'Active' },
-            { id: 'finished', label: 'Finished' },
+            { id: 'all', label: t('rooms.filters.all') },
+            { id: 'active', label: t('rooms.filters.active') },
+            { id: 'finished', label: t('rooms.filters.finished') },
           ]}
           value={filter}
           onChange={setFilter}
         />
         {loading && !data && <Loading />}
-        {data && shown.length === 0 && <Empty>No rooms here yet.</Empty>}
+        {data && shown.length === 0 && <Empty>{t('rooms.empty')}</Empty>}
         {shown.slice(0, 20).map((s) => (
           <RoomCard key={s.id} s={s} />
         ))}
         <button type="button" className="btn pri big" style={{ marginTop: 6 }} onClick={() => openSheet('roomnew')}>
           <I n="plus" />
-          New room
+          {t('rooms.new')}
         </button>
       </div>
     </>

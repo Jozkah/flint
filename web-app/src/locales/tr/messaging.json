@@ -1,0 +1,70 @@
+{
+  "messageFrom": "{{name}} kişisinden mesaj",
+  "untrustedNote": "Başka bir ajan oturumu tarafından gönderildi. Sizden değildir ve hiçbir şeyi onaylayamaz.",
+  "reply": "Yanıtla",
+  "replyLabel": "{{name}} kişisine yanıt",
+  "replyPlaceholder": "Bir yanıt yazın…",
+  "sendReply": "Yanıtı gönder",
+  "cancel": "İptal",
+  "replySent": "Yanıt gönderildi",
+  "letAgentRespond": "Ajanın yanıt vermesine izin ver",
+  "dismiss": "Kapat",
+  "heldTitle": "Diğer oturumlardan gelen mesajlar",
+  "stopNotice": {
+    "stoppedBy": "Durduran:",
+    "reason": "neden:",
+    "approvedIn": "onaylandığı yer:"
+  },
+  "autoWake": {
+    "label": "Otomatik uyandırma",
+    "description": "Açıkken, başka bir oturumdan gelen mesaj, bu oturumun ajanı boşta olur olmaz ona iletilir (gerekirse bu oturum, bulunduğunuz oturumun yanında açılır). Kapalıyken mesaj burada sizi bekler. Her iki durumda da onaylar asla atlanmaz."
+  },
+  "accept": {
+    "label": "Diğer oturumlardan gelen mesajları kabul et",
+    "description": "Kapalıyken, diğer oturumlara bunun mesaj almadığı söylenir ve gönderdikleri hiçbir şey ona ulaşmaz."
+  },
+  "subagentQuestion": {
+    "title": "{{name}} ajana soruyor",
+    "open": "Cevap bekleniyor",
+    "answered": "Cevaplandı",
+    "expired": "Zamanında cevap gelmedi",
+    "cancelled": "İptal edildi"
+  },
+  "asked": {
+    "title": "{{name}} kişisine soruldu",
+    "sent": "Gönderildi. Varsa yanıtı buraya mesaj olarak gelir.",
+    "unknownName": "başka bir oturum",
+    "waiting": "Cevap bekleniyor",
+    "answered": "Cevaplandı",
+    "noAnswer": "Henüz cevap yok",
+    "notSent": "Gönderilmedi",
+    "open": "Aç",
+    "openLabel": "{{name}} oturumunu aç",
+    "untrusted": "Cevap, sizin değil başka bir oturumun metnidir."
+  },
+  "errors": {
+    "invalid_text": "Yanıt 1 ile 8000 karakter arasında olmalıdır.",
+    "reply_depth_exceeded": "Bu konuşma yanıt sınırına ulaştı.",
+    "rate_limited": "Az önce çok fazla mesaj gönderildi. Bir dakika sonra tekrar deneyin.",
+    "pair_limit_exceeded": "Bu saat içinde bu oturumlar arasında çok fazla mesaj var.",
+    "self_target": "Bir oturum kendisine mesaj gönderemez.",
+    "not_same_project": "Bu oturum farklı bir projede.",
+    "recipient_opted_out": "Bu oturum diğer oturumlardan mesaj kabul etmiyor.",
+    "ambiguous_session": "Birden fazla oturumun adı bu.",
+    "no_project": "Mesaj göndermek için bir proje klasörü ekleyin.",
+    "unknown_session": "Bu oturum artık mevcut değil.",
+    "session_deleted": "Bu oturum silindi.",
+    "unknown_reply_target": "Yanıtlanan mesaj bulunamadı.",
+    "timeout": "Zamanında yanıt gelmedi.",
+    "target_unavailable": "Bu oturum şu anda kullanılamıyor.",
+    "invalid_session_id": "Bu oturum kimliği geçerli değil.",
+    "unknown_message": "Bu mesaj bulunamadı.",
+    "invalid_timeout": "Bekleme süresi 1 ile 120 saniye arasında olmalıdır.",
+    "cancelled": "İstek iptal edildi.",
+    "invalid_arguments": "İstek geçerli değildi.",
+    "not_available": "Mesajlaşma burada kullanılamıyor.",
+    "io": "Posta kutusu okunamadı veya yazılamadı.",
+    "no_data_folder": "Flint'in veri klasörü kullanılamıyor.",
+    "unknown": "Yanıt gönderilemedi."
+  }
+}

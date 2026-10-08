@@ -1,0 +1,585 @@
+/* Phone motion: swipe rows, the notification switch, slide-to-allow and
+ * scrubbable number fields. Reduced motion (the OS setting, or Flint's own
+ * `html.reduce-motion`) turns each of them down to instant state changes. */
+
+/* ---------- Swipe row ---------- */
+.sr-wrap {
+  position: relative;
+  overflow: hidden;
+  --sr-a: 76px;
+  --sr-row: var(--card);
+  --sr-drawer: var(--accent);
+  --sr-action: var(--destructive);
+  transition:
+    height 200ms var(--expo),
+    opacity 200ms var(--expo);
+}
+.sr-wrap[data-phase='collapsing'] {
+  opacity: 0;
+}
+.sr-wrap[data-collapsed] {
+  visibility: hidden;
+}
+.sr-clip {
+  position: relative;
+  overflow: hidden;
+  background: var(--sr-drawer);
+}
+.sr-rail {
+  position: absolute;
+  inset: 0;
+}
+.sr-act {
+  all: unset;
+  box-sizing: border-box;
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  width: var(--sr-a);
+  -webkit-tap-highlight-color: transparent;
+}
+.sr-act:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: -2px;
+}
+.sr-act > span {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: transform 160ms var(--expo);
+}
+.sr-act:active > span {
+  transform: scale(0.97);
+}
+.sr-act svg.i {
+  width: 18px;
+  height: 18px;
+}
+.sr-sec {
+  right: var(--sr-a);
+  background: var(--border-strong);
+  color: var(--foreground);
+}
+.sr-prim {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: var(--sr-a);
+  background: var(--sr-action);
+  color: #fff;
+  transition: width 220ms var(--expo);
+}
+.sr-prim .sr-act {
+  right: 0;
+  left: auto;
+  background: transparent;
+  color: inherit;
+}
+.sr-surf {
+  position: relative;
+  z-index: 1;
+  background: var(--sr-row);
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 380ms var(--expo);
+}
+.sr-wrap[data-dragging] .sr-surf,
+.sr-wrap[data-reduced] .sr-surf {
+  transition: none;
+}
+.sr-wrap[data-phase='committing'] .sr-surf {
+  transition: transform 220ms var(--expo);
+}
+.sr-wrap[data-reduced] {
+  transition: none;
+}
+.sr-wrap[data-reduced] .sr-prim {
+  transition: none;
+}
+.sr-sr {
+  all: unset;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.sr-sr:focus-visible {
+  width: auto;
+  height: auto;
+  clip-path: none;
+  top: 4px;
+  left: 4px;
+  z-index: 3;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--popover);
+  outline: 2px solid var(--info);
+  font-size: 12px;
+}
+
+/* ---------- Notification switch ---------- */
+.bs-row .bs-sub {
+  display: grid;
+  height: 16px;
+  line-height: 16px;
+}
+.bs-row .bs-sub > span {
+  grid-area: 1/1;
+  white-space: nowrap;
+  transition:
+    opacity 200ms ease,
+    filter 200ms ease;
+}
+.bs-row .bs-sub .on {
+  opacity: 0;
+  filter: blur(2px);
+}
+.bs-row[data-on='true'] .bs-sub .off {
+  opacity: 0;
+  filter: blur(2px);
+}
+.bs-row[data-on='true'] .bs-sub .on {
+  opacity: 1;
+  filter: blur(0);
+}
+.bs-sw {
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 32px;
+  border-radius: 99px;
+  background: var(--border-strong);
+  transition: background-color 0.25s var(--expo);
+}
+.bs-row[aria-checked='true'] .bs-sw {
+  background: var(--success);
+}
+.bs-row[data-busy] .bs-sw {
+  opacity: 0.7;
+}
+.bs-row:focus-visible .bs-sw {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--foreground) 30%, transparent);
+}
+.bs-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  color: #71717a;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  transition:
+    transform 0.35s var(--expo),
+    color 0.2s ease;
+}
+.bs-row[aria-checked='true'] .bs-knob {
+  transform: translateX(24px);
+  color: #18181b;
+}
+.bs-glyph {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  transform-origin: 50% 16%;
+}
+.bs-glyph svg {
+  width: 100%;
+  height: 100%;
+}
+.bs-glyph[data-ring] {
+  animation: bs-ring 820ms linear both;
+}
+.bs-wave {
+  pointer-events: none;
+  position: absolute;
+  top: 2px;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: #18181b;
+  stroke-linecap: round;
+  stroke-width: 1.6;
+  opacity: 0;
+  animation: bs-wave 380ms ease-out both;
+}
+.bs-wave.l {
+  right: calc(100% + 1px);
+  transform-origin: bottom right;
+  animation-delay: 80ms;
+}
+.bs-wave.r {
+  left: calc(100% + 1px);
+  transform-origin: bottom left;
+  animation-delay: 200ms;
+}
+@keyframes bs-ring {
+  0% {
+    transform: rotate(0);
+  }
+  12% {
+    transform: rotate(-22deg);
+    animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1);
+  }
+  28% {
+    transform: rotate(17deg);
+    animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1);
+  }
+  44% {
+    transform: rotate(-12deg);
+    animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1);
+  }
+  60% {
+    transform: rotate(7deg);
+    animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1);
+  }
+  78% {
+    transform: rotate(-3deg);
+    animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1);
+  }
+  100% {
+    transform: rotate(0);
+  }
+}
+@keyframes bs-wave {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+/* ---------- Slide to allow ---------- */
+.sc-root {
+  --sc-track: var(--accent);
+  --sc-ink: var(--foreground);
+  --sc-on-ink: var(--background);
+  --sc-ok: var(--success);
+  --sc-no: var(--destructive);
+  --sc-radius: 22px;
+  --sc-pad: 4px;
+  --sc-font: 13.5px;
+  position: relative;
+  display: block;
+  flex: 1 1 190px;
+  min-width: 170px;
+  max-width: 280px;
+  height: 44px;
+}
+.sc-track {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  border-radius: var(--sc-radius);
+  background: var(--sc-track);
+  overflow: hidden;
+}
+.sc-root[data-held] .sc-track {
+  cursor: grabbing;
+}
+.sc-root[data-phase='pending'] .sc-track,
+.sc-root[data-phase='done'] .sc-track {
+  cursor: default;
+}
+.sc-root[data-disabled] {
+  opacity: 0.5;
+}
+.sc-say {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding-left: 36px;
+  white-space: nowrap;
+  font-weight: 500;
+  line-height: 1;
+  font-size: var(--sc-font);
+}
+.sc-say span {
+  grid-area: 1/1;
+  transition:
+    opacity 200ms ease,
+    filter 200ms ease;
+  color: color-mix(in srgb, var(--sc-ink) 45%, transparent);
+}
+.sc-say span:nth-child(2) {
+  color: var(--sc-no);
+  opacity: 0;
+  filter: blur(2px);
+}
+.sc-root[data-phase='error'] .sc-say span:nth-child(1),
+.sc-root[data-phase='pending'] .sc-say,
+.sc-root[data-phase='done'] .sc-say {
+  opacity: 0;
+  filter: blur(2px);
+}
+.sc-root[data-phase='error'] .sc-say span:nth-child(2) {
+  opacity: 1;
+  filter: none;
+}
+.sc-cap {
+  position: absolute;
+  top: var(--sc-pad);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  outline: 0;
+  background: var(--sc-ink);
+  color: var(--sc-on-ink);
+  transition:
+    left 380ms var(--expo),
+    background-color 200ms ease,
+    color 200ms ease;
+}
+.sc-root[data-held] .sc-cap,
+.sc-root[data-reduced] .sc-cap {
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
+}
+.sc-root[data-phase='pending'] .sc-cap {
+  transition:
+    left 220ms var(--expo),
+    background-color 200ms ease;
+}
+.sc-root[data-phase='done'] .sc-cap {
+  background: var(--sc-ok);
+  color: #fff;
+}
+.sc-root[data-phase='error'] .sc-cap {
+  background: var(--sc-no);
+  color: #fff;
+  animation: sc-shake 360ms var(--expo);
+}
+.sc-cap:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--sc-track),
+    0 0 0 4px var(--info);
+}
+.sc-ic {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    opacity 200ms ease,
+    filter 200ms ease,
+    transform 200ms var(--expo);
+}
+.sc-ic svg {
+  display: block;
+}
+.sc-ic.spin,
+.sc-ic.ok {
+  opacity: 0;
+  filter: blur(2px);
+}
+.sc-ic.ok {
+  transform: scale(0.95);
+}
+.sc-root[data-phase='pending'] .sc-ic.arrow,
+.sc-root[data-phase='done'] .sc-ic.arrow,
+.sc-root[data-phase='error'] .sc-ic.arrow {
+  opacity: 0;
+  filter: blur(2px);
+}
+.sc-root[data-phase='pending'] .sc-ic.spin {
+  opacity: 1;
+  filter: none;
+}
+.sc-root[data-phase='done'] .sc-ic.ok {
+  opacity: 1;
+  filter: none;
+  transform: none;
+}
+.sc-root[data-phase='error'] .sc-ic.arrow {
+  opacity: 1;
+  filter: none;
+}
+.sc-spinner {
+  animation: sc-spin 1s linear infinite;
+}
+@keyframes sc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes sc-shake {
+  0%,
+  100% {
+    translate: 0;
+  }
+  20% {
+    translate: -6px;
+  }
+  40% {
+    translate: 5px;
+  }
+  60% {
+    translate: -3px;
+  }
+  80% {
+    translate: 2px;
+  }
+}
+
+/* ---------- Scrub field ---------- */
+.sf-field > label {
+  display: block;
+}
+.sf-root {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0.8px solid var(--border);
+  background: var(--card);
+  border-radius: 9px;
+  isolation: isolate;
+  cursor: ew-resize;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 380ms var(--expo),
+    border-color 200ms ease;
+}
+.sf-root[data-dragging='true'] {
+  transition: border-color 200ms ease;
+  border-color: var(--info);
+}
+.sf-root[data-disabled] {
+  cursor: default;
+  opacity: 0.6;
+}
+.sf-fillw {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.sf-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left;
+  background: color-mix(in srgb, var(--info) 16%, transparent);
+  transition: transform 160ms var(--expo);
+}
+.sf-root[data-dragging='true'] .sf-fill {
+  transition: none;
+}
+.sf-root .sf-input {
+  all: unset;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  font-size: 14.5px;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  cursor: inherit;
+  -moz-appearance: textfield;
+}
+.sf-root .sf-input::-webkit-outer-spin-button,
+.sf-root .sf-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.sf-root[data-over='true'] .sf-input {
+  color: color-mix(in srgb, var(--foreground) 55%, transparent);
+}
+.sf-ghost {
+  pointer-events: none;
+  position: absolute;
+  top: -6px;
+  white-space: nowrap;
+  border-radius: 99px;
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  color: #fff;
+  background: var(--info);
+  scale: 0.95;
+  transition:
+    opacity 125ms var(--expo),
+    scale 125ms var(--expo);
+}
+.sf-root[data-dragging='true'] .sf-ghost {
+  opacity: 1;
+  scale: 1;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .sr-wrap,
+  .sr-surf,
+  .sr-prim,
+  .sc-cap,
+  .sf-root,
+  .sf-fill {
+    transition: none !important;
+  }
+  .bs-glyph[data-ring],
+  .bs-wave,
+  .sc-spinner,
+  .sc-root[data-phase='error'] .sc-cap {
+    animation: none !important;
+  }
+  .bs-wave {
+    display: none;
+  }
+  .sf-ghost {
+    scale: 1;
+    transition: none;
+  }
+}
+html.reduce-motion .sr-wrap,
+html.reduce-motion .sr-surf,
+html.reduce-motion .sr-prim,
+html.reduce-motion .sc-cap,
+html.reduce-motion .sf-root,
+html.reduce-motion .sf-fill {
+  transition: none !important;
+}
+html.reduce-motion .bs-glyph[data-ring],
+html.reduce-motion .bs-wave,
+html.reduce-motion .sc-root[data-phase='error'] .sc-cap {
+  animation: none !important;
+}
+html.reduce-motion .bs-wave {
+  display: none;
+}

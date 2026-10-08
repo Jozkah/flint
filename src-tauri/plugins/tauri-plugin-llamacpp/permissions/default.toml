@@ -27,4 +27,5 @@ permissions = [
     "allow-read-gguf-metadata",
     "allow-find-gguf-tensors",
     "allow-is-model-supported",
+    "allow-sha256-file",
 ]

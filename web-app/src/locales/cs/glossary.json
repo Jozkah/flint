@@ -1,0 +1,23 @@
+{
+  "explain": "Co znamená „{{term}}“?",
+  "worktree": {
+    "term": "Worktree",
+    "definition": "Samostatná pracovní kopie vašeho projektu. Flint v ní může provádět změny, aniž by se dotkl kopie, ve které pracujete, a vy rozhodnete, co si ponecháte."
+  },
+  "context": {
+    "term": "Kontext",
+    "definition": "Informace zahrnuté v konverzaci, které model čte, než odpoví: vaše zprávy, přiložené soubory, pokyny a vše, co Flint přidá."
+  },
+  "mcpServer": {
+    "term": "Server MCP",
+    "definition": "Připojení, které Flintu dává další nástroje, například čtení databáze nebo volání služby. Některé běží na tomto počítači, jiné kontaktují externí služby."
+  },
+  "checkpoint": {
+    "term": "Kontrolní bod",
+    "definition": "Uložený bod, který dokáže obnovit podporovaný stav, například soubory projektu, které Flint změnil. Nemůže vrátit již odeslané zprávy ani nic, co se stalo mimo tento počítač."
+  },
+  "agent": {
+    "term": "Agent",
+    "definition": "Asistent pracující na úkolu: umí plánovat, používat nástroje a provádět několik kroků, přičemž se podle potřeby ptá na povolení."
+  }
+}

@@ -45,6 +45,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             gguf::commands::read_gguf_metadata,
             gguf::commands::find_gguf_tensors,
             gguf::commands::is_model_supported,
+            gguf::commands::sha256_file,
         ])
         .setup(|app, _api| {
             app.manage(Arc::new(state::LlamacppState::new()));

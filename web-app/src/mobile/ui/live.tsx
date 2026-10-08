@@ -6,6 +6,7 @@ import { AssistantHeader, Prose, ToolTimeline, UserBubble } from './messages'
 import { I } from './icons'
 import { retrySend } from '../state/app'
 import { dropPending, type LiveStream, type PendingSend, type Resolution } from '../state/live'
+import { t } from '../i18n'
 
 export function StreamingMessage({ s, model, timeline = true }: { s: LiveStream; model?: string; timeline?: boolean }) {
   const [thinking, setThinking] = useState(false)
@@ -13,9 +14,9 @@ export function StreamingMessage({ s, model, timeline = true }: { s: LiveStream;
     <div className="msg" data-testid="streaming-message" aria-live="polite" aria-busy={!s.done}>
       <AssistantHeader name={s.author ?? 'Flint'} model={model} />
       {s.reasoning && (
-        <button type="button" className="stepcount" onClick={() => setThinking((t) => !t)} aria-expanded={thinking}>
+        <button type="button" className="stepcount" onClick={() => setThinking((v) => !v)} aria-expanded={thinking}>
           <I n="chev" size={13} style={thinking ? undefined : { transform: 'rotate(-90deg)' }} />
-          {s.done || s.text ? 'Thought' : 'Thinking…'}
+          {s.done || s.text ? t('live.thought') : t('live.thinking')}
         </button>
       )}
       {thinking && s.reasoning && <div className="prose muted" style={{ fontSize: 12.5 }}>{s.reasoning}</div>}
@@ -26,11 +27,11 @@ export function StreamingMessage({ s, model, timeline = true }: { s: LiveStream;
 }
 
 const STATUS_WORD: Record<PendingSend['status'], string> = {
-  sending: 'Sending…',
-  sent: 'Sent',
-  queued: 'Queued · sends when the current run ends',
-  steered: 'Steering · goes to the run at its next step',
-  failed: 'Not sent',
+  sending: t('live.pending.sending'),
+  sent: t('live.pending.sent'),
+  queued: t('live.pending.queued'),
+  steered: t('live.pending.steered'),
+  failed: t('live.pending.failed'),
 }
 
 export function PendingBubble({ p }: { p: PendingSend }) {
@@ -44,10 +45,10 @@ export function PendingBubble({ p }: { p: PendingSend }) {
         {p.status === 'failed' && (
           <>
             <button type="button" className="btn sm ghost" onClick={() => void retrySend(p)}>
-              Retry
+              {t('live.retry')}
             </button>
             <button type="button" className="btn sm ghost" onClick={() => dropPending(p.clientId)}>
-              Discard
+              {t('live.discard')}
             </button>
           </>
         )}
@@ -73,8 +74,8 @@ export function QueueBar({ items }: { items: QueuedItem[] }) {
       {items.map((m) => (
         <div key={m.id} className="qm">
           <I n={m.steer ? 'steer' : 'clock'} />
-          <span className="x">{m.from ? `Message from ${m.from}: ${m.text}` : m.text}</span>
-          <small>{m.held ? 'Held · send it on the computer' : m.steer ? 'Steering' : 'Queued'}</small>
+          <span className="x">{m.from ? t('live.messageFrom', { from: m.from, text: m.text }) : m.text}</span>
+          <small>{m.held ? t('live.held') : m.steer ? t('live.steering') : t('live.queued')}</small>
         </div>
       ))}
     </div>

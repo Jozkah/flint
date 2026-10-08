@@ -1,9 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { CacheReuseBadge } from '@/components/CacheReuseBadge'
 import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { finalizeTokenUsage, summarizeUsage } from '@/lib/tokenUsage'
+
+// These tests read the words, so they use the English strings rather than the keys.
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
 
 const usage = (input: number, cached?: number, output = 10) =>
   finalizeTokenUsage({

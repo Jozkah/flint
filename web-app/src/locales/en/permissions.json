@@ -85,6 +85,7 @@
     "title": "Permission request",
     "affects": "Affects",
     "reason": "Why",
+    "script": "Script",
     "consequences": "What allowing it means",
     "chooseScope": "Choose how far this permission goes",
     "technicalDetails": "Technical details",
@@ -213,5 +214,11 @@
   "warning": {
     "gitDestructive": "Destructive: {{why}}. Check the command, remote and branch before allowing it.",
     "selfApproval": "{{tool}} approves commands on {{server}} itself, which would let the model answer for you. Flint asks about it every time and never remembers the answer."
+  },
+  "toast": {
+    "trustFailed": "Could not remember that server",
+    "cancelledOne": "Approval for {{names}} was cancelled",
+    "cancelledMany": "{{count}} approvals ({{names}}) were cancelled",
+    "cancelledDescription": "The chat was left before you answered. Send the request again to retry."
   }
 }

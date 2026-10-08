@@ -1,5 +1,19 @@
 {
   "addProvider": "Přidat poskytovatele",
   "addOpenAIProvider": "Přidat OpenAI poskytovatele",
-  "enterNameForProvider": "Zadejte název pro poskytovatele"
+  "enterNameForProvider": "Zadejte název pro poskytovatele",
+  "nameLabel": "Název",
+  "apiTypeLabel": "Formát API",
+  "apiTypeOpenAI": "Kompatibilní s OpenAI",
+  "apiTypeAnthropic": "Kompatibilní s Anthropic",
+  "baseUrlLabel": "Základní URL",
+  "baseUrlPlaceholder": "https://your-endpoint/v1",
+  "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
+  "apiKeyLabel": "Klíč API",
+  "apiKeyPlaceholder": "Vložte svůj klíč API",
+  "invalidBaseUrl": "Základní URL musí být platná adresa URL http(s)",
+  "globalSettings": "Globální nastavení",
+  "stripReasoning": "Odstraňovat uvažování z kontextu",
+  "stripReasoningDesc": "Před opětovným odesláním historie odstraní obsah přemýšlení/uvažování z předchozích výměn, u všech poskytovatelů. Zlepšuje opětovné využití KV cache u lokálních modelů, ale některé modely (např. novější verze Qwen) doporučují jej ponechat pro lepší vícekolové uvažování.",
+  "providerAlreadyExists": "Poskytovatel s názvem {{name}} již existuje."
 }

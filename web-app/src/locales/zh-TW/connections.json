@@ -1,5 +1,23 @@
 {
   "skills": {
+    "whatIs": "技能是一組書面說明，可附帶指令碼或檔案，代理程式可以讀取並遵循。",
+    "whereApplies": "此處列出的技能屬於此專案資料夾（.jan/agent/skills）。關閉技能只會在此專案中對代理程式和 / 指令隱藏它。",
+    "toolAccess": "啟用技能不會授予新的工具存取權限。代理程式透過內建技能工具（列出、讀取、寫入）讀取技能，這些工具一律無需詢問即可使用。技能所含的指令碼只有在代理程式呼叫指令工具時才會執行，而指令工具遵循自己的權限規則。",
+    "stateHelp": "已安裝：該技能存在於此專案中。已啟用：在此專案中工作時會向代理程式提供它。",
+    "summary": "已啟用 {{enabled}} / {{installed}} 個已安裝技能",
+    "state": {
+      "enabled": "已啟用",
+      "disabled": "已關閉",
+      "enable": "啟用",
+      "disable": "停用"
+    },
+    "view": "檢視",
+    "edit": "編輯",
+    "importFailed": "無法匯入 {{name}}：{{error}}",
+    "loadHubFailed": "無法載入技能中心：{{error}}",
+    "deleteSkill": "刪除技能 {{name}}",
+    "fromPlugin": "來自外掛程式 {{plugin}}",
+    "pluginReadOnly": "此技能來自外掛程式 {{plugin}}，在此處為唯讀。若要變更，請編輯外掛程式原始碼並重新安裝外掛程式，或在「外掛程式」中關閉該外掛程式。",
     "alwaysOn": "永遠開啟",
     "alwaysActive": "永遠啟用",
     "alwaysActiveHelp": "在每次對話中自動遵循此技能，無需提示。"

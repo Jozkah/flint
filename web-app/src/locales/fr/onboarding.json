@@ -1,0 +1,64 @@
+{
+  "intentHeading": "Que souhaitez-vous faire en premier ?",
+  "intentHint": "Cela détermine seulement où le guide vous emmène. Tout le reste de Flint reste disponible.",
+  "intent": {
+    "question": {
+      "title": "Poser une question",
+      "description": "Discutez de n'importe quel sujet avec un modèle."
+    },
+    "documents": {
+      "title": "Travailler avec des documents",
+      "description": "Joignez des fichiers et posez des questions à leur sujet."
+    },
+    "project": {
+      "title": "Créer ou modifier un projet",
+      "description": "Laissez Flint travailler dans un dossier de cet ordinateur, en vous demandant avant de modifier quoi que ce soit."
+    }
+  },
+  "skipGuide": "Passer le guide",
+  "resumeNotice": "Bon retour. Vous pouvez reprendre là où vous vous étiez arrêté.",
+  "processingHeading": "Où vos conversations sont traitées",
+  "processingLocal": "Un modèle local s'exécute sur cet ordinateur. Vos messages et vos fichiers restent ici, et aucun compte ni clé d'API n'est nécessaire.",
+  "processingRemote": "Un fournisseur distant (par exemple OpenAI) exécute le modèle sur ses serveurs. Vos messages et les fichiers que vous incluez y sont envoyés, et le fournisseur peut vous facturer. Vous le configurez vous-même dans les Paramètres ; Flint n'en active jamais un de lui-même.",
+  "connectRemote": "Connecter plutôt un fournisseur distant",
+  "guideTitle": {
+    "question": "Premiers pas : poser une question",
+    "documents": "Premiers pas : travailler avec des documents",
+    "project": "Premiers pas : créer ou modifier un projet"
+  },
+  "guideRegion": "Guide de prise en main",
+  "stepDone": "Terminé",
+  "stepTodo": "À faire",
+  "step": {
+    "choose-model": {
+      "title": "Choisir ou connecter un modèle",
+      "body": "Choisissez un modèle avec le sélecteur en haut. Les modèles locaux s'exécutent sur cet ordinateur ; les fournisseurs distants nécessitent leur propre compte."
+    },
+    "add-material": {
+      "documents": "Joignez un document avec le bouton trombone dans la zone de message.",
+      "project": "Ouvrez Cowork et choisissez le dossier de votre projet. Flint demande avant de modifier des fichiers ou d'exécuter des commandes."
+    },
+    "first-task": {
+      "title": "Envoyer votre premier message",
+      "body": "Posez une question, ou décrivez la modification souhaitée. Cette étape se termine quand une conversation démarre."
+    },
+    "review-context": {
+      "title": "Vérifier ce que Flint a utilisé",
+      "body": "Après la réponse de Flint, ouvrez « Ce que Flint utilise » dans la conversation pour voir quelles pièces jointes et quelles instructions étaient à sa disposition."
+    },
+    "addMaterialTitle": {
+      "documents": "Ajouter un document",
+      "project": "Choisir un dossier de projet"
+    }
+  },
+  "confirmStep": "C'est fait",
+  "openProviders": "Paramètres des modèles",
+  "openCowork": "Ouvrir Cowork",
+  "hideGuide": "Masquer le guide",
+  "guideComplete": "Tout est prêt. Rouvrez ce guide à tout moment depuis Paramètres > Général.",
+  "finish": "Terminer le guide",
+  "reopenGuide": "Guide de prise en main",
+  "reopenGuideDescription": "Reparcourez le choix d'un modèle, l'ajout de contenu et la réalisation d'une première tâche.",
+  "reopenGuideAction": "Ouvrir le guide",
+  "resumeRecent": "Reprendre votre dernière conversation : {{title}}"
+}

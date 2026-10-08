@@ -1,4 +1,24 @@
-/** Detect a model stuck repeating the same reasoning, independent of stream chunks. */
+/** Longest repeating unit looked for, in whitespace-separated tokens. */
+const MAX_PERIOD = 64
+/** The history kept: room for the longest unit repeated four times. */
+const WINDOW = MAX_PERIOD * 4
+/** A repeat shorter than this many tokens in total is never called a loop. */
+const MIN_COVERED = 48
+/** A unit must come round at least this often. */
+const MIN_REPEATS = 4
+/**
+ * The most unfinished text held while waiting for a word to end. A longer run
+ * with no whitespace (minified blob, base64) is closed off as one token, so
+ * memory and the per-delta join cost stay bounded.
+ */
+const MAX_PENDING = 1024
+
+/**
+ * Detect a model stuck repeating the same reasoning, independent of stream
+ * chunks. The repeating unit can be any length: a whole paragraph, or three
+ * numbers over and over (`5228, 12804, 17892,` repeated through a process
+ * list), which a fixed-size block check never saw.
+ */
 export class ReasoningLoopGuard {
   private pending = ''
   private tokens: string[] = []
@@ -8,19 +28,32 @@ export class ReasoningLoopGuard {
     const words = joined.split(/\s+/)
     this.pending = words.pop() ?? ''
     this.tokens.push(...words.filter(Boolean))
-    if (this.tokens.length > 256) this.tokens.splice(0, this.tokens.length - 256)
-
-    // Four identical 16-token blocks are long enough to distinguish a loop
-    // from ordinary repeated references, lists, and short quoted text.
-    const size = 16
-    const count = this.tokens.length
-    if (count < size * 4) return false
-    const tail = this.tokens.slice(count - size).join(' ')
-    for (let repeat = 2; repeat <= 4; repeat++) {
-      if (this.tokens.slice(count - size * repeat, count - size * (repeat - 1)).join(' ') !== tail) {
-        return false
-      }
+    if (this.pending.length > MAX_PENDING) {
+      this.tokens.push(this.pending.slice(0, MAX_PENDING))
+      this.pending = ''
     }
-    return true
+    if (this.tokens.length > WINDOW) this.tokens.splice(0, this.tokens.length - WINDOW)
+    return this.looping()
+  }
+
+  private looping(): boolean {
+    const t = this.tokens
+    const count = t.length
+    for (let period = 1; period <= MAX_PERIOD; period++) {
+      // Enough repeats to cover MIN_COVERED tokens (a short unit needs more
+      // rounds than a long one), and never fewer than MIN_REPEATS.
+      const repeats = Math.max(MIN_REPEATS, Math.ceil(MIN_COVERED / period))
+      const span = period * repeats
+      if (span > count) continue
+      let same = true
+      for (let i = count - span + period; i < count; i++) {
+        if (t[i] !== t[i - period]) {
+          same = false
+          break
+        }
+      }
+      if (same) return true
+    }
+    return false
   }
 }

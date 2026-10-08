@@ -1263,6 +1263,9 @@ export function ThreadConversation({
                 : result.isError
                   ? JSON.stringify(result.content ?? '')
                   : undefined,
+              result: result.isError
+                ? undefined
+                : JSON.stringify(result.content ?? ''),
             })
 
             if (result.error) {
@@ -2591,8 +2594,12 @@ export function ThreadConversation({
   // Released (Send on a held chip) or newly queued messages. Read so the
   // sender below runs when the user releases one after an error, when the
   // status does not change.
-  const readyQueued = useMessageQueue(
-    (s) => s.getQueue(threadId).filter((m) => !m.held).length
+  // Counted only while the chat can send: a message queued or steered during
+  // a run must not re-render this whole conversation just to bump a number
+  // the sender below ignores until the run ends.
+  const canSendQueued = status === 'ready' || status === 'error'
+  const readyQueued = useMessageQueue((s) =>
+    canSendQueued ? s.getQueue(threadId).filter((m) => !m.held).length : 0
   )
 
   useEffect(() => {

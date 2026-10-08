@@ -1,6 +1,60 @@
 {
-  "col": {
-    "speed": "औसत गति"
+  "title": "अवलोकन",
+  "morning": "सुप्रभात",
+  "afternoon": "नमस्कार",
+  "evening": "शुभ संध्या",
+  "subWeek": "इस हफ़्ते आपके मॉडल ने यह किया।",
+  "subMonth": "पिछले 30 दिनों में आपके मॉडल ने यह किया।",
+  "lastWeek": "पिछला हफ़्ता",
+  "last30": "पिछले 30 दिन",
+  "vsLastWeek": "पिछले हफ़्ते की तुलना में",
+  "vsLastMonth": "पिछले 30 दिनों की तुलना में",
+  "options": "डैशबोर्ड विकल्प",
+  "resetStats": "आँकड़े रीसेट करें",
+  "tokens": "जनरेट किए गए टोकन",
+  "cost": "अनुमानित लागत",
+  "speed": "औसत जनरेशन गति",
+  "toolSuccess": "टूल कॉल सफलता",
+  "throughput": "टोकन थ्रूपुट",
+  "throughputAria": "प्रति दिन जनरेट किए गए टोकन। दिन देखने के लिए बाएँ और दाएँ तीर कुंजियाँ इस्तेमाल करें।",
+  "activity": "ताज़ा गतिविधि",
+  "activityRange": "गतिविधि की सीमा",
+  "today": "आज",
+  "yesterday": "कल",
+  "thisWeek": "इस हफ़्ते",
+  "searchActivity": "गतिविधि खोजें",
+  "newActivities": {
+    "today_one": "आज नई गतिविधि",
+    "today_other": "आज नई गतिविधियाँ",
+    "yesterday_one": "कल की गतिविधि",
+    "yesterday_other": "कल की गतिविधियाँ",
+    "week_one": "इस हफ़्ते की गतिविधि",
+    "week_other": "इस हफ़्ते की गतिविधियाँ"
   },
-  "tokensPerSecond": "{{value}} t/s"
+  "noActivity": "अभी कुछ नहीं",
+  "noActivityHint": "मंज़ूरियाँ, टूल विफलताएँ और कॉम्पैक्शन होते ही यहाँ दिखते हैं।",
+  "runs": "एजेंट रन",
+  "searchRuns": "रन",
+  "filter": "फ़िल्टर",
+  "filterAll": "सभी रन",
+  "openRun": "रन खोलें",
+  "noRuns": "अभी कोई Cowork रन नहीं",
+  "noRunsHint": "Cowork को बड़ा काम सौंपें और उसके रन यहाँ दिखेंगे।",
+  "openCowork": "Cowork खोलें",
+  "col": {
+    "run": "रन आईडी",
+    "task": "काम",
+    "model": "मॉडल",
+    "status": "स्थिति",
+    "started": "शुरू हुआ",
+    "speed": "औसत गति",
+    "tokens": "टोकन"
+  },
+  "tokensPerSecond": "{{value}} t/s",
+  "status": {
+    "running": "चल रहा है",
+    "approval": "मंज़ूरी चाहिए",
+    "done": "पूरा हुआ",
+    "idle": "शुरू नहीं हुआ"
+  }
 }

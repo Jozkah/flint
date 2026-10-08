@@ -290,7 +290,7 @@ export const TokenCounter = memo(function TokenCounter({
         <TooltipTrigger asChild>
           <button
             type="button"
-            aria-label="Token usage"
+            aria-label={t('common:a11y.tokenUsage')}
             data-testid="token-counter"
             data-usage-scope={scope}
             className={cn('relative cursor-pointer', className)}
@@ -307,7 +307,7 @@ export const TokenCounter = memo(function TokenCounter({
             >
               <ContextRing usage={usage} colors={ringColors} />
               <span className="sr-only" data-testid="context-percent">
-                {`Context ${usage.pct.toFixed(0)}% full`}
+                {t('common:usage.counter.contextFull', { pct: usage.pct.toFixed(0) })}
               </span>
               {tier !== 'ok' && (
                 // AH-077: said in words, not only by colour, and announced.
@@ -317,7 +317,7 @@ export const TokenCounter = memo(function TokenCounter({
                   data-tier={tier}
                   className="sr-only"
                 >
-                  {tier === 'over' ? 'Full' : 'Nearly full'}
+                  {tier === 'over' ? t('common:usage.counter.full') : t('common:usage.counter.nearlyFull')}
                 </span>
               )}
             </div>
@@ -339,8 +339,8 @@ export const TokenCounter = memo(function TokenCounter({
                   className={cn('px-4 pt-3 text-[11px] leading-snug', textCls)}
                 >
                   {tier === 'over'
-                    ? 'This conversation is larger than the context window: the next request may be cut or refused. Start a new chat or remove attachments.'
-                    : `${formatExact(remaining)} tokens left. Start a new chat or remove attachments before the window fills.`}
+                    ? t('common:usage.counter.over')
+                    : t('common:usage.counter.tokensLeft', { count: formatExact(remaining) })}
                 </p>
               )}
               <ContextWindowCard
@@ -360,7 +360,7 @@ export const TokenCounter = memo(function TokenCounter({
             <Brain className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-foreground">
-                Context window
+                {t('common:usage.counter.contextWindow')}
               </div>
               {modelDisplayName && (
                 <div className="text-[11px] text-muted-foreground truncate">
@@ -371,7 +371,7 @@ export const TokenCounter = memo(function TokenCounter({
             {modelProps?.isSleeping && (
               <Moon
                 className="size-3.5 text-muted-foreground"
-                aria-label="Model sleeping"
+                aria-label={t('common:a11y.modelSleeping')}
               />
             )}
           </div>
@@ -384,15 +384,18 @@ export const TokenCounter = memo(function TokenCounter({
                 className={cn('mb-2 text-[11px] leading-snug', textCls)}
               >
                 {tier === 'over'
-                  ? 'This conversation is larger than the context window: the next request may be cut or refused. Start a new chat or remove attachments.'
-                  : `${formatExact(remaining)} tokens left. Start a new chat or remove attachments before the window fills.`}
+                  ? t('common:usage.counter.over')
+                  : t('common:usage.counter.tokensLeft', { count: formatExact(remaining) })}
                 {/* AH-077: an estimate that reads like a measurement is worse
                     than no number, so the figures say where they came from. */}
                 <span className="block" data-testid="context-pressure-source">
-                  {formatExact(totalTokens)} of {formatExact(tokenData.maxTokens)} tokens,{' '}
-                  {breakdown.reported
-                    ? 'counted by the provider'
-                    : "Flint's estimate"}
+                  {t('common:usage.counter.source', {
+                    used: formatExact(totalTokens),
+                    max: formatExact(tokenData.maxTokens),
+                    origin: breakdown.reported
+                      ? t('common:usage.counter.byProvider')
+                      : t('common:usage.counter.estimate'),
+                  })}
                 </span>
               </p>
             )}
@@ -408,7 +411,7 @@ export const TokenCounter = memo(function TokenCounter({
               <span
                 className="text-xs text-muted-foreground tabular-nums font-mono"
                 data-testid="context-used-of"
-                title={`${formatExact(remaining)} tokens left`}
+                title={t('common:usage.counter.leftTitle', { count: formatExact(remaining) })}
               >
                 {formatTokenCount(totalTokens)} /{' '}
                 {formatTokenCount(tokenData.maxTokens)}
@@ -448,35 +451,35 @@ export const TokenCounter = memo(function TokenCounter({
               {showFittedBadge && (
                 <span
                   className="flex items-center gap-1"
-                  title={`Configured ctx_len: ${formatExact(tokenData.configuredCtxLen!)}`}
+                  title={t('common:usage.counter.configured', { value: formatExact(tokenData.configuredCtxLen!) })}
                 >
                   <Sliders className="size-3" />
-                  Fitted to {formatTokenCount(tokenData.maxTokens)}
+                  {t('common:usage.counter.fitted', { value: formatTokenCount(tokenData.maxTokens) })}
                 </span>
               )}
               {modelProps?.totalSlots !== undefined &&
                 modelProps.totalSlots > 1 && (
                   <span className="flex items-center gap-1">
                     <Layers2 className="size-3" />
-                    {modelProps.totalSlots} slots
+                    {t('common:usage.counter.slots', { count: modelProps.totalSlots })}
                   </span>
                 )}
               {tokenData.modalities?.vision && (
                 <span
                   className="flex items-center gap-1"
-                  title="Vision input supported"
+                  title={t('common:a11y.visionSupported')}
                 >
                   <Image className="size-3" />
-                  Vision
+                  {t('common:usage.counter.vision')}
                 </span>
               )}
               {tokenData.modalities?.audio && (
                 <span
                   className="flex items-center gap-1"
-                  title="Audio input supported"
+                  title={t('common:a11y.audioSupported')}
                 >
                   <Mic className="size-3" />
-                  Audio
+                  {t('common:usage.counter.audio')}
                 </span>
               )}
             </div>
@@ -512,13 +515,14 @@ function TokenCountOnly({
   ringUsage: ContextUsage
   className?: string
 }) {
+  const { t } = useTranslation()
   return (
     <TooltipProvider delayDuration={400}>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
-            aria-label="Token usage"
+            aria-label={t('common:a11y.tokenUsage')}
             data-testid="token-counter"
             data-usage-scope={scope}
             className={cn('relative cursor-default', className)}
@@ -527,7 +531,7 @@ function TokenCountOnly({
                 fill to show: the same ring the local models get, dashed. */}
             <div className="grid size-7 place-items-center rounded-full transition-colors hover:bg-accent">
               <ContextRing usage={ringUsage} />
-              <span className="sr-only">{`Token usage ${formatTokenCount(totalTokens)}`}</span>
+              <span className="sr-only">{t('common:usage.counter.tokenUsageSr', { value: formatTokenCount(totalTokens) })}</span>
             </div>
           </button>
         </TooltipTrigger>
@@ -543,7 +547,7 @@ function TokenCountOnly({
             <Brain className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-foreground">
-                Token usage
+                {t('common:usage.counter.tokenUsage')}
               </div>
               {modelDisplayName && (
                 <div className="text-[11px] text-muted-foreground truncate">

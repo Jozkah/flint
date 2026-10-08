@@ -1,4 +1,5 @@
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
+import { toAssetUrl } from '@/lib/assetPath'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { currentDescriber } from '@/lib/imageDescription'
@@ -64,6 +65,7 @@ import { getLastUsedModel } from '@/utils/getModelToStart'
 import { resolveReplyModel } from '@/lib/resolveReplyModel'
 import { fitImageFileToLimit } from '@/lib/imageResize'
 import { VoiceInputButton } from '@/containers/VoiceInputButton'
+import { DropRim } from '@/components/ui/drop-rim'
 import {
   useConversationModel,
   type ModelSelection,
@@ -391,6 +393,17 @@ const ChatInput = memo(function ChatInput({
     if (richFormattingRef.current) richComposerRef.current?.focus()
     else textareaRef.current?.focus()
   }, [])
+  // Taking focus on mount or a thread change must not pull it out of another
+  // field the person is already typing in (a parameter input, a dialog).
+  const focusComposerUnlessTyping = useCallback(() => {
+    const active = document.activeElement
+    const typing =
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      (active instanceof HTMLElement && active.isContentEditable)
+    if (typing && active !== textareaRef.current) return
+    focusComposer()
+  }, [focusComposer])
   const [isFocused, setIsFocused] = useState(false)
   // The control row is absolutely positioned at the bottom of the composer, so
   // the composer must reserve exactly as much space as the row occupies. The
@@ -1373,7 +1386,9 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when component mounts
   useEffect(() => {
-    if (takeFocus) setTimeout(focusComposer, 0)
+    if (!takeFocus) return
+    const timer = setTimeout(focusComposerUnlessTyping, 0)
+    return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1385,7 +1400,9 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when thread changes
   useEffect(() => {
-    if (takeFocus) setTimeout(focusComposer, 0)
+    if (!takeFocus) return
+    const timer = setTimeout(focusComposerUnlessTyping, 0)
+    return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentThreadId])
 
@@ -2325,8 +2342,7 @@ const ChatInput = memo(function ChatInput({
           const files: File[] = []
           for (const path of paths) {
             try {
-              const { convertFileSrc } = await import('@tauri-apps/api/core')
-              const fileUrl = convertFileSrc(path)
+              const fileUrl = await toAssetUrl(path)
               const response = await fetch(fileUrl)
               if (!response.ok) throw new Error(response.statusText)
               const blob = await response.blob()
@@ -2464,8 +2480,7 @@ const ChatInput = memo(function ChatInput({
           const files: File[] = []
           for (const path of paths) {
             try {
-              const { convertFileSrc } = await import('@tauri-apps/api/core')
-              const fileUrl = convertFileSrc(path)
+              const fileUrl = await toAssetUrl(path)
               const response = await fetch(fileUrl)
               if (!response.ok) throw new Error(response.statusText)
               const blob = await response.blob()
@@ -2514,9 +2529,8 @@ const ChatInput = memo(function ChatInput({
 
           for (const path of paths) {
             try {
-              // Use Tauri's convertFileSrc to create a valid URL for the file
-              const { convertFileSrc } = await import('@tauri-apps/api/core')
-              const fileUrl = convertFileSrc(path)
+              // Grant asset access (paths outside the static scope), then build the URL
+              const fileUrl = await toAssetUrl(path)
 
               // Fetch the file as blob
               const response = await fetch(fileUrl)
@@ -2899,7 +2913,8 @@ const ChatInput = memo(function ChatInput({
               // A clear focus: a stronger edge, a soft ring, and the box lifts.
               isFocused &&
                 'border-border-strong shadow-[0_0_0_3px_color-mix(in_oklab,var(--ring)_18%,transparent),0_12px_30px_-12px_rgba(0,0,0,.25)] motion-safe:-translate-y-0.5',
-              isDragOver && 'border-acc ring-3 ring-ring/30 bg-acc-tint'
+              // The dashed rim below draws the edge while files are dragged over.
+              isDragOver && 'border-transparent'
             )}
             data-drop-zone="true"
             onDragEnter={handleDragEnter}
@@ -2907,6 +2922,7 @@ const ChatInput = memo(function ChatInput({
             onDragOver={handleDragOver}
             onDrop={handleDrop}
           >
+            <DropRim active={isDragOver} />
             {attachments.length > 0 && (
               <div className="flex flex-col gap-2 p-2 pb-0">
                 {/* Attachments as chips: a thumbnail or kind icon, the name,

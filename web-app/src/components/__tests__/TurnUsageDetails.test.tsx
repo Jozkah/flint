@@ -1,7 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TurnUsageDetails } from '../TurnUsageDetails'
+
+// These tests read the words, so they use the English strings rather than the keys.
+vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
 
 describe('TurnUsageDetails', () => {
   it('shows this turn’s breakdown and the memory ids its request carried', async () => {

@@ -1,3 +1,19 @@
 {
-  "noLogs": "No hay registros disponibles"
+  "noLogs": "No hay registros disponibles",
+  "noMatch": "Ninguna línea coincide con el filtro",
+  "title": "Registros",
+  "serverTitle": "Registros del servidor de API local",
+  "copy": "Copiar registros",
+  "openFolder": "Abrir carpeta",
+  "copied": "Copiado",
+  "search": "Buscar en los registros",
+  "filterLabel": "Filtrar por nivel",
+  "levelAll": "Todos",
+  "levelError": "Errores",
+  "levelWarn": "Advertencias",
+  "levelInfo": "Información",
+  "levelDebug": "Depuración",
+  "shown": "{{shown}} de {{total}} líneas",
+  "description": "Todo lo que Flint y su motor escribieron hoy. Lo más reciente primero.",
+  "serverDescription": "Solicitudes al servidor de API local compatible con OpenAI. Lo más reciente primero."
 }

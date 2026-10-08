@@ -27,8 +27,103 @@
   "deleteServer": {
     "title": "MCP Sunucusunu Sil",
     "description": "{{serverName}} MCP sunucusunu silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.",
+    "approvalsRemoved": "Bu sunucuya verdiğiniz tüm onaylar, saklanan oturum açma bilgisiyle birlikte kaldırılır. Daha sonra aynı adla eklediğiniz bir sunucu onaysız başlar. Geçmiş kararlarınızın kaydı korunur.",
+    "disableInstead": "Yapılandırmayı ve onayları korumak ama sunucuyu kullanmayı bırakmak için bunun yerine kapatın.",
     "delete": "Sil",
-    "success": "{{serverName}} MCP sunucusu başarıyla silindi"
+    "success": "{{serverName}} MCP sunucusu başarıyla silindi",
+    "forgetFailed": "{{serverName}} silindi, ancak Flint onaylarını veya oturum açma bilgisini kaldıramadı"
+  },
+  "renameServer": {
+    "approvalsReset": "{{oldName}} için onaylar {{newName}} için geçerli olmaz",
+    "approvalsResetDesc": "Saklanan oturum açma bilgisi de temizlendi. Flint, araçlarını kullanmadan önce yeniden sorar.",
+    "forgetFailed": "{{oldName}} yeniden adlandırıldı, ancak Flint eski ad altında saklanan onayları veya oturum açma bilgisini kaldıramadı"
+  },
+  "approval": {
+    "changedSinceApproval": "Yapılandırma, siz onayladıktan sonra değişti. Yenilemek için otomatik onayı yeniden açın.",
+    "autoApproveFailed": "{{serverName}} için otomatik onay değiştirilemedi"
+  },
+  "validation": {
+    "nameRequired": "Bir sunucu adı girin.",
+    "nameDuplicate": "Bu ada sahip bir sunucu zaten var.",
+    "nameInvalidChars": "Ad \"::\" veya denetim karakterleri içeremez.",
+    "commandRequired": "Sunucuyu başlatan komutu girin, örneğin npx veya uvx.",
+    "commandHasSpaces": "Komut boşluk içeriyor. Bu tam bir komut satırıysa, buraya yalnızca programı koyun ve geri kalanı bağımsız değişken olarak ekleyin.",
+    "argUnbalancedQuotes": "Bu bağımsız değişkende eşleşmeyen bir tırnak var. Bağımsız değişkenler kabuk olmadan olduğu gibi aktarılır, bu nedenle tırnaklar kaldırılmaz.",
+    "urlRequired": "Sunucu URL'sini girin.",
+    "urlInvalid": "Bu geçerli bir URL değil.",
+    "urlScheme": "URL http:// veya https:// ile başlamalıdır.",
+    "timeoutInvalid": "0'dan büyük bir tam saniye sayısı girin veya boş bırakın.",
+    "headerNameRequired": "Bu değer için bir üstbilgi adı girin.",
+    "headerNameInvalid": "Üstbilgi adları boşluk veya özel karakter içeremez.",
+    "headerNameDuplicate": "Bu üstbilgi zaten ayarlı.",
+    "envKeyRequired": "Bu değer için bir değişken adı girin.",
+    "envKeyInvalid": "Harfler, rakamlar ve alt çizgi kullanın; rakamla başlamayın.",
+    "envKeyDuplicate": "Bu değişken zaten ayarlı.",
+    "fixErrors": "Kaydetmek için vurgulanan alanları düzeltin."
+  },
+  "connection": {
+    "statusLabel": "Durum:",
+    "toggleLabel": "{{serverName}} sunucusunu aç veya kapat",
+    "enable": "Sunucuyu etkinleştir",
+    "disable": "Sunucuyu devre dışı bırak",
+    "state": {
+      "notInstalled": "Yapılandırılmamış",
+      "disabled": "Kapalı",
+      "connecting": "Başlatılıyor…",
+      "connected": "Çalışıyor",
+      "needsAuthorization": "Oturum açma gerekiyor",
+      "failed": "Başarısız",
+      "notConnected": "Açık, ancak bağlı değil",
+      "stopped": "Durduruldu · gerektiğinde başlar"
+    },
+    "nextStep": {
+      "checkCommand": "Komutun yüklü olduğunu ve PATH'inizde bulunabildiğini kontrol edin, ardından sunucuyu yeniden açın.",
+      "checkUrl": "URL'nin doğru olduğunu ve sunucuya erişilebildiğini kontrol edin, ardından yeniden açın.",
+      "authorize": "Bu sunucuda oturum açın, ardından yeniden açın.",
+      "retry": "Yeniden denemek için sunucuyu tekrar açın."
+    },
+    "retry": "Tekrar dene",
+    "notListedAfterStart": "Sunucu başladı ancak bağlı olarak listelenmiyor.",
+    "toolsAvailable_one": "{{count}} araç kullanılabilir: {{names}}",
+    "toolsAvailable_other": "{{count}} araç kullanılabilir: {{names}}",
+    "toolsNone": "Bağlı, ancak bu sunucu hiç araç sunmuyor.",
+    "toolsLoading": "Araç listesi yükleniyor...",
+    "toolsWhenConnected": "Araçları bağlandıktan sonra kullanılabilir olur.",
+    "appliesToChats": "Araçlar bir sohbete yalnızca sohbetin seçili modeli araçları destekliyorsa ulaşır. Tek tek araçlar sohbet girişindeki araçlar menüsünden kapatılabilir ve bu anahtarlar tüm sohbetler için geçerlidir."
+  },
+  "details": {
+    "toggle": "Bu sunucu hakkında",
+    "whatItDoes": "Ne yapar",
+    "noDescription": "Bu sunucu için açıklama sağlanmadı.",
+    "runsWhere": "Nerede çalışır",
+    "runsWhereLocalProcess": "Bu bilgisayarda kullanıcı izinlerinizle bir program çalıştırır.",
+    "runsWhereLocalEndpoint": "Bu bilgisayardaki veya yerel ağınızdaki bir sunucuya bağlanır ({{host}}).",
+    "runsWhereRemoteService": "{{host}} adresindeki harici bir hizmetle iletişim kurar.",
+    "runsWhereUnresolved": "{{host}} adresine bağlanır. Bunun ağınızda olup olmadığı adın nasıl çözümlendiğine bağlıdır.",
+    "externalYes": "Araç istekleri, üzerinde işlem yapmasını istediklerinizi de içeren, o hizmete gönderilir.",
+    "externalDepends": "Flint sunucunun ne yaptığını göremez, bu nedenle sunucunun kendisi başka hizmetlerle iletişim kurabilir.",
+    "access": "Kendisine verilenler",
+    "accessCommand": "Çalıştırır: {{command}}",
+    "accessEnv": "Ortam değişkenleri (yalnızca adlar): {{names}}",
+    "accessHeaders": "Üstbilgi gönderir (yalnızca adlar): {{names}}",
+    "accessHost": "{{host}} ile ağ bağlantısı",
+    "accessNone": "Bağlantının kendisi dışında hiçbir şey.",
+    "appliesTo": "Nerede geçerli",
+    "setup": "Kurulum gerekli",
+    "setupNone": "Başka bir şey yok.",
+    "setupAuthorization": "Bu sunucuda oturum açın. Mevcut durum: {{state}}.",
+    "setupBrowserExtension": "Flint Browser Extension'ı Chrome tabanlı bir tarayıcıya yükleyin.",
+    "setupMissingCommand": "Çalıştırılacak komutu ekleyin.",
+    "setupMissingUrl": "Sunucu URL'sini ekleyin.",
+    "usage": "Nasıl kullanılır",
+    "usageExample": "Bağlandıktan sonra bir sohbette araçlarının yapabileceği bir şey isteyin. İzin vermediyseniz Flint bir aracı çağırmadan önce sorar.",
+    "toolNames": "Araçlar: {{names}}",
+    "effects": "Kapat, oturum açma bilgisini temizle veya sil",
+    "effectDisable": "Kapat: yapılandırılmış kalır ancak başlatılmaz, bu nedenle araçları her sohbette kullanılamaz. Onaylar korunur.",
+    "effectClearAuth": "Kimlik doğrulamayı temizle: saklanan oturum açma bilgisini unutur ve bağlantıyı keser. Sunucu açık kalır, onaylarını korur ve yeniden oturum açtıktan sonra yeniden bağlanır.",
+    "effectRemove": "Sil: sunucuyu durdurur, yapılandırmasını ve sahip olduğu tüm onayları ve saklanan oturum açma bilgilerini kaldırır. Yeniden adlandırmak da onayları sıfırlar; komutunu, bağımsız değişkenlerini, URL'sini, ortamını veya üstbilgi adlarını değiştirmek ise yeniden onaylamak anlamına gelir.",
+    "generate": "Oluştur",
+    "generateLabel": "{{serverName}} için yapay zekayla açıklama oluştur"
   },
   "editJson": {
     "title": "MCP Sunucusu JSON'ını Düzenle: {{serverName}}",
@@ -40,6 +135,7 @@
     "errorServerName": "Sunucu adı zorunludur ve boş olamaz",
     "errorMissingServerNameKey": "JSON, {\"serverName\": {config}} şeklinde yapılandırılmış olmalıdır - sunucu adı anahtarı eksik",
     "errorInvalidType": "'{{serverName}}' sunucusu için '{{type}}' türü geçersiz. Tür 'stdio', 'http' veya 'sse' olmalıdır",
+    "errorNameDuplicate": "'{{serverName}}' adında bir sunucu zaten var. Bunun yerine o sunucuyu düzenleyin veya farklı bir ad kullanın.",
     "save": "Kaydet"
   },
   "checkParams": "Lütfen parametreleri kılavuza göre kontrol edin.",
@@ -49,7 +145,12 @@
   "findMore": "Daha fazla MCP sunucusu bul",
   "allowPermissions": "Tüm MCP Araç İzinlerine İzin Ver",
   "allowPermissionsDesc": "Etkinleştirildiğinde, tüm MCP araç çağrıları izin diyalogları gösterilmeden otomatik olarak onaylanır. Bu ayar, yeni sohbetler dahil tüm konuşmalar için geçerlidir.",
+  "autoApproveServer": "Bu sunucunun araçlarını otomatik onayla",
   "noServers": "MCP sunucusu bulunamadı",
+  "searchPlaceholder": "MCP sunucularında ara...",
+  "noSearchResults": "\"{{query}}\" ile eşleşen MCP sunucusu yok",
+  "expandServer": "Sunucu ayrıntılarını genişlet",
+  "collapseServer": "Sunucu ayrıntılarını daralt",
   "args": "Argümanlar",
   "env": "Ortam",
   "serverStatusActive": "{{serverKey}} sunucusu başarıyla etkinleştirildi",
@@ -80,7 +181,9 @@
       "authenticated": "doğrulanmış",
       "expired": "süresi dolmuş",
       "staleResource": "başka bir URL için düzenlenmiş",
-      "unauthenticated": "doğrulanmamış"
+      "unauthenticated": "doğrulanmamış",
+      "scopeMismatch": "kapsamlar değişti, yeniden oturum açın",
+      "invalidScopes": "yapılandırmada geçersiz OAuth kapsamları"
     },
     "expiresIn": "{{duration}} içinde süresi doluyor",
     "authenticate": "Oturum aç",
@@ -96,7 +199,54 @@
     "nothingToClear": "{{serverName}} için saklanan kimlik bilgisi yok",
     "clearFailed": "{{serverName}} için kimlik bilgileri temizlenemedi",
     "renew": "Oturumu yenile",
-    "expiredAgo": "{{duration}} önce süresi doldu"
+    "expiredAgo": "{{duration}} önce süresi doldu",
+    "scopesDeclared": "İstediği: {{scopes}}",
+    "scopesGranted": "Verilen: {{scopes}}",
+    "scopesNone": "kapsam yok"
+  },
+  "serverLog": {
+    "title": "{{serverName}} MCP sunucusunun günlüğü",
+    "description": "Bu sunucunun hata akışına yazdıkları, en yeni en sonda. Hiçbir şey yazılmadan önce gizli bilgiler kaldırılır.",
+    "empty": "Bu sunucu hiçbir şey yazdırmadı.",
+    "refresh": "Yenile"
+  },
+  "describe": {
+    "title": "Yapay zekayla açıklama oluştur",
+    "titleOne": "{{serverName}} sunucusunu yapay zekayla açıkla",
+    "settingTitle": "Yapay zekayla açıklama oluştur",
+    "settingDesc": "Bir modelden, her sunucunun araç listesinden \"Bu sunucu hakkında\" metnini yazmasını isteyin. Her metni kaydedilmeden önce siz gözden geçirirsiniz.",
+    "open": "Oluştur...",
+    "intro": "Seçilen model, her sunucunun adını ve araç listesini (adlar, açıklamalar, bağımsız değişkenler) alır. Siz kabul edene kadar hiçbir şey kaydedilmez.",
+    "model": "Model",
+    "scope": "Sunucular",
+    "scopeEmpty": "Yalnızca açıklaması olmayanlar",
+    "scopeAll": "Tüm sunucular",
+    "targetCount_one": "{{count}} sunucu açıklanacak.",
+    "targetCount_other": "{{count}} sunucu açıklanacak.",
+    "review": "Gözden geçir",
+    "current": "Mevcut: {{text}}",
+    "editLabel": "{{serverName}} için oluşturulan açıklama",
+    "accept": "Kabul et",
+    "reject": "Reddet",
+    "accepted": "Kabul edildi",
+    "rejected": "Reddedildi",
+    "pending": "Kararınız gerekiyor: açıklamanızın yerini alır",
+    "generate": "Oluştur",
+    "cancel": "Oluşturmayı iptal et",
+    "cancelled": "iptal edildi",
+    "save_one": "{{count}} tanesini kaydet",
+    "save_other": "{{count}} tanesini kaydet",
+    "skippedNoTools": "araçlar bilinmiyor; Flint'in okuyabilmesi için sunucuyu bir kez açın",
+    "status": {
+      "queued": "Bekliyor",
+      "running": "Oluşturuluyor...",
+      "done": "Gözden geçirmeye hazır",
+      "skipped": "Atlandı: {{reason}}",
+      "failed": "Başarısız: {{reason}}"
+    }
+  },
+  "selfApproval": {
+    "note": "Bu sunucu kendi komutlarını onaylayabilir ({{names}}). Flint bu araçlara yapılan her çağrı için size sorar ve asla otomatik onaylamaz."
   },
   "mention": {
     "offTitle": "{{serverName}} kapalı",
@@ -104,5 +254,10 @@
     "enable": "Etkinleştir",
     "enabled": "{{serverName}} açık. Araçlarını kullanmak için isteğinizi yeniden gönderin.",
     "failed": "{{serverName}} etkinleştirilemedi: {{error}}"
+  },
+  "lifecycle": {
+    "startWithFlint": "Flint ile başlat",
+    "start": "Başlat",
+    "stop": "Durdur"
   }
 }

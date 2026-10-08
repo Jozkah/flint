@@ -1,5 +1,31 @@
 {
+  "menu": {
+    "title": "Perintah",
+    "helpTitle": "Perintah yang tersedia",
+    "keys": "↑↓ pilih · Enter/Tab sisipkan · Esc tutup",
+    "empty": "Tidak ada perintah tersedia di sini"
+  },
+  "source": {
+    "plugin": "plugin",
+    "pluginNamed": "plugin {{plugin}}",
+    "skill": "skill",
+    "builtin": "bawaan"
+  },
+  "scope": {
+    "project": "proyek",
+    "global": "global"
+  },
   "builtin": {
+    "help": "Daftar perintah yang tersedia",
+    "new": "Mulai percakapan baru",
+    "newSession": "Mulai sesi Cowork baru",
     "compact": "Ringkas pesan lama untuk mengosongkan jendela konteks"
-  }
+  },
+  "sent": {
+    "command": "Perintah",
+    "skill": "Skill",
+    "showCommand": "Tampilkan perintah yang diperluas",
+    "showSkill": "Tampilkan skill yang dimuat"
+  },
+  "error": "Tidak dapat menjalankan {{command}}: {{error}}"
 }
