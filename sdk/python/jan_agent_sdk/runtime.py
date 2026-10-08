@@ -121,6 +121,11 @@ class JanRuntime:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                # The runtime speaks UTF-8; the default codec is the locale's
+                # (cp1252 on Windows), which garbles non-ASCII output and can
+                # raise on an undefined byte, killing the reader thread.
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
             )
         except OSError as error:

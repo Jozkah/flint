@@ -43,7 +43,9 @@ export function useRemoteBridge() {
     const offs: (() => void)[] = []
     void (async () => {
       const { listen } = await import('@tauri-apps/api/event')
-      const subs = await Promise.all([
+      // allSettled, not all: one failed subscription must not leak the ones
+      // that succeeded (they would never be unlistened).
+      const settled = await Promise.allSettled([
         listen<RemoteRpcRequest>(REMOTE_EVENT_RPC, async ({ payload }) => {
           const reply = await dispatchRemoteRpc(payload, handlers)
           await remoteApi.rpcRespond(payload.id, reply).catch(() => {})
@@ -55,6 +57,7 @@ export function useRemoteBridge() {
           void useRemoteAccess.getState().refresh().catch(() => {})
         }),
       ])
+      const subs = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
       if (cancelled) subs.forEach((off) => off())
       else offs.push(...subs)
     })()
