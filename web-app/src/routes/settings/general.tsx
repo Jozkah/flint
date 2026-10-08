@@ -18,6 +18,7 @@ import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
 import { useEffect, useState } from 'react'
 import ChangeDataFolderLocation from '@/containers/dialogs/ChangeDataFolderLocation'
 import { FactoryResetDialog } from '@/containers/dialogs'
+import { SettingsBackupCard } from '@/containers/SettingsBackupCard'
 import type { FactoryResetOptions } from '@/services/app/types'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { Copy, CopyCheck } from 'lucide-react'
@@ -405,6 +406,8 @@ function General() {
             }
           />
         </Card>
+
+        {IS_TAURI && <SettingsBackupCard />}
 
         {/* Advanced - Desktop only */}
         <Card title="Advanced">
