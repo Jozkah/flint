@@ -506,8 +506,14 @@ async fn upload_chunk(hub: &RemoteHub, device: &Device, id: &str, offset: Option
     let wrote = tokio::task::spawn_blocking(move || append_private(&path, &bytes)).await;
     match wrote {
         Ok(Ok(())) => json_resp(StatusCode::OK, json!({ "received": hub.upload_wrote(id, len) })),
-        Ok(Err(e)) => upload_error(UploadError::Io(e.to_string())),
-        Err(e) => upload_error(UploadError::Io(e.to_string())),
+        Ok(Err(e)) => {
+            hub.upload_release(id);
+            upload_error(UploadError::Io(e.to_string()))
+        }
+        Err(e) => {
+            hub.upload_release(id);
+            upload_error(UploadError::Io(e.to_string()))
+        }
     }
 }
 

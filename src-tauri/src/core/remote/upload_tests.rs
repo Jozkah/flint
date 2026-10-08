@@ -60,6 +60,44 @@ fn uploads_are_sized_ordered_and_owned() {
 }
 
 #[test]
+fn two_puts_at_the_same_offset_cannot_both_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let now = Instant::now();
+    let mut b = UploadBook::default();
+    let u = b.start(dir.path(), "d1", "a.txt", 10, "text/plain", 25, now).unwrap();
+    b.reserve_chunk("d1", &u.id, 0, 5).unwrap();
+    assert_eq!(b.reserve_chunk("d1", &u.id, 0, 5), Err(UploadError::BadOffset(0)));
+    // A failed write gives the claim back; a finished one moves the offset on.
+    b.release_chunk(&u.id);
+    b.reserve_chunk("d1", &u.id, 0, 5).unwrap();
+    b.wrote(&u.id, 5, now);
+    assert_eq!(b.reserve_chunk("d1", &u.id, 0, 5), Err(UploadError::BadOffset(5)));
+    b.reserve_chunk("d1", &u.id, 5, 5).unwrap();
+}
+
+#[test]
+fn expired_uploads_lose_their_folder_and_a_sweep_clears_orphans() {
+    let dir = tempfile::tempdir().unwrap();
+    let now = Instant::now();
+    let mut b = UploadBook::default();
+    let old = b.start(dir.path(), "d1", "a.txt", 3, "text/plain", 25, now).unwrap();
+    std::fs::create_dir_all(old.path.parent().unwrap()).unwrap();
+    std::fs::write(&old.path, b"abc").unwrap();
+    // The next start, long after, prunes it and deletes the folder.
+    let fresh = b.start(dir.path(), "d1", "b.txt", 3, "text/plain", 25, now + UPLOAD_TTL + Duration::from_secs(1)).unwrap();
+    assert!(b.get("d1", &old.id).is_none());
+    assert!(!old.path.parent().unwrap().exists());
+    // A folder from a previous run, owned by no upload, is swept; a live one stays.
+    let orphan = dir.path().join("deadbeef");
+    std::fs::create_dir_all(&orphan).unwrap();
+    std::fs::write(orphan.join("x.txt"), b"x").unwrap();
+    std::fs::create_dir_all(fresh.path.parent().unwrap()).unwrap();
+    b.sweep(dir.path());
+    assert!(!orphan.exists());
+    assert!(fresh.path.parent().unwrap().exists());
+}
+
+#[test]
 fn too_many_pending_uploads_are_refused() {
     let dir = tempfile::tempdir().unwrap();
     let now = Instant::now();
