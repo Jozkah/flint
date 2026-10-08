@@ -47,6 +47,7 @@ type ModelYaml = ModelConfig & {
   spec_draft_n_max?: number
   spec_draft_n_min?: number
   spec_draft_p_min?: number
+  spec_draft_sampling?: 'greedy' | 'probabilistic'
   cpu_moe?: boolean
   n_cpu_moe?: number
   n_cpu_ffn?: number
@@ -889,6 +890,17 @@ export async function generatePreset(
         mc.spec_draft_p_min <= 1
       ) {
         lines.push(`spec-draft-p-min = ${mc.spec_draft_p_min}`)
+      }
+      // llama.cpp 0.6.0 can sample the draft and have the target verify it by
+      // rejection sampling, which keeps the speed-up at temperature > 0 where
+      // an argmax draft is rejected more often. A DFlash draft only works under
+      // greedy verification, so it never gets the probabilistic mode.
+      if (
+        !dflashActive &&
+        (mc.spec_draft_sampling === 'greedy' ||
+          mc.spec_draft_sampling === 'probabilistic')
+      ) {
+        lines.push(`spec-draft-sampling = ${mc.spec_draft_sampling}`)
       }
     }
 

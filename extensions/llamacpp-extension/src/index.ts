@@ -2447,6 +2447,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     spec_draft_n_max?: number
     spec_draft_n_min?: number
     spec_draft_p_min?: number
+    spec_draft_sampling?: 'greedy' | 'probabilistic'
   }> {
     const path = await joinPath([
       await this.getProviderPath(),
@@ -2463,6 +2464,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       spec_draft_n_max?: number
       spec_draft_n_min?: number
       spec_draft_p_min?: number
+      spec_draft_sampling?: string
     }
     return {
       mtp_layers: typeof cfg.mtp_layers === 'number' ? cfg.mtp_layers : 0,
@@ -2470,6 +2472,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       spec_draft_n_max: cfg.spec_draft_n_max,
       spec_draft_n_min: cfg.spec_draft_n_min,
       spec_draft_p_min: cfg.spec_draft_p_min,
+      spec_draft_sampling:
+        cfg.spec_draft_sampling === 'greedy' ||
+        cfg.spec_draft_sampling === 'probabilistic'
+          ? cfg.spec_draft_sampling
+          : undefined,
     }
   }
 
@@ -2480,6 +2487,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       spec_draft_n_max?: number | null
       spec_draft_n_min?: number | null
       spec_draft_p_min?: number | null
+      spec_draft_sampling?: 'greedy' | 'probabilistic' | null
     }
   ): Promise<void> {
     const configPath = await joinPath([
@@ -2496,9 +2504,20 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       spec_draft_n_max?: number
       spec_draft_n_min?: number
       spec_draft_p_min?: number
+      spec_draft_sampling?: string
     }
 
     if (typeof patch.mtp === 'boolean') cfg.mtp = patch.mtp
+    if ('spec_draft_sampling' in patch) {
+      if (patch.spec_draft_sampling === null) {
+        delete cfg.spec_draft_sampling
+      } else if (
+        patch.spec_draft_sampling === 'greedy' ||
+        patch.spec_draft_sampling === 'probabilistic'
+      ) {
+        cfg.spec_draft_sampling = patch.spec_draft_sampling
+      }
+    }
     const assignNumeric = (
       key: 'spec_draft_n_max' | 'spec_draft_n_min' | 'spec_draft_p_min',
       value: number | null | undefined

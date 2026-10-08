@@ -81,6 +81,33 @@ describe('generatePreset MTP emission', () => {
     expect(ini).toContain('spec-draft-p-min = 0.8')
   })
 
+  it('emits spec-draft-sampling only for a valid value and never for DFlash', async () => {
+    setupModel('prob', {
+      mtp: true,
+      mtp_layers: 1,
+      spec_draft_sampling: 'probabilistic',
+    })
+    setupModel('bad', {
+      mtp: true,
+      mtp_layers: 1,
+      spec_draft_sampling: 'sometimes',
+    })
+    setupModel('flash', {
+      mtp: true,
+      mtp_layers: 1,
+      spec_type: 'draft-dflash',
+      spec_draft_sampling: 'probabilistic',
+    })
+    await generatePreset('/p', '/jan', CONFIG)
+    const ini = writtenFiles['/p/router.preset.ini']
+    const section = (id: string) =>
+      ini.split(/\r?\n(?=\[)/).find((s) => s.startsWith(`[${id}]`)) ?? ''
+    expect(section('prob')).toContain('spec-draft-sampling = probabilistic')
+    expect(section('bad')).not.toContain('spec-draft-sampling')
+    expect(section('flash')).toContain('spec-type = draft-dflash')
+    expect(section('flash')).not.toContain('spec-draft-sampling')
+  })
+
   it('omits MTP lines when model has no MTP heads (mtp_layers = 0)', async () => {
     setupModel('llama', { mtp: true, mtp_layers: 0 })
     await generatePreset('/p', '/jan', CONFIG)
