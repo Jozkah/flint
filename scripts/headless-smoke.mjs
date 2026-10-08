@@ -148,6 +148,14 @@ try {
     (await json('/api/v1/token', { method: 'POST', body: JSON.stringify({ credential: '0'.repeat(64) }) })).status === 401
   )
 
+  // One client guessing wrongly is stopped; others are not, and neither is
+  // the real credential from a different client.
+  const asClient = (address) => ({ 'x-forwarded-for': address })
+  for (let i = 0; i < 10; i++) await json('/api/v1/token', { method: 'POST', headers: asClient('203.0.113.7'), body: JSON.stringify({ credential: '1'.repeat(64) }) })
+  const noisy = await json('/api/v1/token', { method: 'POST', headers: asClient('203.0.113.7'), body: JSON.stringify({ credential }) })
+  check('a client that keeps guessing wrong is blocked, even with the right credential', noisy.status === 429)
+  const bystander = await json('/api/v1/token', { method: 'POST', headers: asClient('203.0.113.8'), body: JSON.stringify({ credential }) })
+  check('another client can still sign in', bystander.status === 200)
   const signIn = await json('/api/v1/token', { method: 'POST', body: JSON.stringify({ credential }) })
   const { token } = await signIn.json()
   check('token sign-in', signIn.status === 200 && token?.length === 64)

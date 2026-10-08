@@ -192,7 +192,10 @@ function routeLoopbackThroughServer(): void {
       if (/^https?:\/\//i.test(raw)) {
         const url = new URL(raw)
         const here = globalThis.location
-        if (loopback.has(url.hostname) && !(here && url.host === here.host)) {
+        // The page's own server is not "the server's loopback": same port on
+        // any loopback name (localhost vs 127.0.0.1) is the page itself.
+        const isThisPage = !!here && loopback.has(here.hostname) && url.port === here.port
+        if (loopback.has(url.hostname) && !(here && url.host === here.host) && !isThisPage) {
           return providerFetch(input, init)
         }
       }

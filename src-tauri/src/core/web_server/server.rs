@@ -3,12 +3,11 @@
 //! Bind only to loopback. A private-network TLS proxy such as Tailscale Serve
 //! can publish it; the proxy's exact public host must be configured here.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 use std::io;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::{BodyExt, Full, Limited};
@@ -24,6 +23,7 @@ use super::auth::AuthStore;
 use super::data;
 use super::control;
 use super::engine;
+use super::limiter::{client_ip, LoginLimiter};
 use super::events;
 use super::files;
 use super::mcp;
@@ -37,8 +37,6 @@ pub(super) type Resp = Response<UnsyncBoxBody<Bytes, std::convert::Infallible>>;
 const MAX_LOGIN_BODY: usize = 4 * 1024;
 const MAX_JSON_BODY: usize = 1024 * 1024;
 const COOKIE_NAME: &str = "flint_session";
-const LOGIN_WINDOW: Duration = Duration::from_secs(5 * 60);
-const LOGIN_FAILURE_LIMIT: usize = 10;
 
 pub struct Options {
     pub bind: SocketAddr,
@@ -69,7 +67,7 @@ struct State {
     data_folder: PathBuf,
     hosts: HashSet<String>,
     public_host: Option<String>,
-    login_failures: Mutex<VecDeque<Instant>>,
+    limiter: LoginLimiter,
     mcp: mcp::Host,
     allowed_origins: HashSet<String>,
     engine: engine::Supervisor,
@@ -78,16 +76,6 @@ struct State {
     /// Set to ask the accept loop to finish: `flint stop`.
     shutdown: Arc<tokio::sync::Notify>,
     shutdown_token: String,
-}
-
-fn login_blocked(failures: &mut VecDeque<Instant>) -> bool {
-    while failures
-        .front()
-        .is_some_and(|at| at.elapsed() > LOGIN_WINDOW)
-    {
-        failures.pop_front();
-    }
-    failures.len() >= LOGIN_FAILURE_LIMIT
 }
 
 fn valid_dns_name(host: &str) -> bool {
@@ -661,8 +649,8 @@ async fn mcp_route(state: &State, method: &Method, rest: &str, req: Request<Inco
 /// administrator credential, the same hashed session store and the same
 /// attempt limit as the cookie flow, but the session comes back as JSON to be
 /// sent in an `Authorization: Bearer` header.
-async fn token_sign_in(state: &State, req: Request<Incoming>) -> Resp {
-    if login_blocked(&mut state.login_failures.lock().unwrap()) {
+async fn token_sign_in(state: &State, req: Request<Incoming>, client: std::net::IpAddr) -> Resp {
+    if state.limiter.blocked(client) {
         return text(StatusCode::TOO_MANY_REQUESTS, "Too many sign-in attempts");
     }
     let body = match Limited::new(req.into_body(), MAX_LOGIN_BODY).collect().await {
@@ -683,7 +671,7 @@ async fn token_sign_in(state: &State, req: Request<Incoming>) -> Resp {
             "expiresIn": 43200,
         })),
         Ok(None) => {
-            state.login_failures.lock().unwrap().push_back(Instant::now());
+            state.limiter.record_failure(client);
             text(StatusCode::UNAUTHORIZED, "Invalid credential")
         }
         Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not save session"),
@@ -906,7 +894,7 @@ async fn rpc_route(state: &State, command: &str, args: serde_json::Value) -> Res
     }
 }
 
-async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
+async fn route(state: Arc<State>, req: Request<Incoming>, peer: std::net::IpAddr) -> Resp {
     if !host_allowed(&state, req.headers()) {
         return text(StatusCode::MISDIRECTED_REQUEST, "Unknown host");
     }
@@ -919,10 +907,14 @@ async fn route(state: Arc<State>, req: Request<Incoming>) -> Resp {
             _ => text(StatusCode::FORBIDDEN, "Cross-origin requests are not allowed"),
         };
     }
-    with_cors(route_inner(state, req).await, cors.as_deref())
+    let client = client_ip(
+        peer,
+        req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok()),
+    );
+    with_cors(route_inner(state, req, client).await, cors.as_deref())
 }
 
-async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
+async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net::IpAddr) -> Resp {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
     if path == "/healthz" && method == Method::GET {
@@ -954,7 +946,7 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
     // request carrying one cannot be a cross-site forgery and needs no Origin.
     let has_bearer = bearer_token(req.headers()).is_some();
     if path == "/api/v1/token" && method == Method::POST {
-        return token_sign_in(&state, req).await;
+        return token_sign_in(&state, req, client).await;
     }
     // Signing in is exempt: its body carries the administrator credential, which
     // a forged cross-site post cannot supply, and browsers send `Origin: null`
@@ -1014,7 +1006,7 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
                 text(status, message)
             }
         };
-        if login_blocked(&mut state.login_failures.lock().unwrap()) {
+        if state.limiter.blocked(client) {
             return refuse(StatusCode::TOO_MANY_REQUESTS, "rate", "Too many sign-in attempts");
         }
         let secure = cookie_secure(&state, req.headers());
@@ -1049,11 +1041,7 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
                 response
             }
             Ok(None) => {
-                state
-                    .login_failures
-                    .lock()
-                    .unwrap()
-                    .push_back(Instant::now());
+                state.limiter.record_failure(client);
                 refuse(StatusCode::UNAUTHORIZED, "invalid", "Invalid credential")
             }
             Err(_) => refuse(StatusCode::INTERNAL_SERVER_ERROR, "server", "Could not save session"),
@@ -1407,7 +1395,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
         data_folder: options.data_folder,
         hosts,
         public_host: options.public_host.map(|host| host.to_ascii_lowercase()),
-        login_failures: Mutex::new(VecDeque::new()),
+        limiter: LoginLimiter::new(),
         mcp: mcp::Host::new(options.allow_mcp_stdio),
         allowed_origins: options.allowed_origins.iter().map(|o| o.to_ascii_lowercase()).collect(),
         engine: engine::Supervisor::new(options.llama_worker.clone(), bus.clone()),
@@ -1468,7 +1456,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
             let io = TokioIo::new(socket);
             let service = service_fn(move |req| {
                 let state = state.clone();
-                async move { Ok::<_, std::convert::Infallible>(route(state, req).await) }
+                async move { Ok::<_, std::convert::Infallible>(route(state, req, peer.ip()).await) }
             });
             let _ = http1::Builder::new().serve_connection(io, service).await;
         });
@@ -1506,7 +1494,7 @@ mod tests {
             data_folder: dir.path().to_path_buf(),
             hosts: HashSet::from(["localhost:1340".to_string()]),
             public_host: None,
-            login_failures: Mutex::new(VecDeque::new()),
+            limiter: LoginLimiter::new(),
             mcp: mcp::Host::new(false),
             allowed_origins: HashSet::new(),
             engine: engine::Supervisor::new(None, events::Bus::new()),
@@ -1612,7 +1600,7 @@ mod tests {
             data_folder: dir.path().to_path_buf(),
             hosts: HashSet::new(),
             public_host: None,
-            login_failures: Mutex::new(VecDeque::new()),
+            limiter: LoginLimiter::new(),
             mcp: mcp::Host::new(false),
             allowed_origins: HashSet::from(["http://tauri.localhost".to_string()]),
             engine: engine::Supervisor::new(None, events::Bus::new()),
@@ -1646,7 +1634,7 @@ mod tests {
             data_folder: dir.path().to_path_buf(),
             hosts: HashSet::from(["box.ts.net:8443".to_string(), "localhost:1340".to_string()]),
             public_host: Some("box.ts.net".to_string()),
-            login_failures: Mutex::new(VecDeque::new()),
+            limiter: LoginLimiter::new(),
             mcp: mcp::Host::new(false),
             allowed_origins: HashSet::new(),
             engine: engine::Supervisor::new(None, events::Bus::new()),
