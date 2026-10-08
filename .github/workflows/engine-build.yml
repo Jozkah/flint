@@ -57,7 +57,7 @@ jobs:
     # build script is arbitrary code execution by construction, so a fork PR
     # touching this workflow's paths filter would get root on a box that later
     # hosts tag-time release builds. Same guard as
-    # jan-tauri-build-nightly.yaml; `workflow_dispatch` and tag pushes are
+    # the removed Jan nightly workflow; `workflow_dispatch` and tag pushes are
     # unaffected because they are not `pull_request` events.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ matrix.runs-on }}
@@ -66,7 +66,7 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.variants.outputs.include) }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The self-hosted CUDA images carry neither Git for Windows nor make, and
       # every later step (dtolnay's included) is bash. No-op on hosted images.
