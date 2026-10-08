@@ -213,7 +213,7 @@ function General() {
       <SettingsPageBody
         title={t('common:general')}
         description={t('settings:pageDesc.general')}
-        layout={[0, 1, 0, 1, 0]}
+        layout={[0, 1, 1, 1, 0, 0]}
       >
 
         {/* General */}

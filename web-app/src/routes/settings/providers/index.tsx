@@ -79,6 +79,9 @@ type Filter = 'all' | 'local' | 'remote'
 const MODEL_COLS =
   '30px minmax(0,1fr) 96px 112px 64px 68px 80px 104px 28px'
 
+/** Card entrance delay: staggered, but capped so a long list is never waiting on its tail. */
+const staggerDelay = (i: number) => 120 + Math.min(i, 8) * 25
+
 /** How many recent replies the speed charts show. */
 const SPEED_WINDOW = 24
 
@@ -506,7 +509,7 @@ function ModelProviders() {
                   <li
                     key={provider.provider}
                     data-testid={`provider-row-${provider.provider}`}
-                    style={{ animationDelay: `${320 + i * 35}ms` }}
+                    style={{ animationDelay: `${staggerDelay(i)}ms` }}
                     onContextMenu={(e) => {
                       e.preventDefault()
                       setMenuFor(provider.provider)
@@ -584,7 +587,7 @@ function ModelProviders() {
               {/* Enters after the last provider card, as part of the same stagger. */}
               <li
                 className="motion-safe:animate-rise-in"
-                style={{ animationDelay: `${320 + visibleProviders.length * 35}ms` }}
+                style={{ animationDelay: `${staggerDelay(visibleProviders.length)}ms` }}
               >
                 <AddProviderDialog onCreateProvider={createProvider}>
                   <button
