@@ -133,6 +133,14 @@ try {
   const json = (path, init = {}) =>
     fetch(base + path, { redirect: 'manual', ...init })
 
+  const form = (body) => json('/api/v1/session', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body })
+  const wrong = await form(`credential=${'0'.repeat(64)}`)
+  check('a wrong credential from the form goes back to the sign-in page', wrong.status === 303 && wrong.headers.get('location') === '/login?error=invalid')
+  const malformed = await form('credential=short')
+  check('a malformed credential from the form goes back with a notice', malformed.status === 303 && malformed.headers.get('location') === '/login?error=format')
+  const loginHtml = await (await json('/login?error=invalid')).text()
+  check('the sign-in page explains a failed attempt', loginHtml.includes('role="alert"') && !loginHtml.includes('{{'))
+  check('the sign-in page never echoes the request', !(await (await json('/login?error=%3Cscript%3E')).text()).includes('<script>'))
   check('unauthenticated page redirects to sign-in', (await json('/')).status === 303)
   check('health is open', (await json('/healthz')).status === 200)
   check(

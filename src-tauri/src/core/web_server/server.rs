@@ -924,11 +924,38 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
         return text(StatusCode::FORBIDDEN, "Invalid origin");
     }
     if path == "/login" && method == Method::GET {
-        return reply(StatusCode::OK, "text/html; charset=utf-8", LOGIN_HTML);
+        let error = req
+            .uri()
+            .query()
+            .and_then(|q| form_urlencoded::parse(q.as_bytes()).find(|(k, _)| k == "error"))
+            .map(|(_, v)| v.into_owned());
+        return reply(
+            StatusCode::OK,
+            "text/html; charset=utf-8",
+            login_page(error.as_deref()),
+        );
     }
     if path == "/api/v1/session" && method == Method::POST {
+        // A browser form is sent back to the sign-in page with a notice; any
+        // other client gets the status code.
+        let is_form = req
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.starts_with("application/x-www-form-urlencoded"));
+        let refuse = |status: StatusCode, code: &str, message: &'static str| -> Resp {
+            if is_form {
+                let mut response = reply(StatusCode::SEE_OTHER, "text/plain; charset=utf-8", "Sign in failed");
+                if let Ok(location) = HeaderValue::from_str(&format!("/login?error={code}")) {
+                    response.headers_mut().insert(header::LOCATION, location);
+                }
+                response
+            } else {
+                text(status, message)
+            }
+        };
         if login_blocked(&mut state.login_failures.lock().unwrap()) {
-            return text(StatusCode::TOO_MANY_REQUESTS, "Too many sign-in attempts");
+            return refuse(StatusCode::TOO_MANY_REQUESTS, "rate", "Too many sign-in attempts");
         }
         let secure = cookie_secure(&state, req.headers());
         let body = match Limited::new(req.into_body(), MAX_LOGIN_BODY)
@@ -943,7 +970,7 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
             .and_then(|body| body.strip_prefix("credential="))
             .filter(|token| token.len() == 64 && token.bytes().all(|c| c.is_ascii_hexdigit()))
         else {
-            return text(StatusCode::BAD_REQUEST, "Invalid credential format");
+            return refuse(StatusCode::BAD_REQUEST, "format", "Invalid credential format");
         };
         let result = state.auth.lock().unwrap().sign_in(token);
         return match result {
@@ -967,9 +994,9 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
                     .lock()
                     .unwrap()
                     .push_back(Instant::now());
-                text(StatusCode::UNAUTHORIZED, "Invalid credential")
+                refuse(StatusCode::UNAUTHORIZED, "invalid", "Invalid credential")
             }
-            Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not save session"),
+            Err(_) => refuse(StatusCode::INTERNAL_SERVER_ERROR, "server", "Could not save session"),
         };
     }
     // An Authorization header decides on its own: a bad token is never
@@ -1230,7 +1257,25 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
     reply(StatusCode::OK, content_type, body)
 }
 
-const LOGIN_HTML: &str = r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flint sign in</title></head><body><main><h1>Flint</h1><form action="/api/v1/session" method="post"><label>Administrator credential <input name="credential" type="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form></main></body></html>"#;
+const LOGIN_HTML: &str = include_str!("login.html");
+
+/// The sign-in page, with a notice when the last attempt failed. The notice text
+/// is chosen here from a short code, never taken from the request.
+fn login_page(error: Option<&str>) -> String {
+    let notice = match error {
+        Some("invalid") => "That credential is not right. Check it and try again.",
+        Some("format") => "The credential is 64 characters of 0-9 and a-f.",
+        Some("rate") => "Too many attempts. Wait a few minutes and try again.",
+        Some("server") => "The server could not start a session. Try again.",
+        _ => "",
+    };
+    let html = if notice.is_empty() {
+        String::new()
+    } else {
+        format!(r#"<p class="notice" role="alert">{notice}</p>"#)
+    };
+    LOGIN_HTML.replace("{{NOTICE}}", &html)
+}
 
 pub async fn serve(options: Options) -> io::Result<()> {
     let loopback = options.bind.ip().is_loopback();
@@ -1512,6 +1557,19 @@ mod tests {
         headers.insert(header::HOST, HeaderValue::from_static("box.ts.net"));
         headers.remove(header::ORIGIN);
         assert!(cookie_secure(&state, &headers));
+    }
+
+    #[test]
+    fn the_login_page_shows_a_notice_chosen_here_never_one_from_the_request() {
+        assert!(!login_page(None).contains("class=\"notice\""));
+        let shown = login_page(Some("invalid"));
+        assert!(shown.contains(r#"<p class="notice" role="alert">That credential is not right."#));
+        assert!(login_page(Some("rate")).contains("Too many attempts"));
+        let hostile = login_page(Some("<script>alert(1)</script>"));
+        assert!(!hostile.contains("<script>alert"));
+        assert!(!hostile.contains("class=\"notice\""));
+        assert!(login_page(None).contains("action=\"/api/v1/session\""));
+        assert!(!login_page(None).contains("{{"));
     }
 
     #[test]
