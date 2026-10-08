@@ -161,6 +161,15 @@
     "busy": "重命名之前请先暂停或停止房间。",
     "failed": "无法生成标题。"
   },
+  "convertToCowork": {
+    "menu": "转换为 Cowork",
+    "title": "转换为 Cowork?",
+    "description": "此对话将成为新的 Cowork 会话。这个聊天要如何处理?",
+    "keep": "保留聊天",
+    "delete": "删除聊天",
+    "done": "已转换为 Cowork 会话。",
+    "failed": "没有可转换的内容:此聊天没有消息。"
+  },
   "fork": {
     "chat": "分叉对话",
     "done": "已分叉为新对话。",

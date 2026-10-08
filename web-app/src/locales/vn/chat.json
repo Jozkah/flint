@@ -161,6 +161,15 @@
     "busy": "Hãy tạm dừng hoặc dừng phòng trước khi đổi tên.",
     "failed": "Không thể tạo tiêu đề."
   },
+  "convertToCowork": {
+    "menu": "Chuyển sang Cowork",
+    "title": "Chuyển sang Cowork?",
+    "description": "Cuộc trò chuyện sẽ trở thành một phiên Cowork mới. Nên làm gì với cuộc trò chuyện này?",
+    "keep": "Giữ cuộc trò chuyện",
+    "delete": "Xóa cuộc trò chuyện",
+    "done": "Đã chuyển thành phiên Cowork.",
+    "failed": "Không có gì để chuyển: cuộc trò chuyện này không có tin nhắn."
+  },
   "fork": {
     "chat": "Tách nhánh cuộc trò chuyện",
     "done": "Đã tách sang cuộc trò chuyện mới.",
