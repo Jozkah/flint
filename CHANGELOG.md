@@ -209,7 +209,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 
 ### Inference and repository targeting
 
-- Upgraded the bundled llama.cpp engine from 0.4.1 / b10964 to **0.6.0 / b11429**, with matching packages and lockfiles. Saved conversation state from an earlier engine build is discarded rather than restored.
+- Upgraded the bundled llama.cpp engine from 0.4.1 / b10964 to **0.6.0 / b11509**, with matching packages and lockfiles. Saved conversation state from an earlier engine build is discarded rather than restored.
 - Active release workflows, package metadata, project links and web-search identification now target `Jozkah/flint` rather than the upstream repository where appropriate.
 
 ### Local models and engine settings
