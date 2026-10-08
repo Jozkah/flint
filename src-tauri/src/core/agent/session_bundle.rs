@@ -7,14 +7,13 @@
 //!   path that only makes sense on this machine is dropped, and the whole
 //!   document goes through the same credential redaction as prompt snapshots
 //!   before a byte is written.
-//! * **In.** The size is capped, the header is checked, and a schema version
+//! * **In.** The header is checked, and a schema version
 //!   this build does not understand is refused by name rather than guessed at.
 
 use serde_json::Value;
 
 pub const FORMAT: &str = "jan.cowork-session";
 pub const SCHEMA_VERSION: u64 = 1;
-pub const MAX_BYTES: u64 = 32 * 1024 * 1024;
 
 /// Session fields that are never exported: authority (access, consent,
 /// continuity), machine paths (folder, code panel), in-flight state (run
@@ -232,9 +231,6 @@ pub fn prepare_handoff(
 
 /// Read a bundle from bytes that came off disk.
 pub fn parse_import(bytes: &[u8]) -> Result<Value, String> {
-    if bytes.len() as u64 > MAX_BYTES {
-        return Err("this file is too large to be a Jan session export".into());
-    }
     let bundle: Value =
         serde_json::from_slice(bytes).map_err(|_| "this file is not valid JSON".to_string())?;
     check_header(&bundle)?;
