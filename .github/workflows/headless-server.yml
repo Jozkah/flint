@@ -1,0 +1,87 @@
+name: Headless Server
+# Manual only: it builds the web bundle and the CLI binary, which is not cheap.
+# Run it on the branch that changes `flint serve` or the browser adapters.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: headless-server-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  server:
+    name: server (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          key: headless-server
+          # Branches restore but never save, as in rust-check.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+
+      - name: Enable yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@4.10.3 --activate
+          yarn config set -H enableImmutableInstalls false
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Build the core package
+        run: yarn build:core
+
+      - name: Typecheck the web app
+        run: yarn typecheck
+
+      - name: Browser adapter and transport tests
+        working-directory: web-app
+        run: >
+          yarn vitest run
+          src/services/__tests__/browserAdapters.test.ts
+          src/lib/__tests__/providerFetch
+          src/lib/__tests__/hostInvoke.test.ts
+          src/lib/__tests__/tauriBridgeShim.test.ts
+          src/lib/__tests__/tauriEventShim.test.ts
+          src/lib/__tests__/loopbackFetch.test.ts
+          --maxWorkers=2
+
+      - name: Server unit tests
+        run: >
+          cargo test --locked --manifest-path src-tauri/Cargo.toml
+          --no-default-features --features cli --lib core::web_server
+
+      - name: Build the production web bundle
+        env:
+          IS_WEB_APP: "true"
+          IS_TAURI: "false"
+        run: yarn build:web
+
+      - name: Build the server binary
+        run: >
+          cargo build --locked --manifest-path src-tauri/Cargo.toml
+          --no-default-features --features cli --bin flint
+
+      - name: End-to-end smoke
+        shell: bash
+        run: |
+          bin=src-tauri/target/debug/flint
+          if [ "$RUNNER_OS" = "Windows" ]; then bin=$bin.exe; fi
+          node scripts/headless-smoke.mjs "$bin" web-app/dist
+          node scripts/concurrency-smoke.mjs "$bin" web-app/dist

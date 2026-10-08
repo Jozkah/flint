@@ -64,6 +64,7 @@ import {
 } from '@/hooks/useProviderReachability'
 import { SessionInfo } from '@janhq/core'
 import { providerFetch } from '@/lib/providerFetch'
+import { isServerTransport } from '@/lib/serverTransportFlag'
 import { textToolCallMiddleware } from '@/lib/textToolCallMiddleware'
 
 // These three call sites predate the canonical transport and named the raw
@@ -1041,7 +1042,10 @@ function getRuntimeFetch(): typeof globalThis.fetch {
 
   // The canonical provider transport, so a completion resolves its endpoint the
   // same way model discovery and a connection test do.
-  return isPlatformTauri() && hasTauriRuntime ? providerFetch : globalThis.fetch
+  // Served by `flint serve`, the same transport runs on the server.
+  return (isPlatformTauri() && hasTauriRuntime) || isServerTransport()
+    ? providerFetch
+    : globalThis.fetch
 }
 
 /**

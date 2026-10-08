@@ -2,6 +2,11 @@ pub mod agent;
 // Archive instead of delete; desktop-only like rooms.
 #[cfg(not(feature = "cli"))]
 pub mod archive;
+#[cfg(feature = "cli")]
+pub mod archive {
+    #[path = "../archive/store.rs"]
+    pub mod store;
+}
 pub mod app;
 // Local image and video generation (stable-diffusion.cpp sidecar); desktop-only.
 #[cfg(not(feature = "cli"))]
@@ -57,6 +62,8 @@ pub mod state;
 #[cfg(not(feature = "cli"))]
 pub mod system;
 pub mod threads;
+#[cfg(feature = "cli")]
+pub mod web_server;
 // Native child-webview web preview; desktop-only like preview.
 #[cfg(not(feature = "cli"))]
 pub mod web_preview;

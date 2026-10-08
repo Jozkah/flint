@@ -168,6 +168,17 @@ fn set_active_in(data_folder: &std::path::Path, name: &str, active: bool) -> Res
     write_config(data_folder, &cfg)
 }
 
+/// The whole `mcp_config.json` document, `Null` when absent or unreadable.
+/// For the headless web server, which edits the file as the desktop UI does.
+pub fn read_config_document() -> Value {
+    read_config(&default_data_folder())
+}
+
+/// Atomically replace the whole `mcp_config.json` document.
+pub fn write_config_document(cfg: &Value) -> Result<(), String> {
+    write_config(&default_data_folder(), cfg)
+}
+
 /// Validate a server entry shape, reporting the missing field rather than the
 /// generic "invalid MCP config" a connect would otherwise surface. Matches the
 /// desktop's transport contract: `command`+`args` for stdio, or `type`+`url`

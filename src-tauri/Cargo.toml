@@ -124,10 +124,12 @@ tauri-app = [
     "dep:tauri-build",
     "dep:tauri-plugin-http",
     "dep:tauri-plugin-llamacpp",
+    "tauri-plugin-llamacpp/tauri",
     "dep:tauri-plugin-log",
     "dep:tauri-plugin-opener",
     "dep:tauri-plugin-os",
     "dep:tauri-plugin-rag",
+    "tauri-plugin-rag/tauri",
     "dep:tauri-plugin-shell",
     "dep:tauri-plugin-store",
     "dep:tauri-plugin-mlx",
@@ -159,7 +161,7 @@ test-tauri = [
     "deep-link",
     "hardware",
 ]
-cli = ["dep:env_logger", "dep:indicatif", "dep:console", "dep:ratatui", "dep:unicode-width", "dep:pulldown-cmark", "dep:syntect", "dep:comfy-table", "dep:arboard", "dep:png"]
+cli = ["dep:env_logger", "dep:indicatif", "dep:console", "dep:ratatui", "dep:unicode-width", "dep:pulldown-cmark", "dep:syntect", "dep:comfy-table", "dep:arboard", "dep:png", "dep:tauri-plugin-rag", "dep:tauri-plugin-llamacpp"]
 
 [build-dependencies]
 tauri-build = { version = "2.0.2", features = [], optional = true }
@@ -223,11 +225,11 @@ zip = "0.6"
 tauri-plugin-deep-link = { version = "2", optional = true }
 tauri-plugin-wdio-webdriver = { version = "1.4", optional = true }
 tauri-plugin-hardware = { path = "./plugins/tauri-plugin-hardware", default-features = false }
-tauri-plugin-llamacpp = { path = "./plugins/tauri-plugin-llamacpp", optional = true }
+tauri-plugin-llamacpp = { path = "./plugins/tauri-plugin-llamacpp", optional = true, default-features = false }
 # The CLI consumes only these plugins' tauri-free cores (`db`, `provider`, the
 # agent toolset); the desktop feature turns their Tauri command surface back on.
 tauri-plugin-vector-db = { path = "./plugins/tauri-plugin-vector-db", default-features = false }
-tauri-plugin-rag = { path = "./plugins/tauri-plugin-rag", optional = true }
+tauri-plugin-rag = { path = "./plugins/tauri-plugin-rag", optional = true, default-features = false }
 tauri-plugin-websearch = { path = "./plugins/tauri-plugin-websearch", default-features = false }
 tauri-plugin-agent-tools = { path = "./plugins/tauri-plugin-agent-tools", default-features = false }
 # `default-features = false` drops the plugin's default `rustls-tls` (bundled

@@ -36,6 +36,32 @@ pub fn get_system_info() -> SystemInfo {
     info
 }
 
+/// Live CPU, memory and GPU usage. Blocks for the CPU sampling interval, so
+/// call it off the async runtime.
+pub fn sample_system_usage() -> SystemUsage {
+    let mut system = sysinfo::System::new();
+    system.refresh_memory();
+
+    system.refresh_cpu_all();
+    std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+    system.refresh_cpu_all();
+
+    let cpus = system.cpus();
+    let cpu_usage =
+        cpus.iter().map(|cpu| cpu.cpu_usage()).sum::<f32>() / (cpus.len().max(1) as f32);
+
+    SystemUsage {
+        cpu: cpu_usage,
+        used_memory: system.used_memory() / 1024 / 1024,
+        total_memory: system.total_memory() / 1024 / 1024,
+        gpus: crate::get_system_info()
+            .gpus
+            .iter()
+            .map(|gpu| gpu.get_usage())
+            .collect(),
+    }
+}
+
 /// Invalidates cached hardware info so the next `get_system_info()` re-detects GPUs.
 pub fn invalidate_system_info() {
     #[cfg(target_os = "linux")]

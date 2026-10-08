@@ -98,7 +98,7 @@ async fn pick_path(ext: &str, file_name: &str) -> Option<PathBuf> {
         .map(|f| f.path().to_path_buf())
 }
 
-fn write_atomically(path: &Path, body: &[u8]) -> Result<(), String> {
+pub(super) fn write_atomically(path: &Path, body: &[u8]) -> Result<(), String> {
     let mut temp = path.as_os_str().to_owned();
     temp.push(".tmp");
     let temp = PathBuf::from(temp);

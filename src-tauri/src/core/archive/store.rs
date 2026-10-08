@@ -25,9 +25,10 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::core::rooms::store::ROOMS_DIR;
 use crate::core::threads::constants::THREADS_DIR;
 use crate::core::threads::utils::validate_thread_id;
+
+const ROOMS_DIR: &str = "rooms";
 
 pub const ARCHIVE_DIR: &str = ".archive";
 const META_FILE: &str = "meta.json";
