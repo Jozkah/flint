@@ -2533,12 +2533,6 @@ pub async fn session_import_open() -> Result<Option<serde_json::Value>, String> 
     let Some(path) = pick_bundle_path(false).await else {
         return Ok(None);
     };
-    let size = std::fs::metadata(&path)
-        .map_err(|e| format!("could not read the file: {e}"))?
-        .len();
-    if size > crate::core::agent::session_bundle::MAX_BYTES {
-        return Err("this file is too large to be a Jan session export".into());
-    }
     let bytes = std::fs::read(&path).map_err(|e| format!("could not read the file: {e}"))?;
     crate::core::agent::session_bundle::parse_import(&bytes).map(Some)
 }
