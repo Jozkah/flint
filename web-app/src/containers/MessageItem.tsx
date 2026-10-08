@@ -133,6 +133,11 @@ export type MessageItemProps = {
    * fallback and no token-speed line of its own.
    */
   midReply?: boolean
+  /**
+   * Cowork only: every part of the whole reply when this row is one round of
+   * it, so the no-reply fallback judges the run and not the round.
+   */
+  runParts?: UIMessage['parts']
 }
 
 export const MessageItem = memo(
@@ -145,6 +150,7 @@ export const MessageItem = memo(
     hideActions,
     continuation,
     switchedFrom,
+    runParts,
     midReply,
     keepToolActivity,
     subagents,
@@ -312,7 +318,8 @@ export const MessageItem = memo(
       (message.role === 'assistant' &&
         !isStreaming &&
         !midReply &&
-        emptyRunFallback(message.parts as MessagePartLike[]) !== null)
+        emptyRunFallback((runParts ?? message.parts) as MessagePartLike[]) !==
+          null)
 
     // Aggregate RAG citations in part order and record each rag tool part's
     // base offset, so its card numbers/anchors continue the same global
@@ -667,7 +674,9 @@ export const MessageItem = memo(
         !awaitingApproval &&
         !midReply
       ) {
-        const fallback = emptyRunFallback(parts)
+        const fallback = emptyRunFallback(
+          (runParts ?? parts) as MessagePartLike[]
+        )
         if (fallback) {
           elements.push(
             <p
@@ -690,6 +699,7 @@ export const MessageItem = memo(
       awaitingApproval,
       citationOffsets,
       midReply,
+      runParts,
     ])
 
     const versionNav =
@@ -1125,6 +1135,7 @@ export const MessageItem = memo(
       prevProps.continuation === nextProps.continuation &&
       prevProps.switchedFrom === nextProps.switchedFrom &&
       prevProps.midReply === nextProps.midReply &&
+      prevProps.runParts === nextProps.runParts &&
       prevProps.keepToolActivity === nextProps.keepToolActivity &&
       prevProps.versionInfo?.index === nextProps.versionInfo?.index &&
       prevProps.versionInfo?.count === nextProps.versionInfo?.count
