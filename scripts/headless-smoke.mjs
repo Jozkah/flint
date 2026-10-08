@@ -152,6 +152,9 @@ try {
   })
   const session = (cookie.headers.get('set-cookie') ?? '').split(';')[0]
   check('cookie sign-in', cookie.status === 303 && session.startsWith('flint_session='))
+  const nullOrigin = await json('/api/v1/session', { method: 'POST', headers: { origin: 'null' }, body: `credential=${credential}` })
+  check('sign-in does not depend on the Origin header', nullOrigin.status === 303)
+  check('other posts still need a matching origin', (await json('/api/v1/projects', { method: 'PUT', headers: { cookie: session, origin: 'null', 'content-type': 'application/json' }, body: '[]' })).status === 403)
   const page = await json('/', { headers: { cookie: session } })
   check('signed-in page and its boot scripts load', page.status === 200 && (await json('/boot-appearance.js', { headers: { cookie: session } })).status === 200)
   check('referrer policy lets a form post carry its origin', page.headers.get('referrer-policy') === 'same-origin')

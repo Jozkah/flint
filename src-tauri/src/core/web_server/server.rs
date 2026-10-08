@@ -896,11 +896,31 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
     if path == "/api/v1/token" && method == Method::POST {
         return token_sign_in(&state, req).await;
     }
+    // Signing in is exempt: its body carries the administrator credential, which
+    // a forged cross-site post cannot supply, and browsers send `Origin: null`
+    // on a form post in several situations (referrer policy, privacy settings,
+    // extensions) that would otherwise lock a legitimate user out.
+    let sign_in = path == "/api/v1/session" && method == Method::POST;
     if method != Method::GET
         && method != Method::HEAD
         && !has_bearer
+        && !sign_in
         && !same_origin(&state, req.headers())
     {
+        // Said once on the console: the usual cause is a client reaching the
+        // server under a name that was not passed with --allowed-host.
+        let seen = |name| {
+            req.headers()
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("(none)")
+                .to_owned()
+        };
+        eprintln!(
+            "refused {method} {path}: Origin {:?}, Host {:?}",
+            seen(header::ORIGIN),
+            seen(header::HOST)
+        );
         return text(StatusCode::FORBIDDEN, "Invalid origin");
     }
     if path == "/login" && method == Method::GET {
