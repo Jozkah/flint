@@ -1,6 +1,6 @@
 # Building Flint from source
 
-These steps take you from a fresh machine to Flint's installer (or a running development copy). Do them in
+These steps take you from a fresh machine to a running Flint. Do them in
 order. Every block is a command to paste into a terminal: **PowerShell** on
 Windows, **Terminal** on macOS and Linux.
 
@@ -70,106 +70,80 @@ On Windows, also check `clang --version`.
 
 Node.js must be version 20 or newer.
 
-## 2. Get the code
+## 2. Get the code and turn on Yarn
 
 ```bash
 git clone https://github.com/Jozkah/flint.git
 cd flint
-```
-
-Every command from here on is run **inside the `flint` folder**.
-
-## 3. Build the installer
-
-Run this one command, in any terminal (PowerShell, Command Prompt, Git Bash,
-macOS or Linux Terminal):
-
-```bash
-node scripts/build-installer.mjs
-```
-
-That is the whole build. It checks the tools from step 1 and, if one is
-missing, stops and prints the command that installs it. Otherwise it installs
-the dependencies, builds Flint's llama.cpp engine, then builds the app and the
-installers. It prints where they are when it finishes. Expect 20–60 minutes
-the first time. On Windows it needs neither `make` nor Git Bash nor
-`corepack enable`.
-
-When it succeeds, the installers are in `src-tauri/target/release/bundle/`:
-
-- **Windows:** the setup program is `nsis\Flint_<version>_x64-setup.exe`, and `msi\Flint_<version>_x64_en-US.msi` is the MSI. The app itself is `src-tauri\target\release\Flint-Desktop.exe`.
-- **macOS:** a `.dmg` under `dmg/` and the `.app` under `macos/`.
-- **Linux:** `.deb` and `.AppImage` files under `deb/` and `appimage/`.
-
-If there is no `bundle` folder, the build did not finish. Scroll to the first
-line that says `error` and see [Troubleshooting](#troubleshooting).
-
-For a GPU build, add the variant (see [Local models](#local-models-the-llamacpp-engine)):
-
-```bash
-node scripts/build-installer.mjs vulkan
-```
-
-**Do not run `yarn build`, `yarn tauri build` or `cargo build` on their own to
-get an installer.** They need the engine from the step above, and they fail
-without it with `resource path ... flint-llama-worker.exe doesn't exist`.
-`yarn build` now stops with a message that says so.
-
-## 4. Or run Flint in development instead
-
-```bash
 corepack enable
-yarn install
-yarn build:tauri:plugin:api
-yarn build:core
-yarn build:extensions
-yarn download:bin
-yarn dev
 ```
 
 `corepack enable` switches on the Yarn version the project pins (4.10.3). If
 it fails with a permissions error, run that one command in an Administrator
 PowerShell (Windows) or prefix it with `sudo` (macOS/Linux).
 
-The app window opens once the Rust side has compiled. Edits to the interface
-reload live. Stop it with `Ctrl+C` in the terminal. Development builds have no
-local-model engine; see [Local models](#local-models-the-llamacpp-engine).
-
-## Advanced: the installer build by hand
-
-Only if you cannot use `node scripts/build-installer.mjs`. The order matters,
-and the engine step is the one that most often goes wrong:
+## 3. Install dependencies and build the shared packages and extensions
 
 ```bash
-corepack enable
 yarn install
 yarn build:tauri:plugin:api
 yarn build:core
 yarn build:extensions
+```
+
+## 4a. Run Flint in development
+
+```bash
+yarn download:bin
+yarn dev
+```
+
+The app window opens once the Rust side has compiled. Edits to the
+interface reload live. Stop it with `Ctrl+C` in the terminal.
+
+## 4b. Or build the installable app
+
+One command does it, from any terminal including PowerShell, straight after
+cloning (steps 2 and 3 are not needed for it):
+
+```bash
+node scripts/build-installer.mjs
+```
+
+It checks the tools from step 1 and names any that are missing with the
+command that installs them, then builds the llama.cpp engine and the app and
+prints where the installers are. On Windows it needs neither `make` nor Git
+Bash, finds LLVM in its default folder even when it is not on `PATH`, and does
+not need `corepack enable`. Pass an engine variant to build for a GPU, for
+example `node scripts/build-installer.mjs vulkan` (see
+[Local models](#local-models-the-llamacpp-engine) below).
+
+The same build by hand, after steps 2 and 3: the installer bundles Flint's
+llama.cpp engine, so build that first. On Windows, run this one in **Git
+Bash** (installed with Git; search the Start menu for it), not PowerShell,
+whose `bash` is WSL:
+
+```bash
 make build-engine JAN_ENGINE_VARIANT=cpu
 ```
 
-On Windows run that last line in **Git Bash** (installed with Git; search the
-Start menu for it), not PowerShell, whose `bash` is WSL. Check that it worked
-before going on. This file must exist (`flint-llama-worker` without `.exe` on
-macOS and Linux):
-
-```bash
-ls src-tauri/resources/bin/flint-llama-worker.exe
-```
-
-If it does not, the engine build failed; read its output and fix that first.
-Then, in any terminal in the `flint` folder:
+`cpu` works on every machine. For GPU speed pick another variant (see
+[Local models](#local-models-the-llamacpp-engine) below). Then, back in any
+terminal in the `flint` folder:
 
 ```bash
 yarn build
 ```
 
-The installers end up in the same `src-tauri/target/release/bundle/` folder.
-
 `yarn build` stops at once, with a message, if the engine
 (`src-tauri/resources/bin/flint-llama-worker`) has not been built. Set
 `FLINT_SKIP_ENGINE_CHECK=1` to bypass that check.
+
+When it finishes, the installers are in `src-tauri/target/release/bundle/`:
+
+- Windows: an `.exe` under `nsis\` and an `.msi` under `msi\` (the app itself is `src-tauri\target\release\Flint-Desktop.exe`)
+- macOS: a `.dmg` under `dmg/` and the `.app` under `macos/`
+- Linux: `.deb` and `.AppImage` files under `deb/` and `appimage/`
 
 ## Updating to the latest code
 
@@ -180,15 +154,14 @@ yarn build:tauri:plugin:api
 yarn build:core
 ```
 
-Then run `yarn dev`, or `node scripts/build-installer.mjs` to rebuild the installers.
+Then run `yarn dev` or `yarn build` again.
 
 ## Useful commands
 
 | Command | What it does |
 |---|---|
 | `yarn dev` | Run the desktop app in development |
-| `node scripts/build-installer.mjs` | Build the engine and the installers (use this, not `yarn build`, for a first build) |
-| `yarn build` | Build the app and installers, once the engine is already built |
+| `yarn build` | Build the installable desktop app |
 | `yarn build:web` | Build only the web interface (fast check) |
 | `yarn workspace @janhq/web-app typecheck` | Type-check the interface (rebuilds the Tauri plugins' `dist-js` first, so their types are never stale) |
 | `yarn lint` | Lint the interface |
@@ -215,8 +188,6 @@ CUDA variants need the CUDA Toolkit.
 
 ## Troubleshooting
 
-- **`resource path ... flint-llama-worker.exe doesn't exist`, or "Flint's local-model engine has not been built yet"** — the engine step did not run or failed, so there is nothing to put in the installer. Run `node scripts/build-installer.mjs`; it builds the engine first. If you built by hand, `make build-engine` failed (on Windows it must run in Git Bash).
-- **The build finished but there is no installer** — look for `src-tauri\target\release\bundle`. If it is missing, the build stopped at an `error` line above; the last line of the output is only a summary. `src-tauri\target\release\Flint-Desktop.exe` on its own means the app compiled and only the NSIS or MSI packaging step failed, which usually means a missing Windows tool or no internet for the WiX/NSIS download.
 - **`cross-env: command not found` or `tauri: command not found`** — run `yarn install` first, from the repository root.
 - **Type errors about `@janhq/tauri-plugin-…-api` or `@janhq/core`** — the shared packages are stale; run `yarn build:tauri:plugin:api` and `yarn build:core` again. The web-app `typecheck` script and `yarn build:extensions` both rebuild the plugins' `dist-js` themselves, so after merging a branch that changes a plugin's `guest-js` either one picks the change up.
 - **"ServiceHub not initialized" or "Failed to resolve import @janhq/assistant-extension" in `yarn dev`** — the bundled extensions are not built; run `yarn build:extensions`.
