@@ -3117,7 +3117,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // larger than the budget. Refuse that payload instead of silently sending
     // it past the chosen cap. Overflow recovery may compact it once more.
     assertEstimatedContextFits(dispatchedEstimate, estimateRatio, maxContextTokens,
-      outputHeadroom(maxContextTokens, maxOutputTokens && maxOutputTokens > 0 ? maxOutputTokens : 2048, compaction))
+      outputHeadroom(maxContextTokens, maxOutputTokens && maxOutputTokens > 0 ? maxOutputTokens : 2048, compaction),
+      this.overflowRetry ? 'the last refusal' : resolvedWindow.source)
 
     // Include tools only if we have tools loaded AND model supports them
     const hasTools = Object.keys(this.tools).length > 0
