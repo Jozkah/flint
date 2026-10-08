@@ -30,4 +30,17 @@ describe('isNativeWebTool', () => {
     expect(isNativeWebTool('fetch')).toBe(false)
     expect(isNativeWebTool('read')).toBe(false)
   })
+
+  // A Settings toggle applies at the next run: the run's advertised set is the
+  // authority, not the global setting, so a run that started with web search on
+  // keeps its native tools for the rest of the run, and a run that started with
+  // it off keeps routing `web_search` to an MCP server even if the setting is
+  // turned on mid-run.
+  it("follows the run's advertised set when given one", () => {
+    useWebSearchConfig.setState({ webSearchEnabled: false })
+    expect(isNativeWebTool('web_search', { web_search: {}, web_fetch: {} })).toBe(true)
+
+    useWebSearchConfig.setState({ webSearchEnabled: true })
+    expect(isNativeWebTool('web_search', {})).toBe(false)
+  })
 })

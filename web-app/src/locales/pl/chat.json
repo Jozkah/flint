@@ -175,6 +175,15 @@
     "busy": "Wstrzymaj lub zatrzymaj pokój przed zmianą jego nazwy.",
     "failed": "Nie udało się wygenerować tytułu."
   },
+  "convertToCowork": {
+    "menu": "Zamień na Cowork",
+    "title": "Zamienić na Cowork?",
+    "description": "Rozmowa stanie się nową sesją Cowork. Co zrobić z tym czatem?",
+    "keep": "Zachowaj czat",
+    "delete": "Usuń czat",
+    "done": "Zamieniono na sesję Cowork.",
+    "failed": "Nie ma czego zamieniać: ten czat nie ma wiadomości."
+  },
   "fork": {
     "chat": "Rozgałęź czat",
     "done": "Rozgałęziono do nowego czatu.",

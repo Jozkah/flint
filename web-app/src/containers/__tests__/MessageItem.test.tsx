@@ -242,6 +242,28 @@ describe('MessageItem', () => {
     expect(screen.queryByTestId('empty-run-fallback')).toBeNull()
   })
 
+  it('judges the no-reply fallback on the whole split reply, not the last round', () => {
+    const { rerender } = render(
+      <MessageItem
+        message={makeMsg({ parts: [] }) as any}
+        runParts={[{ type: 'text', text: 'Done, here is the answer.' }] as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    expect(screen.queryByTestId('empty-run-fallback')).toBeNull()
+    rerender(
+      <MessageItem
+        message={makeMsg({ parts: [] }) as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    expect(screen.getByTestId('empty-run-fallback')).toBeInTheDocument()
+  })
+
   it('renders user message in a bubble (no markdown renderer)', () => {
     render(
       <MessageItem

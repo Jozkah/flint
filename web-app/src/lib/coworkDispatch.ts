@@ -6,7 +6,10 @@ import {
 import { executeAgentTool, previewAgentChange } from '@/lib/agentTools'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
-import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import {
+  approvalSourceFor,
+  useToolApprovalRequests,
+} from '@/hooks/useToolApprovalRequests'
 import { deriveToolOutputCap } from '@/lib/context-manager'
 import { destructiveCommandReason } from '@/lib/destructiveCommand'
 import { isReadOnlyCommand } from '@/lib/readOnlyCommand'
@@ -458,7 +461,14 @@ async function callMcpTool(
       isError: true,
     }
   }
-  await recordToolActivity({ ...permission, phase: allowed ? 'allowed' : 'refused' })
+  // Who decided, so a call that ran without a click can be told apart from one
+  // the person allowed: 'prompted' is the card's own button, 'auto' a standing
+  // grant that already covered this server.
+  await recordToolActivity({
+    ...permission,
+    phase: allowed ? 'allowed' : 'refused',
+    ...(allowed ? { detail: `decided by ${approvalSourceFor(call.toolCallId)}` } : {}),
+  })
   if (!allowed) return deniedByUser(toolName)
 
   try {

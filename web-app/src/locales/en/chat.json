@@ -161,6 +161,15 @@
     "busy": "Pause or stop the room before renaming it.",
     "failed": "Could not generate a title."
   },
+  "convertToCowork": {
+    "menu": "Convert to Cowork",
+    "title": "Convert to Cowork?",
+    "description": "The conversation becomes a new Cowork session. What should happen to this chat?",
+    "keep": "Keep chat",
+    "delete": "Delete chat",
+    "done": "Converted to a Cowork session.",
+    "failed": "Nothing to convert: this chat has no messages."
+  },
   "fork": {
     "chat": "Fork chat",
     "done": "Forked into a new chat.",

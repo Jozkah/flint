@@ -154,6 +154,15 @@
     "busy": "Jeda atau hentikan ruang sebelum mengganti namanya.",
     "failed": "Tidak dapat membuat judul."
   },
+  "convertToCowork": {
+    "menu": "Ubah ke Cowork",
+    "title": "Ubah ke Cowork?",
+    "description": "Percakapan ini menjadi sesi Cowork baru. Apa yang harus dilakukan pada obrolan ini?",
+    "keep": "Simpan obrolan",
+    "delete": "Hapus obrolan",
+    "done": "Diubah menjadi sesi Cowork.",
+    "failed": "Tidak ada yang diubah: obrolan ini tidak memiliki pesan."
+  },
   "fork": {
     "chat": "Cabangkan obrolan",
     "done": "Dicabangkan ke obrolan baru.",

@@ -161,6 +161,15 @@
     "busy": "이름을 바꾸기 전에 룸을 일시 중지하거나 중지하세요.",
     "failed": "제목을 생성할 수 없습니다."
   },
+  "convertToCowork": {
+    "menu": "Cowork로 변환",
+    "title": "Cowork로 변환할까요?",
+    "description": "이 대화가 새 Cowork 세션이 됩니다. 이 채팅은 어떻게 할까요?",
+    "keep": "채팅 유지",
+    "delete": "채팅 삭제",
+    "done": "Cowork 세션으로 변환했습니다.",
+    "failed": "변환할 내용이 없습니다: 이 채팅에는 메시지가 없습니다."
+  },
   "fork": {
     "chat": "채팅 분기",
     "done": "새 채팅으로 분기했습니다.",

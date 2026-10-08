@@ -161,6 +161,15 @@
     "busy": "Pausiere oder stoppe den Raum, bevor du ihn umbenennst.",
     "failed": "Es konnte kein Titel generiert werden."
   },
+  "convertToCowork": {
+    "menu": "In Cowork umwandeln",
+    "title": "In Cowork umwandeln?",
+    "description": "Die Unterhaltung wird zu einer neuen Cowork-Sitzung. Was soll mit diesem Chat geschehen?",
+    "keep": "Chat behalten",
+    "delete": "Chat löschen",
+    "done": "In eine Cowork-Sitzung umgewandelt.",
+    "failed": "Nichts umzuwandeln: Dieser Chat enthält keine Nachrichten."
+  },
   "fork": {
     "chat": "Chat verzweigen",
     "done": "In einen neuen Chat verzweigt.",

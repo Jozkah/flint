@@ -1,3 +1,4 @@
+import { useModelToolsEnabled } from '@/hooks/useThreadToolGrants'
 import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
 import { switchedFromOf } from '@/lib/assistantSwitch'
 import { loadThreadMessages } from '@/lib/threadPrefetch'
@@ -432,6 +433,7 @@ export function ThreadConversation({
   // This conversation's model: in a split pane its own thread's, otherwise
   // the global picker, exactly as before.
   const { selectedModel, selectedProvider } = useConversationModel()
+  const toolsEnabled = useModelToolsEnabled(selectedModel, threadId)
   const getProviderByName = useModelProvider((state) => state.getProviderByName)
   // The same selection, read at call time from callbacks.
   const getModelSelection = useCallback(
@@ -1539,8 +1541,7 @@ export function ThreadConversation({
 
       const hasDocuments = hasThreadDocuments || hasProjectDocuments
       const ragFeatureAvailable = Boolean(useAttachments.getState().enabled)
-      const modelSupportsTools =
-        selectedModel?.capabilities?.includes('tools') ?? false
+      const modelSupportsTools = toolsEnabled
 
       updateRagToolsAvailability(
         hasDocuments,
@@ -1553,7 +1554,7 @@ export function ThreadConversation({
   }, [
     thread?.metadata?.hasDocuments,
     thread?.metadata?.project?.id,
-    selectedModel?.capabilities,
+    toolsEnabled,
     updateRagToolsAvailability,
     disabledTools, // Re-run when tools are enabled/disabled
   ])
