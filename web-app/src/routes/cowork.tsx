@@ -5757,6 +5757,9 @@ export function CoworkPage() {
                           hideActions={k < segments.length - 1 || undefined}
                           continuation={k > 0 || undefined}
                           midReply={k < segments.length - 1 || undefined}
+                          runParts={
+                            segments.length > 1 ? whole.parts : undefined
+                          }
                           status={running ? 'streaming' : 'ready'}
                           onRegenerate={handleRegenerate}
                           reasoningContainerRef={reasoningContainerRef}
