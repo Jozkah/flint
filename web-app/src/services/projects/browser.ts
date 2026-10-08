@@ -18,24 +18,22 @@ export class BrowserProjectsService implements ProjectsService {
     return browserApi<void>(URL, jsonRequest('PUT', projects))
   }
 
-  async addProject(name: string, assistantId?: string): Promise<ThreadFolder> {
+  // One request per change, so browsers working at once cannot overwrite each
+  // other's: the server applies each to the list under a lock.
+  addProject(name: string, assistantId?: string): Promise<ThreadFolder> {
     const project: ThreadFolder = { id: ulid(), name, updated_at: Date.now(), assistantId }
-    await this.setProjects([...(await this.getProjects()), project])
-    return project
+    return browserApi<ThreadFolder>(URL, jsonRequest('POST', project))
   }
 
   async updateProject(id: string, name: string, assistantId?: string): Promise<void> {
-    const projects = await this.getProjects()
-    await this.setProjects(
-      projects.map((project) =>
-        project.id === id ? { ...project, name, updated_at: Date.now(), assistantId } : project
-      )
+    await browserApi<void>(
+      `${URL}/${encodeURIComponent(id)}`,
+      jsonRequest('PUT', { name, updated_at: Date.now(), assistantId })
     )
   }
 
   async deleteProject(id: string): Promise<void> {
-    const projects = await this.getProjects()
-    await this.setProjects(projects.filter((project) => project.id !== id))
+    await browserApi<void>(`${URL}/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
   async getProjectById(id: string): Promise<ThreadFolder | undefined> {

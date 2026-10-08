@@ -35,6 +35,9 @@ pub struct Host {
     starting: Mutex<HashSet<String>>,
     cancellations: Mutex<HashMap<String, oneshot::Sender<()>>>,
     allow_stdio: bool,
+    /// One writer at a time for `mcp_config.json`: every change reads the
+    /// document, edits it and writes it back.
+    config_lock: Mutex<()>,
 }
 
 impl Host {
@@ -45,6 +48,7 @@ impl Host {
             starting: Mutex::new(HashSet::new()),
             cancellations: Mutex::new(HashMap::new()),
             allow_stdio,
+            config_lock: Mutex::new(()),
         }
     }
 }
@@ -101,6 +105,7 @@ pub fn config_text() -> String {
 /// were switched off are disconnected so nothing keeps running a stale
 /// definition.
 pub async fn save_config(host: &Host, text: &str) -> Result<(), String> {
+    let _writer = host.config_lock.lock().await;
     let document: Value = serde_json::from_str(text).map_err(|e| format!("invalid JSON: {e}"))?;
     if !document.is_object() {
         return Err("configuration must be a JSON object".into());
@@ -173,6 +178,7 @@ async fn connect(host: &Host, name: &str) -> Result<(), String> {
 }
 
 pub async fn activate(host: &Host, name: &str, config: Value, start: bool) -> Result<(), String> {
+    let _writer = host.config_lock.lock().await;
     client::validate_server_name(name)?;
     client::validate_config(&config)?;
     let changed = saved_servers()
@@ -193,6 +199,7 @@ pub async fn activate(host: &Host, name: &str, config: Value, start: bool) -> Re
 }
 
 pub async fn deactivate(host: &Host, name: &str) -> Result<(), String> {
+    let _writer = host.config_lock.lock().await;
     client::disconnect(name, &host.servers).await;
     host.failures.lock().await.remove(name);
     client::set_active(name, false)

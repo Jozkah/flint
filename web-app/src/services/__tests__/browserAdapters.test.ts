@@ -44,16 +44,24 @@ describe('headless browser adapters', () => {
     )
   })
 
-  it('stores projects as one list on the server', async () => {
+  it('changes one project per request so browsers cannot overwrite each other', async () => {
     const fetch = vi
       .fn()
-      .mockResolvedValueOnce({ ok: true, status: 200, redirected: false, json: async () => [{ id: 'a', name: 'A', updated_at: 1 }] })
+      .mockResolvedValueOnce({ ok: true, status: 201, redirected: false, json: async () => ({ id: 'n', name: 'New' }) })
+      .mockResolvedValueOnce({ ok: true, status: 204, redirected: false })
       .mockResolvedValueOnce({ ok: true, status: 204, redirected: false })
     vi.stubGlobal('fetch', fetch)
-    await new BrowserProjectsService().deleteProject('a')
-    const [url, init] = fetch.mock.calls[1]
-    expect(url).toBe('/api/v1/projects')
-    expect(init).toMatchObject({ method: 'PUT', body: '[]' })
+    const projects = new BrowserProjectsService()
+    await projects.addProject('New', 'assistant')
+    expect(fetch.mock.calls[0][0]).toBe('/api/v1/projects')
+    expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'POST' })
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ name: 'New', assistantId: 'assistant' })
+    await projects.updateProject('a b', 'Renamed')
+    expect(fetch.mock.calls[1][0]).toBe('/api/v1/projects/a%20b')
+    expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'PUT' })
+    await projects.deleteProject('a')
+    expect(fetch.mock.calls[2][0]).toBe('/api/v1/projects/a')
+    expect(fetch.mock.calls[2][1]).toMatchObject({ method: 'DELETE' })
   })
 
   it('addresses assistants by encoded id', async () => {

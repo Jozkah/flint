@@ -320,6 +320,37 @@ async fn resource_route(
                 Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not save projects"),
             }
         }
+        (Method::POST, "/api/v1/projects") => {
+            let value = match read_json(req).await {
+                Ok(value) => value,
+                Err(response) => return response,
+            };
+            match tokio::task::spawn_blocking(move || resources::add_project(&root, value)).await {
+                Ok(Ok(project)) => json_created(&project),
+                Ok(Err(_)) => text(StatusCode::BAD_REQUEST, "Invalid project"),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not save project"),
+            }
+        }
+        (Method::PUT, p) if p.starts_with("/api/v1/projects/") => {
+            let id = p["/api/v1/projects/".len()..].to_owned();
+            let value = match read_json(req).await {
+                Ok(value) => value,
+                Err(response) => return response,
+            };
+            match tokio::task::spawn_blocking(move || resources::update_project(&root, &id, value)).await {
+                Ok(Ok(())) => no_content(),
+                Ok(Err(_)) => text(StatusCode::NOT_FOUND, "No such project"),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not save project"),
+            }
+        }
+        (Method::DELETE, p) if p.starts_with("/api/v1/projects/") => {
+            let id = p["/api/v1/projects/".len()..].to_owned();
+            match tokio::task::spawn_blocking(move || resources::delete_project(&root, &id)).await {
+                Ok(Ok(())) => no_content(),
+                Ok(Err(_)) => text(StatusCode::BAD_REQUEST, "Invalid project id"),
+                Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Could not delete project"),
+            }
+        }
         (Method::GET, "/api/v1/assistants") => {
             blocking(move || resources::assistants(&root)).await
         }

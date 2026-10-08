@@ -6,6 +6,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::Mutex;
 
 use serde_json::Value;
 
@@ -81,12 +82,35 @@ pub fn register_secret_values(value: &Value) -> Result<(), String> {
 
 const PROJECTS_FILE: &str = "projects.json";
 
+/// One writer at a time for the projects file: every change reads the list,
+/// edits it and writes it back, so two at once would drop one of them.
+static PROJECTS_LOCK: Mutex<()> = Mutex::new(());
+
+fn project_id(id: &str) -> Result<(), String> {
+    if !id.is_empty() && id.len() <= 128 && id.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')) {
+        Ok(())
+    } else {
+        Err("invalid project id".into())
+    }
+}
+
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let parent = path.parent().ok_or("path has no parent")?;
     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    let temporary = path.with_extension("tmp");
+    // Staged under a name no other writer uses, then renamed over.
+    let temporary = path.with_extension(format!(
+        "{}-{}.tmp",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default()
+    ));
     fs::write(&temporary, bytes).map_err(|e| e.to_string())?;
-    fs::rename(&temporary, path).map_err(|e| e.to_string())
+    fs::rename(&temporary, path).map_err(|e| {
+        let _ = fs::remove_file(&temporary);
+        e.to_string()
+    })
 }
 
 pub fn projects(root: &Path) -> Result<Vec<Value>, String> {
@@ -98,6 +122,7 @@ pub fn projects(root: &Path) -> Result<Vec<Value>, String> {
 }
 
 pub fn set_projects(root: &Path, value: Value) -> Result<(), String> {
+    let _guard = PROJECTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let list = value.as_array().ok_or("expected a JSON array")?;
     for project in list {
         let valid = project.get("id").and_then(Value::as_str).is_some()
@@ -106,6 +131,60 @@ pub fn set_projects(root: &Path, value: Value) -> Result<(), String> {
             return Err("each project needs string id and name".into());
         }
     }
+    let bytes = serde_json::to_vec(list).map_err(|e| e.to_string())?;
+    write_atomic(&root.join(PROJECTS_FILE), &bytes)
+}
+
+/// Add one project to the shared list. The browser sends the project, not the
+/// whole list, so several browsers adding at once all land.
+pub fn add_project(root: &Path, project: Value) -> Result<Value, String> {
+    let id = project.get("id").and_then(Value::as_str).ok_or("a project needs an id")?;
+    project_id(id)?;
+    if project.get("name").and_then(Value::as_str).is_none() {
+        return Err("a project needs a name".into());
+    }
+    let _guard = PROJECTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut list = projects(root)?;
+    if list.iter().any(|p| p.get("id").and_then(Value::as_str) == Some(id)) {
+        return Err("a project with that id already exists".into());
+    }
+    list.push(project.clone());
+    write_projects(root, &list)?;
+    Ok(project)
+}
+
+/// Change the named fields of one project, leaving the rest as they are.
+pub fn update_project(root: &Path, id: &str, changes: Value) -> Result<(), String> {
+    project_id(id)?;
+    let changes = changes.as_object().ok_or("expected a JSON object")?;
+    let _guard = PROJECTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut list = projects(root)?;
+    let project = list
+        .iter_mut()
+        .find(|p| p.get("id").and_then(Value::as_str) == Some(id))
+        .ok_or("no such project")?;
+    let object = project.as_object_mut().ok_or("stored project is not an object")?;
+    for (key, value) in changes {
+        if key != "id" {
+            object.insert(key.clone(), value.clone());
+        }
+    }
+    write_projects(root, &list)
+}
+
+pub fn delete_project(root: &Path, id: &str) -> Result<(), String> {
+    project_id(id)?;
+    let _guard = PROJECTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut list = projects(root)?;
+    let before = list.len();
+    list.retain(|p| p.get("id").and_then(Value::as_str) != Some(id));
+    if list.len() == before {
+        return Ok(());
+    }
+    write_projects(root, &list)
+}
+
+fn write_projects(root: &Path, list: &[Value]) -> Result<(), String> {
     let bytes = serde_json::to_vec(list).map_err(|e| e.to_string())?;
     write_atomic(&root.join(PROJECTS_FILE), &bytes)
 }
@@ -177,6 +256,34 @@ mod tests {
         assert!(set_provider_keys("openai", &json!({"keys": ["a".repeat(5000)]})).is_err());
         assert!(register_secret_values(&json!({"values": 3})).is_err());
         assert!(delete_provider_keys("a/b").is_err());
+    }
+
+    #[test]
+    fn projects_added_from_many_threads_all_survive() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let handles: Vec<_> = (0..16)
+            .map(|i| {
+                let root = root.clone();
+                std::thread::spawn(move || {
+                    add_project(&root, json!({"id": format!("p{i}"), "name": format!("n{i}")})).unwrap();
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        assert_eq!(projects(&root).unwrap().len(), 16);
+        update_project(&root, "p3", json!({"name": "renamed", "id": "hijack"})).unwrap();
+        let after = projects(&root).unwrap();
+        let p3 = after.iter().find(|p| p["id"] == "p3").unwrap();
+        assert_eq!(p3["name"], "renamed");
+        delete_project(&root, "p4").unwrap();
+        delete_project(&root, "p4").unwrap();
+        assert_eq!(projects(&root).unwrap().len(), 15);
+        assert!(add_project(&root, json!({"id": "p3", "name": "dup"})).is_err());
+        assert!(add_project(&root, json!({"id": "../x", "name": "bad"})).is_err());
+        assert!(update_project(&root, "missing", json!({})).is_err());
     }
 
     #[test]
