@@ -10,6 +10,7 @@ import {
   RotateCcw,
   X,
 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { DownloadProgress } from '@/components/ui/download-progress'
@@ -82,6 +83,26 @@ export function HuggingFaceDownloadAction({
   const bundleId = `hf:${providerName}:${modelId}`
   const task = useHuggingFaceDownloads((state) => state.tasks[bundleId])
 
+  // Let the bar land on "Ready" for a moment before the row turns to Installed.
+  const inProgress = Boolean(
+    task && ['downloading', 'queued', 'verifying', 'importing'].includes(task.status)
+  )
+  const wasInProgress = useRef(false)
+  const [holdReady, setHoldReady] = useState(false)
+  useEffect(() => {
+    if (inProgress) {
+      wasInProgress.current = true
+      setHoldReady(false)
+      return
+    }
+    if (!wasInProgress.current) return
+    wasInProgress.current = false
+    if (task?.status !== 'complete' && !installed) return
+    setHoldReady(true)
+    const id = setTimeout(() => setHoldReady(false), 1600)
+    return () => clearTimeout(id)
+  }, [inProgress, task?.status, installed])
+
   const useModel = () => {
     navigate({
       to: route.home,
@@ -143,10 +164,28 @@ export function HuggingFaceDownloadAction({
     }
   }
 
-  if (
-    task &&
-    ['downloading', 'queued', 'verifying', 'importing'].includes(task.status)
-  ) {
+  if (holdReady && !inProgress) {
+    return (
+      <div
+        className={cn(
+          'flex min-w-0 items-center gap-2',
+          compact ? 'w-44' : 'w-56',
+          className
+        )}
+      >
+        <DownloadProgress
+          className="min-w-0 flex-1"
+          percent={100}
+          done
+          compact={compact}
+          downloadingLabel={t('common:motionMedia.downloading')}
+          readyLabel={t('common:motionMedia.ready')}
+        />
+      </div>
+    )
+  }
+
+  if (task && inProgress) {
     const percent = task.progress * 100
     const eta =
       task.status === 'downloading' && task.total && task.bytesPerSecond

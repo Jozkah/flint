@@ -9,6 +9,7 @@ import { formatElapsed, type RunStatus } from '@/lib/runStatus'
 import { ModelLoader } from '@/containers/loaders/ModelLoader'
 
 const LOADED_HOLD_MS = 1200
+const FAILED_HOLD_MS = 6000
 
 /**
  * When a model load ends, how long it took, for about a second, then null.
@@ -30,6 +31,36 @@ function useLoadedFor(loading: boolean | undefined): number | null {
     return () => clearTimeout(id)
   }, [loading])
   return loadedMs
+}
+
+/**
+ * How long the model load ran before it failed, while the failure is still
+ * worth showing, else null. The store stamps the failure; a new load clears it.
+ */
+function useFailedFor(failedAt: number | undefined, loading: boolean | undefined): number | null {
+  const startedAt = useRef<number | null>(null)
+  const lastMs = useRef<number>(0)
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    if (loading) {
+      startedAt.current = Date.now()
+      return
+    }
+    if (startedAt.current !== null) {
+      lastMs.current = Date.now() - startedAt.current
+      startedAt.current = null
+    }
+  }, [loading])
+  useEffect(() => {
+    if (failedAt === undefined) {
+      setVisible(false)
+      return
+    }
+    setVisible(true)
+    const id = setTimeout(() => setVisible(false), FAILED_HOLD_MS)
+    return () => clearTimeout(id)
+  }, [failedAt])
+  return visible ? lastMs.current : null
 }
 
 /**
@@ -106,6 +137,15 @@ export function PromptProgress({
   // hideIdle to suppress the redundant generic "Working…" fallback.
   const elapsed = usePhaseElapsed(status?.key, !!status)
   const loadedMs = useLoadedFor(loadingModel)
+  const failedAt = useAppState((state) =>
+    stateKey || !threadId ? undefined : state.modelLoadFailures?.[threadId]
+  )
+  const failedMs = useFailedFor(failedAt, loadingModel)
+  if (failedMs !== null && !loadingModel) {
+    return (
+      <ModelLoader status="failed" elapsedMs={failedMs} className="min-w-56" />
+    )
+  }
   if (loadedMs !== null && !loadingModel) {
     return (
       <ModelLoader status="done" elapsedMs={loadedMs} className="min-w-56" />
