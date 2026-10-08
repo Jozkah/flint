@@ -15,6 +15,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   captureDesktopPreview,
   getComputerExclusions,
+  listOpenApps,
   regionFromDrag,
   setComputerExclusions,
   type ExcludedRegion,
@@ -30,6 +31,9 @@ type Point = { x: number; y: number }
 export function ComputerExclusionSettings() {
   const { t } = useTranslation()
   const [regions, setRegions] = useState<ExcludedRegion[]>([])
+  const [apps, setApps] = useState<string[]>([])
+  const [open_, setOpenApps] = useState<string[]>([])
+  const [typed, setTyped] = useState('')
   const [picking, setPicking] = useState(false)
   const [shot, setShot] = useState<string | null>(null)
   const [drag, setDrag] = useState<{ from: Point; to: Point } | null>(null)
@@ -38,23 +42,45 @@ export function ComputerExclusionSettings() {
 
   useEffect(() => {
     let live = true
+    listOpenApps()
+      .then((a) => live && setOpenApps(a))
+      .catch(() => {})
     getComputerExclusions()
-      .then((e) => live && setRegions(e.regions))
+      .then((e) => {
+        if (!live) return
+        setRegions(e.regions)
+        setApps(e.allowedApps)
+      })
       .catch(() => {})
     return () => {
       live = false
     }
   }, [])
 
-  const save = (next: ExcludedRegion[]) => {
-    const previous = regions
+  const save = (
+    next: ExcludedRegion[],
+    nextApps: string[] = apps
+  ) => {
+    const previous = { regions, apps }
     setRegions(next)
-    setComputerExclusions({ regions: next })
-      .then((e) => setRegions(e.regions))
+    setApps(nextApps)
+    setComputerExclusions({ regions: next, allowedApps: nextApps })
+      .then((e) => {
+        setRegions(e.regions)
+        setApps(e.allowedApps)
+      })
       .catch((e) => {
-        setRegions(previous)
+        setRegions(previous.regions)
+        setApps(previous.apps)
         toast.error(String(e))
       })
+  }
+
+  const addApp = (name: string) => {
+    const n = name.trim()
+    if (!n || apps.some((a) => a.toLowerCase() === n.toLowerCase())) return
+    save(regions, [...apps, n])
+    setTyped('')
   }
 
   const open = async () => {
@@ -138,6 +164,55 @@ export function ComputerExclusionSettings() {
           >
             {t('settings:agentTools.computerExclusionsEdit')}
           </Button>
+        }
+      />
+      <CardItem
+        anchor="settings-agent-tools-computer-apps"
+        title={t('settings:agentTools.computerApps')}
+        description={
+          apps.length === 0
+            ? t('settings:agentTools.computerAppsDesc')
+            : t('settings:agentTools.computerAppsLimited')
+        }
+        align="start"
+        actions={
+          <div className="flex max-w-sm flex-col items-end gap-2">
+            <div className="flex flex-wrap justify-end gap-1">
+              {apps.map((a) => (
+                <Button
+                  key={a}
+                  size="xs"
+                  variant="outline"
+                  title={t('settings:agentTools.computerAppsRemove')}
+                  onClick={() =>
+                    save(
+                      regions,
+                      apps.filter((x) => x !== a)
+                    )
+                  }
+                >
+                  {a} ×
+                </Button>
+              ))}
+            </div>
+            <div className="flex flex-wrap justify-end gap-1">
+              {open_
+                .filter((a) => !apps.some((x) => x.toLowerCase() === a.toLowerCase()))
+                .map((a) => (
+                  <Button key={a} size="xs" variant="ghost" onClick={() => addApp(a)}>
+                    + {a}
+                  </Button>
+                ))}
+            </div>
+            <input
+              className="h-7 w-48 rounded-md border bg-transparent px-2 text-xs"
+              data-testid="computer-apps-input"
+              placeholder={t('settings:agentTools.computerAppsPlaceholder')}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addApp(typed)}
+            />
+          </div>
         }
       />
       <Dialog open={picking} onOpenChange={setPicking}>

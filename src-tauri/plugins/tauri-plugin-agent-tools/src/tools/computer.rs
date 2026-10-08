@@ -36,10 +36,15 @@ impl Region {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Exclusions { pub regions: Vec<Region> }
+pub struct Exclusions {
+    pub regions: Vec<Region>,
+    /// Process names (without `.exe`). When not empty the tool acts only on
+    /// windows of these apps.
+    pub allowed_apps: Vec<String>,
+}
 
 const MAX_REGIONS: usize = 32;
-static EXCLUDED: std::sync::RwLock<Vec<Region>> = std::sync::RwLock::new(Vec::new());
+static EXCLUDED: std::sync::RwLock<Exclusions> = std::sync::RwLock::new(Exclusions { regions: Vec::new(), allowed_apps: Vec::new() });
 
 fn exclusions_path(data_folder: &std::path::Path) -> std::path::PathBuf { data_folder.join("computer-exclusions.json") }
 
@@ -51,19 +56,79 @@ pub fn load_exclusions(data_folder: &std::path::Path) -> Exclusions {
 /// Saves the regions and makes them the ones in force for this process.
 pub fn save_exclusions(data_folder: &std::path::Path, exclusions: &Exclusions) -> Result<Exclusions, String> {
     let regions: Vec<Region> = exclusions.regions.iter().filter(|r| r.width > 0 && r.height > 0).take(MAX_REGIONS).copied().collect();
-    let clean = Exclusions { regions };
+    let mut allowed_apps: Vec<String> = Vec::new();
+    for app in &exclusions.allowed_apps {
+        let name = app_key(app);
+        if !name.is_empty() && !allowed_apps.iter().any(|a| app_key(a) == name) && allowed_apps.len() < MAX_REGIONS { allowed_apps.push(app.trim().to_string()); }
+    }
+    let clean = Exclusions { regions, allowed_apps };
     std::fs::create_dir_all(data_folder).map_err(|e| e.to_string())?;
     let path = exclusions_path(data_folder);
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, serde_json::to_vec_pretty(&clean).unwrap_or_default()).map_err(|e| e.to_string())?;
     std::fs::rename(tmp, path).map_err(|e| e.to_string())?;
-    set_active_exclusions(clean.regions.clone());
+    set_active_exclusions(clean.clone());
     Ok(clean)
 }
 
 /// Makes `regions` the ones in force (called at startup and after a save).
-pub fn set_active_exclusions(regions: Vec<Region>) {
-    if let Ok(mut guard) = EXCLUDED.write() { *guard = regions; }
+pub fn set_active_exclusions(exclusions: Exclusions) {
+    if let Ok(mut guard) = EXCLUDED.write() { *guard = exclusions; }
+}
+
+/// Case-insensitive process name without a trailing `.exe`.
+fn app_key(name: &str) -> String {
+    let n = name.trim().to_lowercase();
+    n.strip_suffix(".exe").unwrap_or(&n).to_string()
+}
+
+fn app_allowed(app: &str, allowed: &[String]) -> bool {
+    let key = app_key(app);
+    allowed.iter().any(|a| app_key(a) == key)
+}
+
+fn action_point(action: &Action) -> Option<(i32, i32)> {
+    match action {
+        Action::Screenshot => None,
+        Action::Move { x, y } | Action::Click { x, y, .. } | Action::Type { x, y, .. } | Action::Key { x, y, .. } | Action::Scroll { x, y, .. } => Some((*x, *y)),
+    }
+}
+
+/// Names of apps with a visible window, for the picker in Settings.
+pub async fn list_open_apps() -> Vec<String> {
+    #[cfg(windows)]
+    {
+        let mut cmd = tokio::process::Command::new("powershell.exe");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", include_str!("computer_windows_app.ps1")])
+            .env("FLINT_APP_MODE", "list").creation_flags(0x0800_0000);
+        if let Ok(out) = output(cmd).await {
+            return String::from_utf8_lossy(&out.stdout).lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+        }
+    }
+    Vec::new()
+}
+
+/// Refuses an action whose target window is not one of the allowed apps.
+async fn check_app(action: &Action, allowed: &[String]) -> Result<(), String> {
+    let Some((x, y)) = action_point(action) else { return Ok(()) };
+    if allowed.is_empty() { return Ok(()); }
+    #[cfg(windows)]
+    {
+        let mut cmd = tokio::process::Command::new("powershell.exe");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", include_str!("computer_windows_app.ps1")])
+            .env("FLINT_APP_X", x.to_string()).env("FLINT_APP_Y", y.to_string()).creation_flags(0x0800_0000);
+        let out = output(cmd).await.map_err(|e| format!("could not tell which app is at ({x}, {y}): {e}. Nothing was sent."))?;
+        let app = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if app.is_empty() { return Err(format!("no app window is at ({x}, {y}). The user limited the computer tool to: {}. Nothing was sent.", allowed.join(", "))); }
+        if app_allowed(&app, allowed) { Ok(()) } else {
+            Err(format!("the window at ({x}, {y}) belongs to '{app}', which the user has not allowed the computer tool to control. Allowed apps: {}. Nothing was sent.", allowed.join(", ")))
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (x, y);
+        Err("the user limited the computer tool to certain apps, which can only be enforced on Windows. Nothing was sent.".into())
+    }
 }
 
 fn check_excluded(action: &Action, regions: &[Region]) -> Result<(), String> {
@@ -129,8 +194,9 @@ static INPUT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub async fn run(args: &Value) -> (String, Option<Vec<ImageContentPart>>) {
     let action = match plan(args) { Ok(p) => p, Err(e) => return (format!("ERROR: {e}"), None) };
-    let regions = EXCLUDED.read().map(|g| g.clone()).unwrap_or_default();
-    if let Err(e) = check_excluded(&action, &regions) { return (format!("ERROR: {e}"), None); }
+    let limits = EXCLUDED.read().map(|g| g.clone()).unwrap_or_default();
+    if let Err(e) = check_excluded(&action, &limits.regions) { return (format!("ERROR: {e}"), None); }
+    if let Err(e) = check_app(&action, &limits.allowed_apps).await { return (format!("ERROR: {e}"), None); }
     let _guard = INPUT_LOCK.lock().await;
     // Let the approval card disappear before a coordinate-based click.
     tokio::time::sleep(Duration::from_millis(250)).await;
@@ -254,10 +320,12 @@ mod tests {
     #[test]
     fn exclusions_round_trip_and_drop_empty_regions() {
         let dir = tempfile::tempdir().unwrap();
-        let saved = save_exclusions(dir.path(), &Exclusions { regions: vec![Region { x: 1, y: 2, width: 3, height: 4 }, Region { x: 0, y: 0, width: 0, height: 9 }] }).unwrap();
+        let saved = save_exclusions(dir.path(), &Exclusions { regions: vec![Region { x: 1, y: 2, width: 3, height: 4 }, Region { x: 0, y: 0, width: 0, height: 9 }], allowed_apps: vec!["Notepad.exe".into(), "notepad".into(), " ".into()] }).unwrap();
         assert_eq!(saved.regions.len(), 1);
+        assert_eq!(saved.allowed_apps, vec!["Notepad.exe".to_string()]);
+        assert!(app_allowed("NOTEPAD", &saved.allowed_apps) && !app_allowed("paint", &saved.allowed_apps));
         assert_eq!(load_exclusions(dir.path()), saved);
-        set_active_exclusions(vec![]);
+        set_active_exclusions(Exclusions::default());
     }
     #[test]
     #[cfg(target_os = "linux")]

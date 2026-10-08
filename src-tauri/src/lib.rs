@@ -122,6 +122,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::get_computer_exclusions,
         core::agent::commands::set_computer_exclusions,
         core::agent::commands::capture_desktop_preview,
+        core::agent::commands::list_open_apps,
         core::agent::commands::attribute_git_call,
         core::agent::commands::set_compaction_policy,
         // One provider transport: every OpenAI-compatible request resolves
@@ -756,7 +757,7 @@ pub fn build_app() -> tauri::App {
             // cleanly; say so in the log, once, so a crash report has a lead.
             let data_folder = get_jan_data_folder_path(app.handle().clone());
             tauri_plugin_agent_tools::tools::computer::set_active_exclusions(
-                tauri_plugin_agent_tools::tools::computer::load_exclusions(&data_folder).regions,
+                tauri_plugin_agent_tools::tools::computer::load_exclusions(&data_folder),
             );
             let earlier_run = core::crash_trace::mark_started(&data_folder);
             // What a fatal exception wrote last time, if one did: read before

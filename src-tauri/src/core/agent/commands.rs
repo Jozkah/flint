@@ -130,6 +130,12 @@ pub async fn set_computer_exclusions(
     tauri_plugin_agent_tools::tools::computer::save_exclusions(&get_jan_data_folder_path(app), &exclusions)
 }
 
+/// Names of apps with a visible window, to pick allowed apps from.
+#[tauri::command]
+pub async fn list_open_apps() -> Vec<String> {
+    tauri_plugin_agent_tools::tools::computer::list_open_apps().await
+}
+
 /// The desktop as a PNG data URL, for drawing a region on.
 #[tauri::command]
 pub async fn capture_desktop_preview() -> Result<String, String> {

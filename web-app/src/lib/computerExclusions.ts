@@ -8,14 +8,18 @@ export type ExcludedRegion = {
   height: number
 }
 
-export type ComputerExclusions = { regions: ExcludedRegion[] }
+export type ComputerExclusions = {
+  regions: ExcludedRegion[]
+  /** Process names. When not empty the tool acts only in windows of these apps. */
+  allowedApps: string[]
+}
 
 const inTauri = (): boolean =>
   typeof window !== 'undefined' &&
   !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
 
 export async function getComputerExclusions(): Promise<ComputerExclusions> {
-  if (!inTauri()) return { regions: [] }
+  if (!inTauri()) return { regions: [], allowedApps: [] }
   return invoke<ComputerExclusions>('get_computer_exclusions')
 }
 
@@ -23,6 +27,12 @@ export async function setComputerExclusions(
   exclusions: ComputerExclusions
 ): Promise<ComputerExclusions> {
   return invoke<ComputerExclusions>('set_computer_exclusions', { exclusions })
+}
+
+/** Apps with a visible window, to pick allowed apps from. */
+export async function listOpenApps(): Promise<string[]> {
+  if (!inTauri()) return []
+  return invoke<string[]>('list_open_apps')
 }
 
 /** The desktop as a PNG data URL, to draw a region on. */
