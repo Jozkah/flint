@@ -68,10 +68,12 @@ const MAX_VOICE_BODY: usize = 6 * 1024 * 1024;
 const VOICE_METHOD: &str = "voice.transcribe";
 /// A socket that has not authenticated by then is closed.
 const WS_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
-/// Largest message or frame a socket accepts. Everything a phone sends is a
-/// short JSON command, and before it has authenticated nobody should be able
-/// to make the app buffer more than this.
-const WS_MAX_MESSAGE: usize = 16 * 1024;
+/// Largest message or frame a socket accepts. A phone sends JSON commands,
+/// and a chat prompt can be long (pasted logs, code), so this is generous;
+/// attachments go through the chunked HTTP upload instead. Before a socket
+/// has authenticated nobody can make the app buffer more than this, and
+/// `WS_MAX_UNAUTHENTICATED_PER_IP` bounds how many of them one address holds.
+const WS_MAX_MESSAGE: usize = 1024 * 1024;
 /// Sockets one address may hold open without having authenticated.
 const WS_MAX_UNAUTHENTICATED_PER_IP: usize = 32;
 
