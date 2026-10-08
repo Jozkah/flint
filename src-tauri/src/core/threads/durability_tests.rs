@@ -115,43 +115,72 @@ fn an_append_creates_the_file_when_there_is_none() {
     assert_eq!(read.len(), 1);
 }
 
+/// Every `*.tmp` staging file in `dir`.
+fn staging_files(dir: &std::path::Path) -> Vec<String> {
+    fs::read_dir(dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".tmp"))
+        .collect()
+}
+
 #[test]
-fn a_failed_rewrite_leaves_the_existing_file_intact() {
+fn a_failed_rewrite_reports_failure_and_leaves_no_staging_file() {
     let (tmp, path) = thread("failed-rewrite");
-    write_messages_to_file(&[json!({"id": "keep"})], &path).unwrap();
-    // Block the staging file the rewrite goes through, so the rewrite fails
-    // before it could have touched the real file.
-    let staging = path.with_extension("jsonl.tmp");
-    fs::create_dir_all(&staging).unwrap();
+    // A destination that cannot be replaced by a file: a directory with
+    // something in it. The staging file is written, the rename is refused.
+    fs::create_dir_all(&path).unwrap();
+    fs::write(path.join("occupant"), "x").unwrap();
 
     let result = write_messages_to_file(&[json!({"id": "replacement"})], &path);
 
     assert!(result.is_err(), "the blocked rewrite must report failure");
-    let read = read_messages_from_file(tmp.path(), "failed-rewrite").unwrap();
-    assert_eq!(read.len(), 1);
-    assert_eq!(read[0]["id"], "keep");
+    assert!(path.join("occupant").is_file(), "the destination is untouched");
+    assert!(staging_files(path.parent().unwrap()).is_empty(), "the staging file is cleaned up");
+    drop(tmp);
 }
 
 #[test]
-fn a_failed_thread_metadata_write_leaves_the_existing_file_intact() {
+fn a_failed_thread_metadata_write_reports_failure_and_leaves_no_staging_file() {
     let tmp = tempfile::tempdir().unwrap();
     ensure_thread_dir_exists(tmp.path(), "meta").unwrap();
-    update_thread_metadata(tmp.path(), "meta", &json!({"id": "meta", "title": "keep"})).unwrap();
     let path = get_thread_metadata_path(tmp.path(), "meta");
-    fs::create_dir_all(path.with_file_name("thread.json.tmp")).unwrap();
+    fs::create_dir_all(&path).unwrap();
+    fs::write(path.join("occupant"), "x").unwrap();
 
     let result = update_thread_metadata(tmp.path(), "meta", &json!({"id": "meta", "title": "new"}));
 
     assert!(result.is_err());
-    let kept: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(kept["title"], "keep");
+    assert!(path.join("occupant").is_file());
+    assert!(staging_files(path.parent().unwrap()).is_empty());
+}
+
+#[test]
+fn writers_to_one_file_never_share_a_staging_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    ensure_thread_dir_exists(tmp.path(), "busy").unwrap();
+    let path = get_thread_metadata_path(tmp.path(), "busy");
+    let handles: Vec<_> = (0..24)
+        .map(|i| {
+            let root = tmp.path().to_path_buf();
+            std::thread::spawn(move || {
+                update_thread_metadata(&root, "busy", &json!({"id": "busy", "title": format!("t{i}")})).unwrap();
+            })
+        })
+        .collect();
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    let kept: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    assert!(kept["title"].as_str().unwrap().starts_with('t'));
+    assert!(staging_files(path.parent().unwrap()).is_empty());
 }
 
 #[test]
 fn a_successful_rewrite_leaves_no_staging_file_behind() {
     let (_tmp, path) = thread("clean");
     write_messages_to_file(&[json!({"id": "a"}), json!({"id": "b"})], &path).unwrap();
-    assert!(!path.with_extension("jsonl.tmp").exists());
+    assert!(staging_files(path.parent().unwrap()).is_empty());
     assert_eq!(fs::read_to_string(&path).unwrap().lines().count(), 2);
 }

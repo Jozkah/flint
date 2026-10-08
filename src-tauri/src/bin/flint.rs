@@ -211,6 +211,51 @@ impl ResumeRunArgs {
 /// lives under the non-interactive `cli` fallback.
 #[derive(Subcommand)]
 enum Commands {
+    /// Run the production browser server without a desktop session
+    Serve {
+        /// Loopback address; use a private-network HTTPS proxy for remote access
+        #[arg(long, visible_alias = "bind", default_value = "127.0.0.1:1340")]
+        listen: std::net::SocketAddr,
+        /// Directory containing the production web bundle
+        #[arg(long)]
+        assets_dir: Option<std::path::PathBuf>,
+        /// Shared Flint data directory
+        #[arg(long)]
+        data_dir: Option<std::path::PathBuf>,
+        /// Exact DNS name used by the private-network HTTPS proxy
+        #[arg(long)]
+        public_host: Option<String>,
+        /// Let browser sessions add and start stdio MCP servers (runs programs
+        /// on this machine); http and sse servers are always allowed
+        #[arg(long)]
+        allow_mcp_stdio: bool,
+        /// Exact host[:port] clients use to reach this server; repeatable.
+        /// Required when --listen/--bind is beyond loopback
+        #[arg(long = "allowed-host")]
+        allowed_hosts: Vec<String>,
+        /// Exact origin (http(s)://host[:port]) allowed to call the API
+        /// cross-origin with a bearer token, such as a native app shell;
+        /// repeatable, never a wildcard
+        #[arg(long = "allowed-origin")]
+        allowed_origins: Vec<String>,
+        /// The flint-llama-worker binary that runs local models (defaults to
+        /// FLINT_LLAMA_WORKER_BIN, then the file beside this executable)
+        #[arg(long)]
+        llama_worker: Option<std::path::PathBuf>,
+        /// Run in the background, detached from this terminal, logging to
+        /// <data folder>/web-server/server.log; stop it with `flint stop`
+        #[arg(long, visible_alias = "detach")]
+        background: bool,
+        /// Where the background starter collects the first-run credential
+        #[arg(long, hide = true)]
+        credential_file: Option<std::path::PathBuf>,
+    },
+    /// Stop the `flint serve` running on this data folder
+    Stop {
+        /// Shared Flint data directory the server was started with
+        #[arg(long)]
+        data_dir: Option<std::path::PathBuf>,
+    },
     /// Non-interactive CLI: launch agents, run headless agent tasks, manage models and threads
     #[command(display_order = 1)]
     Cli {
@@ -1346,6 +1391,84 @@ async fn run() {
     };
 
     match command {
+        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, allowed_hosts, allowed_origins, llama_worker, background, credential_file } => {
+            if let Some(data_dir) = data_dir {
+                std::env::set_var("JAN_DATA_FOLDER", data_dir);
+            }
+            let assets = assets_dir.unwrap_or_else(|| {
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|exe| exe.parent().map(|dir| dir.join("web")))
+                    .unwrap_or_else(|| std::path::PathBuf::from("web"))
+            });
+            let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
+            if background {
+                // The same command again, without the flag, detached.
+                let args: Vec<String> = std::env::args()
+                    .skip(1)
+                    .filter(|a| a != "--background" && a != "--detach")
+                    .collect();
+                let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("flint"));
+                match app_lib::core::web_server::control::start_background(
+                    &exe,
+                    &args,
+                    &data_folder,
+                    std::time::Duration::from_secs(30),
+                ) {
+                    Ok(started) => {
+                        println!("Flint server running in the background (pid {}) on http://{}", started.pid, started.listen);
+                        println!("Log: {}", started.log.display());
+                        println!("Stop it with: flint stop");
+                        if let Some(credential) = started.credential {
+                            println!("First-run administrator credential: {credential}");
+                            println!("Store this credential securely; it is shown only once.");
+                        }
+                        return;
+                    }
+                    Err(message) => {
+                        eprintln!("Error: {message}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            let auth_file = data_folder.join("web-server").join("auth.json");
+            if let Err(error) = app_lib::core::web_server::server::serve(
+                app_lib::core::web_server::server::Options {
+                    bind: listen,
+                    assets,
+                    data_folder,
+                    auth_file,
+                    public_host,
+                    allow_mcp_stdio,
+                    allowed_hosts,
+                    allowed_origins,
+                    llama_worker,
+                    credential_file,
+                },
+            ).await {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+        }
+        Commands::Stop { data_dir } => {
+            if let Some(data_dir) = data_dir {
+                std::env::set_var("JAN_DATA_FOLDER", data_dir);
+            }
+            let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
+            match app_lib::core::web_server::control::stop(&data_folder, std::time::Duration::from_secs(20)) {
+                Ok(app_lib::core::web_server::control::Stopped::Clean) => println!("Flint server stopped."),
+                Ok(app_lib::core::web_server::control::Stopped::Forced) => {
+                    println!("Flint server did not stop when asked, so its process was ended.")
+                }
+                Ok(app_lib::core::web_server::control::Stopped::NotRunning) => {
+                    println!("No Flint server is running on {}.", data_folder.display())
+                }
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    std::process::exit(1);
+                }
+            }
+        }
         Commands::Cli { cmd } => handle_cli(cmd).await,
         Commands::Login { paste_token } => {
             if let Err(e) = app_lib::core::cli::login::run_login(paste_token).await {

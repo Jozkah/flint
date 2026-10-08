@@ -188,6 +188,43 @@ class PlatformServiceHub implements ServiceHub {
         this.pathService = new pathModule.TauriPathService()
         this.coreService = new coreModule.MobileCoreService() // Mobile service with pre-loaded extensions
         this.deepLinkService = new deepLinkModule.TauriDeepLinkService()
+      } else {
+        // Vite development also runs in a browser. Select the server adapters
+        // only when Flint's authenticated API answers this probe.
+        const response = await fetch('/api/v1/session', { credentials: 'same-origin' }).catch(() => null)
+        if (response?.ok && response.headers.get('content-type')?.includes('application/json')) {
+          const session = await response.json().catch(() => null)
+          if (session?.authenticated === true) {
+            const [threads, messages, projects, assistants, hardware, providers, transport, mcp, uploads, dialog, rag, app, core] = await Promise.all([
+              import('./threads/browser'),
+              import('./messages/browser'),
+              import('./projects/browser'),
+              import('./assistants/browser'),
+              import('./hardware/browser'),
+              import('./providers/browser'),
+              import('@/lib/providerFetch'),
+              import('./mcp/browser'),
+              import('./uploads/browser'),
+              import('./dialog/browser'),
+              import('./rag/browser'),
+              import('./app/browser'),
+              import('./core/browser'),
+            ])
+            this.threadsService = new threads.BrowserThreadsService()
+            this.messagesService = new messages.BrowserMessagesService()
+            this.projectsService = new projects.BrowserProjectsService()
+            this.assistantsService = new assistants.BrowserAssistantsService()
+            this.hardwareService = new hardware.BrowserHardwareService()
+            transport.enableServerTransport()
+            this.providersService = new providers.BrowserProvidersService()
+            this.mcpService = new mcp.BrowserMCPService()
+            this.uploadsService = new uploads.BrowserUploadsService()
+            this.dialogService = new dialog.BrowserDialogService()
+            this.ragService = new rag.BrowserRAGService()
+            this.appService = new app.BrowserAppService()
+            this.coreService = new core.BrowserCoreService()
+          }
+        }
       }
 
       this.initialized = true

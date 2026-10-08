@@ -104,51 +104,8 @@
       .reduce-motion #initial-loader-caption { color: var(--sub); background: none; }
       .loaded #initial-loader { opacity: 0; pointer-events: none; }
     </style>
-    <script>
-      // Apply the theme, accent, font size and motion setting before first
-      // paint. The settings stores hydrate from the backend after boot, so
-      // they mirror their resolved values into localStorage 'flint-boot'
-      // (lib/bootAppearance.ts) for this script; keep the two in step.
-      // ThemeProvider re-resolves the real theme once React mounts.
-      (function () {
-        var d = document.documentElement
-        var b = null
-        try {
-          b = JSON.parse(localStorage.getItem('flint-boot') || 'null')
-        } catch (_) {}
-        var t = (b && b.theme) || 'auto'
-        var dark =
-          t === 'dark' ||
-          (t === 'auto' &&
-            (window.matchMedia
-              ? window.matchMedia('(prefers-color-scheme: dark)').matches
-              : !!(b && b.dark)))
-        if (dark) d.classList.add('dark')
-        d.style.colorScheme = dark ? 'dark' : 'light'
-        d.style.background = dark ? '#0a0b0d' : '#f8f8f8'
-        if (!b) return
-        var vars = b.vars && b.vars[dark ? 'dark' : 'light']
-        if (vars)
-          for (var k in vars)
-            if (Object.prototype.hasOwnProperty.call(vars, k))
-              d.style.setProperty(k, vars[k])
-        if (b.fontSize) d.style.setProperty('--font-size-base', b.fontSize)
-        if (b.reduceMotion) d.classList.add('reduce-motion')
-      })()
-    </script>
-    <script>
-      // Suppress the WebView2 "Reload site?" beforeunload confirmation.
-      // This desktop app has no page-level unsaved-form state worth guarding;
-      // the dialog only interrupts HMR reloads and extension operations.
-      Object.defineProperty(window, 'onbeforeunload', {
-        get: function () { return null },
-        set: function () {},
-      })
-      window.addEventListener('beforeunload', function (e) {
-        e.stopImmediatePropagation()
-        delete e.returnValue
-      }, true)
-    </script>
+    <script src="/boot-appearance.js"></script>
+    <script src="/suppress-beforeunload.js"></script>
   </head>
   <body>
     <div id="initial-loader" data-tauri-drag-region role="status" aria-live="polite">

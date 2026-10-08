@@ -7121,8 +7121,6 @@ async fn run_turn_cycle(
                             );
                         }
                         conversation_messages = compacted;
-                        // What was scanned lives in the vector that just went away.
-                        shells_scanned = conversation_messages.len();
                     }
                     // Too little to drop: not a failure, and not a compaction
                     // either, so the record says nothing happened.

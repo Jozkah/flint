@@ -29,7 +29,7 @@ pub fn sha256_file_hex(path: &std::path::Path) -> std::io::Result<String> {
 }
 
 /// SHA-256 of a local file, hashed off the async runtime.
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub async fn sha256_file(path: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         sha256_file_hex(std::path::Path::new(&path))
@@ -78,7 +78,7 @@ mod sha256_tests {
 }
 
 /// Read GGUF metadata from a model file
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub async fn read_gguf_metadata(path: String) -> Result<GgufMetadata, String> {
     read_gguf_metadata_internal(path).await
 }
@@ -89,7 +89,7 @@ pub async fn read_gguf_metadata(path: String) -> Result<GgufMetadata, String> {
 /// (`markov_w1.weight` marks a DSpark draft, `blk.<n>.nextn.eh_proj.weight` an
 /// MTP head), and a listing would put every tensor name of a large model
 /// through the IPC boundary to answer one.
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub async fn find_gguf_tensors(path: String, names: Vec<String>) -> Result<Vec<String>, String> {
     find_gguf_tensors_internal(path, names).await
 }
@@ -122,7 +122,7 @@ pub async fn get_model_size(path: String) -> Result<u64, String> {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub async fn is_model_supported(
     path: String,
     ctx_size: Option<u32>,

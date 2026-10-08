@@ -78,9 +78,11 @@ if (IS_MACOS) {
 }
 
 export async function getBundledExtensions(
-  opts: { mobile?: boolean } = {}
+  opts: { mobile?: boolean; only?: string[] } = {}
 ): Promise<ExtensionManifest[]> {
-  const active = ENTRIES.filter((e) => (opts.mobile ? e.mobile : true))
+  const active = ENTRIES.filter(
+    (e) => (opts.mobile ? e.mobile : true) && (!opts.only || opts.only.includes(e.name))
+  )
   return Promise.all(
     active.map(async ({ load, name, productName, description, version }) => {
       const { default: Ctor } = await load()

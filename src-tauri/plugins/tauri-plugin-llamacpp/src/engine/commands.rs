@@ -1,14 +1,21 @@
 //! Tauri commands for the engine worker.
 
+#[cfg(feature = "tauri")]
 use std::collections::HashMap;
+#[cfg(feature = "tauri")]
 use std::path::PathBuf;
+#[cfg(feature = "tauri")]
 use std::sync::Arc;
 
+#[cfg(feature = "tauri")]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "tauri")]
 use tauri::{Manager, State};
 
-use super::worker::{self, WorkerHandle};
+#[cfg(feature = "tauri")]
+use super::worker;
+use super::worker::WorkerHandle;
 use crate::state::LlamacppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +41,7 @@ impl From<&WorkerHandle> for EngineInfo {
 /// 32 bytes of OS randomness, hex-encoded. Not derived from the port the way
 /// the router's key was: the worker's port is assigned by the OS, and a key any
 /// other local process could recompute is not much of a key.
+#[cfg(feature = "tauri")]
 fn generate_worker_key() -> String {
     let bytes: [u8; 32] = rand::thread_rng().gen();
     bytes.iter().map(|b| format!("{b:02x}")).collect()
@@ -52,6 +60,7 @@ fn generate_worker_key() -> String {
 /// so its absence always means the install is damaged rather than that the user
 /// has something to configure, and which directory came up empty is the only
 /// thing that distinguishes the ways that happens.
+#[cfg(feature = "tauri")]
 fn resolve_worker_exe<R: tauri::Runtime>(
     app_handle: &tauri::AppHandle<R>,
 ) -> Result<PathBuf, String> {
@@ -91,6 +100,7 @@ fn resolve_worker_exe<R: tauri::Runtime>(
 /// Split out so it can be tested: the caller needs an `AppHandle` to resolve
 /// the bundle directory, but which paths were checked is the whole content of
 /// the message.
+#[cfg(feature = "tauri")]
 fn worker_missing_message(tried: &[PathBuf]) -> String {
     let checked = if tried.is_empty() {
         "no candidate path could be resolved".to_string()
@@ -127,6 +137,7 @@ fn worker_missing_message(tried: &[PathBuf]) -> String {
 /// Forwards a worker fault to the frontend, which turns it into the OOM or
 /// backend-error dialog. A mid-generation `GGML_ASSERT` kills the worker
 /// outright, so its log line is the only account of what happened.
+#[cfg(feature = "tauri")]
 fn fault_emitter<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) -> worker::FaultCallback {
     use tauri::Emitter;
     Arc::new(move |fault: worker::RuntimeFault, line: String| {
@@ -140,6 +151,7 @@ fn fault_emitter<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) -> worker::
 /// Starts the worker. `slot_cache_mib` is the ceiling on the per-thread KV
 /// cache directory; 0 turns cross-session KV persistence off, which is a
 /// user-facing setting because a single saved conversation is hundreds of MiB.
+#[cfg(feature = "tauri")]
 #[tauri::command]
 pub async fn start_engine<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
@@ -191,6 +203,7 @@ pub async fn start_engine<R: tauri::Runtime>(
 /// names the models still generating, and the handle is put back so the caller
 /// can retry. The app's exit path uses this -- without it the worker would
 /// outlive the app it belongs to.
+#[cfg(feature = "tauri")]
 pub async fn try_graceful_stop_engine<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
     deadline_secs: u64,
@@ -225,6 +238,7 @@ pub async fn try_graceful_stop_engine<R: tauri::Runtime>(
 /// Drops the `/models/sse` subscription. Called from every stop path: the feed
 /// it reads dies with the worker, and a task left reconnecting would spend its
 /// whole failure budget before noticing.
+#[cfg(feature = "tauri")]
 async fn abort_unload_watcher(state: &Arc<LlamacppState>) {
     if let Some(task) = state.unload_watcher.lock().await.take() {
         task.abort();
@@ -297,6 +311,7 @@ async fn busy_models_within(
         .unwrap_or_default()
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 pub async fn stop_engine(state: State<'_, Arc<LlamacppState>>) -> Result<(), String> {
     abort_unload_watcher(&state).await;
@@ -324,6 +339,7 @@ pub struct EngineDevice {
 /// settings screen needs this before any model is loaded, and the desktop
 /// process deliberately links the plugin without the `engine` feature, so it
 /// has no ggml of its own to query.
+#[cfg(feature = "tauri")]
 #[tauri::command]
 pub async fn engine_devices<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
@@ -372,9 +388,8 @@ pub struct ReloadReport {
 /// can do one thing the router could not: resize `models_max`. The router fixed
 /// that at spawn, so Jan had to cold-restart whenever the embedding slot bonus
 /// appeared or went away -- evicting the chat model the user was talking to.
-#[tauri::command]
-pub async fn reload_engine_models(
-    state: State<'_, Arc<LlamacppState>>,
+pub async fn reload_models(
+    state: &LlamacppState,
     preset_path: String,
     models_max: Option<u32>,
     slot_cache_mib: Option<u64>,
@@ -419,6 +434,7 @@ pub async fn reload_engine_models(
 /// busy-on-exit dialog offers, where the user has already been told a
 /// generation is in flight and chosen to abandon it. Waiting out the graceful
 /// path there would be the opposite of what they asked for.
+#[cfg(feature = "tauri")]
 #[tauri::command]
 pub async fn force_stop_engine(state: State<'_, Arc<LlamacppState>>) -> Result<(), String> {
     abort_unload_watcher(&state).await;
@@ -433,9 +449,8 @@ pub async fn force_stop_engine(state: State<'_, Arc<LlamacppState>>) -> Result<(
 /// or unload. A model that is not resident at all is idle by definition.
 ///
 /// With `model_id` omitted, answers for the whole worker.
-#[tauri::command]
-pub async fn engine_slots_idle(
-    state: State<'_, Arc<LlamacppState>>,
+pub async fn slots_idle(
+    state: &LlamacppState,
     model_id: Option<String>,
 ) -> Result<bool, String> {
     let (port, api_key) = {
@@ -492,9 +507,8 @@ fn erase_on_disk(dir: Option<&str>, thread: Option<&str>, model: Option<&str>) -
 /// even with no worker running -- which is the common case, since a thread is
 /// usually deleted with no model loaded. Deferring it would mean the state
 /// survived the thread until the size budget happened to reclaim it.
-#[tauri::command]
-pub async fn erase_thread_slot_state(
-    state: State<'_, Arc<LlamacppState>>,
+pub async fn erase_slot_state(
+    state: &LlamacppState,
     thread_id: Option<String>,
     model_id: Option<String>,
     cache_dir: Option<String>,
@@ -554,6 +568,7 @@ pub async fn erase_thread_slot_state(
         .unwrap_or(0) as u32)
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 pub async fn get_engine_info(
     state: State<'_, Arc<LlamacppState>>,
@@ -588,7 +603,7 @@ pub struct EngineVersion {
     pub commit: String,
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn get_engine_version() -> EngineVersion {
     EngineVersion {
         version: super::PINNED_VERSION.to_string(),
@@ -596,6 +611,37 @@ pub fn get_engine_version() -> EngineVersion {
         build_number: super::PINNED_BUILD_NUMBER.to_string(),
         commit: super::PINNED_COMMIT.to_string(),
     }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn reload_engine_models(
+    state: State<'_, Arc<LlamacppState>>,
+    preset_path: String,
+    models_max: Option<u32>,
+    slot_cache_mib: Option<u64>,
+) -> Result<ReloadReport, String> {
+    reload_models(&**state, preset_path, models_max, slot_cache_mib).await
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn engine_slots_idle(
+    state: State<'_, Arc<LlamacppState>>,
+    model_id: Option<String>,
+) -> Result<bool, String> {
+    slots_idle(&**state, model_id).await
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn erase_thread_slot_state(
+    state: State<'_, Arc<LlamacppState>>,
+    thread_id: Option<String>,
+    model_id: Option<String>,
+    cache_dir: Option<String>,
+) -> Result<u32, String> {
+    erase_slot_state(&**state, thread_id, model_id, cache_dir).await
 }
 
 #[cfg(test)]
@@ -641,6 +687,7 @@ mod tests {
         assert_eq!(v.commit.len(), 40, "a full sha, not the short form");
     }
 
+    #[cfg(feature = "tauri")]
     #[test]
     fn generated_keys_are_long_hex_and_do_not_repeat() {
         let a = generate_worker_key();
@@ -669,6 +716,7 @@ mod tests {
     // install. It was reported from the field with nothing but the file name,
     // which is not enough to tell a wrong resource dir from a file the
     // installer removed, so the paths have to be in the message.
+    #[cfg(feature = "tauri")]
     #[test]
     fn a_missing_worker_names_every_path_it_looked_at() {
         let tried = [
@@ -683,6 +731,7 @@ mod tests {
     // The abort path of the Windows installer renames the worker aside before
     // it writes anything, so a leftover `.old` names the actual cause and a
     // fix the user can act on.
+    #[cfg(feature = "tauri")]
     #[test]
     fn a_leftover_old_copy_is_called_out_as_an_interrupted_install() {
         let dir = std::env::temp_dir().join(format!("jan-worker-old-{}", std::process::id()));
@@ -735,6 +784,7 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    #[cfg(feature = "tauri")]
     #[test]
     fn the_worker_file_name_is_platform_correct() {
         let name = super::worker::worker_file_name();
