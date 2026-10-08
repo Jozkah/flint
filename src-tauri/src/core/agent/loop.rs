@@ -6339,6 +6339,13 @@ fn body_cost_ceiling(
 /// The `job_id`s of background `bash` commands started by the tool results in
 /// `messages`. The bash tool reports a backgrounded command as
 /// `(job_id=<id>)`; that fixed sentence is the one place the id appears.
+/// The messages after the first `scanned` ones. A compaction replaces the
+/// conversation with a shorter one, so `scanned` can be past the end; slicing
+/// with it directly panicked the whole run, so it is clamped.
+fn unscanned(messages: &[serde_json::Value], scanned: usize) -> &[serde_json::Value] {
+    &messages[scanned.min(messages.len())..]
+}
+
 fn background_jobs_started(messages: &[serde_json::Value]) -> Vec<String> {
     let mut ids = Vec::new();
     for message in messages {
@@ -6607,7 +6614,13 @@ async fn run_turn_cycle(
     let mut shells_scanned = conversation_messages.len();
 
     while unlimited || turn < max_turns {
-        shells_owed.extend(background_jobs_started(&conversation_messages[shells_scanned..]));
+        // A compaction replaces the vector with a shorter one, so the index of
+        // what was already scanned can be past the end: clamp it rather than
+        // slice out of range (which panicked the whole run).
+        shells_owed.extend(background_jobs_started(unscanned(
+            &conversation_messages,
+            shells_scanned,
+        )));
         shells_scanned = conversation_messages.len();
         if let Some(text) = finished_background_jobs(&mut shells_owed) {
             crate::core::agent::reminder::attach(&mut conversation_messages, &text);
@@ -6739,6 +6752,8 @@ async fn run_turn_cycle(
                                 );
                             }
                             conversation_messages = projected;
+                            // What was scanned lives in the vector that just went away.
+                            shells_scanned = conversation_messages.len();
                             let _ = events.send(StreamEvent::MessagesUpdated {
                                 messages: conversation_messages.clone(),
                             });
@@ -6860,6 +6875,8 @@ async fn run_turn_cycle(
                             attempts + 1
                         );
                         conversation_messages = compacted;
+                        // What was scanned lives in the vector that just went away.
+                        shells_scanned = conversation_messages.len();
                         // Publish now, not at the end of the run: a retry that
                         // never recovers returns Err, and an unpublished
                         // compaction leaves the client holding the oversized
@@ -7079,6 +7096,8 @@ async fn run_turn_cycle(
                             );
                         }
                         conversation_messages = compacted;
+                        // What was scanned lives in the vector that just went away.
+                        shells_scanned = conversation_messages.len();
                     }
                     // Too little to drop: not a failure, and not a compaction
                     // either, so the record says nothing happened.
@@ -7545,6 +7564,18 @@ async fn run_turn_cycle(
 
 #[cfg(test)]
 mod tests {
+    /// After a full compaction the conversation is shorter than the number of
+    /// messages already scanned; the scan must not slice past the end.
+    #[test]
+    fn a_compaction_shorter_than_the_scanned_count_does_not_panic_the_scan() {
+        let messages: Vec<serde_json::Value> = (0..3).map(|i| serde_json::json!({ "n": i })).collect();
+        assert_eq!(super::unscanned(&messages, 0).len(), 3);
+        assert_eq!(super::unscanned(&messages, 2).len(), 1);
+        assert!(super::unscanned(&messages, 3).is_empty());
+        assert!(super::unscanned(&messages, 50).is_empty());
+        assert!(super::unscanned(&[], 7).is_empty());
+    }
+
     /// The dispatcher's git rewrite: a commit gets the trailer for the run's
     /// model, only the `git` tool is touched, and the switches are honoured.
     #[test]
