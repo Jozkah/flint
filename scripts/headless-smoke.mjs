@@ -7,7 +7,7 @@
 // parse, the provider stream against a local mock provider, and the MCP
 // stdio gate. Exits non-zero on the first failed check.
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -290,6 +290,12 @@ try {
   check('rpc stops the engine', (await rpc('plugin:llamacpp|stop_engine')).status === 200 && (await (await rpc('plugin:llamacpp|get_engine_info')).json()) === null)
 
   check('sign-out ends the token', (await json('/api/v1/session', { method: 'DELETE', headers: auth })).status === 204 && (await json('/api/v1/projects', { headers: auth })).status === 401)
+  // `flint stop` ends a foreground server cleanly and clears its record.
+  const stopped = spawnSync(binary, ['stop', '--data-dir', data], { encoding: 'utf8' })
+  check('flint stop stops the server', /Flint server stopped/.test(stopped.stdout), stopped.stdout + stopped.stderr)
+  await sleep(300)
+  check('the server no longer answers after flint stop', await fetch(`${base}/healthz`).then(() => false, () => true))
+  check('flint stop says so when nothing is running', /No Flint server is running/.test(spawnSync(binary, ['stop', '--data-dir', data], { encoding: 'utf8' }).stdout))
   console.log(`\n${checks.length} checks passed`)
 } catch (error) {
   console.error(String(error))

@@ -29,7 +29,7 @@ pub fn sha256_file_hex(path: &std::path::Path) -> std::io::Result<String> {
 }
 
 /// SHA-256 of a local file, hashed off the async runtime.
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub async fn sha256_file(path: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         sha256_file_hex(std::path::Path::new(&path))

@@ -22,6 +22,7 @@ use tokio::net::TcpListener;
 
 use super::auth::AuthStore;
 use super::data;
+use super::control;
 use super::engine;
 use super::events;
 use super::files;
@@ -57,6 +58,9 @@ pub struct Options {
     pub allowed_origins: Vec<String>,
     /// The `flint-llama-worker` binary to supervise for local inference.
     pub llama_worker: Option<PathBuf>,
+    /// Where to leave the first-run credential instead of printing it, for a
+    /// server started in the background by `flint serve --background`.
+    pub credential_file: Option<PathBuf>,
 }
 
 struct State {
@@ -71,6 +75,9 @@ struct State {
     engine: engine::Supervisor,
     settings: settings::Store,
     events: events::Bus,
+    /// Set to ask the accept loop to finish: `flint stop`.
+    shutdown: Arc<tokio::sync::Notify>,
+    shutdown_token: String,
 }
 
 fn login_blocked(failures: &mut VecDeque<Instant>) -> bool {
@@ -921,6 +928,28 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
     if path == "/healthz" && method == Method::GET {
         return text(StatusCode::OK, "ok");
     }
+    if path == "/api/v1/shutdown" && method == Method::POST {
+        // Only `flint stop` knows this: the token lives in a file private to the
+        // account running the server.
+        let presented = req
+            .headers()
+            .get(control::SHUTDOWN_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let expected = state.shutdown_token.as_str();
+        let matches = !expected.is_empty()
+            && presented.len() == expected.len()
+            && presented
+                .bytes()
+                .zip(expected.bytes())
+                .fold(0u8, |diff, (a, b)| diff | (a ^ b))
+                == 0;
+        if !matches {
+            return text(StatusCode::FORBIDDEN, "Not allowed");
+        }
+        state.shutdown.notify_one();
+        return no_content();
+    }
     // A bearer token is sent on purpose, never added by the browser, so a
     // request carrying one cannot be a cross-site forgery and needs no Origin.
     let has_bearer = bearer_token(req.headers()).is_some();
@@ -1334,6 +1363,15 @@ pub async fn serve(options: Options) -> io::Result<()> {
             "production web bundle is missing index.html",
         ));
     }
+    if let Some(run) = control::running(&options.data_folder) {
+        return Err(io::Error::new(
+            io::ErrorKind::AddrInUse,
+            format!(
+                "a Flint server is already running on {} (pid {}); stop it with `flint stop`",
+                run.listen, run.pid
+            ),
+        ));
+    }
     let listener = TcpListener::bind(options.bind).await?;
     let port = listener.local_addr()?.port();
     let mut hosts = HashSet::from([
@@ -1356,6 +1394,9 @@ pub async fn serve(options: Options) -> io::Result<()> {
     let (auth, bootstrap) = AuthStore::open(options.auth_file)?;
     let settings_store = settings::Store::new(&options.data_folder);
     let bus = events::Bus::new();
+    let shutdown = Arc::new(tokio::sync::Notify::new());
+    let shutdown_token = control::new_token();
+    let data_folder_for_run = options.data_folder.clone();
     let state = Arc::new(State {
         auth: Mutex::new(auth),
         assets: options.assets,
@@ -1368,6 +1409,8 @@ pub async fn serve(options: Options) -> io::Result<()> {
         engine: engine::Supervisor::new(options.llama_worker.clone(), bus.clone()),
         events: bus,
         settings: settings_store,
+        shutdown: shutdown.clone(),
+        shutdown_token: shutdown_token.clone(),
     });
     eprintln!(
         "Flint web server listening on http://{}",
@@ -1378,14 +1421,37 @@ pub async fn serve(options: Options) -> io::Result<()> {
             "Warning: listening beyond loopback. Sessions travel in the clear unless a TLS proxy fronts this server."
         );
     }
+    control::write_run_file(
+        &data_folder_for_run,
+        &control::RunFile {
+            pid: std::process::id(),
+            listen: listener.local_addr()?,
+            shutdown_token,
+        },
+    )?;
     if let Some(credential) = bootstrap {
-        eprintln!("First-run administrator credential: {credential}");
-        eprintln!("Store this credential securely; it is shown only once.");
+        match &options.credential_file {
+            // Started in the background: the starter shows it once and removes
+            // the file, so it never lands in the log.
+            Some(path) => {
+                let mut file = control::create_private(path, false)?;
+                io::Write::write_all(&mut file, credential.as_bytes())?;
+                eprintln!("First-run administrator credential written for the starter; it is shown only once.");
+            }
+            None => {
+                eprintln!("First-run administrator credential: {credential}");
+                eprintln!("Store this credential securely; it is shown only once.");
+            }
+        }
     }
     loop {
         let (socket, peer) = tokio::select! {
             accepted = listener.accept() => accepted?,
             _ = tokio::signal::ctrl_c() => {
+                engine::stop(&state.engine, false).await;
+                break;
+            }
+            _ = shutdown.notified() => {
                 engine::stop(&state.engine, false).await;
                 break;
             }
@@ -1403,6 +1469,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
             let _ = http1::Builder::new().serve_connection(io, service).await;
         });
     }
+    control::remove_run_file(&data_folder_for_run, std::process::id());
     Ok(())
 }
 
@@ -1441,6 +1508,8 @@ mod tests {
             engine: engine::Supervisor::new(None, events::Bus::new()),
             settings: settings::Store::new(dir.path()),
             events: events::Bus::new(),
+            shutdown: Arc::new(tokio::sync::Notify::new()),
+            shutdown_token: String::new(),
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(
@@ -1469,6 +1538,7 @@ mod tests {
             allowed_hosts: Vec::new(),
             allowed_origins: Vec::new(),
             llama_worker: None,
+            credential_file: None,
         })
         .await
         .unwrap_err();
@@ -1518,6 +1588,7 @@ mod tests {
             allowed_hosts: hosts.into_iter().map(String::from).collect(),
             allowed_origins: origins.into_iter().map(String::from).collect(),
             llama_worker: None,
+            credential_file: None,
         };
         let none = serve(options(vec![], vec![])).await.unwrap_err();
         assert!(none.to_string().contains("--allowed-host"));
@@ -1543,6 +1614,8 @@ mod tests {
             engine: engine::Supervisor::new(None, events::Bus::new()),
             settings: settings::Store::new(dir.path()),
             events: events::Bus::new(),
+            shutdown: Arc::new(tokio::sync::Notify::new()),
+            shutdown_token: String::new(),
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(header::ORIGIN, HeaderValue::from_static("http://Tauri.localhost"));
@@ -1575,6 +1648,8 @@ mod tests {
             engine: engine::Supervisor::new(None, events::Bus::new()),
             settings: settings::Store::new(dir.path()),
             events: events::Bus::new(),
+            shutdown: Arc::new(tokio::sync::Notify::new()),
+            shutdown_token: String::new(),
         };
         let mut headers = hyper::HeaderMap::new();
         headers.insert(header::HOST, HeaderValue::from_static("box.ts.net:8443"));

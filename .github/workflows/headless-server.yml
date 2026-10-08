@@ -81,3 +81,4 @@ jobs:
           bin=src-tauri/target/debug/flint
           if [ "$RUNNER_OS" = "Windows" ]; then bin=$bin.exe; fi
           node scripts/headless-smoke.mjs "$bin" web-app/dist
+          node scripts/concurrency-smoke.mjs "$bin" web-app/dist
