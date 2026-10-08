@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "未命名",
+    "actionsFor": "{{name}} 的操作",
     "confirmEmpty": "永久删除归档中的所有内容？此操作无法撤销。",
     "deletedBlocked": "已删除 {{count}} 个。{{title}}：{{reason}}",
     "deleted": "已删除 {{count}} 个",
     "title": "归档",
-    "intro": "已删除的项目会保留在这里。长按某个项目可恢复它或永久删除它。",
+    "intro": "已删除的项目会保留在这里。向左滑动某一项，或长按它，即可恢复或永久删除。",
     "empty": "归档中没有内容。",
     "retention_one": "已归档的项目将在 {{count}} 天后被永久删除。",
     "retention_other": "已归档的项目将在 {{count}} 天后被永久删除。",
@@ -69,7 +70,10 @@
     "from": "来自 {{origin}}",
     "loading": "加载中…",
     "experimental": "实验性",
-    "delete": "删除"
+    "delete": "删除",
+    "working": "处理中",
+    "allowed": "已允许",
+    "didNotWorkRetry": "未成功，请重试"
   },
   "chat": {
     "system": "系统",
@@ -328,6 +332,7 @@
     "foot": "由你的电脑直接发送到这部手机的推送服务，仅在 Flint 未在此处打开时发送。负载经过加密，不含消息文本。",
     "notify": "通知这部手机",
     "notSetUp": "尚未在电脑上设置",
+    "willNotify": "你将收到通知",
     "sendTest": "发送测试通知",
     "testSent": "测试已发送",
     "notifyWhen": "在以下情况通知我",

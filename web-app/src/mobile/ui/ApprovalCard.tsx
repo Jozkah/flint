@@ -64,9 +64,9 @@ export function ApprovalCard({ a }: { a: RemoteApproval }) {
               {t('common.deny')}
             </button>
             <SlideCommit
-              label="Allow once"
-              errorLabel="Didn’t work, try again"
-              doneLabel="Allowed"
+              label={t('common.allowOnce')}
+              errorLabel={t('common.didNotWorkRetry')}
+              doneLabel={t('common.allowed')}
               testId="approval-allow"
               onCommit={async () => (await respond(a, 'allow')) !== undefined}
             />

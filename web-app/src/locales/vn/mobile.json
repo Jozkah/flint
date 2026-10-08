@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "Chưa đặt tên",
+    "actionsFor": "Thao tác cho {{name}}",
     "confirmEmpty": "Xóa vĩnh viễn mọi thứ trong kho lưu trữ? Không thể hoàn tác.",
     "deletedBlocked": "Đã xóa {{count}}. {{title}}: {{reason}}",
     "deleted": "Đã xóa {{count}}",
     "title": "Lưu trữ",
-    "intro": "Các mục đã xóa nằm ở đây. Nhấn giữ một mục để khôi phục hoặc xóa vĩnh viễn.",
+    "intro": "Các mục đã xóa nằm ở đây. Vuốt một mục sang trái, hoặc nhấn và giữ, để khôi phục hoặc xóa vĩnh viễn.",
     "empty": "Kho lưu trữ trống.",
     "retention_one": "Các mục đã lưu trữ bị xóa vĩnh viễn sau {{count}} ngày.",
     "retention_other": "Các mục đã lưu trữ bị xóa vĩnh viễn sau {{count}} ngày.",
@@ -69,7 +70,10 @@
     "from": "từ {{origin}}",
     "loading": "Đang tải…",
     "experimental": "Thử nghiệm",
-    "delete": "Xóa"
+    "delete": "Xóa",
+    "working": "Đang xử lý",
+    "allowed": "Đã cho phép",
+    "didNotWorkRetry": "Không thành công, hãy thử lại"
   },
   "chat": {
     "system": "Hệ thống",
@@ -328,6 +332,7 @@
     "foot": "Được máy tính của bạn gửi thẳng đến dịch vụ thông báo đẩy của điện thoại này, chỉ khi Flint không mở ở đây. Dữ liệu được mã hóa và không mang văn bản tin nhắn.",
     "notify": "Thông báo cho điện thoại này",
     "notSetUp": "Chưa thiết lập trên máy tính",
+    "willNotify": "Bạn sẽ được thông báo",
     "sendTest": "Gửi thông báo thử",
     "testSent": "Đã gửi thông báo thử",
     "notifyWhen": "Thông báo cho tôi khi",

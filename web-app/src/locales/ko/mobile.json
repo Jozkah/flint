@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "제목 없음",
+    "actionsFor": "{{name}}에 대한 작업",
     "confirmEmpty": "보관함의 모든 항목을 영구 삭제할까요? 이 작업은 되돌릴 수 없습니다.",
     "deletedBlocked": "{{count}}개를 삭제했습니다. {{title}}: {{reason}}",
     "deleted": "{{count}}개를 삭제했습니다",
     "title": "보관함",
-    "intro": "삭제한 항목이 여기에 보관됩니다. 길게 눌러 복원하거나 영구 삭제하세요.",
+    "intro": "삭제한 항목이 여기에 보관됩니다. 항목을 왼쪽으로 밀거나 길게 눌러 복원하거나 영구적으로 삭제하세요.",
     "empty": "보관함이 비어 있습니다.",
     "retention_other": "보관된 항목은 {{count}}일 후 영구 삭제됩니다.",
     "retentionForever": "보관된 항목은 삭제할 때까지 유지됩니다.",
@@ -68,7 +69,10 @@
     "from": "{{origin}}에서",
     "loading": "불러오는 중…",
     "experimental": "실험적",
-    "delete": "삭제"
+    "delete": "삭제",
+    "working": "작업 중",
+    "allowed": "허용됨",
+    "didNotWorkRetry": "실패했습니다. 다시 시도하세요"
   },
   "chat": {
     "system": "시스템",
@@ -323,6 +327,7 @@
     "foot": "Flint가 이 기기에서 열려 있지 않을 때만 컴퓨터가 이 휴대폰의 푸시 서비스로 직접 보냅니다. 페이로드는 암호화되며 메시지 텍스트를 포함하지 않습니다.",
     "notify": "이 휴대폰에 알림",
     "notSetUp": "컴퓨터에서 설정되지 않음",
+    "willNotify": "알림을 받습니다",
     "sendTest": "테스트 알림 보내기",
     "testSent": "테스트를 보냈습니다",
     "notifyWhen": "알림 받을 때",

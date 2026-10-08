@@ -53,11 +53,11 @@ export default function PushSettings({ support = pushSupport() }: { support?: Pu
         foot={why ?? t('push.foot')}
       >
         <BellSwitch
-          label="Notify this phone"
+          label={t('push.notify')}
           on={on}
           busy={busy}
           sub={
-            data && !data.available ? 'Not set up on the computer' : undefined
+            data && !data.available ? t('push.notSetUp') : undefined
           }
           onClick={
             why || busy || (data && !data.available)

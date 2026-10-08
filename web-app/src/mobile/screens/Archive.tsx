@@ -70,7 +70,7 @@ async function runArchive(
     return true
   } catch (e) {
     // A refused purge says why (a Cowork session with unmerged work).
-    toast(e instanceof Error ? e.message : 'That did not work')
+    toast(e instanceof Error ? e.message : t('common.didNotWork'))
     return false
   } finally {
     archiveChanged()
@@ -80,24 +80,26 @@ async function runArchive(
 function Row({ item }: { item: ArchiveItemWire }) {
   const press = useLongPress(() => openSheet('archivemenu', { item }))
   const kind = FILTERS.find((f) => f.id === item.kind)?.label ?? item.kind
-  const name = item.title || 'Untitled'
+  const name = item.title || t('archive.untitled')
   return (
     <SwipeRow
-      toggleLabel={`Actions for ${name}`}
+      toggleLabel={t('archive.actionsFor', { name })}
       secondary={{
-        label: 'Restore',
+        label: t('sheets.restore'),
         icon: <I n="refresh" />,
-        onSelect: () => void runArchive('archive.restore', item, 'Restored'),
+        onSelect: () => void runArchive('archive.restore', item, t('sheets.restored')),
       }}
       primary={{
-        label: 'Delete',
+        label: t('common.delete'),
         icon: <I n="trash" />,
         confirm: () =>
           window.confirm(
-            `Delete “${item.title || 'this item'}” permanently? This can’t be undone.`
+            t('sheets.deleteItemConfirm', {
+              title: item.title || t('sheets.thisItem'),
+            })
           ),
         onCommit: () =>
-          runArchive('archive.purge', item, 'Deleted permanently'),
+          runArchive('archive.purge', item, t('sheets.deletedPermanently')),
       }}
     >
       <button

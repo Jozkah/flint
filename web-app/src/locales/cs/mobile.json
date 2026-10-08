@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "Bez názvu",
+    "actionsFor": "Akce pro {{name}}",
     "confirmEmpty": "Trvale smazat všechno v archivu? Tuto akci nelze vrátit zpět.",
     "deletedBlocked": "Smazáno: {{count}}. {{title}}: {{reason}}",
     "deleted": "Smazáno: {{count}}",
     "title": "Archiv",
-    "intro": "Smazané položky čekají tady. Dlouhým stisknutím položku obnovíte nebo trvale smažete.",
+    "intro": "Smazané položky čekají tady. Přejeďte po jedné doleva nebo ji podržte, abyste ji obnovili nebo trvale smazali.",
     "empty": "V archivu nic není.",
     "retention_one": "Archivované položky se natrvalo smažou po {{count}} dni.",
     "retention_few": "Archivované položky se natrvalo smažou po {{count}} dnech.",
@@ -71,7 +72,10 @@
     "from": "z {{origin}}",
     "loading": "Načítání…",
     "experimental": "Experimentální",
-    "delete": "Smazat"
+    "delete": "Smazat",
+    "working": "Pracuji",
+    "allowed": "Povoleno",
+    "didNotWorkRetry": "Nepovedlo se, zkuste to znovu"
   },
   "chat": {
     "system": "Systém",
@@ -338,6 +342,7 @@
     "foot": "Odesílá je počítač přímo push službě tohoto telefonu, jen když tu Flint není otevřený. Data jsou šifrovaná a neobsahují text zpráv.",
     "notify": "Oznamovat na tomto telefonu",
     "notSetUp": "Na počítači není nastaveno",
+    "willNotify": "Budete upozorněni",
     "sendTest": "Odeslat zkušební oznámení",
     "testSent": "Zkouška odeslána",
     "notifyWhen": "Upozornit mě, když",

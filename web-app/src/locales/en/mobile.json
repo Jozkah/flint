@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "Untitled",
+    "actionsFor": "Actions for {{name}}",
     "confirmEmpty": "Delete everything in the archive permanently? This can’t be undone.",
     "deletedBlocked": "Deleted {{count}}. {{title}}: {{reason}}",
     "deleted": "Deleted {{count}}",
     "title": "Archive",
-    "intro": "Deleted items wait here. Press and hold one to restore it or delete it permanently.",
+    "intro": "Deleted items wait here. Swipe one left, or press and hold it, to restore it or delete it permanently.",
     "empty": "Nothing in the archive.",
     "retention_one": "Archived items are deleted for good after {{count}} day.",
     "retention_other": "Archived items are deleted for good after {{count}} days.",
@@ -69,7 +70,10 @@
     "from": "from {{origin}}",
     "loading": "Loading…",
     "experimental": "Experimental",
-    "delete": "Delete"
+    "delete": "Delete",
+    "working": "Working",
+    "allowed": "Allowed",
+    "didNotWorkRetry": "Didn’t work, try again"
   },
   "chat": {
     "system": "System",
@@ -328,6 +332,7 @@
     "foot": "Sent by your computer straight to this phone’s push service, only while Flint is not open here. Payloads are encrypted and carry no message text.",
     "notify": "Notify this phone",
     "notSetUp": "Not set up on the computer",
+    "willNotify": "You’ll be notified",
     "sendTest": "Send a test notification",
     "testSent": "Test sent",
     "notifyWhen": "Notify me when",

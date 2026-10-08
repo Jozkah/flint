@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "Sem título",
+    "actionsFor": "Ações para {{name}}",
     "confirmEmpty": "Excluir tudo no arquivo em definitivo? Esta ação não pode ser desfeita.",
     "deletedBlocked": "Excluídos: {{count}}. {{title}}: {{reason}}",
     "deleted": "Excluídos: {{count}}",
     "title": "Arquivo",
-    "intro": "Os itens excluídos ficam aqui. Toque e segure um item para restaurá-lo ou excluí-lo em definitivo.",
+    "intro": "Os itens excluídos ficam aqui. Deslize um para a esquerda, ou mantenha-o pressionado, para restaurá-lo ou excluí-lo permanentemente.",
     "empty": "Nada no arquivo.",
     "retention_one": "Os itens arquivados são excluídos em definitivo após {{count}} dia.",
     "retention_many": "Os itens arquivados são excluídos em definitivo após {{count}} de dias.",
@@ -70,7 +71,10 @@
     "from": "de {{origin}}",
     "loading": "Carregando…",
     "experimental": "Experimental",
-    "delete": "Excluir"
+    "delete": "Excluir",
+    "working": "Trabalhando",
+    "allowed": "Permitido",
+    "didNotWorkRetry": "Não funcionou, tente novamente"
   },
   "chat": {
     "system": "Sistema",
@@ -333,6 +337,7 @@
     "foot": "Enviadas pelo seu computador direto para o serviço de push deste celular, somente quando o Flint não está aberto aqui. Os dados são criptografados e não levam texto de mensagens.",
     "notify": "Notificar este celular",
     "notSetUp": "Não configurado no computador",
+    "willNotify": "Você será notificado",
     "sendTest": "Enviar uma notificação de teste",
     "testSent": "Teste enviado",
     "notifyWhen": "Notificar-me quando",
