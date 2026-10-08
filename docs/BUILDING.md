@@ -135,6 +135,10 @@ terminal in the `flint` folder:
 yarn build
 ```
 
+`yarn build` stops at once, with a message, if the engine
+(`src-tauri/resources/bin/flint-llama-worker`) has not been built. Set
+`FLINT_SKIP_ENGINE_CHECK=1` to bypass that check.
+
 When it finishes, the installers are in `src-tauri/target/release/bundle/`:
 
 - Windows: an `.exe` under `nsis\` and an `.msi` under `msi\` (the app itself is `src-tauri\target\release\Flint-Desktop.exe`)
