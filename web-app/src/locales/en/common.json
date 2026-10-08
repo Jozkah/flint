@@ -583,7 +583,9 @@
       "nMin": "Min draft tokens",
       "nMinDescription": "Minimum number of tokens to draft per step. Default 0.",
       "pMin": "Min draft probability",
-      "pMinDescription": "Minimum probability for greedy drafting (0–1). Default 0.75."
+      "pMinDescription": "Minimum probability for greedy drafting (0–1). Default 0.75.",
+      "probabilistic": "Sample the draft",
+      "probabilisticDescription": "Sample draft tokens instead of taking the most likely one, and verify them by rejection sampling. This keeps the speed-up when the temperature is above 0. Off by default; ignored for DFlash drafts, which need greedy verification."
     },
     "templateKwargs": {
       "section": "Chat template options",

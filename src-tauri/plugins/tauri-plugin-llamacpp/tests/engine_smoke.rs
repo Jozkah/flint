@@ -114,6 +114,56 @@ fn a_chat_completion_applies_the_template_and_reports_usage() {
     );
 }
 
+// llama.cpp 0.6.0's --spec-draft-sampling=probabilistic samples the draft and
+// has the target verify it by rejection sampling. The model drafts for itself
+// (same vocabulary, so any gguf qualifies) at a temperature above zero, which
+// is the case the mode exists for. Drafts are only counted when the server
+// reports them, so a missing field is not a failure, but a draft that was
+// proposed has to have been accepted at least once for an identical model.
+#[test]
+fn probabilistic_draft_sampling_generates_at_nonzero_temperature() {
+    let Some(model) = model_path() else {
+        eprintln!("skipping: set JAN_TEST_GGUF to run");
+        return;
+    };
+    let args: Vec<String> = [
+        "llama-server", "-m", &model, "-c", "2048", "-ngl", "0",
+        "--no-warmup", "-t", "4", "-fit", "off", "-np", "1",
+        "--spec-type", "draft-simple",
+        "--spec-draft-model", &model,
+        "--spec-draft-sampling", "probabilistic",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let engine = Engine::start(&args, None).expect("engine should start with a draft model");
+
+    let res = engine.request(
+        Route::ChatCompletions.as_shim_name(),
+        r#"{"messages":[{"role":"user","content":"Count from one to ten."}],
+            "max_tokens":48,"temperature":0.8,"seed":7}"#,
+    );
+    assert_eq!(res.status(), 200, "body: {}", res.body());
+    let v: serde_json::Value = serde_json::from_str(&res.body()).unwrap();
+    assert!(
+        v.pointer("/usage/completion_tokens")
+            .and_then(|t| t.as_u64())
+            .unwrap_or(0)
+            > 0,
+        "no tokens generated: {}",
+        res.body()
+    );
+    eprintln!("timings: {:?}", v.get("timings"));
+    let drafted = v.pointer("/timings/draft_n").and_then(|t| t.as_u64());
+    if let Some(n) = drafted.filter(|n| *n > 0) {
+        let accepted = v
+            .pointer("/timings/draft_n_accepted")
+            .and_then(|t| t.as_u64())
+            .unwrap_or(0);
+        assert!(accepted > 0, "{n} draft tokens proposed, none accepted");
+    }
+}
+
 #[test]
 fn a_streaming_completion_yields_sse_chunks_then_finishes() {
     let Some(model) = model_path() else {

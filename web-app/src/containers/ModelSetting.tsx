@@ -398,6 +398,7 @@ type SpecDraftInfo = {
   spec_draft_n_max?: number
   spec_draft_n_min?: number
   spec_draft_p_min?: number
+  spec_draft_sampling?: 'greedy' | 'probabilistic'
 }
 
 export function SpecDraftPanel({ modelId }: { modelId: string }) {
@@ -427,6 +428,7 @@ export function SpecDraftPanel({ modelId }: { modelId: string }) {
       spec_draft_n_max?: number | null
       spec_draft_n_min?: number | null
       spec_draft_p_min?: number | null
+      spec_draft_sampling?: 'greedy' | 'probabilistic' | null
     }) => {
       try {
         await serviceHub.models().updateMtpSettings(modelId, patch)
@@ -513,6 +515,29 @@ export function SpecDraftPanel({ modelId }: { modelId: string }) {
             step={0.05}
             onChange={(raw) => updateNumber('spec_draft_p_min', raw)}
           />
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-8">
+              <div className="mb-1 truncate">
+                <span className="font-medium">
+                  {t('common:modelSettings.specDraft.probabilistic')}
+                </span>
+              </div>
+              <Switch
+                checked={info.spec_draft_sampling === 'probabilistic'}
+                onCheckedChange={(v) => {
+                  const next = v ? 'probabilistic' : null
+                  setInfo({
+                    ...info,
+                    spec_draft_sampling: next ?? undefined,
+                  })
+                  void persist({ spec_draft_sampling: next })
+                }}
+              />
+            </div>
+            <p className="text-muted-foreground leading-normal text-xs">
+              {t('common:modelSettings.specDraft.probabilisticDescription')}
+            </p>
+          </div>
         </>
       )}
     </div>

@@ -39,8 +39,26 @@ describe('SpecDraftPanel', () => {
     hoisted.getMtpInfo.mockResolvedValue({ mtp_layers: 2, mtp: true })
     render(<SpecDraftPanel modelId="glm" />)
 
-    const toggle = await screen.findByRole('switch')
+    const [toggle] = await screen.findAllByRole('switch')
     expect(toggle).toBeChecked()
+  })
+
+  it('shows the draft sampling switch only while speculative decoding is on', async () => {
+    hoisted.getMtpInfo.mockResolvedValue({ mtp_layers: 2, mtp: false })
+    const off = render(<SpecDraftPanel modelId="glm" />)
+    await screen.findByRole('switch')
+    expect(screen.getAllByRole('switch')).toHaveLength(1)
+    off.unmount()
+
+    hoisted.getMtpInfo.mockResolvedValue({
+      mtp_layers: 2,
+      mtp: true,
+      spec_draft_sampling: 'probabilistic',
+    })
+    render(<SpecDraftPanel modelId="glm" />)
+    const switches = await screen.findAllByRole('switch')
+    expect(switches).toHaveLength(2)
+    expect(switches[1]).toBeChecked()
   })
 
   it('renders nothing for a model with no MTP heads', async () => {
