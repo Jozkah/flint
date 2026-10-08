@@ -154,6 +154,7 @@ try {
   check('cookie sign-in', cookie.status === 303 && session.startsWith('flint_session='))
   const page = await json('/', { headers: { cookie: session } })
   check('signed-in page and its boot scripts load', page.status === 200 && (await json('/boot-appearance.js', { headers: { cookie: session } })).status === 200)
+  check('referrer policy lets a form post carry its origin', page.headers.get('referrer-policy') === 'same-origin')
   check('csp blocks inline script', /script-src 'self'/.test(page.headers.get('content-security-policy') ?? ''))
   check('bad bearer is not rescued by a cookie', (await json('/api/v1/projects', { headers: { authorization: `Bearer ${'0'.repeat(64)}`, cookie: session } })).status === 401)
 
