@@ -2797,10 +2797,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       useAppState.getState().updateModelLoadProgress(undefined)
       useAppState.getState().updateThreadModelLoadProgress(threadId, undefined)
     } catch (error) {
+      const wasLoading = Boolean(useAppState.getState().loadingModels[threadId])
       useAppState.getState().updateLoadingModel(false)
       useAppState.getState().updateThreadLoadingModel(threadId, false)
       useAppState.getState().updateModelLoadProgress(undefined)
       useAppState.getState().updateThreadModelLoadProgress(threadId, undefined)
+      if (wasLoading && !(error instanceof Error && error.name === 'AbortError')) {
+        useAppState.getState().markThreadModelLoadFailed(threadId, true)
+      }
       console.error('Failed to create model:', error)
       // Preserve AbortError identity so callers/UI can tell a user-initiated
       // Stop from an actual model-load failure.
@@ -3540,8 +3544,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         transform(chunk, controller) {
           idle?.touch()
           if (chunk.type === 'reasoning-delta' && reasoningGuard.add(chunk.delta)) {
+            const loopError = new Error('Reasoning stopped after repeating the same text. Try a different model or a lower thinking budget.')
             endIdle()
-            controller.error(new Error('Reasoning stopped after repeating the same text. Try a different model or a lower thinking budget.'))
+            // Stop the request too, as the idle watchdog does: erroring only the
+            // downstream stream leaves the model generating the same text on the
+            // engine, and the abort is what runs the run cleanup.
+            requestAbort.abort(loopError)
+            controller.error(loopError)
             return
           }
           if (chunk.type === 'finish' || chunk.type === 'error' || chunk.type === 'abort') endIdle()

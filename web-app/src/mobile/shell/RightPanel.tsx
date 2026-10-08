@@ -100,7 +100,7 @@ function RoomPanel({ id, tab }: { id: string; tab: string }) {
             void updateRoom(
               room.id,
               { limits: { [key]: convert(n) } },
-              `${label} updated.`
+              t('rightpanel.fieldUpdated', { label })
             )
           }
         />
@@ -109,19 +109,21 @@ function RoomPanel({ id, tab }: { id: string; tab: string }) {
         <div className="card2">
           <h4>
             <I n="settings" />
-            Room settings
+            {t('rightpanel.roomSettings')}
             {locked && (
               <span className="chip" style={{ marginLeft: 'auto' }}>
                 <I n="lock" size={11} />
-                Locked
+                {t('rightpanel.locked')}
               </span>
             )}
           </h4>
           {locked && (
-            <small className="muted">Pause the room to change settings.</small>
+            <small className="muted">
+              {t('rightpanel.pauseToChange')}
+            </small>
           )}
           <label className="field">
-            Speaking mode
+            {t('rightpanel.speakingMode')}
             <select
               value={room.mode}
               disabled={locked}
@@ -129,33 +131,33 @@ function RoomPanel({ id, tab }: { id: string; tab: string }) {
                 void updateRoom(
                   room.id,
                   { mode: e.target.value as RoomUpdateParams['patch']['mode'] },
-                  'Speaking mode updated.'
+                  t('rightpanel.speakingModeUpdated')
                 )
               }
             >
-              <option value="round-robin">Round-robin</option>
-              <option value="user-selected">You choose</option>
-              <option value="moderator-selected">Moderator chooses</option>
+              <option value="round-robin">{t('rooms.mode.roundRobin')}</option>
+              <option value="user-selected">{t('rooms.mode.userSelected')}</option>
+              <option value="moderator-selected">{t('rooms.mode.moderatorSelected')}</option>
             </select>
           </label>
-          {numberField('Rounds', l.maxRounds, 'maxRounds', 1, 50)}
-          {numberField('Turns', l.maxTurns, 'maxTurns', 1, 200)}
+          {numberField(t('rightpanel.rounds'), l.maxRounds, 'maxRounds', 1, 50)}
+          {numberField(t('rightpanel.turns'), l.maxTurns, 'maxTurns', 1, 200)}
           {numberField(
-            'Total tokens',
+            t('rightpanel.totalTokens'),
             l.maxTotalTokens,
             'maxTotalTokens',
             1000,
             2000000
           )}
           {numberField(
-            'Tokens per reply',
+            t('rightpanel.tokensPerReply'),
             l.maxOutputTokensPerTurn,
             'maxOutputTokensPerTurn',
             64,
             8192
           )}
           {numberField(
-            'Running time (minutes)',
+            t('rightpanel.runningTime'),
             Math.round(l.maxDurationMs / 60000),
             'maxDurationMs',
             1,
@@ -163,8 +165,7 @@ function RoomPanel({ id, tab }: { id: string; tab: string }) {
             (minutes) => Math.round(minutes * 60000)
           )}
           <small className="muted">
-            Working folder and write permissions remain desktop-only because
-            they grant filesystem access.
+            {t('rightpanel.desktopOnly')}
           </small>
         </div>
       )

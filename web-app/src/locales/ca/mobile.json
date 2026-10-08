@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "Sense títol",
+    "actionsFor": "Accions per a {{name}}",
     "confirmEmpty": "Vols eliminar permanentment tot l'arxiu? Aquesta acció no es pot desfer.",
     "deletedBlocked": "S'han eliminat {{count}}. {{title}}: {{reason}}",
     "deleted": "S'han eliminat {{count}}",
     "title": "Arxiu",
-    "intro": "Els elements eliminats esperen aquí. Mantén premut un element per restaurar-lo o eliminar-lo permanentment.",
+    "intro": "Els elements suprimits esperen aquí. Llisca'n un cap a l'esquerra, o mantén-lo premut, per restaurar-lo o suprimir-lo definitivament.",
     "empty": "No hi ha res a l'arxiu.",
     "retention_one": "Els elements arxivats s'eliminen definitivament al cap de {{count}} dia.",
     "retention_many": "Els elements arxivats s'eliminen definitivament al cap de {{count}} de dies.",
@@ -70,7 +71,10 @@
     "from": "de {{origin}}",
     "loading": "S'està carregant…",
     "experimental": "Experimental",
-    "delete": "Elimina"
+    "delete": "Elimina",
+    "working": "Treballant",
+    "allowed": "Permès",
+    "didNotWorkRetry": "No ha funcionat, torna-ho a provar"
   },
   "chat": {
     "system": "Sistema",
@@ -333,6 +337,7 @@
     "foot": "L'ordinador les envia directament al servei push d'aquest mòbil, només quan Flint no és obert aquí. El contingut es xifra i no porta text de missatges.",
     "notify": "Notifica aquest mòbil",
     "notSetUp": "No configurat a l'ordinador",
+    "willNotify": "Rebràs notificacions",
     "sendTest": "Envia una notificació de prova",
     "testSent": "Prova enviada",
     "notifyWhen": "Avisa'm quan",

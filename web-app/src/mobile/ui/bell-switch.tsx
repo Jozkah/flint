@@ -2,6 +2,7 @@
 // it on rings the bell; the line under the label crossfades between states.
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { t } from '../i18n'
 import { useReducedMotion } from './use-reduced-motion'
 
 type BellSwitchProps = {
@@ -37,8 +38,8 @@ export function BellSwitch({
   label,
   on,
   sub,
-  onLabel = 'You’ll be notified',
-  offLabel = 'Off',
+  onLabel = t('push.willNotify'),
+  offLabel = t('common.off'),
   onClick,
   busy,
   testId,

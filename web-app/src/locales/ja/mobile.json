@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "無題",
+    "actionsFor": "{{name}} の操作",
     "confirmEmpty": "アーカイブ内のすべてを完全に削除しますか？この操作は元に戻せません。",
     "deletedBlocked": "{{count}} 件を削除しました。{{title}}: {{reason}}",
     "deleted": "{{count}} 件を削除しました",
     "title": "アーカイブ",
-    "intro": "削除した項目はここに保管されます。長押しすると復元または完全に削除できます。",
+    "intro": "削除した項目はここに保管されます。項目を左にスワイプするか長押しすると、復元または完全に削除できます。",
     "empty": "アーカイブは空です。",
     "retention_other": "アーカイブした項目は {{count}} 日後に完全に削除されます。",
     "retentionForever": "アーカイブした項目は、削除するまで保持されます。",
@@ -68,7 +69,10 @@
     "from": "{{origin}} から",
     "loading": "読み込み中…",
     "experimental": "試験的",
-    "delete": "削除"
+    "delete": "削除",
+    "working": "処理中",
+    "allowed": "許可しました",
+    "didNotWorkRetry": "うまくいきませんでした。もう一度お試しください"
   },
   "chat": {
     "system": "システム",
@@ -323,6 +327,7 @@
     "foot": "Flint がここで開いていないときにのみ、パソコンからこのスマホのプッシュサービスへ直接送信されます。ペイロードは暗号化され、メッセージ本文は含まれません。",
     "notify": "このスマホに通知",
     "notSetUp": "パソコンで未設定",
+    "willNotify": "通知されます",
     "sendTest": "テスト通知を送信",
     "testSent": "テストを送信しました",
     "notifyWhen": "通知するタイミング",

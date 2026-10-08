@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "Unbenannt",
+    "actionsFor": "Aktionen für {{name}}",
     "confirmEmpty": "Alles im Archiv endgültig löschen? Das lässt sich nicht rückgängig machen.",
     "deletedBlocked": "{{count}} gelöscht. {{title}}: {{reason}}",
     "deleted": "{{count}} gelöscht",
     "title": "Archiv",
-    "intro": "Gelöschte Elemente warten hier. Gedrückt halten, um eines wiederherzustellen oder endgültig zu löschen.",
+    "intro": "Gelöschte Elemente warten hier. Wische eines nach links oder halte es gedrückt, um es wiederherzustellen oder endgültig zu löschen.",
     "empty": "Das Archiv ist leer.",
     "retention_one": "Archivierte Elemente werden nach {{count}} Tag endgültig gelöscht.",
     "retention_other": "Archivierte Elemente werden nach {{count}} Tagen endgültig gelöscht.",
@@ -69,7 +70,10 @@
     "from": "von {{origin}}",
     "loading": "Wird geladen…",
     "experimental": "Experimentell",
-    "delete": "Löschen"
+    "delete": "Löschen",
+    "working": "Wird ausgeführt",
+    "allowed": "Erlaubt",
+    "didNotWorkRetry": "Hat nicht geklappt, versuche es erneut"
   },
   "chat": {
     "system": "System",
@@ -328,6 +332,7 @@
     "foot": "Wird von deinem Computer direkt an den Push-Dienst dieses Handys gesendet, nur wenn Flint hier nicht geöffnet ist. Die Daten sind verschlüsselt und enthalten keinen Nachrichtentext.",
     "notify": "Dieses Handy benachrichtigen",
     "notSetUp": "Auf dem Computer nicht eingerichtet",
+    "willNotify": "Du wirst benachrichtigt",
     "sendTest": "Testbenachrichtigung senden",
     "testSent": "Test gesendet",
     "notifyWhen": "Benachrichtige mich, wenn",

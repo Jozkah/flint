@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "Bez tytułu",
+    "actionsFor": "Akcje dla: {{name}}",
     "confirmEmpty": "Usunąć na stałe wszystko z archiwum? Tej operacji nie można cofnąć.",
     "deletedBlocked": "Usunięto: {{count}}. {{title}}: {{reason}}",
     "deleted": "Usunięto: {{count}}",
     "title": "Archiwum",
-    "intro": "Usunięte elementy czekają tutaj. Naciśnij i przytrzymaj element, aby go przywrócić lub usunąć na stałe.",
+    "intro": "Usunięte elementy czekają tutaj. Przesuń jeden w lewo lub przytrzymaj go, aby go przywrócić albo trwale usunąć.",
     "empty": "Archiwum jest puste.",
     "retention_one": "Zarchiwizowane elementy są trwale usuwane po {{count}} dniu.",
     "retention_few": "Zarchiwizowane elementy są trwale usuwane po {{count}} dniach.",
@@ -71,7 +72,10 @@
     "from": "z: {{origin}}",
     "loading": "Wczytywanie…",
     "experimental": "Eksperymentalne",
-    "delete": "Usuń"
+    "delete": "Usuń",
+    "working": "Trwa praca",
+    "allowed": "Zezwolono",
+    "didNotWorkRetry": "Nie udało się, spróbuj ponownie"
   },
   "chat": {
     "system": "System",
@@ -338,6 +342,7 @@
     "foot": "Wysyłane przez Twój komputer prosto do usługi push tego telefonu, tylko gdy Flint nie jest tu otwarty. Dane są szyfrowane i nie zawierają treści wiadomości.",
     "notify": "Powiadamiaj ten telefon",
     "notSetUp": "Nie skonfigurowano na komputerze",
+    "willNotify": "Dostaniesz powiadomienie",
     "sendTest": "Wyślij testowe powiadomienie",
     "testSent": "Wysłano test",
     "notifyWhen": "Powiadom mnie, gdy",

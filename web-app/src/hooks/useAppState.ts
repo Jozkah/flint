@@ -49,6 +49,8 @@ type AppState = {
 
   streamingContents: Record<string, ThreadMessage>
   loadingModels: Record<string, boolean>
+  /** Threads whose last model load failed, with when; cleared on the next load. */
+  modelLoadFailures: Record<string, number>
   promptProgresses: Record<string, PromptProgress>
   liveTokenStatsByThread: Record<string, LiveTokenStats>
   modelLoadProgressByThread: Record<string, ModelLoadProgress>
@@ -85,6 +87,7 @@ type AppState = {
     content: ThreadMessage | undefined
   ) => void
   updateThreadLoadingModel: (threadId: string, loading: boolean) => void
+  markThreadModelLoadFailed: (threadId: string, failed: boolean) => void
   updateThreadPromptProgress: (
     threadId: string,
     progress: PromptProgress | undefined
@@ -124,6 +127,7 @@ export const useAppState = create<AppState>()((set) => ({
   activeModels: [],
   streamingContents: {},
   loadingModels: {},
+  modelLoadFailures: {},
   promptProgresses: {},
   liveTokenStatsByThread: {},
   modelLoadProgressByThread: {},
@@ -247,7 +251,19 @@ export const useAppState = create<AppState>()((set) => ({
       const next = { ...state.loadingModels }
       if (loading) next[threadId] = true
       else delete next[threadId]
+      if (loading && threadId in state.modelLoadFailures) {
+        const failures = { ...state.modelLoadFailures }
+        delete failures[threadId]
+        return { loadingModels: next, modelLoadFailures: failures }
+      }
       return { loadingModels: next }
+    }),
+  markThreadModelLoadFailed: (threadId, failed) =>
+    set((state) => {
+      const next = { ...state.modelLoadFailures }
+      if (failed) next[threadId] = Date.now()
+      else delete next[threadId]
+      return { modelLoadFailures: next }
     }),
   updateThreadPromptProgress: (threadId, progress) =>
     set((state) => {

@@ -39,11 +39,12 @@
       "studio": "Studio"
     },
     "untitled": "Sin título",
+    "actionsFor": "Acciones para {{name}}",
     "confirmEmpty": "¿Eliminar definitivamente todo el archivo? No se puede deshacer.",
     "deletedBlocked": "{{count}} eliminados. {{title}}: {{reason}}",
     "deleted": "{{count}} eliminados",
     "title": "Archivo",
-    "intro": "Los elementos eliminados esperan aquí. Mantén pulsado uno para restaurarlo o eliminarlo definitivamente.",
+    "intro": "Los elementos eliminados esperan aquí. Desliza uno a la izquierda, o mantenlo pulsado, para restaurarlo o eliminarlo definitivamente.",
     "empty": "No hay nada en el archivo.",
     "retention_one": "Los elementos archivados se eliminan definitivamente tras {{count}} día.",
     "retention_many": "Los elementos archivados se eliminan definitivamente tras {{count}} de días.",
@@ -70,7 +71,10 @@
     "from": "desde {{origin}}",
     "loading": "Cargando…",
     "experimental": "Experimental",
-    "delete": "Eliminar"
+    "delete": "Eliminar",
+    "working": "Trabajando",
+    "allowed": "Permitido",
+    "didNotWorkRetry": "No funcionó, inténtalo de nuevo"
   },
   "chat": {
     "system": "Sistema",
@@ -333,6 +337,7 @@
     "foot": "Tu ordenador las envía directamente al servicio push de este teléfono, solo mientras Flint no está abierto aquí. Los datos van cifrados y no incluyen el texto del mensaje.",
     "notify": "Notificar a este teléfono",
     "notSetUp": "No configurado en el ordenador",
+    "willNotify": "Recibirás notificaciones",
     "sendTest": "Enviar una notificación de prueba",
     "testSent": "Prueba enviada",
     "notifyWhen": "Avisarme cuando",
