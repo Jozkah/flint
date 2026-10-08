@@ -265,6 +265,25 @@ fn preflight(origin: &str) -> Resp {
     response
 }
 
+/// Whether the session cookie should be `Secure`: the request came to the
+/// configured public host, or its Origin is an https one for a host this server
+/// answers to (a TLS proxy on a port other than 443 forwards `host:port`, which
+/// a bare `--public-host` name does not match).
+fn cookie_secure(state: &State, headers: &hyper::HeaderMap) -> bool {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .map(str::to_ascii_lowercase);
+    if state.public_host.is_some() && state.public_host == host {
+        return true;
+    }
+    headers
+        .get(header::ORIGIN)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|origin| origin.strip_prefix("https://"))
+        .is_some_and(|origin_host| state.hosts.contains(&origin_host.to_ascii_lowercase()))
+}
+
 fn no_content() -> Resp {
     reply(StatusCode::NO_CONTENT, "text/plain", Bytes::new())
 }
@@ -888,11 +907,7 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
         if login_blocked(&mut state.login_failures.lock().unwrap()) {
             return text(StatusCode::TOO_MANY_REQUESTS, "Too many sign-in attempts");
         }
-        let req_host_for_cookie = req
-            .headers()
-            .get(header::HOST)
-            .and_then(|h| h.to_str().ok())
-            .map(str::to_ascii_lowercase);
+        let secure = cookie_secure(&state, req.headers());
         let body = match Limited::new(req.into_body(), MAX_LOGIN_BODY)
             .collect()
             .await
@@ -918,7 +933,6 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>) -> Resp {
                 response
                     .headers_mut()
                     .insert(header::LOCATION, HeaderValue::from_static("/"));
-                let secure = state.public_host.as_deref() == req_host_for_cookie.as_deref();
                 response.headers_mut().insert(header::SET_COOKIE,
                     HeaderValue::from_str(&format!("{COOKIE_NAME}={session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200{}", if secure { "; Secure" } else { "" }))
                         .expect("hex session cookie is valid"));
@@ -1444,6 +1458,37 @@ mod tests {
         assert!(response.headers().get(header::ACCESS_CONTROL_ALLOW_CREDENTIALS).is_none());
         let none = with_cors(text(StatusCode::OK, "x"), None);
         assert!(none.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
+    }
+
+    #[test]
+    fn session_cookie_is_secure_for_https_origins_on_known_hosts() {
+        let dir = tempfile::tempdir().unwrap();
+        let (auth, _) = AuthStore::open(dir.path().join("auth.json")).unwrap();
+        let state = State {
+            auth: Mutex::new(auth),
+            assets: dir.path().to_path_buf(),
+            data_folder: dir.path().to_path_buf(),
+            hosts: HashSet::from(["box.ts.net:8443".to_string(), "localhost:1340".to_string()]),
+            public_host: Some("box.ts.net".to_string()),
+            login_failures: Mutex::new(VecDeque::new()),
+            mcp: mcp::Host::new(false),
+            allowed_origins: HashSet::new(),
+            engine: engine::Supervisor::new(None, events::Bus::new()),
+            settings: settings::Store::new(dir.path()),
+            events: events::Bus::new(),
+        };
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert(header::HOST, HeaderValue::from_static("box.ts.net:8443"));
+        headers.insert(header::ORIGIN, HeaderValue::from_static("https://box.ts.net:8443"));
+        assert!(cookie_secure(&state, &headers));
+        headers.insert(header::ORIGIN, HeaderValue::from_static("http://localhost:1340"));
+        headers.insert(header::HOST, HeaderValue::from_static("localhost:1340"));
+        assert!(!cookie_secure(&state, &headers));
+        headers.insert(header::ORIGIN, HeaderValue::from_static("https://evil.example"));
+        assert!(!cookie_secure(&state, &headers));
+        headers.insert(header::HOST, HeaderValue::from_static("box.ts.net"));
+        headers.remove(header::ORIGIN);
+        assert!(cookie_secure(&state, &headers));
     }
 
     #[test]
