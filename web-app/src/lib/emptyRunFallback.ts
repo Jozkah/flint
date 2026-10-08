@@ -57,6 +57,20 @@ export function toolPartError(part: MessagePartLike): string | undefined {
   return undefined
 }
 
+/**
+ * Whether a tool call failed because the tool was not offered to the model --
+ * what a model does when it expects tools and its tool calls are switched off.
+ */
+export function calledUnavailableTool(parts: readonly MessagePartLike[]): boolean {
+  return parts.some((part) => {
+    const error = toolPartError(part)
+    return (
+      !!error &&
+      /unavailable tool|no tools are available|does not exist here/i.test(error)
+    )
+  })
+}
+
 function clip(s: string): string {
   const one = s.replace(/\s+/g, ' ').trim()
   return one.length > MAX_ERROR_CHARS ? `${one.slice(0, MAX_ERROR_CHARS)}…` : one
