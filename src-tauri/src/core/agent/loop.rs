@@ -47,6 +47,30 @@ pub(crate) const STUCK_TURN_LIMIT: usize = 3;
 /// A stalled local read or web request must not hold the entire tool batch open.
 const READ_ONLY_TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
+/// How long a read-only call may run before the batch stops waiting for it.
+/// The messaging tools wait for another session by design (`wait_for_reply`
+/// defaults to 60 s, both it and `send_message` allow up to 120 s), so their
+/// bound is the wait they were asked for plus a margin.
+fn read_only_tool_timeout(name: &str, args: &serde_json::Value) -> std::time::Duration {
+    const MARGIN_SECS: u64 = 15;
+    const MAX_WAIT_SECS: u64 = 120;
+    const DEFAULT_WAIT_SECS: u64 = 60;
+    let wait = match name {
+        "wait_for_reply" => Some(
+            args.get("timeout_seconds")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(DEFAULT_WAIT_SECS),
+        ),
+        "send_message" => args.get("wait_seconds").and_then(|v| v.as_u64()),
+        _ => None,
+    };
+    match wait {
+        Some(secs) => READ_ONLY_TOOL_TIMEOUT
+            .max(std::time::Duration::from_secs(secs.min(MAX_WAIT_SECS) + MARGIN_SECS)),
+        None => READ_ONLY_TOOL_TIMEOUT,
+    }
+}
+
 async fn bounded_read_only_call<F: Future<Output = ToolOutcome>>(
     call: F,
     id: String,
@@ -3997,6 +4021,7 @@ impl CompositeToolInvoker {
                 // run's scope rather than sharing one.
                 let registered = self.call_token(&id);
                 let timeout_id = id.clone();
+                let call_timeout = read_only_tool_timeout(tool.name, &args);
                 read_futures.push(bounded_read_only_call(
                     async move {
                         let ctx = ToolContext::new(&root, &store, &enabled)
@@ -4019,7 +4044,7 @@ impl CompositeToolInvoker {
                     },
                     timeout_id,
                     name.to_string(),
-                    READ_ONLY_TOOL_TIMEOUT,
+                    call_timeout,
                 ));
                 continue;
             }
@@ -13343,6 +13368,19 @@ mod tests {
         assert_eq!(stalled.id, "stalled");
         assert!(stalled.content.starts_with("ERROR: read timed out"));
         assert_eq!(finished.content, "contents");
+    }
+
+    #[test]
+    fn waiting_messaging_tools_get_their_wait_plus_a_margin() {
+        use serde_json::json;
+        let base = READ_ONLY_TOOL_TIMEOUT;
+        assert_eq!(read_only_tool_timeout("read_file", &json!({})), base);
+        assert_eq!(read_only_tool_timeout("send_message", &json!({})), base);
+        assert_eq!(read_only_tool_timeout("send_message", &json!({ "wait_seconds": 10 })), base);
+        assert!(read_only_tool_timeout("send_message", &json!({ "wait_seconds": 120 })).as_secs() > 120);
+        assert!(read_only_tool_timeout("wait_for_reply", &json!({})).as_secs() > 60);
+        assert!(read_only_tool_timeout("wait_for_reply", &json!({ "timeout_seconds": 120 })).as_secs() > 120);
+        assert!(read_only_tool_timeout("wait_for_reply", &json!({ "timeout_seconds": 9999 })).as_secs() <= 135);
     }
 
     #[tokio::test]
