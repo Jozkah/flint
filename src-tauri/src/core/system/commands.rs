@@ -1039,6 +1039,43 @@ fn jan_cli_bin_dir_windows() -> Result<PathBuf, String> {
         .join("bin"))
 }
 
+/// The user PATH with `install_dir` put first, or `None` when it is already on
+/// it. A stale entry for the old desktop layout (`old_jan_dir`) is dropped
+/// unless `holds_cli` says it still holds somebody's CLI install
+/// (janhq/jan#8812).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn path_with_dir_added(
+    existing: &str,
+    install_dir: &str,
+    old_jan_dir: Option<&str>,
+    holds_cli: impl Fn(&str) -> bool,
+) -> Option<String> {
+    let parts: Vec<&str> = existing
+        .split(';')
+        .filter(|p| !p.is_empty())
+        .filter(|p| match old_jan_dir {
+            Some(old) => !p.eq_ignore_ascii_case(old) || holds_cli(p),
+            None => true,
+        })
+        .collect();
+    if parts.iter().any(|p| p.eq_ignore_ascii_case(install_dir)) {
+        return None;
+    }
+    let mut new_parts = vec![install_dir];
+    new_parts.extend(parts);
+    Some(new_parts.join(";"))
+}
+
+/// The user PATH without `dir`.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn path_without_dir(existing: &str, dir: &str) -> String {
+    existing
+        .split(';')
+        .filter(|p| !p.is_empty() && !p.eq_ignore_ascii_case(dir))
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
 /// Add a directory to the Windows user PATH.
 #[cfg(windows)]
 fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
@@ -1060,6 +1097,14 @@ fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
         .output()
         .map_err(|e| format!("Failed to read user PATH: {}", e))?;
 
+    // A failed or interrupted read must never be mistaken for an empty PATH:
+    // writing back from it would replace the whole user PATH.
+    if !read_output.status.success() {
+        return Err(format!(
+            "Failed to read user PATH: {}",
+            String::from_utf8_lossy(&read_output.stderr).trim()
+        ));
+    }
     let existing_user_path = String::from_utf8_lossy(&read_output.stdout)
         .trim()
         .to_string();
@@ -1071,32 +1116,11 @@ fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
         .and_then(|p| p.parent())
         .map(|p| p.to_string_lossy().to_string());
 
-    let parts: Vec<&str> = existing_user_path
-        .split(';')
-        .filter(|p| !p.is_empty())
-        .filter(|p| {
-            // An entry that still holds a CLI is somebody's install -- the
-            // standalone installer defaults to exactly this directory -- not
-            // debris from an old desktop layout (janhq/jan#8812).
-            if let Some(ref old) = old_jan_dir {
-                !p.eq_ignore_ascii_case(old)
-                    || super::cli_provenance::path_entry_holds_cli(std::path::Path::new(p))
-            } else {
-                true
-            }
-        })
-        .collect();
-
-    if parts
-        .iter()
-        .any(|p| p.eq_ignore_ascii_case(&install_dir_str))
-    {
+    let Some(new_path) = path_with_dir_added(&existing_user_path, &install_dir_str, old_jan_dir.as_deref(), |entry| {
+        super::cli_provenance::path_entry_holds_cli(std::path::Path::new(entry))
+    }) else {
         return Ok(());
-    }
-
-    let mut new_parts = vec![install_dir_str.as_str()];
-    new_parts.extend(parts);
-    let new_path = new_parts.join(";");
+    };
 
     let mut cmd_write = Command::new("powershell");
     cmd_write.args([
@@ -1149,15 +1173,21 @@ fn remove_from_path_windows(dir: &Path) -> Result<(), String> {
         .output()
         .map_err(|e| format!("Failed to read user PATH: {}", e))?;
 
+    if !read_output.status.success() {
+        return Err(format!(
+            "Failed to read user PATH: {}",
+            String::from_utf8_lossy(&read_output.stderr).trim()
+        ));
+    }
     let existing_user_path = String::from_utf8_lossy(&read_output.stdout)
         .trim()
         .to_string();
+    // Nothing read means nothing to remove; never write from an empty read.
+    if existing_user_path.is_empty() {
+        return Ok(());
+    }
 
-    let new_path: String = existing_user_path
-        .split(';')
-        .filter(|p| !p.is_empty() && !p.eq_ignore_ascii_case(&dir_str))
-        .collect::<Vec<_>>()
-        .join(";");
+    let new_path = path_without_dir(&existing_user_path, &dir_str);
 
     if new_path.len() != existing_user_path.len() {
         let mut cmd_write = Command::new("powershell");
@@ -1189,6 +1219,33 @@ fn remove_from_path_windows(dir: &Path) -> Result<(), String> {
         log::info!("Removed {} from Windows user PATH", dir_str);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod user_path_tests {
+    use super::*;
+
+    #[test]
+    fn the_install_dir_goes_first_and_only_once() {
+        let added = path_with_dir_added("C:/a;C:/b", "C:/jan", None, |_| false).unwrap();
+        assert_eq!(added, "C:/jan;C:/a;C:/b");
+        assert!(path_with_dir_added("C:/a;c:/JAN", "C:/jan", None, |_| false).is_none());
+        assert_eq!(path_with_dir_added("", "C:/jan", None, |_| false).as_deref(), Some("C:/jan"));
+    }
+
+    #[test]
+    fn the_stale_layout_entry_goes_unless_it_holds_a_cli() {
+        let stale = path_with_dir_added("C:/old;C:/a", "C:/jan", Some("C:/OLD"), |_| false).unwrap();
+        assert_eq!(stale, "C:/jan;C:/a");
+        let kept = path_with_dir_added("C:/old;C:/a", "C:/jan", Some("C:/old"), |_| true).unwrap();
+        assert_eq!(kept, "C:/jan;C:/old;C:/a");
+    }
+
+    #[test]
+    fn removing_a_dir_keeps_the_rest_in_order() {
+        assert_eq!(path_without_dir("C:/a;;C:/JAN;C:/b", "c:/jan"), "C:/a;C:/b");
+        assert_eq!(path_without_dir("C:/a", "C:/jan"), "C:/a");
+    }
 }
 
 #[cfg(test)]
