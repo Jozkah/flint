@@ -239,6 +239,10 @@ export function DataProvider() {
     runInBackground,
     enableServerToolExecution,
   } = useLocalApiServer()
+  const closeToTray = useGeneralSetting((state) => state.closeToTray)
+  const downloadLimitMBps = useGeneralSetting(
+    (state) => state.downloadLimitMBps
+  )
   const setServerStatus = useAppState((state) => state.setServerStatus)
 
   useEffect(() => {
@@ -416,6 +420,25 @@ export function DataProvider() {
         console.error('Failed to sync run-in-background setting:', error)
       )
   }, [serviceHub, runInBackground])
+
+  // Keep the backend's close-to-tray flag and download speed cap in sync
+  useEffect(() => {
+    serviceHub
+      .app()
+      .setCloseToTray(closeToTray)
+      .catch((error) =>
+        console.error('Failed to sync close-to-tray setting:', error)
+      )
+  }, [serviceHub, closeToTray])
+
+  useEffect(() => {
+    serviceHub
+      .app()
+      .setDownloadSpeedLimit(Math.round(downloadLimitMBps * 1024 * 1024))
+      .catch((error) =>
+        console.error('Failed to sync download speed limit:', error)
+      )
+  }, [serviceHub, downloadLimitMBps])
 
   // Auto-start Local API Server on app startup if enabled
   useEffect(() => {

@@ -98,7 +98,9 @@ pub async fn stop_server<R: Runtime>(
         .map_err(|e| e.to_string())?;
 
     #[cfg(feature = "desktop")]
-    crate::core::setup::remove_tray(&app_handle);
+    if !CLOSE_TO_TRAY.load(Ordering::SeqCst) {
+        crate::core::setup::remove_tray(&app_handle);
+    }
     #[cfg(not(feature = "desktop"))]
     let _ = app_handle;
 
@@ -112,6 +114,21 @@ pub static SERVER_RUN_IN_BACKGROUND: AtomicBool = AtomicBool::new(true);
 #[tauri::command]
 pub fn set_server_run_in_background(enabled: bool) {
     SERVER_RUN_IN_BACKGROUND.store(enabled, Ordering::SeqCst);
+}
+
+/// "Close to tray" setting: closing the main window hides it to the tray even
+/// when the Local API Server is not running (Windows/Linux). Off by default.
+pub static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+pub fn set_close_to_tray<R: Runtime>(app_handle: AppHandle<R>, enabled: bool) {
+    CLOSE_TO_TRAY.store(enabled, Ordering::SeqCst);
+    #[cfg(feature = "desktop")]
+    if enabled {
+        crate::core::setup::show_tray(&app_handle);
+    }
+    #[cfg(not(feature = "desktop"))]
+    let _ = app_handle;
 }
 
 #[tauri::command]
