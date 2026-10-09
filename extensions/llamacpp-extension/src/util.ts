@@ -148,6 +148,19 @@ export async function getProxyConfig(): Promise<Record<
 
 // --- Embedding batching helpers ---
 
+/**
+ * Whether a GGUF chat template handles tools. Templates name them in several
+ * ways -- a `tools` variable, `tool_calls` on messages, a `tool_response`
+ * role, Mistral's [AVAILABLE_TOOLS] -- and merged or re-quantised models often
+ * keep a template that only uses one of them.
+ */
+export function chatTemplateSupportsTools(template: unknown): boolean {
+  return (
+    typeof template === 'string' &&
+    /tools|tool_calls?|tool_response/i.test(template)
+  )
+}
+
 export type EmbedBatch = { batch: string[]; offset: number }
 export type EmbedUsage = { prompt_tokens?: number; total_tokens?: number }
 export type EmbedData = { embedding: number[]; index: number }

@@ -5,6 +5,7 @@ import {
   detectMtpLayersFromGgufMeta,
   resolveSpecDraftKind,
   detectTemplateKwargsFromChatTemplate,
+  chatTemplateSupportsTools,
   estimateTokensFromText,
   getProxyConfig,
   truncateToTokenBudget,
@@ -805,5 +806,17 @@ describe('assertSha256Matches', () => {
     expect(() => assertSha256Matches('model', 'deadbeef', h)).toThrow(
       /SHA-256 mismatch for the model file/
     )
+  })
+})
+
+describe('chatTemplateSupportsTools', () => {
+  it('accepts templates that name tools in any common way', () => {
+    expect(chatTemplateSupportsTools('{% if tools %}x{% endif %}')).toBe(true)
+    expect(chatTemplateSupportsTools('{{ m.tool_calls }}')).toBe(true)
+    expect(chatTemplateSupportsTools('[AVAILABLE_TOOLS]')).toBe(true)
+  })
+  it('rejects plain chat templates and missing ones', () => {
+    expect(chatTemplateSupportsTools('<|user|>{{ m.content }}')).toBe(false)
+    expect(chatTemplateSupportsTools(undefined)).toBe(false)
   })
 })
