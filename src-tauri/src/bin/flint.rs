@@ -1552,6 +1552,30 @@ enum ModelsCommands {
         #[arg(long)]
         filter: Option<String>,
     },
+    /// Search Hugging Face for models (uses the network; HF_TOKEN is read if set)
+    Search {
+        query: String,
+        /// gguf, mlx or all
+        #[arg(long, default_value = "gguf")]
+        format: String,
+    },
+    /// List a Hugging Face repository's files with their sizes
+    Files { repo: String },
+    /// Download one file from Hugging Face, resumable and checked against its SHA-256
+    Download {
+        /// owner/name
+        repo: String,
+        /// The file path inside the repository
+        file: String,
+    },
+    /// Copy a GGUF into the local models folder so the local server finds it
+    Import {
+        /// Path to a .gguf file
+        file: String,
+        /// The model id to give it
+        #[arg(long)]
+        id: String,
+    },
     /// List locally downloaded models (in the llamacpp/models directory)
     ListLocal {
         /// Print as JSON instead of a table
@@ -3722,6 +3746,42 @@ async fn handle_models(cmd: ModelsCommands) {
                 None => output,
             };
             println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        }
+        ModelsCommands::Search { query, format } => {
+            match app_lib::core::cli::hf_cmd::search(&query, &format).await {
+                Ok(v) => println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        ModelsCommands::Files { repo } => match app_lib::core::cli::hf_cmd::files(&repo).await {
+            Ok(v) => println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()),
+            Err(e) => {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        },
+        ModelsCommands::Download { repo, file } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            match app_lib::core::cli::hf_cmd::download(&data, &repo, &file, false).await {
+                Ok(path) => println!("{}", serde_json::json!({ "path": path })),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        ModelsCommands::Import { file, id } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            match app_lib::core::cli::hf_cmd::import(&data, std::path::Path::new(&file), &id) {
+                Ok(path) => println!("{}", serde_json::json!({ "imported": id, "path": path })),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
         }
         ModelsCommands::ListLocal { json } => handle_models_list_local(json),
         ModelsCommands::Info { path, json } => handle_models_info(&path, json),
