@@ -121,6 +121,7 @@ function DisclosureGroup({
   containsActive,
   badge,
   testId,
+  pinned,
   children,
 }: {
   id: string
@@ -128,12 +129,17 @@ function DisclosureGroup({
   containsActive: boolean
   badge?: number
   testId: string
+  /** Extended layout: always open, so there is nothing to toggle. */
+  pinned?: boolean
   children: React.ReactNode
 }) {
   const [manual, setManual] = useState(() => readDisclosure(id))
-  const open = manual || containsActive
+  const open = pinned || manual || containsActive
   return (
     <NavGroup>
+      {pinned ? (
+        <NavGroupLabel>{label}</NavGroupLabel>
+      ) : (
       <button
         type="button"
         data-testid={testId}
@@ -154,6 +160,7 @@ function DisclosureGroup({
           <span className="text-[11px] tabular-nums">{badge}</span>
         )}
       </button>
+      )}
       <NavCollapse open={open}>
         <NavList>{children}</NavList>
       </NavCollapse>
@@ -221,6 +228,8 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const inDiscover =
     pathname === route.hub.index.replace(/\/$/, '') || pathname.startsWith('/hub/')
 
+  const extended = useInterfaceSettings((s) => s.sidebarLayout) === 'extended'
+
   const newChat = () => {
     useAgentMode.getState().removeThread(TEMPORARY_CHAT_ID)
     navigate({ to: route.home })
@@ -228,14 +237,6 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   }
 
   const engine: LinkRow[] = [
-    {
-      to: route.hub.index,
-      label: 'Discover',
-      icon: 'search',
-      active: inDiscover,
-      count: activeDownloads,
-      testId: 'rail-discover',
-    },
     {
       to: route.settings.model_providers,
       label: t('common:appRail.models'),
@@ -387,6 +388,14 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                 onNavigate={onNavigate}
                 rows={[
                   {
+                    to: route.hub.index,
+                    label: 'Discover',
+                    icon: 'search',
+                    active: inDiscover,
+                    count: activeDownloads,
+                    testId: 'rail-discover',
+                  },
+                  {
                     to: route.overview,
                     label: t('common:shell.resume'),
                     icon: 'sb-dashboard',
@@ -402,6 +411,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             id="more"
             label={t('common:shell.more')}
             testId="nav-more"
+            pinned={extended}
             containsActive={moreActive}
           >
             <RoomsNav icon={<Icon name="x-rooms" />} />
@@ -412,6 +422,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             id="advanced"
             label={t('common:shell.advanced')}
             testId="nav-advanced"
+            pinned={extended}
             containsActive={advanced.some((row) => row.active)}
             badge={activeDownloads}
           >
