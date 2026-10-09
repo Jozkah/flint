@@ -72,6 +72,9 @@ import {
  * `web_search`/`web_fetch` are also built-ins but are already advertised through
  * the websearch plugin (see `webSearchTool.ts`), so they are not duplicated here.
  */
+/** The tool the "Shell commands" switch in Settings turns off. */
+export const SHELL_TOOL_NAME = 'bash'
+
 export const AGENT_TOOL_NAMES = new Set([
   'read',
   'ls',
@@ -278,6 +281,7 @@ export async function getAgentToolSchemas(
     (reported ?? []).map((r) => `${r.component}:${r.state}`),
     scope ?? 'thread',
     useAgentToolsConfig.getState().browserAgentEnabled,
+    useAgentToolsConfig.getState().shellEnabled,
   ])
   if (schemaCache && schemaCacheKey === key && statusCache) return schemaCache
   const [advertised] = await Promise.all([
@@ -288,8 +292,11 @@ export async function getAgentToolSchemas(
     getSandboxStatus(),
   ])
   if (!advertised) return schemaCache ?? []
-  const builtin = advertised.schemas.filter((s) =>
-    AGENT_TOOL_NAMES.has(s.function.name)
+  const shellOn = useAgentToolsConfig.getState().shellEnabled
+  const builtin = advertised.schemas.filter(
+    (s) =>
+      AGENT_TOOL_NAMES.has(s.function.name) &&
+      (shellOn || s.function.name !== SHELL_TOOL_NAME)
   )
   // The browser tools are the desktop's own: Rust's list does not carry them.
   schemaCache = useAgentToolsConfig.getState().browserAgentEnabled
@@ -691,6 +698,18 @@ export async function executeAgentTool(
   try {
     const inputError = agentToolInputError(toolName, input)
     if (inputError) return { error: inputError }
+
+    // Withheld from the model's tool list too; this catches a call that still
+    // arrives (a stale list, a replayed history) so the switch is not a request.
+    if (
+      toolName === SHELL_TOOL_NAME &&
+      !useAgentToolsConfig.getState().shellEnabled
+    ) {
+      return {
+        error:
+          'The shell is turned off in Settings > Agent tools, so this command was not run.',
+      }
+    }
 
     if (HOST_ASKED.has(toolName) && hostCallNeedsAsking(toolName, input)) {
       // The id the question is asked under is the id the backend is told, so

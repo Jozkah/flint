@@ -10,12 +10,40 @@ use super::EngineError;
 /// must be `Send + Sync`.
 pub type StateCallback = std::sync::Arc<dyn Fn(&str, &str) + Send + Sync>;
 
+/// A cancel switch that exists *before* a request does. A non-streaming
+/// request blocks inside the engine until the whole completion is generated, so
+/// there is no `Response` to call `cancel()` on while it runs; this flag is
+/// handed to the shim up front and read by its `should_stop`. Clones share the
+/// flag, and the `Response` made with it keeps a clone alive, because the C++
+/// side holds a raw pointer to it for as long as the response exists.
+#[derive(Clone, Debug, Default)]
+pub struct CancelFlag(std::sync::Arc<std::sync::atomic::AtomicI32>);
+
+impl CancelFlag {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn cancel(&self) {
+        self.0.store(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst) != 0
+    }
+
+    #[cfg(feature = "engine")]
+    fn as_ptr(&self) -> *const i32 {
+        self.0.as_ptr().cast_const()
+    }
+}
+
 #[cfg(feature = "engine")]
 mod imp {
     use super::EngineError;
     use std::ffi::{c_char, c_int, c_void, CStr, CString};
 
-    use super::StateCallback;
+    use super::{CancelFlag, StateCallback};
 
     type EngineHandle = *mut c_void;
     type ResponseHandle = *mut c_void;
@@ -49,6 +77,14 @@ mod imp {
             query: *const c_char,
             body: *const c_char,
             body_len: usize,
+        ) -> ResponseHandle;
+        fn jan_llama_engine_request_cancellable(
+            engine: EngineHandle,
+            route: *const c_char,
+            query: *const c_char,
+            body: *const c_char,
+            body_len: usize,
+            cancel_flag: *const c_int,
         ) -> ResponseHandle;
         fn jan_llama_response_status(res: ResponseHandle) -> c_int;
         fn jan_llama_response_content_type(res: ResponseHandle) -> *const c_char;
@@ -203,6 +239,22 @@ mod imp {
         /// (`id_slot=0&action=save`) from there rather than from the body, so
         /// the slot routes are unreachable through `request` alone.
         pub fn request_with_query(&self, route: &str, query: &str, body: &str) -> Response {
+            self.issue(route, query, body, None)
+        }
+
+        /// Like `request`, but `cancel` stops the generation while this call is
+        /// still blocked: the shim polls it from the request's `should_stop`.
+        pub fn request_cancellable(&self, route: &str, body: &str, cancel: &CancelFlag) -> Response {
+            self.issue(route, "", body, Some(cancel))
+        }
+
+        fn issue(
+            &self,
+            route: &str,
+            query: &str,
+            body: &str,
+            cancel: Option<&CancelFlag>,
+        ) -> Response {
             let r = CString::new(route).unwrap_or_default();
             let q = CString::new(query).unwrap_or_default();
             let b = CString::new(body).unwrap_or_default();
@@ -214,17 +266,29 @@ mod imp {
             // construction; such a body reaches the engine empty and comes back
             // as an ordinary parse error.
             // SAFETY: the shim never returns null -- transport failures come
-            // back as a 5xx response object -- and copies the body.
+            // back as a 5xx response object -- and copies the body. The cancel
+            // pointer stays valid for the response's life because the returned
+            // `Response` holds a clone of the flag.
             let handle = unsafe {
-                jan_llama_engine_request(
-                    self.handle,
-                    r.as_ptr(),
-                    q.as_ptr(),
-                    b.as_ptr(),
-                    b.as_bytes().len(),
-                )
+                match cancel {
+                    Some(flag) => jan_llama_engine_request_cancellable(
+                        self.handle,
+                        r.as_ptr(),
+                        q.as_ptr(),
+                        b.as_ptr(),
+                        b.as_bytes().len(),
+                        flag.as_ptr(),
+                    ),
+                    None => jan_llama_engine_request(
+                        self.handle,
+                        r.as_ptr(),
+                        q.as_ptr(),
+                        b.as_ptr(),
+                        b.as_bytes().len(),
+                    ),
+                }
             };
-            Response(handle)
+            Response(handle, cancel.cloned())
         }
 
         /// Registers the ggml compute backends. `None` uses ggml's own search
@@ -306,7 +370,8 @@ mod imp {
 
     /// One in-flight response. Either a whole body or a chunk generator; the
     /// request it was made from is owned on the C++ side and outlives it.
-    pub struct Response(ResponseHandle);
+    #[allow(dead_code)] // field 1 only keeps the shim's cancel pointer alive
+    pub struct Response(ResponseHandle, Option<CancelFlag>);
     unsafe impl Send for Response {}
 
     impl std::fmt::Debug for Response {
@@ -424,6 +489,14 @@ mod imp {
             Response(())
         }
         pub fn request_with_query(&self, _route: &str, _query: &str, _body: &str) -> Response {
+            Response(())
+        }
+        pub fn request_cancellable(
+            &self,
+            _route: &str,
+            _body: &str,
+            _cancel: &super::CancelFlag,
+        ) -> Response {
             Response(())
         }
         pub fn load_backends(_dir: Option<&str>) {}
