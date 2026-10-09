@@ -1025,6 +1025,10 @@ export async function runTurn(opts: {
   let autoContinued = false
   // Likewise for a step that stalled past its retries: resumed once.
   let timeoutResumed = false
+  // A model that has worked through many steps and then writes a wrap-up is
+  // asked, up to twice, whether it is really finished. Bounded, so a model
+  // that truly is done costs at most two extra replies.
+  let completionChecks = 0
   // Calls the last step skipped because steering was pending; told to the model
   // when that steering turned out to have nothing to deliver.
   let skippedForSteering: string[] = []
@@ -1531,6 +1535,22 @@ export async function runTurn(opts: {
         )
         continue
       }
+      // After a long stretch of work, a wrap-up is often the model giving up
+      // on what is hard rather than finishing. Ask before ending the run.
+      if (
+        completionChecks < MAX_COMPLETION_CHECKS &&
+        step >= COMPLETION_CHECK_MIN_STEPS &&
+        !signal.aborted &&
+        result.text.trim()
+      ) {
+        completionChecks += 1
+        messages.push(
+          nudge(
+            'Note from Flint (not typed by the user): you stopped calling tools. Re-read the original task. If every part of it is done, reply with a one-line confirmation. If any part is unfinished, or you stopped because something was hard or blocked, keep working: try another approach with your tools rather than ending the run.'
+          )
+        )
+        continue
+      }
       return {
         messages,
         steps: step,
@@ -1541,6 +1561,11 @@ export async function runTurn(opts: {
     }
   }
 }
+
+/** Replies Flint may ask "are you really done?" of before ending a run. */
+const MAX_COMPLETION_CHECKS = 2
+/** Steps of work before a text-only reply is questioned; short runs end as before. */
+const COMPLETION_CHECK_MIN_STEPS = 8
 
 /**
  * One text-only turn after the loop guard stopped a run, so the model tells
