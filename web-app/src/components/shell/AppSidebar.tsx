@@ -398,8 +398,6 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             </NavList>
           </NavGroup>
 
-          <ChatsNav />
-
           <DisclosureGroup
             id="more"
             label={t('common:shell.more')}
@@ -420,12 +418,12 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             <LinkRows rows={advanced} onNavigate={onNavigate} />
           </DisclosureGroup>
 
-          <NavGroup>
-            <NavList>
-              <LinkRows rows={support} onNavigate={onNavigate} />
-            </NavList>
-          </NavGroup>
+          <ChatsNav />
         </nav>
+
+        <NavList>
+          <LinkRows rows={support} onNavigate={onNavigate} />
+        </NavList>
 
         <StatusCard onNavigate={onNavigate} />
       </div>
