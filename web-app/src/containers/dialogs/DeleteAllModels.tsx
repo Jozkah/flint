@@ -27,11 +27,14 @@ type DialogDeleteAllModelsProps = {
   provider: ModelProvider
   /** Hosted provider: nothing is on disk, so clear the whole list. */
   remote?: boolean
+  /** Compact trash-icon trigger, for rows such as the Hub model cards. */
+  iconOnly?: boolean
 }
 
 export const DialogDeleteAllModels = ({
   provider,
   remote = false,
+  iconOnly = false,
 }: DialogDeleteAllModelsProps) => {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
@@ -132,6 +135,17 @@ export const DialogDeleteAllModels = ({
   return (
     <Dialog open={open} onOpenChange={(o) => !isDeleting && setOpen(o)}>
       <DialogTrigger asChild>
+        {iconOnly ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:text-destructive pointer-coarse:size-11"
+            aria-label={t('providers:deleteModel.delete')}
+            title={t('providers:deleteModel.delete')}
+          >
+            <Trash2 aria-hidden />
+          </Button>
+        ) : (
         <Button variant="destructive" size="sm" className="pointer-coarse:h-11">
           <Trash2 aria-hidden />
           <span>
@@ -142,6 +156,7 @@ export const DialogDeleteAllModels = ({
             )}
           </span>
         </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -149,7 +164,9 @@ export const DialogDeleteAllModels = ({
             {t(
               remote
                 ? 'providers:deleteAllModels.clearTitle'
-                : 'providers:deleteAllModels.title'
+                : iconOnly
+                  ? 'providers:deleteAllModels.repoTitle'
+                  : 'providers:deleteAllModels.title'
             )}
           </DialogTitle>
           <DialogDescription>

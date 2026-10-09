@@ -87,6 +87,7 @@
   },
   "deleteAllModels": {
     "button": "Delete All",
+    "repoTitle": "Delete this downloaded model?",
     "clearButton": "Clear list",
     "clearTitle": "Remove all models from this provider?",
     "clearDescription": "This removes {{count}} model(s) from the list. Nothing is deleted on the provider's side, and Refresh can add them back.",
