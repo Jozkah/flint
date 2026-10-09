@@ -181,7 +181,7 @@ describe('open in split view', () => {
     try {
       renderList()
       fireEvent.contextMenu(screen.getByTestId('row'))
-      fireEvent.click(screen.getByText('chat:split.openInSplit'))
+      fireEvent.click(screen.getByText('chat:split.label'))
       const { panes, activePane } = useSplitConversation.getState()
       expect(panes).toHaveLength(1)
       expect(panes[0]).toMatchObject({ kind: 'chat', refId: 't1' })
