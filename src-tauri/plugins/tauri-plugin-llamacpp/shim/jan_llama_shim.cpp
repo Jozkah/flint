@@ -565,6 +565,15 @@ jan_llama_response * jan_llama_engine_request(jan_llama_engine * engine,
                                               const char *       query,
                                               const char *       body,
                                               size_t             body_len) {
+    return jan_llama_engine_request_cancellable(engine, route, query, body, body_len, nullptr);
+}
+
+jan_llama_response * jan_llama_engine_request_cancellable(jan_llama_engine * engine,
+                                                          const char *       route,
+                                                          const char *       query,
+                                                          const char *       body,
+                                                          size_t             body_len,
+                                                          const int *        cancel_flag) {
     auto out = new jan_llama_response();
     try {
         if (engine == nullptr || route == nullptr) {
@@ -579,7 +588,16 @@ jan_llama_response * jan_llama_engine_request(jan_llama_engine * engine,
             return out;
         }
 
-        out->should_stop = [cancel = &out->cancel]() { return cancel->load(); };
+        // A non-streaming handler blocks in here until the whole completion is
+        // generated, so there is no response handle to cancel through while it
+        // runs. `cancel_flag` is owned by the caller, who keeps it alive for the
+        // life of the response, and lets a client disconnect stop that wait.
+        static_assert(sizeof(std::atomic<int>) == sizeof(int) && std::atomic<int>::is_always_lock_free,
+                      "cancel_flag is read as a lock-free atomic int");
+        const auto * external = reinterpret_cast<const std::atomic<int> *>(cancel_flag);
+        out->should_stop = [cancel = &out->cancel, external]() {
+            return cancel->load() || (external != nullptr && external->load() != 0);
+        };
         out->req.reset(new server_http_req{
             /* params       */ parse_query(query),
             /* headers      */ {},

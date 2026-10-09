@@ -62,6 +62,18 @@ jan_llama_response * jan_llama_engine_request(jan_llama_engine * engine,
                                               const char *       body,
                                               size_t             body_len);
 
+// As jan_llama_engine_request, plus `cancel_flag`: a caller-owned int the
+// request's should_stop reads (non-zero = stop). It lets a non-streaming call,
+// which blocks until the completion is finished and so has no response handle
+// to cancel through, be stopped from another thread. May be NULL. It must stay
+// valid until the returned response is freed.
+jan_llama_response * jan_llama_engine_request_cancellable(jan_llama_engine * engine,
+                                                          const char *       route,
+                                                          const char *       query,
+                                                          const char *       body,
+                                                          size_t             body_len,
+                                                          const int *        cancel_flag);
+
 int          jan_llama_response_status(const jan_llama_response * res);
 const char * jan_llama_response_content_type(const jan_llama_response * res);
 const char * jan_llama_response_body(const jan_llama_response * res, size_t * len);

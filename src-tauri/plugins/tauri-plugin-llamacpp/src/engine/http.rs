@@ -845,6 +845,35 @@ async fn release_when_done(
     }
 }
 
+/// Cancels its flag when dropped while still armed. hyper drops a handler's
+/// future when the client disconnects, which is the only signal a non-streaming
+/// request ever gets: `engine.request` blocks until the completion is finished,
+/// so without this a `stream:false` call whose caller is gone keeps generating.
+struct CancelOnDrop {
+    flag: super::CancelFlag,
+    armed: bool,
+}
+
+impl CancelOnDrop {
+    fn new(flag: super::CancelFlag) -> Self {
+        Self { flag, armed: true }
+    }
+
+    /// The request finished (or turned into a stream, which cancels through its
+    /// own response handle), so dropping this must no longer stop anything.
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        if self.armed {
+            self.flag.cancel();
+        }
+    }
+}
+
 /// Issues one request and adapts the engine's response to an HTTP body.
 ///
 /// For a stream the response is returned while generation still runs; the
@@ -861,8 +890,10 @@ async fn run(
     // The engine call itself blocks: it takes the server queue and may wait on
     // a slot, so it must not run on the reactor.
     let engine2 = Arc::clone(&engine);
+    let cancel = super::CancelFlag::new();
+    let mut guard = CancelOnDrop::new(cancel.clone());
     let head = tokio::task::spawn_blocking(move || {
-        let res = engine2.request(name, &body);
+        let res = engine2.request_cancellable(name, &body, &cancel);
         let is_stream = res.is_stream();
         // Not read on a stream. Upstream prefills `res->data` with the first SSE
         // event and then has its own generator flush that same buffer as chunk
@@ -877,6 +908,8 @@ async fn run(
         (res.status(), res.content_type(), first, is_stream, res)
     })
     .await;
+    // Reached only if the future was not dropped mid-wait.
+    guard.disarm();
 
     let Ok((status, content_type, first, is_stream, mut res)) = head else {
         return (json_error(StatusCode::INTERNAL_SERVER_ERROR, "engine task panicked"), None);
@@ -1010,6 +1043,42 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
         assert!(registry.lock().await.unload("m"), "still busy after the stream ended");
+    }
+
+    #[test]
+    fn dropping_an_armed_guard_cancels_the_request() {
+        let flag = super::super::CancelFlag::new();
+        let guard = CancelOnDrop::new(flag.clone());
+        assert!(!flag.is_cancelled());
+        drop(guard);
+        assert!(flag.is_cancelled());
+    }
+
+    #[test]
+    fn a_disarmed_guard_leaves_the_request_running() {
+        let flag = super::super::CancelFlag::new();
+        let mut guard = CancelOnDrop::new(flag.clone());
+        guard.disarm();
+        drop(guard);
+        assert!(!flag.is_cancelled());
+    }
+
+    /// The real trigger: hyper drops the handler future on a client disconnect.
+    /// Aborting a task parked mid-wait must trip the flag a blocked engine call
+    /// is polling.
+    #[tokio::test]
+    async fn a_dropped_handler_future_cancels_a_blocked_request() {
+        let flag = super::super::CancelFlag::new();
+        let guard = CancelOnDrop::new(flag.clone());
+        let task = tokio::spawn(async move {
+            let _guard = guard;
+            std::future::pending::<()>().await;
+        });
+        tokio::task::yield_now().await;
+        assert!(!flag.is_cancelled());
+        task.abort();
+        let _ = task.await;
+        assert!(flag.is_cancelled());
     }
 
     #[test]
