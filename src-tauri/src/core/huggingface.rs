@@ -172,6 +172,7 @@ fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
     }
     reqwest::Client::builder()
         .default_headers(headers)
+        .connect_timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| format!("Could not create Hugging Face client: {e}"))
 }
@@ -637,12 +638,22 @@ async fn download_attempt<R: Runtime>(
         request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
     }
     let response = tokio::select! {
-        sent = request.send() => match sent {
-            Ok(response) => response,
-            Err(e) => {
+        sent = tokio::time::timeout(STALL_TIMEOUT, request.send()) => match sent {
+            Ok(Ok(response)) => response,
+            Ok(Err(e)) => {
                 return Ok(Attempt::Retry {
                     made_progress: false,
                     reason: format!("Hugging Face download failed: {e}"),
+                })
+            }
+            // A filtered connection or a server that never sends headers.
+            Err(_) => {
+                return Ok(Attempt::Retry {
+                    made_progress: false,
+                    reason: format!(
+                        "No response from Hugging Face for {} seconds",
+                        STALL_TIMEOUT.as_secs()
+                    ),
                 })
             }
         },
