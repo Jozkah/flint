@@ -17,7 +17,7 @@ use app_lib::core::cli::run_report::OutputFormat;
 use app_lib::core::cli::stream_input::InputFormat;
 use app_lib::core::cli::{
     cli_agent_config_list, cli_agent_config_path, cli_agent_config_set, cli_agent_config_unset,
-    cli_agent_run, cli_agent_status, cli_agent_step, cli_agent_ui, cli_delete_thread,
+    cli_agent_run, cli_agent_status, cli_agent_step, cli_agent_ui,
     cli_get_thread, cli_list_messages, cli_list_threads, cli_plugin_install, cli_plugin_list,
     cli_plugin_remove, cli_plugin_search, ResumeRequest, SessionFlags,
 };
@@ -477,6 +477,12 @@ enum CliCommands {
     Schedule {
         #[command(subcommand)]
         cmd: ScheduleCommands,
+    },
+    /// What delete moved aside: list, restore or purge it
+    #[command(display_order = 17)]
+    Archive {
+        #[command(subcommand)]
+        cmd: ArchiveCommands,
     },
 }
 
@@ -1264,6 +1270,46 @@ enum JobCommands {
 }
 
 #[derive(Subcommand)]
+enum ArchiveCommands {
+    /// List archived threads, rooms, sessions and so on
+    List {
+        /// thread, room, cowork, project, assistant or studio
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Put an archived thread or room back (use the archive id from `list`)
+    Restore { kind: String, archive_id: String },
+    /// Delete one archived item for good
+    Purge {
+        kind: String,
+        archive_id: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Delete everything archived, or one kind
+    Empty {
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Show or change the archive settings
+    Settings {
+        /// Whether delete moves to the archive at all
+        #[arg(long)]
+        enabled: Option<bool>,
+        /// Purge items older than this many days (0 keeps them)
+        #[arg(long)]
+        auto_delete_days: Option<u32>,
+        /// Archive threads idle this many days (0 is off)
+        #[arg(long)]
+        auto_archive_days: Option<u32>,
+    },
+}
+
+#[derive(Subcommand)]
 enum ThreadsCommands {
     /// Print all threads as JSON
     List,
@@ -1272,11 +1318,27 @@ enum ThreadsCommands {
         /// Thread ID
         id: String,
     },
-    /// Permanently delete a thread and all its messages
+    /// Delete a thread: it moves to the archive unless `--permanent` is given
     Delete {
         /// Thread ID
         id: String,
+        /// Skip the archive and remove the thread and its records for good
+        #[arg(long)]
+        permanent: bool,
     },
+    /// Start an empty thread and print it
+    Create {
+        #[arg(long)]
+        title: Option<String>,
+    },
+    /// Change a thread's title
+    Rename { id: String, title: String },
+    /// Mark a thread as a favourite
+    Favorite { id: String },
+    /// Remove the favourite mark
+    Unfavorite { id: String },
+    /// Delete one message from a thread
+    DeleteMessage { thread_id: String, message_id: String },
     /// Print a thread's messages as JSON (the conversation as shown)
     Messages {
         /// Thread ID
@@ -1922,6 +1984,7 @@ async fn handle_cli(cmd: CliCommands) {
     match cmd {
         CliCommands::Job { cmd } => handle_job(cmd),
         CliCommands::Threads { cmd } => handle_threads(cmd).await,
+        CliCommands::Archive { cmd } => handle_archive(cmd).await,
         CliCommands::Models { cmd } => handle_models(cmd).await,
         CliCommands::Agent { cmd } => handle_agent(cmd).await,
         CliCommands::Mcp { cmd } => {
@@ -3177,6 +3240,36 @@ fn handle_agent_config(cmd: AgentConfigCommands) -> Result<(), String> {
 
 // ── Threads handlers ───────────────────────────────────────────────────────
 
+fn print_or_exit(result: Result<serde_json::Value, String>) {
+    match result {
+        Ok(v) => println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn exit_on_error(result: Result<(), String>) {
+    if let Err(e) = result {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
+}
+
+async fn handle_archive(cmd: ArchiveCommands) {
+    use app_lib::core::cli::archive_cmd as a;
+    exit_on_error(match cmd {
+        ArchiveCommands::List { kind, json } => a::list(kind.as_deref(), json),
+        ArchiveCommands::Restore { kind, archive_id } => a::restore(&kind, &archive_id),
+        ArchiveCommands::Purge { kind, archive_id, yes } => a::purge(&kind, &archive_id, yes),
+        ArchiveCommands::Empty { kind, yes } => a::empty(kind.as_deref(), yes),
+        ArchiveCommands::Settings { enabled, auto_delete_days, auto_archive_days } => {
+            a::settings(enabled, auto_delete_days, auto_archive_days)
+        }
+    });
+}
+
 async fn handle_threads(cmd: ThreadsCommands) {
     match cmd {
         ThreadsCommands::List => match cli_list_threads().await {
@@ -3197,13 +3290,38 @@ async fn handle_threads(cmd: ThreadsCommands) {
             }
         },
 
-        ThreadsCommands::Delete { id } => match cli_delete_thread(&id) {
-            Ok(()) => println!("{}", serde_json::json!({ "deleted": true, "id": id })),
-            Err(e) => {
-                eprintln!("Error: {e}");
-                std::process::exit(1);
+        ThreadsCommands::Delete { id, permanent } => {
+            match app_lib::core::cli::archive_cmd::delete_thread(&id, permanent).await {
+                Ok(archived) => {
+                    println!("{}", serde_json::json!({ "deleted": true, "archived": archived, "id": id }))
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
             }
-        },
+        }
+        ThreadsCommands::Create { title } => {
+            print_or_exit(app_lib::core::cli::archive_cmd::create_thread(title.as_deref()))
+        }
+        ThreadsCommands::Rename { id, title } => {
+            print_or_exit(app_lib::core::cli::archive_cmd::rename_thread(&id, &title))
+        }
+        ThreadsCommands::Favorite { id } => {
+            print_or_exit(app_lib::core::cli::archive_cmd::favorite_thread(&id, true))
+        }
+        ThreadsCommands::Unfavorite { id } => {
+            print_or_exit(app_lib::core::cli::archive_cmd::favorite_thread(&id, false))
+        }
+        ThreadsCommands::DeleteMessage { thread_id, message_id } => {
+            match app_lib::core::cli::archive_cmd::delete_message(&thread_id, &message_id).await {
+                Ok(()) => println!("{}", serde_json::json!({ "deleted": true, "id": message_id })),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
 
         ThreadsCommands::Messages {
             thread_id,

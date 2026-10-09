@@ -30,6 +30,7 @@ pub mod rpc;
 pub mod rpc_schema;
 pub mod providers;
 pub mod run_report;
+pub mod archive_cmd;
 pub mod schedule;
 pub mod schedule_manage;
 pub mod secrets;
