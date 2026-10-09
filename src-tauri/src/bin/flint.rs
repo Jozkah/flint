@@ -215,6 +215,11 @@ impl ResumeRunArgs {
 /// lives under the non-interactive `cli` fallback.
 #[derive(Subcommand)]
 enum Commands {
+    /// Bring data over from a JAN install: detect, plan, run, status, rollback
+    Migrate {
+        #[command(subcommand)]
+        cmd: MigrateCommands,
+    },
     /// Run the production browser server without a desktop session
     Serve {
         /// Loopback address; use a private-network HTTPS proxy for remote access
@@ -1313,6 +1318,45 @@ enum JobCommands {
 }
 
 #[derive(Subcommand)]
+enum MigrateCommands {
+    /// Look for a JAN install and say what it holds
+    Detect,
+    /// Show what a migration would copy, move or reuse (changes nothing)
+    Plan {
+        /// copy, reuse, move or fresh
+        #[arg(long, default_value = "copy")]
+        mode: String,
+        /// Only these categories (repeat; default: all)
+        #[arg(long = "category")]
+        categories: Vec<String>,
+        /// keep_flint, use_jan or keep_both, for items on both sides
+        #[arg(long, default_value = "keep_flint")]
+        conflict: String,
+    },
+    /// Run the migration
+    Run {
+        #[arg(long, default_value = "copy")]
+        mode: String,
+        #[arg(long = "category")]
+        categories: Vec<String>,
+        #[arg(long, default_value = "keep_flint")]
+        conflict: String,
+        /// Do it; without this the plan is printed and nothing is changed
+        #[arg(long)]
+        yes: bool,
+    },
+    /// The record of the last migration
+    Status,
+    /// Remove what a migration copied (a move is restored from its backup)
+    Rollback {
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Stop offering the first-launch migration
+    Dismiss,
+}
+
+#[derive(Subcommand)]
 enum WorktreeCommands {
     /// List this repository's agent worktrees, with uncommitted and unmerged work
     List {
@@ -1915,6 +1959,19 @@ async fn run() {
             out,
         } => handle_bug_report(thread, show, yes, out),
         Commands::Doctor { json } => handle_doctor(json),
+        Commands::Migrate { cmd } => {
+            use app_lib::core::cli::migrate_cmd as m;
+            exit_on_error(match cmd {
+                MigrateCommands::Detect => m::detect_cmd(),
+                MigrateCommands::Plan { mode, categories, conflict } => m::plan_cmd(&mode, &categories, &conflict),
+                MigrateCommands::Run { mode, categories, conflict, yes } => {
+                    m::run_cmd(&mode, &categories, &conflict, yes)
+                }
+                MigrateCommands::Status => m::status_cmd(),
+                MigrateCommands::Rollback { yes } => m::rollback_cmd(yes),
+                MigrateCommands::Dismiss => m::dismiss_cmd(),
+            });
+        }
         Commands::Mcp { cmd } => handle_mcp_serve(cmd).await,
     }
 }

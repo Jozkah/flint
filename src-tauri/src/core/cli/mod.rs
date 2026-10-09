@@ -18,6 +18,7 @@ pub mod json_api;
 pub mod bench;
 pub mod login;
 pub mod mcp;
+pub mod migrate_cmd;
 /// `jan mcp serve`: the other direction, Jan's toolset served over MCP.
 pub mod mcp_serve;
 mod model_capabilities;
