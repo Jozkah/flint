@@ -1119,6 +1119,7 @@ function ProviderDetail() {
                     <RefreshCw className="text-muted-foreground" aria-hidden />
                   )}
                 </Button>
+                <DialogDeleteAllModels provider={provider} remote />
                 <DialogAddModel provider={provider} />
               </>
             )}

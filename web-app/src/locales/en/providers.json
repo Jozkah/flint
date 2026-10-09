@@ -87,6 +87,9 @@
   },
   "deleteAllModels": {
     "button": "Delete All",
+    "clearButton": "Clear list",
+    "clearTitle": "Remove all models from this provider?",
+    "clearDescription": "This removes {{count}} model(s) from the list. Nothing is deleted on the provider's side, and Refresh can add them back.",
     "title": "Delete all downloaded models?",
     "description": "This will permanently remove {{count}} model(s) from disk.",
     "sizeLabel": "Disk space to be freed:",
