@@ -601,7 +601,7 @@
   "dialogs": {
     "changeDataFolder": {
       "title": "Change Data Folder Location",
-      "description": "Are you sure you want to change the data folder location? This will move all your data to the new location and restart the application.",
+      "description": "Are you sure you want to change the data folder location? This will copy all your data to the new location and restart the application. Your existing data folder is left in place and is not deleted.",
       "currentLocation": "Current Location:",
       "newLocation": "New Location:",
       "cancel": "Cancel",
