@@ -540,3 +540,35 @@ describe('RenderMarkdown', () => {
   })
 })
 
+
+describe('RenderMarkdown inline HTML colors', () => {
+  afterEach(cleanup)
+
+  it('renders safe color styles from model output', () => {
+    render(
+      <RenderMarkdown content={'Rail <span style="color:#22c55e; font-weight:600">11.92V</span>'} />
+    )
+    const el = document.querySelector('.markdown span[style]') as HTMLElement
+    expect(el.textContent).toBe('11.92V')
+    expect(el.style.color).toBeTruthy()
+  })
+
+  it('strips scripts, handlers and unsafe style values', () => {
+    render(
+      <RenderMarkdown
+        content={
+          'a <span onclick="x()" style="color:red;background:url(http://e/x);position:fixed">b</span><script>alert(1)</script>'
+        }
+      />
+    )
+    const el = document.querySelector('.markdown span[style]') as HTMLElement
+    expect(el.getAttribute('onclick')).toBeNull()
+    expect(el.getAttribute('style')).toMatch(/^color: red;?$/)
+    expect(document.querySelector('.markdown script')).toBeNull()
+  })
+
+  it('keeps user HTML literal', () => {
+    render(<RenderMarkdown isUser content={'<span style="color:red">x</span>'} />)
+    expect(document.querySelector('.markdown span[style]')).toBeNull()
+  })
+})
