@@ -1,0 +1,47 @@
+name: Release Please
+
+# Manual only: nothing is opened or bumped until you run this workflow, so
+# nightlies stay the default. Running it opens (or refreshes) a release PR with
+# the next version and changelog from the conventional commits since the last
+# tag. Merging that PR pushes to main, which runs this workflow again; that run
+# creates the vX.Y.Z tag and release and starts the Flint Release build for it.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  release-please:
+    # Pushes to main only matter when they are the merged release PR.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'chore(main): release')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run release-please
+        id: rp
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # Set RELEASE_PLEASE_TOKEN (a PAT or app token) if the release PR
+          # should run CI checks; PRs opened with GITHUB_TOKEN do not.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # Events caused by GITHUB_TOKEN do not start other workflows, except
+      # workflow_dispatch, so start the installer build explicitly.
+      - name: Build and attach the installers
+        if: steps.rp.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.rp.outputs.tag_name }}
+        run: gh workflow run flint-release.yml --repo "$GITHUB_REPOSITORY" -f tag="$TAG"

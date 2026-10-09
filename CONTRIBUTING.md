@@ -229,6 +229,8 @@ fix: resolve memory leak in model loading
 docs: update installation instructions
 ```
 
+Commits and PR titles follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): `type(scope)!: description`. Allowed types are `feat`, `fix`, `perf`, `revert`, `docs`, `style`, `refactor`, `test`, `build`, `ci` and `chore`. PRs are squash-merged with the PR title as the commit message, and [release-please](https://github.com/googleapis/release-please) reads those commits: `feat` bumps the minor version, `fix` and `perf` bump the patch, and a `!` or a `BREAKING CHANGE:` footer marks a breaking change. A check on each PR enforces the title format. Releases are cut on demand: run the Release Please workflow by hand to open the release PR, and merging it tags the release and builds the installers. Nothing is bumped otherwise, and nightlies continue as before.
+
 ### Pull Request Requirements
 - Include a screenshot or screen recording in your PR description showing the change in action
 - For bug fixes: show both the **before** (broken behavior) and **after** (fixed behavior)
