@@ -181,7 +181,9 @@ export function ModelSetting({
         key === 'batch_size' ||
         key === 'cpu_moe' ||
         key === 'n_cpu_moe' ||
-        key === 'n_cpu_ffn'
+        key === 'n_cpu_ffn' ||
+        key === 'server_reasoning' ||
+        key === 'model_extra_args'
       ) {
         // Check if model is running before stopping it
         serviceHub
@@ -360,6 +362,8 @@ export function ModelSetting({
                     'flex items-start justify-between gap-8',
                     (key === 'chat_template' ||
                       key === 'override_tensor_buffer_t' ||
+                      key === 'model_extra_args' ||
+                      key === 'stop_strings' ||
                       config.controller_type === 'dropdown') &&
                       'flex-col gap-1 w-full'
                   )}

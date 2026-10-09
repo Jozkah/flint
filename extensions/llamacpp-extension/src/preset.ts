@@ -54,6 +54,8 @@ type ModelYaml = ModelConfig & {
   no_kv_offload?: boolean
   override_tensor?: string
   mmproj_offload?: boolean
+  reasoning?: 'on' | 'off'
+  extra_args?: string
 }
 
 // One extra llama-server slot beyond the user-visible "Parallel Sequences"
@@ -962,6 +964,16 @@ export async function generatePreset(
       lines.push(`ubatch-size = ${ubatch}`)
       lines.push(`batch-size = ${batch}`)
     }
+
+    // Server-side reasoning default for this model, so external API clients
+    // that never send `chat_template_kwargs.enable_thinking` think (or don't)
+    // the same way the chat UI does. A per-request value still overrides it.
+    if (mc.reasoning === 'on' || mc.reasoning === 'off') {
+      lines.push(`reasoning = ${mc.reasoning}`)
+    }
+    // Free-form per-model options come last, so they win over everything above
+    // and over the global Additional arguments. Same blocked-option rules.
+    lines.push(...extraArgsToIni(mc.extra_args).lines)
 
     lines.push('load-on-startup = false')
     lines.push('')

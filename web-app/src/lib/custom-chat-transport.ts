@@ -364,6 +364,11 @@ export function extractModelSamplingDefaults(
     if (UPSTREAM_SAMPLING_DEFAULTS[key] === value) continue
     out[key] = value
   }
+  // Per-model stop strings (one per line) ride the same request-body path; the
+  // model factory turns the text into the wire array. An assistant's own
+  // `stop` replaces them (see the merge in the transport).
+  const stop = model.settings.stop_strings?.controller_props?.value
+  if (typeof stop === 'string' && stop.trim().length > 0) out.stop = stop
   return out
 }
 
@@ -2776,6 +2781,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         ...modelSamplingDefaults,
         ...(inferenceParams ?? {}),
         ...reasoningParams,
+      }
+      // A blank assistant `stop` must not erase the model's own stop strings.
+      if (
+        typeof mergedParams.stop === 'string' &&
+        mergedParams.stop.trim() === ''
+      ) {
+        if (modelSamplingDefaults.stop !== undefined)
+          mergedParams.stop = modelSamplingDefaults.stop
+        else delete mergedParams.stop
       }
       if (isPredefinedRemoteProvider(effectiveProviderName)) {
         // OpenRouter request shaping is consumed client-side by the model

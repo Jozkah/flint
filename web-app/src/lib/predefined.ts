@@ -232,4 +232,45 @@ export const modelSettings = {
       ],
     },
   },
+  server_reasoning: {
+    key: 'server_reasoning',
+    title: 'Default Reasoning (API)',
+    description:
+      "Server-side reasoning default for this model. API clients that do not choose reasoning themselves get this. The chat's own Reasoning control, when set to On or Off, still takes precedence for chats.",
+    controller_type: 'dropdown',
+    controller_props: {
+      value: 'auto',
+      options: [
+        { value: 'auto', name: 'Auto' },
+        { value: 'on', name: 'On' },
+        { value: 'off', name: 'Off' },
+      ],
+    },
+  },
+  stop_strings: {
+    key: 'stop_strings',
+    title: 'Stop Strings',
+    description:
+      "Generation ends as soon as this model writes one of these. One per line. Applied to chats; an assistant's own stop sequences take precedence.",
+    controller_type: 'textarea',
+    controller_props: {
+      value: '',
+      placeholder: '<|im_end|>',
+      type: 'text',
+      textAlign: 'right',
+    },
+  },
+  model_extra_args: {
+    key: 'model_extra_args',
+    title: 'Additional Arguments',
+    description:
+      'Extra llama-server options for this model only, e.g. --cache-type-k turbo3. Written after the global Additional arguments, so they win. Server address, credentials and model file options are ignored.',
+    controller_type: 'input',
+    controller_props: {
+      value: '',
+      placeholder: 'e.g., --cache-type-k turbo3 --no-warmup',
+      type: 'text',
+      textAlign: 'right',
+    },
+  },
 }

@@ -283,6 +283,27 @@ describe('generatePreset 0.4.0 keys', () => {
     expect(writtenFiles['/p/router.preset.ini']).toContain('n-cpu-ffn = 4')
   })
 
+  it('emits a per-model reasoning default only for on/off', async () => {
+    setupModel('llama', { reasoning: 'off' })
+    await generatePreset('/p', '/jan', {} as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('reasoning = off')
+
+    setupModel('llama', { reasoning: 'auto' })
+    await generatePreset('/p', '/jan', {} as any)
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('reasoning =')
+  })
+
+  it('emits per-model extra args after the global ones, dropping blocked options', async () => {
+    setupModel('llama', {
+      extra_args: '--cache-type-k turbo3 --port 1234',
+    })
+    await generatePreset('/p', '/jan', { extra_args: '--no-warmup' } as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('cache-type-k = turbo3')
+    expect(ini).not.toContain('1234')
+    expect(ini.indexOf('no-warmup')).toBeLessThan(ini.indexOf('cache-type-k = turbo3'))
+  })
+
   // auto is upstream's own default, so naming it would pin a value that is
   // meant to track the engine.
   it('emits lazy-mode only when it is not auto', async () => {
