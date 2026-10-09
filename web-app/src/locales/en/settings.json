@@ -528,6 +528,8 @@
   "backendInstallSuccess": "Backend installed successfully!",
   "backendInstallError": "Failed to install backend",
   "claudeCode": {
+    "fableModel": "Fable Model",
+    "fableModelDesc": "Fable",
     "largeModel": "Large Model",
     "largeModelDesc": "Opus",
     "mediumModel": "Medium Model",

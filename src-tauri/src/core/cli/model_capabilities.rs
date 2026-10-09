@@ -87,6 +87,9 @@ fn catalog_window(model_id: &str) -> Option<u64> {
     None
 }
 
+/// Smallest window treated as real (matches the desktop's `plausibleWindow`).
+const MIN_PLAUSIBLE_CONTEXT_WINDOW: u64 = 128;
+
 /// Resolve the effective context window for `model_id`. `configured` (from
 /// `[agent].context_window`) is authoritative when set; otherwise the built-in
 /// catalog is consulted; an unknown model gets the conservative fallback.
@@ -94,7 +97,9 @@ pub(crate) fn resolve_context_window(
     model_id: &str,
     configured: Option<u64>,
 ) -> ResolvedContextWindow {
-    if let Some(tokens) = configured {
+    // A window under 128 tokens is a config slip or a bad server report, not a
+    // real limit: the desktop treats it as unknown, so does the CLI.
+    if let Some(tokens) = configured.filter(|t| *t >= MIN_PLAUSIBLE_CONTEXT_WINDOW) {
         return ResolvedContextWindow {
             tokens,
             source: ContextWindowSource::Configured,
@@ -116,6 +121,14 @@ pub(crate) fn resolve_context_window(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn implausibly_small_configured_window_is_ignored() {
+        let r = resolve_context_window("gpt-4o", Some(7));
+        assert_ne!(r.tokens, 7);
+        assert!(!matches!(r.source, ContextWindowSource::Configured));
+        assert_eq!(resolve_context_window("gpt-4o", Some(128)).tokens, 128);
+    }
 
     #[test]
     fn configured_window_overrides_every_catalog_entry() {

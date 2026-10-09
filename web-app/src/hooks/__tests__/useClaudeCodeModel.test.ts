@@ -11,6 +11,7 @@ describe('useClaudeCodeModel', () => {
     const { result } = renderHook(() => useClaudeCodeModel())
 
     expect(result.current.models).toEqual({
+      fable: null,
       big: null,
       medium: null,
       small: null,
@@ -36,6 +37,24 @@ describe('useClaudeCodeModel', () => {
     expect(result.current.models.small).toBe('claude-haiku')
     expect(result.current.models.envVars).toEqual([{ key: 'API_KEY', value: 'test' }])
     expect(result.current.models.customCli).toBe('--verbose')
+  })
+
+  it('loads settings saved before the Fable tier with no Fable model', () => {
+    localStorage.setItem(
+      'claude-code-helper-models',
+      JSON.stringify({
+        big: 'claude-opus',
+        medium: null,
+        small: null,
+        envVars: [],
+        customCli: '',
+      })
+    )
+
+    const { result } = renderHook(() => useClaudeCodeModel())
+
+    expect(result.current.models.fable).toBeNull()
+    expect(result.current.models.big).toBe('claude-opus')
   })
 
   it('should fall back to defaults for invalid localStorage data', () => {
@@ -119,6 +138,7 @@ describe('useClaudeCodeModel', () => {
     })
 
     expect(result.current.models).toEqual({
+      fable: null,
       big: null,
       medium: null,
       small: null,

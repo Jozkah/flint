@@ -1062,3 +1062,91 @@ mod tests {
         }
     }
 }
+
+// ---- trust ----
+
+/// The fingerprint of the definition saved for `name`, which is what a grant
+/// binds to. `None` when no such server is configured.
+pub fn saved_fingerprint(name: &str) -> Option<String> {
+    get_server(name).map(|entry| tauri_plugin_agent_tools::mcp_identity::fingerprint(&entry.config))
+}
+
+/// One standing grant, as `mcp trust-report` lists it.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustRow {
+    pub name: String,
+    pub granted_at: String,
+    /// `current` when the server is configured as approved, `changed` when its
+    /// definition has changed since (the grant no longer applies), `missing`
+    /// when no server by this name is configured.
+    pub state: &'static str,
+}
+
+/// Standing grants and the approvals that stopped applying, with why.
+pub fn trust_report(data_folder: &std::path::Path) -> (Vec<TrustRow>, Vec<(String, String, String)>) {
+    let rows = tauri_plugin_agent_tools::mcp_trust::trusted(data_folder)
+        .into_iter()
+        .map(|g| {
+            let state = match list_servers_in(data_folder)
+                .into_iter()
+                .find(|e| e.name == g.name)
+                .map(|e| tauri_plugin_agent_tools::mcp_identity::fingerprint(&e.config))
+            {
+                Some(fp) if fp == g.fingerprint => "current",
+                Some(_) => "changed",
+                None => "missing",
+            };
+            TrustRow { name: g.name, granted_at: g.granted_at, state }
+        })
+        .collect();
+    let invalidated = tauri_plugin_agent_tools::mcp_trust::invalidated(data_folder)
+        .into_iter()
+        .map(|i| (i.name, i.reason, i.at))
+        .collect();
+    (rows, invalidated)
+}
+
+/// Trust `name` as currently configured, for every conversation, until revoked.
+pub fn trust_server(data_folder: &std::path::Path, name: &str) -> Result<String, String> {
+    let fingerprint = list_servers_in(data_folder)
+        .into_iter()
+        .find(|e| e.name == name)
+        .map(|e| tauri_plugin_agent_tools::mcp_identity::fingerprint(&e.config))
+        .ok_or_else(|| format!("MCP server '{name}' is not configured, so it cannot be trusted"))?;
+    tauri_plugin_agent_tools::mcp_trust::trust(data_folder, name, &fingerprint)?;
+    Ok(fingerprint)
+}
+
+/// Withdraw trust from `name`. Returns whether a grant was removed.
+pub fn revoke_server(data_folder: &std::path::Path, name: &str) -> Result<bool, String> {
+    tauri_plugin_agent_tools::mcp_trust::revoke(
+        data_folder,
+        name,
+        tauri_plugin_agent_tools::mcp_trust::RevokeReason::User,
+    )
+}
+
+#[cfg(test)]
+mod trust_tests {
+    use super::*;
+
+    #[test]
+    fn trust_binds_to_the_definition_and_a_change_ends_it() {
+        crate::core::app::commands::with_temp_data_folder(|data| {
+            assert!(trust_server(data, "ghost").is_err());
+            upsert_server("demo", &serde_json::json!({ "command": "node", "args": ["a.js"], "active": true })).unwrap();
+            let fp = trust_server(data, "demo").unwrap();
+            assert_eq!(Some(fp), saved_fingerprint("demo"));
+            let (rows, _) = trust_report(data);
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].state, "current");
+
+            upsert_server("demo", &serde_json::json!({ "command": "node", "args": ["b.js"], "active": true })).unwrap();
+            assert_eq!(trust_report(data).0[0].state, "changed");
+
+            assert!(revoke_server(data, "demo").unwrap());
+            assert!(trust_report(data).0.is_empty());
+        });
+    }
+}

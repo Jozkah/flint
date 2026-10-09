@@ -11079,6 +11079,24 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
         alias_of: None,
     },
     SlashCommand {
+        name: "/export",
+        hint: "[markdown|obsidian|json] [path]",
+        description: "Write this conversation to a file",
+        alias_of: None,
+    },
+    SlashCommand {
+        name: "/schedule",
+        hint: "[list|run|enable|disable] [id]",
+        description: "List scheduled tasks, or run, enable or disable one",
+        alias_of: None,
+    },
+    SlashCommand {
+        name: "/mode",
+        hint: "[review|ask|auto|bypass]",
+        description: "Show or set how freely the agent acts",
+        alias_of: None,
+    },
+    SlashCommand {
         name: "/init",
         hint: "",
         description: "Study the project, then write JAN.md, skills, and memory",
@@ -11454,6 +11472,9 @@ async fn run_command(
         "goal" => goal_command(app, arg),
         "init" => init_command(app),
         "plan" => plan_command(app, arg),
+        "mode" => mode_command(app, arg),
+        "export" => export_command(app, arg),
+        "schedule" => schedule_command(app, arg),
         "effort" | "think" | "reasoning" => effort_command(app, arg),
         "todo" => todo_command(app, arg).await,
         "cancel" => cancel_command(app, arg),
@@ -12939,6 +12960,116 @@ fn plan_command(app: &mut App, arg: &str) {
     if !arg.is_empty() {
         app.submit_user(arg.to_string());
     }
+}
+
+/// `/export [format] [path]` -- write this conversation to a file. The format
+/// is markdown (default), obsidian or json; the path is a file, or a folder to
+/// get a file named after the conversation, and defaults to the project folder.
+fn export_command(app: &mut App, arg: &str) {
+    use super::thread_export::{export_thread, Format};
+    let Some(id) = app.thread_id.clone() else {
+        app.note("nothing to export yet: send a message first");
+        return;
+    };
+    let mut words = arg.split_whitespace();
+    let (format, path) = match words.next() {
+        Some(w) if Format::parse(w).is_ok() => (w.to_string(), words.next().map(str::to_string)),
+        Some(w) => ("markdown".to_string(), Some(w.to_string())),
+        None => ("markdown".to_string(), None),
+    };
+    let format = match Format::parse(&format) {
+        Ok(f) => f,
+        Err(e) => {
+            app.note(&e);
+            return;
+        }
+    };
+    let out = path.map(std::path::PathBuf::from).unwrap_or_else(|| app.project_root.clone());
+    match export_thread(&app.agent_dir, &id, format, false, false, Some(&out)) {
+        Ok(Some(written)) => app.note(&format!("exported to {}", written.display())),
+        Ok(None) => {}
+        Err(e) => app.note(&format!("export failed: {e}")),
+    }
+}
+
+/// `/schedule` -- the scheduled tasks, from the terminal's side. Creating and
+/// editing a task is `flint cli schedule add|edit`; here you can see them and
+/// run, enable or disable one.
+fn schedule_command(app: &mut App, arg: &str) {
+    use super::schedule_manage;
+    let mut words = arg.split_whitespace();
+    let action = words.next().unwrap_or("list");
+    let id = words.next();
+    match (action, id) {
+        ("list", _) => match schedule_manage::summary_lines() {
+            Ok(lines) if lines.is_empty() => app.note("no scheduled tasks (flint cli schedule add ...)"),
+            Ok(lines) => {
+                for line in lines {
+                    app.note(&line);
+                }
+            }
+            Err(e) => app.note(&format!("could not read the schedule: {e}")),
+        },
+        ("run", Some(id)) => match schedule_manage::start_now(id) {
+            Ok(run) => app.note(&format!("started {id}, run {run} (flint cli schedule runs {id})")),
+            Err(e) => app.note(&e),
+        },
+        ("enable" | "disable", Some(id)) => {
+            match crate::core::schedule::store::Store::new(&crate::core::app::commands::resolve_jan_data_folder())
+                .set_enabled(id, action == "enable")
+            {
+                Ok(t) => app.note(&format!("{} is {}", t.name, if t.enabled { "on" } else { "off" })),
+                Err(e) => app.note(&e.message),
+            }
+        }
+        _ => app.note("usage: /schedule [list] | run <id> | enable <id> | disable <id>"),
+    }
+}
+
+/// `/mode` -- how freely the agent acts, named like the desktop's modes.
+/// Without an argument, reports the current one. Applies from the next turn.
+fn mode_command(app: &mut App, arg: &str) {
+    use crate::core::agent::plan::RunMode;
+    use crate::core::cli::PermissionMode;
+    let current = |app: &App| {
+        if app.run_mode == RunMode::Plan {
+            PermissionMode::Review
+        } else if app.args.as_ref().is_some_and(|a| a.auto_approve) {
+            PermissionMode::Auto
+        } else {
+            PermissionMode::Ask
+        }
+    };
+    let arg = arg.trim();
+    if arg.is_empty() {
+        app.note(&format!(
+            "mode: {} (use /mode review|ask|auto|bypass)",
+            current(app).as_str()
+        ));
+        return;
+    }
+    if app.status != Status::Idle {
+        app.note("the mode is only settable while idle");
+        return;
+    }
+    let mode = match PermissionMode::parse(arg) {
+        Ok(m) => m,
+        Err(e) => {
+            app.note(&e);
+            return;
+        }
+    };
+    if let Some(args) = app.args.as_mut() {
+        std::sync::Arc::make_mut(args).auto_approve = mode.auto_approve();
+    }
+    app.run_mode = if mode.plan() { RunMode::Plan } else { RunMode::Normal };
+    app.persist();
+    app.note(&match mode {
+        PermissionMode::Review => "◈ REVIEW · read only — investigate, then propose a plan for review".to_string(),
+        PermissionMode::Ask => "mode: ask — writes, shell commands and MCP calls need approval".to_string(),
+        PermissionMode::Auto => "mode: auto — approved actions run unprompted (inside the sandbox when it is on)".to_string(),
+        PermissionMode::Bypass => "mode: bypass — as auto; host, computer and clipboard tools still ask".to_string(),
+    });
 }
 
 const EFFORT_LEVELS: &[&str] = &["low", "medium", "high"];
@@ -31605,6 +31736,43 @@ mod tests {
         assert_eq!(app.run_mode, RunMode::Plan);
         run_command(&mut app, "plan exit", &no_mcp()).await;
         assert_eq!(app.run_mode, RunMode::Normal);
+    }
+
+    #[tokio::test]
+    async fn mode_command_switches_between_review_ask_and_auto() {
+        use crate::core::agent::plan::RunMode;
+        let mut app = test_app();
+        run_command(&mut app, "mode", &no_mcp()).await;
+        run_command(&mut app, "mode review", &no_mcp()).await;
+        assert_eq!(app.run_mode, RunMode::Plan);
+        run_command(&mut app, "mode auto", &no_mcp()).await;
+        assert_eq!(app.run_mode, RunMode::Normal);
+        run_command(&mut app, "mode sideways", &no_mcp()).await;
+        let text: String = app.transcript.iter().map(row_text).collect();
+        assert!(text.contains("unknown mode 'sideways'"), "note: {text}");
+        assert!(text.contains("mode: auto"), "note: {text}");
+        app.status = Status::Running;
+        run_command(&mut app, "mode review", &no_mcp()).await;
+        assert_eq!(app.run_mode, RunMode::Normal, "must not switch mid-turn");
+    }
+
+    #[test]
+    fn export_and_schedule_commands_report_instead_of_failing() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let mut app = test_app();
+        crate::core::app::commands::with_temp_data_folder(|_| {
+            rt.block_on(async {
+                run_command(&mut app, "export", &no_mcp()).await;
+                run_command(&mut app, "schedule", &no_mcp()).await;
+                run_command(&mut app, "schedule run nope", &no_mcp()).await;
+                run_command(&mut app, "schedule frob", &no_mcp()).await;
+            });
+        });
+        let text: String = app.transcript.iter().map(row_text).collect();
+        assert!(text.contains("nothing to export yet"), "{text}");
+        assert!(text.contains("no scheduled tasks"), "{text}");
+        assert!(text.contains("no scheduled task 'nope'"), "{text}");
+        assert!(text.contains("usage: /schedule"), "{text}");
     }
 
     #[tokio::test]

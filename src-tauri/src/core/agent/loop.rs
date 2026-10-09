@@ -4651,6 +4651,12 @@ fn advertise_local_tools(
             if tauri_plugin_agent_tools::tools::is_mailbox_tool(name) {
                 continue;
             }
+            // The browser pane, image engine and external-browser tools only exist
+            // in the desktop app; offering them here would just hand the model
+            // tools that always answer "unavailable".
+            if tauri_plugin_agent_tools::tools::is_desktop_only_tool(name) {
+                continue;
+            }
             // Plan mode advertises only read/net builtins; write/exec are hidden
             // entirely rather than relying on a prompt or execution-time denial.
             if planning

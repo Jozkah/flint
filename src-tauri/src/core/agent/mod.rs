@@ -12,10 +12,9 @@ pub mod agent_bundle;
 pub mod agent_import;
 pub mod auto_mode;
 pub mod bundle_import;
-// Claude Code import exposes only Tauri commands (desktop-only); the `cli`
-// build has no `tauri` crate linked, so gate it out like `commands`.
 pub mod cc_hooks;
-#[cfg(not(feature = "cli"))]
+// Claude Code import: Tauri commands on the desktop, plain async fns that the
+// `import-claude` command calls in the `cli` build.
 pub mod cc_import;
 pub mod cc_links;
 pub mod checkpoint;
