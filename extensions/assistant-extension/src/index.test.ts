@@ -172,7 +172,6 @@ describe('onLoad', () => {
       temperature: 0.7,
       top_k: 20,
       top_p: 0.8,
-      repeat_penalty: 1.12,
     })
   })
 
@@ -240,7 +239,6 @@ describe('migrations', () => {
       temperature: 0.7,
       top_k: 20,
       top_p: 0.8,
-      repeat_penalty: 1.12,
     })
   })
 
