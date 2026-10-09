@@ -157,7 +157,12 @@ export function describeEndpointFailure(failure: EndpointFailure): string {
     case 403:
       return (
         `${head}. The endpoint refused the request. If this is your own server, ` +
-        `check what is answering at that address before changing any credential.`
+        `check what is answering at that address before changing any credential.` +
+        // Flint sends Origin: tauri://localhost to a local server; Ollama answers
+        // 403 to an origin its OLLAMA_ORIGINS does not list.
+        (scope === 'loopback'
+          ? ' For Ollama, add tauri://* to the OLLAMA_ORIGINS environment variable and restart it.'
+          : '')
       )
     case 404:
       return (

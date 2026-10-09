@@ -217,3 +217,24 @@ describe('describeChatFailure', () => {
     expect(describeChatFailure(err, 'X')).toBe('Bad request')
   })
 })
+
+describe('describeEndpointFailure: local 403', () => {
+  it('points an Ollama user at OLLAMA_ORIGINS', () => {
+    const message = describeEndpointFailure({
+      provider: 'Ollama',
+      url: 'http://127.0.0.1:11434/v1/models',
+      status: 403,
+      statusText: 'Forbidden',
+    })
+    expect(message).toContain('OLLAMA_ORIGINS')
+  })
+
+  it('does not mention it for a public endpoint', () => {
+    const message = describeEndpointFailure({
+      provider: 'X',
+      url: 'https://api.example.com/v1/models',
+      status: 403,
+    })
+    expect(message).not.toContain('OLLAMA_ORIGINS')
+  })
+})
