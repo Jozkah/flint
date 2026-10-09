@@ -18,7 +18,22 @@ public static class FlintInput {
   [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
   // A real absolute pointer move (SetCursorPos alone raises no input event, so
   // games that read mouse input never see the pointer arrive).
+  [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Pt p);
+  [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(int pid);
+  [StructLayout(LayoutKind.Sequential)] public struct Pt { public int x, y; }
+  // A click on a background window is often spent just activating it (games
+  // swallow it), so bring the window under the point forward first.
+  static void Activate(int x, int y) {
+    try {
+      IntPtr h = GetAncestor(WindowFromPoint(new Pt { x = x, y = y }), 2);
+      if (h != IntPtr.Zero && h != GetForegroundWindow()) { AllowSetForegroundWindow(-1); SetForegroundWindow(h); System.Threading.Thread.Sleep(150); }
+    } catch {}
+  }
   public static bool MoveTo(int x, int y) {
+    Activate(x, y);
     if (!SetCursorPos(x, y)) return false;
     int w = Math.Max(GetSystemMetrics(0) - 1, 1), h = Math.Max(GetSystemMetrics(1) - 1, 1);
     var i = new Input(); i.type = 0; i.value.mouse.flags = 0x8001;
