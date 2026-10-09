@@ -136,7 +136,7 @@ impl Route {
     }
 }
 
-pub use sys::{Engine, Response};
+pub use sys::{CancelFlag, Engine, Response};
 
 /// Where the build put the runtime-loaded ggml backend modules.
 ///
