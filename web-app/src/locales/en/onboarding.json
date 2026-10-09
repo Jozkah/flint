@@ -60,5 +60,20 @@
   "reopenGuide": "Getting started guide",
   "reopenGuideDescription": "Walk through choosing a model, adding material and completing a first task again.",
   "reopenGuideAction": "Open guide",
-  "resumeRecent": "Continue your last conversation: {{title}}"
+  "resumeRecent": "Continue your last conversation: {{title}}",
+  "modelSetup": {
+    "title": "How do you want to get a model?",
+    "local": {
+      "title": "Use a model on this computer",
+      "body": "Browse models and see which fit your hardware."
+    },
+    "provider": {
+      "title": "Connect a provider",
+      "body": "Use a hosted model with your own account."
+    },
+    "import": {
+      "title": "Import a file",
+      "body": "Add a model file you already have."
+    }
+  }
 }

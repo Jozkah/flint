@@ -16,6 +16,7 @@ import {
   type GuideStepId,
 } from '@/lib/onboarding'
 import { TermHint } from '@/containers/TermHint'
+import { ModelSetupCard } from '@/containers/ModelSetupCard'
 
 /**
  * The home screen's guide card, and for returning users a way back into their
@@ -78,13 +79,15 @@ export function GettingStartedCard({ resume = true }: { resume?: boolean }) {
                   done={isStepDone(step, guide, signals)}
                   current={step === current}
                   onConfirm={() => guide.confirmStep(step)}
-                  onOpenProviders={() =>
-                    navigate({ to: route.settings.model_providers })
-                  }
                   onOpenCowork={() => navigate({ to: route.cowork })}
                 />
               ))}
             </ol>
+          )}
+          {!allDone && current === 'choose-model' && (
+            <div className="px-0.5 pt-1 pb-2">
+              <ModelSetupCard />
+            </div>
           )}
         </FrameBody>
       </Frame>
@@ -128,7 +131,6 @@ function GuideStep({
   done,
   current,
   onConfirm,
-  onOpenProviders,
   onOpenCowork,
 }: {
   step: GuideStepId
@@ -136,7 +138,6 @@ function GuideStep({
   done: boolean
   current: boolean
   onConfirm: () => void
-  onOpenProviders: () => void
   onOpenCowork: () => void
 }) {
   const { t } = useTranslation()
@@ -195,11 +196,6 @@ function GuideStep({
       </div>
       {!done && (
         <div className="flex shrink-0 flex-wrap justify-end gap-2">
-          {step === 'choose-model' && (
-            <Button size="sm" variant="outline" onClick={onOpenProviders}>
-              {t('onboarding:openProviders')}
-            </Button>
-          )}
           {isMaterial && intent === 'project' && (
             <Button size="sm" variant="outline" onClick={onOpenCowork}>
               {t('onboarding:openCowork')}

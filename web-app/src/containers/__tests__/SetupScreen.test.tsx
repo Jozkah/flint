@@ -506,7 +506,7 @@ describe('SetupScreen', () => {
     it('links to Discover without starting a download', async () => {
       await renderPastSetup()
 
-      expect(screen.getByTestId('setup-finish-discover')).toBeInTheDocument()
+      expect(screen.getByTestId('model-setup-local')).toBeInTheDocument()
     })
 
     it('lists the models already on disk', async () => {
@@ -587,7 +587,7 @@ describe('SetupScreen', () => {
       await renderPastSetup()
 
       await act(async () => {
-        fireEvent.click(screen.getByTestId('setup-finish-import'))
+        fireEvent.click(screen.getByTestId('model-setup-import'))
       })
 
       expect(hoisted.navigateMock).toHaveBeenCalledWith({
