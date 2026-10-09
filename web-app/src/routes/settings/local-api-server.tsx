@@ -292,6 +292,14 @@ function LocalAPIServerContent() {
                       <ServerHostSwitcher isServerRunning={isServerRunning} />
                     </div>
                   </div>
+                  {serverHost === '0.0.0.0' && (
+                    <p role="note" className="text-xs text-warning">
+                      {t('settings:localApiServer.serverHostLanWarning')}
+                      {trustedHosts.length === 0 && (
+                        <> {t('settings:localApiServer.serverHostLanNoTrusted')}</>
+                      )}
+                    </p>
+                  )}
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
                       <p className="text-[13px] font-medium">

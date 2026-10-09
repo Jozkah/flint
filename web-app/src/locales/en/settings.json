@@ -378,6 +378,8 @@
     "serverConfiguration": "Server Configuration",
     "serverHost": "Server Host",
     "serverHostDesc": "Network address for the server.",
+    "serverHostLanWarning": "0.0.0.0 makes the server reachable from other devices on your network. Set an API key, and use the machine's LAN address (not localhost) from the other device.",
+    "serverHostLanNoTrusted": "Trusted Hosts is empty: add the address other devices will use to reach this machine, or their requests may be rejected.",
     "serverPort": "Server Port",
     "serverPortDesc": "Port number for the API server.",
     "apiPrefix": "API Prefix",

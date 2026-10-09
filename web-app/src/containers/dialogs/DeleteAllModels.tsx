@@ -25,10 +25,16 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 
 type DialogDeleteAllModelsProps = {
   provider: ModelProvider
+  /** Hosted provider: nothing is on disk, so clear the whole list. */
+  remote?: boolean
+  /** Compact trash-icon trigger, for rows such as the Hub model cards. */
+  iconOnly?: boolean
 }
 
 export const DialogDeleteAllModels = ({
   provider,
+  remote = false,
+  iconOnly = false,
 }: DialogDeleteAllModelsProps) => {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
@@ -40,7 +46,7 @@ export const DialogDeleteAllModels = ({
   const [isDeleting, setIsDeleting] = useState(false)
 
   const downloadedIdsKey = provider.models
-    .filter((m) => !m.imported)
+    .filter((m) => remote || !m.imported)
     .map((m) => m.id)
     .sort()
     .join('|')
@@ -52,7 +58,7 @@ export const DialogDeleteAllModels = ({
   const modelCount = downloadedIds.length
 
   useEffect(() => {
-    if (!open) return
+    if (!open || remote) return
     let cancelled = false
     setTotalBytes(undefined)
     serviceHub
@@ -72,7 +78,7 @@ export const DialogDeleteAllModels = ({
     return () => {
       cancelled = true
     }
-  }, [open, provider.provider, serviceHub, downloadedIds])
+  }, [open, remote, provider.provider, serviceHub, downloadedIds])
 
   const handleDeleteAll = async () => {
     if (isDeleting) return
@@ -129,20 +135,50 @@ export const DialogDeleteAllModels = ({
   return (
     <Dialog open={open} onOpenChange={(o) => !isDeleting && setOpen(o)}>
       <DialogTrigger asChild>
+        {iconOnly ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:text-destructive pointer-coarse:size-11"
+            aria-label={t('providers:deleteModel.delete')}
+            title={t('providers:deleteModel.delete')}
+          >
+            <Trash2 aria-hidden />
+          </Button>
+        ) : (
         <Button variant="destructive" size="sm" className="pointer-coarse:h-11">
           <Trash2 aria-hidden />
-          <span>{t('providers:deleteAllModels.button')}</span>
+          <span>
+            {t(
+              remote
+                ? 'providers:deleteAllModels.clearButton'
+                : 'providers:deleteAllModels.button'
+            )}
+          </span>
         </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t('providers:deleteAllModels.title')}</DialogTitle>
+          <DialogTitle>
+            {t(
+              remote
+                ? 'providers:deleteAllModels.clearTitle'
+                : iconOnly
+                  ? 'providers:deleteAllModels.repoTitle'
+                  : 'providers:deleteAllModels.title'
+            )}
+          </DialogTitle>
           <DialogDescription>
-            {t('providers:deleteAllModels.description', { count: modelCount })}{' '}
-            {t('providers:deleteAllModels.warning')}
+            {remote
+              ? t('providers:deleteAllModels.clearDescription', {
+                  count: modelCount,
+                })
+              : `${t('providers:deleteAllModels.description', { count: modelCount })} ${t('providers:deleteAllModels.warning')}`}
           </DialogDescription>
         </DialogHeader>
 
+        {!remote && (
         <div className="flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-sm">
           <span className="text-muted-foreground">
             {t('providers:deleteAllModels.sizeLabel')}
@@ -153,8 +189,9 @@ export const DialogDeleteAllModels = ({
               : formatBytes(totalBytes, { fallback: '—' })}
           </span>
         </div>
+        )}
 
-        {importedCount > 0 && (
+        {!remote && importedCount > 0 && (
           <p className="text-xs text-muted-foreground">
             {t('providers:deleteAllModels.importedExcluded', {
               count: importedCount,

@@ -648,6 +648,9 @@ export default function AddEditMCPServer({
                   onChange={(e) => setCommand(e.target.value)}
                   placeholder={t('mcp-servers:enterCommand')}
                 />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('mcp-servers:commandHint')}
+                </p>
                 <FieldMessage
                   id={messageId('command')}
                   issue={issueFor('command')}
