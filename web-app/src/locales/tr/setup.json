@@ -38,10 +38,8 @@
   "setupDoneBody": "Jan, yerel modelleri llama.cpp ile çalıştıracak.",
   "stageFinish": "Hazır",
   "finishBody": "Flint bu cihazda çalışır. Hugging Face ile yalnızca Keşfet'i açtığınızda, arama yaptığınızda veya İndir'e tıkladığınızda iletişim kurar; aksi halde kendi modellerinizi getirirsiniz.",
-  "exploreHub": "Hugging Face'e göz at",
   "finishChooseModel": "Bir model seçin",
   "finishNoModels": "Henüz yerel model yok. Hazır olduğunuzda Ayarlar'dan bir GGUF dosyası içe aktarın; kurulumu modelsiz de bitirebilirsiniz.",
   "finishStartChat": "Sohbete başla",
-  "finishWithoutModel": "Model olmadan bitir",
-  "finishImport": "Bir model içe aktar"
+  "finishWithoutModel": "Model olmadan bitir"
 }
