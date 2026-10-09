@@ -837,6 +837,50 @@ export function stripAssistantReasoningInBody(
   }
 }
 
+/**
+ * Azure OpenAI: the v1 endpoint takes Bearer, but legacy deployments-style
+ * endpoints (`/openai/deployments/<name>?api-version=...`) only accept the
+ * `api-key` header. janhq/jan#451.
+ */
+export function isAzureOpenAIProvider(
+  provider: Pick<ProviderObject, 'provider' | 'base_url'>
+): boolean {
+  if (provider.provider === 'azure') return true
+  try {
+    const host = new URL(provider.base_url || '').hostname.toLowerCase()
+    return (
+      host.endsWith('.openai.azure.com') ||
+      host.endsWith('.services.ai.azure.com')
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Moves a `?api-version=...` typed into the base URL into `queryParams`, so
+ * appending `/chat/completions` does not land after the query string.
+ */
+export function splitBaseUrlQuery(baseUrl: string): {
+  baseURL: string
+  queryParams?: Record<string, string>
+} {
+  try {
+    const url = new URL(baseUrl)
+    if (!url.search) return { baseURL: baseUrl }
+    const queryParams: Record<string, string> = {}
+    url.searchParams.forEach((v, k) => {
+      queryParams[k] = v
+    })
+    return {
+      baseURL: `${url.origin}${url.pathname}`.replace(/\/+$/, ''),
+      queryParams,
+    }
+  } catch {
+    return { baseURL: baseUrl }
+  }
+}
+
 /** Reads the global "Strip reasoning from context" toggle; defaults to false. */
 function shouldStripReasoningFromContext(): boolean {
   return useGeneralSetting.getState().stripReasoningFromContext === true
@@ -970,6 +1014,7 @@ export function decodeVideoSentinelsInBody(body: Record<string, unknown>): void 
 
 type ApiKeyHeaderMode =
   | 'authorization-bearer'
+  | 'authorization-bearer+api-key'
   | 'x-api-key'
   | 'x-goog-api-key'
 
@@ -1000,6 +1045,9 @@ function createApiKeyRotatingFetch(
       const nextHeaders = new Headers(init?.headers as HeadersInit | undefined)
       if (headerMode === 'authorization-bearer') {
         nextHeaders.set('Authorization', `Bearer ${key}`)
+      } else if (headerMode === 'authorization-bearer+api-key') {
+        nextHeaders.set('Authorization', `Bearer ${key}`)
+        nextHeaders.set('api-key', key)
       } else if (headerMode === 'x-goog-api-key') {
         nextHeaders.set('x-goog-api-key', key)
       } else {
@@ -1545,9 +1593,11 @@ export class ModelFactory {
     // the configured key cannot be replaced. janhq/jan#8208.
     applyCustomHeaders(headers, provider)
 
+    const isAzure = isAzureOpenAIProvider(provider)
     const keyChain = providerRemoteApiKeyChain(provider)
     if (keyChain.length === 1) {
       headers['Authorization'] = `Bearer ${keyChain[0]}`
+      if (isAzure) headers['api-key'] = keyChain[0]!
     }
 
     let fetchImpl: typeof globalThis.fetch =
@@ -1556,7 +1606,7 @@ export class ModelFactory {
             getRuntimeFetch(),
             keyChain,
             parameters,
-            'authorization-bearer',
+            isAzure ? 'authorization-bearer+api-key' : 'authorization-bearer',
             true
           )
         : createCustomFetch(getRuntimeFetch(), parameters, false, undefined, true)
@@ -1567,9 +1617,14 @@ export class ModelFactory {
       fetchImpl = withAssistantReasoningStripped(fetchImpl)
     }
 
+    const endpoint = isAzure
+      ? splitBaseUrlQuery(provider.base_url)
+      : { baseURL: provider.base_url || 'https://api.openai.com/v1' }
     const openAICompatible = createOpenAICompatible({
       name: provider.provider,
-      baseURL: provider.base_url || 'https://api.openai.com/v1',
+      baseURL: endpoint.baseURL,
+      queryParams: (endpoint as { queryParams?: Record<string, string> })
+        .queryParams,
       headers,
       includeUsage: true,
       fetch: fetchImpl,
