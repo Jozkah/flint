@@ -442,6 +442,35 @@ describe('model-factory deep coverage', () => {
       }
     })
 
+    it('rotates to the next key on 402 (out of credits)', async () => {
+      const realFetch = globalThis.fetch
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(new Response('{}', { status: 402 }))
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch
+      try {
+        await ModelFactory.createModel(
+          'gemini-pro',
+          mkProvider('google', { api_key: 'key1', api_key_fallbacks: ['key2'] }),
+          {}
+        )
+        const { fetch: rotatingFetch } = (globalThis as any).__capturedGoogleCfg
+        const res = await rotatingFetch('https://g/v1beta/models', {
+          method: 'POST',
+          headers: { 'x-goog-api-key': 'key1' },
+          body: '{}',
+        })
+        expect(res.status).toBe(200)
+        expect(fetchMock).toHaveBeenCalledTimes(2)
+        expect(
+          new Headers(fetchMock.mock.calls[1][1].headers).get('x-goog-api-key')
+        ).toBe('key2')
+      } finally {
+        globalThis.fetch = realFetch
+      }
+    })
+
     it('uses a plain custom fetch (no rotation) with a single key', async () => {
       await ModelFactory.createModel(
         'gemini-pro',

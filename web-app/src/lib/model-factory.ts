@@ -973,7 +973,7 @@ type ApiKeyHeaderMode =
   | 'x-api-key'
   | 'x-goog-api-key'
 
-/** Retries with the next key when the upstream returns 401, 403, or 429. */
+/** Retries with the next key when the upstream returns 401, 402, 403, or 429. */
 function createApiKeyRotatingFetch(
   baseFetch: typeof globalThis.fetch,
   apiKeys: string[],
@@ -1006,7 +1006,7 @@ function createApiKeyRotatingFetch(
         nextHeaders.set('x-api-key', key)
       }
       const res = await inner(input, { ...init, headers: nextHeaders })
-      if ([401, 403, 429].includes(res.status) && i < apiKeys.length - 1) {
+      if ([401, 402, 403, 429].includes(res.status) && i < apiKeys.length - 1) {
         res.body?.cancel().catch(() => {})
         continue
       }
@@ -1503,8 +1503,8 @@ export class ModelFactory {
     applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
-    // Rotate over configured keys on 401/403/429 (e.g. exhausted free-tier
-    // quota). The native Google client authenticates via `x-goog-api-key`, so
+    // Rotate over configured keys on 401/402/403/429 (e.g. exhausted credit or
+    // free-tier quota). The native Google client authenticates via `x-goog-api-key`, so
     // the rotating fetch must override that header — not Authorization.
     const fetchImpl =
       keyChain.length > 1

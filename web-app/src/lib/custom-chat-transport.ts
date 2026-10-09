@@ -1419,12 +1419,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
   /**
    * Whether an image in a tool result is attached to the request as an image
-   * part (or replaced by a note) for every provider, not only a local one. Off
-   * for chat, where remote providers are left alone; Cowork turns it on for
-   * the images its `read` tool returns.
+   * part (or replaced by a note) for every provider, not only a local one. On
+   * everywhere: a remote or custom server would otherwise be sent the image as
+   * megabytes of base64 text, and never see it.
    */
   protected hoistsToolImages(): boolean {
-    return false
+    return true
   }
 
   /**
@@ -3070,7 +3070,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // A local model reads a tool result as text, so an image in one (an MCP
     // screenshot tool) would arrive as its full base64 and flood the context.
     // The image is swapped for a note and, for a model that can see, attached
-    // again as an image. Remote providers have the room and are left alone.
+    // again as an image. Remote providers get the same treatment so a vision
+    // model sees the image and any other gets a short note, not base64 text.
     // llama.cpp cannot decode WebP, so a WebP image goes to it as PNG.
     const attachmentsReady = LOCAL_ENGINE_PROVIDERS.has(providerId ?? '')
       ? await transcodeWebpImages(
