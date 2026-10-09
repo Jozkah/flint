@@ -27,7 +27,7 @@ import {
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocation, useNavigate, useParams } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import { Columns2, DoorOpen, MoreHorizontal, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { DoorOpen, MoreHorizontal, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { regenerateRoomTitle, roomTranscript } from '@/lib/regenerateSessionTitle'
 import { regenerateWithToast } from '@/lib/regenerateToast'
 import {
@@ -43,7 +43,8 @@ import { toast } from 'sonner'
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 import { ThreadStatusMark } from '@/containers/ThreadStatusMark'
 import { useRoomsStore } from '@/lib/rooms/store'
-import { openInSplit, reportSplitResult } from '@/lib/splitView'
+import { OpenInSubmenu } from '@/components/shell/nav/OpenInSubmenu'
+import { CursorAnchor, useCursorAnchor } from '@/components/shell/nav/CursorAnchor'
 import { roomNavStatus } from '@/lib/rooms/navStatus'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { GroupedTree, MoveToGroupSub } from '@/components/shell/nav/GroupedTree'
@@ -69,6 +70,7 @@ const RoomItem = memo(function RoomItem({
 }) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const cursor = useCursorAnchor()
   // Waiting on the user: a pending tool approval for the room, or every
   // participant waiting on the user's reply or choice of speaker.
   const awaitingApproval = useToolApprovalRequests((s) =>
@@ -83,6 +85,7 @@ const RoomItem = memo(function RoomItem({
   const openRowMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    cursor.openAt(e)
     setMenuOpen(true)
   }
 
@@ -112,17 +115,27 @@ const RoomItem = memo(function RoomItem({
           <FadeText>{room.title}</FadeText>
         </NavButton>
       </RowPreview>
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={(open) => {
+          setMenuOpen(open)
+          if (!open) cursor.release()
+        }}
+      >
         <DropdownMenuTrigger asChild>
-          <NavAction showOnHover>
-            <MoreHorizontal />
-            <span className="sr-only">{t('common:more')}</span>
-          </NavAction>
+          {cursor.point ? (
+            <CursorAnchor x={cursor.point.x} y={cursor.point.y} />
+          ) : (
+            <NavAction showOnHover>
+              <MoreHorizontal />
+              <span className="sr-only">{t('common:more')}</span>
+            </NavAction>
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent
           className="w-48"
-          side={isMobile ? 'bottom' : 'right'}
-          align={isMobile ? 'end' : 'start'}
+          side={cursor.point || isMobile ? 'bottom' : 'right'}
+          align={cursor.point ? 'start' : isMobile ? 'end' : 'start'}
         >
           <DropdownMenuItem
             data-testid="regenerate-room-title"
@@ -138,18 +151,10 @@ const RoomItem = memo(function RoomItem({
             <DoorOpen />
             <span>{t('common:open')}</span>
           </DropdownMenuItem>
-          <DropdownMenuItem
-            data-testid="open-room-in-split"
-            onSelect={() =>
-              reportSplitResult(
-                openInSplit({ kind: 'room', refId: room.id }),
-                t
-              )
-            }
-          >
-            <Columns2 />
-            <span>{t('chat:split.openInSplit')}</span>
-          </DropdownMenuItem>
+          <OpenInSubmenu
+            target={{ kind: 'room', refId: room.id }}
+            testIdPrefix="room"
+          />
           <DropdownMenuSeparator />
           <MoveToGroupSub surface="rooms" itemId={room.id} adapter={adapter} />
           <DropdownMenuSeparator />

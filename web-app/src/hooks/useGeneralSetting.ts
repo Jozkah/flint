@@ -65,6 +65,12 @@ type GeneralSettingState = {
   spellCheckChatInput: boolean
   tokenCounterCompact: boolean
   stripReasoningFromContext: boolean
+  /** Hide to the tray instead of quitting when the window is closed. */
+  closeToTray: boolean
+  setCloseToTray: (value: boolean) => void
+  /** Cap on model download speed in MB/s; 0 is unlimited. */
+  downloadLimitMBps: number
+  setDownloadLimitMBps: (value: number) => void
   huggingfaceToken?: string
   setHuggingfaceToken: (token: string) => void
   setSpellCheckChatInput: (value: boolean) => void
@@ -84,6 +90,13 @@ export const useGeneralSetting = create<GeneralSettingState>()(
       spellCheckChatInput: true,
       tokenCounterCompact: true,
       stripReasoningFromContext: false,
+      closeToTray: false,
+      setCloseToTray: (value) => set({ closeToTray: value }),
+      downloadLimitMBps: 0,
+      setDownloadLimitMBps: (value) =>
+        set({
+          downloadLimitMBps: Number.isFinite(value) && value > 0 ? value : 0,
+        }),
       huggingfaceToken: undefined,
       setSpellCheckChatInput: (value) => set({ spellCheckChatInput: value }),
       setTokenCounterCompact: (value) => set({ tokenCounterCompact: value }),
@@ -128,6 +141,8 @@ export const useGeneralSetting = create<GeneralSettingState>()(
         spellCheckChatInput: state.spellCheckChatInput,
         tokenCounterCompact: state.tokenCounterCompact,
         stripReasoningFromContext: state.stripReasoningFromContext,
+        closeToTray: state.closeToTray,
+        downloadLimitMBps: state.downloadLimitMBps,
       }),
     }
   )

@@ -130,7 +130,9 @@ export function useNativeWebPreview({
     let unlisten: (() => void) | undefined
     let active = true
     listen<NavigatedPayload>(NAVIGATED_EVENT, ({ payload }) => {
-      if (payload.id !== NATIVE_PREVIEW_ID || !payload.url) return
+      if (payload.id !== NATIVE_PREVIEW_ID) return
+      if (payload.title) useWebPreview.getState().setPageTitle(payload.title)
+      if (!payload.url) return
       applyNavigated(payload.url, payload.loading !== false)
     })
       .then((u) => {
@@ -148,6 +150,7 @@ export function useNativeWebPreview({
     const store = useWebPreview.getState()
     lastNativeUrl.current = navUrl
     if (started) {
+      store.setPageTitle('')
       if (ownNav.current) store.replaceUrl(navUrl)
       else if (navUrl !== store.url()) store.navigate(navUrl)
       inFlight.current = true

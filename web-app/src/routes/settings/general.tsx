@@ -15,7 +15,7 @@ import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ChangeDataFolderLocation from '@/containers/dialogs/ChangeDataFolderLocation'
 import { FactoryResetDialog } from '@/containers/dialogs'
 import { SettingsBackupCard } from '@/containers/SettingsBackupCard'
@@ -31,6 +31,10 @@ import LanguageSwitcher from '@/containers/LanguageSwitcher'
 import ReplyLanguageSwitcher from '@/containers/ReplyLanguageSwitcher'
 import FallbackModelsPicker from '@/containers/FallbackModelsPicker'
 import { isRootDir } from '@/utils/path'
+import {
+  importConversations,
+  parseChatGptExport,
+} from '@/lib/chatgptImport'
 const TOKEN_VALIDATION_TIMEOUT_MS = 10_000
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,6 +51,10 @@ function General() {
     huggingfaceToken,
     setHuggingfaceToken,
   } = useGeneralSetting()
+  const closeToTray = useGeneralSetting((s) => s.closeToTray)
+  const setCloseToTray = useGeneralSetting((s) => s.setCloseToTray)
+  const downloadLimitMBps = useGeneralSetting((s) => s.downloadLimitMBps)
+  const setDownloadLimitMBps = useGeneralSetting((s) => s.setDownloadLimitMBps)
   const interceptLinks = useWebPreviewSettings((s) => s.interceptLinks)
   const setInterceptLinks = useWebPreviewSettings((s) => s.setInterceptLinks)
   const serviceHub = useServiceHub()
@@ -66,6 +74,7 @@ function General() {
   const [unavailableDataFolder, setUnavailableDataFolder] = useState<
     string | undefined
   >()
+  const chatGptFileInput = useRef<HTMLInputElement>(null)
   const [isCopied, setIsCopied] = useState(false)
   const [selectedNewPath, setSelectedNewPath] = useState<string | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -135,6 +144,55 @@ function General() {
       await serviceHub.window().openLogsWindow()
     } catch (error) {
       console.error('Failed to open logs window:', error)
+    }
+  }
+
+  const handleImportChatGpt = async (file: File | undefined) => {
+    if (!file) return
+    try {
+      const conversations = parseChatGptExport(await file.text())
+      if (conversations.length === 0) {
+        toast.info(t('settings:general.importChatGptNone'))
+        return
+      }
+      const { threads, failed } = await importConversations(conversations, {
+        createThread: (thread) => serviceHub.threads().createThread(thread),
+        createMessage: (message) => serviceHub.messages().createMessage(message),
+      })
+      if (threads.length > 0) {
+        const store = useThreads.getState()
+        store.setThreads([...threads, ...Object.values(store.threads)])
+      }
+      if (failed > 0) {
+        toast.warning(t('settings:general.importChatGptFailed'), {
+          description: `${failed} / ${conversations.length}`,
+        })
+      }
+      if (threads.length > 0) {
+        toast.success(
+          t('settings:general.importChatGptDone', { count: threads.length })
+        )
+      }
+    } catch (error) {
+      toast.error(t('settings:general.importChatGptFailed'), {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  const handleExportLogs = async () => {
+    try {
+      const destination = await serviceHub.dialog().save({
+        defaultPath: 'flint-logs-redacted.txt',
+        filters: [{ name: 'Text', extensions: ['txt'] }],
+      })
+      if (!destination) return
+      const path = await serviceHub.app().exportRedactedLogs(destination)
+      toast.success(t('settings:general.exportLogsSaved', { path }))
+    } catch (error) {
+      toast.error(t('settings:general.exportLogsFailed'), {
+        description: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 
@@ -281,6 +339,32 @@ function General() {
             }
           />
           <CardItem
+            anchor="settings-general-import-chatgpt"
+            title={t('settings:general.importChatGpt')}
+            description={t('settings:general.importChatGptDesc')}
+            actions={
+              <>
+                <input
+                  ref={chatGptFileInput}
+                  type="file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  data-testid="import-chatgpt-file"
+                  onChange={(e) => {
+                    void handleImportChatGpt(e.target.files?.[0])
+                    e.target.value = ''
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => chatGptFileInput.current?.click()}
+                >
+                  {t('settings:general.importChatGptAction')}
+                </Button>
+              </>
+            }
+          />
+          <CardItem
             anchor="settings-general-data-folder"
             title={t('settings:dataFolder.appData', {
               ns: 'settings',
@@ -402,6 +486,15 @@ function General() {
                   <Icon name="sb-file" size={14} />
                   <span>{t('settings:general.openLogs')}</span>
                 </Button>
+                {IS_TAURI && (
+                  <Button
+                    variant="outline"
+                    onClick={handleExportLogs}
+                    title={t('settings:general.exportLogsDesc')}
+                  >
+                    <span>{t('settings:general.exportLogs')}</span>
+                  </Button>
+                )}
               </div>
             }
           />
@@ -460,6 +553,38 @@ function General() {
 
         {/* Other */}
         <Card title={t('common:others')}>
+          {IS_TAURI && !IS_MACOS && (
+            <CardItem
+              anchor="settings-general-close-to-tray"
+              title={t('settings:general.closeToTray')}
+              description={t('settings:general.closeToTrayDesc')}
+              actions={
+                <Switch
+                  checked={closeToTray}
+                  onCheckedChange={(e) => setCloseToTray(e)}
+                />
+              }
+            />
+          )}
+          {IS_TAURI && (
+            <CardItem
+              anchor="settings-general-download-limit"
+              title={t('settings:general.downloadLimit')}
+              description={t('settings:general.downloadLimitDesc')}
+              actions={
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  className="w-24"
+                  value={downloadLimitMBps}
+                  onChange={(e) =>
+                    setDownloadLimitMBps(Number(e.target.value))
+                  }
+                />
+              }
+            />
+          )}
           <CardItem
             anchor="settings-general-web-preview"
             title={t('common:webPreview.interceptSetting')}

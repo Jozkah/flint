@@ -13,12 +13,50 @@ const SCHEMA_PRIMITIVE_TYPES: &[&str] = &[
 // which GBNF rejects; the failed grammar silently disables tool-call JSON.
 const LLAMACPP_BROKEN_STRING_FORMATS: &[&str] = &["date", "time", "date-time"];
 
-fn pattern_has_pcre_shorthand(pattern: &str) -> bool {
-    let bytes = pattern.as_bytes();
+/// True when llama.cpp's regex-to-grammar converter cannot express `pattern`.
+/// A failed conversion makes the whole tool schema fail ("Unable to generate
+/// parser"), so such patterns are dropped. It accepts literals, `.`, classes,
+/// groups, `(?:...)`, alternation and greedy quantifiers. It rejects
+/// alphanumeric escapes other than `\n \t \r` (`\d \w \s \b \1 \p` and the
+/// like), lookaround, named or flagged groups, and lazy or possessive
+/// quantifiers.
+fn pattern_unsupported_by_llamacpp(pattern: &str) -> bool {
+    let chars: Vec<char> = pattern.chars().collect();
+    let mut in_class = false;
     let mut i = 0;
-    while i + 1 < bytes.len() {
-        if bytes[i] == b'\\' && matches!(bytes[i + 1], b'd' | b'D' | b'w' | b'W' | b's' | b'S') {
-            return true;
+    while i < chars.len() {
+        match chars[i] {
+            '\\' => {
+                if let Some(next) = chars.get(i + 1) {
+                    if next.is_ascii_alphanumeric() && !matches!(next, 'n' | 't' | 'r') {
+                        return true;
+                    }
+                }
+                i += 2;
+                continue;
+            }
+            '[' if !in_class => in_class = true,
+            ']' if in_class => in_class = false,
+            '(' if !in_class => {
+                if chars.get(i + 1) == Some(&'?')
+                    && !(chars.get(i + 2) == Some(&':'))
+                {
+                    return true;
+                }
+            }
+            '*' | '+' | '?' | '}' if !in_class => {
+                // `(?:` was handled above; a `?` here follows a quantifier or
+                // atom, so `??`, `*?`, `+?`, `}?` are lazy and `*+`, `++`,
+                // `?+`, `}+` possessive.
+                let prev_is_group_open = i > 0 && chars[i - 1] == '(';
+                if !prev_is_group_open
+                    && matches!(chars.get(i + 1), Some('?') | Some('+'))
+                    && (chars[i] != '}' || chars[..i].contains(&'{'))
+                {
+                    return true;
+                }
+            }
+            _ => {}
         }
         i += 1;
     }
@@ -91,7 +129,7 @@ pub(crate) fn normalize_openai_tool_parameters_schema(schema: &mut serde_json::V
             let drop_pattern = map
                 .get("pattern")
                 .and_then(|v| v.as_str())
-                .map(pattern_has_pcre_shorthand)
+                .map(pattern_unsupported_by_llamacpp)
                 .unwrap_or(false);
             if drop_pattern {
                 map.remove("pattern");
@@ -174,6 +212,9 @@ pub(crate) fn normalize_openai_tools_in_chat_body(body: &mut serde_json::Value) 
 pub(crate) fn http_status_indicates_api_key_retry(status: StatusCode) -> bool {
     matches!(
         status,
-        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN | StatusCode::TOO_MANY_REQUESTS
+        StatusCode::UNAUTHORIZED
+            | StatusCode::PAYMENT_REQUIRED
+            | StatusCode::FORBIDDEN
+            | StatusCode::TOO_MANY_REQUESTS
     )
 }
