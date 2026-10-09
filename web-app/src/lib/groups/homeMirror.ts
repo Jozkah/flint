@@ -46,6 +46,7 @@ export function projectsFromGroups(
   existing: readonly ThreadFolder[]
 ): ThreadFolder[] {
   const assistants = new Map(existing.map((f) => [f.id, f.assistantId]))
+  const models = new Map(existing.map((f) => [f.id, f.model]))
   return [...groups]
     .sort((a, b) => a.position - b.position)
     .map((g) => ({
@@ -53,6 +54,7 @@ export function projectsFromGroups(
       name: g.name,
       updated_at: g.updatedAt,
       ...(assistants.get(g.id) ? { assistantId: assistants.get(g.id) } : {}),
+      ...(models.get(g.id) ? { model: models.get(g.id) } : {}),
     }))
 }
 

@@ -10,6 +10,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -17,6 +18,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useThreadManagement } from '@/hooks/useThreadManagement'
 import { useAssistant } from '@/hooks/useAssistant'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import type { ProjectModel } from '@/services/projects/types'
 import { AvatarEmoji } from '@/containers/AvatarEmoji'
 import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -36,8 +39,9 @@ interface AddProjectDialogProps {
     name: string
     updated_at: number
     assistantId?: string
+    model?: ProjectModel
   }
-  onSave: (name: string, assistantId?: string) => void
+  onSave: (name: string, assistantId?: string, model?: ProjectModel) => void
   /**
    * What the thing being created is called. The chat row's "New group…"
    * creates a sidebar group, so it says "group"; other callers keep the
@@ -60,6 +64,18 @@ export default function AddProjectDialog({
   const navigate = useNavigate()
   const [name, setName] = useState(initialData?.name || '')
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | undefined>(initialData?.assistantId)
+  const [selectedModel, setSelectedModel] = useState<ProjectModel | undefined>(
+    initialData?.model
+  )
+  const providers = useModelProvider((s) => s.providers)
+  const modelChoices = providers
+    .filter((p) => p.active && p.models.length > 0)
+    .map((p) => ({
+      provider: p.provider,
+      label: p.displayName ?? p.provider,
+      models: p.models.filter((m) => !m.embedding),
+    }))
+    .filter((p) => p.models.length > 0)
   const { folders } = useThreadManagement()
   const { assistants, addAssistant } = useAssistant()
   const [addAssistantDialogOpen, setAddAssistantDialogOpen] = useState(false)
@@ -70,6 +86,7 @@ export default function AddProjectDialog({
     if (open) {
       setName(initialData?.name || '')
       setSelectedAssistantId(initialData?.assistantId)
+      setSelectedModel(initialData?.model)
     }
   }, [open, initialData])
 
@@ -90,7 +107,7 @@ export default function AddProjectDialog({
       return
     }
 
-    onSave(trimmedName, selectedAssistantId)
+    onSave(trimmedName, selectedAssistantId, selectedModel)
 
     // Show success message
     if (editingKey) {
@@ -100,6 +117,7 @@ export default function AddProjectDialog({
     }
     setName('')
     setSelectedAssistantId(undefined)
+    setSelectedModel(undefined)
   }
 
   /**
@@ -119,11 +137,14 @@ export default function AddProjectDialog({
     onOpenChange(false)
     setName('')
     setSelectedAssistantId(undefined)
+    setSelectedModel(undefined)
   }
 
   // Check if the button should be disabled
   const hasChanged = editingKey
-    ? name.trim() !== initialData?.name || selectedAssistantId !== initialData?.assistantId
+    ? name.trim() !== initialData?.name || selectedAssistantId !== initialData?.assistantId ||
+      selectedModel?.id !== initialData?.model?.id ||
+      selectedModel?.provider !== initialData?.model?.provider
     : true
   const isButtonDisabled = !name.trim() || (editingKey && !hasChanged)
 
@@ -234,6 +255,54 @@ export default function AddProjectDialog({
                     <span>{t('projects.addProjectDialog.addAssistant')}</span>
                   </div>
                 </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">
+              {t('projects.addProjectDialog.model')}
+            </label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full justify-between rounded-md"
+                >
+                  {selectedModel ? (
+                    <span className="truncate">{selectedModel.id}</span>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      {t('projects.addProjectDialog.selectModel')}
+                    </span>
+                  )}
+                  <ChevronDown className="size-4 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="max-h-72 w-(--radix-dropdown-menu-trigger-width) overflow-y-auto"
+                align="start"
+              >
+                <DropdownMenuItem onClick={() => setSelectedModel(undefined)}>
+                  <span className="text-muted-foreground">
+                    {t('projects.addProjectDialog.noModel')}
+                  </span>
+                </DropdownMenuItem>
+                {modelChoices.map((group) => (
+                  <div key={group.provider}>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
+                    {group.models.map((m) => (
+                      <DropdownMenuItem
+                        key={`${group.provider}/${m.id}`}
+                        onClick={() =>
+                          setSelectedModel({ id: m.id, provider: group.provider })
+                        }
+                      >
+                        <span className="truncate">{m.displayName ?? m.name ?? m.id}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </div>
+                ))}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

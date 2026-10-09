@@ -50,6 +50,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import ThreadList from '@/containers/ThreadList'
 import { ThreadStatusMark, updatedMs } from '@/containers/ThreadStatusMark'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
+import type { ProjectModel } from '@/services/projects/types'
 import { DeleteProjectDialog } from '@/containers/dialogs/DeleteProjectDialog'
 import { DeleteAllThreadsDialog } from '@/containers/dialogs/DeleteAllThreadsDialog'
 import { useThreads } from '@/hooks/useThreads'
@@ -214,8 +215,12 @@ export function ChatsNav() {
     navigate({ to: route.home })
   }
 
-  const handleCreateProject = async (name: string, assistantId?: string) => {
-    const created = await addFolder(name, assistantId)
+  const handleCreateProject = async (
+    name: string,
+    assistantId?: string,
+    model?: ProjectModel
+  ) => {
+    const created = await addFolder(name, assistantId, model)
     setProjectDialogOpen(false)
     navigate({ to: '/project/$projectId', params: { projectId: created.id } })
   }
@@ -439,8 +444,8 @@ export function ChatsNav() {
         onOpenChange={(o) => !o && setEditing(null)}
         editingKey={editing?.id ?? null}
         initialData={editing ?? undefined}
-        onSave={async (name: string, assistantId?: string) => {
-          if (editing) await updateFolder(editing.id, name, assistantId)
+        onSave={async (name: string, assistantId?: string, model?: ProjectModel) => {
+          if (editing) await updateFolder(editing.id, name, assistantId, model)
           setEditing(null)
         }}
       />

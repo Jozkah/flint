@@ -2,15 +2,24 @@ import { archiveApi, archiveEnabled, trackArchiveWork } from '@/lib/archive'
 import { create } from 'zustand'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useThreads } from '@/hooks/useThreads'
-import type { ThreadFolder } from '@/services/projects/types'
+import type { ProjectModel, ThreadFolder } from '@/services/projects/types'
 import { useEffect } from 'react'
 import { useConversationGroups } from '@/lib/groups/store'
 
 type ThreadManagementState = {
   folders: ThreadFolder[]
   setFolders: (folders: ThreadFolder[]) => void
-  addFolder: (name: string, assistantId?: string) => Promise<ThreadFolder>
-  updateFolder: (id: string, name: string, assistantId?: string) => Promise<void>
+  addFolder: (
+    name: string,
+    assistantId?: string,
+    model?: ProjectModel
+  ) => Promise<ThreadFolder>
+  updateFolder: (
+    id: string,
+    name: string,
+    assistantId?: string,
+    model?: ProjectModel
+  ) => Promise<void>
   deleteFolder: (id: string) => Promise<void>
   /**
    * Delete a project and its threads. They move to the archive (the project
@@ -34,22 +43,22 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
     set({ folders })
   },
 
-  addFolder: async (name, assistantId) => {
+  addFolder: async (name, assistantId, model) => {
     const projectsService = getServiceHub().projects()
     const id = await useConversationGroups.getState().createGroup('home', name)
     if (!id) throw new Error('Could not create the project')
     const group = useConversationGroups.getState().state.surfaces.home.groups.find((g) => g.id === id)!
-    const folder: ThreadFolder = { id, name: group.name, updated_at: group.updatedAt, assistantId }
+    const folder: ThreadFolder = { id, name: group.name, updated_at: group.updatedAt, assistantId, ...(model ? { model } : {}) }
     const others = (await projectsService.getProjects()).filter((f) => f.id !== id)
     await projectsService.setProjects([...others, folder])
     set({ folders: await projectsService.getProjects() })
     return folder
   },
 
-  updateFolder: async (id, name, assistantId) => {
+  updateFolder: async (id, name, assistantId, model) => {
     await useConversationGroups.getState().renameGroup('home', id, name)
     const projectsService = getServiceHub().projects()
-    await projectsService.updateProject(id, name, assistantId)
+    await projectsService.updateProject(id, name, assistantId, model)
     set({ folders: await projectsService.getProjects() })
   },
 

@@ -73,6 +73,7 @@ import { ThreadMessage } from '@janhq/core'
 import { useMoveToGroup } from '@/hooks/useMoveToGroup'
 import { chatFolderAdapter } from '@/lib/chatFolders'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
+import type { ProjectModel } from '@/services/projects/types'
 
 const ThreadItem = memo(
   ({
@@ -213,8 +214,12 @@ const ThreadItem = memo(
       setMenuOpen(false)
     }
 
-    const createGroupAndMove = async (name: string, assistantId?: string) => {
-      const created = await addFolder(name, assistantId)
+    const createGroupAndMove = async (
+      name: string,
+      assistantId?: string,
+      model?: ProjectModel
+    ) => {
+      const created = await addFolder(name, assistantId, model)
       setNewGroupOpen(false)
       await moveWithGroupFolders(thread.id, created.id)
     }

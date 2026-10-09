@@ -103,3 +103,15 @@ describe('DefaultProjectsService', () => {
     expect(await svc.getProjects()).toEqual([])
   })
 })
+
+describe('project default model', () => {
+  it('stores the model on add and replaces it on update', async () => {
+    const svc = new DefaultProjectsService()
+    const created = await svc.addProject('P', undefined, { id: 'm1', provider: 'openai' })
+    expect((await svc.getProjectById(created.id))?.model).toEqual({ id: 'm1', provider: 'openai' })
+    await svc.updateProject(created.id, 'P', undefined, { id: 'm2', provider: 'groq' })
+    expect((await svc.getProjectById(created.id))?.model).toEqual({ id: 'm2', provider: 'groq' })
+    await svc.updateProject(created.id, 'P')
+    expect((await svc.getProjectById(created.id))?.model).toBeUndefined()
+  })
+})

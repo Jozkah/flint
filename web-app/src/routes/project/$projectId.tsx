@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
+import type { ProjectModel } from '@/services/projects/types'
 import { DeleteProjectDialog } from '@/containers/dialogs/DeleteProjectDialog'
 import { DeleteAllThreadsInProjectDialog } from '@/containers/dialogs/DeleteAllThreadsInProjectDialog'
 import { NavList } from '@/components/shell/nav-kit'
@@ -66,9 +67,13 @@ function ProjectPageContent() {
       .sort((a, b) => (b.updated || 0) - (a.updated || 0))
   }, [threads, projectId])
 
-  const handleSaveEdit = async (name: string, assistantId?: string) => {
+  const handleSaveEdit = async (
+    name: string,
+    assistantId?: string,
+    model?: ProjectModel
+  ) => {
     if (project) {
-      await updateFolder(project.id, name, assistantId)
+      await updateFolder(project.id, name, assistantId, model)
       setEditDialogOpen(false)
     }
   }
