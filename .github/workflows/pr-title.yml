@@ -1,0 +1,29 @@
+name: PR title
+
+# Squash merges use the PR title as the commit message on main, and
+# release-please reads those commits to pick the next version and write the
+# changelog, so the title has to be a Conventional Commit.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  title:
+    name: Conventional Commit title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          re='^(feat|fix|perf|revert|docs|style|refactor|test|build|ci|chore)(\([a-z0-9._/-]+\))?!?: .+'
+          if ! printf '%s' "$TITLE" | grep -Eq "$re"; then
+            echo "::error::PR title must follow https://www.conventionalcommits.org: type(scope)!: description"
+            echo "Types: feat fix perf revert docs style refactor test build ci chore"
+            echo "Got: $TITLE"
+            exit 1
+          fi
