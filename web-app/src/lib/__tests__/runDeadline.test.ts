@@ -57,6 +57,20 @@ describe('one operation', () => {
     vi.useRealTimers()
   })
 
+  it('restarts the idle clock on progress, so only silence times out', () => {
+    vi.useFakeTimers()
+    const op = operationSignal(undefined, 1000)
+    vi.advanceTimersByTime(900)
+    op.touch()
+    vi.advanceTimersByTime(900)
+    expect(op.signal.aborted).toBe(false)
+    vi.advanceTimersByTime(100)
+    expect(op.signal.aborted).toBe(true)
+    expect(op.timedOut()).toBe(true)
+    op.dispose()
+    vi.useRealTimers()
+  })
+
   it('stops when the run itself is stopped, and does not call that a timeout', () => {
     const run = new AbortController()
     const op = operationSignal(run.signal, 60_000)

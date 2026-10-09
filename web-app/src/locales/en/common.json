@@ -1048,6 +1048,7 @@
     "stopped": "Stopped.",
     "failed": "The run stopped early.",
     "tryAgain": "Try again",
+    "attachFolder": "Attach a folder",
     "deadline": "Stopped — this run reached its time limit.",
     "timeout": "Stopped — the model stopped responding.",
     "loop": "Stopped — the run was repeating itself without making progress.",

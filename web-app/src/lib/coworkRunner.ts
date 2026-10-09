@@ -24,7 +24,12 @@ import {
   loopStopNotice,
   type ObservedCall,
 } from '@/lib/runLoopGuard'
-import { isExpired, operationSignal, type Deadline } from '@/lib/runDeadline'
+import {
+  configuredOperationTimeoutMs,
+  isExpired,
+  operationSignal,
+  type Deadline,
+} from '@/lib/runDeadline'
 import { decideRetry, waitFor } from '@/lib/runRetry'
 import { WEB_TOOL_NAMES } from '@/lib/webSearchTool'
 import { readTokenUsage, toCoworkUsage } from '@/lib/tokenUsage'
@@ -652,7 +657,9 @@ export function untilStopped<T>(
 export async function consumeStep(
   stream: ReadableStream<UIMessageChunk>,
   sink: StreamSink,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** Called for every chunk, so an idle timeout measures silence, not length. */
+  onActivity?: () => void
 ): Promise<StepResult> {
   const reader = stream.getReader()
   const result: StepResult = {
@@ -670,6 +677,7 @@ export async function consumeStep(
         ? untilStopped(reader.read(), signal)
         : reader.read())
       if (done) break
+      onActivity?.()
       const chunk = value as any
       switch (chunk.type) {
         case 'text-delta':
@@ -1015,6 +1023,8 @@ export async function runTurn(opts: {
   // dropped stream, or an empty reply, is continued once without the user
   // having to type "continue". Once, so it can never loop.
   let autoContinued = false
+  // Likewise for a step that stalled past its retries: resumed once.
+  let timeoutResumed = false
   // Calls the last step skipped because steering was pending; told to the model
   // when that steering turned out to have nothing to deliver.
   let skippedForSteering: string[] = []
@@ -1122,7 +1132,10 @@ export async function runTurn(opts: {
        * different request that happens to carry the same messages.
        */
       while (true) {
-        const operation = operationSignal(signal, opts.operationTimeoutMs)
+        const operation = operationSignal(
+          signal,
+          opts.operationTimeoutMs ?? configuredOperationTimeoutMs()
+        )
         try {
           // Not left to the transport to notice Stop: see `untilStopped`.
           const stream = await untilStopped(
@@ -1134,7 +1147,14 @@ export async function runTurn(opts: {
             (late) => void late.cancel().catch(() => {})
 
           )
-          result = await consumeStep(stream, deps.sink, operation.signal)
+          // The request was accepted: that is progress too.
+          operation.touch()
+          result = await consumeStep(
+            stream,
+            deps.sink,
+            operation.signal,
+            operation.touch
+          )
           break
         } catch (failure) {
           timedOut = operation.timedOut()
@@ -1186,6 +1206,19 @@ export async function runTurn(opts: {
       }
     } catch (e) {
       if (timedOut && !signal.aborted) {
+        // The step already got its retries. Resume the run once rather than
+        // ending it: the history is intact, so the model can pick up where it
+        // stopped, as it would after an interrupted run. Once, so a model that
+        // is really down still ends the run instead of looping.
+        if (!timeoutResumed) {
+          timeoutResumed = true
+          messages.push(
+            nudge(
+              'Note from Flint (not typed by the user): the previous model request stalled and was restarted. Continue the task.'
+            )
+          )
+          continue
+        }
         return {
           messages,
           steps: step,

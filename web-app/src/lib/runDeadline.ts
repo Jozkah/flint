@@ -20,8 +20,32 @@
  */
 export const DEFAULT_RUN_DEADLINE_MS = 365 * 24 * 60 * 60_000
 
-/** One model stream, tool call or MCP request. */
+/**
+ * How long one model step may go without producing anything. Idle, not total:
+ * every chunk resets it (`operationSignal().touch`), so a slow local model that
+ * keeps streaming is never cut off, and only a stalled one is.
+ */
 export const DEFAULT_OPERATION_TIMEOUT_MS = 10 * 60_000
+
+const OPERATION_TIMEOUT_KEY = 'flint.operationTimeoutMs'
+
+/**
+ * The idle limit in force: the user's override from local storage (0 turns the
+ * limit off), else the default. Read per run so a change applies to the next
+ * one without a restart.
+ */
+export function configuredOperationTimeoutMs(): number {
+  try {
+    const raw = globalThis.localStorage?.getItem(OPERATION_TIMEOUT_KEY)
+    if (raw == null || raw.trim() === '') return DEFAULT_OPERATION_TIMEOUT_MS
+    const value = Number(raw)
+    if (!Number.isFinite(value) || value < 0) return DEFAULT_OPERATION_TIMEOUT_MS
+    // 0 means no limit; a timer this long never fires in practice.
+    return value === 0 ? 365 * 24 * 60 * 60_000 : value
+  } catch {
+    return DEFAULT_OPERATION_TIMEOUT_MS
+  }
+}
 
 export type Deadline = {
   /** Epoch millis. Absolute, so it survives a restart unchanged. */
@@ -81,7 +105,13 @@ export function restoreDeadline(
 export function operationSignal(
   runSignal: AbortSignal | undefined,
   timeoutMs: number = DEFAULT_OPERATION_TIMEOUT_MS
-): { signal: AbortSignal; dispose: () => void; timedOut: () => boolean } {
+): {
+  signal: AbortSignal
+  dispose: () => void
+  timedOut: () => boolean
+  /** Progress was made: restart the idle clock. */
+  touch: () => void
+} {
   const controller = new AbortController()
   let timedOut = false
 
@@ -91,13 +121,17 @@ export function operationSignal(
       signal: controller.signal,
       dispose: () => {},
       timedOut: () => false,
+      touch: () => {},
     }
   }
 
-  const timer = setTimeout(() => {
+  const fire = () => {
     timedOut = true
-    controller.abort(new Error(`the operation took longer than ${timeoutMs}ms`))
-  }, timeoutMs)
+    controller.abort(
+      new Error(`the operation made no progress for ${timeoutMs}ms`)
+    )
+  }
+  let timer = setTimeout(fire, timeoutMs)
 
   const stop = () => controller.abort(runSignal?.reason)
   runSignal?.addEventListener('abort', stop, { once: true })
@@ -109,6 +143,11 @@ export function operationSignal(
       runSignal?.removeEventListener('abort', stop)
     },
     timedOut: () => timedOut,
+    touch: () => {
+      if (timedOut || controller.signal.aborted) return
+      clearTimeout(timer)
+      timer = setTimeout(fire, timeoutMs)
+    },
   }
 }
 

@@ -991,6 +991,33 @@ describe('run guards', () => {
       operationTimeoutMs: 5,
     })
     expect(out.stoppedBy).toBe('timeout')
+    // 3 attempts, one resume with a note, 3 more attempts: bounded, no loop.
+    expect(d.sendStep).toHaveBeenCalledTimes(6)
+  })
+
+  it('resumes once after a stalled step and finishes if the model recovers', async () => {
+    const d = deps([textStep('done')])
+    let calls = 0
+    const real = d.sendStep as any
+    d.sendStep = vi.fn((m: UIMessage[], signal: AbortSignal, o: unknown) => {
+      calls += 1
+      if (calls === 1) {
+        return new Promise<ReadableStream<UIMessageChunk>>((_r, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('stalled')), {
+            once: true,
+          })
+        })
+      }
+      return real(m, signal, o)
+    }) as never
+
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+      operationTimeoutMs: 5,
+    })
+    expect(out.stoppedBy).toBe('done')
   })
 })
 

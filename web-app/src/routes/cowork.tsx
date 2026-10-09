@@ -720,6 +720,8 @@ export function CoworkPage() {
    */
   const [confirmDirectEdit, setConfirmDirectEdit] = useState(false)
   const [pendingFolder, setPendingFolder] = useState<Record<string, string>>({})
+  /** Sessions whose run ended to take a folder and should restart with it. */
+  const restartAfterFolderRef = useRef<Record<string, true>>({})
   const [pendingAccess, setPendingAccess] = useState<Record<string, AccessMode>>({})
   /**
    * The binding as it stands right now.
@@ -2425,6 +2427,11 @@ export function CoworkPage() {
         delete next[sid]
         return next
       })
+      // The run ended to take this folder: carry on in a new one with it.
+      if (restartAfterFolderRef.current[sid]) {
+        delete restartAfterFolderRef.current[sid]
+        void runRequestRef.current(null)
+      }
       return
     }
     const choice = pendingAccess[sid]
@@ -3822,6 +3829,8 @@ export function CoworkPage() {
      * here: it runs in a new request under the session's stored mode.
      */
     let continueWith: string | null = null
+    // The folder offer is made once per run, so a declined one is not repeated.
+    let folderOffered = false
     // Subagents this run started with `task background:true`.
     const backgroundTasks = new BackgroundTasks(SUBAGENT_RESULT_HEAD_CHARS)
     let outcome: RunOutcome | null = null
@@ -3916,6 +3925,37 @@ export function CoworkPage() {
                       autoApproveStreak: sid,
                       signal,
                     }),
+                // A refusal for a path outside the sandbox, with no folder
+                // attached: ask once per run whether to attach one. A run's
+                // folder is fixed once it starts, so on yes the pick is held
+                // and the run ends; it restarts when the folder is applied.
+                onNeedFolder: async ({ signal }) => {
+                  if (folderOffered) return 'declined'
+                  folderOffered = true
+                  const ok = await useToolApprovalRequests
+                    .getState()
+                    .requestApproval(
+                      `${runId}:attach-folder`,
+                      'attach_folder',
+                      sid,
+                      undefined,
+                      {
+                        input: {},
+                        alwaysAsk: true,
+                        taskContext:
+                          'This run needs files outside its sandbox, but no project folder is attached. Attach one so the run can continue?',
+                        signal,
+                      }
+                    )
+                  if (!ok) return 'declined'
+                  const picked = await serviceHub
+                    .dialog()
+                    .open({ directory: true })
+                  if (typeof picked !== 'string') return 'declined'
+                  restartAfterFolderRef.current[sid] = true
+                  setPendingFolder((pending) => ({ ...pending, [sid]: picked }))
+                  return 'attached'
+                },
                 // The prompt the chat surface already uses for tool approval,
                 // not a second one: it honours grants the user has already made
                 // and renders in the tool card the call is reported in.
@@ -6042,6 +6082,11 @@ export function CoworkPage() {
                       kind={stoppedBy}
                       message={runError}
                       onRetry={() => void runRequest(null)}
+                      onAttachFolder={
+                        stoppedBy === 'loop' && !session?.folder
+                          ? () => void attachFolder()
+                          : undefined
+                      }
                     />
                   )}
                   {stoppedBy === 'tokens' && (
