@@ -513,6 +513,68 @@ enum ScheduleCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Add a scheduled task
+    Add {
+        #[command(flatten)]
+        task: ScheduleTaskArgs,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Change a scheduled task; only the flags you give are changed
+    Edit {
+        /// The task id (see `list`)
+        id: String,
+        #[command(flatten)]
+        task: ScheduleTaskArgs,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete a task and its run history
+    Delete { id: String },
+    /// Turn a task on
+    Enable {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Turn a task off without deleting it
+    Disable {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the next fire times of a task, or of a schedule not yet saved
+    Preview {
+        /// A task id; omit it to preview the schedule flags instead
+        id: Option<String>,
+        #[command(flatten)]
+        task: ScheduleTaskArgs,
+        #[arg(long, default_value_t = 5)]
+        count: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Stop a run that is in flight
+    Cancel { id: String, run: String },
+    /// The built-in tools a task can be allowed
+    Tools {
+        #[arg(long)]
+        json: bool,
+    },
+    /// The time zone names a task can use
+    TimeZones,
+    /// The entry that runs `schedule tick` while Flint is closed
+    Os {
+        /// status, enable or disable
+        action: String,
+        #[arg(long)]
+        interval_minutes: Option<u32>,
+        /// Confirm that `enable` may write the entry it previewed
+        #[arg(long)]
+        yes: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Run one scheduled run from its spec, as a job supervisor starts it. Not
     /// meant to be run by hand.
     #[command(hide = true)]
@@ -520,6 +582,114 @@ enum ScheduleCommands {
         #[arg(long)]
         spec: String,
     },
+}
+
+/// What a scheduled task is. `add` needs name, prompt, model, a schedule and at
+/// least one `--allow-tool`; `edit` changes only what is given.
+#[derive(Args, Default)]
+struct ScheduleTaskArgs {
+    #[arg(long)]
+    name: Option<String>,
+    /// What the task should do each time it runs
+    #[arg(long)]
+    prompt: Option<String>,
+    /// `provider/model`
+    #[arg(long)]
+    model: Option<String>,
+    /// The project folder the run works in (default: the current folder)
+    #[arg(long)]
+    project: Option<String>,
+    /// IANA zone name, e.g. Europe/Berlin (default: $TZ, else UTC)
+    #[arg(long)]
+    timezone: Option<String>,
+    /// A Cowork profile to run under
+    #[arg(long)]
+    profile: Option<String>,
+    /// Every day at these times, e.g. 09:00,17:30
+    #[arg(long)]
+    daily: Option<String>,
+    /// Monday to Friday at these times
+    #[arg(long)]
+    weekdays: Option<String>,
+    /// On these days at these times, e.g. mon,wed@09:00
+    #[arg(long)]
+    weekly: Option<String>,
+    /// A cron expression
+    #[arg(long)]
+    cron: Option<String>,
+    /// A tool the task may use (repeat; see `schedule tools`)
+    #[arg(long = "allow-tool")]
+    allow_tools: Vec<String>,
+    /// read-only or worktree
+    #[arg(long)]
+    write: Option<String>,
+    /// continue or end, when a tool call would need approval
+    #[arg(long)]
+    on_block: Option<String>,
+    /// skip, once or all-capped, for runs missed while closed
+    #[arg(long)]
+    catch_up: Option<String>,
+    #[arg(long)]
+    max_turns: Option<u32>,
+    #[arg(long)]
+    max_tokens: Option<u64>,
+    #[arg(long)]
+    max_wall_clock_secs: Option<u64>,
+    #[arg(long)]
+    max_cost_usd: Option<f64>,
+    /// Save the task turned off
+    #[arg(long)]
+    disabled: bool,
+}
+
+impl ScheduleTaskArgs {
+    fn into_input(self) -> Result<app_lib::core::cli::schedule_manage::TaskInput, HarnessError> {
+        use app_lib::core::schedule::spec::{CatchUp, OnBlock, WriteMode};
+        use tauri_plugin_agent_tools::harness_error::{ErrorKind, Stage};
+        let bad = |flag: &str, v: &str, ok: &str| {
+            HarnessError::new(ErrorKind::InvalidInput, format!("--{flag} '{v}' is not one of: {ok}")).at(Stage::Startup)
+        };
+        let write = match self.write.as_deref() {
+            None => None,
+            Some("read-only") => Some(WriteMode::ReadOnly),
+            Some("worktree") => Some(WriteMode::Worktree),
+            Some(v) => return Err(bad("write", v, "read-only, worktree")),
+        };
+        let on_block = match self.on_block.as_deref() {
+            None => None,
+            Some("continue") => Some(OnBlock::Continue),
+            Some("end") => Some(OnBlock::End),
+            Some(v) => return Err(bad("on-block", v, "continue, end")),
+        };
+        let catch_up = match self.catch_up.as_deref() {
+            None => None,
+            Some("skip") => Some(CatchUp::Skip),
+            Some("once") => Some(CatchUp::Once),
+            Some("all-capped") => Some(CatchUp::AllCapped),
+            Some(v) => return Err(bad("catch-up", v, "skip, once, all-capped")),
+        };
+        Ok(app_lib::core::cli::schedule_manage::TaskInput {
+            name: self.name,
+            prompt: self.prompt,
+            model: self.model,
+            project: self.project,
+            timezone: self.timezone,
+            profile: self.profile,
+            daily: self.daily,
+            weekdays: self.weekdays,
+            weekly: self.weekly,
+            cron: self.cron,
+            allow_tools: self.allow_tools,
+            write,
+            on_block,
+            catch_up,
+            max_turns: self.max_turns,
+            max_tokens: self.max_tokens,
+            max_wall_clock_secs: self.max_wall_clock_secs,
+            max_cost_usd: self.max_cost_usd,
+            disabled: self.disabled,
+        })
+    }
 }
 
 #[derive(Subcommand)]
@@ -1763,12 +1933,33 @@ async fn handle_cli(cmd: CliCommands) {
         CliCommands::Net { cmd } => handle_net(cmd),
         CliCommands::Bench { cmd } => handle_bench(cmd),
         CliCommands::Schedule { cmd } => {
-            use app_lib::core::cli::schedule;
+            use app_lib::core::cli::{schedule, schedule_manage};
             let result = match cmd {
                 ScheduleCommands::List { json } => schedule::list(json),
                 ScheduleCommands::Run { id, wait } => schedule::run_now(&id, wait).await,
                 ScheduleCommands::Tick { data, json } => schedule::tick(data.as_deref(), json),
                 ScheduleCommands::Runs { id, limit, json } => schedule::runs(&id, limit, json),
+                ScheduleCommands::Add { task, json } => {
+                    task.into_input().and_then(|i| schedule_manage::add(i, json))
+                }
+                ScheduleCommands::Edit { id, task, json } => {
+                    task.into_input().and_then(|i| schedule_manage::edit(&id, i, json))
+                }
+                ScheduleCommands::Delete { id } => schedule_manage::delete(&id),
+                ScheduleCommands::Enable { id, json } => schedule_manage::set_enabled(&id, true, json),
+                ScheduleCommands::Disable { id, json } => schedule_manage::set_enabled(&id, false, json),
+                ScheduleCommands::Preview { id, task, count, json } => task
+                    .into_input()
+                    .and_then(|i| schedule_manage::preview(id.as_deref(), i, count, json)),
+                ScheduleCommands::Cancel { id, run } => schedule_manage::cancel_run(&id, &run),
+                ScheduleCommands::Tools { json } => schedule_manage::tools(json),
+                ScheduleCommands::TimeZones => {
+                    schedule_manage::time_zones();
+                    Ok(())
+                }
+                ScheduleCommands::Os { action, interval_minutes, yes, json } => {
+                    schedule_manage::os(&action, interval_minutes, yes, json)
+                }
                 ScheduleCommands::RunSpec { spec } => schedule::run_spec(std::path::Path::new(&spec)).await,
             };
             if let Err(e) = result {
