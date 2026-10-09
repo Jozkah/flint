@@ -83,6 +83,8 @@ struct Cli {
     plan: bool,
     #[command(flatten)]
     sandbox: SandboxArgs,
+    #[command(flatten)]
+    worktree: WorktreeArgs,
     /// Log more: `info` on stderr instead of `warn`. Accepted before or after
     /// any subcommand. The logger reads it from the raw arguments before this
     /// parser runs; declaring it here keeps clap from rejecting it.
@@ -2003,6 +2005,7 @@ async fn run() {
                 auto_approve: mode_switches.0,
                 plan: mode_switches.1,
                 sandbox: cli.sandbox.into_flag(),
+                worktree: cli.worktree.into_flag(),
                 ..Default::default()
             },
             cli.resume.into_request(),
@@ -4719,6 +4722,43 @@ mod tests {
 
     // Permission prompts are opt-in: auto-approval inside the OS sandbox is the
     // default, and `--safe` is what turns the gate back on.
+    #[test]
+    fn console_accepts_worktree_flags() {
+        assert_eq!(Cli::parse_from(["flint", "--worktree"]).worktree.into_flag(), Some(true));
+        assert_eq!(Cli::parse_from(["flint", "--no-worktree"]).worktree.into_flag(), Some(false));
+        assert_eq!(Cli::parse_from(["flint"]).worktree.into_flag(), None);
+        assert!(Cli::try_parse_from(["flint", "--worktree", "--no-worktree"]).is_err());
+    }
+
+    #[test]
+    fn mode_flag_parses_and_replaces_safe() {
+        assert_eq!(Cli::parse_from(["flint", "--mode", "ask"]).mode.as_deref(), Some("ask"));
+        let cli = Cli::parse_from(["flint", "--mode", "ask", "--safe"]);
+        assert!(app_lib::core::cli::PermissionMode::resolve(cli.mode.as_deref(), cli.safe, cli.plan).is_err());
+    }
+
+    #[test]
+    fn new_management_commands_parse() {
+        for argv in [
+            vec!["flint", "cli", "schedule", "add", "--name", "n", "--prompt", "p", "--model", "m/x", "--daily", "09:00", "--allow-tool", "read"],
+            vec!["flint", "cli", "schedule", "preview", "--weekly", "mon@09:00"],
+            vec!["flint", "cli", "archive", "list", "--kind", "thread"],
+            vec!["flint", "cli", "threads", "export", "abc", "--format", "obsidian"],
+            vec!["flint", "cli", "skills", "enabled", "a", "b"],
+            vec!["flint", "cli", "memory", "list", "project"],
+            vec!["flint", "cli", "worktree", "discard", "abcd1234", "--force"],
+            vec!["flint", "cli", "mcp", "trust", "demo", "--yes"],
+            vec!["flint", "cli", "models", "search", "qwen"],
+            vec!["flint", "cli", "net", "endpoint", "localhost", "8080"],
+            vec!["flint", "cli", "agent", "audit", "--decision", "refused"],
+            vec!["flint", "cli", "import-claude", "scan"],
+            vec!["flint", "cli", "data-folder"],
+            vec!["flint", "migrate", "plan", "--mode", "copy"],
+        ] {
+            assert!(Cli::try_parse_from(argv.clone()).is_ok(), "{argv:?}");
+        }
+    }
+
     #[test]
     fn safe_flag_parses_and_defaults_off() {
         assert!(!Cli::parse_from(["jan"]).safe);

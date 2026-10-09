@@ -1,6 +1,6 @@
 ---
 title: CLI Reference
-description: Every Jan Agent flag and subcommand, including headless runs for scripts and CI.
+description: Every Flint console flag and subcommand, including headless runs for scripts and CI.
 keywords:
   [
     Jan,
@@ -10,7 +10,7 @@ keywords:
     headless,
     automation,
     CI,
-    jan cli agent run,
+    flint cli agent run,
     threads,
   ]
 ---
@@ -23,8 +23,8 @@ import { Callout } from 'nextra/components'
 non-interactive, for scripts and CI.
 
 ```bash
-jan [OPTIONS]
-jan <COMMAND>
+flint [OPTIONS]
+flint <COMMAND>
 ```
 
 ## Opening the console
@@ -48,16 +48,16 @@ jan <COMMAND>
 | `--api-key <KEY>` | API key for that provider |
 
 ```bash
-jan                                     # current directory
-jan --project ~/code/app                # somewhere else
-jan --task "fix the failing test"       # with a first message
-jan -c                                  # resume the latest session
-jan --resume 3f7a91c2                   # resume by id prefix
-jan --plan                              # read-only
-jan --safe                              # ask before writes and shell commands
-jan --sandbox                           # confine shell commands to the project
-jan -c --fork-session                   # branch the latest session into a new one
-jan --worktree                          # work in a dedicated checkout, not yours
+flint                                     # current directory
+flint --project ~/code/app                # somewhere else
+flint --task "fix the failing test"       # with a first message
+flint -c                                  # resume the latest session
+flint --resume 3f7a91c2                   # resume by id prefix
+flint --plan                              # read-only
+flint --safe                              # ask before writes and shell commands
+flint --sandbox                           # confine shell commands to the project
+flint -c --fork-session                   # branch the latest session into a new one
+flint --worktree                          # work in a dedicated checkout, not yours
 ```
 
 <Callout type="warning">
@@ -68,7 +68,7 @@ prompt; `--sandbox` adds OS confinement (bubblewrap, Seatbelt, or AppContainer).
 [tool permissions](/docs/agent/permissions#the-shell-sandbox).
 </Callout>
 
-## `jan cli agent`
+## `flint cli agent`
 
 Run the agent without a UI. This is the form to use in scripts.
 
@@ -79,11 +79,11 @@ the agent runs as many turns as the task needs, bounded by `--max-turns`, by the
 budget (`--max-session-tokens`, else `[budget].max_tokens`), or by cancelling it.
 
 ```bash
-jan cli agent run "fix the failing test in tests/auth"
-jan cli agent run --project ~/code/app "update the changelog"
-jan cli agent run --model gpt-4o "add unit tests for the parser"
-jan cli agent run --safe "run the migration"   # approve each step
-jan cli agent run --max-turns 5 --max-session-tokens 20000 "triage the build failure"
+flint cli agent run "fix the failing test in tests/auth"
+flint cli agent run --project ~/code/app "update the changelog"
+flint cli agent run --model gpt-4o "add unit tests for the parser"
+flint cli agent run --safe "run the migration"   # approve each step
+flint cli agent run --max-turns 5 --max-session-tokens 20000 "triage the build failure"
 ```
 
 | Flag | Description |
@@ -118,7 +118,7 @@ form with an equals sign: `--resume=3f7a91c2`.
 run finishes. Progress and diagnostics still go to stderr, so stdout is safe to pipe into `jq`.
 
 ```bash
-jan cli agent run --output-format json "review auth.rs" | jq -r .result
+flint cli agent run --output-format json "review auth.rs" | jq -r .result
 ```
 
 ```json
@@ -337,7 +337,7 @@ A prompt is a `permission_request` with `prompt_kind: "mcp"`, naming the adverti
 `host__<name>`. With `--host-gate` none is raised for any host tool, because your `tool_request`
 handler is the gate. The deny list applies to every class. The `init` handshake echoes the schemas
 actually advertised in `tool_specs`, so a tool you declared that is missing there was withheld by
-policy and will never be called. Host tools are never served by `jan mcp serve`.
+policy and will never be called. Host tools are never served by `flint mcp serve`.
 
 A request you should no longer answer is withdrawn with a record, printed before the final `result`:
 
@@ -393,7 +393,7 @@ What a client may assume, for `protocol_version` 1:
 The version is bumped only for a change a v1 consumer cannot survive: a renamed or removed tag, a
 removed field, or a new meaning for an existing one. Adding a field is not a bump.
 
-Both directions of this channel are published as a JSON Schema by `jan cli agent schema`, so a
+Both directions of this channel are published as a JSON Schema by `flint cli agent schema`, so a
 client validates against the types instead of re-declaring them (see [`schema`](#schema)).
 
 ### `step`
@@ -401,7 +401,7 @@ client validates against the types instead of re-declaring them (see [`schema`](
 Run a single turn. Useful when debugging a prompt or a tool.
 
 ```bash
-jan cli agent step "list the files you would change"
+flint cli agent step "list the files you would change"
 ```
 
 ### `status`
@@ -409,17 +409,17 @@ jan cli agent step "list the files you would change"
 Print the resolved project config and available providers as JSON.
 
 ```bash
-jan cli agent status
-jan cli agent status --project ~/code/app
+flint cli agent status
+flint cli agent status --project ~/code/app
 ```
 
 ### `rpc`
 
-Run one long-lived Jan process with multiple addressable sessions over LF-delimited JSON-RPC on stdin/stdout. `jan cli agent rpc` prints **protocol lines only** to stdout. The first request is `initialize` with `protocolVersion: 1` and a `clientInfo` name/version; wait for its response, then send the `initialized` notification before any other method. Calling a method early returns `-32002`.
+Run one long-lived Jan process with multiple addressable sessions over LF-delimited JSON-RPC on stdin/stdout. `flint cli agent rpc` prints **protocol lines only** to stdout. The first request is `initialize` with `protocolVersion: 1` and a `clientInfo` name/version; wait for its response, then send the `initialized` notification before any other method. Calling a method early returns `-32002`.
 
 ```bash
-jan cli agent rpc
-jan cli agent rpc-schema   # generated request/event schemas on stdout
+flint cli agent rpc
+flint cli agent rpc-schema   # generated request/event schemas on stdout
 ```
 
 One client flow:
@@ -447,8 +447,8 @@ every machine, and it is the same document for a client that validates `stream-j
 one that writes stdin messages.
 
 ```bash
-jan cli agent schema                              # stdout
-jan cli agent schema --out protocol/schema.json   # or a file
+flint cli agent schema                              # stdout
+flint cli agent schema --out protocol/schema.json   # or a file
 ```
 
 The document has two root properties:
@@ -479,8 +479,8 @@ request. Like `schema`, no project and no provider are involved. It describes th
 `stream-json` records are in `protocol/schema.json`, and ACP has no document yet.
 
 ```bash
-jan cli agent rpc-schema                                  # stdout
-jan cli agent rpc-schema --out protocol/rpc-schema.json   # or a file
+flint cli agent rpc-schema                                  # stdout
+flint cli agent rpc-schema --out protocol/rpc-schema.json   # or a file
 ```
 
 | Property | Contents |
@@ -502,17 +502,17 @@ declares. The integration test then calls every method the document names and re
 is not `-32601`, so the artifact cannot offer a verb the server does not dispatch. CI regenerates both
 this document and `protocol/schema.json` in one job and fails on a diff.
 
-## `jan plugin`
+## `flint plugin`
 
 Manage project-local plugins without the interactive console. Plugin commands use
 `.jan/agent/plugins/` under `--project` (default `.`) and print JSON for list, install, and search.
 
 ```bash
-jan plugin list
-jan plugin install https://github.com/acme/release-tools
-jan plugin install https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup
-jan plugin remove release-tools
-jan plugin search prepare
+flint plugin list
+flint plugin install https://github.com/acme/release-tools
+flint plugin install https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup
+flint plugin remove release-tools
+flint plugin search prepare
 ```
 
 Direct git URLs, optional `#ref` suffixes, marketplace names, and GitHub tree URLs selecting a
@@ -524,15 +524,15 @@ marketplace = "https://example.com/jan-plugins/index.json"
 ```
 
 
-## `jan config`
+## `flint config`
 
 Manage provider credentials in `~/.jan/config.toml`.
 
 ```bash
-jan config set --provider openai --api-key sk-... --base-url https://api.openai.com/v1 --model gpt-4o
-jan config unset --provider openai
-jan config list    # JSON, API keys redacted
-jan config path    # print the file path, scaffolding a template if absent
+flint config set --provider openai --api-key sk-... --base-url https://api.openai.com/v1 --model gpt-4o
+flint config unset --provider openai
+flint config list    # JSON, API keys redacted
+flint config path    # print the file path, scaffolding a template if absent
 ```
 
 | `set` flag | Description |
@@ -545,31 +545,31 @@ jan config path    # print the file path, scaffolding a template if absent
 
 See [Configuration](/docs/agent/providers).
 
-## `jan login`
+## `flint login`
 
 Sign in to Tokamak and save the API key to `~/.jan/config.toml`.
 
 ```bash
-jan login
+flint login
 ```
 
-## `jan cli threads`
+## `flint cli threads`
 
 Inspect saved conversations. Output is JSON, so it pipes into `jq`.
 
 ```bash
-jan cli threads list
-jan cli threads get <ID>
-jan cli threads messages <THREAD_ID>
-jan cli threads delete <ID>
+flint cli threads list
+flint cli threads get <ID>
+flint cli threads messages <THREAD_ID>
+flint cli threads delete <ID>
 ```
 
-## `jan cli models`
+## `flint cli models`
 
 Print every configured provider's models as JSON, keys redacted.
 
 ```bash
-jan cli models list
+flint cli models list
 ```
 
 ```json
@@ -585,9 +585,9 @@ jan cli models list
 ```
 
 This includes providers inherited from Flint Desktop, so it can list models even when
-`jan config list` shows none of its own.
+`flint config list` shows none of its own.
 
-## `jan cli mcp`
+## `flint cli mcp`
 
 Manage Model Context Protocol servers in the shared `mcp_config.json` -- the same store Flint
 Desktop and the interactive console read. Servers you add or enable here are available in both.
@@ -595,24 +595,24 @@ Desktop and the interactive console read. Servers you add or enable here are ava
 The desktop-only `Flint Browser MCP` bridge is never listed or editable from the CLI.
 
 ```bash
-jan cli mcp list                            # JSON, env/header values redacted
-jan cli mcp list --show-secrets             # include secret values
-jan cli mcp get <NAME>                      # one server's full config
-jan cli mcp add <NAME> --command npx --arg -y --arg my-mcp
-jan cli mcp remove <NAME>
-jan cli mcp enable <NAME>                   # connect on the next session
-jan cli mcp disable <NAME>
+flint cli mcp list                            # JSON, env/header values redacted
+flint cli mcp list --show-secrets             # include secret values
+flint cli mcp get <NAME>                      # one server's full config
+flint cli mcp add <NAME> --command npx --arg -y --arg my-mcp
+flint cli mcp remove <NAME>
+flint cli mcp enable <NAME>                   # connect on the next session
+flint cli mcp disable <NAME>
 ```
 
 A stdio server needs a command and optional args; an `http`/`sse` server needs a URL.
 
 ```bash
 # stdio (the default transport)
-jan cli mcp add files --command npx --arg -y --arg @modelcontextprotocol/server-filesystem \
+flint cli mcp add files --command npx --arg -y --arg @modelcontextprotocol/server-filesystem \
   --env FOO=bar
 
 # http, with a header and marked active immediately
-jan cli mcp add exa --type http --url https://mcp.exa.ai/mcp --header Authorization=Bearer-secret \
+flint cli mcp add exa --type http --url https://mcp.exa.ai/mcp --header Authorization=Bearer-secret \
   --active
 ```
 
@@ -631,16 +631,16 @@ added servers default to inactive, so they are persisted but not connected until
 
 See [MCP](/docs/agent/mcp).
 
-## `jan mcp serve`
+## `flint mcp serve`
 
 The other direction: serve Jan's own built-in tools to another MCP client. One project root, fixed
 at startup; a path argument that escapes it is refused, and so is the project's hidden `.jan` state.
 
 ```bash
-jan mcp serve --project .                   # stdio, for a client that spawns it as a child
-jan mcp serve --transport http              # loopback HTTP; prints its URL and bearer token
-jan mcp serve --allow-write --allow-exec    # add the mutating and shell tools
-jan mcp serve --tool read --tool grep       # narrow the set
+flint mcp serve --project .                   # stdio, for a client that spawns it as a child
+flint mcp serve --transport http              # loopback HTTP; prints its URL and bearer token
+flint mcp serve --allow-write --allow-exec    # add the mutating and shell tools
+flint mcp serve --tool read --tool grep       # narrow the set
 ```
 
 | Flag | Description |
@@ -659,27 +659,184 @@ than blocking. On `http` the listener is loopback-only and every request must ca
 
 See [Serving Jan's own tools](/docs/agent/mcp#serving-jans-own-tools).
 
-## `jan update`
+## Managing Flint from the terminal
 
-Update the binary to the latest build of the channel it was built for.
+Everything the desktop app's settings pages manage has a command here, so a machine with no desktop
+session can be set up, inspected and cleaned up from a shell. The commands below all live under
+`flint cli`; each takes `--help`.
+
+### How freely the agent acts: `--mode`
+
+`--mode` names the same modes as the desktop's Cowork. It replaces `--safe` and `--plan`, and works on
+the console and on `agent run` / `agent step`.
+
+| Mode | What happens |
+| --- | --- |
+| `review` | Read-only plan mode: investigate, then propose a plan. |
+| `ask` | Writes, shell commands and MCP calls prompt (same as `--safe`). |
+| `auto` | Those run unprompted, inside the sandbox when it is on. The default. |
+| `bypass` | As `auto`. Host, computer and clipboard tools still ask in every mode. |
 
 ```bash
-jan update
-jan update --check   # report without installing
-jan update --force   # reinstall even if current
+flint --mode ask
+flint cli agent run --mode review "how would you add rate limiting?"
 ```
 
-<Callout type="info">
-Builds compiled from source have no update channel embedded, so `jan update` will say so rather than
-doing anything. Re-run the installer with `--source` to rebuild.
-</Callout>
+In the console, `/mode` shows the current mode and `/mode review|ask|auto|bypass` changes it for the
+next turn.
+
+### `threads`
+
+```bash
+flint cli threads list
+flint cli threads create --title "Notes"
+flint cli threads rename <ID> "New title"
+flint cli threads favorite <ID>        # and: unfavorite
+flint cli threads delete <ID>          # moves to the archive
+flint cli threads delete <ID> --permanent
+flint cli threads delete-message <THREAD_ID> <MESSAGE_ID>
+flint cli threads export <ID> --format obsidian --out ~/notes
+```
+
+`export` writes Markdown, Obsidian Markdown (frontmatter, tags, `[[wikilinks]]`) or JSON. Tool output,
+reasoning and absolute paths are left out unless you pass `--verbose`. `--project <DIR>` reads a
+thread saved by the console for that project instead of the desktop app's threads. PDF and PNG export
+are layout output and stay in the desktop app. In the console, `/export [format] [path]` does the
+same for the current conversation.
+
+### `archive`
+
+Delete moves things to the archive, as in the desktop app. Restore puts a thread or room back; items
+kept as payloads (Cowork sessions, projects, assistants, Studio results) are restored by the app.
+
+```bash
+flint cli archive list [--kind thread] [--json]
+flint cli archive restore thread <ARCHIVE_ID>
+flint cli archive purge thread <ARCHIVE_ID> --yes
+flint cli archive empty [--kind thread] --yes
+flint cli archive settings [--enabled true] [--auto-delete-days 30] [--auto-archive-days 0]
+```
+
+### `schedule`
+
+```bash
+flint cli schedule add --name "Morning digest" --prompt "Summarise what changed since yesterday" \
+  --model anthropic/claude-sonnet-4-6 --project . --weekdays 09:00 --timezone Europe/Berlin \
+  --allow-tool read --allow-tool grep --max-turns 20
+flint cli schedule list
+flint cli schedule preview <ID>                     # next fire times
+flint cli schedule preview --weekly mon,wed@08:15   # before saving anything
+flint cli schedule edit <ID> --max-turns 30
+flint cli schedule enable <ID>                      # and: disable, delete
+flint cli schedule run <ID> --wait
+flint cli schedule runs <ID>
+flint cli schedule cancel <ID> <RUN>
+flint cli schedule tools                            # tools a task can be allowed
+flint cli schedule os enable --yes                  # run `schedule tick` while Flint is closed
+```
+
+A task always has an explicit tool list and limits on turns, tokens and time. It defaults to
+read-only; `--write worktree` lets it edit inside its own worktree. A permission prompt is never
+shown to a scheduled run: it is denied and recorded. `schedule os enable` prints exactly what it will
+install and does nothing without `--yes`.
+
+### `skills`
+
+```bash
+flint cli skills list [--project .] [--json]
+flint cli skills show <NAME>
+flint cli skills write <NAME> --file skill.md     # or --file - for stdin
+flint cli skills delete <NAME>
+flint cli skills enabled tidy review              # only these; `--all` enables every skill
+flint cli skills hub-list                         # Anthropic's public skill hub (network)
+flint cli skills hub-import <NAME>
+```
+
+### `memory`
+
+Scopes are `project`, `user` and `chat` (a chat needs `--session`).
+
+```bash
+flint cli memory list project [--query deploy]
+flint cli memory show user <ID>
+flint cli memory pin project <ID>                 # and: unpin
+flint cli memory forget project <ID>              # also removes it from saved requests
+flint cli memory clear project --yes
+flint cli memory export user ./memories.json
+```
+
+### `worktree`
+
+For the checkouts that `--worktree` sessions create.
+
+```bash
+flint cli worktree list                           # uncommitted and unmerged work per worktree
+flint cli worktree merge <ID> [--into main]       # needs a clean repository on the target branch
+flint cli worktree discard <ID>                   # refuses while it holds unmerged work; --force overrides
+```
+
+### `mcp`: tools and trust
+
+```bash
+flint cli mcp tools <NAME>                        # connects and lists the server's tools
+flint cli mcp trust-report [--json]               # standing grants, and approvals that need renewing
+flint cli mcp trust <NAME> --yes                  # this server's tools run without asking, until revoked
+flint cli mcp revoke <NAME>
+```
+
+A trust grant is bound to the server's configuration. Changing the command, arguments or URL ends it.
+
+### `models`
+
+```bash
+flint cli models list --filter "claude sonnet"    # every word must match
+flint cli models search "qwen coder" --format gguf   # Hugging Face (network); HF_TOKEN is read if set
+flint cli models files unsloth/Qwen3-GGUF
+flint cli models download unsloth/Qwen3-GGUF Qwen3-Q4_K_M.gguf   # resumable, SHA-256 checked
+flint cli models import ./model.gguf --id my-model              # where the local server finds it
+```
+
+### Run records: `agent events-export`, `replays`, `replay`, `audit`
+
+```bash
+flint cli agent events-export <SESSION> [--run R] [--include-content]   # metadata only by default
+flint cli agent events-inspect <FILE>
+flint cli agent replays <SESSION>                 # finished runs
+flint cli agent replay <SESSION> <RUN>            # recorded events, in order
+flint cli agent audit --session <SESSION> --decision refused
+```
+
+### Setup and maintenance
+
+```bash
+flint cli data-folder                             # where Flint keeps its data, and why
+flint cli data-folder --set D:\FlintData          # copies the current folder first (--no-copy to skip)
+flint cli net ca check ./corp-ca.pem              # what a bundle holds, without saving it
+flint cli net endpoint my-llm-host 8080           # how a provider host resolves
+flint cli import-claude scan                      # Claude Code skills and plugins in ~/.claude
+flint cli import-claude run --name my-skill       # a live link: later edits come across
+flint migrate detect                              # JAN to Flint migration assistant
+flint migrate plan --mode copy
+flint migrate run --mode copy --yes               # also: status, rollback --yes, dismiss
+```
+
+### What stays in the desktop app
+
+Image and video generation (Studio), the agent browser pane and "Verify in browser", themes and
+avatars, phone pairing, multi-model Discussion Rooms and Jev routing are visual or desktop-runtime
+features. A model running in the console is not offered the browser and image tools.
 
 ## Environment variables
 
 | Variable | Description |
 | --- | --- |
-| `JAN_API_KEY` | API key for the target provider |
+| `FLINT_API_KEY` (or `JAN_API_KEY`) | API key for the target provider |
 | `<PROVIDER>_API_KEY` | Per-provider key, e.g. `ANTHROPIC_API_KEY` |
+| `FLINT_DATA_FOLDER` (or `JAN_DATA_FOLDER`) | Use this data folder instead of the saved one |
+| `FLINT_CA_BUNDLE` (or `JAN_CA_BUNDLE`) | Extra certificate authorities, as a PEM file |
+| `FLINT_OPERATION_TIMEOUT_MS` | How long a model may stay silent before a step is given up on (default 10 minutes, `0` for never) |
+| `HF_TOKEN` | Hugging Face token for `models search` / `download` |
+| `NO_COLOR` | Turn colour off |
 | `JAN_INSTALL_DIR` | Install directory used by the install script |
 
 ## Using it in CI
@@ -689,7 +846,7 @@ A headless run with credentials from the environment and no prompts:
 ```bash
 export ANTHROPIC_API_KEY="$SECRET_KEY"
 
-jan cli agent run \
+flint cli agent run \
   --project . \
   --provider anthropic \
   "update the changelog for the current release"

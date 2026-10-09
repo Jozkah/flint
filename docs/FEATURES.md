@@ -160,15 +160,19 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 - **Local API server:** a working CORS switch, and caller origins are not forwarded.
 - **Diagnostic bundle** that is redacted, previewed and never uploaded.
 
-## The `jan` command line
+## The `flint` command line
 
 - **Headless agent runs:** text or JSON output, a live event stream, output density, profiles, plan and ask modes, sandbox control, and resume or continue after an interruption.
-- **`jan cli agent serve`:** a JSON-lines API to start runs, stream events, answer approvals and cancel.
+- **Run modes:** `--mode review|ask|auto|bypass` (and `/mode` in the console) name the same modes as Cowork.
+- **`flint cli agent serve`:** a JSON-lines API to start runs, stream events, answer approvals and cancel.
 - **Agent tools from the terminal:** process tree, test triage, health scan, licence check, transcript search, quotas and spend, compaction, bundles, agent imports, policy import and export, repository index, run state, agent mail, Git helpers, change impact and context inspection.
-- **Background jobs** that outlive the process (`jan cli job`).
-- **MCP from the terminal:** prompts, logs and OAuth sign-in management.
-- **Benchmarks** (`jan cli bench`) and **bug reports** (`jan bug-report`, `/bug` in the TUI) with a local log file.
+- **Run records:** event export and inspection, run replay and the permission audit (`agent events-export`, `replays`, `replay`, `audit`).
+- **Management parity with the desktop settings:** threads (create, rename, favourite, export to Markdown, Obsidian or JSON), the archive (list, restore, purge, settings), scheduled tasks (add, edit, preview, enable, run, cancel, OS entry), skills, memory by scope, worktrees (list, merge, guarded discard), MCP tools and trust, model search, download and import, the data folder, certificate and endpoint checks, Claude Code import and the JAN migration assistant.
+- **Background jobs** that outlive the process (`flint cli job`).
+- **MCP from the terminal:** prompts, logs, tools, trust and OAuth sign-in management.
+- **Benchmarks** (`flint cli bench`) and **bug reports** (`flint bug-report`, `/bug` in the TUI) with a local log file.
 - **Slash commands** with arguments from built-ins, skills and plugins (command line only).
+- **What stays in the app:** Studio image and video generation, the agent browser pane, themes, phone pairing, Discussion Rooms and Jev routing.
 
 ## Platforms
 
