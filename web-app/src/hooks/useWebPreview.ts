@@ -14,6 +14,9 @@ type WebPreviewState = {
   openUrl: (url: string) => void
   navigate: (url: string) => void
   replaceUrl: (url: string) => void
+  /** Title the page in the native view reports; empty until it does. */
+  pageTitle: string
+  setPageTitle: (title: string) => void
   /** The open pane's box in CSS px (any surface); null while closed. */
   paneRect: { left: number; top: number; right: number; bottom: number } | null
   setPaneRect: (rect: WebPreviewState['paneRect']) => void
@@ -64,6 +67,8 @@ export const useWebPreview = create<WebPreviewState>((set, get) => ({
       return { history }
     })
   },
+  pageTitle: '',
+  setPageTitle: (pageTitle) => set({ pageTitle }),
   paneRect: null,
   setPaneRect: (paneRect) =>
     set((s) => {
