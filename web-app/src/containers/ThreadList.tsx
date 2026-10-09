@@ -1,7 +1,6 @@
 import { FadeText } from '@/components/ui/fade-text'
 import {
   Check,
-  Columns2,
   Copy,
   Folder,
   GitFork,
@@ -51,7 +50,8 @@ import {
 } from '@/components/ui/hover-card'
 import { useDraggable } from '@dnd-kit/core'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { openInSplit, reportSplitResult } from '@/lib/splitView'
+import { OpenInSubmenu } from '@/components/shell/nav/OpenInSubmenu'
+import { CursorAnchor, useCursorAnchor } from '@/components/shell/nav/CursorAnchor'
 import { memo, useMemo, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
 import { RenameThreadDialog, DeleteThreadDialog } from '@/containers/dialogs'
@@ -100,6 +100,7 @@ const ThreadItem = memo(
     const { t } = useTranslation()
     const navigate = useNavigate()
     const [menuOpen, setMenuOpen] = useState(false)
+    const cursor = useCursorAnchor()
     // "Convert to Cowork" is offered only when the menu was opened by
     // right-click (or the keyboard's context-menu key), not from the "..." button.
     const [menuViaContext, setMenuViaContext] = useState(false)
@@ -251,6 +252,7 @@ const ThreadItem = memo(
       e.preventDefault()
       e.stopPropagation()
       setMenuViaContext(true)
+      cursor.openAt(e)
       setMenuOpen(true)
     }
 
@@ -351,27 +353,34 @@ const ThreadItem = memo(
           open={menuOpen}
           onOpenChange={(open) => {
             setMenuOpen(open)
-            if (!open) setMenuViaContext(false)
+            if (!open) {
+              setMenuViaContext(false)
+              cursor.release()
+            }
           }}
         >
           <DropdownMenuTrigger asChild>
             {/* Hover reveals it with a mouse; a touch screen has no hover, so
                 the row menu stays visible there with a 44px target. */}
-            <NavAction
-              showOnHover
-              className={cn(
-                'pointer-coarse:size-9',
-                currentProjectId && 'top-1/2 right-1 -translate-y-1/2 opacity-100'
-              )}
-            >
-              <MoreHorizontal />
-              <span className="sr-only">{t('common:more')}</span>
-            </NavAction>
+            {cursor.point ? (
+              <CursorAnchor x={cursor.point.x} y={cursor.point.y} />
+            ) : (
+              <NavAction
+                showOnHover
+                className={cn(
+                  'pointer-coarse:size-9',
+                  currentProjectId && 'top-1/2 right-1 -translate-y-1/2 opacity-100'
+                )}
+              >
+                <MoreHorizontal />
+                <span className="sr-only">{t('common:more')}</span>
+              </NavAction>
+            )}
           </DropdownMenuTrigger>
           <DropdownMenuContent
             className="w-48"
-            side={isMobile ? 'bottom' : 'right'}
-            align={isMobile ? 'end' : 'start'}
+            side={cursor.point || isMobile ? 'bottom' : 'right'}
+            align={cursor.point ? 'start' : isMobile ? 'end' : 'start'}
             onKeyDown={(e) => {
               if (groupMenuOpen) pickGroupByDigit(e)
             }}
@@ -476,18 +485,10 @@ const ThreadItem = memo(
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              data-testid="open-thread-in-split"
-              onSelect={() =>
-                reportSplitResult(
-                  openInSplit({ kind: 'chat', refId: thread.id }),
-                  t
-                )
-              }
-            >
-              <Columns2 className="size-4" />
-              <span>{t('chat:split.openInSplit')}</span>
-            </DropdownMenuItem>
+            <OpenInSubmenu
+              target={{ kind: 'chat', refId: thread.id }}
+              testIdPrefix="thread"
+            />
             <DropdownMenuItem
               onSelect={() => {
                 void navigator.clipboard?.writeText(thread.id)

@@ -5,7 +5,7 @@ import { WebPreviewPip } from '../WebPreviewPip'
 describe('WebPreviewPip', () => {
   it('renders a fixed container with drag and resize handles and children', () => {
     render(
-      <WebPreviewPip title="Preview">
+      <WebPreviewPip title="Preview" onClose={() => {}}>
         <div>body</div>
       </WebPreviewPip>
     )
@@ -20,7 +20,7 @@ describe('WebPreviewPip', () => {
   // drag ref before the queued update read it, crashing the whole app.
   it('survives a pointer release before the queued move is applied', () => {
     render(
-      <WebPreviewPip title="Preview">
+      <WebPreviewPip title="Preview" onClose={() => {}}>
         <div>body</div>
       </WebPreviewPip>
     )

@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { UIMessage } from 'ai'
-import { chatFollowUp, holdQueueThenStop, nextChatTurn } from '../chatSteering'
+import {
+  chatFollowUp,
+  holdQueueThenStop,
+  nextChatTurn,
+  withdrawApprovalsForSteering,
+} from '../chatSteering'
 import { useMessageQueue } from '@/stores/message-queue-store'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 
 const q = () => useMessageQueue.getState()
 
@@ -216,5 +222,27 @@ describe('chat queue after a stream error', () => {
     expect(nextChatTurn('T')).toEqual({ text: 'two', steered: false })
     q().removeMessage('T', '1')
     expect(q().getQueue('T')).toEqual([])
+  })
+})
+
+describe('steering while a tool call waits for approval', () => {
+  it('withdraws the waiting prompts of the thread so the loop can reach the safe point', () => {
+    const resolve = vi.fn()
+    useToolApprovalRequests.setState({
+      pending: {
+        c1: {
+          requestId: 'r1',
+          toolCallId: 'c1',
+          toolName: 'bash',
+          threadId: 't1',
+          resolve,
+        },
+      },
+      queued: {},
+    })
+    withdrawApprovalsForSteering('t1')
+    expect(resolve).toHaveBeenCalledWith(false)
+    expect(useToolApprovalRequests.getState().pending).toEqual({})
+    expect(useToolApprovalRequests.getState().refusals.c1).toBe('cancelled')
   })
 })
