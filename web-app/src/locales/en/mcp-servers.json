@@ -15,6 +15,7 @@
   "enterServerName": "Enter server name",
   "command": "Command",
   "enterCommand": "Enter command (uvx or npx)",
+  "commandHint": "Any program on this computer can be used here, not only npx or uvx (python, docker, node, a binary). It runs with your user privileges, so only add servers you trust.",
   "arguments": "Arguments",
   "argument": "Argument {{index}}",
   "envVars": "Environment Variables",

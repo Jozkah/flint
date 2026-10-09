@@ -636,6 +636,52 @@ export const predefinedProviders = [
   {
     active: true,
     api_key: '',
+    base_url: 'https://api.poe.com/v1',
+    explore_models_url: 'https://poe.com/explore',
+    provider: 'poe',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The Poe API uses API keys for authentication. Visit your [API Keys](https://poe.com/api/keys) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'https://ollama.com/v1',
+    explore_models_url: 'https://ollama.com/search?c=cloud',
+    provider: 'ollama-cloud',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The Ollama Cloud API uses API keys for authentication. Visit your [API Keys](https://ollama.com/settings/keys) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
     base_url: 'http://localhost:17434/v1',
     explore_models_url: 'https://hub.docker.com/catalogs/models',
     provider: 'llmman',

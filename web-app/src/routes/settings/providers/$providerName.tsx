@@ -36,6 +36,7 @@ import { Switch } from '@/components/ui/switch'
 import {
   CircleCheck,
   Circle,
+  FolderOpen,
   FolderPlus,
   Info,
   LoaderCircle,
@@ -94,10 +95,14 @@ import {
 // as route.threadsDetail
 /**
  * Built-in providers whose endpoint depends on the account, so it stays
- * editable: Azure on the resource name, Alibaba Qwen on the region its keys
- * were created in.
+ * editable: OpenAI for proxies and gateways that speak its API, Azure on the
+ * resource name, Alibaba Qwen on the region its keys were created in.
  */
 const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: string }> = {
+  openai: {
+    description: 'providers:baseUrl.openaiDescription',
+    placeholder: 'https://api.openai.com/v1',
+  },
   azure: {
     description: 'providers:baseUrl.azureDescription',
     placeholder: 'https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1',
@@ -122,7 +127,7 @@ export const Route = createFileRoute('/settings/providers/$providerName')({
 })
 
 /** What the file list on disk says about one installed model. */
-type LocalFileInfo = { sizeBytes?: number; fileName?: string }
+type LocalFileInfo = { sizeBytes?: number; fileName?: string; path?: string }
 
 /** The last path segment, on either separator. */
 const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path
@@ -367,6 +372,7 @@ function ProviderDetail() {
           next[info.id] = {
             sizeBytes: info.sizeBytes || undefined,
             fileName: info.path ? baseName(info.path) : undefined,
+            path: info.path || undefined,
           }
         }
         setLocalFiles(next)
@@ -379,6 +385,24 @@ function ProviderDetail() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceHub, isEngineProvider, provider?.provider, modelIdsKey])
+
+  // Reveals the model file in the OS file manager. The containing folder is
+  // the allowed root: imported models can live outside the data folder.
+  const handleRevealModelFile = useCallback(
+    async (filePath: string) => {
+      try {
+        const dir = filePath.slice(
+          0,
+          Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
+        )
+        await serviceHub.opener().revealItemInDir(filePath, dir ? [dir] : [])
+      } catch (error) {
+        console.error('Failed to reveal model file:', error)
+        toast.error(t('providers:revealModelFileFailed'))
+      }
+    },
+    [serviceHub, t]
+  )
 
   // Clear importing state when model appears in the provider's model list
   useEffect(() => {
@@ -1119,6 +1143,7 @@ function ProviderDetail() {
                     <RefreshCw className="text-muted-foreground" aria-hidden />
                   )}
                 </Button>
+                <DialogDeleteAllModels provider={provider} remote />
                 <DialogAddModel provider={provider} />
               </>
             )}
@@ -1228,6 +1253,18 @@ function ProviderDetail() {
                         provider.provider === 'llamacpp' && (
                           <ModelSetting provider={provider} model={model} />
                         )}
+                      {isEngineProvider && localFiles[model.id]?.path && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground pointer-coarse:size-11"
+                          aria-label={t('providers:revealModelFile')}
+                          title={t('providers:revealModelFile')}
+                          onClick={() => handleRevealModelFile(localFiles[model.id].path!)}
+                        >
+                          <FolderOpen aria-hidden />
+                        </Button>
+                      )}
                       <DialogEditModel provider={provider} modelId={model.id} />
                       {((provider &&
                         !predefinedProviders.some(
