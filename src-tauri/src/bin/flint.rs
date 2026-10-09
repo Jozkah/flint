@@ -497,6 +497,12 @@ enum CliCommands {
         #[arg(long)]
         no_copy: bool,
     },
+    /// What Flint remembers: list, read, pin, forget and export by scope
+    #[command(display_order = 21)]
+    Memory {
+        #[command(subcommand)]
+        cmd: MemoryCommands,
+    },
     /// Worktrees made by `--worktree` sessions: list, merge, discard
     #[command(display_order = 19)]
     Worktree {
@@ -1315,6 +1321,76 @@ enum JobCommands {
         #[arg(long)]
         argv_json: Option<String>,
     },
+}
+
+/// `scope` is project, user or chat (chat needs `--session`).
+#[derive(Subcommand)]
+enum MemoryCommands {
+    /// List the memories in a scope
+    List {
+        scope: String,
+        #[arg(long)]
+        query: Option<String>,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Show one memory with its source
+    Show {
+        scope: String,
+        id: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Forget one memory (the text also leaves saved requests)
+    Forget {
+        scope: String,
+        id: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Forget every memory in a scope
+    Clear {
+        scope: String,
+        #[arg(long)]
+        yes: bool,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Keep a memory from expiring
+    Pin {
+        scope: String,
+        id: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Let a pinned memory expire again
+    Unpin {
+        scope: String,
+        id: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Write a scope's memories, with provenance, to a file
+    Export {
+        scope: String,
+        path: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+}
+
+#[derive(Args)]
+struct MemoryPlace {
+    /// The project folder whose memory is meant
+    #[arg(long, default_value = ".")]
+    project: String,
+    /// The chat whose memory is meant (for the chat scope)
+    #[arg(long)]
+    session: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -2241,6 +2317,7 @@ async fn handle_cli(cmd: CliCommands) {
         CliCommands::Archive { cmd } => handle_archive(cmd).await,
         CliCommands::Skills { cmd } => handle_skills(cmd).await,
         CliCommands::Worktree { cmd } => handle_worktree(cmd),
+        CliCommands::Memory { cmd } => handle_memory(cmd),
         CliCommands::DataFolder { set, no_copy } => {
             let result = match set {
                 Some(folder) => app_lib::core::cli::system_cmd::set_data_folder(&folder, !no_copy),
@@ -3567,6 +3644,21 @@ fn handle_worktree(cmd: WorktreeCommands) {
             w::merge(&project, &id, into.as_deref(), message.as_deref())
         }
         WorktreeCommands::Discard { id, project, force } => w::discard(&project, &id, force),
+    });
+}
+
+fn handle_memory(cmd: MemoryCommands) {
+    use app_lib::core::cli::memory_cmd as m;
+    exit_on_error(match cmd {
+        MemoryCommands::List { scope, query, offset, limit, place } => {
+            m::list(&place.project, place.session.as_deref(), &scope, query.as_deref(), offset, limit)
+        }
+        MemoryCommands::Show { scope, id, place } => m::show(&place.project, place.session.as_deref(), &scope, &id),
+        MemoryCommands::Forget { scope, id, place } => m::forget(&place.project, place.session.as_deref(), &scope, &id),
+        MemoryCommands::Clear { scope, yes, place } => m::clear(&place.project, place.session.as_deref(), &scope, yes),
+        MemoryCommands::Pin { scope, id, place } => m::pin(&place.project, place.session.as_deref(), &scope, &id, true),
+        MemoryCommands::Unpin { scope, id, place } => m::pin(&place.project, place.session.as_deref(), &scope, &id, false),
+        MemoryCommands::Export { scope, path, place } => m::export(&place.project, place.session.as_deref(), &scope, &path),
     });
 }
 

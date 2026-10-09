@@ -19,6 +19,7 @@ pub mod bench;
 pub mod login;
 pub mod hf_cmd;
 pub mod mcp;
+pub mod memory_cmd;
 pub mod migrate_cmd;
 /// `jan mcp serve`: the other direction, Jan's toolset served over MCP.
 pub mod mcp_serve;
