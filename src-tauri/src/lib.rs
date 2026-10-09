@@ -106,6 +106,7 @@ macro_rules! invoke_commands_with_extras {
         core::system::commands::factory_reset,
         core::system::commands::take_pending_webdata_reset,
         core::system::commands::read_logs,
+        core::system::commands::export_redacted_logs,
         core::system::commands::is_library_available,
         core::system::commands::launch_claude_code_with_config,
         core::system::commands::check_jan_cli_installed,
@@ -117,6 +118,8 @@ macro_rules! invoke_commands_with_extras {
         core::server::commands::stop_server,
         core::server::commands::get_server_status,
         core::server::commands::set_server_run_in_background,
+        core::server::commands::set_close_to_tray,
+        core::huggingface::set_download_speed_limit,
         // Agent commands
         core::agent::commands::agent_emergency_stop,
         core::agent::commands::get_compaction_policy,
@@ -1036,15 +1039,17 @@ pub fn run_app(app: tauri::App) {
                     }
                     return;
                 }
-                // Windows/Linux: hide to tray only while the Local API Server is
-                // running and the user opted into keeping it alive in the
-                // background; otherwise fall through to the normal quit-on-close.
+                // Windows/Linux: hide to tray when the user turned on Close to
+                // tray, or while the Local API Server is running and they opted
+                // into keeping it alive in the background; otherwise fall
+                // through to the normal quit-on-close.
                 // The llamacpp engine is not a reason to keep the app resident
                 // (normal chat usage keeps it alive), so it gets torn down via
                 // the ExitRequested path on quit.
                 #[cfg(not(target_os = "macos"))]
-                if is_proxy_server_running(app)
-                    && core::server::commands::SERVER_RUN_IN_BACKGROUND.load(Ordering::SeqCst)
+                if core::server::commands::CLOSE_TO_TRAY.load(Ordering::SeqCst)
+                    || (is_proxy_server_running(app)
+                        && core::server::commands::SERVER_RUN_IN_BACKGROUND.load(Ordering::SeqCst))
                 {
                     api.prevent_close();
                     if let Some(window) = app.get_webview_window("main") {

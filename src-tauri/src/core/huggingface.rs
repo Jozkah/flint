@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use tauri::{Emitter, Runtime};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -25,6 +25,24 @@ static ACTIVE_DOWNLOADS: OnceLock<Mutex<HashMap<String, CancelFlag>>> = OnceLock
 
 fn active_downloads() -> &'static Mutex<HashMap<String, CancelFlag>> {
     ACTIVE_DOWNLOADS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Cap on model download throughput in bytes per second; 0 is unlimited. Shared
+/// by every Hugging Face download (chat models, Studio models, the HTTP route).
+static DOWNLOAD_LIMIT_BPS: AtomicU64 = AtomicU64::new(0);
+
+#[tauri::command]
+pub fn set_download_speed_limit(bytes_per_sec: u64) {
+    DOWNLOAD_LIMIT_BPS.store(bytes_per_sec, Ordering::Relaxed);
+}
+
+/// How long to wait so `bytes` received over `elapsed` stay within `limit`
+/// bytes per second. Zero when unlimited or already behind the pace.
+fn throttle_delay(bytes: u64, elapsed: std::time::Duration, limit: u64) -> std::time::Duration {
+    if limit == 0 {
+        return std::time::Duration::ZERO;
+    }
+    std::time::Duration::from_secs_f64(bytes as f64 / limit as f64).saturating_sub(elapsed)
 }
 
 /// One writer per partial file, process-wide.
@@ -694,6 +712,7 @@ async fn download_attempt<R: Runtime>(
         .map_err(|e| io_failure("Could not open the model download file", &e))?;
     let mut downloaded = start;
     let mut stream = response.bytes_stream();
+    let attempt_started = std::time::Instant::now();
 
     loop {
         let next = tokio::select! {
@@ -735,6 +754,17 @@ async fn download_attempt<R: Runtime>(
             .await
             .map_err(|e| io_failure("Could not write the model download", &e))?;
         downloaded = downloaded.saturating_add(chunk.len() as u64);
+        let wait = throttle_delay(
+            downloaded - start,
+            attempt_started.elapsed(),
+            DOWNLOAD_LIMIT_BPS.load(Ordering::Relaxed),
+        );
+        if !wait.is_zero() {
+            tokio::select! {
+                _ = tokio::time::sleep(wait) => {}
+                _ = cancelled(cancel) => {}
+            }
+        }
         let _ = app.emit(
             "huggingface-download-progress",
             HuggingFaceDownloadProgress {
@@ -911,6 +941,18 @@ pub async fn huggingface_download_model<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn throttle_waits_only_when_ahead_of_the_limit() {
+        use std::time::Duration;
+        // 1 MB received in 0.25 s at a 1 MB/s cap: wait the other 0.75 s.
+        assert_eq!(
+            throttle_delay(1_000_000, Duration::from_millis(250), 1_000_000),
+            Duration::from_millis(750)
+        );
+        assert_eq!(throttle_delay(1_000_000, Duration::from_secs(2), 1_000_000), Duration::ZERO);
+        assert_eq!(throttle_delay(1_000_000, Duration::ZERO, 0), Duration::ZERO);
+    }
 
     #[test]
     fn retry_waits_double_up_to_thirty_two_seconds() {

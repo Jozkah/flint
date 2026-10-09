@@ -472,6 +472,39 @@ pub async fn read_logs<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
     }
 }
 
+/// How much of `app.log` the redacted export carries.
+const EXPORT_LOG_TAIL_LINES: usize = 5000;
+
+/// The log text with known credential shapes removed: the CLI bundle's two
+/// passes (`flint bug-report`), the regex rules and the agent tools' scanner.
+fn redact_log_text(text: &str) -> String {
+    use crate::core::log_redaction::SHARED;
+    let first = SHARED.scrub(text);
+    tauri_plugin_agent_tools::secrets::redact_secrets(&first)
+}
+
+/// Write the tail of the app log, redacted, to the file the user picked. Only
+/// the log is included, never thread contents. Returns the path written.
+#[tauri::command]
+pub async fn export_redacted_logs<R: Runtime>(
+    app: AppHandle<R>,
+    destination: String,
+) -> Result<String, String> {
+    let log_path = get_jan_data_folder_path(app).join("logs").join("app.log");
+    let content = fs::read_to_string(&log_path).map_err(|_| "Log file not found".to_string())?;
+    let lines: Vec<&str> = content.lines().collect();
+    let tail = lines[lines.len().saturating_sub(EXPORT_LOG_TAIL_LINES)..].join("\n");
+    let report = format!(
+        "Flint {} log export ({} {})\nKnown secrets are stripped; the scan is best-effort, so review before sharing.\n\n{}\n",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        redact_log_text(&tail)
+    );
+    fs::write(&destination, report).map_err(|e| format!("Could not write {destination}: {e}"))?;
+    Ok(destination)
+}
+
 // check if a system library is available
 #[tauri::command]
 pub fn is_library_available(library: &str) -> bool {
@@ -1629,5 +1662,17 @@ mod tests {
             err.contains("API key"),
             "a whitespace-only key is not a real credential: {err}"
         );
+    }
+}
+
+#[cfg(test)]
+mod redacted_export_tests {
+    use super::redact_log_text;
+
+    #[test]
+    fn the_export_strips_credentials_and_keeps_the_rest() {
+        let out = redact_log_text("GET failed\nAuthorization: Bearer sk-abcdef1234567890abcdef\nok");
+        assert!(!out.contains("sk-abcdef1234567890abcdef"), "{out}");
+        assert!(out.contains("GET failed") && out.contains("ok"));
     }
 }

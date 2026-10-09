@@ -117,6 +117,18 @@ export class TauriAppService extends DefaultAppService {
     await invoke('set_server_run_in_background', { enabled })
   }
 
+  async setCloseToTray(enabled: boolean): Promise<void> {
+    await invoke('set_close_to_tray', { enabled })
+  }
+
+  async setDownloadSpeedLimit(bytesPerSec: number): Promise<void> {
+    await invoke('set_download_speed_limit', { bytesPerSec })
+  }
+
+  async exportRedactedLogs(destination: string): Promise<string> {
+    return await invoke<string>('export_redacted_logs', { destination })
+  }
+
   async readYaml<T = unknown>(path: string): Promise<T> {
     return await invoke<T>('read_yaml', { path })
   }

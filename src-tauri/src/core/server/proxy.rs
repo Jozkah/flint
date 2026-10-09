@@ -725,6 +725,34 @@ pub(crate) async fn engine_list_models(
     llama_state: &LlamacppState,
     client: &Client,
 ) -> Vec<String> {
+    engine_list_model_entries(llama_state, client)
+        .await
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect()
+}
+
+/// The context window the engine reports for a loaded model: the value after
+/// `--ctx-size` / `-c` in the router entry's `status.args`, or `meta.n_ctx`.
+/// None when the engine does not say (an unloaded model, an older build).
+fn engine_context_length(entry: &serde_json::Value) -> Option<u64> {
+    let args = entry.pointer("/status/args")?.as_array();
+    let from_args = args.and_then(|args| {
+        args.windows(2).find_map(|pair| match pair[0].as_str() {
+            Some("--ctx-size") | Some("-c") => pair[1].as_str()?.parse::<u64>().ok(),
+            _ => None,
+        })
+    });
+    from_args
+        .or_else(|| entry.pointer("/meta/n_ctx").and_then(|v| v.as_u64()))
+        .filter(|n| *n > 0)
+}
+
+/// Engine model ids with the context window it reports for each, when known.
+pub(crate) async fn engine_list_model_entries(
+    llama_state: &LlamacppState,
+    client: &Client,
+) -> Vec<(String, Option<u64>)> {
     let (url, key) = match engine_upstream(llama_state, "/models").await {
         Some(v) => v,
         None => return Vec::new(),
@@ -752,7 +780,10 @@ pub(crate) async fn engine_list_models(
         .and_then(|d| d.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(str::to_owned))
+                .filter_map(|m| {
+                    let id = m.get("id").and_then(|v| v.as_str())?.to_owned();
+                    Some((id, engine_context_length(m)))
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -1965,16 +1996,23 @@ async fn proxy_request(
         (hyper::Method::GET, "/models") => {
             log::debug!("Handling GET /v1/models request");
 
-            let local_models: Vec<_> = engine_list_models(&llama_state, &local_client)
+            let local_models: Vec<_> = engine_list_model_entries(&llama_state, &local_client)
                 .await
                 .into_iter()
-                .map(|id| {
-                    serde_json::json!({
+                .map(|(id, context)| {
+                    let mut model = serde_json::json!({
                         "id": id,
                         "object": "model",
                         "created": 1,
                         "owned_by": "llama.cpp"
-                    })
+                    });
+                    // IDE clients (Kilo Code, Cline) size their prompts from
+                    // these; only set when the engine reported a window.
+                    if let Some(context) = context {
+                        model["context_length"] = context.into();
+                        model["max_model_len"] = context.into();
+                    }
+                    model
                 })
                 .collect();
 
@@ -3377,6 +3415,17 @@ mod redirect_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn engine_context_length_reads_only_what_the_engine_reports() {
+        use super::engine_context_length as ctx;
+        let loaded = serde_json::json!({"id":"m","status":{"value":"loaded","args":["llama-server","--ctx-size","8192"]}});
+        assert_eq!(ctx(&loaded), Some(8192));
+        let short = serde_json::json!({"status":{"args":["-c","4096"]}});
+        assert_eq!(ctx(&short), Some(4096));
+        assert_eq!(ctx(&serde_json::json!({"id":"m","status":{"value":"unloaded"}})), None);
+        assert_eq!(ctx(&serde_json::json!({"id":"m"})), None);
+    }
+
     use super::{error_json, is_insecure_public_bind, is_local_url, map_bind_error, model_ids_match};
     use std::net::SocketAddr;
 
