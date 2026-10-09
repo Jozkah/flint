@@ -1584,6 +1584,25 @@ enum McpCommands {
         /// Server name
         name: String,
     },
+    /// List the tools a server offers (connects to it)
+    Tools {
+        /// Server name
+        name: String,
+    },
+    /// Standing trust grants, and approvals that stopped applying
+    TrustReport {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Trust a server as currently configured, for every conversation, until revoked
+    Trust {
+        name: String,
+        /// Confirm: this lets the server's tools run without asking each time
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Withdraw trust from a server
+    Revoke { name: String },
     /// Print a server's own stderr log, newest last (AH-140)
     Logs {
         /// Server name
@@ -3868,6 +3887,66 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
                 println!("No tokens were stored for '{name}'");
             }
             Ok(())
+        }
+        McpCommands::Tools { name } => {
+            let Some(entry) = mcp::get_server(&name) else {
+                return Err(format!("no server named '{name}'"));
+            };
+            let servers: app_lib::core::state::SharedMcpServers = Default::default();
+            mcp::connect(&name, &entry.config, &servers)
+                .await
+                .map_err(|e| e.to_string())?;
+            let listed = mcp::list_tools(&name, &servers).await;
+            mcp::disconnect(&name, &servers).await;
+            let listed = listed?;
+            if listed.is_empty() {
+                println!("'{name}' offers no tools");
+            }
+            for line in listed {
+                println!("{line}");
+            }
+            Ok(())
+        }
+        McpCommands::TrustReport { json } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            let (rows, invalidated) = mcp::trust_report(&data);
+            if json {
+                let inv: Vec<_> = invalidated
+                    .iter()
+                    .map(|(n, r, a)| serde_json::json!({ "name": n, "reason": r, "at": a }))
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({ "trusted": rows, "invalidated": inv }))
+                        .unwrap_or_default()
+                );
+            } else {
+                if rows.is_empty() {
+                    println!("No standing grants.");
+                }
+                for r in &rows {
+                    println!("{:<24} {:<8} since {}", r.name, r.state, r.granted_at);
+                }
+                for (n, reason, at) in &invalidated {
+                    println!("{n:<24} needs renewing ({reason}) at {at}");
+                }
+            }
+            Ok(())
+        }
+        McpCommands::Trust { name, yes } => {
+            if !yes {
+                return Err(format!(
+                    "this lets '{name}' run its tools without asking, in every conversation, until revoked; run again with --yes"
+                ));
+            }
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            mcp::trust_server(&data, &name).map(|fp| println!("Trusted {name} (definition {fp})"))
+        }
+        McpCommands::Revoke { name } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            mcp::revoke_server(&data, &name).map(|removed| {
+                println!("{}", if removed { "Trust withdrawn." } else { "There was no grant." })
+            })
         }
         McpCommands::Logs { name, lines } => {
             let found = app_lib::core::mcp::server_log::tail(
