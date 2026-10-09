@@ -12,7 +12,16 @@ public static class FlintInput {
   [DllImport("user32.dll", SetLastError=true)] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   static void Send(Input input) { if (SendInput(1, new [] {input}, Marshal.SizeOf(typeof(Input))) != 1) throw new Exception("Input refused by Windows. Elevated apps and the secure desktop cannot be controlled from Flint."); }
-  public static void Key(ushort key, bool up) { var i = new Input(); i.type = 1; i.value.keyboard.key = key; i.value.keyboard.flags = (up ? 2u : 0u) | ((key >= 33 && key <= 46) || key == 91 ? 1u : 0u); Send(i); }
+  [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint type);
+  // Virtual key plus hardware scan code: apps reading DirectInput/raw input see
+  // only the scan code, so it is sent with KEYEVENTF_SCANCODE (8) as well.
+  public static void Key(ushort key, bool up) {
+    var i = new Input(); i.type = 1; i.value.keyboard.key = key;
+    ushort scan = (ushort)MapVirtualKey(key, 0);
+    i.value.keyboard.scan = scan;
+    i.value.keyboard.flags = (up ? 2u : 0u) | ((key >= 33 && key <= 46) || key == 91 ? 1u : 0u) | (scan != 0 ? 8u : 0u);
+    Send(i);
+  }
   static void Unicode(ushort scan, bool up) { var i = new Input(); i.type = 1; i.value.keyboard.scan = scan; i.value.keyboard.flags = 4u | (up ? 2u : 0u); Send(i); }
   public static void Text(string text) { foreach (char c in text) { if (c == '\r') continue; if (c == '\n' || c == '\t') { ushort key = (ushort)(c == '\n' ? 13 : 9); Key(key,false); Key(key,true); } else { Unicode(c,false); Unicode(c,true); } } }
   [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
@@ -67,7 +76,7 @@ switch ($p.action) {
     $map = @{ctrl=17; alt=18; shift=16; meta=91; enter=13; tab=9; escape=27; backspace=8; delete=46; space=32; up=38; down=40; left=37; right=39; home=36; end=35; pageup=33; pagedown=34}
     $pressed = New-Object 'System.Collections.Generic.List[UInt16]'
     try { foreach ($key in $p.keys) { $code = if ($map.ContainsKey($key)) { $map[$key] } else { [int][char]$key.ToUpperInvariant() }; [FlintInput]::Key($code,$false); $pressed.Add($code) } }
-    finally { for ($n=$pressed.Count-1; $n -ge 0; $n--) { try { [FlintInput]::Key($pressed[$n],$true) } catch {} } }
+    finally { Start-Sleep -Milliseconds 60; for ($n=$pressed.Count-1; $n -ge 0; $n--) { try { [FlintInput]::Key($pressed[$n],$true) } catch {} } }
   }
   'scroll' { if (-not [FlintInput]::MoveTo($p.x,$p.y)) { throw 'Pointer move failed' }; Start-Sleep -Milliseconds 60; [FlintInput]::MouseEvent(2,0); Start-Sleep -Milliseconds 60; [FlintInput]::MouseEvent(4,0); [FlintInput]::MouseEvent(2048,-120*$p.amount) }
 }
