@@ -569,6 +569,13 @@
   "modelSettings": {
     "title": "Model Settings - {{modelId}}",
     "description": "Configure model settings to optimize performance and behavior.",
+    "visionProjector": {
+      "title": "Vision projector (mmproj)",
+      "paired": "Paired",
+      "none": "None",
+      "pairedHint": "This model can take image input. The projector is chosen when the model is imported; import it again to use a different one.",
+      "noneHint": "Without a vision projector this model cannot read images. Import the model again with Multimodal enabled and pick its mmproj file; a projector next to the model file is found automatically."
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "Default sampling parameters",
