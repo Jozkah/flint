@@ -1021,6 +1021,46 @@ describe('run guards', () => {
   })
 })
 
+describe('a wrap-up after a long stretch of work', () => {
+  const work = (n: number) =>
+    Array.from({ length: n }, (_, i) => toolStep(`tool${i}`, `c${i}`))
+
+  it('is questioned, and the run continues if the model keeps working', async () => {
+    const d = deps([...work(8), textStep('all done'), toolStep('more', 'cx'), textStep('really done')])
+    const out = await runTurn({
+      messages: [user('big job')],
+      signal: new AbortController().signal,
+      deps: d,
+    } as never)
+    expect(out.stoppedBy).toBe('done')
+    // 8 tool steps, wrap-up, one more tool step, wrap-up that is then checked
+    // again and finally accepted: 8 + 1 + 1 + 1 + 1.
+    expect(d.sendStep).toHaveBeenCalledTimes(12)
+  })
+
+  it('asks at most twice, so a finished model is never stuck', async () => {
+    const d = deps([...work(8), textStep('done'), textStep('done'), textStep('done')])
+    const out = await runTurn({
+      messages: [user('big job')],
+      signal: new AbortController().signal,
+      deps: d,
+    } as never)
+    expect(out.stoppedBy).toBe('done')
+    expect(d.sendStep).toHaveBeenCalledTimes(11)
+  })
+
+  it('leaves a short run alone', async () => {
+    const d = deps([...work(2), textStep('done')])
+    const out = await runTurn({
+      messages: [user('small job')],
+      signal: new AbortController().signal,
+      deps: d,
+    } as never)
+    expect(out.stoppedBy).toBe('done')
+    expect(d.sendStep).toHaveBeenCalledTimes(3)
+  })
+})
+
 describe('a call that ends the turn (#296)', () => {
   it('finishes the run without calling the model again', async () => {
     const d = deps(
