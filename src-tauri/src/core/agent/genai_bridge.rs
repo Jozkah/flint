@@ -310,6 +310,11 @@ fn messages_from_body(
                     .map(|a| a.as_slice())
                     .unwrap_or_default()
                 {
+                    // Gemini 3 needs the signature back ahead of the call it
+                    // belongs to; the Gemini adapter attaches it to that call.
+                    for sig in thought_signatures_from_json(tc) {
+                        parts.push(ContentPart::ThoughtSignature(sig));
+                    }
                     parts.push(ContentPart::ToolCall(tool_call_from_json(tc)));
                 }
                 // A turn with no text, no reasoning and no calls would serialize
@@ -428,6 +433,35 @@ fn content_text(content: Option<&serde_json::Value>) -> String {
             .join(""),
         _ => String::new(),
     }
+}
+
+/// Gemini thought signatures persisted next to a tool call as a
+/// non-standard `thought_signatures` string array (see `tool_call_to_json`).
+fn thought_signatures_from_json(tc: &serde_json::Value) -> Vec<String> {
+    tc.get("thought_signatures")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|s| s.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The OpenAI JSON shape the agent persists for a `genai` tool call. Gemini
+/// thought signatures ride along so the next request can replay them.
+fn tool_call_to_json(tc: &ToolCall, args: String) -> serde_json::Value {
+    let mut out = serde_json::json!({
+        "id": tc.call_id,
+        "type": "function",
+        "function": { "name": tc.fn_name, "arguments": args }
+    });
+    if let Some(sigs) = tc.thought_signatures.as_ref().filter(|s| !s.is_empty()) {
+        out["thought_signatures"] = serde_json::json!(sigs);
+    }
+    out
 }
 
 /// Rebuild a `genai` tool call from the OpenAI JSON shape the agent persists.
@@ -559,7 +593,8 @@ enum Disposition {
 /// is a request the upstream will reject identically forever.
 fn disposition_for_status(status: u16) -> Disposition {
     match status {
-        401 | 403 => Disposition::NextKey,
+        // 402: out of credits on this key; another key may still have balance.
+        401 | 402 | 403 => Disposition::NextKey,
         // 429 can be either: with more keys it's worth rotating, and retrying the
         // same key after a delay is the documented remedy. Rotation is preferred
         // (see the caller) and this is the fallback when the chain is exhausted.
@@ -1101,11 +1136,7 @@ async fn run_once(
                                 serde_json::Value::String(s) => s.clone(),
                                 other => other.to_string(),
                             };
-                            serde_json::json!({
-                                "id": tc.call_id,
-                                "type": "function",
-                                "function": { "name": tc.fn_name, "arguments": args }
-                            })
+                            tool_call_to_json(tc, args)
                         })
                         .collect();
                 }
@@ -1249,6 +1280,25 @@ mod tests {
             tool_call_from_json(&tc).fn_arguments,
             json!("{\"path\": \"a.txt")
         );
+    }
+
+    #[test]
+    fn thought_signatures_round_trip_through_the_persisted_tool_call() {
+        let mut call = ToolCall {
+            call_id: "c1".into(),
+            fn_name: "ls".into(),
+            fn_arguments: json!({}),
+            thought_signatures: Some(vec!["sigA".into()]),
+        };
+        let wire = tool_call_to_json(&call, "{}".into());
+        assert_eq!(thought_signatures_from_json(&wire), vec!["sigA".to_string()]);
+        let history = json!([{ "role": "assistant", "content": null, "tool_calls": [wire] }]);
+        let (_, msgs) = messages_from_body(&json!({ "messages": history })).unwrap();
+        let parts = msgs[0].content.parts();
+        assert!(matches!(parts[0], ContentPart::ThoughtSignature(_)));
+        assert!(matches!(parts[1], ContentPart::ToolCall(_)));
+        call.thought_signatures = None;
+        assert!(tool_call_to_json(&call, "{}".into()).get("thought_signatures").is_none());
     }
 
     #[test]
@@ -1892,6 +1942,7 @@ mod tests {
         assert!(matches!(disposition_for_status(503), Disposition::Retry));
         assert!(matches!(disposition_for_status(429), Disposition::Retry));
         assert!(matches!(disposition_for_status(401), Disposition::NextKey));
+        assert!(matches!(disposition_for_status(402), Disposition::NextKey));
         assert!(matches!(disposition_for_status(403), Disposition::NextKey));
         assert!(matches!(disposition_for_status(400), Disposition::Fatal));
         assert!(matches!(disposition_for_status(404), Disposition::Fatal));
