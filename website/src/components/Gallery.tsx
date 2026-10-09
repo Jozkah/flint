@@ -14,6 +14,8 @@ const ITEMS: Item[] = [
   { id: '05-pr-bar', span: '', caption: 'Sessions, each in its own worktree', alt: 'Two Cowork sessions side by side, each with its worktree bar and a Create pull request action.' },
   { id: '10-queued-messages', span: '', caption: 'Steering and queued messages', alt: 'The Cowork composer with a steering message and a queued message waiting while the run works.' },
   { id: '09-models', span: 'w4', caption: 'Models: loaded models and providers', alt: 'The Models page with totals, three loaded local models with live speed, provider cards and a custom provider slot.' },
+  { id: '16-studio', span: 'w3', caption: 'Studio: images on this computer or a hosted provider', alt: 'The Studio page with the model picker open: local models, then OpenAI and Gemini image models marked as leaving this computer, with Discover and Manage hosted providers links.' },
+  { id: '17-agent-browser', span: 'w3', caption: 'The agent browser, previewing a web page', alt: 'A Cowork run with the Agent browser tab open in the Output panel, showing a read-only preview of a radar status web page with its address, tabs and last action.' },
   { id: '07-rooms', span: '', caption: 'Rooms overview', alt: 'The Rooms page with counts for running rooms, rooms waiting for you, turns this week and models taking part, then a card per room.' },
   { id: '12-tools-mcp', span: '', caption: 'Tools and MCP servers', alt: 'The Tools and MCP page: server cards with connection state, call rate, available tools and an auto-approve switch.' },
   { id: '13-permissions', span: '', caption: 'Permissions and revoke', alt: 'The Permissions page listing tools allowed per conversation and everywhere, folder access, trusted MCP servers and approvals that need renewing.' },

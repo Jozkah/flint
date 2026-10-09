@@ -34,6 +34,7 @@ import { projectKeyOf } from '@/lib/coworkCode'
 import { answer } from './previewTauri'
 import { seedStudioAnswers } from './previewStudio'
 import { seedRooms } from './previewRooms'
+import { seedBrowserPane } from './previewBrowser'
 import { seedEngine } from './previewSeedEngine'
 import { seedHuggingFacePreview } from './previewHuggingFace'
 import {
@@ -994,7 +995,9 @@ function seedCowork() {
     }))
   }
   const view = useCoworkView.getState()
-  view.setRail('escape', p.get('rail') === 'none' ? null : { kind: 'diff' })
+  const rail = p.get('rail')
+  view.setRail('escape', rail === 'none' ? null : rail === 'browser' ? { kind: 'browser' } : { kind: 'diff' })
+  if (rail === 'browser') seedBrowserPane('escape')
   view.setRail('dash', { kind: 'code' })
   view.setRail('paths', null)
   const split = p.get('split')
