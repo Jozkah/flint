@@ -276,10 +276,23 @@ async function runUtilityText(
     ]
 
     // Never held open by a model that does not answer.
-    const signal = AbortSignal.any([
-      abortSignal,
-      AbortSignal.timeout(UTILITY_TIMEOUT_MS),
-    ])
+    // AbortSignal.any() is missing on older WebKit (Safari < 17.4), so combine
+    // the signals by hand.
+    const combined = new AbortController()
+    setTimeout(
+      () => combined.abort(new DOMException('Timed out', 'TimeoutError')),
+      UTILITY_TIMEOUT_MS
+    )
+    if (abortSignal.aborted) {
+      combined.abort(abortSignal.reason)
+    } else {
+      abortSignal.addEventListener(
+        'abort',
+        () => combined.abort(abortSignal.reason),
+        { once: true }
+      )
+    }
+    const signal = combined.signal
 
     for (let i = 0; i < candidates.length; i++) {
       const { selectedProvider: providerId, selectedModel: modelInfo } =
