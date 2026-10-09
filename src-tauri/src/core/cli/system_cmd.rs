@@ -58,12 +58,24 @@ pub fn set_data_folder(new_folder: &str, copy: bool) -> Result<Value, String> {
         return Err("give the new data folder as an absolute path".to_string());
     }
     let current = resolve_jan_data_folder();
-    if new_path.starts_with(&current) && new_path != current {
-        return Err("the new data folder cannot be inside the current one".to_string());
-    }
     std::fs::create_dir_all(&new_path).map_err(|e| format!("create {}: {e}", new_path.display()))?;
+    // Compared after resolving, so `..`, links and (on Windows) letter case
+    // cannot hide that one folder is inside the other.
+    let key = |p: &Path| {
+        let c = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+        if cfg!(windows) { PathBuf::from(c.to_string_lossy().to_lowercase()) } else { c }
+    };
+    let (cur_key, new_key) = (key(&current), key(&new_path));
+    if new_key != cur_key && (new_key.starts_with(&cur_key) || cur_key.starts_with(&new_key)) {
+        return Err("the new data folder cannot be inside the current one, or contain it".to_string());
+    }
     let mut copied = 0;
-    if copy && current.exists() && new_path != current {
+    if copy && current.exists() && new_key != cur_key {
+        // Copying over an existing Flint or JAN folder would replace its files.
+        let occupied = std::fs::read_dir(&new_path).map(|mut d| d.next().is_some()).unwrap_or(false);
+        if occupied {
+            return Err("the new folder is not empty; pick an empty one, or pass --no-copy to switch to it as it is".to_string());
+        }
         copied = copy_recursive(&current, &new_path, &[".uvx", ".npx", "openclaw"])
             .map_err(|e| format!("copy to the new folder failed: {e}"))?;
     }
@@ -144,6 +156,11 @@ mod tests {
             assert!(set_data_folder("relative/dir", true).is_err());
             let inside = data.join("child");
             assert!(set_data_folder(&inside.to_string_lossy(), true).is_err());
+            // A spelling that only resolves to the inside, and a parent, are refused too.
+            let sneaky = data.join("other").join("..").join("child2");
+            assert!(set_data_folder(&sneaky.to_string_lossy(), true).is_err());
+            let parent = data.parent().unwrap().to_path_buf();
+            assert!(set_data_folder(&parent.to_string_lossy(), true).is_err());
             let info = data_folder_info();
             assert_eq!(info["overriddenByEnvironment"], true);
         });

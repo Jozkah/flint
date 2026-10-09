@@ -298,6 +298,16 @@ pub async fn download(data: &Path, repo: &str, file: &str, quiet: bool) -> Resul
     }
     let response = request.send().await.map_err(|e| format!("Download failed: {e}"))?;
     let status = response.status();
+    // The whole file is already here (the last run died before the rename):
+    // there is nothing left to ask for, so verify it and finish.
+    if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE && have > 0 {
+        // Without a hash the leftover cannot be told from a corrupt one.
+        if expected.is_none() {
+            let _ = std::fs::remove_file(&part);
+            return Err("a leftover partial download could not be resumed and was deleted; run again".to_string());
+        }
+        return finish(&part, &final_path, expected.as_deref(), quiet);
+    }
     if !status.is_success() {
         return Err(failure(response).await);
     }
@@ -331,26 +341,36 @@ pub async fn download(data: &Path, repo: &str, file: &str, quiet: bool) -> Resul
     if !quiet {
         eprintln!();
     }
-    if let Some(expected) = expected {
-        let actual = sha256_of(&part)?;
-        if !actual.eq_ignore_ascii_case(&expected) {
-            let _ = std::fs::remove_file(&part);
-            return Err(format!("The downloaded file failed its SHA-256 check (expected {expected}, got {actual}); it was deleted, run again"));
+    finish(&part, &final_path, expected.as_deref(), quiet)
+}
+
+/// Check a finished `.part` against the SHA-256 Hugging Face listed, then move
+/// it into place. A file with no listed hash is kept but said to be unchecked.
+fn finish(part: &Path, final_path: &Path, expected: Option<&str>, quiet: bool) -> Result<PathBuf, String> {
+    match expected {
+        Some(expected) => {
+            let actual = sha256_of(part)?;
+            if !actual.eq_ignore_ascii_case(expected) {
+                let _ = std::fs::remove_file(part);
+                return Err(format!("The downloaded file failed its SHA-256 check (expected {expected}, got {actual}); it was deleted, run again"));
+            }
         }
+        None if !quiet => eprintln!("warning: Hugging Face listed no SHA-256 for this file (or the lookup failed), so it was not verified"),
+        None => {}
     }
     if final_path.exists() {
         let backup = final_path.with_extension("previous");
         let _ = std::fs::remove_file(&backup);
-        std::fs::rename(&final_path, &backup).map_err(|e| format!("Could not stage the existing file: {e}"))?;
-        if let Err(e) = std::fs::rename(&part, &final_path) {
-            let _ = std::fs::rename(&backup, &final_path);
+        std::fs::rename(final_path, &backup).map_err(|e| format!("Could not stage the existing file: {e}"))?;
+        if let Err(e) = std::fs::rename(part, final_path) {
+            let _ = std::fs::rename(&backup, final_path);
             return Err(format!("Could not finalize download: {e}"));
         }
         let _ = std::fs::remove_file(&backup);
     } else {
-        std::fs::rename(&part, &final_path).map_err(|e| format!("Could not finalize download: {e}"))?;
+        std::fs::rename(part, final_path).map_err(|e| format!("Could not finalize download: {e}"))?;
     }
-    Ok(final_path)
+    Ok(final_path.to_path_buf())
 }
 
 /// `models import <file.gguf> --id NAME`: put a GGUF where the local server
@@ -406,6 +426,25 @@ mod tests {
         assert_eq!(url.as_str(), "https://huggingface.co/o/n/resolve/main/m.gguf");
         assert!(file_url("bad", "m.gguf").is_err());
         assert!(file_url("o/n", "../m.gguf").is_err());
+    }
+
+    #[test]
+    fn finish_verifies_the_hash_and_replaces_atomically() {
+        let dir = tempfile::tempdir().unwrap();
+        let part = dir.path().join("m.gguf.part");
+        let target = dir.path().join("m.gguf");
+        std::fs::write(&part, b"abc").unwrap();
+        let good = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        assert!(finish(&part, &target, Some("00"), true).unwrap_err().contains("SHA-256"));
+        assert!(!part.exists(), "a bad file is deleted");
+        std::fs::write(&part, b"abc").unwrap();
+        std::fs::write(&target, b"old").unwrap();
+        finish(&part, &target, Some(good), true).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"abc");
+        assert!(!target.with_extension("previous").exists());
+        std::fs::write(&part, b"xyz").unwrap();
+        finish(&part, &target, None, true).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"xyz");
     }
 
     #[test]

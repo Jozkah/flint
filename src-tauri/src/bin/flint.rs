@@ -581,7 +581,12 @@ enum ScheduleCommands {
         json: bool,
     },
     /// Delete a task and its run history
-    Delete { id: String },
+    Delete {
+        id: String,
+        /// Confirm: the run history goes with it
+        #[arg(long)]
+        yes: bool,
+    },
     /// Turn a task on
     Enable {
         id: String,
@@ -1636,6 +1641,9 @@ enum ThreadsCommands {
         /// Skip the archive and remove the thread and its records for good
         #[arg(long)]
         permanent: bool,
+        /// Confirm `--permanent`, which cannot be undone
+        #[arg(long)]
+        yes: bool,
     },
     /// Start an empty thread and print it
     Create {
@@ -2420,7 +2428,16 @@ async fn handle_cli(cmd: CliCommands) {
                 ScheduleCommands::Edit { id, task, json } => {
                     task.into_input().and_then(|i| schedule_manage::edit(&id, i, json))
                 }
-                ScheduleCommands::Delete { id } => schedule_manage::delete(&id),
+                ScheduleCommands::Delete { id, yes } => {
+                    if yes {
+                        schedule_manage::delete(&id)
+                    } else {
+                        Err(HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                            "this deletes the task and its run history; run again with --yes",
+                        ))
+                    }
+                }
                 ScheduleCommands::Enable { id, json } => schedule_manage::set_enabled(&id, true, json),
                 ScheduleCommands::Disable { id, json } => schedule_manage::set_enabled(&id, false, json),
                 ScheduleCommands::Preview { id, task, count, json } => task
@@ -3835,7 +3852,11 @@ async fn handle_threads(cmd: ThreadsCommands) {
             }
         },
 
-        ThreadsCommands::Delete { id, permanent } => {
+        ThreadsCommands::Delete { id, permanent, yes } => {
+            if permanent && !yes {
+                eprintln!("Error: --permanent cannot be undone; run again with --yes");
+                std::process::exit(1);
+            }
             match app_lib::core::cli::archive_cmd::delete_thread(&id, permanent).await {
                 Ok(archived) => {
                     println!("{}", serde_json::json!({ "deleted": true, "archived": archived, "id": id }))

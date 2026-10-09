@@ -144,6 +144,6 @@ mod tests {
         delete(&project, "tidy").unwrap();
         delete(&project, "tidy").unwrap();
         assert!(skills::list_meta(&store(&project)).iter().all(|m| m.name != "tidy"));
-        assert!(write(&project, "../escape", SKILL).is_err() || !dir.path().join("../escape").exists());
+        assert!(write(&project, "../escape", SKILL).is_err());
     }
 }

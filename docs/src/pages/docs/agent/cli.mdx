@@ -693,7 +693,7 @@ flint cli threads create --title "Notes"
 flint cli threads rename <ID> "New title"
 flint cli threads favorite <ID>        # and: unfavorite
 flint cli threads delete <ID>          # moves to the archive
-flint cli threads delete <ID> --permanent
+flint cli threads delete <ID> --permanent --yes
 flint cli threads delete-message <THREAD_ID> <MESSAGE_ID>
 flint cli threads export <ID> --format obsidian --out ~/notes
 ```
@@ -727,7 +727,7 @@ flint cli schedule list
 flint cli schedule preview <ID>                     # next fire times
 flint cli schedule preview --weekly mon,wed@08:15   # before saving anything
 flint cli schedule edit <ID> --max-turns 30
-flint cli schedule enable <ID>                      # and: disable, delete
+flint cli schedule enable <ID>                      # and: disable; delete needs --yes
 flint cli schedule run <ID> --wait
 flint cli schedule runs <ID>
 flint cli schedule cancel <ID> <RUN>

@@ -72,16 +72,19 @@ fn base_branch(repo: &Path, target: Option<&str>) -> Result<String, String> {
         .ok_or_else(|| "the repository is on a detached HEAD; pass --into BRANCH".to_string())
 }
 
-fn unmerged(repo: &Path, base: &str, branch: &str) -> Vec<String> {
+fn unmerged(repo: &Path, base: &str, branch: &str) -> Result<Vec<String>, String> {
     run_git(repo, &["log", "--format=%h %s", &format!("{base}..{branch}")])
         .map(|s| s.lines().map(str::to_string).collect())
-        .unwrap_or_default()
 }
 
-fn pending(c: &Checkout) -> Vec<String> {
+fn pending(c: &Checkout) -> Result<Vec<String>, String> {
     run_git(&c.path, &["status", "--porcelain"])
         .map(|s| s.lines().map(|l| l.trim().to_string()).collect())
-        .unwrap_or_default()
+}
+
+/// Counts for a listing, where an unreadable one shows as "?" rather than 0.
+fn count<T>(r: &Result<Vec<T>, String>) -> String {
+    r.as_ref().map(|v| v.len().to_string()).unwrap_or_else(|_| "?".to_string())
 }
 
 /// `worktree list [--project P] [--json]`
@@ -98,8 +101,8 @@ pub fn list(project: &str, json_out: bool) -> Result<(), String> {
                     "id": c.id,
                     "path": c.path,
                     "branch": c.branch,
-                    "pending": pending(c),
-                    "unmerged": unmerged(&repo, &base, &c.branch),
+                    "pending": pending(c).map_err(|e| e.to_string()).map_or_else(|e| json!({ "error": e }), |v| json!(v)),
+                    "unmerged": unmerged(&repo, &base, &c.branch).map_err(|e| e.to_string()).map_or_else(|e| json!({ "error": e }), |v| json!(v)),
                 })
             })
             .collect();
@@ -114,8 +117,8 @@ pub fn list(project: &str, json_out: bool) -> Result<(), String> {
             "{}  {}  {} uncommitted, {} unmerged  {}",
             c.id,
             c.branch,
-            pending(c).len(),
-            unmerged(&repo, &base, &c.branch).len(),
+            count(&pending(c)),
+            count(&unmerged(&repo, &base, &c.branch)),
             c.path.display()
         );
     }
@@ -128,8 +131,9 @@ pub fn discard(project: &str, id: &str, force: bool) -> Result<(), String> {
     let c = find(&repo, id)?;
     let base = base_branch(&repo, None).unwrap_or_default();
     if !force {
-        let dirty = pending(&c);
-        let ahead = unmerged(&repo, &base, &c.branch);
+        // If either check cannot be made, say so: "could not look" is not "clean".
+        let dirty = pending(&c).map_err(|e| format!("could not check worktree {id} for uncommitted work ({e}); pass --force to discard it anyway"))?;
+        let ahead = unmerged(&repo, &base, &c.branch).map_err(|e| format!("could not check worktree {id} for unmerged commits ({e}); pass --force to discard it anyway"))?;
         if !dirty.is_empty() || !ahead.is_empty() {
             let mut why = format!("worktree {id} holds work that would be lost:");
             for d in dirty.iter().take(10) {
@@ -165,7 +169,7 @@ pub fn merge(project: &str, id: &str, into: Option<&str>, message: Option<&str>)
     if target.starts_with('-') || target == c.branch {
         return Err(format!("cannot merge {} into {target}", c.branch));
     }
-    let dirty = pending(&c);
+    let dirty = pending(&c)?;
     if !dirty.is_empty() {
         return Err(format!(
             "worktree {id} has uncommitted changes ({}): commit them in {} first",
@@ -185,7 +189,7 @@ pub fn merge(project: &str, id: &str, into: Option<&str>, message: Option<&str>)
     if !repo_dirty.is_empty() {
         return Err("the repository has uncommitted changes; commit or stash them before merging".to_string());
     }
-    let ahead = unmerged(&repo, &target, &c.branch);
+    let ahead = unmerged(&repo, &target, &c.branch)?;
     if ahead.is_empty() {
         println!("{}", json!({ "merged": false, "reason": "nothing to merge" }));
         return Ok(());
@@ -197,8 +201,15 @@ pub fn merge(project: &str, id: &str, into: Option<&str>, message: Option<&str>)
             Ok(())
         }
         Err(e) => {
-            let _ = run_git(&repo, &["merge", "--abort"]);
-            Err(format!("the merge conflicted and was aborted; nothing changed. {e}"))
+            // Only a merge that actually started has anything to abort.
+            let in_progress = repo.join(".git").join("MERGE_HEAD").exists()
+                || run_git(&repo, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).is_ok();
+            if in_progress {
+                let _ = run_git(&repo, &["merge", "--abort"]);
+                Err(format!("the merge conflicted and was aborted; nothing changed. {e}"))
+            } else {
+                Err(format!("git could not merge ({e}); nothing changed"))
+            }
         }
     }
 }
