@@ -3,10 +3,11 @@ import {
   ArrowLeft,
   ArrowRight,
   RotateCw,
-  SquareArrowOutUpRight,
+  AppWindow,
+  Copy,
   PictureInPicture2,
   PanelRight,
-  ExternalLink,
+  Globe,
   ScanEye,
   Bot,
 } from 'lucide-react'
@@ -39,6 +40,36 @@ import {
 } from '@/hooks/useBrowserAgentPane'
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups'
+
+/** Browser-tab style label: the site's icon and the page's title. */
+function PageTab({ url, title }: { url: string; title: string }) {
+  const [iconFailed, setIconFailed] = useState(false)
+  let origin = ''
+  let host = url
+  try {
+    const u = new URL(url)
+    origin = u.origin
+    host = u.host
+  } catch {
+    // keep the raw url as the label
+  }
+  useEffect(() => setIconFailed(false), [origin])
+  return (
+    <>
+      {origin && !iconFailed ? (
+        <img
+          src={`${origin}/favicon.ico`}
+          alt=""
+          className="size-4 shrink-0"
+          onError={() => setIconFailed(true)}
+        />
+      ) : (
+        <Globe className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      )}
+      <span className="truncate">{title || host}</span>
+    </>
+  )
+}
 
 /**
  * App-wide in-app web preview. Mounted once at the root. Installs a
@@ -84,6 +115,7 @@ export function WebPreviewHost() {
     }
   )
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null)
+  const pageTitle = useWebPreview((s) => s.pageTitle)
   const currentUrl = useWebPreview.getState().url()
   // A question waiting for the user (a tool approval, a site to allow) needs
   // the whole screen: the native view is a window of its own that no DOM
@@ -166,6 +198,7 @@ export function WebPreviewHost() {
     void serviceHub.window().createWebviewWindow({
       label: `web-preview-${Date.now()}`,
       url,
+      title: 'Flint',
       incognito: true,
       width: 1024,
       height: 768,
@@ -250,11 +283,26 @@ export function WebPreviewHost() {
       <Button
         variant="ghost"
         size="icon-xs"
+        data-testid="wp-copy-url"
+        aria-label={t('common:webPreview.copyUrl')}
+        title={t('common:webPreview.copyUrl')}
+        onClick={() =>
+          void navigator.clipboard
+            ?.writeText(url)
+            .then(() => toast.success(t('common:webPreview.urlCopied')))
+            .catch(() => toast.error(t('common:webPreview.copyFailed')))
+        }
+      >
+        <Copy className="size-4" aria-hidden />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-xs"
         data-testid="wp-open-external"
         aria-label={t('common:webPreview.openExternal')}
         onClick={() => void serviceHub.opener().openUrl(url)}
       >
-        <ExternalLink className="size-4" aria-hidden />
+        <Globe className="size-4" aria-hidden />
       </Button>
       <Button
         variant="ghost"
@@ -263,7 +311,7 @@ export function WebPreviewHost() {
         aria-label={t('common:webPreview.popOut')}
         onClick={popOut}
       >
-        <SquareArrowOutUpRight className="size-4" aria-hidden />
+        <AppWindow className="size-4" aria-hidden />
       </Button>
       {surface === 'side' ? (
         <Button
@@ -332,7 +380,12 @@ export function WebPreviewHost() {
         data-suspended={suspended ? '' : undefined}
         className={cn(suspended && 'pointer-events-none invisible')}
       >
-        <WebPreviewPip title={url}>{body}</WebPreviewPip>
+        <WebPreviewPip
+          title={<PageTab url={url} title={pageTitle} />}
+          onClose={() => useWebPreview.getState().close()}
+        >
+          {body}
+        </WebPreviewPip>
       </div>
     )
   }
