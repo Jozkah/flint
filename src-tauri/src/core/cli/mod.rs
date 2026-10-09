@@ -34,6 +34,7 @@ pub mod rpc_schema;
 pub mod providers;
 pub mod run_report;
 pub mod archive_cmd;
+pub mod run_data_cmd;
 pub mod schedule;
 pub mod skills_cmd;
 pub mod system_cmd;

@@ -1199,6 +1199,37 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Export a session's (or one run's) events under <data>/exports; metadata
+    /// only unless `--include-content`
+    EventsExport {
+        session: String,
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long)]
+        include_content: bool,
+    },
+    /// Check an event export and count what it holds
+    EventsInspect { file: std::path::PathBuf },
+    /// List a session's finished runs that can be stepped through
+    Replays { session: String },
+    /// Print a finished run's recorded events in order
+    Replay { session: String, run: String },
+    /// Permission decisions recorded for approvals (newest last)
+    Audit {
+        #[arg(long)]
+        session: Option<String>,
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long)]
+        agent: Option<String>,
+        #[arg(long)]
+        tool: Option<String>,
+        /// allow, deny, prompt, granted, refused or expired
+        #[arg(long)]
+        decision: Option<String>,
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+    },
     Prompts {
         /// The session whose requests to list
         session: String,
@@ -3397,6 +3428,41 @@ async fn handle_agent(cmd: AgentCommands) {
                         }
                     }
                 })
+        }
+        AgentCommands::EventsExport { session, run, include_content } => {
+            app_lib::core::cli::run_data_cmd::events_export(
+                &app_lib::core::app::commands::resolve_jan_data_folder(),
+                &session,
+                run.as_deref(),
+                include_content,
+            )
+            .map_err(HarnessError::legacy)
+        }
+        AgentCommands::EventsInspect { file } => {
+            app_lib::core::cli::run_data_cmd::events_inspect(&file).map_err(HarnessError::legacy)
+        }
+        AgentCommands::Replays { session } => app_lib::core::cli::run_data_cmd::replays(
+            &app_lib::core::app::commands::resolve_jan_data_folder(),
+            &session,
+        )
+        .map_err(HarnessError::legacy),
+        AgentCommands::Replay { session, run } => app_lib::core::cli::run_data_cmd::replay(
+            &app_lib::core::app::commands::resolve_jan_data_folder(),
+            &session,
+            &run,
+        )
+        .map_err(HarnessError::legacy),
+        AgentCommands::Audit { session, run, agent, tool, decision, limit } => {
+            app_lib::core::cli::run_data_cmd::audit_cmd(
+                &app_lib::core::app::commands::resolve_jan_data_folder(),
+                session,
+                run,
+                agent,
+                tool,
+                decision,
+                limit,
+            )
+            .map_err(HarnessError::legacy)
         }
         AgentCommands::Prompts { session, show } => agent_prompts_text(
             &app_lib::core::app::commands::resolve_jan_data_folder(),
