@@ -671,6 +671,9 @@ async fn schedule_mcp_start_task<R: Runtime>(
                 .args
                 .iter()
                 .filter_map(Value::as_str)
+                // An empty arg is a directory to the filesystem server and an
+                // error there; older versions never forwarded one (#274).
+                .filter(|arg| !arg.is_empty())
                 .for_each(|arg| {
                     cmd.arg(arg);
                 });

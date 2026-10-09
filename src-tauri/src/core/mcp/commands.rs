@@ -7,7 +7,7 @@ use tokio::sync::oneshot;
 use tokio::time::timeout;
 
 use super::{
-    constants::DEFAULT_MCP_CONFIG,
+    constants::default_mcp_config,
     helpers::{restart_active_mcp_servers, start_mcp_server, terminate_browser_mcp},
     truncate::truncate_tool_result,
 };
@@ -1174,7 +1174,7 @@ pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, St
     // Create default empty config if file doesn't exist
     if !path.exists() {
         log::info!("mcp_config.json not found, creating default empty config");
-        write_file_atomically(&path, DEFAULT_MCP_CONFIG.as_bytes())
+        write_file_atomically(&path, default_mcp_config().as_bytes())
             .map_err(|e| format!("Failed to create default MCP config: {e}"))?;
     }
 
@@ -1222,29 +1222,9 @@ pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, St
         mutated = true;
     }
 
-    // Migration: Add Flint Browser MCP if not present
-    let mcp_servers = config_object
-        .get_mut("mcpServers")
-        .and_then(|v| v.as_object_mut())
-        .ok_or("mcpServers is not an object")?;
-
-    if !mcp_servers.contains_key("Jan Browser MCP") {
-        log::info!("Migrating config: Adding 'Jan Browser MCP' server");
-        mcp_servers.insert(
-            "Jan Browser MCP".to_string(),
-            json!({
-                "command": "npx",
-                "args": ["-y", "search-mcp-server@latest"],
-                "env": {
-                    "BRIDGE_HOST": "127.0.0.1",
-                    "BRIDGE_PORT": "17389"
-                },
-                "active": false,
-                "official": true
-            }),
-        );
-        mutated = true;
-    }
+    // The built-in 'Jan Browser MCP' entry is seeded by the default config and
+    // the versioned migration in setup.rs only. It is not re-added here, so a
+    // server the user deleted stays deleted (#300).
 
     // Persist any mutations back to disk
     if mutated && may_write_back {
