@@ -27,6 +27,7 @@ import { FavoriteModelAction } from '@/containers/FavoriteModelAction'
 import DeleteProvider from '@/containers/dialogs/DeleteProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { ProviderCustomHeaders } from '@/containers/ProviderCustomHeaders'
 import { applyCustomHeaders } from '@/lib/customHeaders'
@@ -38,6 +39,7 @@ import {
   Info,
   LoaderCircle,
   RefreshCw,
+  Search,
 } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
@@ -104,6 +106,10 @@ const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: stri
     placeholder: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
   },
 }
+
+// Remote lists longer than this get a filter box; rows render this many at a time.
+const MODEL_FILTER_MIN = 20
+const MODEL_PAGE_SIZE = 50
 
 export const Route = createFileRoute('/settings/providers/$providerName')({
   component: ProviderDetail,
@@ -207,6 +213,20 @@ function ProviderDetail() {
         : allModels,
     [isLlamacpp, allModels]
   )
+  // A hosted provider can list hundreds of models, so past a threshold the
+  // list gets a filter box and renders in pages instead of all at once.
+  const [modelQuery, setModelQuery] = useState('')
+  const [modelLimit, setModelLimit] = useState(MODEL_PAGE_SIZE)
+  const canFilterModels = !isEngineProvider && allModels.length > MODEL_FILTER_MIN
+  const filteredModels = useMemo(() => {
+    const words = modelQuery.toLowerCase().split(/\s+/).filter(Boolean)
+    if (!canFilterModels || words.length === 0) return allModels
+    return allModels.filter((m) => {
+      const hay = `${m.id} ${m.name ?? ''}`.toLowerCase()
+      return words.every((w) => hay.includes(w))
+    })
+  }, [allModels, canFilterModels, modelQuery])
+  useEffect(() => setModelLimit(MODEL_PAGE_SIZE), [modelQuery, providerName])
   const defaultEmbeddingModelId = useDefaultEmbeddingModel((s) =>
     isLlamacpp ? s.getDefault('llamacpp') : undefined
   )
@@ -1129,6 +1149,25 @@ function ProviderDetail() {
         }
       />
       <FrameBody className="overflow-x-auto p-3">
+        {canFilterModels && (
+          <div className="relative mb-2">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              value={modelQuery}
+              onChange={(e) => setModelQuery(e.target.value)}
+              placeholder={t('providers:filterModels', {
+                count: allModels.length,
+              })}
+              aria-label={t('providers:filterModels', {
+                count: allModels.length,
+              })}
+              className="pl-8"
+            />
+          </div>
+        )}
         {provider?.models.length ? (
           <TBox
             className={isEngineProvider ? 'min-w-[660px]' : 'min-w-[480px]'}
@@ -1139,7 +1178,10 @@ function ProviderDetail() {
               chatModels.length > 0 &&
               sectionDivider(t('providers:chatModels'), 'mt-1 mb-1')}
             <ul className="flex flex-col">
-              {(isLlamacpp ? chatModels : allModels).map((model, modelIndex) => {
+              {(isLlamacpp
+                ? chatModels
+                : filteredModels.slice(0, modelLimit)
+              ).map((model, modelIndex) => {
                 const isActive = activeModels.some(
                   (activeModel) => activeModel === model.id
                 )
@@ -1285,6 +1327,25 @@ function ProviderDetail() {
               ) : undefined
             }
           />
+        )}
+        {canFilterModels && (
+          <div className="mt-2 flex items-center justify-between gap-2 text-sm text-muted-foreground">
+            <span>
+              {t('providers:modelsShown', {
+                shown: Math.min(modelLimit, filteredModels.length),
+                total: filteredModels.length,
+              })}
+            </span>
+            {filteredModels.length > modelLimit && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setModelLimit((n) => n + MODEL_PAGE_SIZE)}
+              >
+                {t('providers:showMoreModels')}
+              </Button>
+            )}
+          </div>
         )}
         {/* Show importing skeleton first if there's one */}
         {importingModel && (
