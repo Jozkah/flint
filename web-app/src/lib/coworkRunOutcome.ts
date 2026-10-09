@@ -510,7 +510,7 @@ const MAX_CLAIM_LENGTH = 200
 
 export function claimsFromText(text: string): CheckClaim[] {
   const claims: CheckClaim[] = []
-  const sentences = text.replace(/```[\s\S]*?```/g, ' ').split(/(?<=[.!?])\s+|\n+/)
+  const sentences = text.replace(/```[\s\S]*?```/g, ' ').replace(/([.!?])\s+/g, '$1\n').split(/\n+/)
   for (const raw of sentences) {
     const sentence = raw.replace(/^[\s*>#-]+/, '').trim()
     if (!sentence || !CLAIM_SUCCESS.test(sentence) || CLAIM_HEDGE.test(sentence)) continue

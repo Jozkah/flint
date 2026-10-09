@@ -32,7 +32,6 @@ export default class JanAssistantExtension extends AssistantExtension {
           temperature: 0.7,
           top_k: 20,
           top_p: 0.8,
-          repeat_penalty: 1.12,
         },
       }
       await this.createAssistant(assistantWithParams as Assistant)
@@ -173,7 +172,6 @@ Current date: {{current_date}}`
       temperature: 0.7,
       top_k: 20,
       top_p: 0.8,
-      repeat_penalty: 1.12,
     }
 
     if (!(await fs.existsSync('file://assistants'))) {
@@ -264,7 +262,6 @@ Current date: {{current_date}}`
           temperature: 0.7,
           top_k: 20,
           top_p: 0.8,
-          repeat_penalty: 1.12,
         },
       } as Assistant)
       existingIds.add(this.defaultAssistant.id)

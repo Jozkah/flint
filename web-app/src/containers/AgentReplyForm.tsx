@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { sessionMailbox, toMailboxError } from '@/lib/sessionMailbox'
 
 /**
@@ -20,6 +21,7 @@ export function AgentReplyForm({
   onDone: (sent: boolean) => void
 }) {
   const { t } = useTranslation()
+  const spellCheckChatInput = useGeneralSetting((s) => s.spellCheckChatInput)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,6 +53,7 @@ export function AgentReplyForm({
       </label>
       <textarea
         id={fieldId}
+        spellCheck={spellCheckChatInput}
         data-testid="agent-reply-text"
         className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-xs"
         rows={3}

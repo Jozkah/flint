@@ -128,12 +128,12 @@ export function hasFileRef(text: string): boolean {
 /** File names in ordinary output text, without requiring an @ prefix. */
 export function parseBareFilePaths(text: string): Array<{ type: 'text' | 'path'; text: string }> {
   const result: Array<{ type: 'text' | 'path'; text: string }> = []
-  const pattern = /(?<![A-Za-z0-9_.@/:])([A-Za-z0-9_.\\/-]+\.[A-Za-z][A-Za-z0-9]{0,9}(?::\d+(?:-\d+)?)?)(?![A-Za-z0-9_/])/g
+  const pattern = /(^|[^A-Za-z0-9_.@/:])([A-Za-z0-9_.\\/-]+\.[A-Za-z][A-Za-z0-9]{0,9}(?::\d+(?:-\d+)?)?)(?![A-Za-z0-9_/])/g
   let cursor = 0
   for (const match of text.matchAll(pattern)) {
-    const path = match[1]
+    const path = match[2]
     if (!parseInlinePath(path)) continue
-    const start = match.index ?? 0
+    const start = (match.index ?? 0) + match[1].length
     if (start > cursor) result.push({ type: 'text', text: text.slice(cursor, start) })
     result.push({ type: 'path', text: path })
     cursor = start + path.length

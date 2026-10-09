@@ -157,7 +157,12 @@ export function describeEndpointFailure(failure: EndpointFailure): string {
     case 403:
       return (
         `${head}. The endpoint refused the request. If this is your own server, ` +
-        `check what is answering at that address before changing any credential.`
+        `check what is answering at that address before changing any credential.` +
+        // Flint sends Origin: tauri://localhost to a local server; Ollama answers
+        // 403 to an origin its OLLAMA_ORIGINS does not list.
+        (scope === 'loopback'
+          ? ' For Ollama, add tauri://* to the OLLAMA_ORIGINS environment variable and restart it.'
+          : '')
       )
     case 404:
       return (
@@ -171,6 +176,42 @@ export function describeEndpointFailure(failure: EndpointFailure): string {
         return `${head}. The server failed while handling the request; check its logs.`
       return `${head}.`
   }
+}
+
+/**
+ * Chat-time counterpart of the model-list check: an AI SDK `APICallError`
+ * carries the URL, status and response headers of the call that failed, so a
+ * 401/403/404 can name the endpoint and who answered just as the model list
+ * does. Any other error, or one without that detail, comes back unchanged.
+ */
+export function describeChatFailure(error: unknown, provider?: string): string {
+  const fallback =
+    error instanceof Error ? error.message : errorText(error, 'Error')
+  const err = error as
+    | { statusCode?: number; url?: string; responseHeaders?: Record<string, string>; message?: string; lastError?: unknown }
+    | undefined
+  const call = typeof err?.statusCode === 'number' ? err : (err?.lastError as typeof err)
+  if (
+    !call ||
+    typeof call.url !== 'string' ||
+    ![401, 403, 404].includes(call.statusCode ?? 0)
+  ) {
+    return fallback
+  }
+  const headers = call.responseHeaders ?? {}
+  const server =
+    Object.entries(headers).find(([k]) => k.toLowerCase() === 'server')?.[1] ??
+    null
+  const detail = describeEndpointFailure({
+    provider: provider || originOf(call.url) || 'Provider',
+    url: call.url,
+    method: 'POST',
+    status: call.statusCode,
+    server,
+  })
+  return call.message && !detail.includes(call.message)
+    ? `${detail} (${call.message})`
+    : detail
 }
 
 /**

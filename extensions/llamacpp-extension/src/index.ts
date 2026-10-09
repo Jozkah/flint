@@ -44,6 +44,7 @@ import {
   detectMtpLayersFromGgufMeta,
   resolveSpecDraftKind,
   detectTemplateKwargsFromChatTemplate,
+  chatTemplateSupportsTools,
   getDefaultEmbeddingModelId,
   modelFileProblem,
   assertSha256Matches,
@@ -2875,9 +2876,9 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       janDataFolderPath,
       modelConfig.model_path,
     ])
-    return (await readGgufMetadata(modelPath)).metadata?.[
-      'tokenizer.chat_template'
-    ]?.includes('tools')
+    return chatTemplateSupportsTools(
+      (await readGgufMetadata(modelPath)).metadata?.['tokenizer.chat_template']
+    )
   }
 
   /**

@@ -104,15 +104,19 @@ export function deriveMcpServerProfile(
   const transport = transportOf(config)
   const requiredAccess: McpAccessItem[] = []
   const setupRequirements: McpSetupRequirement[] = []
-  const description = config.description?.trim() || null
+  const description =
+    (typeof config.description === 'string' && config.description.trim()) || null
 
   if (transport === 'stdio') {
-    const command = config.command?.trim() ?? ''
+    const command =
+      typeof config.command === 'string' ? config.command.trim() : ''
     if (command) {
       requiredAccess.push({
         kind: 'runs-command',
         command,
-        args: (config.args ?? []).filter((a) => a.trim() !== ''),
+        args: (Array.isArray(config.args) ? config.args : []).filter(
+          (a) => typeof a === 'string' && a.trim() !== ''
+        ),
       })
     } else {
       setupRequirements.push({ kind: 'missing-command' })
@@ -137,10 +141,11 @@ export function deriveMcpServerProfile(
     }
   }
 
-  const host = hostOf(config.url)
-  if (!config.url?.trim()) setupRequirements.push({ kind: 'missing-url' })
+  const url = typeof config.url === 'string' ? config.url : undefined
+  const host = hostOf(url)
+  if (!url?.trim()) setupRequirements.push({ kind: 'missing-url' })
 
-  const location = classifyModelLocation({ baseUrl: config.url })
+  const location = classifyModelLocation({ baseUrl: url })
   const runsWhere: McpRunsWhere =
     location === 'local'
       ? 'local-endpoint'

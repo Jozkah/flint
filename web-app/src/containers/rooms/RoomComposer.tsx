@@ -15,6 +15,7 @@ import { RoomAvatar } from './RoomAvatar'
 import { SlashCommandMenu } from '@/components/SlashCommandMenu'
 import { slashOptionId } from '@/lib/slashCommands'
 import { useSlashCommands } from '@/hooks/useSlashCommands'
+import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 
 const toValue = (a: Address) =>
   a.kind === 'participant' ? `participant:${a.participantId}` : a.kind
@@ -30,6 +31,7 @@ export function RoomComposer({ room }: { room: Room }) {
   const { t } = useTranslation()
   const api = useRoomsApi()
   const id = useId()
+  const spellCheckChatInput = useGeneralSetting((s) => s.spellCheckChatInput)
   const [text, setText] = useState('')
   const [to, setTo] = useState('room')
   const [sending, setSending] = useState(false)
@@ -249,6 +251,7 @@ export function RoomComposer({ room }: { room: Room }) {
           {t('rooms:composer.label')}
         </label>
         <textarea
+          spellCheck={spellCheckChatInput}
           id={`${id}-text`}
           ref={textRef}
           value={text}

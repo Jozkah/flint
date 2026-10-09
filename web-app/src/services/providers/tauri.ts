@@ -26,6 +26,7 @@ import {
 } from '@/lib/endpointDiagnostics'
 import { modelsUrlCandidates } from '@/lib/modelsUrl'
 import { recordListedWindows } from '@/lib/listedWindows'
+import { recordListedCapabilities } from '@/lib/listedCapabilities'
 import { findModelEntry } from '@/lib/detectContextWindow'
 
 export class TauriProvidersService extends DefaultProvidersService {
@@ -176,7 +177,7 @@ export class TauriProvidersService extends DefaultProvidersService {
       for (const url of modelsUrlCandidates(provider.base_url)) {
         const response = await fetchTauri(url, { method: 'GET', headers })
         if (response.status === 404) continue
-        if ([401, 403, 429].includes(response.status)) break
+        if ([401, 402, 403, 429].includes(response.status)) break
         if (!response.ok) return null
         return findModelEntry(await response.json(), modelId)
       }
@@ -238,7 +239,7 @@ export class TauriProvidersService extends DefaultProvidersService {
         lastStatusText = response.statusText
 
         if (
-          [401, 403, 429].includes(response.status) &&
+          [401, 402, 403, 429].includes(response.status) &&
           ki < keyAttempts.length - 1
         ) {
           continue
@@ -270,6 +271,8 @@ export class TauriProvidersService extends DefaultProvidersService {
         // The list carries each model's window (vLLM `max_model_len`); the ids
         // alone would throw it away.
         recordListedWindows(provider.base_url, data)
+        // Tools and vision, where the provider's list says (OpenRouter does).
+        recordListedCapabilities(provider.base_url, data)
         if (ids.length === 0) {
           console.warn('Provider listed no models at /models:', data)
         }

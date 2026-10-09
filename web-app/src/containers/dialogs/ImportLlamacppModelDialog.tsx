@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { findSiblingMmproj } from '@/lib/siblingMmproj'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
@@ -375,6 +376,16 @@ export const ImportLlamacppModelDialog = ({
     setModelFile(path)
     setModelName(toModelId(displayName))
     await validateModelFile(path)
+    // A projector next to the model is the one it was published with.
+    if (!mmProjFile) {
+      const { fs } = await import('@janhq/core')
+      const sibling = await findSiblingMmproj(path, (dir) => fs.readdirSync(dir))
+      if (sibling) {
+        setIsMultimodal(true)
+        setMmProjFile(sibling)
+        await validateMmprojFile(sibling)
+      }
+    }
   }
 
   const [scanState, setScanState] = useState<

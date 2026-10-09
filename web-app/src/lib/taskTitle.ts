@@ -18,7 +18,9 @@ export function deriveTaskTitle(
   }
   const explicit = title ? clip(title) : ''
   if (explicit) return explicit
-  const first = (brief ?? '').trim().split(/\n/)[0].split(/(?<=[.!?])\s/)[0]
+  const line = (brief ?? '').trim().split(/\n/)[0]
+  // First sentence: cut after . ! or ? before whitespace (no lookbehind).
+  const first = line.match(/^[\s\S]*?[.!?](?=\s)/)?.[0] ?? line
   const derived = clip(first.replace(/[.!?:]+$/, ''))
   return derived || undefined
 }

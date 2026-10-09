@@ -11,6 +11,7 @@
  *   - GLM 4.x:            <tool_call>x<arg_key>k</arg_key><arg_value>v</arg_value></tool_call>
  *   - Mistral:            [TOOL_CALLS][{"name":"x","arguments":{...}}]
  *   - Llama 3.1:          <|python_tag|>{"name":"x","parameters":{...}}
+ *   - Gemma:              a ```tool_code fenced block holding x(k="v")
  */
 
 export interface TextToolCall {
@@ -22,7 +23,12 @@ export interface TextToolCall {
 export type ArgTypes = Record<string, Record<string, string | undefined>>
 
 /** Strings that begin a tool-call block in any supported family. */
-export const TOOL_CALL_MARKERS = ['<tool_call>', '[TOOL_CALLS]', '<|python_tag|>']
+export const TOOL_CALL_MARKERS = [
+  '<tool_call>',
+  '[TOOL_CALLS]',
+  '<|python_tag|>',
+  '```tool_code',
+]
 
 /** Length of the longest suffix of `text` that is a proper prefix of a marker. */
 export function partialMarkerLength(text: string): number {
@@ -127,6 +133,92 @@ function parseArgKeyValue(body: string, types: ArgTypes): TextToolCall | null {
   return { name, args }
 }
 
+/** Split `text` on top-level commas, leaving quoted strings and brackets whole. */
+function splitTopLevel(text: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let quote: string | null = null
+  let current = ''
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (quote) {
+      current += ch
+      if (ch === '\\' && i + 1 < text.length) current += text[++i]
+      else if (ch === quote) quote = null
+      continue
+    }
+    if (ch === '"' || ch === "'") quote = ch
+    else if (ch === '(' || ch === '[' || ch === '{') depth++
+    else if (ch === ')' || ch === ']' || ch === '}') depth--
+    if (ch === ',' && depth === 0) {
+      parts.push(current)
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  if (quote || depth !== 0) return []
+  if (current.trim()) parts.push(current)
+  return parts
+}
+
+/** A Python literal as a JS value; undefined when it is not a plain literal. */
+function pythonLiteral(raw: string): unknown {
+  const text = raw.trim()
+  if (text === 'True') return true
+  if (text === 'False') return false
+  if (text === 'None') return null
+  const quoted = /^(["'])([\s\S]*)\1$/.exec(text)
+  if (quoted) {
+    const inner = quoted[2]
+    if (quoted[1] === '"') {
+      const json = parseJson(text)
+      if (typeof json === 'string') return json
+    }
+    return inner
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\(["'\\])/g, '$1')
+  }
+  const direct = parseJson(text)
+  if (direct !== undefined) return direct
+  // Lists and dicts written with Python quoting and constants.
+  if (text.startsWith('[') || text.startsWith('{')) {
+    return parseJson(
+      text
+        .replace(/'/g, '"')
+        .replace(/\bTrue\b/g, 'true')
+        .replace(/\bFalse\b/g, 'false')
+        .replace(/\bNone\b/g, 'null')
+    )
+  }
+  return undefined
+}
+
+/** Gemma: one or more `name(key=value, ...)` lines inside a ```tool_code fence. */
+function parseToolCode(body: string): TextToolCall[] | null {
+  const calls: TextToolCall[] = []
+  for (const line of body.split('\n')) {
+    let code = line.trim()
+    if (!code) continue
+    // The template sometimes has the model print the result of the call.
+    const printed = /^print\(([\s\S]*)\)$/.exec(code)
+    if (printed) code = printed[1].trim()
+    const m = /^(?:[A-Za-z_][\w]*\.)*([A-Za-z_][\w]*)\(([\s\S]*)\)$/.exec(code)
+    if (!m) return null
+    const args: Record<string, unknown> = {}
+    for (const part of splitTopLevel(m[2])) {
+      const eq = /^\s*([A-Za-z_]\w*)\s*=(?!=)([\s\S]*)$/.exec(part)
+      if (!eq) return null
+      const value = pythonLiteral(eq[2])
+      if (value === undefined) return null
+      args[eq[1]] = value
+    }
+    calls.push({ name: m[1], args })
+  }
+  return calls.length > 0 ? calls : null
+}
+
 function parseToolCallBlock(
   body: string,
   types: ArgTypes
@@ -183,6 +275,19 @@ export function parseTextToolCalls(
       }
     }
     return null
+  }
+
+  if (start.startsWith('```tool_code')) {
+    const afterMarker = start.slice('```tool_code'.length)
+    const end = afterMarker.indexOf('```')
+    // An unclosed fence is accepted: the model may stop on EOS after the call.
+    const body = end === -1 ? afterMarker : afterMarker.slice(0, end)
+    const calls = parseToolCode(body)
+    if (!calls) return null
+    return {
+      calls,
+      rest: end === -1 ? '' : afterMarker.slice(end + 3).trim(),
+    }
   }
 
   if (start.startsWith('<|python_tag|>')) {
