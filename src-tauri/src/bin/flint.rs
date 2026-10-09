@@ -482,6 +482,12 @@ enum CliCommands {
         #[command(subcommand)]
         cmd: ScheduleCommands,
     },
+    /// Project skills: list, read, write, delete, enable, import from the hub
+    #[command(display_order = 18)]
+    Skills {
+        #[command(subcommand)]
+        cmd: SkillsCommands,
+    },
     /// What delete moved aside: list, restore or purge it
     #[command(display_order = 17)]
     Archive {
@@ -1280,6 +1286,56 @@ enum JobCommands {
 }
 
 #[derive(Subcommand)]
+enum SkillsCommands {
+    /// List the project's skills and whether each is enabled
+    List {
+        #[arg(long, default_value = ".")]
+        project: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print a skill's SKILL.md
+    Show {
+        name: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Create or replace a skill from a file, or from stdin with `--file -`
+    Write {
+        name: String,
+        #[arg(long)]
+        file: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Delete a skill
+    Delete {
+        name: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Show or set which skills are enabled (`--all` enables every skill)
+    Enabled {
+        names: Vec<String>,
+        #[arg(long)]
+        all: bool,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// List the skills on Anthropic's public skill hub (uses the network)
+    HubList {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import a skill from the hub into the project (uses the network)
+    HubImport {
+        name: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum ArchiveCommands {
     /// List archived threads, rooms, sessions and so on
     List {
@@ -2020,6 +2076,7 @@ async fn handle_cli(cmd: CliCommands) {
         CliCommands::Job { cmd } => handle_job(cmd),
         CliCommands::Threads { cmd } => handle_threads(cmd).await,
         CliCommands::Archive { cmd } => handle_archive(cmd).await,
+        CliCommands::Skills { cmd } => handle_skills(cmd).await,
         CliCommands::Models { cmd } => handle_models(cmd).await,
         CliCommands::Agent { cmd } => handle_agent(cmd).await,
         CliCommands::Mcp { cmd } => {
@@ -3310,6 +3367,29 @@ fn exit_on_error(result: Result<(), String>) {
         eprintln!("Error: {e}");
         std::process::exit(1);
     }
+}
+
+async fn handle_skills(cmd: SkillsCommands) {
+    use app_lib::core::cli::skills_cmd as k;
+    exit_on_error(match cmd {
+        SkillsCommands::List { project, json } => k::list(&project, json),
+        SkillsCommands::Show { name, project } => k::show(&project, &name),
+        SkillsCommands::Write { name, file, project } => {
+            let content = if file == "-" {
+                let mut buf = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)
+                    .map(|_| buf)
+                    .map_err(|e| e.to_string())
+            } else {
+                std::fs::read_to_string(&file).map_err(|e| format!("read {file}: {e}"))
+            };
+            content.and_then(|c| k::write(&project, &name, &c))
+        }
+        SkillsCommands::Delete { name, project } => k::delete(&project, &name),
+        SkillsCommands::Enabled { names, all, project } => k::enabled(&project, &names, all),
+        SkillsCommands::HubList { json } => k::hub_list(json).await,
+        SkillsCommands::HubImport { name, project } => k::hub_import(&project, &name).await,
+    });
 }
 
 async fn handle_archive(cmd: ArchiveCommands) {
