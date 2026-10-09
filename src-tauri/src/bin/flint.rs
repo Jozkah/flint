@@ -482,6 +482,12 @@ enum CliCommands {
         #[command(subcommand)]
         cmd: ScheduleCommands,
     },
+    /// Worktrees made by `--worktree` sessions: list, merge, discard
+    #[command(display_order = 19)]
+    Worktree {
+        #[command(subcommand)]
+        cmd: WorktreeCommands,
+    },
     /// Project skills: list, read, write, delete, enable, import from the hub
     #[command(display_order = 18)]
     Skills {
@@ -1286,6 +1292,38 @@ enum JobCommands {
 }
 
 #[derive(Subcommand)]
+enum WorktreeCommands {
+    /// List this repository's agent worktrees, with uncommitted and unmerged work
+    List {
+        #[arg(long, default_value = ".")]
+        project: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Merge a worktree's branch into the checked-out branch
+    Merge {
+        /// The worktree id (see `list`)
+        id: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// The branch to merge into; must be the one checked out
+        #[arg(long)]
+        into: Option<String>,
+        #[arg(long)]
+        message: Option<String>,
+    },
+    /// Remove a worktree and its branch; refuses while it holds unmerged work
+    Discard {
+        id: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Remove it even with uncommitted or unmerged work
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum SkillsCommands {
     /// List the project's skills and whether each is enabled
     List {
@@ -2077,6 +2115,7 @@ async fn handle_cli(cmd: CliCommands) {
         CliCommands::Threads { cmd } => handle_threads(cmd).await,
         CliCommands::Archive { cmd } => handle_archive(cmd).await,
         CliCommands::Skills { cmd } => handle_skills(cmd).await,
+        CliCommands::Worktree { cmd } => handle_worktree(cmd),
         CliCommands::Models { cmd } => handle_models(cmd).await,
         CliCommands::Agent { cmd } => handle_agent(cmd).await,
         CliCommands::Mcp { cmd } => {
@@ -3367,6 +3406,17 @@ fn exit_on_error(result: Result<(), String>) {
         eprintln!("Error: {e}");
         std::process::exit(1);
     }
+}
+
+fn handle_worktree(cmd: WorktreeCommands) {
+    use app_lib::core::cli::worktree_cmd as w;
+    exit_on_error(match cmd {
+        WorktreeCommands::List { project, json } => w::list(&project, json),
+        WorktreeCommands::Merge { id, project, into, message } => {
+            w::merge(&project, &id, into.as_deref(), message.as_deref())
+        }
+        WorktreeCommands::Discard { id, project, force } => w::discard(&project, &id, force),
+    });
 }
 
 async fn handle_skills(cmd: SkillsCommands) {

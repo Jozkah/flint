@@ -47,6 +47,7 @@ pub mod version;
 /// The user-message wire shape, shared by the TUI and the headless channel.
 mod user_message;
 pub mod worktree;
+pub mod worktree_cmd;
 
 use std::path::PathBuf;
 use std::sync::Arc;
