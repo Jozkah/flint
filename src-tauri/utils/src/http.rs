@@ -59,6 +59,10 @@ pub fn is_valid_host(host: &str, trusted_hosts: &[Vec<String>]) -> bool {
     }
 
     trusted_hosts.iter().flatten().any(|valid| {
+        // A user may enter a full origin (chrome-extension://<id>,
+        // http://host:3000); compare on the host part, as `host` is (#155).
+        let valid = extract_host_from_origin(valid.trim());
+        let valid = valid.as_str();
         let host_lower = host.to_lowercase();
         let valid_lower = valid.to_lowercase();
 
@@ -127,5 +131,15 @@ mod tests {
         assert!(is_valid_host("[::1]:1337", &trusted)); // IPv6 loopback
         // A public IP literal is NOT auto-trusted.
         assert!(!is_valid_host("8.8.8.8:1337", &trusted));
+    }
+
+    // A full origin typed into the allowlist must match the origin's host part.
+    #[test]
+    fn full_origin_entry_matches_origin_host() {
+        let trusted = vec![vec!["chrome-extension://abcdefghijklmnop".to_string()]];
+        let host = extract_host_from_origin("chrome-extension://abcdefghijklmnop");
+        assert!(is_valid_host(&host, &trusted));
+        let other = extract_host_from_origin("chrome-extension://zzzz");
+        assert!(!is_valid_host(&other, &trusted));
     }
 }

@@ -28,5 +28,10 @@ export interface AppService {
   relocateJanDataFolder(path: string): Promise<void>
   getServerStatus(): Promise<boolean>
   setServerRunInBackground(enabled: boolean): Promise<void>
+  setCloseToTray(enabled: boolean): Promise<void>
+  /** Cap model downloads at this many bytes per second; 0 is unlimited. */
+  setDownloadSpeedLimit(bytesPerSec: number): Promise<void>
+  /** Write the redacted app log to `destination`; returns the path written. */
+  exportRedactedLogs(destination: string): Promise<string>
   readYaml<T = unknown>(path: string): Promise<T>
 }

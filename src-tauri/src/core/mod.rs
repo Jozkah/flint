@@ -25,6 +25,12 @@ pub mod crash_trace;
 pub mod jev;
 #[cfg(feature = "cli")]
 pub mod cli;
+// The CLI's secret scrubber (`flint bug-report`, the persistent log), compiled
+// into the desktop app too so "Export logs (redacted)" uses the same rules.
+#[cfg(not(feature = "cli"))]
+#[allow(dead_code)]
+#[path = "cli/secrets.rs"]
+pub(crate) mod log_redaction;
 // Explicit, user-initiated Hugging Face model discovery/downloads. Kept
 // desktop-only so the CLI remains network-agnostic unless the user configures
 // a provider there.

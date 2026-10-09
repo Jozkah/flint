@@ -88,3 +88,20 @@ pub const DEFAULT_MCP_CONFIG: &str = r#"{
     "maxToolOutputChars": 40000
   }
 }"#;
+
+/// Placeholder directory the shipped `filesystem` entry carries.
+pub const DEFAULT_FILESYSTEM_PLACEHOLDER_DIR: &str = "/path/to/other/allowed/dir";
+
+/// `DEFAULT_MCP_CONFIG` with the filesystem server's placeholder directory
+/// swapped for the user's home folder, so the entry points at a real path
+/// once the user enables it. Falls back to the raw config without a home dir.
+pub fn default_mcp_config() -> String {
+    match dirs::home_dir().and_then(|h| h.to_str().map(str::to_owned)) {
+        Some(home) => {
+            let escaped = serde_json::to_string(&home).unwrap_or_default();
+            let escaped = escaped.trim_matches('"');
+            DEFAULT_MCP_CONFIG.replace(DEFAULT_FILESYSTEM_PLACEHOLDER_DIR, escaped)
+        }
+        None => DEFAULT_MCP_CONFIG.to_string(),
+    }
+}

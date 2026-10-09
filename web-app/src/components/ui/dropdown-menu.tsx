@@ -4,6 +4,22 @@ import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * The submenus of one menu level take turns: opening one closes its sibling.
+ * Radix lets two stay open together (hover one, click or key into another),
+ * and the second then draws over the first.
+ */
+type SubGroup = { active: string | null; setActive: (id: string | null) => void }
+const SubGroupContext = React.createContext<SubGroup | null>(null)
+
+function SubGroupScope({ children }: { children: React.ReactNode }) {
+  const [active, setActive] = React.useState<string | null>(null)
+  const value = React.useMemo(() => ({ active, setActive }), [active])
+  return (
+    <SubGroupContext.Provider value={value}>{children}</SubGroupContext.Provider>
+  )
+}
+
 function DropdownMenu({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
@@ -44,7 +60,9 @@ function DropdownMenuContent({
           className
         )}
         {...props}
-      />
+      >
+        <SubGroupScope>{props.children}</SubGroupScope>
+      </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
   )
 }
@@ -191,9 +209,32 @@ function DropdownMenuShortcut({
 }
 
 function DropdownMenuSub({
+  open,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Sub>) {
-  return <DropdownMenuPrimitive.Sub data-slot="dropdown-menu-sub" {...props} />
+  const id = React.useId()
+  const group = React.useContext(SubGroupContext)
+  const active = group?.active ?? null
+  const setActive = group?.setActive
+  // A submenu its owner controls is closed here when a sibling takes the turn.
+  React.useEffect(() => {
+    if (open && active !== null && active !== id) onOpenChange?.(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active])
+  const handleOpenChange = (next: boolean) => {
+    if (next) setActive?.(id)
+    else if (active === id) setActive?.(null)
+    onOpenChange?.(next)
+  }
+  return (
+    <DropdownMenuPrimitive.Sub
+      data-slot="dropdown-menu-sub"
+      open={open ?? (group ? active === id : undefined)}
+      onOpenChange={handleOpenChange}
+      {...props}
+    />
+  )
 }
 
 function DropdownMenuSubTrigger({
@@ -235,7 +276,9 @@ function DropdownMenuSubContent({
         className
       )}
       {...props}
-    />
+    >
+      <SubGroupScope>{props.children}</SubGroupScope>
+    </DropdownMenuPrimitive.SubContent>
     </DropdownMenuPrimitive.Portal>
   )
 }
