@@ -1355,6 +1355,19 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
   }
 
+  /** Static: tells the model that inline HTML colors render in chat. */
+  buildColorOutputInstruction(): string {
+    return [
+      '# Color',
+      'Chat renders inline HTML color, so use it sparingly where it carries',
+      'meaning: <span style="color:#22c55e">ok</span>,',
+      '<span style="color:#ef4444">fault</span>, or',
+      '<span style="color:#f59e0b">warning</span> on status words, readings and',
+      'pass/fail results. Only color and font styles on span/div work; do not',
+      'color ordinary prose, and never put it inside code blocks.',
+    ].join(' ')
+  }
+
   protected buildSystemPrompt(messages: UIMessage[]): string | undefined {
     const files = this.buildFilesSystemInstruction(messages)
     const web = this.buildWebSearchSystemInstruction()
@@ -1379,6 +1392,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         }),
         files,
         web,
+        this.buildColorOutputInstruction(),
         agentTools,
         shellAvailability,
         delegation,

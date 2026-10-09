@@ -117,6 +117,11 @@ const getLatestServerUsage = (messages: ThreadMessage[]): UsageMeta => {
 const readSettingNumber = (v: unknown): number | undefined =>
   usableContextValue(v) ?? undefined
 
+// No model runs in a handful of tokens: a window that small is a misread field
+// and would show "163K / 2 (100%)". Treated as unknown rather than believed.
+const plausibleWindow = (n: number | undefined): number | undefined =>
+  n != null && n >= 128 ? n : undefined
+
 export const useTokensCount = (
   messages: ThreadMessage[] = [],
   source?: TokenUsageSource
@@ -276,11 +281,12 @@ export const useTokensCount = (
         // or its server was found to run with (kept across restarts and a
         // server that does not answer). A model with none of those keeps no
         // window rather than a guessed one.
-        maxTokens:
+        maxTokens: plausibleWindow(
           usableContextValue(sourceOverflow?.contextTokens) ??
-          usableContextValue(rememberedWindow) ??
-          cappedContextWindow(contextCap,
-            readCapabilityField(selectedModel, CONTEXT_FIELDS) ?? undefined),
+            usableContextValue(rememberedWindow) ??
+            cappedContextWindow(contextCap,
+              readCapabilityField(selectedModel, CONTEXT_FIELDS) ?? undefined)
+        ),
         isOverflow: sourceOverflow != null,
         loading: false,
         isNearLimit: false,
@@ -312,11 +318,12 @@ export const useTokensCount = (
     // it renders as `0 / 0` and reads as a model with no room at all.
     // An engine that has unloaded the model after sitting idle answers no
     // props: the window it last ran with, then the one configured, stand in.
-    const maxTokens =
+    const maxTokens = plausibleWindow(
       usableContextValue(overflow?.contextTokens) ??
-      usableContextValue(modelProps?.nCtx) ??
-      usableContextValue(rememberedWindow) ??
-      cappedContextWindow(contextCap, configuredCtxLen ?? undefined)
+        usableContextValue(modelProps?.nCtx) ??
+        usableContextValue(rememberedWindow) ??
+        cappedContextWindow(contextCap, configuredCtxLen ?? undefined)
+    )
     const percentage = maxTokens ? (tokenCount / maxTokens) * 100 : undefined
     const isNearLimit = overflow != null || (percentage ? percentage > 85 : false)
 
