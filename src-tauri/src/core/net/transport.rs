@@ -134,7 +134,10 @@ fn client_for(host: &str, port: u16) -> Result<Client, String> {
     if let Some(existing) = clients().lock().ok().and_then(|c| c.get(&key).cloned()) {
         return Ok(existing);
     }
-    let mut builder = Client::builder();
+    // A default identity: some gateways reject requests with no User-Agent.
+    // A User-Agent set on the request itself replaces this default.
+    let mut builder =
+        Client::builder().user_agent(concat!("Flint/", env!("CARGO_PKG_VERSION")));
     if is_loopback_host(host) {
         builder = builder.no_proxy();
     }
