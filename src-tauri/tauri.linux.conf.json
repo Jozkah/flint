@@ -36,7 +36,9 @@
     "linux": {
       "appimage": {
         "bundleMediaFramework": false,
-        "files": {}
+        "files": {
+          "usr/bin/bun": "resources/bin/bun"
+        }
       },
       "deb": {
         "files": {
