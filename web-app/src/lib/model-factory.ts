@@ -93,6 +93,7 @@ import { i18n } from '@/i18n/react-i18next-compat'
 import { useAppState } from '@/hooks/useAppState'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { ensureAnthropicHeaders } from '@/lib/anthropicHeaders'
+import { emptyTextMiddleware } from '@/lib/emptyTextMiddleware'
 import { applyCustomHeaders } from '@/lib/customHeaders'
 
 /**
@@ -1366,7 +1367,11 @@ export class ModelFactory {
       fetch: fetchImpl,
     })
 
-    return anthropic(modelId)
+    // Anthropic rejects empty text blocks outright.
+    return wrapLanguageModel({
+      model: anthropic(modelId),
+      middleware: emptyTextMiddleware(),
+    })
   }
 
 
