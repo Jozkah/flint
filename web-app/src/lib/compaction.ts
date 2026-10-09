@@ -289,6 +289,26 @@ export function planCompaction(
   return { pinned, summarize, keep: rest.slice(cut) }
 }
 
+/**
+ * Whether a threshold compaction must cut inside the current user turn.
+ *
+ * Backing up to the start of the turn keeps the whole turn verbatim. In an
+ * agent run the turn is the tool loop itself, so after a follow-up message the
+ * loop that fills the window sits entirely in the kept part: the fold frees
+ * almost nothing, the next one has nothing left to fold, and the run goes on to
+ * 100%. When what the turn-preserving plan would keep already crosses the
+ * trigger, cut inside the turn instead (the request travels with the summary).
+ */
+export function compactionNeedsTurnSplit(
+  messages: UIMessage[],
+  keepRecent: number | undefined,
+  window: number | null | undefined
+): boolean {
+  const plan = planCompaction(messages, { keepRecent })
+  if (!plan) return false
+  return shouldCompact(estimateHistoryTokens(plan.keep), window)
+}
+
 const PER_MESSAGE_CHARS = 4000
 
 /** A readable transcript of the messages being folded, for the summarizer. */

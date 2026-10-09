@@ -26,6 +26,12 @@ describe('isReadOnlyCommand', () => {
 
   it.each([
     '',
+    // Write a script and run it in one call (reported upstream): never "read-only".
+    String.raw`@'
+Write-Output hi
+'@ | Set-Content "$PWD\x.ps1"; & "$PWD\x.ps1"`,
+    "Set-Content x.ps1 'Write-Output hi'; ./x.ps1",
+    "Set-Content x.ps1 'Write-Output hi'; & ./x.ps1",
     'npm install',
     'Remove-Item -Recurse x',
     'Get-ChildItem | Remove-Item',

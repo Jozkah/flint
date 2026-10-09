@@ -13,6 +13,13 @@ type AgentToolsConfigState = {
    */
   chatDelegationEnabled: boolean
   setChatDelegationEnabled: (value: boolean) => void
+  /**
+   * Offer the shell (`bash`) at all. On by default; turning it off withholds
+   * the tool from every surface and refuses a call that still arrives, while
+   * the file tools keep working.
+   */
+  shellEnabled: boolean
+  setShellEnabled: (value: boolean) => void
   /** Open the sandboxed shell's network namespace. */
   bashNetworkEnabled: boolean
   setBashNetworkEnabled: (value: boolean) => void
@@ -52,6 +59,8 @@ export const useAgentToolsConfig = create<AgentToolsConfigState>()(
       chatDelegationEnabled: true,
       setChatDelegationEnabled: (chatDelegationEnabled) =>
         set({ chatDelegationEnabled }),
+      shellEnabled: true,
+      setShellEnabled: (shellEnabled) => set({ shellEnabled }),
       bashNetworkEnabled: true,
       setBashNetworkEnabled: (bashNetworkEnabled) => set({ bashNetworkEnabled }),
       browserAgentEnabled: false,

@@ -94,6 +94,23 @@ describe('agentTools', () => {
     expect(await asked).toBeNull()
   })
 
+  it('withholds bash and refuses a bash call while the shell switch is off', async () => {
+    advertisedToolSchemas.mockResolvedValue(advertising(['read', 'bash']))
+    const { getAgentToolSchemas, executeAgentTool } = await import('../agentTools')
+    const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
+
+    const names = async () =>
+      (await getAgentToolSchemas()).map((s) => s.function.name)
+    expect(await names()).toEqual(['read', 'bash'])
+
+    useAgentToolsConfig.setState({ shellEnabled: false })
+    expect(await names()).toEqual(['read'])
+    const refused = await executeAgentTool('bash', { command: 'ls' }, 'thread-1')
+    expect(refused.error).toMatch(/shell is turned off/i)
+    expect(executeTool).not.toHaveBeenCalled()
+    useAgentToolsConfig.setState({ shellEnabled: true })
+  })
+
   /// The list depends on the folder it was computed for. One module-level
   /// cache shared by chat and Cowork let whichever surface asked first decide
   /// the tool set for every later caller -- a folderless chat's answer served

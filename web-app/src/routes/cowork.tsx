@@ -314,6 +314,7 @@ import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionD
 import type { UIMessage } from 'ai'
 import {
   compactHistory,
+  compactionNeedsTurnSplit,
   compactionWindow,
   resolveAutoCompact,
   shouldCompact,
@@ -3745,9 +3746,17 @@ export function CoworkPage() {
       setCompacting(true)
       let result: Awaited<ReturnType<typeof compactHistory>>
       try {
+        const keepRecent = compactionPolicy.keepRecent || DEFAULT_KEEP_RECENT
         result = await compactHistory(msgs, {
           summarize: summarizeRun,
-          keepRecent: compactionPolicy.keepRecent || DEFAULT_KEEP_RECENT,
+          keepRecent,
+          // A follow-up turn whose own tool loop fills the window would be kept
+          // whole by the turn-preserving cut, leaving nothing to fold.
+          splitTurn: compactionNeedsTurnSplit(
+            msgs,
+            keepRecent,
+            compactionWindow(runWindow, learnedWindow)
+          ),
           reason: why,
           signal,
         })
