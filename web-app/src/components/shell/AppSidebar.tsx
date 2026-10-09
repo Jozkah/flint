@@ -183,7 +183,7 @@ function moveFocusWithArrows(e: React.KeyboardEvent<HTMLElement>) {
 
 /**
  * The app sidebar (250px): the Flint mark, search, and one scrolling list of
- * the daily path (New chat, Work on files, Chats) up front and everything else
+ * the daily path (New chat, Cowork, Chats) up front and everything else
  * under More and Advanced, with local status
  * in the footer. On narrow windows the same sidebar is the navigation sheet.
  */
