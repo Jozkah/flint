@@ -286,7 +286,9 @@ impl Registry {
             LoadSpec::Args(args) => Engine::start(args, Some(progress)),
             LoadSpec::Preset {
                 ini_path, section, ..
-            } => Engine::start_from_preset(ini_path, section, Some(progress)),
+            } => start_preset_with_mmproj_fallback(ini_path, section, |ini| {
+                Engine::start_from_preset(ini, section, Some(progress.clone()))
+            }),
         };
         let engine = match started {
             Ok(e) => {
@@ -507,6 +509,162 @@ fn spec_model_path(body: &[String]) -> Option<String> {
         }
     }
     None
+}
+
+/// Text a failed load carries when the vision projector, not the language
+/// model, is what ran out of memory (#148).
+///
+/// Both halves are needed. The out-of-memory half is `LlamacppError`'s own
+/// classification, so the two cannot drift. The projector half exists because
+/// llama.cpp loads the language model first and returns early if that fails, so
+/// a projector marker means the text model had already loaded: retrying without
+/// projector offload is then worth a second load, where for a language-model
+/// OOM it would just fail the same way. The markers are llama.cpp's own log
+/// text as `capture_log_callback` records it (ERROR level, first lines):
+/// `server_context::load_model`'s "failed to load multimodal model, '<path>'"
+/// and the function prefixes of mtmd's clip loader. llama.cpp is not vendored
+/// in this repository, so they are from upstream's source, not from a test
+/// fixture here.
+fn is_projector_oom(message: &str) -> bool {
+    use crate::error::{ErrorCode, LlamacppError};
+    if !matches!(
+        LlamacppError::from_load_failure(message).code,
+        ErrorCode::OutOfMemory
+    ) {
+        return false;
+    }
+    let lower = message.to_lowercase();
+    [
+        "failed to load multimodal model",
+        "clip_model_loader",
+        "clip_init",
+        "mtmd",
+    ]
+    .iter()
+    .any(|m| lower.contains(m))
+}
+
+fn is_falsey(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "false" | "0" | "off" | "no"
+    )
+}
+
+/// `ini` with `section` told not to offload the projector, or `None` when that
+/// would change nothing: the section (or `[*]`) names no projector, or
+/// offload is already off. The key is set inside the section, which overrides
+/// the shared block, and any existing spelling of it there is replaced.
+fn without_mmproj_offload(ini: &str, section: &str) -> Option<String> {
+    let mut current: Option<&str> = None;
+    let mut has_projector = false;
+    let mut offload_off = false;
+    for line in ini.lines().map(str::trim) {
+        if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            current = Some(name);
+            continue;
+        }
+        if !matches!(current, Some(n) if n == "*" || n == section) {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        match key.trim() {
+            "mmproj" if !value.trim().is_empty() => has_projector = true,
+            "mmproj-offload" => offload_off = is_falsey(value),
+            "no-mmproj-offload" => offload_off = !is_falsey(value),
+            _ => {}
+        }
+    }
+    if !has_projector || offload_off {
+        return None;
+    }
+
+    let mut out = String::with_capacity(ini.len() + 24);
+    let mut inside = false;
+    let mut found = false;
+    for raw in ini.lines() {
+        let line = raw.trim();
+        if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            inside = name == section && !found;
+            found |= inside;
+            out.push_str(raw);
+            out.push('\n');
+            if inside {
+                out.push_str("mmproj-offload = false\n");
+            }
+            continue;
+        }
+        let key = line.split_once('=').map(|(k, _)| k.trim());
+        if inside && matches!(key, Some("mmproj-offload" | "no-mmproj-offload")) {
+            continue;
+        }
+        out.push_str(raw);
+        out.push('\n');
+    }
+    found.then_some(out)
+}
+
+/// Starts a preset section, and if that fails because the vision projector ran
+/// out of memory, tries once more with the projector kept off the GPU (#148).
+/// Large vision models (Gemma 4 and the like) are where the projector's own
+/// compute buffer tips a GPU that fits the language model over the edge, and
+/// the projector runs acceptably on the CPU.
+///
+/// `start` is handed the ini to read, so the retry can point at a patched copy
+/// without the real file ever being edited. Only an out-of-memory failure that
+/// names the projector retries; anything else, and a retry that also fails,
+/// reports the original error.
+fn start_preset_with_mmproj_fallback(
+    ini_path: &str,
+    section: &str,
+    mut start: impl FnMut(&str) -> Result<Engine, EngineError>,
+) -> Result<Engine, EngineError> {
+    let first = start(ini_path);
+    let Err(EngineError::Start(message)) = &first else {
+        return first;
+    };
+    if !is_projector_oom(message) {
+        return first;
+    }
+    let Some(patched) = std::fs::read_to_string(ini_path)
+        .ok()
+        .and_then(|ini| without_mmproj_offload(&ini, section))
+    else {
+        return first;
+    };
+
+    // Beside the original so any relative path in it still resolves.
+    let retry_path = format!("{ini_path}.{}.mmproj-cpu.ini", std::process::id());
+    if std::fs::write(&retry_path, patched).is_err() {
+        return first;
+    }
+    log::warn!(
+        "model '{section}' ran out of memory loading its vision projector; \
+         retrying once with the projector on the CPU (mmproj-offload = false)"
+    );
+    let retried = start(&retry_path);
+    let _ = std::fs::remove_file(&retry_path);
+
+    match retried {
+        Ok(engine) => {
+            log::warn!(
+                "model '{section}' loaded with its vision projector on the CPU \
+                 because it did not fit on the GPU; image prompts will be slower"
+            );
+            Ok(engine)
+        }
+        Err(_) => {
+            let Err(EngineError::Start(message)) = first else {
+                return first;
+            };
+            Err(EngineError::Start(format!(
+                "{message}; the vision projector was retried on the CPU \
+                 (mmproj-offload = false) and the model still did not load"
+            )))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -771,5 +929,123 @@ mod tests {
         let a = next_tick();
         let b = next_tick();
         assert!(b > a, "tick went backwards: {a} then {b}");
+    }
+
+    const GEMMA: &str = "[*]\nparallel = 1\n\n[gemma]\nmodel = /m/g.gguf\nmmproj = /m/mm.gguf\n\n[plain]\nmodel = /m/p.gguf\n";
+    const PROJECTOR_OOM: &str = "failed to load model; alloc_tensor_range: failed to allocate CUDA0 buffer of size 2491323904; srv load_model: failed to load multimodal model, '/m/mm.gguf'";
+
+    #[test]
+    fn a_projector_out_of_memory_is_recognised() {
+        assert!(is_projector_oom(PROJECTOR_OOM));
+        assert!(is_projector_oom(
+            "clip_model_loader: ggml_backend_cuda_buffer_type_alloc_buffer: cudaMalloc failed: out of memory"
+        ));
+    }
+
+    #[test]
+    fn a_language_model_out_of_memory_is_not_a_projector_failure() {
+        // The text model loads first, so no projector marker ever appears for it.
+        assert!(!is_projector_oom(
+            "failed to load model; ggml_backend_cuda_buffer_type_alloc_buffer: cudaMalloc failed: out of memory"
+        ));
+    }
+
+    #[test]
+    fn a_non_memory_projector_failure_is_not_retried() {
+        assert!(!is_projector_oom(
+            "srv load_model: failed to load multimodal model, '/m/mm.gguf'"
+        ));
+    }
+
+    #[test]
+    fn offload_is_turned_off_in_the_named_section_only() {
+        let out = without_mmproj_offload(GEMMA, "gemma").unwrap();
+        assert_eq!(
+            out,
+            "[*]\nparallel = 1\n\n[gemma]\nmmproj-offload = false\nmodel = /m/g.gguf\nmmproj = /m/mm.gguf\n\n[plain]\nmodel = /m/p.gguf\n"
+        );
+    }
+
+    #[test]
+    fn nothing_is_patched_without_a_projector_or_when_offload_is_already_off() {
+        assert_eq!(without_mmproj_offload(GEMMA, "plain"), None);
+        assert_eq!(without_mmproj_offload(GEMMA, "absent"), None);
+        let off = GEMMA.replace("mmproj = /m/mm.gguf", "mmproj = /m/mm.gguf\nmmproj-offload = false");
+        assert_eq!(without_mmproj_offload(&off, "gemma"), None);
+        let shared_off = GEMMA.replace("parallel = 1", "mmproj-offload = false");
+        assert_eq!(without_mmproj_offload(&shared_off, "gemma"), None);
+    }
+
+    #[test]
+    fn an_existing_enabled_offload_key_is_replaced_not_duplicated() {
+        let on = GEMMA.replace("mmproj = /m/mm.gguf", "mmproj = /m/mm.gguf\nmmproj-offload = true");
+        let out = without_mmproj_offload(&on, "gemma").unwrap();
+        assert_eq!(out.matches("mmproj-offload").count(), 1);
+        assert!(out.contains("mmproj-offload = false"));
+    }
+
+    #[cfg(not(feature = "engine"))]
+    fn ini_file(tag: &str) -> String {
+        let path = std::env::temp_dir().join(format!("fx148-{tag}-{}.ini", std::process::id()));
+        std::fs::write(&path, GEMMA).unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
+    #[cfg(not(feature = "engine"))]
+    #[test]
+    fn a_projector_oom_retries_once_on_a_patched_copy_and_cleans_up() {
+        let ini = ini_file("retry");
+        let mut seen: Vec<String> = Vec::new();
+        let mut retry_path = String::new();
+        let result = start_preset_with_mmproj_fallback(&ini, "gemma", |p| {
+            seen.push(std::fs::read_to_string(p).unwrap());
+            if seen.len() == 1 {
+                Err(EngineError::Start(PROJECTOR_OOM.into()))
+            } else {
+                retry_path = p.to_string();
+                Ok(Engine::stub())
+            }
+        });
+        assert!(result.is_ok());
+        assert_eq!(seen.len(), 2);
+        assert!(!seen[0].contains("mmproj-offload"));
+        assert!(seen[1].contains("mmproj-offload = false"));
+        assert!(!std::path::Path::new(&retry_path).exists(), "temp copy left behind");
+        let _ = std::fs::remove_file(&ini);
+    }
+
+    #[cfg(not(feature = "engine"))]
+    #[test]
+    fn a_failed_retry_reports_the_original_error_with_a_note() {
+        let ini = ini_file("fail");
+        let mut calls = 0;
+        let result = start_preset_with_mmproj_fallback(&ini, "gemma", |_| {
+            calls += 1;
+            Err(EngineError::Start(PROJECTOR_OOM.into()))
+        });
+        assert_eq!(calls, 2, "exactly one retry");
+        let Err(EngineError::Start(msg)) = result else { panic!("expected a start error") };
+        assert!(msg.starts_with(PROJECTOR_OOM));
+        assert!(msg.contains("retried on the CPU"));
+        let _ = std::fs::remove_file(&ini);
+    }
+
+    #[cfg(not(feature = "engine"))]
+    #[test]
+    fn other_failures_and_projectorless_models_are_not_retried() {
+        let ini = ini_file("noretry");
+        let mut calls = 0;
+        let _ = start_preset_with_mmproj_fallback(&ini, "gemma", |_| {
+            calls += 1;
+            Err(EngineError::Start("failed to load model; unknown model architecture".into()))
+        });
+        assert_eq!(calls, 1);
+        let mut calls = 0;
+        let _ = start_preset_with_mmproj_fallback(&ini, "plain", |_| {
+            calls += 1;
+            Err(EngineError::Start(PROJECTOR_OOM.into()))
+        });
+        assert_eq!(calls, 1, "no projector configured, nothing to turn off");
+        let _ = std::fs::remove_file(&ini);
     }
 }
