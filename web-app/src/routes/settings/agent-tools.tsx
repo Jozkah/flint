@@ -107,6 +107,8 @@ function AgentToolsContent() {
   const setChatDelegationEnabled = useAgentToolsConfig(
     (s) => s.setChatDelegationEnabled
   )
+  const shellEnabled = useAgentToolsConfig((s) => s.shellEnabled)
+  const setShellEnabled = useAgentToolsConfig((s) => s.setShellEnabled)
   const bashNetworkEnabled = useAgentToolsConfig((s) => s.bashNetworkEnabled)
   const setBashNetworkEnabled = useAgentToolsConfig(
     (s) => s.setBashNetworkEnabled
@@ -492,6 +494,15 @@ function AgentToolsContent() {
                       : t('settings:agentTools.shellUnavailable')}
                 </span>
               </span>
+            }
+            actions={
+              <Switch
+                data-testid="shell-enabled-toggle"
+                aria-label={t('settings:agentTools.shell')}
+                checked={shellEnabled}
+                onCheckedChange={setShellEnabled}
+                disabled={!agentToolsEnabled}
+              />
             }
           />
           {/* Only offered where it can be enforced: with no backend there is
