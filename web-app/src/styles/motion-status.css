@@ -1,5 +1,16 @@
 /* motion-status: keyframes and helpers for the animation polish pass (owned by one change set) */
 
+/* A custom (jsx) toast draws its own card. The shared toastOptions still put a
+   shadow, radius, border and padding on sonner's wrapper, which showed as a
+   second square around the card; strip them so only the card is visible. */
+[data-sonner-toast][data-styled='false'] {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 /* Undo toast: amber outline that burns away around the card. */
 .undo-rim {
   filter: drop-shadow(0 0 3px color-mix(in srgb, #d97706 60%, transparent));

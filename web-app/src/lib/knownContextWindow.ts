@@ -30,8 +30,16 @@ export function knownContextWindow(
   model: ModelLike | null | undefined,
   provider: ProviderLike | null | undefined
 ): number | null {
+  return knownContextWindowDetail(model, provider).tokens
+}
+
+/** The same window with where it came from, so a family guess can be told apart. */
+export function knownContextWindowDetail(
+  model: ModelLike | null | undefined,
+  provider: ProviderLike | null | undefined
+): { tokens: number | null; bundled: boolean } {
   const modelId = model?.id
-  if (!modelId) return null
+  if (!modelId) return { tokens: null, bundled: false }
   // Split as the capability hook does: the settings block is the user's
   // decision, the rest is what the provider said.
   const { settings, ...metadata } = model
@@ -40,13 +48,17 @@ export function knownContextWindow(
     baseUrl: provider?.base_url ?? '',
     model: modelId,
   })
-  return resolveModelCapabilities({
+  const caps = resolveModelCapabilities({
     modelId,
     override: settings ? { settings } : null,
     serverReported: learned ? { n_ctx: learned.contextTokens } : null,
     providerMetadata: metadata,
     providerDefault: provider ?? null,
-  }).contextTokens
+  })
+  return {
+    tokens: caps.contextTokens,
+    bundled: caps.source === 'bundled',
+  }
 }
 
 /**
