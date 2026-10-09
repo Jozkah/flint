@@ -33,6 +33,7 @@ pub mod run_report;
 pub mod archive_cmd;
 pub mod schedule;
 pub mod skills_cmd;
+pub mod system_cmd;
 pub mod thread_export;
 pub mod schedule_manage;
 pub mod secrets;

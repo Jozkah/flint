@@ -482,6 +482,16 @@ enum CliCommands {
         #[command(subcommand)]
         cmd: ScheduleCommands,
     },
+    /// Where Flint keeps its data; `--set` moves it (copying what is there)
+    #[command(display_order = 20)]
+    DataFolder {
+        /// Point Flint at this absolute folder
+        #[arg(long)]
+        set: Option<String>,
+        /// With `--set`, do not copy the current folder's contents across
+        #[arg(long)]
+        no_copy: bool,
+    },
     /// Worktrees made by `--worktree` sessions: list, merge, discard
     #[command(display_order = 19)]
     Worktree {
@@ -749,6 +759,12 @@ enum NetCommands {
         #[command(subcommand)]
         cmd: CaCommands,
     },
+    /// How a provider host resolves and which address is dialled first
+    Endpoint {
+        host: String,
+        #[arg(default_value_t = 443)]
+        port: u16,
+    },
 }
 
 #[derive(Subcommand)]
@@ -758,6 +774,11 @@ enum CaCommands {
     /// Trust the certificates in a PEM bundle, in addition to the platform's.
     /// The bundle is checked first; one that cannot be used is refused
     Set {
+        /// Path to a PEM file of CA certificates
+        path: String,
+    },
+    /// Check a bundle without saving it: what it holds and whether it can be used
+    Check {
         /// Path to a PEM file of CA certificates
         path: String,
     },
@@ -1482,6 +1503,10 @@ enum ModelsCommands {
         /// Project root whose agent.toml [provider] override is applied
         #[arg(long, default_value = ".")]
         project: String,
+        /// Only models matching every word, case-insensitively (a long remote
+        /// list narrows the way the app's model search does)
+        #[arg(long)]
+        filter: Option<String>,
     },
     /// List locally downloaded models (in the llamacpp/models directory)
     ListLocal {
@@ -2135,6 +2160,13 @@ async fn handle_cli(cmd: CliCommands) {
         CliCommands::Archive { cmd } => handle_archive(cmd).await,
         CliCommands::Skills { cmd } => handle_skills(cmd).await,
         CliCommands::Worktree { cmd } => handle_worktree(cmd),
+        CliCommands::DataFolder { set, no_copy } => {
+            let result = match set {
+                Some(folder) => app_lib::core::cli::system_cmd::set_data_folder(&folder, !no_copy),
+                None => Ok(app_lib::core::cli::system_cmd::data_folder_info()),
+            };
+            print_or_exit(result);
+        }
         CliCommands::Models { cmd } => handle_models(cmd).await,
         CliCommands::Agent { cmd } => handle_agent(cmd).await,
         CliCommands::Mcp { cmd } => {
@@ -2263,7 +2295,19 @@ fn handle_bench(cmd: BenchCommands) {
 /// `flint cli net`: outbound network settings (AH-190).
 fn handle_net(cmd: NetCommands) {
     use app_lib::core::net::tls;
-    let NetCommands::Ca { cmd } = cmd;
+    let cmd = match cmd {
+        NetCommands::Ca { cmd } => cmd,
+        NetCommands::Endpoint { host, port } => {
+            match app_lib::core::cli::system_cmd::endpoint(&host, port) {
+                Ok(v) => println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+    };
     let result: Result<(), HarnessError> = match cmd {
         CaCommands::Status => {
             println!("{}", serde_json::to_string_pretty(&tls::status()).unwrap_or_default());
@@ -2297,6 +2341,13 @@ fn handle_net(cmd: NetCommands) {
                     .map_err(|e| HarnessError::new(tauri_plugin_agent_tools::harness_error::ErrorKind::Io, e)),
                 Err(e) => Err(HarnessError::from(&e)),
             }
+        }
+        CaCommands::Check { path } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&app_lib::core::cli::system_cmd::ca_check(&path)).unwrap_or_default()
+            );
+            Ok(())
         }
         CaCommands::Clear => app_lib::core::agent::global_config::set_ca_bundle(None)
             .map(|written| println!("No CA bundle is named in {} any more.", written.display()))
@@ -3564,7 +3615,7 @@ async fn handle_threads(cmd: ThreadsCommands) {
 
 async fn handle_models(cmd: ModelsCommands) {
     match cmd {
-        ModelsCommands::List { provider, project } => {
+        ModelsCommands::List { provider, project, filter } => {
             let configs = match load_provider_configs(
                 Some(std::path::Path::new(&project)),
                 &ProviderOverrides::default().with_env(),
@@ -3598,6 +3649,21 @@ async fn handle_models(cmd: ModelsCommands) {
                      flint config set --provider jan --base-url http://localhost:1337/v1 --model <model>"
                 );
             }
+            let output: Vec<_> = match filter.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
+                // Every word must appear somewhere in the entry, so a long
+                // remote list narrows the way the app's model search does.
+                Some(f) => {
+                    let terms: Vec<String> = f.split_whitespace().map(str::to_lowercase).collect();
+                    output
+                        .into_iter()
+                        .filter(|m| {
+                            let hay = m.to_string().to_lowercase();
+                            terms.iter().all(|t| hay.contains(t))
+                        })
+                        .collect()
+                }
+                None => output,
+            };
             println!("{}", serde_json::to_string_pretty(&output).unwrap());
         }
         ModelsCommands::ListLocal { json } => handle_models_list_local(json),
