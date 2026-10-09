@@ -22,7 +22,7 @@ export type { FilePickerEntry }
  * `isReferenceToken` applies the remaining rules (URL, IPv4) on top.
  */
 export const REFERENCE_PATTERN =
-  /(?<![A-Za-z0-9_])@((?:skill|agent|alias):[A-Za-z0-9][A-Za-z0-9_.-]*|[^\s,;:!?'"`)\]}>]+(?::\d+(?:-\d+)?)?)/g
+  /(^|[^A-Za-z0-9_])@((?:skill|agent|alias):[A-Za-z0-9][A-Za-z0-9_.-]*|[^\s,;:!?'"`)\]}>]+(?::\d+(?:-\d+)?)?)/g
 
 /** The kinds of `@` reference that name something other than a path. */
 export type TypedReferenceKind = 'skill' | 'agent' | 'alias'
@@ -105,7 +105,7 @@ export function parsePromptForReferences(text: string): string[] {
   const refs: string[] = []
   let match: RegExpExecArray | null
   while ((match = REFERENCE_PATTERN.exec(text)) !== null) {
-    const raw = match[1]
+    const raw = match[2]
     // Excerpt references belong to whoever produced them; see `lineRangeOf`.
     if (lineRangeOf(raw)) continue
     if (!isReferenceToken(raw)) continue
@@ -122,14 +122,14 @@ export function parsePromptForReferences(text: string): string[] {
  * tokens (ssh/email addresses, bare IPs) intact, and normalise whitespace.
  */
 export function stripPromptReferences(text: string): string {
-  const cleaned = text.replace(REFERENCE_PATTERN, (match, raw: string) => {
+  const cleaned = text.replace(REFERENCE_PATTERN, (match, pre: string, raw: string) => {
     // A skill or agent reference is an instruction, read from the text by
     // what acts on it, so it stays. An alias is replaced by what it names.
     const typed = typedReference(raw)
-    if (typed) return typed.kind === 'alias' ? '' : match
+    if (typed) return typed.kind === 'alias' ? pre : match
     // An excerpt reference stays in the text: the surface that emitted it
     // expands it downstream, and it is the only trace of what was selected.
-    return !lineRangeOf(raw) && isReferenceToken(raw) ? '' : match
+    return !lineRangeOf(raw) && isReferenceToken(raw) ? pre : match
   })
   return cleaned.replace(/\s+/g, ' ').trim()
 }

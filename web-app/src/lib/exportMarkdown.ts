@@ -111,9 +111,9 @@ export function exportFileName(
 
 // A Windows drive path, or a path under a well-known POSIX root. Anchored to a
 // boundary so a URL's path (`https://host/home/x`) is never touched.
-const WIN_ABS = /(?<![A-Za-z0-9])[A-Za-z]:[\\/](?:[^\s"'`<>|*?\\/]+[\\/])*[^\s"'`<>|*?\\/]*/g
+const WIN_ABS = /(^|[^A-Za-z0-9])([A-Za-z]:[\\/](?:[^\s"'`<>|*?\\/]+[\\/])*[^\s"'`<>|*?\\/]*)/g
 const POSIX_ABS =
-  /(?<![A-Za-z0-9_.:/\\-])\/(?:home|Users|root|var|tmp|opt|etc|mnt|private|srv|usr)\/(?:[^\s"'`<>|*?/]+\/)*[^\s"'`<>|*?/]*/g
+  /(^|[^A-Za-z0-9_.:/\\-])(\/(?:home|Users|root|var|tmp|opt|etc|mnt|private|srv|usr)\/(?:[^\s"'`<>|*?/]+\/)*[^\s"'`<>|*?/]*)/g
 
 /** Cut an absolute path down to its last segment: `C:\a\b\c.ts` becomes `c.ts`. */
 export function stripAbsolutePaths(text: string): string {
@@ -121,7 +121,8 @@ export function stripAbsolutePaths(text: string): string {
     const last = m.split(/[\\/]/).filter(Boolean).pop()
     return last && !/^[A-Za-z]:$/.test(last) ? last : '[path]'
   }
-  return text.replace(WIN_ABS, base).replace(POSIX_ABS, base)
+  const keep = (_m: string, pre: string, path: string) => pre + base(path)
+  return text.replace(WIN_ABS, keep).replace(POSIX_ABS, keep)
 }
 
 /** A fence long enough that nothing inside can close it. */

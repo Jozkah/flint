@@ -125,8 +125,8 @@ const ZWSP = '​'
 const fixEmphasisFlanking = (s: string): string =>
   s.includes('*') || s.includes('_')
     ? s
-        .replace(/(?<=[\p{L}\p{N}])(\*\*?|__?)(?=[^\s\p{L}\p{N}*_])/gu, `$1${ZWSP}`)
-        .replace(/(?<=[^\s\p{L}\p{N}*_])(\*\*?|__?)(?=[\p{L}\p{N}])/gu, `${ZWSP}$1`)
+        .replace(/([\p{L}\p{N}])(\*\*?|__?)(?=[^\s\p{L}\p{N}*_])/gu, `$1$2${ZWSP}`)
+        .replace(/([^\s\p{L}\p{N}*_])(\*\*?|__?)(?=[\p{L}\p{N}])/gu, `$1${ZWSP}$2`)
     : s
 
 // Placeholder-protection pipeline (adapted from llama.cpp's webui / LibreChat):
@@ -136,8 +136,27 @@ const fixEmphasisFlanking = (s: string): string =>
 // model output and are inert to every transform here.
 const CODE_BLOCK = /(```[\s\S]*?```|`[^`\n]+`)/g
 const BRACKET_MATH =
-  /(\$\$[\s\S]*?\$\$|(?<!\\)\\\[[\s\S]*?\\\]|(?<!\\)\\\(.*?\\\))/g
+  /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\(.*?\\\))/g
 const tok = (kind: 'C' | 'L', n: number) => `\uE000${kind}${n}\uE000`
+
+// Lifts bracket math out as tokens. A bracket opener preceded by another
+// backslash is escaped and left alone; checked by hand because regex
+// lookbehind is a parse error on WebKit older than 16.4.
+const maskBracketMath = (input: string, store: string[]): string => {
+  const re = new RegExp(BRACKET_MATH.source, 'g')
+  let out = ''
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(input)) !== null) {
+    if (m[0][0] === '\\' && input[m.index - 1] === '\\') {
+      re.lastIndex = m.index + 1
+      continue
+    }
+    out += input.slice(last, m.index) + tok('L', store.push(m[0]) - 1)
+    last = m.index + m[0].length
+  }
+  return out + input.slice(last)
+}
 
 // Mask genuine inline $…$ math; leave currency/identifiers ($5, a$b) in place.
 // Per-line so a stray $ can't swallow the rest.
@@ -197,9 +216,10 @@ const normalizeLatex = (input: string): string => {
   const code: string[] = []
   const math: string[] = []
 
-  let s = input
-    .replace(CODE_BLOCK, (m) => tok('C', code.push(m) - 1))
-    .replace(BRACKET_MATH, (m) => tok('L', math.push(m) - 1))
+  let s = maskBracketMath(
+    input.replace(CODE_BLOCK, (m) => tok('C', code.push(m) - 1)),
+    math
+  )
 
   s = maskInlineMath(s, math)
   s = s.replace(/\$(?=\d)/g, '\\$') // leftover currency renders literally

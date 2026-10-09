@@ -630,7 +630,7 @@ const ChatInput = memo(function ChatInput({
       // @ (the @ must not be glued to a preceding word char, so `user@host`
       // never opens the picker)
       const beforeCursor = value.slice(0, cursorIdx)
-      const atMatch = beforeCursor.match(/(?<![A-Za-z0-9_])@([\w./:-]*)$/)
+      const atMatch = beforeCursor.match(/(?:^|[^A-Za-z0-9_])@([\w./:-]*)$/)
 
       if (atMatch) {
         const query = atMatch[1] ?? ''
@@ -697,8 +697,8 @@ const ChatInput = memo(function ChatInput({
 
       // Replace the `@query` with the entry's token
       const textBefore = beforeCursor.replace(
-        /(?<![A-Za-z0-9_])@[\w./:-]*$/,
-        ''
+        /(^|[^A-Za-z0-9_])@[\w./:-]*$/,
+        '$1'
       )
       // The identifier, not the label: a folder-relative path, or a typed
       // reference. It means the same thing however it is displayed, and a
@@ -3161,7 +3161,7 @@ const ChatInput = memo(function ChatInput({
                 ref={richComposerRef}
                 value={prompt}
                 onChange={(markdown) => {
-                  filePickerCursorPos.current = /(?<![A-Za-z0-9_])@[\w./:-]*$/.test(markdown)
+                  filePickerCursorPos.current = /(?:^|[^A-Za-z0-9_])@[\w./:-]*$/.test(markdown)
                     ? markdown.length
                     : null
                   handlePromptChange(markdown)
