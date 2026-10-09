@@ -167,6 +167,8 @@ const BUILTIN_CAPS: Record<string, ProviderCaps> = {
   sambanova: NVIDIA,
   zai: NVIDIA,
   qwen: NVIDIA,
+  poe: NVIDIA,
+  'ollama-cloud': NVIDIA,
   minimax: MINIMAX,
   llamacpp: LLAMACPP,
   mlx: MLX,
