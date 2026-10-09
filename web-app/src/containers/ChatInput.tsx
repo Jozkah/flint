@@ -1,3 +1,4 @@
+import { unescapeComposerMarkdown } from '@/lib/composerText'
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
 import { toAssetUrl } from '@/lib/assetPath'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
@@ -1040,13 +1041,16 @@ const ChatInput = memo(function ChatInput({
   }
 
   const handleSendMessage = async (
-    typed: string,
+    typedRaw: string,
     {
       steer = false,
       allowNoWeb = false,
       capabilityAsked = false,
     }: { steer?: boolean; allowNoWeb?: boolean; capabilityAsked?: boolean } = {}
   ) => {
+    // The composer's Markdown escapes `*`, `_` and friends; the message is
+    // sent and shown as typed.
+    const typed = unescapeComposerMarkdown(typedRaw)
     setWebOffPrompt(null)
     if (!allowNoWeb && !webSearchEnabled && needsWeb(typed)) {
       setWebOffPrompt(typed)
