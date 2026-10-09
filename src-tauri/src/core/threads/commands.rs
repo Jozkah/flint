@@ -57,10 +57,13 @@ pub async fn list_threads<R: Runtime>(
                         continue;
                     }
                 };
-                match serde_json::from_str(&data) {
+                match parse_thread_file(&data) {
                     Ok(thread) => threads.push(thread),
                     Err(e) => {
-                        println!("Failed to parse thread file: {e}");
+                        log::warn!(
+                            "Skipping thread file {}: {e}",
+                            thread_metadata_path.display()
+                        );
                         continue; // skip invalid thread files
                     }
                 }
@@ -69,6 +72,31 @@ pub async fn list_threads<R: Runtime>(
     }
 
     Ok(threads)
+}
+
+/// Parses a thread.json, tolerating a UTF-8 BOM and rejecting anything that is
+/// not a JSON object so one odd file cannot break the list.
+fn parse_thread_file(data: &str) -> Result<serde_json::Value, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(data.trim_start_matches('\u{feff}')).map_err(|e| e.to_string())?;
+    if value.is_object() {
+        Ok(value)
+    } else {
+        Err("thread.json is not a JSON object".to_string())
+    }
+}
+
+#[cfg(test)]
+mod parse_thread_file_tests {
+    use super::parse_thread_file;
+
+    #[test]
+    fn accepts_bom_and_rejects_non_objects() {
+        assert!(parse_thread_file("\u{feff}{\"id\":\"a\"}").is_ok());
+        assert!(parse_thread_file("null").is_err());
+        assert!(parse_thread_file("[1]").is_err());
+        assert!(parse_thread_file("{bad").is_err());
+    }
 }
 
 /// Creates a new thread, assigns it a unique ID, and persists its metadata.

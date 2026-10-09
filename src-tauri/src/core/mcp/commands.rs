@@ -209,6 +209,22 @@ fn is_transport_error(error: &str) -> bool {
         || lower.contains("connection reset")
         || lower.contains("channel closed")
         || lower.contains("transport error")
+        // rmcp's own wording for a dead send path and a timed-out request.
+        || lower.contains("transport send error")
+        || lower.contains("request timeout")
+}
+
+#[cfg(test)]
+mod transport_error_tests {
+    use super::is_transport_error;
+
+    #[test]
+    fn recognises_rmcp_error_strings() {
+        assert!(is_transport_error("Transport send error: connection closed"));
+        assert!(is_transport_error("request timeout after 30s"));
+        assert!(is_transport_error("Broken pipe"));
+        assert!(!is_transport_error("Method not found"));
+    }
 }
 
 async fn cleanup_cancellation_token(
