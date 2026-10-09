@@ -62,6 +62,27 @@ describe('resolveCompactionWindow', () => {
     expect(r).toEqual({ tokens: 65536, source: 'server' })
   })
 
+  it('uses the bundled family window only after everything else', async () => {
+    expect(
+      await resolveCompactionWindow({
+        known: 0,
+        bundled: 32768,
+        remembered: 262144,
+      })
+    ).toEqual({ tokens: 262144, source: 'remembered' })
+    expect(
+      await resolveCompactionWindow({
+        known: 0,
+        bundled: 32768,
+        fetchServer: async () => 262144,
+      })
+    ).toEqual({ tokens: 262144, source: 'server' })
+    expect(await resolveCompactionWindow({ known: 0, bundled: 32768 })).toEqual({
+      tokens: 32768,
+      source: 'provider',
+    })
+  })
+
   it('reports none when nothing knows, including a server that fails', async () => {
     expect(await resolveCompactionWindow({ known: 0 })).toEqual({
       tokens: 0,

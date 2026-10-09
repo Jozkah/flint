@@ -17,7 +17,7 @@ import {
   withPromptContext,
 } from '@/lib/ccContextHooks'
 import { fetchServerWindow } from '@/lib/serverWindow'
-import { knownContextWindow } from '@/lib/knownContextWindow'
+import { knownContextWindowDetail } from '@/lib/knownContextWindow'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import {
@@ -2914,13 +2914,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // A model with no window of its own (a custom OpenAI-compatible one) still
     // has a best available one: what the provider describes, what its model
     // list named, the last one this chat showed, or what the server says now.
+    const providerWindow = knownContextWindowDetail(selectedModel, provider)
     const resolvedWindow = await resolveCompactionWindow({
       known: effectiveContextWindow(
         configuredContextTokens,
         liveContextTokens,
         contextShiftEnabled
       ),
-      provider: knownContextWindow(selectedModel, provider),
+      provider: providerWindow.bundled ? null : providerWindow.tokens,
+      bundled: providerWindow.bundled ? providerWindow.tokens : null,
       listed: listedWindow(provider?.base_url, modelId),
       remembered: rememberedWindowFor(
         useContextBreakdown.getState(),

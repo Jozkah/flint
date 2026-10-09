@@ -40,6 +40,11 @@ export type CompactionWindowInput = {
   remembered?: number | null
   /** Asked of the server now; only called when nothing earlier answered. */
   fetchServer?: () => Promise<number | null>
+  /**
+   * A typical window for the model's family. Last of all: it describes the
+   * family, not this server, and a Qwen3 served at 262144 is not a 32768 one.
+   */
+  bundled?: number | null
 }
 
 export async function resolveCompactionWindow(
@@ -64,6 +69,8 @@ export async function resolveCompactionWindow(
     }
     if (fetched != null) return { tokens: fetched, source: 'server' }
   }
+  const bundled = usableContextValue(input.bundled)
+  if (bundled != null) return { tokens: bundled, source: 'provider' }
   return { tokens: 0, source: 'none' }
 }
 
