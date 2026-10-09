@@ -114,6 +114,8 @@ export { buildLlamacppReasoningParams }
 import {
   buildReasoningProviderOptions,
   buildReasoningBodyParams,
+  buildVerbosityProviderOptions,
+  mergeProviderOptions,
 } from '@/lib/reasoningProviderOptions'
 import { resolveModel } from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
@@ -214,7 +216,7 @@ import {
   parseVideoDataUrl,
 } from '@/lib/video-sentinel'
 import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
-import { paramsSettings } from '@/lib/predefinedParams'
+import { OPENROUTER_PARAM_KEYS, paramsSettings } from '@/lib/predefinedParams'
 import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { recordGeneration } from '@/stores/engine-activity-store'
@@ -2776,7 +2778,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         ...reasoningParams,
       }
       if (isPredefinedRemoteProvider(effectiveProviderName)) {
+        // OpenRouter request shaping is consumed client-side by the model
+        // factory, so it survives the strip of wire-level sampler keys.
+        const kept = Object.fromEntries(
+          OPENROUTER_PARAM_KEYS.filter((k) => k in mergedParams).map((k) => [
+            k,
+            mergedParams[k],
+          ])
+        )
         for (const key of Object.keys(paramsSettings)) delete mergedParams[key]
+        Object.assign(mergedParams, kept)
       }
       // A remote OpenAI-compatible reasoning model takes its effort as a
       // `reasoning_effort` body field. Unlike the first-party providers (which
@@ -3198,9 +3209,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       toolChoice: shouldEnableTools ? this.toolChoiceForStep() : undefined,
       system: requestSystem,
       ...(maxOutputTokens !== undefined && maxOutputTokens > 0 ? { maxOutputTokens } : {}),
-      ...(reasoningProviderOptions
-        ? { providerOptions: reasoningProviderOptions }
-        : {}),
+      ...(() => {
+        const providerOptions = mergeProviderOptions(
+          reasoningProviderOptions,
+          buildVerbosityProviderOptions(providerId, modelId, inferenceParams)
+        )
+        return providerOptions ? { providerOptions } : {}
+      })(),
       experimental_repairToolCall: async ({ toolCall, error }) => {
         // Windows paths (`C:\Users\...`) contain invalid JSON escapes that make
         // the SDK's argument parse fail. Re-escape lone backslashes and retry
