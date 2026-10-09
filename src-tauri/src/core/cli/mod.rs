@@ -32,6 +32,7 @@ pub mod providers;
 pub mod run_report;
 pub mod archive_cmd;
 pub mod schedule;
+pub mod thread_export;
 pub mod schedule_manage;
 pub mod secrets;
 mod secret_input;

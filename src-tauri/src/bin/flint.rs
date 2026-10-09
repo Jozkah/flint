@@ -1337,6 +1337,23 @@ enum ThreadsCommands {
     Favorite { id: String },
     /// Remove the favourite mark
     Unfavorite { id: String },
+    /// Write a thread as Markdown, Obsidian Markdown or JSON
+    Export {
+        /// Thread ID
+        id: String,
+        /// markdown, obsidian or json
+        #[arg(long, default_value = "markdown")]
+        format: String,
+        /// Include tool input and output, reasoning and full paths
+        #[arg(long)]
+        verbose: bool,
+        /// With `--format json`, every stored version of an edited message
+        #[arg(long)]
+        all_versions: bool,
+        /// A file, or a folder to get a file named after the thread
+        #[arg(long)]
+        out: Option<String>,
+    },
     /// Delete one message from a thread
     DeleteMessage { thread_id: String, message_id: String },
     /// Print a thread's messages as JSON (the conversation as shown)
@@ -3312,6 +3329,26 @@ async fn handle_threads(cmd: ThreadsCommands) {
         }
         ThreadsCommands::Unfavorite { id } => {
             print_or_exit(app_lib::core::cli::archive_cmd::favorite_thread(&id, false))
+        }
+        ThreadsCommands::Export { id, format, verbose, all_versions, out } => {
+            let result = app_lib::core::cli::thread_export::Format::parse(&format).and_then(|f| {
+                app_lib::core::cli::thread_export::export_thread(
+                    &app_lib::core::app::commands::resolve_jan_data_folder(),
+                    &id,
+                    f,
+                    verbose,
+                    all_versions,
+                    out.as_deref().map(std::path::Path::new),
+                )
+            });
+            match result {
+                Ok(Some(path)) => eprintln!("Wrote {}", path.display()),
+                Ok(None) => {}
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
         }
         ThreadsCommands::DeleteMessage { thread_id, message_id } => {
             match app_lib::core::cli::archive_cmd::delete_message(&thread_id, &message_id).await {
