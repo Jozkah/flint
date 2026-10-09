@@ -11079,6 +11079,12 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
         alias_of: None,
     },
     SlashCommand {
+        name: "/mode",
+        hint: "[review|ask|auto|bypass]",
+        description: "Show or set how freely the agent acts",
+        alias_of: None,
+    },
+    SlashCommand {
         name: "/init",
         hint: "",
         description: "Study the project, then write JAN.md, skills, and memory",
@@ -11454,6 +11460,7 @@ async fn run_command(
         "goal" => goal_command(app, arg),
         "init" => init_command(app),
         "plan" => plan_command(app, arg),
+        "mode" => mode_command(app, arg),
         "effort" | "think" | "reasoning" => effort_command(app, arg),
         "todo" => todo_command(app, arg).await,
         "cancel" => cancel_command(app, arg),
@@ -12939,6 +12946,52 @@ fn plan_command(app: &mut App, arg: &str) {
     if !arg.is_empty() {
         app.submit_user(arg.to_string());
     }
+}
+
+/// `/mode` -- how freely the agent acts, named like the desktop's modes.
+/// Without an argument, reports the current one. Applies from the next turn.
+fn mode_command(app: &mut App, arg: &str) {
+    use crate::core::agent::plan::RunMode;
+    use crate::core::cli::PermissionMode;
+    let current = |app: &App| {
+        if app.run_mode == RunMode::Plan {
+            PermissionMode::Review
+        } else if app.args.as_ref().is_some_and(|a| a.auto_approve) {
+            PermissionMode::Auto
+        } else {
+            PermissionMode::Ask
+        }
+    };
+    let arg = arg.trim();
+    if arg.is_empty() {
+        app.note(&format!(
+            "mode: {} (use /mode review|ask|auto|bypass)",
+            current(app).as_str()
+        ));
+        return;
+    }
+    if app.status != Status::Idle {
+        app.note("the mode is only settable while idle");
+        return;
+    }
+    let mode = match PermissionMode::parse(arg) {
+        Ok(m) => m,
+        Err(e) => {
+            app.note(&e);
+            return;
+        }
+    };
+    if let Some(args) = app.args.as_mut() {
+        std::sync::Arc::make_mut(args).auto_approve = mode.auto_approve();
+    }
+    app.run_mode = if mode.plan() { RunMode::Plan } else { RunMode::Normal };
+    app.persist();
+    app.note(&match mode {
+        PermissionMode::Review => "◈ REVIEW · read only — investigate, then propose a plan for review".to_string(),
+        PermissionMode::Ask => "mode: ask — writes, shell commands and MCP calls need approval".to_string(),
+        PermissionMode::Auto => "mode: auto — approved actions run unprompted (inside the sandbox when it is on)".to_string(),
+        PermissionMode::Bypass => "mode: bypass — as auto; host, computer and clipboard tools still ask".to_string(),
+    });
 }
 
 const EFFORT_LEVELS: &[&str] = &["low", "medium", "high"];
@@ -31605,6 +31658,24 @@ mod tests {
         assert_eq!(app.run_mode, RunMode::Plan);
         run_command(&mut app, "plan exit", &no_mcp()).await;
         assert_eq!(app.run_mode, RunMode::Normal);
+    }
+
+    #[tokio::test]
+    async fn mode_command_switches_between_review_ask_and_auto() {
+        use crate::core::agent::plan::RunMode;
+        let mut app = test_app();
+        run_command(&mut app, "mode", &no_mcp()).await;
+        run_command(&mut app, "mode review", &no_mcp()).await;
+        assert_eq!(app.run_mode, RunMode::Plan);
+        run_command(&mut app, "mode auto", &no_mcp()).await;
+        assert_eq!(app.run_mode, RunMode::Normal);
+        run_command(&mut app, "mode sideways", &no_mcp()).await;
+        let text: String = app.transcript.iter().map(row_text).collect();
+        assert!(text.contains("unknown mode 'sideways'"), "note: {text}");
+        assert!(text.contains("mode: auto"), "note: {text}");
+        app.status = Status::Running;
+        run_command(&mut app, "mode review", &no_mcp()).await;
+        assert_eq!(app.run_mode, RunMode::Normal, "must not switch mid-turn");
     }
 
     #[tokio::test]

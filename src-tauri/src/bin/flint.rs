@@ -71,6 +71,10 @@ struct Cli {
     /// the default agent TUI. Ignored when a subcommand is given.
     #[arg(long)]
     safe: bool,
+    /// How freely the session acts: review (read-only), ask, auto or bypass.
+    /// Replaces --safe and --plan.
+    #[arg(long, value_name = "MODE")]
+    mode: Option<String>,
     #[command(flatten)]
     resume: ResumeArgs,
     /// Start the default agent TUI in read-only plan mode (same as /plan).
@@ -795,6 +799,9 @@ enum AgentCommands {
         /// Prompt for approval before writes, shell commands, and MCP tool calls
         #[arg(long)]
         safe: bool,
+        /// review (read-only), ask, auto or bypass. Replaces --safe.
+        #[arg(long, value_name = "MODE")]
+        mode: Option<String>,
         #[command(flatten)]
         providers: ProviderArgs,
         #[command(flatten)]
@@ -864,6 +871,9 @@ enum AgentCommands {
         /// Prompt for approval before writes, shell commands, and MCP tool calls
         #[arg(long)]
         safe: bool,
+        /// review (read-only), ask, auto or bypass. Replaces --safe.
+        #[arg(long, value_name = "MODE")]
+        mode: Option<String>,
         #[command(flatten)]
         providers: ProviderArgs,
         #[command(flatten)]
@@ -1625,6 +1635,14 @@ async fn run() {
         // TUI runs the same check itself and notes it in the transcript.
         // The usage ping is likewise deferred to the TUI's own background task.
         let overrides = cli.providers.into_overrides();
+        let mode_switches =
+            match app_lib::core::cli::PermissionMode::resolve(cli.mode.as_deref(), cli.safe, cli.plan) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(2);
+                }
+            };
         if let Err(e) = cli_agent_ui(
             &cli.project,
             cli.task,
@@ -1632,8 +1650,8 @@ async fn run() {
             cli.images,
             overrides,
             SessionFlags {
-                auto_approve: !cli.safe,
-                plan: cli.plan,
+                auto_approve: mode_switches.0,
+                plan: mode_switches.1,
                 sandbox: cli.sandbox.into_flag(),
                 ..Default::default()
             },
@@ -2280,6 +2298,7 @@ async fn handle_agent(cmd: AgentCommands) {
             task,
             model,
             safe,
+            mode,
             providers,
             sandbox,
             budget,
@@ -2301,13 +2320,22 @@ async fn handle_agent(cmd: AgentCommands) {
                     std::process::exit(e.exit_code());
                 }
             }
+            let mode_switches =
+                match app_lib::core::cli::PermissionMode::resolve(mode.as_deref(), safe, false) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(2);
+                    }
+                };
             cli_agent_run(
                 &project,
                 &task,
                 model,
                 providers.into_overrides(),
                 SessionFlags {
-                    auto_approve: !safe,
+                    auto_approve: mode_switches.0,
+                    plan: mode_switches.1,
                     sandbox: sandbox.into_flag(),
                     worktree: worktree.into_flag(),
                     profile,
@@ -2356,17 +2384,27 @@ async fn handle_agent(cmd: AgentCommands) {
             task,
             model,
             safe,
+            mode,
             providers,
             sandbox,
             profile,
         } => {
+            let mode_switches =
+                match app_lib::core::cli::PermissionMode::resolve(mode.as_deref(), safe, false) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(2);
+                    }
+                };
             cli_agent_step(
                 &project,
                 &task,
                 model,
                 providers.into_overrides(),
                 SessionFlags {
-                    auto_approve: !safe,
+                    auto_approve: mode_switches.0,
+                    plan: mode_switches.1,
                     sandbox: sandbox.into_flag(),
                     profile,
                     ..Default::default()
