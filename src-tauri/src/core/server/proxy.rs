@@ -702,7 +702,17 @@ pub(crate) async fn engine_upstream(
     llama_state: &LlamacppState,
     destination_path: &str,
 ) -> Option<(String, String)> {
-    let guard = llama_state.engine.lock().await;
+    let mut guard = llama_state.engine.lock().await;
+    // A worker that died (abort, OOM, device loss) leaves its port closed. Reap
+    // it here so API-only clients get the "no model loaded" answer instead of an
+    // opaque connection-refused 503 until the UI happens to restart it (#259).
+    if let Some(h) = guard.as_mut() {
+        if let Some(status) = h.exited() {
+            log::warn!("flint-llama-worker exited unexpectedly: {status}");
+            *guard = None;
+            return None;
+        }
+    }
     guard.as_ref().map(|h| {
         (
             format!("http://127.0.0.1:{}/v1{}", h.port, destination_path),
@@ -781,6 +791,7 @@ fn verbose_request_line(method: &hyper::Method, uri: &hyper::Uri) -> String {
 async fn proxy_request(
     req: Request<Incoming>,
     client: Client,
+    local_client: Client,
     config: ProxyConfig,
     llama_state: Arc<LlamacppState>,
     mlx_sessions: Arc<Mutex<HashMap<i32, MlxBackendSession>>>,
@@ -1403,14 +1414,14 @@ async fn proxy_request(
                 if !trimmed.is_empty() && trimmed != "*" {
                     model_id = Some(trimmed.to_string());
                 } else {
-                    model_id = router_first_model(&llama_state, &client).await;
+                    model_id = router_first_model(&llama_state, &local_client).await;
                     if model_id.is_none() {
                         let mlx_guard = mlx_sessions.lock().await;
                         model_id = mlx_guard.values().next().map(|s| s.info.model_id.clone());
                     }
                 }
             } else {
-                model_id = router_first_model(&llama_state, &client).await;
+                model_id = router_first_model(&llama_state, &local_client).await;
                 if model_id.is_none() {
                     let mlx_guard = mlx_sessions.lock().await;
                     model_id = mlx_guard.values().next().map(|s| s.info.model_id.clone());
@@ -1515,7 +1526,7 @@ async fn proxy_request(
                 let request_value = serde_json::Value::Object(completion_map);
 
                 let completion = match call_openai_chat_completions(
-                    &client,
+                    if is_local_url(&upstream_url) { &local_client } else { &client },
                     &upstream_url,
                     &session_api_keys,
                     &request_value,
@@ -1954,7 +1965,7 @@ async fn proxy_request(
         (hyper::Method::GET, "/models") => {
             log::debug!("Handling GET /v1/models request");
 
-            let local_models: Vec<_> = engine_list_models(&llama_state, &client)
+            let local_models: Vec<_> = engine_list_models(&llama_state, &local_client)
                 .await
                 .into_iter()
                 .map(|id| {
@@ -2252,7 +2263,8 @@ async fn proxy_request(
     let destination_path = path.clone();
 
     for (key_idx, key_opt) in key_attempts.iter().enumerate() {
-        let mut outbound_req = client.request(method.clone(), upstream_url.clone());
+        let outbound_client = if is_local_url(&upstream_url) { &local_client } else { &client };
+        let mut outbound_req = outbound_client.request(method.clone(), upstream_url.clone());
 
         // Body is re-buffered/rewritten, so a stale inbound Content-Length would
         // mismatch the bytes we send and stall the upstream; reqwest re-derives it.
@@ -2336,8 +2348,12 @@ async fn proxy_request(
                     log::info!("Fallback to chat completions: {chat_url}");
 
                     // Create a fresh client for the fallback to avoid connection pool issues
-                    let fallback_client =
-                        upstream_client(None).expect("Failed to create fallback client");
+                    let fallback_client = if is_local_url(&chat_url) {
+                        local_upstream_client(None)
+                    } else {
+                        upstream_client(None)
+                    }
+                    .expect("Failed to create fallback client");
 
                     let mut fallback_req = fallback_client.post(&chat_url);
 
@@ -2757,6 +2773,7 @@ async fn start_server_internal(
     };
 
     let client = upstream_client(Some(proxy_timeout))?;
+    let local_client = local_upstream_client(Some(proxy_timeout))?;
 
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
@@ -2792,6 +2809,7 @@ async fn start_server_internal(
             let io = TokioIo::new(stream);
 
             let client = client.clone();
+            let local_client = local_client.clone();
             let config = config.clone();
             let llama_state = llama_state.clone();
             let mlx_sessions = mlx_sessions.clone();
@@ -2806,6 +2824,7 @@ async fn start_server_internal(
                 let response = proxy_request(
                     req,
                     client.clone(),
+                    local_client.clone(),
                     config.clone(),
                     llama_state.clone(),
                     mlx_sessions.clone(),
@@ -3284,8 +3303,22 @@ async fn forward_non_streaming(
 /// but keeps `x-api-key`, `x-goog-api-key` and every forwarded header, so a
 /// provider answering with a redirect could send the user's key anywhere.
 fn upstream_client(timeout_secs: Option<u64>) -> reqwest::Result<Client> {
+    build_upstream_client(timeout_secs, false)
+}
+
+/// Same as `upstream_client` but never routed through HTTP_PROXY / the system
+/// proxy. The loopback engine worker must be dialled directly: a corporate
+/// proxy cannot reach 127.0.0.1 and answers 403 instead (#260).
+fn local_upstream_client(timeout_secs: Option<u64>) -> reqwest::Result<Client> {
+    build_upstream_client(timeout_secs, true)
+}
+
+fn build_upstream_client(timeout_secs: Option<u64>, bypass_proxy: bool) -> reqwest::Result<Client> {
     let mut builder = Client::builder()
         .redirect(crate::core::net::transport::same_origin_redirects());
+    if bypass_proxy {
+        builder = builder.no_proxy();
+    }
     if let Some(secs) = timeout_secs {
         // The limit is on silence, not on the whole request: a long prefill and
         // a long generation from a big local model are one request that keeps
