@@ -1342,6 +1342,14 @@ async fn run() {
         ),
     );
 
+    // The off-limits regions and app allowlist the user saved in the desktop
+    // app apply to the `computer` tool here too.
+    tauri_plugin_agent_tools::tools::computer::set_active_exclusions(
+        tauri_plugin_agent_tools::tools::computer::load_exclusions(
+            &app_lib::core::app::commands::resolve_jan_data_folder(),
+        ),
+    );
+
     // Pre-scan raw args for --verbose / -v before full parse so we can set
     // the log level before any logging happens. stderr keeps its `warn`
     // default (`info` under -v); every info+ record also goes to a rotating

@@ -970,6 +970,37 @@ fn budgeted(delay: Duration, spent: Duration) -> Option<Duration> {
     Some(delay.min(remaining))
 }
 
+/// How long a model stream may go without an event before the step is given up
+/// on. Matches the desktop's `flint.operationTimeoutMs` default; the
+/// `FLINT_OPERATION_TIMEOUT_MS` variable overrides it and `0` turns it off.
+const DEFAULT_STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
+fn stream_idle_timeout() -> Option<Duration> {
+    idle_timeout_from(
+        crate::core::compat_env::var("OPERATION_TIMEOUT_MS")
+            .ok()
+            .as_deref(),
+    )
+}
+
+fn idle_timeout_from(raw: Option<&str>) -> Option<Duration> {
+    match raw.map(str::trim).filter(|v| !v.is_empty()) {
+        None => Some(DEFAULT_STREAM_IDLE_TIMEOUT),
+        Some(v) => match v.parse::<u64>() {
+            Ok(0) => None,
+            Ok(ms) => Some(Duration::from_millis(ms)),
+            Err(_) => Some(DEFAULT_STREAM_IDLE_TIMEOUT),
+        },
+    }
+}
+
+fn stream_stalled(limit: Duration) -> genai::Error {
+    genai::Error::Internal(format!(
+        "the model stopped responding: no data for {}s (set FLINT_OPERATION_TIMEOUT_MS to change the limit, 0 to disable)",
+        limit.as_secs()
+    ))
+}
+
 /// One attempt: drive the stream to completion, emitting events as they arrive.
 /// Sets `progressed` as soon as anything has been handed to the consumer, which
 /// makes the attempt non-retryable.
@@ -993,7 +1024,17 @@ async fn run_once(
     let mut finish: Option<&'static str> = None;
     let mut usage: Option<genai::chat::Usage> = None;
 
-    while let Some(event) = stream.next().await {
+    let idle_limit = stream_idle_timeout();
+    loop {
+        // Idle, not total: every event restarts the clock, so a slow local model
+        // that keeps streaming is never cut off and only a stalled one is.
+        let next = match idle_limit {
+            Some(limit) => tokio::time::timeout(limit, stream.next())
+                .await
+                .map_err(|_| stream_stalled(limit))?,
+            None => stream.next().await,
+        };
+        let Some(event) = next else { break };
         match event? {
             ChatStreamEvent::Start | ChatStreamEvent::Heartbeat => {}
             ChatStreamEvent::Chunk(chunk) => {
@@ -1098,6 +1139,15 @@ mod tests {
     use super::*;
     use genai::chat::{Binary, BinarySource};
     use serde_json::json;
+
+    #[test]
+    fn idle_timeout_defaults_parses_and_zero_disables() {
+        assert_eq!(idle_timeout_from(None), Some(DEFAULT_STREAM_IDLE_TIMEOUT));
+        assert_eq!(idle_timeout_from(Some("  ")), Some(DEFAULT_STREAM_IDLE_TIMEOUT));
+        assert_eq!(idle_timeout_from(Some("abc")), Some(DEFAULT_STREAM_IDLE_TIMEOUT));
+        assert_eq!(idle_timeout_from(Some("1500")), Some(Duration::from_millis(1500)));
+        assert_eq!(idle_timeout_from(Some("0")), None);
+    }
 
     /// The trailing slash is load-bearing: `Url::join` would otherwise replace
     /// the last segment and drop the API version from the path.
