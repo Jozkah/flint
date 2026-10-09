@@ -1465,6 +1465,11 @@
   "voicePill": {
     "cancel": "Cancel"
   },
+  "coworkRunSettings": {
+    "label": "Run settings",
+    "title": "How this run works",
+    "effort": "Effort: {{level}}"
+  },
   "coworkMode": {
     "label": "What Flint may do",
     "review": {
