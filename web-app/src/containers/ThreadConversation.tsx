@@ -51,6 +51,7 @@ import { SESSION_STORAGE_PREFIX, TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useChat } from '@/hooks/use-chat'
 import { notifyAnswerFinished } from '@/lib/completionSound'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { describeChatFailure } from '@/lib/endpointDiagnostics'
 import { engineSlotsIdle } from '@janhq/tauri-plugin-llamacpp-api'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { deriveToolOutputCap } from '@/lib/context-manager'
@@ -2657,7 +2658,9 @@ export function ThreadConversation({
     }
     if (!targetId) return
     const errMessage =
-      error instanceof Error ? error.message : String(error || 'Error')
+      error instanceof Error
+        ? describeChatFailure(error, selectedProvider)
+        : String(error || 'Error')
     // Context overflow is owned by the global "Increase Context Size" banner;
     // a per-message Regenerate would just re-overflow the same prompt.
     if (isContextOverflowMessage(errMessage)) {
@@ -2680,7 +2683,7 @@ export function ThreadConversation({
         })
       }
     }
-  }, [status, error, threadId, chatMessages, updateMessage])
+  }, [status, error, threadId, chatMessages, updateMessage, selectedProvider])
 
   // Persist whenever the user message lands in useMessages — covers the race
   // where the stamping effect ran before addMessage's commit was observable.

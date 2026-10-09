@@ -4,6 +4,7 @@ import {
   isLocalEndpoint,
   describeEndpointFailure,
   parseModelList,
+  describeChatFailure,
 } from '@/lib/endpointDiagnostics'
 
 describe('endpointScope', () => {
@@ -192,5 +193,27 @@ describe('when nothing answered at all', () => {
     const message = describeEndpointFailure({ ...failure, cause: undefined })
     expect(message).toContain('could not reach GET http://llm-host:8555/v1/models')
     expect(message).not.toContain('—  .')
+  })
+})
+
+describe('describeChatFailure', () => {
+  it('names the endpoint, status and responder for a chat 403', () => {
+    const err = Object.assign(new Error('Forbidden'), {
+      statusCode: 403,
+      url: 'https://api.example.com/v1/chat/completions',
+      responseHeaders: { Server: 'cloudflare' },
+    })
+    const message = describeChatFailure(err, 'Poe')
+    expect(message).toContain('Poe: POST https://api.example.com/v1/chat/completions returned 403')
+    expect(message).toContain('answered by cloudflare')
+  })
+
+  it('leaves other errors unchanged', () => {
+    expect(describeChatFailure(new Error('boom'), 'X')).toBe('boom')
+    const err = Object.assign(new Error('Bad request'), {
+      statusCode: 400,
+      url: 'https://a.test/v1/chat/completions',
+    })
+    expect(describeChatFailure(err, 'X')).toBe('Bad request')
   })
 })
