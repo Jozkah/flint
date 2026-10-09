@@ -497,6 +497,12 @@ enum CliCommands {
         #[arg(long)]
         no_copy: bool,
     },
+    /// Bring Claude Code skills and plugins in from ~/.claude
+    #[command(display_order = 22)]
+    ImportClaude {
+        #[command(subcommand)]
+        cmd: ImportClaudeCommands,
+    },
     /// What Flint remembers: list, read, pin, forget and export by scope
     #[command(display_order = 21)]
     Memory {
@@ -1351,6 +1357,33 @@ enum JobCommands {
         /// Arguments for this program, as a JSON array (never a shell line)
         #[arg(long)]
         argv_json: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ImportClaudeCommands {
+    /// List the Claude Code skills and plugins found
+    Scan {
+        /// Also look in `.claude` folders one level under this folder
+        #[arg(long)]
+        root: Option<String>,
+    },
+    /// Import them (a live link: later edits at the source come across)
+    Run {
+        #[arg(long)]
+        root: Option<String>,
+        /// An item to import by name (repeatable)
+        #[arg(long = "name")]
+        names: Vec<String>,
+        /// Import everything found
+        #[arg(long)]
+        all: bool,
+        /// Replace items that already exist in Flint
+        #[arg(long)]
+        overwrite: bool,
+        /// Keep running a plugin's hooks from its Claude Code source
+        #[arg(long)]
+        link_hooks: bool,
     },
 }
 
@@ -2353,6 +2386,7 @@ async fn handle_cli(cmd: CliCommands) {
         CliCommands::Skills { cmd } => handle_skills(cmd).await,
         CliCommands::Worktree { cmd } => handle_worktree(cmd),
         CliCommands::Memory { cmd } => handle_memory(cmd),
+        CliCommands::ImportClaude { cmd } => handle_import_claude(cmd).await,
         CliCommands::DataFolder { set, no_copy } => {
             let result = match set {
                 Some(folder) => app_lib::core::cli::system_cmd::set_data_folder(&folder, !no_copy),
@@ -3714,6 +3748,16 @@ fn handle_worktree(cmd: WorktreeCommands) {
             w::merge(&project, &id, into.as_deref(), message.as_deref())
         }
         WorktreeCommands::Discard { id, project, force } => w::discard(&project, &id, force),
+    });
+}
+
+async fn handle_import_claude(cmd: ImportClaudeCommands) {
+    use app_lib::core::cli::cc_import_cmd as c;
+    exit_on_error(match cmd {
+        ImportClaudeCommands::Scan { root } => c::scan(root).await,
+        ImportClaudeCommands::Run { root, names, all, overwrite, link_hooks } => {
+            c::run(root, &names, all, overwrite, link_hooks).await
+        }
     });
 }
 

@@ -17,6 +17,7 @@ pub mod journal;
 pub mod json_api;
 pub mod bench;
 pub mod login;
+pub mod cc_import_cmd;
 pub mod hf_cmd;
 pub mod mcp;
 pub mod memory_cmd;

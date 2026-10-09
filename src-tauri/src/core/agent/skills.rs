@@ -46,7 +46,6 @@ pub(crate) fn user_skill_store() -> Option<PathBuf> {
     // Every reader of the global skills/plugins stores comes through here, so
     // this is where a link to Claude Code is refreshed (throttled, and a no-op
     // when nothing is linked): the stores are never staler than the throttle.
-    #[cfg(not(feature = "cli"))]
     crate::core::agent::cc_import::sync_if_due();
     user_skill_store_raw()
 }

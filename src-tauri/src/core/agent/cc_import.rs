@@ -211,7 +211,7 @@ fn skill_exists(name: &str, base: Option<PathBuf>) -> bool {
         .unwrap_or(false)
 }
 
-#[tauri::command]
+#[cfg_attr(not(feature = "cli"), tauri::command)]
 pub async fn agent_cc_scan(root: Option<String>) -> Result<CcScan, String> {
     let mut skill_hits: Vec<(String, PathBuf, String)> = Vec::new();
     let mut plugin_hits: Vec<(String, PathBuf, String)> = Vec::new();
@@ -427,7 +427,7 @@ fn import_plugin(source_path: &Path, name: &str, overwrite: bool) -> Result<Stri
     Ok("imported".to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(not(feature = "cli"), tauri::command)]
 pub async fn agent_cc_import(
     items: Vec<CcImportSelection>,
     overwrite: bool,
