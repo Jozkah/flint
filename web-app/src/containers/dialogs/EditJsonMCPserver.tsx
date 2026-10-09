@@ -13,6 +13,7 @@ import { MCPServerConfig, MCPServers, MCPSettings } from '@/hooks/useMCPServers'
 import CodeEditor from '@uiw/react-textarea-code-editor'
 import '@uiw/react-textarea-code-editor/dist.css'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { validateMcpJson } from '@/lib/mcpConfigValidation'
 
 type MCPConfigJson =
   | MCPServerConfig
@@ -61,6 +62,12 @@ export default function EditJsonMCPserver({
   const handleSave = () => {
     try {
       const parsedData = JSON.parse(jsonContent) as MCPConfigJson
+      // Wrong types would crash the page later (.trim()/.slice() on a number).
+      const problem = validateMcpJson(parsedData, serverName)
+      if (problem) {
+        setError(`${t('mcp-servers:editJson.errorFormat')}: ${problem}`)
+        return
+      }
       onSave(parsedData)
       onOpenChange(false)
       setError(null)
