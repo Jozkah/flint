@@ -10,7 +10,7 @@
   "engine": {
     "unknown": "The model engine reported an unexpected error.",
     "MODEL_LOAD_FAILED": "The model could not be loaded.",
-    "MODEL_ARCH_NOT_SUPPORTED": "This model's architecture is not supported by the current engine. Updating the engine from Settings may add support.",
+    "MODEL_ARCH_NOT_SUPPORTED": "This model's architecture is not supported by the current engine. The engine is bundled with Flint, so a newer Flint release may add support.",
     "MODEL_LOAD_TIMED_OUT": "The model took too long to load and was stopped. A smaller model or a smaller context size usually helps.",
     "MISSING_SHARED_LIBRARY": "A library the engine needs is missing, so it cannot start.",
     "GPU_DRIVER_TOO_OLD": "Your GPU driver is too old for this engine. Updating the driver, or switching to the CPU engine in Settings, will fix this.",
