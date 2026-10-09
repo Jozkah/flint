@@ -11,7 +11,8 @@
     "where": "Where the result is",
     "checked": "What was checked",
     "unresolved": "Unresolved",
-    "next": "Next steps"
+    "next": "Next steps",
+    "details": "Details"
   },
   "headline": {
     "running": "The run is still going.",

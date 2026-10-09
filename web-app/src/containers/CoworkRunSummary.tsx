@@ -420,6 +420,47 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
   const offersRetry =
     outcome.nextActions.includes('retry') && Boolean(props.onRetry)
 
+  const checkRow = (check: (typeof outcome.checks)[number], index: number) => (
+    <li
+      key={`${check.callId ?? check.command}-${index}`}
+      className="flex min-w-0 flex-wrap items-center gap-2.5 py-1 text-[12.5px]"
+    >
+      <span className={`${CHIP} ${VERDICT_TONE[checkVerdict(check)]}`}>
+        {verdictLabel(t, checkVerdict(check))}
+      </span>
+      <span className="shrink-0 text-fg-2">{kindLabel(t, check.kind)}</span>
+      <code className="min-w-0 break-all font-mono text-xs text-foreground">
+        {check.command}
+      </code>
+      {check.exitCode !== null ? (
+        <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
+          {t('results:checks.exit', { code: check.exitCode })}
+        </span>
+      ) : null}
+      <span className="shrink-0 text-muted-foreground">
+        {t(`results:checks.completion.${check.completion}`)}
+      </span>
+      {check.limitations.length > 0 ? (
+        <ul
+          className="basis-full pl-4 text-muted-foreground"
+          data-testid="cowork-check-limitations"
+        >
+          {check.limitations.map((limit) => (
+            <li key={limit}>{t(`results:checks.limitation.${limit}`)}</li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  )
+  // A check that passed is evidence; one that did not is a finding. Only the
+  // finding stays up front, the passes sit under Details.
+  const attentionChecks = outcome.checks.filter(
+    (c) => checkVerdict(c) !== 'passed'
+  )
+  const passedChecks = outcome.checks.filter(
+    (c) => checkVerdict(c) === 'passed'
+  )
+
   const heading = (text: string) => (
     <h4 className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
       {text}
@@ -504,6 +545,9 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
         <h3 className="sr-only">{t('common:coworkOrigins.title')}</h3>
 
         <div className="flex flex-col [&>div]:gap-1.5 [&>div]:border-t [&>div]:border-dashed [&>div]:border-border [&>div]:px-3 [&>div]:py-2.5">
+          {/* One checkpoint: what changed, what was checked, what needs
+              attention and the way to act on it. Everything else is under
+              Details, one click away. */}
           <div className="flex flex-col gap-1">
             {heading(t('results:sections.happened'))}
             <p className="text-foreground">
@@ -516,20 +560,6 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
 
           <div className="flex flex-col gap-2">
             {heading(t('results:sections.where'))}
-            {resultLocation.treeKind === 'worktree' && resultLocation.tree ? (
-              // Named, because "in the worktree" is true of a specific one and
-              // the reader has to be able to go and look at it.
-              <p className="break-all font-mono text-xs text-fg-2">
-                {t('common:coworkOrigins.inTree', {
-                  tree: resultLocation.tree,
-                })}
-              </p>
-            ) : null}
-            {resultLocation.destination ? (
-              <p className="text-fg-2">
-                {locationText(t, resultLocation.treeKind)}
-              </p>
-            ) : null}
             {nothingFound ? (
               <p className="text-fg-2">
                 {t('common:coworkOrigins.nothing')}
@@ -552,9 +582,6 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                 )}
               </>
             )}
-            <p className="text-xs text-muted-foreground">
-              {t(`common:coworkOrigins.baseline.${changes.baseline}`)}
-            </p>
           </div>
 
           <div className="flex flex-col gap-1" data-testid="cowork-run-checks">
@@ -563,46 +590,12 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
               <p className="text-fg-2">{t('results:checks.none')}</p>
             ) : (
               <>
-                <ul className="flex flex-col">
-                  {outcome.checks.map((check, index) => (
-                    <li
-                      key={`${check.callId ?? check.command}-${index}`}
-                      className="flex min-w-0 flex-wrap items-center gap-2.5 py-1 text-[12.5px]"
-                    >
-                      <span
-                        className={`${CHIP} ${VERDICT_TONE[checkVerdict(check)]}`}
-                      >
-                        {verdictLabel(t, checkVerdict(check))}
-                      </span>
-                      <span className="shrink-0 text-fg-2">
-                        {kindLabel(t, check.kind)}
-                      </span>
-                      <code className="min-w-0 break-all font-mono text-xs text-foreground">
-                        {check.command}
-                      </code>
-                      {check.exitCode !== null ? (
-                        <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-                          {t('results:checks.exit', { code: check.exitCode })}
-                        </span>
-                      ) : null}
-                      <span className="shrink-0 text-muted-foreground">
-                        {t(`results:checks.completion.${check.completion}`)}
-                      </span>
-                      {check.limitations.length > 0 ? (
-                        <ul
-                          className="basis-full pl-4 text-muted-foreground"
-                          data-testid="cowork-check-limitations"
-                        >
-                          {check.limitations.map((limit) => (
-                            <li key={limit}>
-                              {t(`results:checks.limitation.${limit}`)}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
+                {/* Anything that did not pass stays in view. */}
+                {attentionChecks.length > 0 ? (
+                  <ul className="flex flex-col">
+                    {attentionChecks.map(checkRow)}
+                  </ul>
+                ) : null}
                 <ul
                   className="flex flex-col gap-0.5 text-xs text-muted-foreground"
                   data-testid="cowork-verification-summary"
@@ -615,36 +608,6 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                 </ul>
               </>
             )}
-            {verification.otherCommands > 0 ? (
-              <p
-                className="text-muted-foreground"
-                data-testid="cowork-other-commands"
-              >
-                {t('results:checks.otherCommands', {
-                  count: verification.otherCommands,
-                })}
-              </p>
-            ) : null}
-            {props.browserChecks && props.browserChecks.length > 0 ? (
-              <div className="flex flex-col gap-1" data-testid="cowork-browser-checks">
-                <span className="text-fg-2">{t('common:browserVerify.inSummary')}</span>
-                <BrowserVerifyEvidence report={props.browserChecks[0]} />
-              </div>
-            ) : null}
-            {outcome.claims.length > 0 ? (
-              <div className="flex flex-col gap-0.5">
-                <span className="text-fg-2">
-                  {t('results:checks.claimsTitle')}
-                </span>
-                <ul className="flex flex-col gap-0.5">
-                  {outcome.claims.map((claim) => (
-                    <li key={claim.text} className="italic text-fg-2">
-                      “{claim.text}”
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
           </div>
 
           {visibleUnresolved.length > 0 ? (
@@ -681,6 +644,70 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
               ) : null}
             </div>
           ) : null}
+
+          <div className="flex flex-col">
+            <details data-testid="cowork-run-details" className="group/details">
+              <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
+                <ChevronRight
+                  aria-hidden
+                  className="size-3.5 shrink-0 transition-transform duration-200 group-open/details:rotate-90"
+                />
+                {t('results:sections.details')}
+              </summary>
+              <div className="flex flex-col gap-2 pt-1.5">
+                {resultLocation.treeKind === 'worktree' && resultLocation.tree ? (
+                  // Named, because "in the worktree" is true of a specific one
+                  // and the reader has to be able to go and look at it.
+                  <p className="break-all font-mono text-xs text-fg-2">
+                    {t('common:coworkOrigins.inTree', {
+                      tree: resultLocation.tree,
+                    })}
+                  </p>
+                ) : null}
+                {resultLocation.destination ? (
+                  <p className="text-fg-2">
+                    {locationText(t, resultLocation.treeKind)}
+                  </p>
+                ) : null}
+                <p className="text-xs text-muted-foreground">
+                  {t(`common:coworkOrigins.baseline.${changes.baseline}`)}
+                </p>
+                {passedChecks.length > 0 ? (
+                  <ul className="flex flex-col">{passedChecks.map(checkRow)}</ul>
+                ) : null}
+                {verification.otherCommands > 0 ? (
+                  <p
+                    className="text-muted-foreground"
+                    data-testid="cowork-other-commands"
+                  >
+                    {t('results:checks.otherCommands', {
+                      count: verification.otherCommands,
+                    })}
+                  </p>
+                ) : null}
+                {props.browserChecks && props.browserChecks.length > 0 ? (
+                  <div className="flex flex-col gap-1" data-testid="cowork-browser-checks">
+                    <span className="text-fg-2">{t('common:browserVerify.inSummary')}</span>
+                    <BrowserVerifyEvidence report={props.browserChecks[0]} />
+                  </div>
+                ) : null}
+                {outcome.claims.length > 0 ? (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-fg-2">
+                      {t('results:checks.claimsTitle')}
+                    </span>
+                    <ul className="flex flex-col gap-0.5">
+                      {outcome.claims.map((claim) => (
+                        <li key={claim.text} className="italic text-fg-2">
+                          “{claim.text}”
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            </details>
+          </div>
         </div>
       </details>
     </section>

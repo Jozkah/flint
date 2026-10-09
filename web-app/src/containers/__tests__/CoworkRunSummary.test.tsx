@@ -287,8 +287,11 @@ describe('the outcome of a run', () => {
       />
     )
     const checks = screen.getByTestId('cowork-run-checks')
-    expect(checks).toHaveTextContent('results:checks.outcome.passed')
-    expect(checks).toHaveTextContent('npm test')
+    // A pass is evidence and sits under Details; a failure stays up front.
+    expect(screen.getByTestId('cowork-run-details')).toHaveTextContent(
+      'results:checks.outcome.passed'
+    )
+    expect(region()).toHaveTextContent('npm test')
     expect(checks).toHaveTextContent('results:checks.outcome.failed')
     expect(checks).toHaveTextContent('cargo build')
     expect(checks).not.toHaveTextContent('results:checks.none')
@@ -371,8 +374,9 @@ describe('the outcome of a run', () => {
     )
     const checks = screen.getByTestId('cowork-run-checks')
     expect(checks).toHaveTextContent('results:checks.none')
-    expect(checks).toHaveTextContent('results:checks.claimsTitle')
-    expect(checks).toHaveTextContent('All tests pass.')
+    const details = screen.getByTestId('cowork-run-details')
+    expect(details).toHaveTextContent('results:checks.claimsTitle')
+    expect(details).toHaveTextContent('All tests pass.')
     expect(checks).not.toHaveTextContent('results:checks.outcome.passed')
   })
 
@@ -468,5 +472,40 @@ describe('a change the read-only turn never offered', () => {
     )
     expect(region()).toHaveTextContent('results:unresolved.refusedReadOnly')
     expect(region()).not.toHaveTextContent('results:unresolved.refused ')
+  })
+})
+
+describe('the review checkpoint', () => {
+  const outcome = deriveRunOutcome(
+    base({
+      turns: [
+        user,
+        bash('npm test', '[exit 0]'),
+        bash('cargo build', 'error\n[exit 101]'),
+      ],
+      summary: {
+        ...empty,
+        janWrites: [{ destination: 'repository', paths: ['a.ts'] }],
+      },
+    })
+  )
+
+  it('keeps files, failed checks and actions up front, outside Details', () => {
+    render(<CoworkRunSummary outcome={outcome} {...handlers()} />)
+    const details = screen.getByTestId('cowork-run-details')
+    const front = [
+      screen.getByText('a.ts'),
+      screen.getByText('cargo build'),
+      screen.getByRole('button', { name: 'results:actions.reviewChanges' }),
+    ]
+    for (const node of front) expect(details.contains(node)).toBe(false)
+  })
+
+  it('files the passing check and the location under Details, closed', () => {
+    render(<CoworkRunSummary outcome={outcome} {...handlers()} />)
+    const details = screen.getByTestId('cowork-run-details')
+    expect(details).not.toHaveAttribute('open')
+    expect(within(details).getByText('npm test')).toBeInTheDocument()
+    expect(within(details).getByText(/results:location\./)).toBeInTheDocument()
   })
 })
