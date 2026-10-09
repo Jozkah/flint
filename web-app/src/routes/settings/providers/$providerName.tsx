@@ -95,10 +95,14 @@ import {
 // as route.threadsDetail
 /**
  * Built-in providers whose endpoint depends on the account, so it stays
- * editable: Azure on the resource name, Alibaba Qwen on the region its keys
- * were created in.
+ * editable: OpenAI for proxies and gateways that speak its API, Azure on the
+ * resource name, Alibaba Qwen on the region its keys were created in.
  */
 const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: string }> = {
+  openai: {
+    description: 'providers:baseUrl.openaiDescription',
+    placeholder: 'https://api.openai.com/v1',
+  },
   azure: {
     description: 'providers:baseUrl.azureDescription',
     placeholder: 'https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1',
