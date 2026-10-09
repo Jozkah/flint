@@ -17,7 +17,7 @@ use app_lib::core::cli::run_report::OutputFormat;
 use app_lib::core::cli::stream_input::InputFormat;
 use app_lib::core::cli::{
     cli_agent_config_list, cli_agent_config_path, cli_agent_config_set, cli_agent_config_unset,
-    cli_agent_run, cli_agent_status, cli_agent_step, cli_agent_ui, cli_delete_thread,
+    cli_agent_run, cli_agent_status, cli_agent_step, cli_agent_ui,
     cli_get_thread, cli_list_messages, cli_list_threads, cli_plugin_install, cli_plugin_list,
     cli_plugin_remove, cli_plugin_search, ResumeRequest, SessionFlags,
 };
@@ -71,6 +71,10 @@ struct Cli {
     /// the default agent TUI. Ignored when a subcommand is given.
     #[arg(long)]
     safe: bool,
+    /// How freely the session acts: review (read-only), ask, auto or bypass.
+    /// Replaces --safe and --plan.
+    #[arg(long, value_name = "MODE")]
+    mode: Option<String>,
     #[command(flatten)]
     resume: ResumeArgs,
     /// Start the default agent TUI in read-only plan mode (same as /plan).
@@ -79,6 +83,8 @@ struct Cli {
     plan: bool,
     #[command(flatten)]
     sandbox: SandboxArgs,
+    #[command(flatten)]
+    worktree: WorktreeArgs,
     /// Log more: `info` on stderr instead of `warn`. Accepted before or after
     /// any subcommand. The logger reads it from the raw arguments before this
     /// parser runs; declaring it here keeps clap from rejecting it.
@@ -211,6 +217,11 @@ impl ResumeRunArgs {
 /// lives under the non-interactive `cli` fallback.
 #[derive(Subcommand)]
 enum Commands {
+    /// Bring data over from a JAN install: detect, plan, run, status, rollback
+    Migrate {
+        #[command(subcommand)]
+        cmd: MigrateCommands,
+    },
     /// Run the production browser server without a desktop session
     Serve {
         /// Loopback address; use a private-network HTTPS proxy for remote access
@@ -478,6 +489,46 @@ enum CliCommands {
         #[command(subcommand)]
         cmd: ScheduleCommands,
     },
+    /// Where Flint keeps its data; `--set` moves it (copying what is there)
+    #[command(display_order = 20)]
+    DataFolder {
+        /// Point Flint at this absolute folder
+        #[arg(long)]
+        set: Option<String>,
+        /// With `--set`, do not copy the current folder's contents across
+        #[arg(long)]
+        no_copy: bool,
+    },
+    /// Bring Claude Code skills and plugins in from ~/.claude
+    #[command(display_order = 22)]
+    ImportClaude {
+        #[command(subcommand)]
+        cmd: ImportClaudeCommands,
+    },
+    /// What Flint remembers: list, read, pin, forget and export by scope
+    #[command(display_order = 21)]
+    Memory {
+        #[command(subcommand)]
+        cmd: MemoryCommands,
+    },
+    /// Worktrees made by `--worktree` sessions: list, merge, discard
+    #[command(display_order = 19)]
+    Worktree {
+        #[command(subcommand)]
+        cmd: WorktreeCommands,
+    },
+    /// Project skills: list, read, write, delete, enable, import from the hub
+    #[command(display_order = 18)]
+    Skills {
+        #[command(subcommand)]
+        cmd: SkillsCommands,
+    },
+    /// What delete moved aside: list, restore or purge it
+    #[command(display_order = 17)]
+    Archive {
+        #[command(subcommand)]
+        cmd: ArchiveCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -513,6 +564,73 @@ enum ScheduleCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Add a scheduled task
+    Add {
+        #[command(flatten)]
+        task: ScheduleTaskArgs,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Change a scheduled task; only the flags you give are changed
+    Edit {
+        /// The task id (see `list`)
+        id: String,
+        #[command(flatten)]
+        task: ScheduleTaskArgs,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete a task and its run history
+    Delete {
+        id: String,
+        /// Confirm: the run history goes with it
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Turn a task on
+    Enable {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Turn a task off without deleting it
+    Disable {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the next fire times of a task, or of a schedule not yet saved
+    Preview {
+        /// A task id; omit it to preview the schedule flags instead
+        id: Option<String>,
+        #[command(flatten)]
+        task: ScheduleTaskArgs,
+        #[arg(long, default_value_t = 5)]
+        count: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Stop a run that is in flight
+    Cancel { id: String, run: String },
+    /// The built-in tools a task can be allowed
+    Tools {
+        #[arg(long)]
+        json: bool,
+    },
+    /// The time zone names a task can use
+    TimeZones,
+    /// The entry that runs `schedule tick` while Flint is closed
+    Os {
+        /// status, enable or disable
+        action: String,
+        #[arg(long)]
+        interval_minutes: Option<u32>,
+        /// Confirm that `enable` may write the entry it previewed
+        #[arg(long)]
+        yes: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Run one scheduled run from its spec, as a job supervisor starts it. Not
     /// meant to be run by hand.
     #[command(hide = true)]
@@ -520,6 +638,114 @@ enum ScheduleCommands {
         #[arg(long)]
         spec: String,
     },
+}
+
+/// What a scheduled task is. `add` needs name, prompt, model, a schedule and at
+/// least one `--allow-tool`; `edit` changes only what is given.
+#[derive(Args, Default)]
+struct ScheduleTaskArgs {
+    #[arg(long)]
+    name: Option<String>,
+    /// What the task should do each time it runs
+    #[arg(long)]
+    prompt: Option<String>,
+    /// `provider/model`
+    #[arg(long)]
+    model: Option<String>,
+    /// The project folder the run works in (default: the current folder)
+    #[arg(long)]
+    project: Option<String>,
+    /// IANA zone name, e.g. Europe/Berlin (default: $TZ, else UTC)
+    #[arg(long)]
+    timezone: Option<String>,
+    /// A Cowork profile to run under
+    #[arg(long)]
+    profile: Option<String>,
+    /// Every day at these times, e.g. 09:00,17:30
+    #[arg(long)]
+    daily: Option<String>,
+    /// Monday to Friday at these times
+    #[arg(long)]
+    weekdays: Option<String>,
+    /// On these days at these times, e.g. mon,wed@09:00
+    #[arg(long)]
+    weekly: Option<String>,
+    /// A cron expression
+    #[arg(long)]
+    cron: Option<String>,
+    /// A tool the task may use (repeat; see `schedule tools`)
+    #[arg(long = "allow-tool")]
+    allow_tools: Vec<String>,
+    /// read-only or worktree
+    #[arg(long)]
+    write: Option<String>,
+    /// continue or end, when a tool call would need approval
+    #[arg(long)]
+    on_block: Option<String>,
+    /// skip, once or all-capped, for runs missed while closed
+    #[arg(long)]
+    catch_up: Option<String>,
+    #[arg(long)]
+    max_turns: Option<u32>,
+    #[arg(long)]
+    max_tokens: Option<u64>,
+    #[arg(long)]
+    max_wall_clock_secs: Option<u64>,
+    #[arg(long)]
+    max_cost_usd: Option<f64>,
+    /// Save the task turned off
+    #[arg(long)]
+    disabled: bool,
+}
+
+impl ScheduleTaskArgs {
+    fn into_input(self) -> Result<app_lib::core::cli::schedule_manage::TaskInput, HarnessError> {
+        use app_lib::core::schedule::spec::{CatchUp, OnBlock, WriteMode};
+        use tauri_plugin_agent_tools::harness_error::{ErrorKind, Stage};
+        let bad = |flag: &str, v: &str, ok: &str| {
+            HarnessError::new(ErrorKind::InvalidInput, format!("--{flag} '{v}' is not one of: {ok}")).at(Stage::Startup)
+        };
+        let write = match self.write.as_deref() {
+            None => None,
+            Some("read-only") => Some(WriteMode::ReadOnly),
+            Some("worktree") => Some(WriteMode::Worktree),
+            Some(v) => return Err(bad("write", v, "read-only, worktree")),
+        };
+        let on_block = match self.on_block.as_deref() {
+            None => None,
+            Some("continue") => Some(OnBlock::Continue),
+            Some("end") => Some(OnBlock::End),
+            Some(v) => return Err(bad("on-block", v, "continue, end")),
+        };
+        let catch_up = match self.catch_up.as_deref() {
+            None => None,
+            Some("skip") => Some(CatchUp::Skip),
+            Some("once") => Some(CatchUp::Once),
+            Some("all-capped") => Some(CatchUp::AllCapped),
+            Some(v) => return Err(bad("catch-up", v, "skip, once, all-capped")),
+        };
+        Ok(app_lib::core::cli::schedule_manage::TaskInput {
+            name: self.name,
+            prompt: self.prompt,
+            model: self.model,
+            project: self.project,
+            timezone: self.timezone,
+            profile: self.profile,
+            daily: self.daily,
+            weekdays: self.weekdays,
+            weekly: self.weekly,
+            cron: self.cron,
+            allow_tools: self.allow_tools,
+            write,
+            on_block,
+            catch_up,
+            max_turns: self.max_turns,
+            max_tokens: self.max_tokens,
+            max_wall_clock_secs: self.max_wall_clock_secs,
+            max_cost_usd: self.max_cost_usd,
+            disabled: self.disabled,
+        })
+    }
 }
 
 #[derive(Subcommand)]
@@ -557,6 +783,12 @@ enum NetCommands {
         #[command(subcommand)]
         cmd: CaCommands,
     },
+    /// How a provider host resolves and which address is dialled first
+    Endpoint {
+        host: String,
+        #[arg(default_value_t = 443)]
+        port: u16,
+    },
 }
 
 #[derive(Subcommand)]
@@ -566,6 +798,11 @@ enum CaCommands {
     /// Trust the certificates in a PEM bundle, in addition to the platform's.
     /// The bundle is checked first; one that cannot be used is refused
     Set {
+        /// Path to a PEM file of CA certificates
+        path: String,
+    },
+    /// Check a bundle without saving it: what it holds and whether it can be used
+    Check {
         /// Path to a PEM file of CA certificates
         path: String,
     },
@@ -619,6 +856,9 @@ enum AgentCommands {
         /// Prompt for approval before writes, shell commands, and MCP tool calls
         #[arg(long)]
         safe: bool,
+        /// review (read-only), ask, auto or bypass. Replaces --safe.
+        #[arg(long, value_name = "MODE")]
+        mode: Option<String>,
         #[command(flatten)]
         providers: ProviderArgs,
         #[command(flatten)]
@@ -688,6 +928,9 @@ enum AgentCommands {
         /// Prompt for approval before writes, shell commands, and MCP tool calls
         #[arg(long)]
         safe: bool,
+        /// review (read-only), ask, auto or bypass. Replaces --safe.
+        #[arg(long, value_name = "MODE")]
+        mode: Option<String>,
         #[command(flatten)]
         providers: ProviderArgs,
         #[command(flatten)]
@@ -969,6 +1212,37 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Export a session's (or one run's) events under <data>/exports; metadata
+    /// only unless `--include-content`
+    EventsExport {
+        session: String,
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long)]
+        include_content: bool,
+    },
+    /// Check an event export and count what it holds
+    EventsInspect { file: std::path::PathBuf },
+    /// List a session's finished runs that can be stepped through
+    Replays { session: String },
+    /// Print a finished run's recorded events in order
+    Replay { session: String, run: String },
+    /// Permission decisions recorded for approvals (newest last)
+    Audit {
+        #[arg(long)]
+        session: Option<String>,
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long)]
+        agent: Option<String>,
+        #[arg(long)]
+        tool: Option<String>,
+        /// allow, deny, prompt, granted, refused or expired
+        #[arg(long)]
+        decision: Option<String>,
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+    },
     Prompts {
         /// The session whose requests to list
         session: String,
@@ -1094,6 +1368,264 @@ enum JobCommands {
 }
 
 #[derive(Subcommand)]
+enum ImportClaudeCommands {
+    /// List the Claude Code skills and plugins found
+    Scan {
+        /// Also look in `.claude` folders one level under this folder
+        #[arg(long)]
+        root: Option<String>,
+    },
+    /// Import them (a live link: later edits at the source come across)
+    Run {
+        #[arg(long)]
+        root: Option<String>,
+        /// An item to import by name (repeatable)
+        #[arg(long = "name")]
+        names: Vec<String>,
+        /// Import everything found
+        #[arg(long)]
+        all: bool,
+        /// Replace items that already exist in Flint
+        #[arg(long)]
+        overwrite: bool,
+        /// Keep running a plugin's hooks from its Claude Code source
+        #[arg(long)]
+        link_hooks: bool,
+    },
+}
+
+/// `scope` is project, user or chat (chat needs `--session`).
+#[derive(Subcommand)]
+enum MemoryCommands {
+    /// List the memories in a scope
+    List {
+        scope: String,
+        #[arg(long)]
+        query: Option<String>,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Show one memory with its source
+    Show {
+        scope: String,
+        id: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Forget one memory (the text also leaves saved requests)
+    Forget {
+        scope: String,
+        id: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Forget every memory in a scope
+    Clear {
+        scope: String,
+        #[arg(long)]
+        yes: bool,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Keep a memory from expiring
+    Pin {
+        scope: String,
+        id: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Let a pinned memory expire again
+    Unpin {
+        scope: String,
+        id: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+    /// Write a scope's memories, with provenance, to a file
+    Export {
+        scope: String,
+        path: String,
+        #[command(flatten)]
+        place: MemoryPlace,
+    },
+}
+
+#[derive(Args)]
+struct MemoryPlace {
+    /// The project folder whose memory is meant
+    #[arg(long, default_value = ".")]
+    project: String,
+    /// The chat whose memory is meant (for the chat scope)
+    #[arg(long)]
+    session: Option<String>,
+}
+
+#[derive(Subcommand)]
+enum MigrateCommands {
+    /// Look for a JAN install and say what it holds
+    Detect,
+    /// Show what a migration would copy, move or reuse (changes nothing)
+    Plan {
+        /// copy, reuse, move or fresh
+        #[arg(long, default_value = "copy")]
+        mode: String,
+        /// Only these categories (repeat; default: all)
+        #[arg(long = "category")]
+        categories: Vec<String>,
+        /// keep_flint, use_jan or keep_both, for items on both sides
+        #[arg(long, default_value = "keep_flint")]
+        conflict: String,
+    },
+    /// Run the migration
+    Run {
+        #[arg(long, default_value = "copy")]
+        mode: String,
+        #[arg(long = "category")]
+        categories: Vec<String>,
+        #[arg(long, default_value = "keep_flint")]
+        conflict: String,
+        /// Do it; without this the plan is printed and nothing is changed
+        #[arg(long)]
+        yes: bool,
+    },
+    /// The record of the last migration
+    Status,
+    /// Remove what a migration copied (a move is restored from its backup)
+    Rollback {
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Stop offering the first-launch migration
+    Dismiss,
+}
+
+#[derive(Subcommand)]
+enum WorktreeCommands {
+    /// List this repository's agent worktrees, with uncommitted and unmerged work
+    List {
+        #[arg(long, default_value = ".")]
+        project: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Merge a worktree's branch into the checked-out branch
+    Merge {
+        /// The worktree id (see `list`)
+        id: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// The branch to merge into; must be the one checked out
+        #[arg(long)]
+        into: Option<String>,
+        #[arg(long)]
+        message: Option<String>,
+    },
+    /// Remove a worktree and its branch; refuses while it holds unmerged work
+    Discard {
+        id: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Remove it even with uncommitted or unmerged work
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum SkillsCommands {
+    /// List the project's skills and whether each is enabled
+    List {
+        #[arg(long, default_value = ".")]
+        project: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print a skill's SKILL.md
+    Show {
+        name: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Create or replace a skill from a file, or from stdin with `--file -`
+    Write {
+        name: String,
+        #[arg(long)]
+        file: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Delete a skill
+    Delete {
+        name: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// Show or set which skills are enabled (`--all` enables every skill)
+    Enabled {
+        names: Vec<String>,
+        #[arg(long)]
+        all: bool,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+    /// List the skills on Anthropic's public skill hub (uses the network)
+    HubList {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import a skill from the hub into the project (uses the network)
+    HubImport {
+        name: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ArchiveCommands {
+    /// List archived threads, rooms, sessions and so on
+    List {
+        /// thread, room, cowork, project, assistant or studio
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Put an archived thread or room back (use the archive id from `list`)
+    Restore { kind: String, archive_id: String },
+    /// Delete one archived item for good
+    Purge {
+        kind: String,
+        archive_id: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Delete everything archived, or one kind
+    Empty {
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Show or change the archive settings
+    Settings {
+        /// Whether delete moves to the archive at all
+        #[arg(long)]
+        enabled: Option<bool>,
+        /// Purge items older than this many days (0 keeps them)
+        #[arg(long)]
+        auto_delete_days: Option<u32>,
+        /// Archive threads idle this many days (0 is off)
+        #[arg(long)]
+        auto_archive_days: Option<u32>,
+    },
+}
+
+#[derive(Subcommand)]
 enum ThreadsCommands {
     /// Print all threads as JSON
     List,
@@ -1102,11 +1634,51 @@ enum ThreadsCommands {
         /// Thread ID
         id: String,
     },
-    /// Permanently delete a thread and all its messages
+    /// Delete a thread: it moves to the archive unless `--permanent` is given
     Delete {
         /// Thread ID
         id: String,
+        /// Skip the archive and remove the thread and its records for good
+        #[arg(long)]
+        permanent: bool,
+        /// Confirm `--permanent`, which cannot be undone
+        #[arg(long)]
+        yes: bool,
     },
+    /// Start an empty thread and print it
+    Create {
+        #[arg(long)]
+        title: Option<String>,
+    },
+    /// Change a thread's title
+    Rename { id: String, title: String },
+    /// Mark a thread as a favourite
+    Favorite { id: String },
+    /// Remove the favourite mark
+    Unfavorite { id: String },
+    /// Write a thread as Markdown, Obsidian Markdown or JSON
+    Export {
+        /// Thread ID
+        id: String,
+        /// markdown, obsidian or json
+        #[arg(long, default_value = "markdown")]
+        format: String,
+        /// Include tool input and output, reasoning and full paths
+        #[arg(long)]
+        verbose: bool,
+        /// With `--format json`, every stored version of an edited message
+        #[arg(long)]
+        all_versions: bool,
+        /// A file, or a folder to get a file named after the thread
+        #[arg(long)]
+        out: Option<String>,
+        /// Read a thread saved by the terminal console for this project
+        /// (default: the threads the desktop app saved)
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// Delete one message from a thread
+    DeleteMessage { thread_id: String, message_id: String },
     /// Print a thread's messages as JSON (the conversation as shown)
     Messages {
         /// Thread ID
@@ -1129,6 +1701,34 @@ enum ModelsCommands {
         /// Project root whose agent.toml [provider] override is applied
         #[arg(long, default_value = ".")]
         project: String,
+        /// Only models matching every word, case-insensitively (a long remote
+        /// list narrows the way the app's model search does)
+        #[arg(long)]
+        filter: Option<String>,
+    },
+    /// Search Hugging Face for models (uses the network; HF_TOKEN is read if set)
+    Search {
+        query: String,
+        /// gguf, mlx or all
+        #[arg(long, default_value = "gguf")]
+        format: String,
+    },
+    /// List a Hugging Face repository's files with their sizes
+    Files { repo: String },
+    /// Download one file from Hugging Face, resumable and checked against its SHA-256
+    Download {
+        /// owner/name
+        repo: String,
+        /// The file path inside the repository
+        file: String,
+    },
+    /// Copy a GGUF into the local models folder so the local server finds it
+    Import {
+        /// Path to a .gguf file
+        file: String,
+        /// The model id to give it
+        #[arg(long)]
+        id: String,
     },
     /// List locally downloaded models (in the llamacpp/models directory)
     ListLocal {
@@ -1231,6 +1831,25 @@ enum McpCommands {
         /// Server name
         name: String,
     },
+    /// List the tools a server offers (connects to it)
+    Tools {
+        /// Server name
+        name: String,
+    },
+    /// Standing trust grants, and approvals that stopped applying
+    TrustReport {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Trust a server as currently configured, for every conversation, until revoked
+    Trust {
+        name: String,
+        /// Confirm: this lets the server's tools run without asking each time
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Withdraw trust from a server
+    Revoke { name: String },
     /// Print a server's own stderr log, newest last (AH-140)
     Logs {
         /// Server name
@@ -1342,6 +1961,14 @@ async fn run() {
         ),
     );
 
+    // The off-limits regions and app allowlist the user saved in the desktop
+    // app apply to the `computer` tool here too.
+    tauri_plugin_agent_tools::tools::computer::set_active_exclusions(
+        tauri_plugin_agent_tools::tools::computer::load_exclusions(
+            &app_lib::core::app::commands::resolve_jan_data_folder(),
+        ),
+    );
+
     // Pre-scan raw args for --verbose / -v before full parse so we can set
     // the log level before any logging happens. stderr keeps its `warn`
     // default (`info` under -v); every info+ record also goes to a rotating
@@ -1368,6 +1995,14 @@ async fn run() {
         // TUI runs the same check itself and notes it in the transcript.
         // The usage ping is likewise deferred to the TUI's own background task.
         let overrides = cli.providers.into_overrides();
+        let mode_switches =
+            match app_lib::core::cli::PermissionMode::resolve(cli.mode.as_deref(), cli.safe, cli.plan) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(2);
+                }
+            };
         if let Err(e) = cli_agent_ui(
             &cli.project,
             cli.task,
@@ -1375,9 +2010,10 @@ async fn run() {
             cli.images,
             overrides,
             SessionFlags {
-                auto_approve: !cli.safe,
-                plan: cli.plan,
+                auto_approve: mode_switches.0,
+                plan: mode_switches.1,
                 sandbox: cli.sandbox.into_flag(),
+                worktree: cli.worktree.into_flag(),
                 ..Default::default()
             },
             cli.resume.into_request(),
@@ -1502,6 +2138,19 @@ async fn run() {
             out,
         } => handle_bug_report(thread, show, yes, out),
         Commands::Doctor { json } => handle_doctor(json),
+        Commands::Migrate { cmd } => {
+            use app_lib::core::cli::migrate_cmd as m;
+            exit_on_error(match cmd {
+                MigrateCommands::Detect => m::detect_cmd(),
+                MigrateCommands::Plan { mode, categories, conflict } => m::plan_cmd(&mode, &categories, &conflict),
+                MigrateCommands::Run { mode, categories, conflict, yes } => {
+                    m::run_cmd(&mode, &categories, &conflict, yes)
+                }
+                MigrateCommands::Status => m::status_cmd(),
+                MigrateCommands::Rollback { yes } => m::rollback_cmd(yes),
+                MigrateCommands::Dismiss => m::dismiss_cmd(),
+            });
+        }
         Commands::Mcp { cmd } => handle_mcp_serve(cmd).await,
     }
 }
@@ -1744,6 +2393,18 @@ async fn handle_cli(cmd: CliCommands) {
     match cmd {
         CliCommands::Job { cmd } => handle_job(cmd),
         CliCommands::Threads { cmd } => handle_threads(cmd).await,
+        CliCommands::Archive { cmd } => handle_archive(cmd).await,
+        CliCommands::Skills { cmd } => handle_skills(cmd).await,
+        CliCommands::Worktree { cmd } => handle_worktree(cmd),
+        CliCommands::Memory { cmd } => handle_memory(cmd),
+        CliCommands::ImportClaude { cmd } => handle_import_claude(cmd).await,
+        CliCommands::DataFolder { set, no_copy } => {
+            let result = match set {
+                Some(folder) => app_lib::core::cli::system_cmd::set_data_folder(&folder, !no_copy),
+                None => Ok(app_lib::core::cli::system_cmd::data_folder_info()),
+            };
+            print_or_exit(result);
+        }
         CliCommands::Models { cmd } => handle_models(cmd).await,
         CliCommands::Agent { cmd } => handle_agent(cmd).await,
         CliCommands::Mcp { cmd } => {
@@ -1755,12 +2416,42 @@ async fn handle_cli(cmd: CliCommands) {
         CliCommands::Net { cmd } => handle_net(cmd),
         CliCommands::Bench { cmd } => handle_bench(cmd),
         CliCommands::Schedule { cmd } => {
-            use app_lib::core::cli::schedule;
+            use app_lib::core::cli::{schedule, schedule_manage};
             let result = match cmd {
                 ScheduleCommands::List { json } => schedule::list(json),
                 ScheduleCommands::Run { id, wait } => schedule::run_now(&id, wait).await,
                 ScheduleCommands::Tick { data, json } => schedule::tick(data.as_deref(), json),
                 ScheduleCommands::Runs { id, limit, json } => schedule::runs(&id, limit, json),
+                ScheduleCommands::Add { task, json } => {
+                    task.into_input().and_then(|i| schedule_manage::add(i, json))
+                }
+                ScheduleCommands::Edit { id, task, json } => {
+                    task.into_input().and_then(|i| schedule_manage::edit(&id, i, json))
+                }
+                ScheduleCommands::Delete { id, yes } => {
+                    if yes {
+                        schedule_manage::delete(&id)
+                    } else {
+                        Err(HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                            "this deletes the task and its run history; run again with --yes",
+                        ))
+                    }
+                }
+                ScheduleCommands::Enable { id, json } => schedule_manage::set_enabled(&id, true, json),
+                ScheduleCommands::Disable { id, json } => schedule_manage::set_enabled(&id, false, json),
+                ScheduleCommands::Preview { id, task, count, json } => task
+                    .into_input()
+                    .and_then(|i| schedule_manage::preview(id.as_deref(), i, count, json)),
+                ScheduleCommands::Cancel { id, run } => schedule_manage::cancel_run(&id, &run),
+                ScheduleCommands::Tools { json } => schedule_manage::tools(json),
+                ScheduleCommands::TimeZones => {
+                    schedule_manage::time_zones();
+                    Ok(())
+                }
+                ScheduleCommands::Os { action, interval_minutes, yes, json } => {
+                    schedule_manage::os(&action, interval_minutes, yes, json)
+                }
                 ScheduleCommands::RunSpec { spec } => schedule::run_spec(std::path::Path::new(&spec)).await,
             };
             if let Err(e) = result {
@@ -1851,7 +2542,19 @@ fn handle_bench(cmd: BenchCommands) {
 /// `flint cli net`: outbound network settings (AH-190).
 fn handle_net(cmd: NetCommands) {
     use app_lib::core::net::tls;
-    let NetCommands::Ca { cmd } = cmd;
+    let cmd = match cmd {
+        NetCommands::Ca { cmd } => cmd,
+        NetCommands::Endpoint { host, port } => {
+            match app_lib::core::cli::system_cmd::endpoint(&host, port) {
+                Ok(v) => println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+    };
     let result: Result<(), HarnessError> = match cmd {
         CaCommands::Status => {
             println!("{}", serde_json::to_string_pretty(&tls::status()).unwrap_or_default());
@@ -1885,6 +2588,13 @@ fn handle_net(cmd: NetCommands) {
                     .map_err(|e| HarnessError::new(tauri_plugin_agent_tools::harness_error::ErrorKind::Io, e)),
                 Err(e) => Err(HarnessError::from(&e)),
             }
+        }
+        CaCommands::Check { path } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&app_lib::core::cli::system_cmd::ca_check(&path)).unwrap_or_default()
+            );
+            Ok(())
         }
         CaCommands::Clear => app_lib::core::agent::global_config::set_ca_bundle(None)
             .map(|written| println!("No CA bundle is named in {} any more.", written.display()))
@@ -2001,6 +2711,7 @@ async fn handle_agent(cmd: AgentCommands) {
             task,
             model,
             safe,
+            mode,
             providers,
             sandbox,
             budget,
@@ -2022,13 +2733,22 @@ async fn handle_agent(cmd: AgentCommands) {
                     std::process::exit(e.exit_code());
                 }
             }
+            let mode_switches =
+                match app_lib::core::cli::PermissionMode::resolve(mode.as_deref(), safe, false) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(2);
+                    }
+                };
             cli_agent_run(
                 &project,
                 &task,
                 model,
                 providers.into_overrides(),
                 SessionFlags {
-                    auto_approve: !safe,
+                    auto_approve: mode_switches.0,
+                    plan: mode_switches.1,
                     sandbox: sandbox.into_flag(),
                     worktree: worktree.into_flag(),
                     profile,
@@ -2077,17 +2797,27 @@ async fn handle_agent(cmd: AgentCommands) {
             task,
             model,
             safe,
+            mode,
             providers,
             sandbox,
             profile,
         } => {
+            let mode_switches =
+                match app_lib::core::cli::PermissionMode::resolve(mode.as_deref(), safe, false) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(2);
+                    }
+                };
             cli_agent_step(
                 &project,
                 &task,
                 model,
                 providers.into_overrides(),
                 SessionFlags {
-                    auto_approve: !safe,
+                    auto_approve: mode_switches.0,
+                    plan: mode_switches.1,
                     sandbox: sandbox.into_flag(),
                     profile,
                     ..Default::default()
@@ -2757,6 +3487,41 @@ async fn handle_agent(cmd: AgentCommands) {
                     }
                 })
         }
+        AgentCommands::EventsExport { session, run, include_content } => {
+            app_lib::core::cli::run_data_cmd::events_export(
+                &app_lib::core::app::commands::resolve_jan_data_folder(),
+                &session,
+                run.as_deref(),
+                include_content,
+            )
+            .map_err(HarnessError::legacy)
+        }
+        AgentCommands::EventsInspect { file } => {
+            app_lib::core::cli::run_data_cmd::events_inspect(&file).map_err(HarnessError::legacy)
+        }
+        AgentCommands::Replays { session } => app_lib::core::cli::run_data_cmd::replays(
+            &app_lib::core::app::commands::resolve_jan_data_folder(),
+            &session,
+        )
+        .map_err(HarnessError::legacy),
+        AgentCommands::Replay { session, run } => app_lib::core::cli::run_data_cmd::replay(
+            &app_lib::core::app::commands::resolve_jan_data_folder(),
+            &session,
+            &run,
+        )
+        .map_err(HarnessError::legacy),
+        AgentCommands::Audit { session, run, agent, tool, decision, limit } => {
+            app_lib::core::cli::run_data_cmd::audit_cmd(
+                &app_lib::core::app::commands::resolve_jan_data_folder(),
+                session,
+                run,
+                agent,
+                tool,
+                decision,
+                limit,
+            )
+            .map_err(HarnessError::legacy)
+        }
         AgentCommands::Prompts { session, show } => agent_prompts_text(
             &app_lib::core::app::commands::resolve_jan_data_folder(),
             &session,
@@ -2978,6 +3743,95 @@ fn handle_agent_config(cmd: AgentConfigCommands) -> Result<(), String> {
 
 // ── Threads handlers ───────────────────────────────────────────────────────
 
+fn print_or_exit(result: Result<serde_json::Value, String>) {
+    match result {
+        Ok(v) => println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn exit_on_error(result: Result<(), String>) {
+    if let Err(e) = result {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
+}
+
+fn handle_worktree(cmd: WorktreeCommands) {
+    use app_lib::core::cli::worktree_cmd as w;
+    exit_on_error(match cmd {
+        WorktreeCommands::List { project, json } => w::list(&project, json),
+        WorktreeCommands::Merge { id, project, into, message } => {
+            w::merge(&project, &id, into.as_deref(), message.as_deref())
+        }
+        WorktreeCommands::Discard { id, project, force } => w::discard(&project, &id, force),
+    });
+}
+
+async fn handle_import_claude(cmd: ImportClaudeCommands) {
+    use app_lib::core::cli::cc_import_cmd as c;
+    exit_on_error(match cmd {
+        ImportClaudeCommands::Scan { root } => c::scan(root).await,
+        ImportClaudeCommands::Run { root, names, all, overwrite, link_hooks } => {
+            c::run(root, &names, all, overwrite, link_hooks).await
+        }
+    });
+}
+
+fn handle_memory(cmd: MemoryCommands) {
+    use app_lib::core::cli::memory_cmd as m;
+    exit_on_error(match cmd {
+        MemoryCommands::List { scope, query, offset, limit, place } => {
+            m::list(&place.project, place.session.as_deref(), &scope, query.as_deref(), offset, limit)
+        }
+        MemoryCommands::Show { scope, id, place } => m::show(&place.project, place.session.as_deref(), &scope, &id),
+        MemoryCommands::Forget { scope, id, place } => m::forget(&place.project, place.session.as_deref(), &scope, &id),
+        MemoryCommands::Clear { scope, yes, place } => m::clear(&place.project, place.session.as_deref(), &scope, yes),
+        MemoryCommands::Pin { scope, id, place } => m::pin(&place.project, place.session.as_deref(), &scope, &id, true),
+        MemoryCommands::Unpin { scope, id, place } => m::pin(&place.project, place.session.as_deref(), &scope, &id, false),
+        MemoryCommands::Export { scope, path, place } => m::export(&place.project, place.session.as_deref(), &scope, &path),
+    });
+}
+
+async fn handle_skills(cmd: SkillsCommands) {
+    use app_lib::core::cli::skills_cmd as k;
+    exit_on_error(match cmd {
+        SkillsCommands::List { project, json } => k::list(&project, json),
+        SkillsCommands::Show { name, project } => k::show(&project, &name),
+        SkillsCommands::Write { name, file, project } => {
+            let content = if file == "-" {
+                let mut buf = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)
+                    .map(|_| buf)
+                    .map_err(|e| e.to_string())
+            } else {
+                std::fs::read_to_string(&file).map_err(|e| format!("read {file}: {e}"))
+            };
+            content.and_then(|c| k::write(&project, &name, &c))
+        }
+        SkillsCommands::Delete { name, project } => k::delete(&project, &name),
+        SkillsCommands::Enabled { names, all, project } => k::enabled(&project, &names, all),
+        SkillsCommands::HubList { json } => k::hub_list(json).await,
+        SkillsCommands::HubImport { name, project } => k::hub_import(&project, &name).await,
+    });
+}
+
+async fn handle_archive(cmd: ArchiveCommands) {
+    use app_lib::core::cli::archive_cmd as a;
+    exit_on_error(match cmd {
+        ArchiveCommands::List { kind, json } => a::list(kind.as_deref(), json),
+        ArchiveCommands::Restore { kind, archive_id } => a::restore(&kind, &archive_id),
+        ArchiveCommands::Purge { kind, archive_id, yes } => a::purge(&kind, &archive_id, yes),
+        ArchiveCommands::Empty { kind, yes } => a::empty(kind.as_deref(), yes),
+        ArchiveCommands::Settings { enabled, auto_delete_days, auto_archive_days } => {
+            a::settings(enabled, auto_delete_days, auto_archive_days)
+        }
+    });
+}
+
 async fn handle_threads(cmd: ThreadsCommands) {
     match cmd {
         ThreadsCommands::List => match cli_list_threads().await {
@@ -2998,13 +3852,65 @@ async fn handle_threads(cmd: ThreadsCommands) {
             }
         },
 
-        ThreadsCommands::Delete { id } => match cli_delete_thread(&id) {
-            Ok(()) => println!("{}", serde_json::json!({ "deleted": true, "id": id })),
-            Err(e) => {
-                eprintln!("Error: {e}");
+        ThreadsCommands::Delete { id, permanent, yes } => {
+            if permanent && !yes {
+                eprintln!("Error: --permanent cannot be undone; run again with --yes");
                 std::process::exit(1);
             }
-        },
+            match app_lib::core::cli::archive_cmd::delete_thread(&id, permanent).await {
+                Ok(archived) => {
+                    println!("{}", serde_json::json!({ "deleted": true, "archived": archived, "id": id }))
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        ThreadsCommands::Create { title } => {
+            print_or_exit(app_lib::core::cli::archive_cmd::create_thread(title.as_deref()))
+        }
+        ThreadsCommands::Rename { id, title } => {
+            print_or_exit(app_lib::core::cli::archive_cmd::rename_thread(&id, &title))
+        }
+        ThreadsCommands::Favorite { id } => {
+            print_or_exit(app_lib::core::cli::archive_cmd::favorite_thread(&id, true))
+        }
+        ThreadsCommands::Unfavorite { id } => {
+            print_or_exit(app_lib::core::cli::archive_cmd::favorite_thread(&id, false))
+        }
+        ThreadsCommands::Export { id, format, verbose, all_versions, out, project } => {
+            let result = app_lib::core::cli::thread_export::Format::parse(&format).and_then(|f| {
+                app_lib::core::cli::thread_export::export_thread(
+                    &match project.as_deref() {
+                        Some(p) => app_lib::core::cli::agent_dir_for(std::path::Path::new(p)),
+                        None => app_lib::core::app::commands::resolve_jan_data_folder(),
+                    },
+                    &id,
+                    f,
+                    verbose,
+                    all_versions,
+                    out.as_deref().map(std::path::Path::new),
+                )
+            });
+            match result {
+                Ok(Some(path)) => eprintln!("Wrote {}", path.display()),
+                Ok(None) => {}
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        ThreadsCommands::DeleteMessage { thread_id, message_id } => {
+            match app_lib::core::cli::archive_cmd::delete_message(&thread_id, &message_id).await {
+                Ok(()) => println!("{}", serde_json::json!({ "deleted": true, "id": message_id })),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
 
         ThreadsCommands::Messages {
             thread_id,
@@ -3023,7 +3929,7 @@ async fn handle_threads(cmd: ThreadsCommands) {
 
 async fn handle_models(cmd: ModelsCommands) {
     match cmd {
-        ModelsCommands::List { provider, project } => {
+        ModelsCommands::List { provider, project, filter } => {
             let configs = match load_provider_configs(
                 Some(std::path::Path::new(&project)),
                 &ProviderOverrides::default().with_env(),
@@ -3057,7 +3963,58 @@ async fn handle_models(cmd: ModelsCommands) {
                      flint config set --provider jan --base-url http://localhost:1337/v1 --model <model>"
                 );
             }
+            let output: Vec<_> = match filter.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
+                // Every word must appear somewhere in the entry, so a long
+                // remote list narrows the way the app's model search does.
+                Some(f) => {
+                    let terms: Vec<String> = f.split_whitespace().map(str::to_lowercase).collect();
+                    output
+                        .into_iter()
+                        .filter(|m| {
+                            let hay = m.to_string().to_lowercase();
+                            terms.iter().all(|t| hay.contains(t))
+                        })
+                        .collect()
+                }
+                None => output,
+            };
             println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        }
+        ModelsCommands::Search { query, format } => {
+            match app_lib::core::cli::hf_cmd::search(&query, &format).await {
+                Ok(v) => println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        ModelsCommands::Files { repo } => match app_lib::core::cli::hf_cmd::files(&repo).await {
+            Ok(v) => println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default()),
+            Err(e) => {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        },
+        ModelsCommands::Download { repo, file } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            match app_lib::core::cli::hf_cmd::download(&data, &repo, &file, false).await {
+                Ok(path) => println!("{}", serde_json::json!({ "path": path })),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        ModelsCommands::Import { file, id } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            match app_lib::core::cli::hf_cmd::import(&data, std::path::Path::new(&file), &id) {
+                Ok(path) => println!("{}", serde_json::json!({ "imported": id, "path": path })),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
         }
         ModelsCommands::ListLocal { json } => handle_models_list_local(json),
         ModelsCommands::Info { path, json } => handle_models_info(&path, json),
@@ -3346,6 +4303,66 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
                 println!("No tokens were stored for '{name}'");
             }
             Ok(())
+        }
+        McpCommands::Tools { name } => {
+            let Some(entry) = mcp::get_server(&name) else {
+                return Err(format!("no server named '{name}'"));
+            };
+            let servers: app_lib::core::state::SharedMcpServers = Default::default();
+            mcp::connect(&name, &entry.config, &servers)
+                .await
+                .map_err(|e| e.to_string())?;
+            let listed = mcp::list_tools(&name, &servers).await;
+            mcp::disconnect(&name, &servers).await;
+            let listed = listed?;
+            if listed.is_empty() {
+                println!("'{name}' offers no tools");
+            }
+            for line in listed {
+                println!("{line}");
+            }
+            Ok(())
+        }
+        McpCommands::TrustReport { json } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            let (rows, invalidated) = mcp::trust_report(&data);
+            if json {
+                let inv: Vec<_> = invalidated
+                    .iter()
+                    .map(|(n, r, a)| serde_json::json!({ "name": n, "reason": r, "at": a }))
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({ "trusted": rows, "invalidated": inv }))
+                        .unwrap_or_default()
+                );
+            } else {
+                if rows.is_empty() {
+                    println!("No standing grants.");
+                }
+                for r in &rows {
+                    println!("{:<24} {:<8} since {}", r.name, r.state, r.granted_at);
+                }
+                for (n, reason, at) in &invalidated {
+                    println!("{n:<24} needs renewing ({reason}) at {at}");
+                }
+            }
+            Ok(())
+        }
+        McpCommands::Trust { name, yes } => {
+            if !yes {
+                return Err(format!(
+                    "this lets '{name}' run its tools without asking, in every conversation, until revoked; run again with --yes"
+                ));
+            }
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            mcp::trust_server(&data, &name).map(|fp| println!("Trusted {name} (definition {fp})"))
+        }
+        McpCommands::Revoke { name } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            mcp::revoke_server(&data, &name).map(|removed| {
+                println!("{}", if removed { "Trust withdrawn." } else { "There was no grant." })
+            })
         }
         McpCommands::Logs { name, lines } => {
             let found = app_lib::core::mcp::server_log::tail(
@@ -3726,6 +4743,43 @@ mod tests {
 
     // Permission prompts are opt-in: auto-approval inside the OS sandbox is the
     // default, and `--safe` is what turns the gate back on.
+    #[test]
+    fn console_accepts_worktree_flags() {
+        assert_eq!(Cli::parse_from(["flint", "--worktree"]).worktree.into_flag(), Some(true));
+        assert_eq!(Cli::parse_from(["flint", "--no-worktree"]).worktree.into_flag(), Some(false));
+        assert_eq!(Cli::parse_from(["flint"]).worktree.into_flag(), None);
+        assert!(Cli::try_parse_from(["flint", "--worktree", "--no-worktree"]).is_err());
+    }
+
+    #[test]
+    fn mode_flag_parses_and_replaces_safe() {
+        assert_eq!(Cli::parse_from(["flint", "--mode", "ask"]).mode.as_deref(), Some("ask"));
+        let cli = Cli::parse_from(["flint", "--mode", "ask", "--safe"]);
+        assert!(app_lib::core::cli::PermissionMode::resolve(cli.mode.as_deref(), cli.safe, cli.plan).is_err());
+    }
+
+    #[test]
+    fn new_management_commands_parse() {
+        for argv in [
+            vec!["flint", "cli", "schedule", "add", "--name", "n", "--prompt", "p", "--model", "m/x", "--daily", "09:00", "--allow-tool", "read"],
+            vec!["flint", "cli", "schedule", "preview", "--weekly", "mon@09:00"],
+            vec!["flint", "cli", "archive", "list", "--kind", "thread"],
+            vec!["flint", "cli", "threads", "export", "abc", "--format", "obsidian"],
+            vec!["flint", "cli", "skills", "enabled", "a", "b"],
+            vec!["flint", "cli", "memory", "list", "project"],
+            vec!["flint", "cli", "worktree", "discard", "abcd1234", "--force"],
+            vec!["flint", "cli", "mcp", "trust", "demo", "--yes"],
+            vec!["flint", "cli", "models", "search", "qwen"],
+            vec!["flint", "cli", "net", "endpoint", "localhost", "8080"],
+            vec!["flint", "cli", "agent", "audit", "--decision", "refused"],
+            vec!["flint", "cli", "import-claude", "scan"],
+            vec!["flint", "cli", "data-folder"],
+            vec!["flint", "migrate", "plan", "--mode", "copy"],
+        ] {
+            assert!(Cli::try_parse_from(argv.clone()).is_ok(), "{argv:?}");
+        }
+    }
+
     #[test]
     fn safe_flag_parses_and_defaults_off() {
         assert!(!Cli::parse_from(["jan"]).safe);

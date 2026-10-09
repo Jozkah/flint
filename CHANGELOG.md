@@ -4,6 +4,16 @@ Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into
 
 This changelog lists additions and meaningful changes versus the Jan base. Bug fixes are listed only where they apply to original Jan behavior or an upstream Jan issue.
 
+## Command line parity
+
+- Closed the gap between the `flint` command line and the desktop app's management surface: threads, archive, schedules, skills, memory, worktrees, MCP tools and trust, model search and download, data folder, certificate and endpoint checks, Claude Code import, run records and the JAN migration assistant all have commands (see `docs/src/pages/docs/agent/cli.mdx`).
+- Added `--mode review|ask|auto|bypass` and `/mode`, naming the Cowork modes; `/export` and `/schedule` in the console; `--worktree` on the console as documented.
+- A model in the console is no longer offered the browser pane, image and external-browser tools it can never use.
+- The `computer` tool now honours the off-limits regions and app allowlist saved in the desktop app, which the command line ignored.
+- A model step that stops producing data for ten minutes is now given up on (`FLINT_OPERATION_TIMEOUT_MS` changes or disables it), and a configured context window under 128 tokens is treated as unknown.
+- Claude Code skills and plugins imported as live links are refreshed from the command line too.
+- Deleting a thread from the command line moves it to the archive, like the app; `--permanent` skips it.
+
 ## Final 0.9.0 additions
 
 These are the significant additions merged after the previous 0.9.0 changelog pass.
@@ -209,7 +219,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 
 ### Inference and repository targeting
 
-- Upgraded the bundled llama.cpp engine from 0.4.1 / b10964 to **0.6.0 / b11509**, with matching packages and lockfiles. Saved conversation state from an earlier engine build is discarded rather than restored.
+- Upgraded the bundled llama.cpp engine from 0.4.1 / b10964 to **0.6.0 / b11524 (nightly)**, with matching packages and lockfiles. Saved conversation state from an earlier engine build is discarded rather than restored.
 - Active release workflows, package metadata, project links and web-search identification now target `Jozkah/flint` rather than the upstream repository where appropriate.
 
 ### Local models and engine settings

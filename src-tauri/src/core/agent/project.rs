@@ -760,7 +760,6 @@ pub(crate) fn set_agent_key(
 
 /// Persist `[skills].enabled` into the agent.toml at `path`, format-preserving
 /// (comments kept). An empty list clears the whitelist (= all skills enabled).
-#[cfg(not(feature = "cli"))]
 pub(crate) fn set_skills_enabled_in_agent_toml(
     path: &Path,
     enabled: &[String],

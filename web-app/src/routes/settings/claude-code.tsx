@@ -73,6 +73,7 @@ function ClaudeCodeIntegration() {
 
   const handleLaunchClaudeCode = async () => {
     const apiUrl = `http://${serverHost}:${serverPort}`
+    const modelFable = helperModels.fable
     const modelBig = helperModels.big
     const modelMedium = helperModels.medium
     const modelSmall = helperModels.small
@@ -80,6 +81,7 @@ function ClaudeCodeIntegration() {
 
     const startServer = async (): Promise<void> => {
       const helperModelsToStart = [
+        { id: helperModels.fable, role: 'Fable' },
         { id: helperModels.big, role: 'Big' },
         { id: helperModels.medium, role: 'Medium' },
         { id: helperModels.small, role: 'Small' },
@@ -202,6 +204,7 @@ function ClaudeCodeIntegration() {
         bigModel: modelBig || undefined,
         mediumModel: modelMedium || undefined,
         smallModel: modelSmall || undefined,
+        fableModel: modelFable || undefined,
         customEnvVars: customEnvVars.map((env) => ({
           key: env.key,
           value: env.value,
@@ -241,6 +244,19 @@ function ClaudeCodeIntegration() {
           }
           title="Claude Code integration"
         >
+          <CardItem
+            anchor="settings-claude-code-fable-model"
+            title={t('settings:claudeCode.fableModel')}
+            description={t('settings:claudeCode.fableModelDesc')}
+            actions={
+              <HelperModelSelector
+                providers={providers}
+                selectedModel={helperModels.fable}
+                onSelect={(model) => setHelperModel('fable', model)}
+                placeholder="Select Fable Model"
+              />
+            }
+          />
           <CardItem
             anchor="settings-claude-code-large-model"
             title={t('settings:claudeCode.largeModel')}

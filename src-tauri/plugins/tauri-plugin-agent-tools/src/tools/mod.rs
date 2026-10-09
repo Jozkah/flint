@@ -922,6 +922,14 @@ pub fn browser_unavailable_result() -> String {
 /// everywhere (the handler, the tests, the loop) so a model sees one message.
 pub const BROWSER_NEEDS_DESKTOP: &str = "Browser tools need the Flint desktop app: they drive its built-in browser pane, which this surface (the command line or a background job) does not have. Nothing was opened or read. Use web_fetch to read a page, or tell the user what you needed the browser for.";
 
+/// Host tools a headless surface can only answer with "unavailable", so it
+/// should not advertise them at all. `request_access` is left out: the CLI
+/// answers it through its own prompt. `list_plugins` reads the desktop's
+/// store; the CLI lists plugins in its system prompt instead.
+pub fn is_desktop_only_tool(name: &str) -> bool {
+    matches!(name, "open_in_browser" | "generate_image" | "list_plugins") || is_browser_tool(name)
+}
+
 /// Tools the desktop answers itself (a prompt, or a store only the app can
 /// read). Auto-allowed by the gate like the workspace tools.
 pub fn is_host_tool(name: &str) -> bool {

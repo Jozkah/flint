@@ -426,6 +426,35 @@ describe('ProviderDetail route', () => {
       expect(screen.getByText('providers:noModelFound')).toBeInTheDocument()
     })
 
+    describe('long remote model lists', () => {
+      const many = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({
+          id: `model-${i}`,
+          model: `model-${i}`,
+          name: `model-${i}`,
+          capabilities: ['completion'],
+          version: '1',
+        }))
+
+      it('shows no filter box for a short list', () => {
+        renderComponent()
+        expect(screen.queryByRole('textbox', { name: /filterModels/ })).toBeNull()
+      })
+
+      it('pages a long list and filters it by name', () => {
+        h.openaiProvider.models = many(120)
+        renderComponent()
+        expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(50)
+        fireEvent.click(screen.getByText('providers:showMoreModels'))
+        expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(100)
+        fireEvent.change(screen.getByRole('textbox', { name: /filterModels/ }), {
+          target: { value: 'model-11' },
+        })
+        // model-11, model-110 .. model-119
+        expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(11)
+      })
+    })
+
     it('renders essentially empty tree for an unknown provider', () => {
       h.params.providerName = 'does-not-exist'
       renderComponent()
