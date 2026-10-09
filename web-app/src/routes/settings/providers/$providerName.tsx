@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { syncListedModels } from '@/lib/providerModelSync'
+import { listedCapabilities } from '@/lib/listedCapabilities'
 import { CardItem } from '@/containers/Card'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -674,7 +675,10 @@ function ProviderDetail() {
         id,
         model: id,
         name: id,
-        capabilities: ['completion'],
+        capabilities: [
+          'completion',
+          ...(listedCapabilities(provider.base_url, id) ?? []),
+        ],
         version: '1.0',
       }))
 
