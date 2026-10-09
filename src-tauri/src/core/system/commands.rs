@@ -316,6 +316,7 @@ fn claude_code_env_keys_to_clear(recorded: Vec<String>) -> Vec<String> {
         "ANTHROPIC_DEFAULT_OPUS_MODEL",
         "ANTHROPIC_DEFAULT_SONNET_MODEL",
         "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_FABLE_MODEL",
     ]
     .iter()
     .map(|k| k.to_string())
@@ -490,6 +491,7 @@ pub fn launch_claude_code_with_config(
     big_model: Option<String>,
     medium_model: Option<String>,
     small_model: Option<String>,
+    fable_model: Option<String>,
     custom_env_vars: Vec<serde_json::Value>,
 ) -> Result<(), String> {
     let env_vars = build_claude_code_env_vars(
@@ -498,6 +500,7 @@ pub fn launch_claude_code_with_config(
         big_model,
         medium_model,
         small_model,
+        fable_model,
         custom_env_vars,
     )?;
 
@@ -519,6 +522,7 @@ fn build_claude_code_env_vars(
     big_model: Option<String>,
     medium_model: Option<String>,
     small_model: Option<String>,
+    fable_model: Option<String>,
     custom_env_vars: Vec<serde_json::Value>,
 ) -> Result<Vec<(String, String)>, String> {
     let token = api_key.filter(|k| !k.trim().is_empty()).ok_or_else(|| {
@@ -542,6 +546,10 @@ fn build_claude_code_env_vars(
 
     if let Some(model) = small_model {
         env_vars.push(("ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string(), model));
+    }
+
+    if let Some(model) = fable_model {
+        env_vars.push(("ANTHROPIC_DEFAULT_FABLE_MODEL".to_string(), model));
     }
 
     // Add custom env vars from the custom CLI section
@@ -1284,6 +1292,32 @@ mod tests {
     }
 
     #[test]
+    fn the_fable_tier_is_set_only_when_chosen() {
+        let with = build_claude_code_env_vars(
+            "http://127.0.0.1:1337".to_string(),
+            Some("k".to_string()),
+            None,
+            None,
+            None,
+            Some("my-fable".to_string()),
+            vec![],
+        )
+        .unwrap();
+        assert!(with.contains(&("ANTHROPIC_DEFAULT_FABLE_MODEL".to_string(), "my-fable".to_string())));
+        let without = build_claude_code_env_vars(
+            "http://127.0.0.1:1337".to_string(),
+            Some("k".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+        )
+        .unwrap();
+        assert!(!without.iter().any(|(k, _)| k == "ANTHROPIC_DEFAULT_FABLE_MODEL"));
+    }
+
+    #[test]
     fn windows_reset_clears_recorded_custom_keys() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("keys.json");
@@ -1297,6 +1331,7 @@ mod tests {
         assert!(keys.contains(&"HTTPS_PROXY".to_string()));
         assert!(keys.contains(&"MY_TOKEN".to_string()));
         assert!(keys.contains(&"ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string()));
+        assert!(keys.contains(&"ANTHROPIC_DEFAULT_FABLE_MODEL".to_string()));
         assert_eq!(keys.iter().filter(|k| *k == "ANTHROPIC_BASE_URL").count(), 1);
     }
 
@@ -1373,6 +1408,7 @@ mod tests {
         let result = build_claude_code_env_vars(
             "http://127.0.0.1:1337".to_string(),
             Some("k".to_string()),
+            None,
             None,
             None,
             None,
@@ -1543,6 +1579,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             vec![],
         )
         .unwrap();
@@ -1566,6 +1603,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             vec![],
         )
         .unwrap_err();
@@ -1580,6 +1618,7 @@ mod tests {
         let err = build_claude_code_env_vars(
             "http://127.0.0.1:1337".to_string(),
             Some("   ".to_string()),
+            None,
             None,
             None,
             None,
