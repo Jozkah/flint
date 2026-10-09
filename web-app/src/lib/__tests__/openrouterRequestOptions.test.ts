@@ -93,3 +93,11 @@ describe('stop sequences and client-side keys in the request body', () => {
     expect(body.openrouter_web_search).toBeUndefined()
   })
 })
+
+describe('image output', () => {
+  it('asks for image modalities when enabled', () => {
+    const body: Record<string, unknown> = { model: 'google/gemini-image' }
+    expect(applyOpenRouterOptions(body, { openrouter_image_output: true })).toBe(true)
+    expect(body.modalities).toEqual(['image', 'text'])
+  })
+})

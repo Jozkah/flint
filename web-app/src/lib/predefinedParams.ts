@@ -431,6 +431,15 @@ export const paramsSettings: Record<string, ParamDef> = {
     controllerType: 'checkbox',
     capability: 'openrouter',
   },
+  openrouter_image_output: {
+    key: 'openrouter_image_output',
+    title: 'OpenRouter Image Output',
+    description:
+      "Requests image output (modalities image + text) so image-capable models can return pictures into the chat. Leave off for text-only models.",
+    value: false,
+    controllerType: 'checkbox',
+    capability: 'openrouter',
+  },
   openrouter_provider: {
     key: 'openrouter_provider',
     title: 'OpenRouter Provider Routing',
@@ -641,6 +650,7 @@ export const paramCategories: CategoryDef[] = [
       'stop',
       'verbosity',
       'openrouter_web_search',
+      'openrouter_image_output',
       'openrouter_provider',
     ],
     groupIds: [],
@@ -660,5 +670,6 @@ export const paramCategories: CategoryDef[] = [
  */
 export const OPENROUTER_PARAM_KEYS = [
   'openrouter_web_search',
+  'openrouter_image_output',
   'openrouter_provider',
 ] as const

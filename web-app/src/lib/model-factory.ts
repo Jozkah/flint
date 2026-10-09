@@ -44,6 +44,11 @@ export interface ModelParameters {
 import { withOpenRouterReasoningDetails } from '@/lib/openrouterReasoningDetails'
 import { withOpenRouterOptions } from '@/lib/openrouterRequestOptions'
 import {
+  ImageTap,
+  imageOutputMiddleware,
+  withImageTap,
+} from '@/lib/openrouterImages'
+import {
   extractReasoningMiddleware,
   wrapLanguageModel,
   type LanguageModel,
@@ -269,6 +274,7 @@ const CLIENT_SIDE_PARAM_KEYS: ReadonlySet<string> = new Set([
   'auto_compact',
   // Consumed client-side: OpenRouter request shaping and provider options.
   'openrouter_web_search',
+  'openrouter_image_output',
   'openrouter_provider',
   'verbosity',
   DISPATCH_PARAM_KEY,
@@ -1626,6 +1632,7 @@ export class ModelFactory {
       if (isAzure) headers['api-key'] = keyChain[0]!
     }
 
+    const imageTap = new ImageTap()
     let fetchImpl: typeof globalThis.fetch =
       keyChain.length > 1
         ? createApiKeyRotatingFetch(
@@ -1648,6 +1655,7 @@ export class ModelFactory {
     if (isOpenRouterProvider(provider)) {
       fetchImpl = withOpenRouterReasoningDetails(fetchImpl)
       fetchImpl = withOpenRouterOptions(fetchImpl, parameters)
+      fetchImpl = withImageTap(fetchImpl, imageTap)
     }
 
     const endpoint = isAzure
@@ -1674,6 +1682,9 @@ export class ModelFactory {
           tagName: getReasoningTagName(modelId),
           separator: '\n',
         }),
+        ...(isOpenRouterProvider(provider)
+          ? [imageOutputMiddleware(imageTap)]
+          : []),
       ],
     })
   }

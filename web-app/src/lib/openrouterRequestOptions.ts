@@ -4,6 +4,8 @@
  *   shorthand for the `web` plugin).
  * - `openrouter_provider`: JSON for the documented `provider` routing object
  *   (order / only / ignore / allow_fallbacks).
+ * - `openrouter_image_output`: asks for `modalities: ['image','text']` so
+ *   image-capable models return pictures (see openrouterImages).
  * Only applied to OpenRouter endpoints; see model-factory.
  */
 
@@ -54,6 +56,10 @@ export function applyOpenRouterOptions(
     !body.model.endsWith(':online')
   ) {
     body.model = `${body.model}:online`
+    changed = true
+  }
+  if (isWebSearchOn(params.openrouter_image_output) && body.modalities === undefined) {
+    body.modalities = ['image', 'text']
     changed = true
   }
   const routing = parseProviderRouting(params.openrouter_provider)
