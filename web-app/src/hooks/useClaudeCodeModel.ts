@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 
-export type ClaudeCodeModelType = 'big' | 'medium' | 'small'
+export type ClaudeCodeModelType = 'fable' | 'big' | 'medium' | 'small'
 
 export interface EnvVar {
   key: string
@@ -8,6 +8,7 @@ export interface EnvVar {
 }
 
 interface ClaudeCodeModels {
+  fable: string | null
   big: string | null
   medium: string | null
   small: string | null
@@ -18,6 +19,7 @@ interface ClaudeCodeModels {
 const STORAGE_KEY = 'claude-code-helper-models'
 
 const defaultModels: ClaudeCodeModels = {
+  fable: null,
   big: null,
   medium: null,
   small: null,
@@ -44,6 +46,8 @@ const loadFromStorage = (): ClaudeCodeModels => {
         typeof parsed.customCli === 'string'
       ) {
         return {
+          // Absent in what was saved before the Fable tier existed.
+          fable: parsed.fable ?? null,
           big: parsed.big ?? null,
           medium: parsed.medium ?? null,
           small: parsed.small ?? null,

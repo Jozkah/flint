@@ -549,6 +549,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('remote-access', 'devices', 'remote:cardDevices', {
     keywords: ['pair', 'qr code', 'unpair', 'devices'],
   }),
+  item('claude-code', 'fable-model', 'settings:claudeCode.fableModel', {
+    descriptionKey: 'settings:claudeCode.fableModelDesc',
+    keywords: ['fable', 'model', 'claude code'],
+  }),
   item('claude-code', 'large-model', 'settings:claudeCode.largeModel', {
     descriptionKey: 'settings:claudeCode.largeModelDesc',
     keywords: ['opus', 'model', 'claude code'],
