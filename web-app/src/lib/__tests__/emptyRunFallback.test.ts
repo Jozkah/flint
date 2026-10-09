@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   EMPTY_REPLY_FALLBACK,
+  THINKING_ONLY_FALLBACK,
   emptyRunFallback,
   toolPartError,
 } from '@/lib/emptyRunFallback'
@@ -13,6 +14,21 @@ const tool = (extra: Partial<MessagePartLike>): MessagePartLike => ({
 })
 
 describe('emptyRunFallback', () => {
+  it('says the model finished thinking when only reasoning came back (#199)', () => {
+    expect(
+      emptyRunFallback([{ type: 'reasoning', text: 'hmm' }])
+    ).toBe(THINKING_ONLY_FALLBACK)
+    expect(
+      emptyRunFallback([{ type: 'reasoning', text: '  ' }])
+    ).toBe(EMPTY_REPLY_FALLBACK)
+    expect(
+      emptyRunFallback([
+        { type: 'reasoning', text: 'hmm' },
+        { type: 'text', text: 'answer' },
+      ])
+    ).toBeNull()
+  })
+
   it('names the last tool error when the run ended with no text', () => {
     const parts = [
       { type: 'text', text: 'Let me check.' },
@@ -56,7 +72,7 @@ describe('emptyRunFallback', () => {
     )
     expect(
       emptyRunFallback([{ type: 'reasoning', text: 'thinking' }])
-    ).toBe(EMPTY_REPLY_FALLBACK)
+    ).toBe(THINKING_ONLY_FALLBACK)
     expect(EMPTY_REPLY_FALLBACK).toBe(
       'The model returned an empty reply. Try again or switch model.'
     )

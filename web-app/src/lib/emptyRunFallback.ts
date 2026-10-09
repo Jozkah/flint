@@ -18,6 +18,10 @@ const MAX_ERROR_CHARS = 300
 export const EMPTY_REPLY_FALLBACK =
   'The model returned an empty reply. Try again or switch model.'
 
+/** Shown when the model reasoned but produced no answer and no tool calls. */
+export const THINKING_ONLY_FALLBACK =
+  'The model finished thinking without giving an answer. Continue or regenerate to try again.'
+
 function textOf(value: unknown): string | undefined {
   if (typeof value === 'string') return value.trim() || undefined
   if (Array.isArray(value)) {
@@ -94,7 +98,11 @@ export function emptyRunFallback(parts: readonly MessagePartLike[]): string | nu
     const answered = parts.some(
       (p) => (p.type === 'text' && !!p.text?.trim()) || p.type === 'file'
     )
-    return answered ? null : EMPTY_REPLY_FALLBACK
+    if (answered) return null
+    const reasoned = parts.some(
+      (p) => p.type === 'reasoning' && !!(p.text ?? '').trim()
+    )
+    return reasoned ? THINKING_ONLY_FALLBACK : EMPTY_REPLY_FALLBACK
   }
   const answered = parts
     .slice(lastTool + 1)

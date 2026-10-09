@@ -41,6 +41,7 @@ export interface ModelParameters {
   stop_sequences?: string[]
 }
 
+import { withOpenRouterReasoningDetails } from '@/lib/openrouterReasoningDetails'
 import {
   extractReasoningMiddleware,
   wrapLanguageModel,
@@ -837,6 +838,17 @@ export function stripAssistantReasoningInBody(
   }
 }
 
+function isOpenRouterProvider(
+  provider: Pick<ProviderObject, 'provider' | 'base_url'>
+): boolean {
+  if (provider.provider === 'openrouter') return true
+  try {
+    return new URL(provider.base_url || '').hostname.toLowerCase() === 'openrouter.ai'
+  } catch {
+    return false
+  }
+}
+
 /**
  * Azure OpenAI: the v1 endpoint takes Bearer, but legacy deployments-style
  * endpoints (`/openai/deployments/<name>?api-version=...`) only accept the
@@ -1617,8 +1629,14 @@ export class ModelFactory {
       fetchImpl = withAssistantReasoningStripped(fetchImpl)
     }
 
+    // OpenRouter needs reasoning_details replayed with tool results (Gemini 3
+    // thought signatures); the SDK does not carry them. janhq/jan#283.
+    if (isOpenRouterProvider(provider)) {
+      fetchImpl = withOpenRouterReasoningDetails(fetchImpl)
+    }
+
     const endpoint = isAzure
-      ? splitBaseUrlQuery(provider.base_url)
+      ? splitBaseUrlQuery(provider.base_url ?? '')
       : { baseURL: provider.base_url || 'https://api.openai.com/v1' }
     const openAICompatible = createOpenAICompatible({
       name: provider.provider,
