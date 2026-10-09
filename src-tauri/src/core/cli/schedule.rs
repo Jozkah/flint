@@ -29,19 +29,19 @@ use crate::core::schedule::runner::{self, Ending, Observer, SupervisorLauncher};
 use crate::core::schedule::spec::{OnBlock, WriteMode};
 use crate::core::schedule::store::{now_ms, RunRecord, RunStatus, Store, Trigger};
 
-fn invalid(message: impl Into<String>) -> HarnessError {
+pub(super) fn invalid(message: impl Into<String>) -> HarnessError {
     HarnessError::new(ErrorKind::InvalidInput, message).at(Stage::Startup)
 }
 
-fn store_err(e: crate::core::schedule::store::StoreError) -> HarnessError {
+pub(super) fn store_err(e: crate::core::schedule::store::StoreError) -> HarnessError {
     HarnessError::new(ErrorKind::Io, e.message).at(Stage::Startup)
 }
 
-fn data_folder() -> PathBuf {
+pub(super) fn data_folder() -> PathBuf {
     crate::core::app::commands::resolve_jan_data_folder()
 }
 
-fn stamp(ms: u64) -> String {
+pub(super) fn stamp(ms: u64) -> String {
     chrono::DateTime::from_timestamp_millis(ms as i64)
         .map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
         .unwrap_or_else(|| "-".to_string())

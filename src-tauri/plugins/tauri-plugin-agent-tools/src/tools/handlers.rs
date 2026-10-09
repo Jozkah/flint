@@ -718,10 +718,12 @@ fn request_access_without_prompt(args: &serde_json::Value, ctx: &ToolContext<'_>
             "unavailable",
             serde_json::json!({
                 "path": p.display,
-                "message": "No one can approve access from here (no approval prompt on \
-                            this surface). Nothing was granted.",
-                "next": "Do not retry. Ask the user in your reply to paste or attach what \
-                         you need, or to start the run with that folder attached.",
+                "message": "Nothing was granted: this surface keeps no standing folder grants. \
+                            A read or write on a path outside the workspace is put to the \
+                            user when you make that call, if someone is attached.",
+                "next": "Retry the call you need on that path; the user is asked then. If \
+                         it is refused because no one is attached, say so in your reply, or \
+                         ask the user to paste or attach what you need.",
             }),
         ),
     }

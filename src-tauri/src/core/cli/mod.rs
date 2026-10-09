@@ -17,7 +17,11 @@ pub mod journal;
 pub mod json_api;
 pub mod bench;
 pub mod login;
+pub mod cc_import_cmd;
+pub mod hf_cmd;
 pub mod mcp;
+pub mod memory_cmd;
+pub mod migrate_cmd;
 /// `jan mcp serve`: the other direction, Jan's toolset served over MCP.
 pub mod mcp_serve;
 mod model_capabilities;
@@ -30,7 +34,13 @@ pub mod rpc;
 pub mod rpc_schema;
 pub mod providers;
 pub mod run_report;
+pub mod archive_cmd;
+pub mod run_data_cmd;
 pub mod schedule;
+pub mod skills_cmd;
+pub mod system_cmd;
+pub mod thread_export;
+pub mod schedule_manage;
 pub mod secrets;
 mod secret_input;
 pub mod stream_input;
@@ -43,6 +53,7 @@ pub mod version;
 /// The user-message wire shape, shared by the TUI and the headless channel.
 mod user_message;
 pub mod worktree;
+pub mod worktree_cmd;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1321,6 +1332,68 @@ impl AgentSession {
     /// Build a streaming request body for the given conversation history.
     pub(crate) fn body(&self, messages: serde_json::Value) -> serde_json::Value {
         request_body(&self.model, &self.limits, self.send_reasoning, messages)
+    }
+}
+
+/// How freely a session acts, named the way the desktop's Cowork modes are.
+///
+/// * `review`: read-only plan mode; leaving it needs the plan approved.
+/// * `ask`: writes, shell commands and MCP calls prompt (`--safe`).
+/// * `auto`: those run unprompted, inside the sandbox when it is on (default).
+/// * `bypass`: as `auto`. The tools that always ask (`host_*`, `computer`,
+///   clipboard) still ask in every mode; no mode covers them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionMode {
+    Review,
+    Ask,
+    Auto,
+    Bypass,
+}
+
+impl PermissionMode {
+    pub fn parse(s: &str) -> Result<PermissionMode, String> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "review" => Ok(PermissionMode::Review),
+            "ask" => Ok(PermissionMode::Ask),
+            "auto" => Ok(PermissionMode::Auto),
+            "bypass" => Ok(PermissionMode::Bypass),
+            other => Err(format!("unknown mode '{other}' (review, ask, auto, bypass)")),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PermissionMode::Review => "review",
+            PermissionMode::Ask => "ask",
+            PermissionMode::Auto => "auto",
+            PermissionMode::Bypass => "bypass",
+        }
+    }
+
+    /// Whether writes, shell commands and MCP calls run without a prompt.
+    pub fn auto_approve(self) -> bool {
+        matches!(self, PermissionMode::Auto | PermissionMode::Bypass)
+    }
+
+    /// Whether the session is read-only plan mode.
+    pub fn plan(self) -> bool {
+        self == PermissionMode::Review
+    }
+
+    /// `(auto_approve, plan)` for a start-up request: `--mode` when given,
+    /// else the older `--safe` and `--plan` switches.
+    pub fn resolve(mode: Option<&str>, safe: bool, plan: bool) -> Result<(bool, bool), String> {
+        match mode {
+            Some(m) => {
+                if safe || plan {
+                    return Err("--mode replaces --safe and --plan; give one or the other".to_string());
+                }
+                let m = PermissionMode::parse(m)?;
+                // Review reads only, so what it would approve never comes up.
+                Ok((m.auto_approve(), m.plan()))
+            }
+            None => Ok((!safe, plan)),
+        }
     }
 }
 
@@ -3612,6 +3685,19 @@ async fn prompt_permission(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn permission_modes_map_to_the_two_switches() {
+        assert_eq!(PermissionMode::resolve(None, false, false), Ok((true, false)));
+        assert_eq!(PermissionMode::resolve(None, true, true), Ok((false, true)));
+        assert_eq!(PermissionMode::resolve(Some("ask"), false, false), Ok((false, false)));
+        assert_eq!(PermissionMode::resolve(Some("Auto"), false, false), Ok((true, false)));
+        assert_eq!(PermissionMode::resolve(Some("bypass"), false, false), Ok((true, false)));
+        assert_eq!(PermissionMode::resolve(Some("review"), false, false), Ok((false, true)));
+        assert!(PermissionMode::resolve(Some("ask"), true, false).is_err());
+        assert!(PermissionMode::resolve(Some("nope"), false, false).is_err());
+        assert_eq!(PermissionMode::parse("review").unwrap().as_str(), "review");
+    }
+
     /// #200: every colored line goes through `color::paint`, so NO_COLOR and
     /// non-terminal stderr are honored. Neither source may hold an SGR
     /// sequence of its own, whether escaped or as a raw ESC character.

@@ -17,7 +17,11 @@ flint (binary, src-tauri/src/bin/flint.rs)
               ├── mcp.rs       — MCP server management
               ├── providers.rs — Provider config overrides
               ├── path_refs.rs — File path resolution
-              └── preset.rs    — Model presets
+              ├── schedule.rs, schedule_manage.rs — Scheduled tasks
+              ├── archive_cmd.rs, thread_export.rs — Archive, thread edits and export
+              ├── skills_cmd.rs, memory_cmd.rs, worktree_cmd.rs — Skills, memory, worktrees
+              ├── hf_cmd.rs, system_cmd.rs, migrate_cmd.rs — Models, data folder, migration
+              └── run_data_cmd.rs, cc_import_cmd.rs — Run records, Claude Code import
 ```
 
 ### Key Files
@@ -26,7 +30,7 @@ flint (binary, src-tauri/src/bin/flint.rs)
 |------|---------|
 | `src-tauri/src/bin/flint.rs` | CLI binary entry point (clap argument parsing) |
 | `src-tauri/src/core/cli/mod.rs` | CLI public API + thread listing |
-| `src-tauri/src/core/cli/tui.rs` | Main TUI (~4600+ lines): `App` struct, event loop, rendering, commands |
+| `src-tauri/src/core/cli/tui.rs` | Main TUI (35,000+ lines with its tests): `App` struct, event loop, rendering, commands |
 | `src-tauri/Cargo.toml` | Crate config; `cli` feature gates TUI dependencies |
 
 ## Build
@@ -104,7 +108,7 @@ cd src-tauri && cargo watch -x "test --no-default-features --features cli --lib 
 
 ### Test Coverage
 
-There are 100+ tests covering:
+There are well over a thousand TUI tests covering:
 - Message rendering (user, assistant, tool calls)
 - Tool folding and expansion
 - Subagent panels
@@ -241,14 +245,32 @@ Defined in the `SLASH_COMMANDS` const array and handled by `run_command()`:
 | `/help` | Show available commands |
 | `/new` | Start a new session |
 | `/clear` | Clear the conversation |
+| `/init` | Study the project, then write JAN.md, skills and memory |
 | `/compact` | Summarize older turns |
+| `/context` | Context-window breakdown |
+| `/usage [account\|daily\|requests\|limits\|run]` | Tokamak usage and spend |
 | `/goal [condition\|clear]` | Set/list/clear a goal |
+| `/plan [exit\|text]` | Read-only plan mode |
+| `/mode [review\|ask\|auto\|bypass]` | Show or set how freely the agent acts |
+| `/todo [add ...\|clear]` | Todo editor |
 | `/threads` | List saved threads |
 | `/resume [id]` | Resume a thread |
+| `/fork` | Branch at a past message into a new thread |
+| `/tree` | Fork tree of threads |
+| `/worktree` | Show the session's checkout and its changes |
+| `/export [markdown\|obsidian\|json] [path]` | Write this conversation to a file |
+| `/schedule [list\|run\|enable\|disable] [id]` | Scheduled tasks |
 | `/model [id]` | Switch model |
+| `/effort [low\|medium\|high]` | Reasoning effort |
+| `/terminal-setup` | Make Shift+Enter insert a newline |
 | `/mcp` | Manage MCP servers |
+| `/agents` | Subagent inspector |
+| `/shells` | Background shell inspector |
+| `/plugin [list\|install\|remove\|search]` | Plugin management |
 | `/cancel [N]` | Cancel queued messages |
-| `/config` | View provider config |
+| `/login`, `/logout` | Provider sign-in |
+| `/config`, `/settings` | View or edit provider and agent settings |
+| `/bug` | Diagnostic bundle |
 | `/quit` | Exit the TUI |
 
 ### Tab Completion
@@ -262,16 +284,16 @@ The TUI supports Tab-based slash command completion:
 
 ```bash
 # After building (binary at ~/.local/bin/flint):
-flint tui
+flint
 
 # Or from the project:
-cd src-tauri && cargo run --no-default-features --features cli --bin flint -- tui
+cd src-tauri && cargo run --no-default-features --features cli --bin flint --
 
 # With a specific model:
-flint tui --model my-model
+flint --model my-model
 
 # With provider overrides:
-flint tui --provider openai --model gpt-4
+flint --provider openai --model gpt-4
 ```
 
 ## Making Changes
@@ -292,7 +314,7 @@ vim src-tauri/src/core/cli/tui.rs
 ./build-tui.sh debug
 
 # 5. Test in terminal
-flint tui
+flint
 ```
 
 ### Adding a New Slash Command
