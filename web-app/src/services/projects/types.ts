@@ -8,6 +8,13 @@ export interface ThreadFolder {
   name: string
   updated_at: number
   assistantId?: string
+  /** Model new chats in this project start on. Unset = the global pick. */
+  model?: ProjectModel
+}
+
+export interface ProjectModel {
+  id: string
+  provider: string
 }
 
 export interface ProjectsService {
@@ -19,12 +26,21 @@ export interface ProjectsService {
   /**
    * Add a new project/folder
    */
-  addProject(name: string, assistantId?: string): Promise<ThreadFolder>
+  addProject(
+    name: string,
+    assistantId?: string,
+    model?: ProjectModel
+  ): Promise<ThreadFolder>
 
   /**
    * Update a project/folder
    */
-  updateProject(id: string, name: string, assistantId?: string): Promise<void>
+  updateProject(
+    id: string,
+    name: string,
+    assistantId?: string,
+    model?: ProjectModel
+  ): Promise<void>
 
   /**
    * Delete a project/folder

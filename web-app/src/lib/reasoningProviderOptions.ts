@@ -12,6 +12,37 @@ import {
   isThinkingOff,
 } from './modelEffort'
 
+const VERBOSITY_LEVELS = new Set(['low', 'medium', 'high'])
+
+/**
+ * GPT-5 style `verbosity` (low/medium/high), from the assistant parameters.
+ * Only OpenAI's gpt-5 family accepts it; every other target gets nothing.
+ */
+export function buildVerbosityProviderOptions(
+  providerId: string,
+  modelId: string | undefined,
+  params: Record<string, unknown> | undefined
+): Record<string, JSONObject> | undefined {
+  const v = params?.verbosity
+  if (providerId !== 'openai' || typeof v !== 'string') return undefined
+  if (!VERBOSITY_LEVELS.has(v) || !/^gpt-?5/i.test(modelId ?? '')) {
+    return undefined
+  }
+  return { openai: { textVerbosity: v } }
+}
+
+/** Merges provider-option maps, combining entries that share a provider key. */
+export function mergeProviderOptions(
+  ...parts: Array<Record<string, JSONObject> | undefined>
+): Record<string, JSONObject> | undefined {
+  const out: Record<string, JSONObject> = {}
+  for (const part of parts) {
+    if (!part) continue
+    for (const [k, v] of Object.entries(part)) out[k] = { ...out[k], ...v }
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
 type ReasoningChoice = 'auto' | 'on' | 'off' | undefined
 
 // OpenAI's reasoning_effort is a discrete level (no token budget). Our shared

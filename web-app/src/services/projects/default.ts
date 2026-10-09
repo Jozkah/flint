@@ -3,7 +3,7 @@
  */
 
 import { ulid } from 'ulidx'
-import type { ProjectsService, ThreadFolder } from './types'
+import type { ProjectModel, ProjectsService, ThreadFolder } from './types'
 import { localStorageKey } from '@/constants/localStorage'
 
 export class DefaultProjectsService implements ProjectsService {
@@ -37,12 +37,17 @@ export class DefaultProjectsService implements ProjectsService {
     return this.loadFromStorage()
   }
 
-  async addProject(name: string, assistantId?: string): Promise<ThreadFolder> {
+  async addProject(
+    name: string,
+    assistantId?: string,
+    model?: ProjectModel
+  ): Promise<ThreadFolder> {
     const newProject: ThreadFolder = {
       id: ulid(),
       name,
       updated_at: Date.now(),
       assistantId,
+      ...(model ? { model } : {}),
     }
 
     const projects = this.loadFromStorage()
@@ -52,11 +57,16 @@ export class DefaultProjectsService implements ProjectsService {
     return newProject
   }
 
-  async updateProject(id: string, name: string, assistantId?: string): Promise<void> {
+  async updateProject(
+    id: string,
+    name: string,
+    assistantId?: string,
+    model?: ProjectModel
+  ): Promise<void> {
     const projects = this.loadFromStorage()
     const updatedProjects = projects.map((project) =>
       project.id === id
-        ? { ...project, name, updated_at: Date.now(), assistantId }
+        ? { ...project, name, updated_at: Date.now(), assistantId, model }
         : project
     )
     this.saveToStorage(updatedProjects)

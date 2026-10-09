@@ -5,7 +5,7 @@
 
 import { ulid } from 'ulidx'
 import { browserApi, jsonRequest } from '@/services/browserApi'
-import type { ProjectsService, ThreadFolder } from './types'
+import type { ProjectModel, ProjectsService, ThreadFolder } from './types'
 
 const URL = '/api/v1/projects'
 
@@ -20,15 +20,30 @@ export class BrowserProjectsService implements ProjectsService {
 
   // One request per change, so browsers working at once cannot overwrite each
   // other's: the server applies each to the list under a lock.
-  addProject(name: string, assistantId?: string): Promise<ThreadFolder> {
-    const project: ThreadFolder = { id: ulid(), name, updated_at: Date.now(), assistantId }
+  addProject(
+    name: string,
+    assistantId?: string,
+    model?: ProjectModel
+  ): Promise<ThreadFolder> {
+    const project: ThreadFolder = {
+      id: ulid(),
+      name,
+      updated_at: Date.now(),
+      assistantId,
+      ...(model ? { model } : {}),
+    }
     return browserApi<ThreadFolder>(URL, jsonRequest('POST', project))
   }
 
-  async updateProject(id: string, name: string, assistantId?: string): Promise<void> {
+  async updateProject(
+    id: string,
+    name: string,
+    assistantId?: string,
+    model?: ProjectModel
+  ): Promise<void> {
     await browserApi<void>(
       `${URL}/${encodeURIComponent(id)}`,
-      jsonRequest('PUT', { name, updated_at: Date.now(), assistantId })
+      jsonRequest('PUT', { name, updated_at: Date.now(), assistantId, model })
     )
   }
 

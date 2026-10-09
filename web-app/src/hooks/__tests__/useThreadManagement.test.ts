@@ -137,7 +137,7 @@ describe('useThreadManagement', () => {
     })
 
     expect(mockRenameGroup).toHaveBeenCalledWith('home', 'p1', 'Updated')
-    expect(mockUpdateProject).toHaveBeenCalledWith('p1', 'Updated', 'assistant-2')
+    expect(mockUpdateProject).toHaveBeenCalledWith('p1', 'Updated', 'assistant-2', undefined)
     expect(result.current.folders).toEqual(updated)
   })
 

@@ -36,4 +36,12 @@ describe('home legacy mirror', () => {
       { id: 'b', name: 'B', updated_at: 2, assistantId: 'x' },
     ])
   })
+
+  it('keeps a project default model through the mirror', () => {
+    const s = createGroup(emptyGroupsState(), 'home', { id: 'a', name: 'A', now: 1 })
+    const model = { id: 'm', provider: 'openai' }
+    expect(
+      projectsFromGroups(s.surfaces.home.groups, [{ id: 'a', name: 'A', updated_at: 0, model }])
+    ).toEqual([{ id: 'a', name: 'A', updated_at: 1, model }])
+  })
 })

@@ -1279,6 +1279,7 @@ const ChatInput = memo(function ChatInput({
           | { id: string; name: string; updated_at: number }
           | undefined
         let projectAssistantId: string | undefined
+        let projectModel: { id: string; provider: string } | undefined
 
         if (projectId) {
           try {
@@ -1292,6 +1293,7 @@ const ChatInput = memo(function ChatInput({
                 updated_at: project.updated_at,
               }
               projectAssistantId = project.assistantId
+              projectModel = project.model
             }
           } catch (e) {
             console.warn('Failed to fetch project metadata:', e)
@@ -1310,10 +1312,23 @@ const ChatInput = memo(function ChatInput({
 
         // Never pin a thread to a model the provider cannot serve — a local
         // engine has no cloud catalogue to borrow an id from (janhq/jan#8007).
+        // A model linked to the project wins for a chat started in it, as
+        // long as that model is still on its provider.
+        const linkedModelOk =
+          projectModel !== undefined &&
+          (getProviderByName(projectModel.provider)?.models ?? []).some(
+            (m) => m.id === projectModel!.id
+          )
+        const threadProvider = linkedModelOk
+          ? projectModel!.provider
+          : selectedProvider
+        if (linkedModelOk) {
+          selectModelProvider(projectModel!.provider, projectModel!.id)
+        }
         const threadModelId = resolveThreadModelId(
-          selectedProvider,
-          selectedModel?.id,
-          (getProviderByName(selectedProvider)?.models ?? []).map((m) => m.id)
+          threadProvider,
+          linkedModelOk ? projectModel!.id : selectedModel?.id,
+          (getProviderByName(threadProvider)?.models ?? []).map((m) => m.id)
         )
         if (!threadModelId) {
           setMessage('Please select a model to start chatting.')
@@ -1323,7 +1338,7 @@ const ChatInput = memo(function ChatInput({
         const newThread = await createThread(
           {
             id: threadModelId,
-            provider: selectedProvider,
+            provider: threadProvider,
           },
           slash.kind === 'message' ? slash.display : prompt, // Use prompt as thread title
           assistant,

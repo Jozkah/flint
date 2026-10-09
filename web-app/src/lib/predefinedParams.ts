@@ -33,6 +33,9 @@ export type SamplerCap =
   | 'sampler_order'
   | 'backend_sampling'
   | 'thinking_budget'
+  | 'stop'
+  | 'openrouter'
+  | 'verbosity'
   | 'client_only'
 
 export interface ParamControllerProps {
@@ -393,6 +396,63 @@ export const paramsSettings: Record<string, ParamDef> = {
     controllerProps: { min: -1, step: 1 },
     capability: 'thinking_budget',
   },
+  stop: {
+    key: 'stop',
+    title: 'Stop Sequences',
+    description:
+      'Generation ends as soon as the model writes one of these. One sequence per line.',
+    value: '',
+    controllerType: 'textarea',
+    controllerProps: { rows: 3, placeholder: '</answer>' },
+    capability: 'stop',
+  },
+  verbosity: {
+    key: 'verbosity',
+    title: 'Verbosity',
+    description:
+      'How long GPT-5 style answers run. Sent to OpenAI GPT-5 models only.',
+    value: 'medium',
+    controllerType: 'dropdown',
+    controllerProps: {
+      options: [
+        { value: 'low', name: 'Low' },
+        { value: 'medium', name: 'Medium' },
+        { value: 'high', name: 'High' },
+      ],
+    },
+    capability: 'verbosity',
+  },
+  openrouter_web_search: {
+    key: 'openrouter_web_search',
+    title: 'OpenRouter Web Search',
+    description:
+      "Adds ':online' to the model id so OpenRouter grounds the answer with a web search.",
+    value: false,
+    controllerType: 'checkbox',
+    capability: 'openrouter',
+  },
+  openrouter_image_output: {
+    key: 'openrouter_image_output',
+    title: 'OpenRouter Image Output',
+    description:
+      "Requests image output (modalities image + text) so image-capable models can return pictures into the chat. Leave off for text-only models.",
+    value: false,
+    controllerType: 'checkbox',
+    capability: 'openrouter',
+  },
+  openrouter_provider: {
+    key: 'openrouter_provider',
+    title: 'OpenRouter Provider Routing',
+    description:
+      'JSON routing preferences sent as "provider": order, only, ignore (provider slugs) and allow_fallbacks (true/false).',
+    value: '',
+    controllerType: 'textarea',
+    controllerProps: {
+      rows: 3,
+      placeholder: '{"order":["openai","together"],"allow_fallbacks":false}',
+    },
+    capability: 'openrouter',
+  },
 }
 
 /**
@@ -587,6 +647,11 @@ export const paramCategories: CategoryDef[] = [
       'max_context_tokens',
       'ignore_eos',
       'thinking_budget_tokens',
+      'stop',
+      'verbosity',
+      'openrouter_web_search',
+      'openrouter_image_output',
+      'openrouter_provider',
     ],
     groupIds: [],
   },
@@ -597,3 +662,14 @@ export const paramCategories: CategoryDef[] = [
     groupIds: ['mirostat', 'dry', 'xtc', 'dynatemp'],
   },
 ]
+
+/**
+ * Assistant params that predefined remote providers still need. The strip
+ * above drops every sampler key for them, but these are consumed on the client
+ * (provider options / OpenRouter request shaping), never forwarded verbatim.
+ */
+export const OPENROUTER_PARAM_KEYS = [
+  'openrouter_web_search',
+  'openrouter_image_output',
+  'openrouter_provider',
+] as const

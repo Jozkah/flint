@@ -42,6 +42,12 @@ export interface ModelParameters {
 }
 
 import { withOpenRouterReasoningDetails } from '@/lib/openrouterReasoningDetails'
+import { withOpenRouterOptions } from '@/lib/openrouterRequestOptions'
+import {
+  ImageTap,
+  imageOutputMiddleware,
+  withImageTap,
+} from '@/lib/openrouterImages'
 import {
   extractReasoningMiddleware,
   wrapLanguageModel,
@@ -266,6 +272,11 @@ const CLIENT_SIDE_PARAM_KEYS: ReadonlySet<string> = new Set([
   'ctx_len',
   'max_context_tokens',
   'auto_compact',
+  // Consumed client-side: OpenRouter request shaping and provider options.
+  'openrouter_web_search',
+  'openrouter_image_output',
+  'openrouter_provider',
+  'verbosity',
   DISPATCH_PARAM_KEY,
 ])
 
@@ -584,6 +595,13 @@ export function createCustomFetch(
     return names.length > 0 ? names : undefined
   }
 
+  // The UI stores stop sequences one per line; the wire wants a string array.
+  const coerceStop = (value: unknown): unknown => {
+    if (typeof value !== 'string') return value
+    const items = value.split(/\r?\n/).filter((s) => s.length > 0)
+    return items.length > 0 ? items : undefined
+  }
+
   const buildBody = (
     rawBody: Record<string, unknown>,
     includeOurParams: boolean
@@ -601,7 +619,9 @@ export function createCustomFetch(
       const coerced =
         key === 'samplers'
           ? coerceSamplers(value)
-          : coerceNumericParam(key, value)
+          : key === 'stop'
+            ? coerceStop(value)
+            : coerceNumericParam(key, value)
       if (coerced === undefined) continue
       normalised[targetKey] = coerced
     }
@@ -1612,6 +1632,7 @@ export class ModelFactory {
       if (isAzure) headers['api-key'] = keyChain[0]!
     }
 
+    const imageTap = new ImageTap()
     let fetchImpl: typeof globalThis.fetch =
       keyChain.length > 1
         ? createApiKeyRotatingFetch(
@@ -1633,6 +1654,8 @@ export class ModelFactory {
     // thought signatures); the SDK does not carry them. janhq/jan#283.
     if (isOpenRouterProvider(provider)) {
       fetchImpl = withOpenRouterReasoningDetails(fetchImpl)
+      fetchImpl = withOpenRouterOptions(fetchImpl, parameters)
+      fetchImpl = withImageTap(fetchImpl, imageTap)
     }
 
     const endpoint = isAzure
@@ -1659,6 +1682,9 @@ export class ModelFactory {
           tagName: getReasoningTagName(modelId),
           separator: '\n',
         }),
+        ...(isOpenRouterProvider(provider)
+          ? [imageOutputMiddleware(imageTap)]
+          : []),
       ],
     })
   }
