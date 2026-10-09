@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import {
   Calendar,
   ChevronDown,
+  ChevronRight,
   Gauge,
   MoreVertical,
   Search,
@@ -610,14 +611,16 @@ function AgentRuns() {
 }
 
 /**
- * The start page: what the models on this computer did over the last week or
- * month, what happened recently, and the Cowork runs. Every figure is counted
+ * The start page: two ways to begin, the recent Cowork runs to resume, and
+ * the local usage figures one click down. Every figure is counted
  * locally as it happens (stores/usage-stats-store); nothing is estimated.
  */
 function Overview() {
   const { t } = useTranslation()
   const days = useUsageStats((s) => s.days)
   const activity = useUsageStats((s) => s.activity)
+  const navigate = useNavigate()
+  const [usageOpen, setUsageOpen] = useState(false)
   const [range, setRange] = useState<Range>(7)
   const now = Date.now()
   const greeting = t(greetingKey(new Date(now)))
@@ -672,26 +675,62 @@ function Overview() {
                 ['--sub-delay' as string]: `${blurWordsDelay(greeting) + 450}ms`,
               }}
             >
-              {range === 7 ? t('overview:subWeek') : t('overview:subMonth')}
+              {t('overview:resumeSub')}
             </p>
           </div>
           <div className="flex items-center gap-2 motion-safe:animate-rise-in" style={{ animationDelay: '60ms' }}>
-            {rangeMenu('outline')}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" aria-label={t('overview:options')}>
-                  <MoreVertical />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem variant="destructive" onSelect={() => useUsageStats.getState().reset()}>
-                  <Gauge />
-                  <span>{t('overview:resetStats')}</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button data-testid="overview-start-chat" onClick={() => navigate({ to: route.home })}>
+              {t('overview:startChat')}
+            </Button>
+            <Button
+              variant="outline"
+              data-testid="overview-start-files"
+              onClick={() => navigate({ to: route.cowork })}
+            >
+              {t('overview:startFiles')}
+            </Button>
           </div>
         </div>
+
+        <AgentRuns />
+
+        <div className="flex flex-col gap-4">
+          <button
+            type="button"
+            data-testid="overview-usage-toggle"
+            aria-expanded={usageOpen}
+            onClick={() => setUsageOpen((v) => !v)}
+            className="flex w-fit cursor-pointer items-center gap-1.5 rounded-md text-[0.8125rem] font-medium text-secondary-foreground outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
+          >
+            <ChevronRight
+              aria-hidden
+              className={cn('size-3.5 transition-transform duration-200', usageOpen && 'rotate-90')}
+            />
+            {t('overview:usage')}
+          </button>
+          {usageOpen && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="m-0 text-[0.8125rem] text-secondary-foreground">
+                  {range === 7 ? t('overview:subWeek') : t('overview:subMonth')}
+                </p>
+                <div className="flex items-center gap-2">
+                  {rangeMenu('outline')}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon" aria-label={t('overview:options')}>
+                        <MoreVertical />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem variant="destructive" onSelect={() => useUsageStats.getState().reset()}>
+                        <Gauge />
+                        <span>{t('overview:resetStats')}</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
 
         <div className="flex flex-col gap-4 lg:flex-row">
           <div className="flex min-w-0 flex-1 flex-col gap-4">
@@ -751,8 +790,9 @@ function Overview() {
           </div>
           <LatestActivity items={activity} />
         </div>
-
-        <AgentRuns />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

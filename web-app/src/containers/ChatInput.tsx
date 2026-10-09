@@ -264,6 +264,16 @@ type ChatInputProps = {
   /** Controls under the composer at the left (Cowork's mode and access). */
   belowLeft?: ReactNode
   /**
+   * Like `belowLeft`, but handed the reasoning-effort control so the surface
+   * can fold it into its own settings group; the effort is then not drawn on
+   * the right.
+   */
+  belowLeftWithEffort?: (ctx: {
+    effort: ReactNode
+    effortOverridden: boolean
+    effortLabel: string | null
+  }) => ReactNode
+  /**
    * Replaces the default stop button while streaming.
    *
    * Cowork supplies one control that asks how far to stop; without this slot
@@ -373,6 +383,7 @@ const ChatInput = memo(function ChatInput({
   groupOptions = false,
   modelControl,
   belowLeft,
+  belowLeftWithEffort,
   stopControl,
   tokenSource,
   hideTokenCounter,
@@ -2915,6 +2926,25 @@ const ChatInput = memo(function ChatInput({
     ])
   }
 
+  const effortControl =
+    effortLevels.length > 0 ? (
+              <ComposerEffort
+                levels={effortLevels}
+                value={currentEffort}
+                recommended={effortRecommended}
+                canDisable={effortCanDisable}
+                overridden={effortOverridden}
+                onChange={setEffort}
+                onReset={
+                  overrideScope && effortOverridden
+                    ? () => {
+                        clearThreadOverride(overrideScope, EFFORT_SETTING_KEY)
+                        clearThreadOverride(overrideScope, 'reasoning')
+                      }
+                    : undefined
+                }
+              />
+    ) : null
   return (
     <div className="relative" data-composer>
       <div className="relative">
@@ -3988,35 +4018,26 @@ const ChatInput = memo(function ChatInput({
       {/* Under the composer, as Claude lays it out: what the run may do on the
           left; the reasoning effort and the model on the right. Wraps, never
           clips. */}
-      {(belowLeft || modelControl || effortLevels.length > 0) && (
+      {(belowLeft || belowLeftWithEffort || modelControl || effortLevels.length > 0) && (
         <div
           data-testid="composer-model-row"
           className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1"
         >
-          {belowLeft && (
+          {(belowLeft || belowLeftWithEffort) && (
             <div className="flex shrink-0 items-center gap-0.5">
               {belowLeft}
+              {belowLeftWithEffort?.({
+                effort: effortControl,
+                effortOverridden: effortLevels.length > 0 && effortOverridden,
+                effortLabel:
+                  effortLevels.length > 0 && currentEffort
+                    ? String(currentEffort)
+                    : null,
+              })}
             </div>
           )}
           <div className="ml-auto flex min-w-0 max-w-full items-center justify-end gap-1">
-            {effortLevels.length > 0 && (
-              <ComposerEffort
-                levels={effortLevels}
-                value={currentEffort}
-                recommended={effortRecommended}
-                canDisable={effortCanDisable}
-                overridden={effortOverridden}
-                onChange={setEffort}
-                onReset={
-                  overrideScope && effortOverridden
-                    ? () => {
-                        clearThreadOverride(overrideScope, EFFORT_SETTING_KEY)
-                        clearThreadOverride(overrideScope, 'reasoning')
-                      }
-                    : undefined
-                }
-              />
-            )}
+            {!belowLeftWithEffort && effortControl}
             {modelControl && (
               <div className="flex min-w-24 max-w-64 flex-1 basis-24 justify-end">
                 {modelControl}

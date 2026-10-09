@@ -46,6 +46,7 @@ import { ensureCoworkEnabled } from '@/lib/coworkGate'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import {
   Fragment,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -185,6 +186,10 @@ import {
 } from '@/components/ai-elements/conversation'
 import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
 import { CoworkModeSelector } from '@/containers/CoworkModeSelector'
+import {
+  CoworkRunSettings,
+  type RunSettingsException,
+} from '@/containers/CoworkRunSettings'
 import { CoworkAccessSelector } from '@/containers/CoworkAccessSelector'
 import { authorizeDirectEdit as runAuthorizeDirectEdit } from '@/lib/coworkDirectEdit'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
@@ -212,7 +217,13 @@ import {
   DirectEditConfirmDialog,
   type DirectEditFacts,
 } from '@/containers/dialogs/DirectEditConfirmDialog'
-import { isReadOnly, modeOf } from '@/lib/coworkMode'
+import {
+  defaultModeFor,
+  isReadOnly,
+  modeOf,
+  modeShortLabelKey,
+} from '@/lib/coworkMode'
+import { workProfile } from '@/lib/workProfiles'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
 import { CoworkPlanStrip } from '@/containers/CoworkPlanStrip'
@@ -5410,10 +5421,13 @@ export function CoworkPage() {
 
   // What the run may do and how it works: under the composer, as quiet
   // one-word buttons (Claude's layout), and as pills in a pane's composer row.
-  const runControls = (variant: 'pill' | 'quiet') => (
-    <>
+  const runControls = (
+    variant: 'pill' | 'quiet',
+    effort?: { node: ReactNode; overridden: boolean; label: string | null }
+  ) => {
+    const modeSelector = (
       <CoworkModeSelector
-        variant={variant}
+        variant="pill"
         mode={mode}
         // A choice made before the first message still needs a session to
         // live on; dropping it left the session in its default mode while the
@@ -5424,6 +5438,34 @@ export function CoworkPage() {
             .setMode(ensureCurrentSession(paneSessionIdRef.current), next)
         }
       />
+    )
+    const profilePicker =
+      workProfilesOn && session?.id ? (
+        <CoworkWorkProfilePicker
+          variant="pill"
+          choice={workProfileChoice}
+          onChoose={(id) => useWorkProfiles.getState().choose(session.id, id, true)}
+          onAuto={() => useWorkProfiles.getState().clearManual(session.id)}
+        />
+      ) : null
+    // Non-default settings stay named next to the closed group.
+    const exceptions: RunSettingsException[] = []
+    if (mode !== defaultModeFor(folder))
+      exceptions.push({
+        id: 'mode',
+        label: t(modeShortLabelKey(mode)),
+        warn: mode === 'auto' || mode === 'bypass',
+      })
+    if (workProfileChoice?.manual)
+      exceptions.push({ id: 'profile', label: workProfile(workProfileChoice.id).label })
+    if (effort?.overridden)
+      exceptions.push({
+        id: 'effort',
+        label: t('common:coworkRunSettings.effort', { level: effort.label ?? '' }),
+      })
+    return (
+    <>
+      {/* Folder access stays in the row: it says what can be written. */}
       <CoworkAccessSelector
         variant={variant}
         effective={effective}
@@ -5447,16 +5489,14 @@ export function CoworkPage() {
           else void returnToReviewOnly()
         }}
       />
-      {workProfilesOn && session?.id && (
-        <CoworkWorkProfilePicker
-          variant={variant}
-          choice={workProfileChoice}
-          onChoose={(id) => useWorkProfiles.getState().choose(session.id, id, true)}
-          onAuto={() => useWorkProfiles.getState().clearManual(session.id)}
-        />
-      )}
+      <CoworkRunSettings exceptions={exceptions}>
+        {modeSelector}
+        {profilePicker}
+        {effort?.node}
+      </CoworkRunSettings>
     </>
-  )
+    )
+  }
 
   const sessionControls = (
     <>
@@ -6338,7 +6378,16 @@ export function CoworkPage() {
                 groupOptions
                 // Under the composer, as Claude lays it out: what the run may
                 // do on the left; the effort and the model on the right.
-                belowLeft={!paneChrome ? runControls('quiet') : undefined}
+                belowLeftWithEffort={
+                  !paneChrome
+                    ? (ctx) =>
+                        runControls('quiet', {
+                          node: ctx.effort,
+                          overridden: ctx.effortOverridden,
+                          label: ctx.effortLabel,
+                        })
+                    : undefined
+                }
                 modelControl={!paneChrome ? quietModelSelector : undefined}
                 surfaceControls={
                   <>

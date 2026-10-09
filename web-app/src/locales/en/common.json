@@ -1465,6 +1465,11 @@
   "voicePill": {
     "cancel": "Cancel"
   },
+  "coworkRunSettings": {
+    "label": "Run settings",
+    "title": "How this run works",
+    "effort": "Effort: {{level}}"
+  },
   "coworkMode": {
     "label": "What Flint may do",
     "review": {
@@ -1913,7 +1918,7 @@
     "resizeHint": "Drag to resize. Double-click for the default width.",
     "home": "Flint home",
     "working": "Agents are working",
-    "workspace": "Workspace",
+    "workspace": "Start",
     "rooms": "Rooms",
     "library": "Library",
     "models": "Models",
@@ -2044,6 +2049,9 @@
       "closed": "Closed without merging"
     },
     "overview": "Overview",
+    "resume": "Resume & usage",
+    "more": "More",
+    "advanced": "Advanced",
     "usageOverview": "Usage overview",
     "movedTo": "Moved to {{name}}",
     "notifications": "Notifications",

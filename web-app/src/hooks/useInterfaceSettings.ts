@@ -27,6 +27,8 @@ export type FontSize = '14px' | '15px' | '16px' | '18px' | '20px'
 /** The left sidebar's width range, in CSS pixels. Dragging stops at either end. */
 export const SIDEBAR_MIN_WIDTH = 200
 export const SIDEBAR_MAX_WIDTH = 420
+export type SidebarLayout = 'trimmed' | 'extended'
+
 export const SIDEBAR_DEFAULT_WIDTH = 250
 
 export const sanitizeSidebarWidth = (width: unknown): number =>
@@ -91,6 +93,8 @@ interface InterfaceSettingsState {
   transcriptView: TranscriptView
   /** The left sidebar's width in CSS pixels, within the SIDEBAR_* range. */
   sidebarWidth: number
+  /** Trimmed folds the secondary destinations away; extended lists them all. */
+  sidebarLayout: SidebarLayout
   completionSound: CompletionSound
   /** 0 to 1. */
   completionSoundVolume: number
@@ -115,6 +119,7 @@ interface InterfaceSettingsState {
   setAutoGenerateTitle: (auto: boolean) => void
   setTranscriptView: (view: TranscriptView) => void
   setSidebarWidth: (width: number) => void
+  setSidebarLayout: (layout: SidebarLayout) => void
   setCompletionSound: (mode: CompletionSound) => void
   setCompletionSoundVolume: (volume: number) => void
   setShowComposerRailButtons: (show: boolean) => void
@@ -134,6 +139,7 @@ type InterfaceSettingsPersistedSlice = Pick<
   | 'autoGenerateTitle'
   | 'transcriptView'
   | 'sidebarWidth'
+  | 'sidebarLayout'
   | 'completionSound'
   | 'completionSoundVolume'
   | 'showComposerRailButtons'
@@ -162,6 +168,7 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     autoGenerateTitle: true,
     transcriptView: DEFAULT_TRANSCRIPT_VIEW,
     sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+    sidebarLayout: 'trimmed',
     completionSound: 'off',
     completionSoundVolume: defaultCompletionSoundVolume,
     showComposerRailButtons: false,
@@ -220,6 +227,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             autoGenerateTitle: true,
             transcriptView: DEFAULT_TRANSCRIPT_VIEW,
             sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+            sidebarLayout: 'trimmed',
             completionSound: 'off',
             completionSoundVolume: defaultCompletionSoundVolume,
             showComposerRailButtons: false,
@@ -292,6 +300,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
           set({ transcriptView: view })
         },
 
+        setSidebarLayout: (layout) => {
+          set({ sidebarLayout: layout === 'extended' ? 'extended' : 'trimmed' })
+        },
+
         setSidebarWidth: (width) => {
           set({ sidebarWidth: sanitizeSidebarWidth(width) })
         },
@@ -345,6 +357,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         autoGenerateTitle: state.autoGenerateTitle,
         transcriptView: state.transcriptView,
         sidebarWidth: state.sidebarWidth,
+        sidebarLayout: state.sidebarLayout,
         completionSound: state.completionSound,
         completionSoundVolume: state.completionSoundVolume,
         showComposerRailButtons: state.showComposerRailButtons,
@@ -365,6 +378,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
 
           state.messageZoom = sanitizeMessageZoom(state.messageZoom)
           state.sidebarWidth = sanitizeSidebarWidth(state.sidebarWidth)
+          if (state.sidebarLayout !== 'extended') state.sidebarLayout = 'trimmed'
           state.completionSound = sanitizeCompletionSound(state.completionSound)
           state.completionSoundVolume = sanitizeVolume(state.completionSoundVolume)
 

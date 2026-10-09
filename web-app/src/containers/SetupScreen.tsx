@@ -22,6 +22,7 @@ import {
 } from '@/hooks/useSetupChecklist'
 import { DependencyAdvice } from './dialogs/DependencyAdvice'
 import HeaderPage from './HeaderPage'
+import { ModelSetupCard } from './ModelSetupCard'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useThreads } from '@/hooks/useThreads'
 import { destinationFor, INTENTS } from '@/lib/onboarding'
@@ -669,9 +670,12 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
                         })}
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">
-                        {t('setup:finishNoModels')}
-                      </p>
+                      <>
+                        <p className="mb-3 text-sm text-muted-foreground">
+                          {t('setup:finishNoModels')}
+                        </p>
+                        <ModelSetupCard />
+                      </>
                     )}
 
                     <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -686,27 +690,6 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
                           ? t('setup:finishStartChat')
                           : t('setup:finishWithoutModel')}
                         <ArrowRight className="size-4" />
-                      </Button>
-                      <Button
-                        variant="link"
-                        className="pointer-coarse:h-11"
-                        data-testid="setup-finish-import"
-                        onClick={() =>
-                          navigate({
-                            to: route.settings.providers,
-                            params: { providerName: 'llamacpp' },
-                          })
-                        }
-                      >
-                        {t('setup:finishImport')}
-                      </Button>
-                      <Button
-                        variant="link"
-                        className="pointer-coarse:h-11"
-                        data-testid="setup-finish-discover"
-                        onClick={() => navigate({ to: route.hub.index })}
-                      >
-                        {t('setup:exploreHub')}
                       </Button>
                     </div>
                   </div>

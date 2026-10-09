@@ -173,6 +173,17 @@ function InterfaceSettings() {
     </Card>
   )
 
+  const sidebar = (
+    <Card title={t('settings:interface.sidebarLayout')}>
+      <CardItem
+        anchor="settings-appearance-sidebar-layout"
+        title={t('settings:interface.sidebarLayout')}
+        description={t('settings:interface.sidebarLayoutDesc')}
+      />
+      <SidebarLayoutPicker />
+    </Card>
+  )
+
   const chatDisplay = (
     <Card title={t('settings:appearance.behaviourGroup')}>
       <CardItem
@@ -259,18 +270,61 @@ function InterfaceSettings() {
         // Two columns of about equal height, so neither ends in a long empty
         // stretch: the everyday settings on the left with Reset last, the
         // tall pickers (accent, transcript view) and Sounds on the right.
-        layout={[0, 1, 0, 1, 0, 1, 0, 0]}
+        layout={[0, 1, 0, 1, 1, 0, 1, 0, 0]}
       >
         {theme}
         <AccentSettings />
         {reading}
         {transcript}
+        {sidebar}
         {chatDisplay}
         <CompletionSoundSettings />
         {motion}
         {reset}
       </SettingsPageBody>
     </div>
+  )
+}
+
+/** Trimmed or extended sidebar: two radios, each with its summary. */
+function SidebarLayoutPicker() {
+  const { t } = useTranslation()
+  const value = useInterfaceSettings((s) => s.sidebarLayout)
+  const setValue = useInterfaceSettings((s) => s.setSidebarLayout)
+  return (
+    <RadioGroup
+      value={value}
+      onValueChange={(v) => setValue(v as typeof value)}
+      aria-label={t('settings:interface.sidebarLayout')}
+      data-testid="sidebar-layout-picker"
+      className="gap-2 pb-2"
+    >
+      {(['trimmed', 'extended'] as const).map((mode) => {
+        const id = `sidebar-layout-${mode}`
+        return (
+          <label
+            key={mode}
+            htmlFor={id}
+            className="flex cursor-pointer items-start gap-2.5 rounded-md px-1 py-1.5"
+          >
+            <RadioGroupItem
+              id={id}
+              value={mode}
+              aria-describedby={`${id}-desc`}
+              className="mt-0.5"
+            />
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-sm font-medium text-foreground">
+                {t(`settings:interface.sidebarLayout_${mode}`)}
+              </span>
+              <span id={`${id}-desc`} className="text-xs text-muted-foreground">
+                {t(`settings:interface.sidebarLayout_${mode}Desc`)}
+              </span>
+            </span>
+          </label>
+        )
+      })}
+    </RadioGroup>
   )
 }
 

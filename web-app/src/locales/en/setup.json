@@ -38,10 +38,8 @@
   "setupDoneBody": "Flint will run local models with llama.cpp.",
   "stageFinish": "Ready",
   "finishBody": "Flint runs on this device. It contacts Hugging Face only when you open Discover, search, or click Download — otherwise you bring your own models.",
-  "exploreHub": "Browse Hugging Face",
   "finishChooseModel": "Choose a model",
   "finishNoModels": "No local models yet. Import a GGUF file from Settings whenever you are ready; you can finish setup without one.",
   "finishStartChat": "Start chatting",
-  "finishWithoutModel": "Finish without a model",
-  "finishImport": "Import a model"
+  "finishWithoutModel": "Finish without a model"
 }
