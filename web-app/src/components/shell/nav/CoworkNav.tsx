@@ -32,7 +32,6 @@ import { useLocation, useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
   Box,
-  Columns2,
   Plus,
   SlidersHorizontal,
   Copy,
@@ -68,7 +67,8 @@ import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { usePrompt } from '@/hooks/usePrompt'
-import { openInSplit, reportSplitResult } from '@/lib/splitView'
+import { OpenInSubmenu } from '@/components/shell/nav/OpenInSubmenu'
+import { CursorAnchor, useCursorAnchor } from '@/components/shell/nav/CursorAnchor'
 import {
   archiveCoworkSession,
   deleteCoworkSession,
@@ -122,6 +122,7 @@ const SessionItem = memo(function SessionItem({
 }) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const cursor = useCursorAnchor()
   const [activityOpen, setActivityOpen] = useState(false)
   // Subscribed, not read once: the ledger is written when a run ends, and a
   // snapshot taken at render time would leave the dialog describing the run
@@ -141,6 +142,7 @@ const SessionItem = memo(function SessionItem({
   const openRowMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    cursor.openAt(e)
     setMenuOpen(true)
   }
 
@@ -190,17 +192,27 @@ const SessionItem = memo(function SessionItem({
           )}
         </NavButton>
       </RowPreview>
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={(open) => {
+          setMenuOpen(open)
+          if (!open) cursor.release()
+        }}
+      >
         <DropdownMenuTrigger asChild>
-          <NavAction showOnHover>
-            <MoreHorizontal />
-            <span className="sr-only">More</span>
-          </NavAction>
+          {cursor.point ? (
+            <CursorAnchor x={cursor.point.x} y={cursor.point.y} />
+          ) : (
+            <NavAction showOnHover>
+              <MoreHorizontal />
+              <span className="sr-only">More</span>
+            </NavAction>
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent
           className="w-48"
-          side={isMobile ? 'bottom' : 'right'}
-          align={isMobile ? 'end' : 'start'}
+          side={cursor.point || isMobile ? 'bottom' : 'right'}
+          align={cursor.point ? 'start' : isMobile ? 'end' : 'start'}
         >
           <DropdownMenuItem
             data-testid="regenerate-session-title"
@@ -216,18 +228,10 @@ const SessionItem = memo(function SessionItem({
             <FileClock />
             <span>{t('common:fileActivity.menuItem')}</span>
           </DropdownMenuItem>
-          <DropdownMenuItem
-            data-testid="open-session-in-split"
-            onSelect={() =>
-              reportSplitResult(
-                openInSplit({ kind: 'cowork', refId: session.id }),
-                t
-              )
-            }
-          >
-            <Columns2 />
-            <span>{t('chat:split.openInSplit')}</span>
-          </DropdownMenuItem>
+          <OpenInSubmenu
+            target={{ kind: 'cowork', refId: session.id }}
+            testIdPrefix="session"
+          />
           <DropdownMenuSeparator />
           <MoveToGroupSub
             surface="cowork"
