@@ -658,7 +658,7 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
           data-testid="nav-cowork"
         >
           {icon}
-          <span className="flex-1 truncate">{t('common:cowork')}</span>
+          <span className="flex-1 truncate">{t('common:appRail.workOnFiles')}</span>
         </NavButton>
         <span className="absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-1">
           {runningCount > 0 && (

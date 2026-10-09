@@ -3,6 +3,7 @@ import { useSidebarGlide } from '@/components/shell/useSidebarGlide'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import {
   Activity,
+  ChevronRight,
   Server,
   Settings,
 } from 'lucide-react'
@@ -18,6 +19,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import {
   NavButton,
   NavGroup,
+  NavCollapse,
   NavGroupLabel,
   NavItem,
   NavList,
@@ -89,6 +91,76 @@ function LinkRows({ rows, onNavigate }: { rows: LinkRow[]; onNavigate?: () => vo
   )
 }
 
+const DISCLOSURE_KEY = 'flint:sidebar-disclosure'
+
+function readDisclosure(id: string): boolean {
+  try {
+    return JSON.parse(localStorage.getItem(DISCLOSURE_KEY) ?? '{}')[id] === true
+  } catch {
+    return false
+  }
+}
+
+function writeDisclosure(id: string, open: boolean) {
+  try {
+    const all = JSON.parse(localStorage.getItem(DISCLOSURE_KEY) ?? '{}')
+    localStorage.setItem(DISCLOSURE_KEY, JSON.stringify({ ...all, [id]: open }))
+  } catch {
+    /* storage unavailable: the group simply starts closed */
+  }
+}
+
+/**
+ * A sidebar group that starts closed so the first screen is only what most
+ * people came for. It opens itself when the current page lives inside it, and
+ * remembers a manual open or close.
+ */
+function DisclosureGroup({
+  id,
+  label,
+  containsActive,
+  badge,
+  testId,
+  children,
+}: {
+  id: string
+  label: string
+  containsActive: boolean
+  badge?: number
+  testId: string
+  children: React.ReactNode
+}) {
+  const [manual, setManual] = useState(() => readDisclosure(id))
+  const open = manual || containsActive
+  return (
+    <NavGroup>
+      <button
+        type="button"
+        data-testid={testId}
+        aria-expanded={open}
+        onClick={() => {
+          const next = !open
+          setManual(next)
+          writeDisclosure(id, next)
+        }}
+        className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] font-medium tracking-wide text-subtle-foreground uppercase outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
+      >
+        <ChevronRight
+          aria-hidden
+          className={cn('size-3 transition-transform duration-200', open && 'rotate-90')}
+        />
+        <span className="flex-1 truncate">{label}</span>
+        {!open && badge !== undefined && badge > 0 && (
+          <span className="text-[11px] tabular-nums">{badge}</span>
+        )}
+      </button>
+      <NavCollapse open={open}>
+        <NavList>{children}</NavList>
+      </NavCollapse>
+    </NavGroup>
+  )
+}
+
 /** Up and Down move between the sidebar's rows, Home and End to the ends. */
 function moveFocusWithArrows(e: React.KeyboardEvent<HTMLElement>) {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
@@ -111,7 +183,8 @@ function moveFocusWithArrows(e: React.KeyboardEvent<HTMLElement>) {
 
 /**
  * The app sidebar (250px): the Flint mark, search, and one scrolling list of
- * everything, grouped Workspace, Engine, Chats and Support, with local status
+ * the daily path (New chat, Work on files, Chats) up front and everything else
+ * under More and Advanced, with local status
  * in the footer. On narrow windows the same sidebar is the navigation sheet.
  */
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
@@ -193,7 +266,25 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       testId: 'rail-system',
     },
   ]
-  const support: LinkRow[] = [
+  const more: LinkRow[] = [
+    {
+      to: route.artifacts,
+      label: t('common:appRail.library'),
+      icon: 'x-library',
+      active: area === 'library',
+      testId: 'rail-library',
+    },
+    {
+      to: route.studio,
+      label: 'Studio',
+      icon: 'x-palette',
+      active: pathname === route.studio,
+      testId: 'nav-studio',
+    },
+  ]
+  const moreActive = more.some((row) => row.active) || area === 'rooms'
+  const advanced: LinkRow[] = [
+    ...engine,
     {
       to: route.appLogs,
       label: t('common:shell.logs'),
@@ -207,6 +298,8 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       active: pathname === route.archive,
       testId: 'nav-archive',
     },
+  ]
+  const support: LinkRow[] = [
     {
       to: route.settings.general,
       label: t('common:appRail.settings'),
@@ -276,18 +369,6 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           <NavGroup>
             <NavGroupLabel>{t('common:appRail.workspace')}</NavGroupLabel>
             <NavList>
-              <LinkRows
-                onNavigate={onNavigate}
-                rows={[
-                  {
-                    to: route.overview,
-                    label: t('common:shell.overview'),
-                    icon: 'sb-dashboard',
-                    active: pathname === route.overview,
-                    testId: 'nav-overview',
-                  },
-                ]}
-              />
               <NavItem>
                 <NavButton
                   isActive={pathname === route.home}
@@ -302,40 +383,44 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                 </NavButton>
               </NavItem>
               <CoworkNav icon={<Icon name="x-cowork" />} />
-              <RoomsNav icon={<Icon name="x-rooms" />} />
               <LinkRows
                 onNavigate={onNavigate}
                 rows={[
                   {
-                    to: route.artifacts,
-                    label: t('common:appRail.library'),
-                    icon: 'x-library',
-                    active: area === 'library',
-                    testId: 'rail-library',
-                  },
-                  {
-                    to: route.studio,
-                    label: 'Studio',
-                    icon: 'x-palette',
-                    active: pathname === route.studio,
-                    testId: 'nav-studio',
+                    to: route.overview,
+                    label: t('common:shell.resume'),
+                    icon: 'sb-dashboard',
+                    active: pathname === route.overview,
+                    testId: 'nav-overview',
                   },
                 ]}
               />
             </NavList>
           </NavGroup>
 
-          <NavGroup>
-            <NavGroupLabel>{t('common:shell.engine')}</NavGroupLabel>
-            <NavList>
-              <LinkRows rows={engine} onNavigate={onNavigate} />
-            </NavList>
-          </NavGroup>
-
           <ChatsNav />
 
+          <DisclosureGroup
+            id="more"
+            label={t('common:shell.more')}
+            testId="nav-more"
+            containsActive={moreActive}
+          >
+            <RoomsNav icon={<Icon name="x-rooms" />} />
+            <LinkRows onNavigate={onNavigate} rows={more} />
+          </DisclosureGroup>
+
+          <DisclosureGroup
+            id="advanced"
+            label={t('common:shell.advanced')}
+            testId="nav-advanced"
+            containsActive={advanced.some((row) => row.active)}
+            badge={activeDownloads}
+          >
+            <LinkRows rows={advanced} onNavigate={onNavigate} />
+          </DisclosureGroup>
+
           <NavGroup>
-            <NavGroupLabel>{t('common:shell.support')}</NavGroupLabel>
             <NavList>
               <LinkRows rows={support} onNavigate={onNavigate} />
             </NavList>
