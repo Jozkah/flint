@@ -312,7 +312,7 @@ pub fn preview(id: Option<&str>, input: TaskInput, count: usize, json: bool) -> 
         println!("{}", serde_json::json!({ "cron": cron, "timezone": tz_name, "next": all }));
         return Ok(());
     }
-    println!("cron: {}", cron.join(" | "));
+    println!("cron: {} ({tz_name}; times below are in your local time)", cron.join(" | "));
     for t in all {
         println!("{}", stamp(t.timestamp_millis() as u64));
     }
