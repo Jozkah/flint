@@ -258,8 +258,33 @@ function ModelDiscoverRoute() {
     [models]
   )
 
+  // Installed repos the search did not return (the default list is the top
+  // downloads), so the Downloaded filter shows everything on disk.
+  const installedStubs = useMemo(() => {
+    if (!downloadedOnly) return [] as HuggingFaceModel[]
+    const listed = new Set(models.map((model) => model.id))
+    const stubs = new Map<string, HuggingFaceModel>()
+    for (const id of installedIds) {
+      const mlx = id.startsWith('mlx:')
+      const parts = id.slice(id.indexOf(':') + 1).split('/')
+      if (parts.length < (mlx ? 2 : 3)) continue
+      const repo = `${parts[0]}/${parts[1]}`
+      if (listed.has(repo) || stubs.has(repo)) continue
+      stubs.set(repo, {
+        id: repo,
+        author: parts[0],
+        downloads: 0,
+        likes: 0,
+        gated: false,
+        tags: [mlx ? 'mlx' : 'gguf'],
+        files: [],
+      })
+    }
+    return [...stubs.values()]
+  }, [downloadedOnly, installedIds, models])
+
   const visible = useMemo(() => {
-    const filtered = models.filter((model) => {
+    const filtered = [...models, ...installedStubs].filter((model) => {
       const parameterCount = inferParameterCount(model)
       const arch = inferArchitecture(model)
       const files = filesByRepo[model.id] ?? model.files ?? []
@@ -293,6 +318,7 @@ function ModelDiscoverRoute() {
     sort,
     filesByRepo,
     installedIds,
+    installedStubs,
   ])
 
   const loadFiles = async (repo: string) => {
