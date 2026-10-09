@@ -30,6 +30,7 @@ import { InlinePathLink } from '@/containers/message/InlinePathLink'
 import { PATH_HREF_PREFIX } from '@/lib/pathOpen'
 import { remarkFileRefs, FILE_REF_HREF_PREFIX } from '@/lib/coworkFileRefs'
 import { MarkdownTable } from '@/components/MarkdownTable'
+import { rehypeSafeInlineHtml } from '@/lib/rehypeSafeInlineHtml'
 import { decodeWebCiteHref } from '@/lib/webUrl'
 
 const WEB_CITE_MARKER = /\[\[cite:\s*([^\]\s]+?)\s*\]\]/g
@@ -71,7 +72,16 @@ const REMARK_PLUGINS = [
   // plain text) wherever no code-panel opener is provided, e.g. the chat route.
   remarkFileRefs,
 ]
-const REHYPE_PLUGINS = [rehypeKatex, defaultRehypePlugins.harden]
+const REHYPE_PLUGINS_USER = [rehypeKatex, defaultRehypePlugins.harden]
+// Model output may carry inline HTML (e.g. <span style="color:...">); it is
+// parsed, then cut down to an allowlist before KaTeX/harden run. User text stays
+// literal so pasted markup is never reinterpreted.
+const REHYPE_PLUGINS_MODEL = [
+  defaultRehypePlugins.raw,
+  rehypeSafeInlineHtml,
+  rehypeKatex,
+  defaultRehypePlugins.harden,
+]
 const STREAMDOWN_PLUGINS = { code, mermaid, cjk }
 const STREAMDOWN_CONTROLS = { mermaid: { fullscreen: false } }
 const LINK_SAFETY = { enabled: false }
@@ -319,6 +329,7 @@ function RenderMarkdownComponent({
                 messageId={messageId}
                 className={className}
                 components={mergedComponents}
+                isUser={isUser}
               />
             )
           )
@@ -330,6 +341,7 @@ function RenderMarkdownComponent({
             messageId={messageId}
             className={className}
             components={mergedComponents}
+            isUser={isUser}
           />
         )}
     </div>
@@ -343,6 +355,7 @@ interface StreamdownViewProps {
   isStreaming?: boolean
   isAnimating?: boolean
   messageId?: string
+  isUser?: boolean
 }
 
 function StreamdownViewComponent({
@@ -352,6 +365,7 @@ function StreamdownViewComponent({
   isStreaming,
   isAnimating,
   messageId,
+  isUser,
 }: StreamdownViewProps) {
   const mermaidOptions = useMemo(
     () =>
@@ -387,7 +401,7 @@ function StreamdownViewComponent({
       linkSafety={LINK_SAFETY}
       className={mergedClassName}
       remarkPlugins={REMARK_PLUGINS}
-      rehypePlugins={REHYPE_PLUGINS}
+      rehypePlugins={isUser ? REHYPE_PLUGINS_USER : REHYPE_PLUGINS_MODEL}
       components={effectiveComponents}
       plugins={STREAMDOWN_PLUGINS}
       controls={STREAMDOWN_CONTROLS}
