@@ -1629,6 +1629,10 @@ enum ThreadsCommands {
         /// A file, or a folder to get a file named after the thread
         #[arg(long)]
         out: Option<String>,
+        /// Read a thread saved by the terminal console for this project
+        /// (default: the threads the desktop app saved)
+        #[arg(long)]
+        project: Option<String>,
     },
     /// Delete one message from a thread
     DeleteMessage { thread_id: String, message_id: String },
@@ -3807,10 +3811,13 @@ async fn handle_threads(cmd: ThreadsCommands) {
         ThreadsCommands::Unfavorite { id } => {
             print_or_exit(app_lib::core::cli::archive_cmd::favorite_thread(&id, false))
         }
-        ThreadsCommands::Export { id, format, verbose, all_versions, out } => {
+        ThreadsCommands::Export { id, format, verbose, all_versions, out, project } => {
             let result = app_lib::core::cli::thread_export::Format::parse(&format).and_then(|f| {
                 app_lib::core::cli::thread_export::export_thread(
-                    &app_lib::core::app::commands::resolve_jan_data_folder(),
+                    &match project.as_deref() {
+                        Some(p) => app_lib::core::cli::agent_dir_for(std::path::Path::new(p)),
+                        None => app_lib::core::app::commands::resolve_jan_data_folder(),
+                    },
                     &id,
                     f,
                     verbose,

@@ -178,6 +178,41 @@ fn print_task(task: &Task, json: bool) {
     );
 }
 
+/// One line per task, for the TUI's `/schedule` and anything else that cannot
+/// print to stdout.
+pub fn summary_lines() -> Result<Vec<String>, String> {
+    let store = Store::new(&data_folder());
+    let tasks = store.load_tasks().map_err(|e| e.message)?;
+    let now = chrono::Utc::now();
+    Ok(tasks
+        .iter()
+        .map(|t| {
+            let next = t
+                .next_fires(now, 1)
+                .ok()
+                .and_then(|f| f.first().copied())
+                .map(|f| stamp(f.timestamp_millis() as u64))
+                .unwrap_or_else(|| "-".to_string());
+            format!("{}  {}  next {}  {}", t.id, if t.enabled { "on " } else { "off" }, next, t.name)
+        })
+        .collect())
+}
+
+/// Start a run now, detached. Returns the run id.
+pub fn start_now(id: &str) -> Result<String, String> {
+    use crate::core::schedule::runner::{start_run, SupervisorLauncher};
+    use crate::core::schedule::store::Trigger;
+    let data = data_folder();
+    let store = Store::new(&data);
+    let task = store
+        .get_task(id)
+        .map_err(|e| e.message)?
+        .ok_or_else(|| format!("no scheduled task '{id}'"))?;
+    let record = start_run(&store, &data, &SupervisorLauncher, &task, Trigger::Manual, chrono::Utc::now())
+        .map_err(|e| e.message)?;
+    Ok(record.id)
+}
+
 /// `flint cli schedule add`
 pub fn add(input: TaskInput, json: bool) -> Result<(), HarnessError> {
     let missing = |what: &str| invalid(format!("{what} is required to add a task"));
