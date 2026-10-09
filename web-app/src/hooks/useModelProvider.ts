@@ -876,9 +876,32 @@ export const useModelProvider = create<ModelProviderState>()(
           })
         }
 
+        if (version <= 20 && state?.providers) {
+          // Per-model reasoning default, stop strings and extra llama-server
+          // arguments: add the controls to persisted llamacpp models.
+          state.providers.forEach((provider) => {
+            if (provider.provider !== 'llamacpp' || !provider.models) return
+            provider.models.forEach((model) => {
+              if (!model.settings) model.settings = {}
+              for (const key of [
+                'server_reasoning',
+                'stop_strings',
+                'model_extra_args',
+              ] as const) {
+                if (!model.settings[key]) {
+                  model.settings[key] = {
+                    ...modelSettings[key],
+                    controller_props: { ...modelSettings[key].controller_props },
+                  }
+                }
+              }
+            })
+          })
+        }
+
         return state
       },
-      version: 20,
+      version: 21,
     }
   )
 )

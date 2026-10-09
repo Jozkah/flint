@@ -188,15 +188,27 @@ export function describeChatFailure(error: unknown, provider?: string): string {
   const fallback =
     error instanceof Error ? error.message : errorText(error, 'Error')
   const err = error as
-    | { statusCode?: number; url?: string; responseHeaders?: Record<string, string>; message?: string; lastError?: unknown }
+    | {
+        statusCode?: number
+        url?: string
+        responseHeaders?: Record<string, string>
+        responseBody?: unknown
+        message?: string
+        lastError?: unknown
+      }
     | undefined
   const call = typeof err?.statusCode === 'number' ? err : (err?.lastError as typeof err)
-  if (
-    !call ||
-    typeof call.url !== 'string' ||
-    ![401, 403, 404].includes(call.statusCode ?? 0)
-  ) {
+  if (!call || typeof call.url !== 'string' || typeof call.statusCode !== 'number') {
     return fallback
+  }
+  const excerpt = responseExcerpt(call.responseBody)
+  if (![401, 403, 404].includes(call.statusCode)) {
+    // Other failures keep the provider's own sentence; the request and what the
+    // provider said are added only when the sentence does not already hold them.
+    if (call.statusCode < 400 || !excerpt || fallback.includes(excerpt)) {
+      return fallback
+    }
+    return `${fallback} (${provider || originOf(call.url) || 'Provider'}: POST ${call.url} returned ${call.statusCode}: ${excerpt})`
   }
   const headers = call.responseHeaders ?? {}
   const server =
@@ -209,9 +221,38 @@ export function describeChatFailure(error: unknown, provider?: string): string {
     status: call.statusCode,
     server,
   })
-  return call.message && !detail.includes(call.message)
-    ? `${detail} (${call.message})`
-    : detail
+  const extra = [
+    call.message && !detail.includes(call.message) ? call.message : '',
+    excerpt && !detail.includes(excerpt) && excerpt !== call.message
+      ? `response: ${excerpt}`
+      : '',
+  ].filter(Boolean)
+  return extra.length > 0 ? `${detail} (${extra.join('; ')})` : detail
+}
+
+const EXCERPT_MAX = 300
+
+/**
+ * What the provider said, short enough for a chat error: the `message` of a
+ * JSON error body when there is one, otherwise the start of the raw text. Only
+ * ever the provider's reply, never the request.
+ */
+function responseExcerpt(body: unknown): string {
+  if (typeof body !== 'string' || !body.trim()) return ''
+  let text = body.trim()
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown> | null
+    const inner = parsed?.error
+    const candidate =
+      (inner && typeof inner === 'object'
+        ? (inner as Record<string, unknown>).message
+        : inner) ?? parsed?.message ?? parsed?.detail
+    if (typeof candidate === 'string' && candidate.trim()) text = candidate.trim()
+  } catch {
+    // Not JSON: fall through to the raw text.
+  }
+  text = text.replace(/\s+/g, ' ')
+  return text.length > EXCERPT_MAX ? `${text.slice(0, EXCERPT_MAX)}…` : text
 }
 
 /**

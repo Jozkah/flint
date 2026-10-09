@@ -33,6 +33,49 @@ type ModelSettingProps = {
   hideTrigger?: boolean
 }
 
+/**
+ * Whether a vision projector (mmproj) is paired with this model. The pairing
+ * is chosen at import time (or comes with a Hub download); without one the
+ * model cannot take image input.
+ */
+function VisionProjectorStatus({ modelId }: { modelId: string }) {
+  const { t } = useTranslation()
+  const serviceHub = useServiceHub()
+  const [paired, setPaired] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const check = serviceHub.models().checkMmprojExists?.(modelId)
+    Promise.resolve(check)
+      .then((exists) => !cancelled && setPaired(Boolean(exists)))
+      .catch(() => !cancelled && setPaired(null))
+    return () => {
+      cancelled = true
+    }
+  }, [serviceHub, modelId])
+
+  if (paired === null) return null
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-8">
+        <span className="font-medium">
+          {t('common:modelSettings.visionProjector.title')}
+        </span>
+        <span className="text-sm text-muted-foreground">
+          {paired
+            ? t('common:modelSettings.visionProjector.paired')
+            : t('common:modelSettings.visionProjector.none')}
+        </span>
+      </div>
+      <p className="text-muted-foreground leading-normal text-xs">
+        {paired
+          ? t('common:modelSettings.visionProjector.pairedHint')
+          : t('common:modelSettings.visionProjector.noneHint')}
+      </p>
+    </div>
+  )
+}
+
 export function ModelSetting({
   model,
   provider,
@@ -181,7 +224,9 @@ export function ModelSetting({
         key === 'batch_size' ||
         key === 'cpu_moe' ||
         key === 'n_cpu_moe' ||
-        key === 'n_cpu_ffn'
+        key === 'n_cpu_ffn' ||
+        key === 'server_reasoning' ||
+        key === 'model_extra_args'
       ) {
         // Check if model is running before stopping it
         serviceHub
@@ -288,6 +333,9 @@ export function ModelSetting({
         </SheetHeader>
 
         <div className="flex-1 min-h-0 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          {provider.provider === 'llamacpp' && model.embedding !== true && (
+            <VisionProjectorStatus modelId={model.id} />
+          )}
           {provider.provider === 'llamacpp' && (
             <SpecDraftPanel modelId={model.id} />
           )}
@@ -360,6 +408,8 @@ export function ModelSetting({
                     'flex items-start justify-between gap-8',
                     (key === 'chat_template' ||
                       key === 'override_tensor_buffer_t' ||
+                      key === 'model_extra_args' ||
+                      key === 'stop_strings' ||
                       config.controller_type === 'dropdown') &&
                       'flex-col gap-1 w-full'
                   )}

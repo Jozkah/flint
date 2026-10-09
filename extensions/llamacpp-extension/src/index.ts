@@ -349,6 +349,19 @@ const MODEL_SETTINGS_YAML_MAPPING: Record<
     yamlKey: 'mmproj_offload',
     coerce: (v) => (v === false ? false : null),
   },
+  // Server-side default for the reasoning toggle (llama-server `--reasoning`),
+  // so API clients get the same behavior as the chat UI. `auto` leaves it unset.
+  server_reasoning: {
+    yamlKey: 'reasoning',
+    coerce: (v) => (v === 'on' || v === 'off' ? v : null),
+  },
+  // Free-form llama-server options for this model only (e.g. --cache-type-k
+  // turbo3). Written after every other option in the preset.
+  model_extra_args: {
+    yamlKey: 'extra_args',
+    coerce: (v) =>
+      typeof v === 'string' && v.trim().length > 0 ? v.trim() : null,
+  },
 }
 
 async function readPersistedLlamacppModels(): Promise<PersistedModelState[]> {
@@ -2549,7 +2562,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    *
    * Sidebar keys are mapped to the canonical `model.yml` / preset keys here.
    * Keys not in the mapping are silently ignored — they're either Flint-side
-   * concerns (`reasoning`, `auto_increase_ctx_len`) or not yet emitted by
+   * concerns (the composer's `reasoning`, `auto_increase_ctx_len`) or not yet emitted by
    * `preset.ts` (deferred to phase b).
    */
   async updateModelSettings(

@@ -208,6 +208,27 @@ describe('describeChatFailure', () => {
     expect(message).toContain('answered by cloudflare')
   })
 
+  it('adds the request and the provider reply to other failures', () => {
+    const err = Object.assign(new Error('Bad Request'), {
+      statusCode: 400,
+      url: 'https://a.test/v1/chat/completions',
+      responseBody: JSON.stringify({ error: { message: 'context too long' } }),
+    })
+    const message = describeChatFailure(err, 'X')
+    expect(message).toContain('Bad Request')
+    expect(message).toContain('POST https://a.test/v1/chat/completions returned 400')
+    expect(message).toContain('context too long')
+  })
+
+  it('does not repeat a reply the message already carries', () => {
+    const err = Object.assign(new Error('context too long'), {
+      statusCode: 400,
+      url: 'https://a.test/v1/chat/completions',
+      responseBody: JSON.stringify({ error: { message: 'context too long' } }),
+    })
+    expect(describeChatFailure(err, 'X')).toBe('context too long')
+  })
+
   it('leaves other errors unchanged', () => {
     expect(describeChatFailure(new Error('boom'), 'X')).toBe('boom')
     const err = Object.assign(new Error('Bad request'), {

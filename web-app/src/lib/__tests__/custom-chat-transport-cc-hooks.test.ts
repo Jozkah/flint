@@ -132,6 +132,8 @@ vi.mock('@/lib/mcp-router-model-filter', () => ({
 vi.mock('@/lib/reasoningProviderOptions', () => ({
   buildReasoningProviderOptions: () => undefined,
   buildReasoningBodyParams: () => undefined,
+  buildVerbosityProviderOptions: () => undefined,
+  mergeProviderOptions: () => undefined,
 }))
 vi.mock('@/lib/providerCaps', () => ({
   isPredefinedRemoteProvider: () => false,

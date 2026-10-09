@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { Copy, FileText, Trash2, UploadIcon } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  FileText,
+  Folder,
+  Trash2,
+  UploadIcon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -34,6 +42,7 @@ import { ExtensionManager } from '@/lib/extension'
 import { Loader2, Paperclip } from 'lucide-react'
 import { useProjectUploads } from '@/stores/project-uploads-store'
 import { collectFilesFromDirectory } from '@/lib/directoryWalk'
+import { buildProjectFileTree, type TreeNode } from '@/lib/projectFileTree'
 
 type ProjectFilesProps = {
   projectId: string
@@ -305,9 +314,11 @@ type FileRowProps = {
   file: ProjectFile
   onDelete: (id: string) => void
   t: ReturnType<typeof useTranslation>['t']
+  /** Folder depth, for the indent when files are shown as a tree. */
+  depth?: number
 }
 
-function FileRow({ file, onDelete, t }: FileRowProps) {
+function FileRow({ file, onDelete, t, depth = 0 }: FileRowProps) {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const openContextMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
@@ -329,6 +340,7 @@ function FileRow({ file, onDelete, t }: FileRowProps) {
         'bg-card border border-border',
         'group hover:bg-muted transition-colors'
       )}
+      style={depth > 0 ? { marginLeft: depth * 16 } : undefined}
       onContextMenu={openContextMenu}
       onKeyDown={onRowKeyDown}
     >
@@ -396,6 +408,50 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
   const [files, setFiles] = useState<ProjectFile[]>([])
   const [loading, setLoading] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
+    () => new Set()
+  )
+  const fileTree = useMemo(() => buildProjectFileTree(files), [files])
+
+  const toggleFolder = (id: string) =>
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+
+  const renderNodes = (nodes: TreeNode<ProjectFile>[], depth: number) =>
+    nodes.map((node) => {
+      if (node.kind === 'file') {
+        return (
+          <FileRow
+            key={node.file.id}
+            file={node.file}
+            onDelete={requestDeleteFile}
+            t={t}
+            depth={depth}
+          />
+        )
+      }
+      const collapsed = collapsedFolders.has(node.id)
+      const Chevron = collapsed ? ChevronRight : ChevronDown
+      return (
+        <div key={`folder:${node.id}`} className="space-y-2">
+          <button
+            type="button"
+            onClick={() => toggleFolder(node.id)}
+            aria-expanded={!collapsed}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm font-medium hover:bg-muted"
+            style={depth > 0 ? { marginLeft: depth * 16 } : undefined}
+          >
+            <Chevron className="size-4 text-muted-foreground" aria-hidden />
+            <Folder className="size-4 text-muted-foreground" aria-hidden />
+            <span className="truncate">{node.name}</span>
+          </button>
+          {!collapsed && renderNodes(node.children, depth + 1)}
+        </div>
+      )
+    })
 
   const uploadProgress = useProjectUploads((s) => s.progress[projectId])
   const completedTick = useProjectUploads(
@@ -737,14 +793,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          {files.map((file) => (
-            <FileRow
-              key={file.id}
-              file={file}
-              onDelete={requestDeleteFile}
-              t={t}
-            />
-          ))}
+          {renderNodes(fileTree.nodes, 0)}
 
           <div
           className={cn(
