@@ -1111,6 +1111,48 @@ describe('missing reads in review mode', () => {
   })
 })
 
+describe('a path outside the sandbox with no folder attached', () => {
+  const outside = {
+    error:
+      "tool 'read' was refused: that path is outside the workspace and every folder the user has granted",
+  }
+
+  beforeEach(() => {
+    executeAgentTool.mockReset()
+    executeAgentTool.mockResolvedValue(outside)
+  })
+
+  it('ends the run when the user attaches a folder', async () => {
+    const onNeedFolder = vi.fn(async () => 'attached' as const)
+    const out = await dispatchCoworkTool(
+      call('read', { path: 'C:\Code\proj\a.ts' }),
+      ctx({ mode: 'auto', onNeedFolder } as never)
+    )
+    expect(onNeedFolder).toHaveBeenCalledTimes(1)
+    expect(out.endsTurn).toBe(true)
+    expect(out.output).toContain('attached a project folder')
+  })
+
+  it('tells the model not to retry when the user declines', async () => {
+    const out = await dispatchCoworkTool(
+      call('read', { path: 'C:\Code\proj\a.ts' }),
+      ctx({ mode: 'auto', onNeedFolder: vi.fn(async () => 'declined' as const) } as never)
+    )
+    expect(out.endsTurn).toBeUndefined()
+    expect(out.output).toContain('Do not retry this path')
+  })
+
+  it('does not ask when a folder is already attached', async () => {
+    const onNeedFolder = vi.fn(async () => 'attached' as const)
+    const out = await dispatchCoworkTool(
+      call('read', { path: 'x' }),
+      ctx({ mode: 'auto', readOnlyFolder: 'C:\Code\proj', onNeedFolder } as never)
+    )
+    expect(onNeedFolder).not.toHaveBeenCalled()
+    expect(out.output).toBe(outside.error)
+  })
+})
+
 describe('an approval prompt whose run is stopped', () => {
   beforeEach(() => {
     executeAgentTool.mockReset()

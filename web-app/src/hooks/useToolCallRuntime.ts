@@ -205,7 +205,9 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
     set((s) => ({
       output: {
         ...s.output,
-        [toolCallId]: (s.output[toolCallId] ?? '') + text,
+        // Only the tail is kept: a build log of megabytes was held, and copied
+        // on every chunk, for the life of the app.
+        [toolCallId]: capLiveOutput((s.output[toolCallId] ?? '') + text),
       },
     })),
 
@@ -284,4 +286,13 @@ export async function withToolTiming<T>(
   } finally {
     useToolCallRuntime.getState().markSettled(toolCallId)
   }
+}
+
+/** Most of one call's live output kept in memory; the card shows the tail. */
+const LIVE_OUTPUT_MAX_CHARS = 200_000
+
+function capLiveOutput(text: string): string {
+  return text.length > LIVE_OUTPUT_MAX_CHARS
+    ? text.slice(text.length - LIVE_OUTPUT_MAX_CHARS)
+    : text
 }

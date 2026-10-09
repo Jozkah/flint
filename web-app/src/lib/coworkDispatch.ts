@@ -126,6 +126,17 @@ export type DispatchContext = {
     server: string,
     signal?: AbortSignal
   ) => Promise<boolean>
+  /**
+   * A call was refused for reaching outside the sandbox while the session has
+   * no folder. Asks the user whether to attach one; `'attached'` means they
+   * picked it and the run should end so it restarts with that folder, since a
+   * run's folder is fixed once it has started.
+   */
+  onNeedFolder?: (info: {
+    toolName: string
+    detail: string
+    signal?: AbortSignal
+  }) => Promise<'attached' | 'declined'>
   /** Applies one `todo` operation and persists the result. */
   onTodo: (input: unknown) => Promise<ToolOutcome>
   /** Suspends until the user answers, or the run is aborted. */
@@ -395,6 +406,14 @@ function deniedByUser(toolName: string): ToolOutcome {
       'would have changed, and wait for instructions.',
     isError: true,
   }
+}
+
+/** The backend's refusal for a path outside the sandbox and every granted folder. */
+export function isOutsideWorkspaceError(error: string): boolean {
+  return (
+    error.includes('is outside the workspace and every folder the user has granted') ||
+    error.includes('[sandbox_denied]')
+  )
 }
 
 /**
@@ -1241,6 +1260,38 @@ async function routeCoworkTool(
       }
     }
     if (result.error) {
+      // The model reached for a path outside the sandbox and nothing is
+      // attached: that is the user's call, not a dead end to retry around.
+      if (
+        ctx.onNeedFolder &&
+        !ctx.readOnlyFolder &&
+        isOutsideWorkspaceError(result.error)
+      ) {
+        const attached = await unlessStopped(
+          ctx
+            .onNeedFolder({ toolName, detail: result.error, signal })
+            .then((answer) => answer === 'attached'),
+          signal
+        ).catch(() => false)
+        if (attached) {
+          return {
+            output:
+              `${result.error}\n\nThe user attached a project folder in response. ` +
+              'This run ends here and restarts with that folder, so repeat the ' +
+              'request once it does.',
+            isError: true,
+            endsTurn: true,
+            resources: result.resources,
+          }
+        }
+        return {
+          output:
+            `${result.error}\n\nThe user chose not to attach a folder. Do not ` +
+            'retry this path; work from the sandbox, or say what you need.',
+          isError: true,
+          resources: result.resources,
+        }
+      }
       if (readPath && isMissingPathError(result.error)) {
         ctx.readFailures?.set(readPath, priorMisses + 1)
         return {

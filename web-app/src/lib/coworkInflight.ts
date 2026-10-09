@@ -27,8 +27,12 @@ export type InFlightRecord = {
 
 export type InterruptedChoice = 'continue' | 'discard-partial'
 
-/** Checkpoints are written at most this often while text streams. */
-export const CHECKPOINT_EVERY_MS = 500
+/**
+ * Checkpoints are written at most this often while text streams. Each one
+ * copies every live turn and rewrites the persisted sessions blob, so the
+ * interval is what bounds the allocation churn of a long run.
+ */
+export const CHECKPOINT_EVERY_MS = 3000
 
 /** How a recovery note begins, so nobody mistakes it for the user's words. */
 export const RECOVERY_NOTE_PREFIX = 'Note from Flint (not typed by the user): '
