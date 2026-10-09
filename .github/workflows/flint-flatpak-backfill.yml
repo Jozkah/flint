@@ -1,0 +1,68 @@
+name: Flint Flatpak backfill
+
+# Builds the Flatpak for releases that already exist, from the .deb each one
+# carries, and attaches it to that release. Manual only. Releases without a
+# linux .deb are skipped and listed at the end.
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Space-separated release tags (e.g. "v0.9.0 nightly-20261001-0000"), or "all" for every release that has a .deb'
+        required: true
+        default: 'all'
+
+concurrency:
+  group: flint-flatpak-backfill
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    name: Attach Flatpaks to existing releases
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out the manifest
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install flatpak-builder and the GNOME runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder desktop-file-utils appstream
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build and upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          if [ "$TAGS" = "all" ]; then
+            TAGS=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 300 --json tagName --jq '.[].tagName')
+          fi
+          done_tags=(); skipped=()
+          for tag in $TAGS; do
+            if ! [[ "$tag" =~ ^[0-9A-Za-z._-]+$ ]]; then
+              echo "::warning::skipping odd tag name"; skipped+=("$tag"); continue
+            fi
+            echo "::group::$tag"
+            rm -rf work && mkdir work
+            if ! gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir work || ! ls work/*.deb >/dev/null 2>&1; then
+              echo "no .deb on $tag"; skipped+=("$tag"); echo "::endgroup::"; continue
+            fi
+            cp "$(ls work/*.deb | head -n1)" flatpak/Flint_amd64.deb
+            rm -rf flatpak/build flatpak/repo
+            if flatpak-builder --force-clean --user --install-deps-from=flathub \
+                 --repo=flatpak/repo flatpak/build flatpak/io.github.Jozkah.Flint.yml \
+               && flatpak build-bundle flatpak/repo work/Flint-x86_64.flatpak io.github.Jozkah.Flint \
+               && gh release upload "$tag" work/Flint-x86_64.flatpak --clobber --repo "$GITHUB_REPOSITORY"; then
+              done_tags+=("$tag")
+            else
+              echo "::warning::flatpak build failed for $tag"; skipped+=("$tag")
+            fi
+            echo "::endgroup::"
+          done
+          echo "attached: ${done_tags[*]}"
+          echo "skipped:  ${skipped[*]}"
+          [ "${#done_tags[@]}" -gt 0 ]

@@ -1,0 +1,64 @@
+# Repackages the .deb the release workflow already builds, so the Flatpak holds
+# exactly the same binary, frontend and bundled engine as the AppImage and deb.
+# Nothing is compiled here; flatpak-builder has no network at build time and the
+# app's cargo and yarn trees are not vendored for it.
+#
+# Local build, from the repo root, with a Flint .deb in hand:
+#   cp Flint_*_amd64.deb flatpak/Flint_amd64.deb
+#   flatpak-builder --force-clean --user --install-deps-from=flathub \
+#     --repo=flatpak/repo flatpak/build flatpak/io.github.Jozkah.Flint.yml
+#   flatpak build-bundle flatpak/repo Flint.flatpak io.github.Jozkah.Flint
+id: io.github.Jozkah.Flint
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: Flint-Desktop
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --share=network
+  # Vulkan inference for the bundled llama.cpp worker. The Mesa and NVIDIA
+  # Vulkan drivers come from the runtime's GL extension.
+  - --device=dri
+  - --socket=pulseaudio
+  # Provider API keys live in the Secret Service keyring.
+  - --talk-name=org.freedesktop.secrets
+  # Tray icon.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Projects, models and attachments are picked from anywhere in the home
+  # folder, as on the deb and AppImage.
+  - --filesystem=home
+
+modules:
+  - name: flint
+    buildsystem: simple
+    sources:
+      - type: file
+        path: Flint_amd64.deb
+        only-arches: [x86_64]
+      - type: file
+        path: io.github.Jozkah.Flint.metainfo.xml
+    build-commands:
+      - ar -x Flint_amd64.deb
+      - tar -xf data.tar.*
+      - install -Dm755 usr/bin/Flint-Desktop /app/bin/Flint-Desktop
+      - install -Dm755 usr/bin/bun /app/bin/bun
+      # Resources (engine worker, ggml libs, uv sidecar) sit under
+      # usr/lib/<productName>, which the app resolves from its own location.
+      - cp -a usr/lib/. /app/lib/
+      - |
+        set -e
+        desktop=$(ls usr/share/applications/*.desktop | head -n1)
+        install -Dm644 "$desktop" /app/share/applications/io.github.Jozkah.Flint.desktop
+        desktop-file-edit --set-key=Exec --set-value=Flint-Desktop \
+          --set-icon=io.github.Jozkah.Flint \
+          /app/share/applications/io.github.Jozkah.Flint.desktop
+      - |
+        set -e
+        for icon in $(find usr/share/icons -name '*.png'); do
+          dest=/app/share/icons/${icon#usr/share/icons/}
+          dest=$(dirname "$dest")/io.github.Jozkah.Flint.png
+          install -Dm644 "$icon" "$dest"
+        done
+      - install -Dm644 io.github.Jozkah.Flint.metainfo.xml /app/share/metainfo/io.github.Jozkah.Flint.metainfo.xml

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.Jozkah.Flint</id>
+  <metadata_license>FSFAP</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer_name>Jozkah</developer_name>
+
+  <name>Flint</name>
+  <summary>Local-first AI assistant</summary>
+  <icon type="stock">io.github.Jozkah.Flint</icon>
+
+  <description>
+    <p>
+      Flint runs language models on your own computer and can also connect to
+      cloud providers when you choose to. It includes a local OpenAI-compatible
+      API server, MCP tool support and custom assistants.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.Jozkah.Flint.desktop</launchable>
+  <url type="homepage">https://github.com/Jozkah/flint</url>
+  <url type="bugtracker">https://github.com/Jozkah/flint/issues</url>
+  <content_rating type="oars-1.1"/>
+
+  <categories>
+    <category>Utility</category>
+    <category>Chat</category>
+  </categories>
+
+  <keywords>
+    <keyword>ai</keyword>
+    <keyword>llm</keyword>
+    <keyword>chat</keyword>
+  </keywords>
+
+  <releases>
+    <release version="0.9.0" date="2026-09-26"/>
+  </releases>
+</component>

@@ -332,12 +332,57 @@ jobs:
           path: src-tauri/target/engine-build.log
           if-no-files-found: ignore
 
+  # Repackages the linux-x64 .deb as a Flatpak bundle (flatpak/ holds the
+  # manifest). A failure here must not hold back the other bundles.
+  flatpak:
+    name: Build the Flatpak bundle
+    if: needs.prepare.outputs.skip != 'true'
+    needs: [prepare, build]
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      # The workflow's own commit, not the release ref: older releases predate
+      # flatpak/, and only the .deb they carry is repackaged.
+      - name: Check out the Flatpak manifest
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the linux-x64 bundles
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: flint-${{ needs.prepare.outputs.tag }}-linux-x64
+          path: linux-x64
+
+      - name: Install flatpak-builder and the GNOME runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder desktop-file-utils appstream
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build the bundle
+        run: |
+          deb=$(ls linux-x64/dist/*.deb | head -n1)
+          cp "$deb" flatpak/Flint_amd64.deb
+          flatpak-builder --force-clean --user --install-deps-from=flathub             --repo=flatpak/repo flatpak/build flatpak/io.github.Jozkah.Flint.yml
+          mkdir -p dist
+          flatpak build-bundle flatpak/repo dist/Flint-x86_64.flatpak io.github.Jozkah.Flint
+          (cd dist && sha256sum Flint-x86_64.flatpak) > dist-sha256-linux-x64-flatpak.txt
+          ls -l dist
+
+      - name: Keep the Flatpak as a workflow artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: flint-${{ needs.prepare.outputs.tag }}-linux-x64-flatpak
+          path: |
+            dist/*
+            dist-sha256-linux-x64-flatpak.txt
+          if-no-files-found: error
+
   # The build jobs run with a read-only token. Only this job, which runs no
   # repository code, may write to the release.
   upload-release:
     name: Upload the bundles to the release
     if: github.event_name != 'push' && needs.prepare.outputs.skip != 'true'
-    needs: [prepare, build]
+    needs: [prepare, build, flatpak]
     runs-on: ubuntu-latest
     permissions:
       contents: write
