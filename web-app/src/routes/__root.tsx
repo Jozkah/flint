@@ -5,7 +5,7 @@ import { ModelReplaceDialog } from '@/containers/ModelReplaceDialog'
 import { UnknownWindowDialog } from '@/containers/rooms/UnknownWindowDialog'
 import { Fragment } from 'react/jsx-runtime'
 import { MotionConfig } from 'motion/react'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useShellMotion } from '@/components/shell/useShellMotion'
 import { ThemeProvider } from '@/providers/ThemeProvider'
 import { InterfaceProvider } from '@/providers/InterfaceProvider'
@@ -31,6 +31,7 @@ import { WebPreviewHost } from '@/containers/WebPreviewHost'
 import { BrowserDomainDialog } from '@/containers/BrowserDomainDialog'
 import { WindowControls } from '@/components/WindowControls'
 import { AppSidebar } from '@/components/shell/AppSidebar'
+import { applyChatWindowSession, isChatWindow } from '@/lib/chatWindow'
 import { TopHeader } from '@/components/shell/TopHeader'
 import { ShellNavProvider } from '@/components/shell/nav-kit'
 import { HeaderSlotProvider } from '@/components/shell/HeaderSlot'
@@ -71,6 +72,8 @@ const AppLayout = () => {
   useRemoteBridge()
   useBuildUpdateCheck()
   const appDrawsChrome = detectWindowChrome() === 'custom'
+  const chatOnly = isChatWindow()
+  useEffect(() => applyChatWindowSession(), [])
   const pageRef = useRef<HTMLDivElement>(null)
   const { booting } = useShellMotion(pageRef)
 
@@ -91,7 +94,7 @@ const AppLayout = () => {
               over the page pretending to be one (see lib/titlebar). */}
           {appDrawsChrome && <WindowControls />}
           {appDrawsChrome && <WindowResizeGrips />}
-          <AppSidebar />
+          {!chatOnly && <AppSidebar />}
           <main
             data-testid="app-main"
             className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-card px-3 shadow-[inset_0_0_0_0.8px_var(--border)]"

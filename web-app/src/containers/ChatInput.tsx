@@ -53,7 +53,10 @@ import {
   X,
 } from 'lucide-react'
 import { generateId } from 'ai'
-import { holdQueueThenStop } from '@/lib/chatSteering'
+import {
+  holdQueueThenStop,
+  withdrawApprovalsForSteering,
+} from '@/lib/chatSteering'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { QueuedMessageList } from '@/containers/QueuedMessageBubble'
 import { SamplerPopover } from '@/containers/SamplerPopover'
@@ -1190,6 +1193,7 @@ const ChatInput = memo(function ChatInput({
           createdAt: Date.now(),
           ...(steer ? { steer: true } : {}),
         })
+        if (steer) withdrawApprovalsForSteering(queueId)
         setPrompt('')
         return
       }
@@ -3122,8 +3126,10 @@ const ChatInput = memo(function ChatInput({
                     // held message waits for the user and is sent, not steered.
                     onSteer:
                       (isStreaming || threadBusy) && !msg.held && !msg.from
-                        ? (id) =>
+                        ? (id) => {
                             useMessageQueue.getState().steerNow(queueId, id)
+                            withdrawApprovalsForSteering(queueId)
+                          }
                         : undefined,
                     // Already steering and the run still works: stop the
                     // run (steering stays queued, not held) and the end-of-run

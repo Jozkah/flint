@@ -45,6 +45,19 @@ export class DefaultAppService implements AppService {
     void enabled
   }
 
+  async setCloseToTray(enabled: boolean): Promise<void> {
+    void enabled
+  }
+
+  async setDownloadSpeedLimit(bytesPerSec: number): Promise<void> {
+    void bytesPerSec
+  }
+
+  async exportRedactedLogs(destination: string): Promise<string> {
+    void destination
+    throw new Error('Log export is only available in the desktop app')
+  }
+
   async readYaml<T = unknown>(path: string): Promise<T> {
     console.log('readYaml called with path:', path)
     throw new Error('readYaml not implemented in default app service')

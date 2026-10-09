@@ -38,6 +38,14 @@ export class DefaultThreadsService implements ThreadsService {
     // wiping the list with [].
     const threads = await ext.listThreads()
     if (!Array.isArray(threads)) return []
+    // Drop non-object entries (e.g. null from a malformed thread.json) so one
+    // bad entry cannot throw and blank the whole list.
+    for (let i = threads.length - 1; i >= 0; i--) {
+      const t = threads[i]
+      if (t === null || typeof t !== 'object' || Array.isArray(t)) {
+        threads.splice(i, 1)
+      }
+    }
 
     // new String("id") !== "id"
     threads.forEach((e) => {
