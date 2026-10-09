@@ -3,6 +3,7 @@ import {
   useMessageQueue,
   type QueuedMessage,
 } from '@/stores/message-queue-store'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 
 /**
  * The chat's `sendAutomaticallyWhen`, with steering.
@@ -69,6 +70,18 @@ export function chatFollowUp({
   if (taken.length === 0) return true
   send(taken.map((m) => m.text).join('\n\n'))
   return false
+}
+
+/**
+ * A tool call waiting for approval blocks the loop, so it never reaches the
+ * safe point where steering is handed over and Steer now would do nothing
+ * until the user answered. Steering means "change course now": the waiting
+ * prompts are withdrawn (answered no, recorded as cancelled, not as a denial)
+ * and the loop moves on to the steering.
+ */
+export function withdrawApprovalsForSteering(threadId: string): void {
+  if (!threadId) return
+  useToolApprovalRequests.getState().clearPendingForThread(threadId)
 }
 
 /**

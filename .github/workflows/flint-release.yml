@@ -92,6 +92,12 @@ jobs:
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            # A nightly that never finished stays a draft with no Git tag. Drop the
+            # drafts of other slots so they do not pile up next to the real ones.
+            gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,isDraft               --jq '.[] | select(.isDraft and (.tagName | test("^nightly-[0-9]"))) | .tagName'               | grep -vx "$tag" | while read -r stale; do
+                echo "Removing the unfinished draft $stale"
+                gh release delete "$stale" --repo "$GITHUB_REPOSITORY" --yes || true
+              done
             if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               echo "Reusing existing nightly release $tag"
             else
@@ -294,7 +300,22 @@ jobs:
           done) > "dist-sha256-${{ matrix.name }}.txt"
           cat "dist-sha256-${{ matrix.name }}.txt"
 
+      # The runner's network drops now and then (ENOTFOUND on CreateArtifact),
+      # which used to fail a whole nightly after a 15 minute build and leave its
+      # draft behind. Try again before giving up.
       - name: Keep the bundles as a workflow artifact
+        id: keep
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: flint-${{ env.TAG }}-${{ matrix.name }}
+          path: |
+            dist/*
+            dist-sha256-${{ matrix.name }}.txt
+          if-no-files-found: error
+
+      - name: Keep the bundles as a workflow artifact (second try)
+        if: steps.keep.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: flint-${{ env.TAG }}-${{ matrix.name }}

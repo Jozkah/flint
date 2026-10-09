@@ -72,6 +72,8 @@
     "openHint": "Open another, independent conversation beside this one",
     "openHintShortcut": "Open another, independent conversation beside this one ({{shortcut}})",
     "openInSplit": "Open in split view",
+    "openIn": "Open in",
+    "openInNewWindow": "New window",
     "close": "Close split",
     "closePane": "Close this pane",
     "addPane": "Add pane",

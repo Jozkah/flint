@@ -565,6 +565,24 @@ mod server_tests {
     }
 
     #[test]
+    fn pattern_filter_drops_only_what_llamacpp_cannot_convert() {
+        use crate::core::openai_schema::normalize_openai_tool_parameters_schema as norm;
+        let keep = [
+            r"^[A-Z]+$", r"foo", r"^(?:ab|cd){1,3}$", r"^a.*b+c?$", r"^[a-z_-]+$", r"^\.txt$",
+            r"^a\nb$", r"^[a-z]+(?:-[a-z]+)*$",
+        ];
+        let drop = [
+            r"^\d+$", r"^(?=a)b$", r"^(?!a)b$", r"^(?<n>a)$", r"^(?i)a$", r"^a+?$", r"^a*?$",
+            r"^a??$", r"^a++$", r"\bfoo\b", r"^(a)\1$", r"^\p{L}+$", r"^[\d]+$", r"^a{2,3}?$",
+        ];
+        for (pat, kept) in keep.iter().map(|p| (p, true)).chain(drop.iter().map(|p| (p, false))) {
+            let mut schema = json!({"type":"object","properties":{"x":{"type":"string","pattern":pat}}});
+            norm(&mut schema);
+            assert_eq!(schema["properties"]["x"].get("pattern").is_some(), kept, "{pat}");
+        }
+    }
+
+    #[test]
     fn strips_broken_format_when_type_missing_or_non_string() {
         let mut schema = json!({
             "type": "object",
@@ -597,6 +615,11 @@ mod server_tests {
         assert!(
             crate::core::openai_schema::http_status_indicates_api_key_retry(
                 StatusCode::TOO_MANY_REQUESTS
+            )
+        );
+        assert!(
+            crate::core::openai_schema::http_status_indicates_api_key_retry(
+                StatusCode::PAYMENT_REQUIRED
             )
         );
         assert!(!crate::core::openai_schema::http_status_indicates_api_key_retry(StatusCode::OK));

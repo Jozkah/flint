@@ -36,6 +36,7 @@ import { Segmented } from '@/components/ui/segmented'
 import { StudioDiscover } from '@/containers/studio/StudioDiscover'
 import { cn } from '@/lib/utils'
 import { useSpotlight } from '@/hooks/useSpotlight'
+import { DialogDeleteAllModels } from '@/containers/dialogs/DeleteAllModels'
 import { HuggingFaceDownloadAction } from '@/containers/HuggingFaceDownloadAction'
 import { route } from '@/constants/routes'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -244,6 +245,18 @@ function ModelDiscoverRoute() {
       if (id.startsWith(`llamacpp:${model.id}/`)) return true
     }
     return false
+  }
+
+  // The downloaded models of one repo, as a provider slice the delete dialog
+  // can act on. Null when nothing from it is on disk (or only imported files).
+  const installedSlice = (model: HuggingFaceModel): ModelProvider | null => {
+    const mlx = repoLooksMlx(model)
+    const owner = providers.find((p) => p.provider === (mlx ? 'mlx' : 'llamacpp'))
+    if (!owner) return null
+    const models = (owner.models ?? []).filter(
+      (m) => !m.imported && (mlx ? m.id === model.id : m.id.startsWith(`${model.id}/`))
+    )
+    return models.length ? { ...owner, models } : null
   }
 
   const architectures = useMemo(
@@ -751,6 +764,12 @@ function ModelDiscoverRoute() {
                         </button>
 
                         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                          {installedSlice(model) && (
+                            <DialogDeleteAllModels
+                              provider={installedSlice(model)!}
+                              iconOnly
+                            />
+                          )}
                           {isMlx ? (
                             <HuggingFaceDownloadAction
                               repo={model.id}

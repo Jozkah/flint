@@ -76,6 +76,8 @@
     "modelExists": "Model already exists",
     "modelExistsDesc": "Please choose a different model ID."
   },
+  "revealModelFile": "Show model file in folder",
+  "revealModelFileFailed": "Could not open the model folder.",
   "deleteModel": {
     "title": "Delete Model: {{modelId}}",
     "description": "Are you sure you want to delete this model? This action cannot be undone.",
@@ -87,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Delete All",
+    "repoTitle": "Delete this downloaded model?",
+    "clearButton": "Clear list",
+    "clearTitle": "Remove all models from this provider?",
+    "clearDescription": "This removes {{count}} model(s) from the list. Nothing is deleted on the provider's side, and Refresh can add them back.",
     "title": "Delete all downloaded models?",
     "description": "This will permanently remove {{count}} model(s) from disk.",
     "sizeLabel": "Disk space to be freed:",
@@ -138,6 +144,7 @@
   "enterNameForProvider": "Enter name for provider",
   "baseUrl": {
     "title": "Base URL",
+    "openaiDescription": "Use a proxy or gateway that speaks the OpenAI API. The default is https://api.openai.com/v1.",
     "azureDescription": "Your Azure OpenAI endpoint. Replace YOUR-RESOURCE-NAME with your Azure resource name.",
     "qwenDescription": "Your Model Studio endpoint. A key only works in the region it was created in: use https://dashscope-intl.aliyuncs.com/compatible-mode/v1 for Singapore or https://dashscope.aliyuncs.com/compatible-mode/v1 for mainland China."
   },

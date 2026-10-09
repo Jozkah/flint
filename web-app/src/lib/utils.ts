@@ -168,6 +168,10 @@ export const getDefaultProviderTitle = (provider: string) => {
       return 'Z.ai (GLM)'
     case 'qwen':
       return 'Alibaba Qwen'
+    case 'poe':
+      return 'Poe'
+    case 'ollama-cloud':
+      return 'Ollama Cloud'
     case 'llmman':
       return 'llmman'
     default:

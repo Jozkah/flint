@@ -3,7 +3,7 @@ import { predefinedProviders } from '@/constants/providers'
 import { providerModels } from '@/constants/models'
 import { getProviderTitle } from '@/lib/utils'
 
-const NEW = ['deepseek', 'moonshot', 'cohere', 'perplexity', 'together', 'fireworks', 'cerebras', 'sambanova', 'zai', 'qwen']
+const NEW = ['deepseek', 'moonshot', 'cohere', 'perplexity', 'together', 'fireworks', 'cerebras', 'sambanova', 'zai', 'qwen', 'poe', 'ollama-cloud']
 
 describe('hosted providers', () => {
   it('lists every provider once', () => {

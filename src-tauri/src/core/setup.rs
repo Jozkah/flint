@@ -11,7 +11,7 @@ use tauri::{
 use tauri_plugin_store::Store;
 
 use crate::core::app::commands::get_jan_data_folder_path;
-use crate::core::mcp::constants::DEFAULT_MCP_CONFIG;
+use crate::core::mcp::constants::default_mcp_config;
 use crate::core::mcp::helpers::add_server_config;
 
 use super::{mcp::helpers::run_mcp_commands, state::AppState};
@@ -36,20 +36,29 @@ pub fn migrate_mcp_servers(
     }
     if mcp_version < 2 {
         log::info!("Migrating MCP schema version 2: Adding Jan Browser MCP");
-        let result = add_server_config(
-            app_handle.clone(),
-            "Jan Browser MCP".to_string(),
-            serde_json::json!({
-                "command": "npx",
-                "args": ["-y", "search-mcp-server@latest"],
-                "env": {
-                    "BRIDGE_HOST": "127.0.0.1",
-                    "BRIDGE_PORT": "17389"
-                },
-                "active": false,
-                "official": true
-            }),
-        );
+        // A fresh install has no mcp_config.json yet; the default config written
+        // at startup already carries this entry, so there is nothing to add.
+        let config_exists = get_jan_data_folder_path(app_handle.clone())
+            .join("mcp_config.json")
+            .exists();
+        let result = if !config_exists {
+            Ok(())
+        } else {
+            add_server_config(
+                app_handle.clone(),
+                "Jan Browser MCP".to_string(),
+                serde_json::json!({
+                    "command": "npx",
+                    "args": ["-y", "search-mcp-server@latest"],
+                    "env": {
+                        "BRIDGE_HOST": "127.0.0.1",
+                        "BRIDGE_PORT": "17389"
+                    },
+                    "active": false,
+                    "official": true
+                }),
+            )
+        };
         if let Err(e) = result {
             log::error!("Failed to add Jan Browser MCP server config: {e}");
         }
@@ -255,7 +264,7 @@ pub fn setup_mcp<R: Runtime>(app: &App<R>) {
         let config_path = get_jan_data_folder_path(app_handle.clone()).join("mcp_config.json");
         if !config_path.exists() {
             log::info!("mcp_config.json not found, creating default config");
-            if let Err(e) = fs::write(&config_path, DEFAULT_MCP_CONFIG) {
+            if let Err(e) = fs::write(&config_path, default_mcp_config()) {
                 log::error!("Failed to create default MCP config: {e}");
             }
         }
