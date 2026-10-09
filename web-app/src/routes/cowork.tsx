@@ -6042,6 +6042,11 @@ export function CoworkPage() {
                       kind={stoppedBy}
                       message={runError}
                       onRetry={() => void runRequest(null)}
+                      onAttachFolder={
+                        stoppedBy === 'loop' && !session?.folder
+                          ? () => void attachFolder()
+                          : undefined
+                      }
                     />
                   )}
                   {stoppedBy === 'tokens' && (

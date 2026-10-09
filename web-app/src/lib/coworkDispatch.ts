@@ -430,8 +430,13 @@ async function callMcpTool(
   // The unasked streak is left to the approval queue: it counts a call a grant
   // answers and starts over only when it prompts. Resetting here would let a
   // trusted server's calls never reach the limit.
-  await recordToolActivity({ ...permission, phase: 'awaiting-permission' })
-  if (!ctx.onApproveMcp) {
+  // The session's own Bypass mode, not only the global one: it is chosen per
+  // session, so the approval queue (which reads the global mode) cannot see it.
+  const bypassed = ctx.mode === 'bypass'
+  if (!bypassed) {
+    await recordToolActivity({ ...permission, phase: 'awaiting-permission' })
+  }
+  if (!bypassed && !ctx.onApproveMcp) {
     await recordToolActivity({
       ...permission,
       phase: 'refused',
@@ -439,14 +444,16 @@ async function callMcpTool(
     })
     return deniedByUser(toolName)
   }
-  let allowed = false
-  try {
-    allowed = await unlessStopped(
-      ctx.onApproveMcp(call.toolCallId, toolName, call.input, server, signal),
-      signal
-    )
-  } catch {
-    allowed = false
+  let allowed = bypassed
+  if (!bypassed) {
+    try {
+      allowed = await unlessStopped(
+        ctx.onApproveMcp!(call.toolCallId, toolName, call.input, server, signal),
+        signal
+      )
+    } catch {
+      allowed = false
+    }
   }
   if (signal?.aborted) {
     await recordToolActivity({
@@ -467,7 +474,11 @@ async function callMcpTool(
   await recordToolActivity({
     ...permission,
     phase: allowed ? 'allowed' : 'refused',
-    ...(allowed ? { detail: `decided by ${approvalSourceFor(call.toolCallId)}` } : {}),
+    ...(allowed
+      ? {
+          detail: `decided by ${bypassed ? 'bypass' : approvalSourceFor(call.toolCallId)}`,
+        }
+      : {}),
   })
   if (!allowed) return deniedByUser(toolName)
 

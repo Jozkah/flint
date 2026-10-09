@@ -16,6 +16,11 @@ type Props =
       kind: 'deadline' | 'timeout' | 'loop'
       message?: string
       onRetry: () => void
+      /**
+       * Set when the session has no folder: a run stopped for hitting the same
+       * wall is often one that needed the project, so offer to attach it.
+       */
+      onAttachFolder?: () => void
     }
 
 /**
@@ -43,6 +48,16 @@ export function CoworkRunNotice(props: Props) {
         </span>
         {props.message?.trim() ? (
           <span className="min-w-0 break-words text-fg-2">{props.message}</span>
+        ) : null}
+        {props.onAttachFolder ? (
+          <Button
+            variant="default"
+            size="sm"
+            className="h-7 pointer-coarse:h-11"
+            onClick={props.onAttachFolder}
+          >
+            {t('common:run.attachFolder')}
+          </Button>
         ) : null}
         <Button
           variant="outline"
