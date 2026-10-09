@@ -143,10 +143,14 @@ async function requestTitle(
   abortSignal: AbortSignal,
   session: string
 ): Promise<string | null | typeof ABORTED> {
+  // Room for a reasoning model to think and still answer: thinking can only be
+  // switched off for the local engine, and on a hosted or custom endpoint 128
+  // tokens were spent before the title started, leaving the first words of the
+  // prompt as the chat's name.
   const text = await runUtilityText(
     'title',
     buildSummarizePrompt(transcript),
-    128,
+    1024,
     abortSignal,
     session
   )
