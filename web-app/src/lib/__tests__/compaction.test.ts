@@ -3,6 +3,7 @@ import type { UIMessage } from 'ai'
 import {
   clipToolResultsToFit,
   compactHistory,
+  compactionNeedsTurnSplit,
   compactionOf,
   compactionTriggerTokens,
   DEFAULT_COMPACT_THRESHOLD,
@@ -414,5 +415,47 @@ describe('clipToolResultsToFit', () => {
     const out = clipToolResultsToFit(messages, 100)
     expect(out.clippedCount).toBe(0)
     expect(out.messages).toBe(messages)
+  })
+})
+
+describe('compactionNeedsTurnSplit', () => {
+  const bulky = (id: string): UIMessage =>
+    ({
+      id,
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-read',
+          toolCallId: id,
+          input: { path: `${id}.txt` },
+          state: 'output-available',
+          output: 'x'.repeat(2_000),
+        },
+      ],
+    }) as unknown as UIMessage
+
+  // A follow-up message whose own tool loop is what fills the window.
+  const followUpLoop = () => [
+    ...chat(1),
+    text('u1', 'user', 'now read every file'),
+    ...Array.from({ length: 30 }, (_, i) => bulky(`t${i}`)),
+  ]
+
+  it('cuts inside the turn when the loop of the current turn fills the window', () => {
+    const messages = followUpLoop()
+    expect(compactionNeedsTurnSplit(messages, 8, 10_000)).toBe(true)
+    // The turn-preserving cut folds only the first exchange; this one folds the loop.
+    const kept = planCompaction(messages, { keepRecent: 8 })!.keep
+    expect(kept.length).toBeGreaterThan(30)
+    const split = planCompaction(messages, { keepRecent: 8, splitTurn: true })!
+    expect(split.keep).toHaveLength(8)
+  })
+
+  it('keeps the turn boundary when what it would keep already fits', () => {
+    expect(compactionNeedsTurnSplit(chat(12), 8, 128_000)).toBe(false)
+  })
+
+  it('has no opinion without anything to fold', () => {
+    expect(compactionNeedsTurnSplit(chat(2), 8, 100)).toBe(false)
   })
 })
