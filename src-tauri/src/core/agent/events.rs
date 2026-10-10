@@ -215,6 +215,18 @@ pub enum StreamEvent {
         name: String,
         event: Box<StreamEvent>,
     },
+    /// The upstream request failed before anything streamed and is about to be
+    /// sent again after `delay_ms`. `attempt` is the 1-based attempt that
+    /// follows the wait, out of `max_attempts`; `reason` is the failure that
+    /// prompted it. Sent once per retry so a consumer can say "retrying" rather
+    /// than show a spinner that looks like a slow model. Display-only and never
+    /// journaled; the turn continues with the next event or ends in `Error`.
+    Retry {
+        attempt: u32,
+        max_attempts: u32,
+        delay_ms: u64,
+        reason: String,
+    },
     /// The loop's compaction reduced the conversation while retrying a
     /// context overflow. The client should replace its session history with
     /// `messages` for subsequent turns.
@@ -575,6 +587,15 @@ pub(crate) mod tests {
                 },
             ),
             (
+                "Retry",
+                StreamEvent::Retry {
+                    attempt: 2,
+                    max_attempts: 10,
+                    delay_ms: 250,
+                    reason: "Upstream returned HTTP 503: busy".into(),
+                },
+            ),
+            (
                 "MessagesUpdated",
                 StreamEvent::MessagesUpdated {
                     messages: vec![json!({ "role": "user", "content": "hi" })],
@@ -728,6 +749,7 @@ pub(crate) mod tests {
             | StreamEvent::Subagent { .. }
             | StreamEvent::PromptSnapshot { .. }
             | StreamEvent::RunResources { .. }
+            | StreamEvent::Retry { .. }
             | StreamEvent::MessagesUpdated { .. }
             | StreamEvent::AskRequest { .. }
             | StreamEvent::AskResolved { .. }

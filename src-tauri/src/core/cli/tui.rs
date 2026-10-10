@@ -2057,6 +2057,10 @@ struct App {
     compacting: Option<CompactKind>,
     /// When the in-flight compaction started, for the elapsed counter.
     compact_started: Option<Instant>,
+    /// The running turn's upstream request failed before anything streamed and
+    /// the loop is waiting to resend it. Display-only; cleared by the next event
+    /// of the parent run, and by the run ending or being cancelled.
+    retrying: Option<RetryWait>,
     /// The in-flight compaction was triggered by a context-overflow error, so
     /// the errored turn is resumed once it lands.
     retry_after_compact: bool,
@@ -2544,6 +2548,7 @@ impl App {
             compact_request: None,
             compacting: None,
             compact_started: None,
+            retrying: None,
             retry_after_compact: false,
             overflow_retries: 0,
             context_warned: false,
@@ -5029,6 +5034,12 @@ impl App {
     /// Non-terminal stream events. `Done`/`Error` are handled by the loop since
     /// they mutate history and the run handle.
     fn apply(&mut self, ev: StreamEvent) {
+        // Whatever the parent run sends next -- a token, a tool call -- means
+        // the wait for a resend is over. A child's events say nothing about the
+        // parent's request.
+        if !matches!(ev, StreamEvent::Retry { .. } | StreamEvent::Subagent { .. }) {
+            self.retrying = None;
+        }
         match ev {
             StreamEvent::Token { text } => {
                 self.assistant_buf.push_str(&text);
@@ -5467,6 +5478,26 @@ impl App {
             // AH-174: the run's resource figures are recorded with its end and
             // shown on the timeline; the TUI's transcript does not repeat them.
             StreamEvent::Done { .. } | StreamEvent::Error { .. } | StreamEvent::RunResources { .. } => {}
+            // The live countdown carries every attempt; the transcript notes
+            // only the first, so a flaky link leaves one line, not ten.
+            StreamEvent::Retry {
+                attempt,
+                max_attempts,
+                delay_ms,
+                reason,
+            } => {
+                if attempt == 2 {
+                    self.finalize_tool_group();
+                    self.flush_assistant();
+                    self.note(&format!("{reason}; retrying"));
+                }
+                self.retrying = Some(RetryWait {
+                    attempt,
+                    max_attempts,
+                    at: Instant::now() + Duration::from_millis(delay_ms),
+                    reason,
+                });
+            }
             StreamEvent::MessagesUpdated { messages } => {
                 self.history = messages;
                 self.persist_in_background();
@@ -5724,6 +5755,7 @@ impl App {
         self.tokens = usage.and_then(|u| u.total_tokens).unwrap_or(self.tokens);
         self.status = Status::Idle;
         self.run_started = None;
+        self.retrying = None;
         self.detail = format!("stop_reason={stop_reason}");
         self.scrollback = 0;
         self.publish_agent_status();
@@ -5832,6 +5864,7 @@ impl App {
         self.flush_assistant();
         self.status = Status::Idle;
         self.run_started = None;
+        self.retrying = None;
         self.detail = if message.contains("budget") {
             format!("budget exhausted: {message}")
         } else {
@@ -5967,6 +6000,8 @@ impl App {
         }
         self.status = Status::Idle;
         self.run_started = None;
+        // A cancel sends no further event to clear it.
+        self.retrying = None;
         // Drop any run queued but not yet spawned (still gated on model/MCP/
         // snapshot readiness); otherwise the loop starts it once ready and the
         // cancel is silently undone.
@@ -7077,6 +7112,30 @@ struct StartingPreview {
     /// the in-flight row shows the command being typed into the same terminal box
     /// the running call becomes. `None` for every other tool.
     command: Option<String>,
+}
+
+/// A pending resend of a failed upstream request, from `StreamEvent::Retry`.
+struct RetryWait {
+    attempt: u32,
+    max_attempts: u32,
+    /// When the resend goes out, for the countdown.
+    at: Instant,
+    reason: String,
+}
+
+/// The input row while a resend is pending: a countdown until it goes out,
+/// then the attempt itself, which can take as long as a connect timeout.
+fn retry_wait_label(wait: &RetryWait, now: Instant) -> String {
+    let left = wait.at.saturating_duration_since(now);
+    let when = if left.is_zero() {
+        "retrying".to_string()
+    } else {
+        format!("retrying in {}s", left.as_secs_f32().ceil() as u64)
+    };
+    format!(
+        "{when} (attempt {}/{})... {}",
+        wait.attempt, wait.max_attempts, wait.reason
+    )
 }
 
 /// A tool call announced by the model whose arguments are still arriving.
@@ -17826,6 +17885,8 @@ fn header(app: &App) -> Paragraph<'static> {
 fn header_spans(app: &App) -> Vec<Span<'static>> {
     let (status, style): (String, Style) = if let Some(kind) = app.compacting {
         (kind.label().to_string(), Style::new().magenta().bold())
+    } else if app.retrying.is_some() {
+        ("retrying".to_string(), Style::new().yellow().bold())
     } else if app.mcp_auth.is_some() {
         // A sign-in runs while the model is otherwise idle; the badge stands in
         // for `[ready]` so the pending auth is visible even off the `/mcp` screen.
@@ -18251,6 +18312,14 @@ fn input_box(app: &App) -> Paragraph<'static> {
                 format!("{} conversation…{elapsed}", kind.label()),
                 Style::new().dim().italic(),
             ),
+        ]))
+        .block(block)
+    } else if let Some(wait) = app.retrying.as_ref().filter(|_| app.input.is_empty()) {
+        // Without this the row reads "working" through up to the whole retry
+        // budget, indistinguishable from a slow model.
+        Paragraph::new(Line::from(vec![
+            Span::styled(format!("{} ", app.spinner()), Style::new().yellow()),
+            Span::styled(retry_wait_label(wait, Instant::now()), Style::new().dim().italic()),
         ]))
         .block(block)
     } else if app.picker.is_some() {
@@ -29553,6 +29622,60 @@ mod tests {
         start_subagent(&mut app, "r0", "alpha");
         let out = render_rows(&mut app, 100, 20).join("\n");
         assert!(out.contains("1 agent") && out.contains("alpha"), "{out}");
+    }
+
+    fn retry_event(attempt: u32, delay_ms: u64) -> StreamEvent {
+        StreamEvent::Retry {
+            attempt,
+            max_attempts: 10,
+            delay_ms,
+            reason: "Upstream returned HTTP 503: busy".into(),
+        }
+    }
+
+    /// A pending resend reads as `retrying`, not as a slow model, and the next
+    /// event of the run clears it.
+    #[test]
+    fn a_retry_is_shown_live_and_cleared_by_the_next_event() {
+        let mut app = test_app();
+        app.status = Status::Running;
+        app.apply(retry_event(2, 5_000));
+        let header: String = header_spans(&app).iter().map(|s| s.content.to_string()).collect();
+        assert!(header.contains("retrying"), "{header}");
+        assert!(!header.contains("working"), "{header}");
+        let wait = app.retrying.as_ref().expect("a retry is pending");
+        assert!(super::retry_wait_label(wait, Instant::now()).contains("attempt 2/10"));
+        // Only the first retry leaves a transcript line.
+        let notes = |app: &mut App| {
+            render_rows(app, 120, 30)
+                .iter()
+                .filter(|row| row.contains("busy; retrying"))
+                .count()
+        };
+        assert_eq!(notes(&mut app), 1, "the first retry leaves one transcript line");
+        app.apply(retry_event(3, 5_000));
+        assert_eq!(notes(&mut app), 1, "later retries stay out of the transcript");
+        app.apply(StreamEvent::Token { text: "hi".into() });
+        assert!(app.retrying.is_none(), "the answer arriving ends the wait");
+    }
+
+    #[test]
+    fn a_retry_past_its_wait_reads_as_in_flight_and_cancel_clears_it() {
+        let mut app = test_app();
+        app.status = Status::Running;
+        app.apply(retry_event(2, 0));
+        let wait = app.retrying.as_ref().expect("pending");
+        let label = super::retry_wait_label(wait, Instant::now() + Duration::from_secs(1));
+        assert!(label.starts_with("retrying ("), "{label}");
+        let counting = super::RetryWait {
+            attempt: 4,
+            max_attempts: 10,
+            at: Instant::now() + Duration::from_secs(3),
+            reason: "r".into(),
+        };
+        assert!(super::retry_wait_label(&counting, Instant::now()).starts_with("retrying in "));
+        app.cancel_run();
+        assert!(app.retrying.is_none());
     }
 
     fn subagent_event(app: &mut App, run_id: &str, name: &str, event: StreamEvent) {
