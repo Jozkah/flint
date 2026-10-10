@@ -146,6 +146,56 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+/// How a provider route reuses a request prefix it has already seen.
+///
+/// Declared per route (`ProviderConfig.api_type`) instead of inferred from a
+/// provider name at each call site, so "may this request carry a cache marker"
+/// has one answer that a strict endpoint cannot disagree with. A route nobody
+/// has classified resolves to [`CacheCapability::None`]: no marker is emitted
+/// and nothing downstream assumes the route reports cache counters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheCapability {
+    /// Not known to cache, or not classified. Nothing is emitted for it.
+    None,
+    /// The provider reuses a byte-identical leading prefix by itself (OpenAI,
+    /// DeepSeek and other chat/completions routes, OpenAI `/responses`, Gemini
+    /// implicit caching). The request is shaped for it with a byte-stable
+    /// prefix and carries no marker.
+    Implicit,
+    /// The provider caches only where the request says so (Anthropic
+    /// `cache_control` breakpoints). The converter places them, and only a
+    /// route that declares this is sent one.
+    Explicit,
+}
+
+impl CacheCapability {
+    /// The capability of the route that speaks `api_type`. The one place an
+    /// `api_type` is mapped to a caching behavior; every converter reads its
+    /// own answer from here so a new `api_type` is a decision in this match.
+    pub fn for_api_type(api_type: Option<&str>) -> Self {
+        match api_type {
+            // Verbatim chat/completions.
+            None | Some("openai") => CacheCapability::Implicit,
+            Some("openai-responses") => CacheCapability::Implicit,
+            // Gemini caches a repeated prefix itself. The explicit
+            // `cachedContents` resource is a separate API this gateway does
+            // not use, so there is nothing to place.
+            Some("google") => CacheCapability::Implicit,
+            Some("anthropic") => CacheCapability::Explicit,
+            Some(_) => CacheCapability::None,
+        }
+    }
+
+    /// The spelling `agent status` reports.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CacheCapability::None => "none",
+            CacheCapability::Implicit => "implicit",
+            CacheCapability::Explicit => "explicit",
+        }
+    }
+}
+
 /// Translates an OpenAI chat/completions request to a provider's native wire
 /// API and its response back. Implementors front a provider whose native API is
 /// not chat/completions (OpenAI `/v1/responses`, Google `generateContent`,
@@ -174,6 +224,11 @@ pub trait UpstreamConverter: Send + Sync {
     fn credential_headers(&self, _key: &str) -> Vec<(&'static str, String)> {
         Vec::new()
     }
+
+    /// How this route caches a request prefix. Required rather than defaulted:
+    /// a converter added for a new `api_type` has to decide whether it may
+    /// emit a cache marker, instead of inheriting an answer.
+    fn cache_capability(&self) -> CacheCapability;
 
     /// Rewrite the inbound chat/completions body into the native request body.
     fn convert_request(&self, body: &Value) -> Value;
@@ -310,6 +365,10 @@ fn responses_parts(content: &Value, images: Vec<ImageSource<'_>>) -> Vec<Value> 
 }
 
 impl UpstreamConverter for OpenAIResponsesConverter {
+    fn cache_capability(&self) -> CacheCapability {
+        CacheCapability::for_api_type(Some("openai-responses"))
+    }
+
     fn upstream_path(&self, _body: &Value) -> String {
         if self.oauth {
             "/codex/responses".to_string()
@@ -724,6 +783,10 @@ fn gemini_reads_function_response_parts(body: &Value) -> bool {
 }
 
 impl UpstreamConverter for GoogleGenerateContentConverter {
+    fn cache_capability(&self) -> CacheCapability {
+        CacheCapability::for_api_type(Some("google"))
+    }
+
     fn upstream_path(&self, body: &Value) -> String {
         let model = body.get("model").and_then(|m| m.as_str()).unwrap_or("");
         let streaming = body
@@ -1169,6 +1232,42 @@ fn anthropic_cache_counts(usage: Option<&Value>) -> (Option<i64>, Option<i64>) {
 }
 
 /// A content-part array as Anthropic blocks: the text first, then each image.
+/// The marker Anthropic reads as "cache everything up to and including this
+/// block". Ephemeral is the only type the API defines.
+fn ephemeral_cache_marker() -> Value {
+    json!({"type": "ephemeral"})
+}
+
+/// The `system` field as text blocks, with a cache breakpoint on the first
+/// block of the real prompt.
+///
+/// The first system message is the stable head the loop writes once per
+/// session; later ones are appended updates. Marking the head keeps the cached
+/// prefix intact when an update lands behind it. The OAuth billing marker stays
+/// its own leading block, outside the cached text, as the Claude Code CLI
+/// sends it. Joined, the blocks read as the same text the plain path sends.
+fn anthropic_system_blocks(system: &[String], oauth: bool) -> Value {
+    let mut blocks: Vec<Value> = Vec::new();
+    let mut rest = system;
+    if oauth {
+        if let Some((billing, tail)) = system.split_first() {
+            blocks.push(json!({"type": "text", "text": billing}));
+            rest = tail;
+        }
+    }
+    if let Some((head, tail)) = rest.split_first() {
+        blocks.push(json!({
+            "type": "text",
+            "text": head,
+            "cache_control": ephemeral_cache_marker(),
+        }));
+        if !tail.is_empty() {
+            blocks.push(json!({"type": "text", "text": tail.join("\n\n")}));
+        }
+    }
+    Value::Array(blocks)
+}
+
 fn anthropic_blocks(content: &Value, images: Vec<ImageSource<'_>>) -> Vec<Value> {
     let text = message_text(content);
     let mut blocks = Vec::with_capacity(images.len() + 1);
@@ -1226,6 +1325,10 @@ fn anthropic_rejects_forced_tool_choice(model: &str) -> bool {
 }
 
 impl UpstreamConverter for AnthropicMessagesConverter {
+    fn cache_capability(&self) -> CacheCapability {
+        CacheCapability::for_api_type(Some("anthropic"))
+    }
+
     fn upstream_path(&self, _body: &Value) -> String {
         // An OAuth `sk-ant-oat01` token is billed against the Claude Code /
         // subscription quota only when the request hits the Code endpoint with
@@ -1366,8 +1469,13 @@ impl UpstreamConverter for AnthropicMessagesConverter {
             }
         }
         out["messages"] = json!(messages);
+        let explicit = self.cache_capability() == CacheCapability::Explicit;
         if !system.is_empty() {
-            out["system"] = json!(system.join("\n\n"));
+            out["system"] = if explicit {
+                anthropic_system_blocks(&system, self.oauth)
+            } else {
+                json!(system.join("\n\n"))
+            };
         }
 
         if let Some(tools) = body.get("tools").and_then(|t| t.as_array()) {
@@ -1384,6 +1492,13 @@ impl UpstreamConverter for AnthropicMessagesConverter {
                 .collect();
             if !mapped.is_empty() {
                 out["tools"] = json!(mapped);
+                // Tools come first in Anthropic's prefix order, so one marker on
+                // the last of them caches the whole array.
+                if explicit {
+                    if let Some(last) = out["tools"].as_array_mut().and_then(|t| t.last_mut()) {
+                        last["cache_control"] = ephemeral_cache_marker();
+                    }
+                }
             }
         }
         if let Some(tc) = body.get("tool_choice") {
@@ -2706,7 +2821,12 @@ mod anthropic_messages_tests {
         });
         let out = conv().convert_request(&body);
         assert_eq!(out["model"], json!("claude-sonnet-4"));
-        assert_eq!(out["system"], json!("be brief"));
+        // Anthropic is an explicit-cache route, so the prompt is a text block
+        // that carries the breakpoint rather than a bare string.
+        assert_eq!(
+            out["system"],
+            json!([{"type": "text", "text": "be brief", "cache_control": {"type": "ephemeral"}}])
+        );
         assert_eq!(out["max_tokens"], json!(ANTHROPIC_DEFAULT_MAX_TOKENS));
         assert_eq!(
             out["messages"],
@@ -2729,17 +2849,21 @@ mod anthropic_messages_tests {
             ]
         });
         let plain = conv().convert_request(&body);
-        assert_eq!(plain["system"], json!("be brief"));
+        assert_eq!(plain["system"][0]["text"], json!("be brief"));
 
         let oauth_body = AnthropicMessagesConverter::new_oauth().convert_request(&body);
-        let sys = oauth_body["system"].as_str().unwrap();
+        let blocks = oauth_body["system"].as_array().unwrap();
+        let sys = blocks[0]["text"].as_str().unwrap();
         assert!(
             sys.starts_with("x-anthropic-billing-header: cc_version="),
             "oauth request must inject the billing header first: {sys}"
         );
         assert!(sys.contains("cc_entrypoint=sdk-cli;"));
-        // The real system prompt is still carried after the billing marker.
-        assert!(sys.contains("be brief"));
+        // The marker is not part of the cached text, and the real system
+        // prompt is still carried after it.
+        assert!(blocks[0].get("cache_control").is_none());
+        assert_eq!(blocks[1]["text"], json!("be brief"));
+        assert_eq!(blocks[1]["cache_control"], json!({"type": "ephemeral"}));
     }
 
     /// The reviewer's probe, inverted: a tool's image lands inside its
@@ -2843,9 +2967,113 @@ mod anthropic_messages_tests {
         let out = conv().convert_request(&body);
         assert_eq!(
             out["tools"],
-            json!([{"name": "f", "description": "d", "input_schema": {"type": "object"}}])
+            json!([{
+                "name": "f",
+                "description": "d",
+                "input_schema": {"type": "object"},
+                "cache_control": {"type": "ephemeral"}
+            }])
         );
         assert_eq!(out["tool_choice"], json!({"type": "any"}));
+    }
+
+    /// The breakpoints sit on the stable system head and on the last tool, and
+    /// nowhere else: a later system message (an appended prompt update) is
+    /// carried as plain text behind the cached head.
+    #[test]
+    fn explicit_route_marks_the_system_head_and_the_last_tool() {
+        let body = json!({
+            "model": "c",
+            "messages": [
+                {"role": "system", "content": "STABLE"},
+                {"role": "system", "content": "UPDATE"},
+                {"role": "user", "content": "hi"}
+            ],
+            "tools": [
+                {"type": "function", "function": {"name": "a", "description": "d", "parameters": {"type": "object"}}},
+                {"type": "function", "function": {"name": "b", "description": "d", "parameters": {"type": "object"}}}
+            ]
+        });
+        let out = conv().convert_request(&body);
+        assert_eq!(
+            out["system"],
+            json!([
+                {"type": "text", "text": "STABLE", "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": "UPDATE"}
+            ])
+        );
+        let tools = out["tools"].as_array().unwrap();
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["cache_control"], json!({"type": "ephemeral"}));
+        // Nothing in the conversation is marked.
+        assert!(!out["messages"].to_string().contains("cache_control"));
+    }
+
+    /// The marker is a function of the declared capability, not of the
+    /// provider: a route that is not explicit never receives the key a strict
+    /// endpoint would reject.
+    #[test]
+    fn non_explicit_routes_never_receive_a_cache_marker() {
+        let body = json!({
+            "model": "c",
+            "messages": [
+                {"role": "system", "content": "STABLE"},
+                {"role": "user", "content": "hi"}
+            ],
+            "tools": [{"type": "function", "function": {"name": "a", "description": "d", "parameters": {"type": "object"}}}]
+        });
+        for api_type in ["openai-responses", "google"] {
+            let converter = converter_for(Some(api_type), false).expect("converter");
+            assert_ne!(converter.cache_capability(), CacheCapability::Explicit);
+            let out = converter.convert_request(&body);
+            assert!(
+                !out.to_string().contains("cache_control"),
+                "{api_type}: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn capability_resolves_from_the_route_with_a_safe_default() {
+        assert_eq!(CacheCapability::for_api_type(None), CacheCapability::Implicit);
+        assert_eq!(
+            CacheCapability::for_api_type(Some("openai")),
+            CacheCapability::Implicit
+        );
+        assert_eq!(
+            CacheCapability::for_api_type(Some("openai-responses")),
+            CacheCapability::Implicit
+        );
+        assert_eq!(
+            CacheCapability::for_api_type(Some("google")),
+            CacheCapability::Implicit
+        );
+        assert_eq!(
+            CacheCapability::for_api_type(Some("anthropic")),
+            CacheCapability::Explicit
+        );
+        // An api_type nobody classified is not assumed to cache.
+        assert_eq!(
+            CacheCapability::for_api_type(Some("something-new")),
+            CacheCapability::None
+        );
+    }
+
+    /// A converter's own declaration and the route resolver cannot drift: both
+    /// are asked about the same `api_type`.
+    #[test]
+    fn every_converter_declares_its_routes_capability() {
+        for api_type in ["openai-responses", "google", "anthropic"] {
+            for oauth in [false, true] {
+                let converter = converter_for(Some(api_type), oauth).expect("converter");
+                assert_eq!(
+                    converter.cache_capability(),
+                    CacheCapability::for_api_type(Some(api_type)),
+                    "{api_type} oauth={oauth}"
+                );
+            }
+        }
+        assert_eq!(CacheCapability::Explicit.as_str(), "explicit");
     }
 
     #[test]
