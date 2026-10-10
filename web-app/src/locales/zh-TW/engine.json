@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "已安裝",
     "installedSub": "{{local}} 個本機 · {{remote}} 個遠端",
+    "remoteAvailableSub": "{{count}} 個遠端模型可用",
     "loaded": "目前已載入",
     "loadedSub": "共 {{count}} 個本機模型",
     "disk": "磁碟用量",
@@ -60,7 +61,8 @@
     "off": "關閉",
     "loaded": "已載入",
     "ready": "就緒",
-    "noKey": "無 API 金鑰"
+    "noKey": "無 API 金鑰",
+    "keyless": "不需要金鑰"
   },
   "installed": {
     "title": "已安裝的模型",

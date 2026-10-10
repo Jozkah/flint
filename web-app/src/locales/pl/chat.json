@@ -72,6 +72,8 @@
     "openHint": "Otwórz obok tej inną, niezależną rozmowę",
     "openHintShortcut": "Otwórz obok tej inną, niezależną rozmowę ({{shortcut}})",
     "openInSplit": "Otwórz w widoku podzielonym",
+    "openIn": "Otwórz w",
+    "openInNewWindow": "Nowe okno",
     "close": "Zamknij podział",
     "closePane": "Zamknij ten panel",
     "addPane": "Dodaj panel",

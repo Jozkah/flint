@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Yüklü",
     "installedSub": "{{local}} yerel · {{remote}} uzak",
+    "remoteAvailableSub": "{{count}} uzak model kullanılabilir",
     "loaded": "Şu an yüklü",
     "loadedSub": "{{count}} yerel modelden",
     "disk": "Kullanılan disk",
@@ -60,7 +61,8 @@
     "off": "Kapalı",
     "loaded": "Yüklü",
     "ready": "Hazır",
-    "noKey": "API anahtarı yok"
+    "noKey": "API anahtarı yok",
+    "keyless": "Anahtar gerekmez"
   },
   "installed": {
     "title": "Yüklü modeller",

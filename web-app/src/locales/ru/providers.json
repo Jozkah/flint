@@ -11,6 +11,9 @@
   "noNewModels": "Новых моделей не найдено. Все доступные модели уже добавлены.",
   "refreshModelsFailed": "Не удалось получить модели от {{provider}}. Пожалуйста, проверьте ваш ключ API и базовый URL.",
   "models": "Модели",
+  "filterModels": "Фильтр по моделям: {{count}}",
+  "modelsShown": "Показано {{shown}} из {{total}}",
+  "showMoreModels": "Показать ещё",
   "backendInstalled": "Установлено",
   "backendHistoryShow": "Показать историю обновлений",
   "backendHistoryHide": "Скрыть историю обновлений",
@@ -73,6 +76,8 @@
     "modelExists": "Модель уже существует",
     "modelExistsDesc": "Пожалуйста, выберите другой ID модели."
   },
+  "revealModelFile": "Показать файл модели в папке",
+  "revealModelFileFailed": "Не удалось открыть папку модели.",
   "deleteModel": {
     "title": "Удаление модели: {{modelId}}",
     "description": "Вы уверены, что хотите удалить эту модель? Это действие нельзя отменить.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Удалить все",
+    "repoTitle": "Удалить эту загруженную модель?",
+    "clearButton": "Очистить список",
+    "clearTitle": "Удалить все модели этого провайдера?",
+    "clearDescription": "Из списка будет удалено моделей: {{count}}. На стороне провайдера ничего не удаляется, а кнопка «Обновить» может вернуть их обратно.",
     "title": "Удалить все скачанные модели?",
     "description": "Это навсегда удалит с диска моделей: {{count}}.",
     "sizeLabel": "Будет освобождено места на диске:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Введите имя поставщика",
   "baseUrl": {
     "title": "Базовый URL",
+    "openaiDescription": "Используйте прокси или шлюз, поддерживающий API OpenAI. По умолчанию: https://api.openai.com/v1.",
     "azureDescription": "Ваша конечная точка Azure OpenAI. Замените YOUR-RESOURCE-NAME на имя вашего ресурса Azure.",
     "qwenDescription": "Ваша конечная точка Model Studio. Ключ работает только в регионе, где он был создан: используйте https://dashscope-intl.aliyuncs.com/compatible-mode/v1 для Сингапура или https://dashscope.aliyuncs.com/compatible-mode/v1 для материкового Китая."
   },

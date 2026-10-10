@@ -11,6 +11,9 @@
   "noNewModels": "Không tìm thấy mô hình mới nào. Tất cả các mô hình có sẵn đã được thêm vào.",
   "refreshModelsFailed": "Không thể tìm nạp các mô hình từ {{provider}}. Vui lòng kiểm tra khóa API và URL cơ sở của bạn.",
   "models": "Mô hình",
+  "filterModels": "Lọc {{count}} mô hình",
+  "modelsShown": "Đang hiện {{shown}} trên {{total}}",
+  "showMoreModels": "Hiện thêm",
   "backendInstalled": "Đã cài",
   "backendHistoryShow": "Hiện lịch sử cập nhật",
   "backendHistoryHide": "Ẩn lịch sử cập nhật",
@@ -73,6 +76,8 @@
     "modelExists": "Mô hình đã tồn tại",
     "modelExistsDesc": "Vui lòng chọn một ID mô hình khác."
   },
+  "revealModelFile": "Hiện tệp mô hình trong thư mục",
+  "revealModelFileFailed": "Không thể mở thư mục mô hình.",
   "deleteModel": {
     "title": "Xóa mô hình: {{modelId}}",
     "description": "Bạn có chắc chắn muốn xóa mô hình này không? Hành động này không thể hoàn tác.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Xóa tất cả",
+    "repoTitle": "Xóa mô hình đã tải xuống này?",
+    "clearButton": "Xóa danh sách",
+    "clearTitle": "Gỡ tất cả mô hình của nhà cung cấp này?",
+    "clearDescription": "Thao tác này gỡ {{count}} mô hình khỏi danh sách. Không có gì bị xóa ở phía nhà cung cấp, và Làm mới có thể thêm chúng trở lại.",
     "title": "Xóa tất cả mô hình đã tải xuống?",
     "description": "Thao tác này sẽ xóa vĩnh viễn {{count}} mô hình khỏi đĩa.",
     "sizeLabel": "Dung lượng đĩa sẽ được giải phóng:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Nhập tên cho nhà cung cấp",
   "baseUrl": {
     "title": "URL gốc",
+    "openaiDescription": "Dùng proxy hoặc cổng kết nối tương thích với API OpenAI. Mặc định là https://api.openai.com/v1.",
     "azureDescription": "Điểm cuối Azure OpenAI của bạn. Thay YOUR-RESOURCE-NAME bằng tên tài nguyên Azure của bạn.",
     "qwenDescription": "Điểm cuối Model Studio của bạn. Một khóa chỉ hoạt động ở khu vực nó được tạo: dùng https://dashscope-intl.aliyuncs.com/compatible-mode/v1 cho Singapore hoặc https://dashscope.aliyuncs.com/compatible-mode/v1 cho Trung Quốc đại lục."
   },

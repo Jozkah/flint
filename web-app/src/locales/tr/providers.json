@@ -11,6 +11,9 @@
   "noNewModels": "Yeni model bulunamadı. Kullanılabilir tüm modeller zaten eklenmiş.",
   "refreshModelsFailed": "{{provider}} üzerinden model getirilemedi. Lütfen API anahtarınızı ve temel URL'nizi kontrol edin.",
   "models": "Modeller",
+  "filterModels": "{{count}} modeli filtrele",
+  "modelsShown": "{{total}} içinden {{shown}} gösteriliyor",
+  "showMoreModels": "Daha fazla göster",
   "backendInstalled": "Kurulu",
   "backendHistoryShow": "Güncelleme geçmişini göster",
   "backendHistoryHide": "Güncelleme geçmişini gizle",
@@ -73,6 +76,8 @@
     "modelExists": "Model zaten mevcut",
     "modelExistsDesc": "Lütfen farklı bir model kimliği seçin."
   },
+  "revealModelFile": "Model dosyasını klasörde göster",
+  "revealModelFileFailed": "Model klasörü açılamadı.",
   "deleteModel": {
     "title": "Modeli Sil: {{modelId}}",
     "description": "Bu modeli silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Tümünü Sil",
+    "repoTitle": "İndirilen bu model silinsin mi?",
+    "clearButton": "Listeyi temizle",
+    "clearTitle": "Bu sağlayıcının tüm modelleri kaldırılsın mı?",
+    "clearDescription": "Bu işlem listeden {{count}} modeli kaldırır. Sağlayıcı tarafında hiçbir şey silinmez ve Yenile bunları geri ekleyebilir.",
     "title": "İndirilen tüm modeller silinsin mi?",
     "description": "Bu, {{count}} modeli diskten kalıcı olarak kaldıracaktır.",
     "sizeLabel": "Boşaltılacak disk alanı:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Sağlayıcı için ad girin",
   "baseUrl": {
     "title": "Temel URL",
+    "openaiDescription": "OpenAI API'sini konuşan bir proxy veya ağ geçidi kullanın. Varsayılan https://api.openai.com/v1 adresidir.",
     "azureDescription": "Azure OpenAI uç noktanız. YOUR-RESOURCE-NAME'i Azure kaynak adınızla değiştirin.",
     "qwenDescription": "Model Studio uç noktanız. Bir anahtar yalnızca oluşturulduğu bölgede çalışır: Singapur için https://dashscope-intl.aliyuncs.com/compatible-mode/v1, anakara Çin için https://dashscope.aliyuncs.com/compatible-mode/v1 kullanın."
   },

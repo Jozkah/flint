@@ -15,6 +15,7 @@
   "enterServerName": "Nhập tên máy chủ",
   "command": "Lệnh",
   "enterCommand": "Nhập lệnh (uvx hoặc npx)",
+  "commandHint": "Có thể dùng bất kỳ chương trình nào trên máy tính này, không chỉ npx hay uvx (python, docker, node, tệp nhị phân). Chương trình chạy với quyền của người dùng của bạn, nên chỉ thêm các máy chủ mà bạn tin tưởng.",
   "arguments": "Đối số",
   "argument": "Đối số {{index}}",
   "envVars": "Biến môi trường",

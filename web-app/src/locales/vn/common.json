@@ -66,6 +66,9 @@
     "title": "Xem trước web",
     "openExternal": "Mở trong trình duyệt",
     "popOut": "Tách ra cửa sổ",
+    "copyUrl": "Sao chép URL",
+    "urlCopied": "Đã sao chép URL",
+    "copyFailed": "Không thể sao chép URL",
     "dockSide": "Gắn sang bên",
     "showAsPip": "Hiện dưới dạng cửa sổ nổi",
     "reload": "Tải lại",
@@ -569,6 +572,13 @@
   "modelSettings": {
     "title": "Cài đặt mô hình - {{modelId}}",
     "description": "Định cấu hình cài đặt mô hình để tối ưu hóa hiệu suất và hành vi.",
+    "visionProjector": {
+      "title": "Bộ chiếu thị giác (mmproj)",
+      "paired": "Đã ghép cặp",
+      "none": "Không có",
+      "pairedHint": "Mô hình này có thể nhận ảnh làm đầu vào. Bộ chiếu được chọn khi nhập mô hình; hãy nhập lại để dùng bộ chiếu khác.",
+      "noneHint": "Không có bộ chiếu thị giác, mô hình này không thể đọc ảnh. Hãy nhập lại mô hình với tùy chọn Đa phương thức được bật và chọn tệp mmproj; bộ chiếu nằm cạnh tệp mô hình sẽ được tìm thấy tự động."
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "Tham số lấy mẫu mặc định",
@@ -583,7 +593,9 @@
       "nMin": "Số token nháp tối thiểu",
       "nMinDescription": "Số token nháp tối thiểu mỗi bước. Mặc định 0.",
       "pMin": "Xác suất nháp tối thiểu",
-      "pMinDescription": "Xác suất tối thiểu cho soạn nháp tham lam (0–1). Mặc định 0,75."
+      "pMinDescription": "Xác suất tối thiểu cho soạn nháp tham lam (0–1). Mặc định 0,75.",
+      "probabilistic": "Lấy mẫu bản nháp",
+      "probabilisticDescription": "Lấy mẫu các token nháp thay vì chọn token có khả năng cao nhất, rồi xác minh bằng lấy mẫu từ chối. Cách này giữ được mức tăng tốc khi nhiệt độ lớn hơn 0. Tắt theo mặc định; bị bỏ qua với bản nháp DFlash vì chúng cần xác minh tham lam."
     },
     "templateKwargs": {
       "section": "Tùy chọn mẫu chat",
@@ -690,6 +702,9 @@
       "assistant": "Trợ lý",
       "selectAssistant": "Chọn một trợ lý (tùy chọn)",
       "noAssistant": "Không có trợ lý",
+      "model": "Mô hình mặc định",
+      "selectModel": "Dùng lựa chọn của bộ chọn mô hình",
+      "noModel": "Không có mô hình mặc định",
       "addAssistant": "Thêm trợ lý",
       "createButton": "Tạo",
       "updateButton": "Cập nhật",
@@ -1048,6 +1063,7 @@
     "stopped": "Đã dừng.",
     "failed": "Lượt chạy đã dừng sớm.",
     "tryAgain": "Thử lại",
+    "attachFolder": "Đính kèm thư mục",
     "deadline": "Đã dừng — lượt chạy này đạt giới hạn thời gian.",
     "timeout": "Đã dừng — mô hình đã ngừng phản hồi.",
     "loop": "Đã dừng — lượt chạy lặp lại chính nó mà không tiến triển.",
@@ -1442,10 +1458,22 @@
       "needsMmproj": "Mô hình cục bộ này cần một tệp mmproj trước khi có thể nhìn. Hãy thêm một tệp từ cài đặt của mô hình, rồi đính kèm lại hình ảnh."
     }
   },
+  "pastedPath": {
+    "file": "Đính kèm \"{{name}}\" vào tin nhắn này?",
+    "folder": "Đính kèm thư mục \"{{name}}\" vào phiên này?",
+    "attach": "Đính kèm",
+    "dismiss": "Bỏ qua",
+    "failed": "Không thể đính kèm tệp"
+  },
   "drop": {
     "openInCode": "Thả để mở — chỉ đọc",
     "attachToMessage": "Thả để đính kèm vào tin nhắn của bạn",
     "releaseToAttach": "Thả để đính kèm"
+  },
+  "coworkRunSettings": {
+    "label": "Cài đặt lượt chạy",
+    "title": "Lượt chạy này hoạt động ra sao",
+    "effort": "Mức nỗ lực: {{level}}"
   },
   "coworkMode": {
     "label": "Flint được phép làm gì",
@@ -1963,6 +1991,7 @@
     "serverStopped": "API cục bộ đã tắt"
   },
   "shell": {
+    "discover": "Khám phá",
     "openNavigation": "Mở điều hướng",
     "closeNavigation": "Đóng điều hướng",
     "showContent": "Nội dung",
@@ -2026,6 +2055,9 @@
       "closed": "Đã đóng mà không hợp nhất"
     },
     "overview": "Tổng quan",
+    "resume": "Tiếp tục & mức dùng",
+    "more": "Thêm",
+    "advanced": "Nâng cao",
     "usageOverview": "Tổng quan sử dụng",
     "movedTo": "Đã chuyển vào {{name}}",
     "notifications": "Thông báo",

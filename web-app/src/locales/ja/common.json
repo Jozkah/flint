@@ -66,6 +66,9 @@
     "title": "Web プレビュー",
     "openExternal": "ブラウザーで開く",
     "popOut": "ウィンドウに切り離す",
+    "copyUrl": "URL をコピー",
+    "urlCopied": "URL をコピーしました",
+    "copyFailed": "URL をコピーできませんでした",
     "dockSide": "横にドッキング",
     "showAsPip": "フローティングウィンドウで表示",
     "reload": "再読み込み",
@@ -569,6 +572,13 @@
   "modelSettings": {
     "title": "モデル設定 - {{modelId}}",
     "description": "パフォーマンスと動作を最適化するためにモデル設定を構成します。",
+    "visionProjector": {
+      "title": "ビジョンプロジェクター (mmproj)",
+      "paired": "ペア済み",
+      "none": "なし",
+      "pairedHint": "このモデルは画像入力に対応しています。プロジェクターはモデルのインポート時に選択されます。別のものを使うには、もう一度インポートしてください。",
+      "noneHint": "ビジョンプロジェクターがないと、このモデルは画像を読み取れません。マルチモーダルを有効にしてモデルを再インポートし、mmproj ファイルを選択してください。モデルファイルと同じ場所にあるプロジェクターは自動的に検出されます。"
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "デフォルトのサンプリングパラメータ",
@@ -583,7 +593,9 @@
       "nMin": "最小下書きトークン数",
       "nMinDescription": "ステップごとに下書きするトークンの最小数。デフォルトは0です。",
       "pMin": "最小下書き確率",
-      "pMinDescription": "貪欲な下書きの最小確率（0〜1）。デフォルトは0.75です。"
+      "pMinDescription": "貪欲な下書きの最小確率（0〜1）。デフォルトは0.75です。",
+      "probabilistic": "ドラフトをサンプリング",
+      "probabilisticDescription": "最も確率の高いトークンを選ぶ代わりにドラフトトークンをサンプリングし、棄却サンプリングで検証します。温度が 0 より大きくても高速化の効果が維持されます。デフォルトではオフです。貪欲な検証が必要な DFlash ドラフトでは無視されます。"
     },
     "templateKwargs": {
       "section": "チャットテンプレートのオプション",
@@ -690,6 +702,9 @@
       "assistant": "アシスタント",
       "selectAssistant": "アシスタントを選択（任意）",
       "noAssistant": "アシスタントなし",
+      "model": "デフォルトモデル",
+      "selectModel": "モデルピッカーの選択を使用",
+      "noModel": "デフォルトモデルなし",
       "addAssistant": "アシスタントを追加",
       "createButton": "作成",
       "updateButton": "更新",
@@ -1046,6 +1061,7 @@
     "stopped": "停止しました。",
     "failed": "実行が途中で停止しました。",
     "tryAgain": "もう一度試す",
+    "attachFolder": "フォルダーを添付",
     "deadline": "停止しました — この実行は制限時間に達しました。",
     "timeout": "停止しました — モデルが応答しなくなりました。",
     "loop": "停止しました — 実行が進展せず、同じことを繰り返していました。",
@@ -1440,10 +1456,22 @@
       "needsMmproj": "このローカルモデルが画像を認識するには mmproj ファイルが必要です。モデルの設定から追加して、もう一度画像を添付してください。"
     }
   },
+  "pastedPath": {
+    "file": "「{{name}}」をこのメッセージに添付しますか?",
+    "folder": "フォルダー「{{name}}」をこのセッションに添付しますか?",
+    "attach": "添付",
+    "dismiss": "閉じる",
+    "failed": "ファイルを添付できませんでした"
+  },
   "drop": {
     "openInCode": "ドロップして開く — 読み取り専用",
     "attachToMessage": "ドロップしてメッセージに添付",
     "releaseToAttach": "ドロップして添付"
+  },
+  "coworkRunSettings": {
+    "label": "実行設定",
+    "title": "この実行の仕組み",
+    "effort": "負荷: {{level}}"
   },
   "coworkMode": {
     "label": "Flint に許可する操作",
@@ -1961,6 +1989,7 @@
     "serverStopped": "ローカル API: オフ"
   },
   "shell": {
+    "discover": "探索",
     "openNavigation": "ナビゲーションを開く",
     "closeNavigation": "ナビゲーションを閉じる",
     "showContent": "コンテンツ",
@@ -2024,6 +2053,9 @@
       "closed": "マージせずにクローズ"
     },
     "overview": "概要",
+    "resume": "再開と使用状況",
+    "more": "その他",
+    "advanced": "詳細設定",
     "usageOverview": "使用状況の概要",
     "movedTo": "{{name}} に移動しました",
     "notifications": "通知",

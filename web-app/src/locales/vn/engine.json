@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Đã cài",
     "installedSub": "{{local}} cục bộ · {{remote}} từ xa",
+    "remoteAvailableSub": "{{count}} mô hình từ xa khả dụng",
     "loaded": "Đang tải",
     "loadedSub": "trong {{count}} mô hình cục bộ",
     "disk": "Dung lượng ổ đĩa",
@@ -60,7 +61,8 @@
     "off": "Tắt",
     "loaded": "Đã tải",
     "ready": "Sẵn sàng",
-    "noKey": "Không có khóa API"
+    "noKey": "Không có khóa API",
+    "keyless": "Không cần khóa"
   },
   "installed": {
     "title": "Mô hình đã cài",

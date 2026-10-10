@@ -11,6 +11,9 @@
   "noNewModels": "找不到新模型。所有可用的模型都已新增。",
   "refreshModelsFailed": "從 {{provider}} 擷取模型失敗。請檢查您的 API 金鑰和基本 URL。",
   "models": "模型",
+  "filterModels": "篩選 {{count}} 個模型",
+  "modelsShown": "顯示 {{total}} 個中的 {{shown}} 個",
+  "showMoreModels": "顯示更多",
   "backendInstalled": "已安裝",
   "backendHistoryShow": "顯示更新歷史記錄",
   "backendHistoryHide": "隱藏更新歷史記錄",
@@ -73,6 +76,8 @@
     "modelExists": "模型已存在",
     "modelExistsDesc": "請選擇不同的模型 ID。"
   },
+  "revealModelFile": "在資料夾中顯示模型檔案",
+  "revealModelFileFailed": "無法開啟模型資料夾。",
   "deleteModel": {
     "title": "刪除模型：{{modelId}}",
     "description": "您確定要刪除此模型嗎？此操作無法復原。",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "全部刪除",
+    "repoTitle": "刪除此已下載的模型？",
+    "clearButton": "清除清單",
+    "clearTitle": "移除此供應商的所有模型？",
+    "clearDescription": "這會從清單中移除 {{count}} 個模型。供應商端不會刪除任何內容，按「重新整理」即可將它們重新加入。",
     "title": "刪除所有已下載的模型？",
     "description": "這會從磁碟永久移除 {{count}} 個模型。",
     "sizeLabel": "將釋放的磁碟空間：",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "輸入提供者名稱",
   "baseUrl": {
     "title": "基礎 URL",
+    "openaiDescription": "使用相容 OpenAI API 的代理伺服器或閘道。預設值為 https://api.openai.com/v1。",
     "azureDescription": "你的 Azure OpenAI 端點。請將 YOUR-RESOURCE-NAME 取代為你的 Azure 資源名稱。",
     "qwenDescription": "你的 Model Studio 端點。金鑰只在其建立的區域內有效：新加坡請使用 https://dashscope-intl.aliyuncs.com/compatible-mode/v1，中國大陸請使用 https://dashscope.aliyuncs.com/compatible-mode/v1。"
   },

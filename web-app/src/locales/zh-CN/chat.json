@@ -72,6 +72,8 @@
     "openHint": "在此对话旁打开另一个独立的对话",
     "openHintShortcut": "在此对话旁打开另一个独立的对话（{{shortcut}}）",
     "openInSplit": "在分屏视图中打开",
+    "openIn": "打开方式",
+    "openInNewWindow": "新窗口",
     "close": "关闭分屏",
     "closePane": "关闭此窗格",
     "addPane": "添加窗格",

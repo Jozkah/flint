@@ -330,7 +330,8 @@
     "continue": "계속",
     "toShort": "받는 사람",
     "placeholderTo": "{{name}}에게 글을 쓰세요…",
-    "mention": "참여자 멘션"
+    "mention": "참여자 멘션",
+    "dropSkipped": "추가되지 않음(텍스트가 아니거나, 폴더이거나, 메시지 한도를 초과함): {{files}}"
   },
   "kpi": {
     "running": "실행 중",

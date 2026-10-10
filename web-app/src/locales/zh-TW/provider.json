@@ -11,6 +11,7 @@
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "API 金鑰",
   "apiKeyPlaceholder": "貼上你的 API 金鑰",
+  "apiKeyOptionalPlaceholder": "貼上您的 API 金鑰（選填）",
   "invalidBaseUrl": "基礎 URL 必須是有效的 http(s) URL",
   "globalSettings": "全域設定",
   "stripReasoning": "從上下文中移除推理內容",

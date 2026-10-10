@@ -72,6 +72,8 @@
     "openHint": "이 대화 옆에 독립된 다른 대화 열기",
     "openHintShortcut": "이 대화 옆에 독립된 다른 대화 열기 ({{shortcut}})",
     "openInSplit": "분할 보기로 열기",
+    "openIn": "열기 위치",
+    "openInNewWindow": "새 창",
     "close": "분할 닫기",
     "closePane": "이 창 닫기",
     "addPane": "창 추가",
