@@ -411,6 +411,12 @@ pub fn cli_save_thread(
                     record[key] = v.clone();
                 }
             }
+            // The copy on disk goes through the shared redactor; the in-memory
+            // history the model sees is untouched.
+            secrets::scrub_json(&mut record["content"]);
+            if let Some(calls) = record.get_mut("tool_calls") {
+                secrets::scrub_json(calls);
+            }
             Some(record)
         })
         .collect();
@@ -4671,6 +4677,41 @@ mod tests {
         let (messages, skipped) = cli_read_messages_lenient(dir.path(), "nope").unwrap();
         assert!(messages.is_empty());
         assert_eq!(skipped, 0);
+    }
+
+    #[test]
+    fn saved_thread_file_has_no_raw_secrets_but_keeps_prose() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        let history = vec![
+            serde_json::json!({ "role": "user", "content": "run it" }),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call_1", "type": "function",
+                    "function": {"name": "bash", "arguments":
+                        "{\"command\":\"curl -H 'Authorization: Bearer abcdefghij1234567890' https://x.test\"}"}
+                }],
+            }),
+            serde_json::json!({
+                "role": "tool", "tool_call_id": "call_1",
+                "content": "API_KEY= hunter2x\n{\"token\":\"abcdefghij\"}\nPATH=/usr/bin max_tokens 4096",
+            }),
+        ];
+        let id = cli_save_thread(base, None, "m", &history, None).unwrap();
+        let text = std::fs::read_to_string(get_messages_path(base, &id)).unwrap();
+        for secret in ["hunter2x", "abcdefghij1234567890", "abcdefghij\\\""] {
+            assert!(!text.contains(secret), "{secret} reached disk: {text}");
+        }
+        assert!(text.contains("PATH=/usr/bin max_tokens 4096"), "{text}");
+        for line in text.lines() {
+            serde_json::from_str::<serde_json::Value>(line).expect("line parses");
+        }
+        let calls = &read_messages_from_file(base, &id).unwrap()[1]["tool_calls"];
+        assert_eq!(calls[0]["id"], "call_1");
+        let args = calls[0]["function"]["arguments"].as_str().unwrap();
+        serde_json::from_str::<serde_json::Value>(args).expect("arguments stay JSON");
     }
 
     #[test]

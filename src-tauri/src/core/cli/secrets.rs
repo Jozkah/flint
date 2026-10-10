@@ -164,6 +164,50 @@ impl Redactor {
     }
 }
 
+/// One persisted text: the CLI rules, then the desktop line rules, so a copy on
+/// disk obeys the same redaction as the live log (`secrets_redact`).
+pub(crate) fn scrub_text(text: &str) -> String {
+    let first = SHARED.scrub(text);
+    tauri_plugin_agent_tools::secrets::redact_secrets(&first)
+}
+
+/// Redact every string inside a JSON value in place, keeping it valid JSON.
+/// A string that is itself JSON (a tool call's `arguments`) is parsed and its
+/// leaves redacted, so the line-level rules never see structural quotes. Id and
+/// role-like keys are left alone.
+pub(crate) fn scrub_json(value: &mut serde_json::Value) {
+    use serde_json::Value;
+    const KEEP: [&str; 8] = [
+        "id", "role", "type", "object", "status", "thread_id", "tool_call_id", "name",
+    ];
+    match value {
+        Value::String(text) => {
+            let trimmed = text.trim_start();
+            if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                if let Ok(mut inner) = serde_json::from_str::<Value>(text) {
+                    scrub_json(&mut inner);
+                    if let Ok(back) = serde_json::to_string(&inner) {
+                        *text = back;
+                        return;
+                    }
+                }
+                *text = SHARED.scrub(text).into_owned();
+                return;
+            }
+            *text = scrub_text(text);
+        }
+        Value::Array(items) => items.iter_mut().for_each(scrub_json),
+        Value::Object(map) => {
+            for (key, child) in map.iter_mut() {
+                if !KEEP.contains(&key.as_str()) {
+                    scrub_json(child);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Values the user marked secret, whatever their shape, which no rule above
 /// recognises. janhq/jan#8208; see `core::secret_values`.
 fn apply_exact(text: &str) -> Option<String> {
