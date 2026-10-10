@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useClaudeCodeModel } from '@/hooks/useClaudeCodeModel'
+import { useClaudeCodeContextPlans } from '@/hooks/useClaudeCodeContext'
+import { CLAUDE_CODE_MIN_CONTEXT } from '@/lib/claudeCodeContext'
 import { useAppState } from '@/hooks/useAppState'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -60,8 +62,13 @@ function ClaudeCodeIntegration() {
   } = useLocalApiServer()
 
   const { serverStatus, setServerStatus } = useAppState()
-  const { providers, selectedModel, selectedProvider, getProviderByName } =
-    useModelProvider()
+  const {
+    providers,
+    selectedModel,
+    selectedProvider,
+    getProviderByName,
+    updateProvider,
+  } = useModelProvider()
   const setActiveModels = useAppState((state) => state.setActiveModels)
 
   const {
@@ -71,6 +78,31 @@ function ClaudeCodeIntegration() {
     setCustomCli,
     clearModels,
   } = useClaudeCodeModel()
+
+  const contextPlans = useClaudeCodeContextPlans([
+    helperModels.fable,
+    helperModels.big,
+    helperModels.medium,
+    helperModels.small,
+  ])
+  const contextWarnings = Object.entries(contextPlans).flatMap(
+    ([id, plan]) => {
+      if (!plan.shortfall) return []
+      const model = providers
+        .flatMap((p) => p.models)
+        .find((m) => m.id === id)
+      return [
+        {
+          id,
+          text: t(`settings:claudeCode.contextShortfall.${plan.shortfall.reason}`, {
+            model: model ? getModelDisplayName(model) : id,
+            context: plan.shortfall.context.toLocaleString(),
+            needed: CLAUDE_CODE_MIN_CONTEXT.toLocaleString(),
+          }),
+        },
+      ]
+    }
+  )
 
   const [isCustomCliDialogOpen, setIsCustomCliDialogOpen] = useState(false)
   const [isModelLoading, setIsModelLoading] = useState(false)
@@ -82,6 +114,51 @@ function ClaudeCodeIntegration() {
     const modelMedium = helperModels.medium
     const modelSmall = helperModels.small
     const customEnvVars = helperModels.envVars
+
+    // Claude Code's first request is far larger than the default 8192-token
+    // context (janhq/jan#8108). Raise the context of each local model that has
+    // not been given one by the user, through the same write-and-reload path the
+    // "Increase Context Size" button uses.
+    const llamacpp = getProviderByName('llamacpp')
+    for (const [id, plan] of Object.entries(contextPlans)) {
+      if (plan.raiseTo == null || !llamacpp) continue
+      try {
+        const latest = getProviderByName('llamacpp') ?? llamacpp
+        const index = latest.models.findIndex((m) => m.id === id)
+        if (index === -1) continue
+        const model = latest.models[index]
+        const models = [...latest.models]
+        models[index] = {
+          ...model,
+          settings: {
+            ...model.settings,
+            ctx_len: {
+              ...(model.settings?.ctx_len ?? {}),
+              controller_props: {
+                ...(model.settings?.ctx_len?.controller_props ?? {}),
+                value: plan.raiseTo,
+              },
+            },
+          },
+        } as typeof model
+        await serviceHub
+          .models()
+          .updateModelSettings(id, { ctx_len: plan.raiseTo })
+        updateProvider('llamacpp', { models })
+        const loaded = (await serviceHub.models().getActiveModels()) || []
+        if (loaded.includes(id)) {
+          await serviceHub.models().stopModel(id, 'llamacpp')
+        }
+        toast.info(
+          t('settings:claudeCode.contextRaised', {
+            model: getModelDisplayName(model),
+            context: plan.raiseTo.toLocaleString(),
+          })
+        )
+      } catch (e) {
+        console.error('Failed to raise the context for Claude Code', e)
+      }
+    }
 
     const startServer = async (): Promise<void> => {
       const helperModelsToStart = [
@@ -337,6 +414,17 @@ function ClaudeCodeIntegration() {
               </Button>
             </div>
           </div>
+
+          {contextWarnings.length > 0 && (
+            <div
+              role="status"
+              className="mt-2.5 flex flex-col gap-1.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm"
+            >
+              {contextWarnings.map((w) => (
+                <div key={w.id}>{w.text}</div>
+              ))}
+            </div>
+          )}
 
           {(helperModels.customCli || helperModels.envVars.length > 0) && (
             <div className="mt-2.5 rounded-lg bg-muted px-3 py-2.5 font-mono text-xs leading-[1.6] text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
