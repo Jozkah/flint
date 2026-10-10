@@ -602,12 +602,13 @@ fn unknown_frontmatter_keys(yaml: &str) -> Vec<(String, Option<String>)> {
     unknown_keys(keys, PLUGIN_AGENT_KEYS)
 }
 
+/// `(name, description, tools, system_prompt, auto_compact_window)` of a plugin agent file.
+type ParsedPluginAgent = (String, String, Option<Vec<String>>, String, Option<u64>);
+
 /// Parse a Claude Code agent markdown file into `(name, description, tools,
 /// system_prompt, auto_compact_window)`. `None` when the file has no `---`
 /// frontmatter or no `name` — such files are not dispatchable.
-fn parse_plugin_agent(
-    raw: &str,
-) -> Option<(String, String, Option<Vec<String>>, String, Option<u64>)> {
+fn parse_plugin_agent(raw: &str) -> Option<ParsedPluginAgent> {
     let (yaml, body) = crate::core::agent::skills::split_frontmatter(raw);
     let yaml = yaml?;
     for (key, hint) in unknown_frontmatter_keys(&yaml) {
@@ -1614,6 +1615,7 @@ pub(crate) fn load_model_settings() -> ModelSettings {
 /// subagents" and less than a choice made for this role. Only the model is
 /// decided here: a child's tools and permissions come from
 /// `intersect_allowed_tools` and the parent's own gate, never from this.
+#[cfg(test)]
 pub(crate) fn choose_child_model(
     pinned: Option<&str>,
     requested: Option<&str>,
