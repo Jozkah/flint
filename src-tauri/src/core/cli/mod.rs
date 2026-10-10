@@ -3505,6 +3505,12 @@ async fn print_event(
         StreamEvent::SubagentEnd { name, .. } => {
             eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] finished")))
         }
+        // Progress, not answer: the log is muted in the TUI and quiet elsewhere,
+        // so this is the only place a long retry shows.
+        StreamEvent::Retry { attempt, max_attempts, delay_ms, reason } => eprintln!(
+            "{}",
+            color::paint("2", format_args!("[retry] {reason}; attempt {attempt}/{max_attempts} in {delay_ms}ms"))
+        ),
         StreamEvent::SubagentFinished { name, status, usage, .. } => {
             let tokens = usage
                 .as_ref()
@@ -3522,7 +3528,17 @@ async fn print_event(
             }
         }
         StreamEvent::Subagent { name, event, .. } => {
-            if let StreamEvent::ToolCall {
+            if let StreamEvent::Retry { attempt, max_attempts, delay_ms, reason } = &*event {
+                eprintln!(
+                    "{}",
+                    color::paint(
+                        "2",
+                        format_args!(
+                            "[subagent:{name}] [retry] {reason}; attempt {attempt}/{max_attempts} in {delay_ms}ms"
+                        ),
+                    ),
+                );
+            } else if let StreamEvent::ToolCall {
                 name: tool, args, ..
             } = *event
             {
