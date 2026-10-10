@@ -10,6 +10,11 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }))
 
+// Opening the dialog probes loopback; keep this test offline.
+vi.mock('@/lib/localProviderProbe', () => ({
+  probeLocalProviders: async () => [],
+}))
+
 import { AddProviderDialog } from '../AddProviderDialog'
 
 function open(onCreate = vi.fn()) {

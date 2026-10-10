@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   Dialog,
@@ -14,6 +14,12 @@ import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { TriangleAlert } from 'lucide-react'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { runtimeProviderFetch } from '@/lib/providerFetch'
+import {
+  probeLocalProviders,
+  type LocalProviderCandidate,
+} from '@/lib/localProviderProbe'
 
 interface AddProviderDialogProps {
   onCreateProvider: (
@@ -39,6 +45,29 @@ export function AddProviderDialog({
   const [error, setError] = useState<string | null>(null)
   const [isOpen, setIsOpen] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const configured = useModelProvider((s) => s.providers)
+  const [detected, setDetected] = useState<LocalProviderCandidate[]>([])
+
+  // One loopback probe per opening of this dialog, never in the background:
+  // Flint makes no network call the user did not ask for.
+  useEffect(() => {
+    if (!isOpen) {
+      setDetected([])
+      return
+    }
+    let cancelled = false
+    void probeLocalProviders(
+      runtimeProviderFetch(),
+      configured.map((p) => p.base_url ?? '').filter(Boolean)
+    ).then((found) => {
+      if (!cancelled) setDetected(found)
+    })
+    return () => {
+      cancelled = true
+    }
+    // The probe is tied to the dialog opening, not to later store changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
 
   const reset = () => {
     setName('')
@@ -94,6 +123,35 @@ export function AddProviderDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
+          {detected.length > 0 && (
+            <div
+              className="flex flex-col gap-1.5"
+              data-testid="detected-local-providers"
+            >
+              <span className="text-xs font-medium text-fg-2">
+                {t('provider:detectedLocal')}
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {detected.map((candidate) => (
+                  <Button
+                    key={candidate.baseUrl}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="pointer-coarse:h-11"
+                    onClick={() => {
+                      setName(candidate.name)
+                      setBaseUrl(candidate.baseUrl)
+                      setApiType('openai')
+                      setError(null)
+                    }}
+                  >
+                    {t('provider:useDetected', { name: candidate.name })}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex flex-col gap-1">
           <label
             htmlFor="add-provider-name"

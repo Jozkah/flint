@@ -7,6 +7,8 @@
   "apiTypeOpenAI": "Kompatibel dengan OpenAI",
   "apiTypeAnthropic": "Kompatibel dengan Anthropic",
   "baseUrlLabel": "Base URL",
+  "detectedLocal": "Ditemukan di komputer ini",
+  "useDetected": "Gunakan {{name}}",
   "baseUrlPlaceholder": "https://endpoint-anda/v1",
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "Kunci API",
