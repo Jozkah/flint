@@ -1,0 +1,270 @@
+name: Flint CLI Release
+
+# Builds the `flint` CLI (the agent harness) for every supported platform when a
+# stable release is published, attaches the archives and their checksums to that
+# release, renders the package-manager manifests (Homebrew, Scoop, winget, npm)
+# and publishes them where credentials exist. Prereleases and nightlies are not
+# packaged. Run it by hand with a tag to repackage an existing release.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing stable release tag to package (e.g. v0.9.0)'
+        required: true
+
+concurrency:
+  group: flint-cli-release-${{ github.event.release.tag_name || github.event.inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Resolve the release tag
+    # A nightly is published as a prerelease by the release workflow itself.
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - name: Validate the tag
+        id: tag
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          tag="${EVENT_TAG:-$INPUT_TAG}"
+          if ! [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::tag must look like v1.2.3 (stable releases only), got '$tag'"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            ext: tar.gz
+          - name: linux-arm64
+            os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            ext: tar.gz
+          # The MLX dependency is Apple-silicon only, so there is no Intel Mac build.
+          - name: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            ext: tar.gz
+          - name: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            ext: zip
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Restore the Cargo cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          key: flint-cli-release-${{ matrix.name }}
+          # Branches and tags restore but never save.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # The CLI and the desktop app are mutually exclusive feature sets, so the
+      # default features stay off.
+      - name: Build the CLI
+        run: >
+          cargo build --release --locked
+          --manifest-path src-tauri/Cargo.toml
+          --no-default-features --features cli --bin flint
+          --target ${{ matrix.target }}
+
+      - name: Package the archive
+        id: pack
+        run: |
+          out="src-tauri/target/${{ matrix.target }}/release"
+          archive="flint-${VERSION}-${{ matrix.target }}.${{ matrix.ext }}"
+          stage="stage"
+          mkdir -p "$stage" dist
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "$out/flint.exe" "$stage/"
+          else
+            cp "$out/flint" "$stage/"
+            strip "$stage/flint" || true
+          fi
+          cp LICENSE "$stage/"
+          if [ "${{ matrix.ext }}" = "zip" ]; then
+            (cd "$stage" && 7z a -tzip "../dist/$archive" . >/dev/null)
+          else
+            tar czf "dist/$archive" -C "$stage" .
+          fi
+          ls -l dist
+
+      - name: Smoke test the packaged binary
+        run: |
+          mkdir smoke
+          if [ "${{ matrix.ext }}" = "zip" ]; then
+            7z x -osmoke "dist/flint-${VERSION}-${{ matrix.target }}.zip" >/dev/null
+            smoke/flint.exe --help >/dev/null
+          else
+            tar xzf "dist/flint-${VERSION}-${{ matrix.target }}.tar.gz" -C smoke
+            smoke/flint --help >/dev/null
+          fi
+
+      - name: Keep the archive as a workflow artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: flint-cli-${{ needs.prepare.outputs.tag }}-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  # The build jobs run with a read-only token. Only this job writes to the
+  # release. It runs the manifest renderer from the release tag, which is
+  # reviewed code, and downloads archives only to checksum and upload them.
+  publish:
+    name: Attach archives and manifests
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Download the archives
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: flint-cli-${{ needs.prepare.outputs.tag }}-*
+          path: archives
+          merge-multiple: true
+
+      - name: Checksum and upload the archives
+        run: |
+          cd archives
+          sha256sum flint-*.tar.gz flint-*.zip > ../sha256sums.txt
+          cat ../sha256sums.txt
+          cd ..
+          gh release upload "$TAG" archives/flint-* sha256sums.txt --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Render the package manifests
+        run: >
+          node scripts/render-package-manifests.mjs
+          --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+          --sums sha256sums.txt --out packaging-out
+
+      - name: Attach the manifests to the release
+        run: |
+          tar czf "flint-package-manifests-${TAG}.tar.gz" -C packaging-out .
+          gh release upload "$TAG" "flint-package-manifests-${TAG}.tar.gz" --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Keep the manifests as a workflow artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: flint-package-manifests-${{ needs.prepare.outputs.tag }}
+          path: packaging-out
+          if-no-files-found: error
+
+  # Homebrew and Scoop read their manifests straight from this repository
+  # (`Formula/flint.rb`, `bucket/flint.json`), so the release commits them to
+  # main with the workflow token; commits made with that token do not start
+  # other workflows. npm is optional: with no NPM_TOKEN it is skipped and the
+  # release still carries the package. winget is submitted by hand.
+  registries:
+    name: Publish manifests and npm package
+    needs: [prepare, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Check out main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: Download the manifests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: flint-package-manifests-${{ needs.prepare.outputs.tag }}
+          path: manifests
+
+      - name: Commit the Homebrew formula and Scoop manifest to main
+        run: |
+          mkdir -p Formula bucket
+          cp manifests/homebrew/flint.rb Formula/flint.rb
+          cp manifests/scoop/flint.json bucket/flint.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/flint.rb bucket/flint.json
+          if git diff --cached --quiet; then
+            echo "Manifests already up to date"
+            exit 0
+          fi
+          git commit -m "chore(packaging): flint CLI ${TAG}"
+          # main moves quickly; rebase onto it and retry a few times.
+          for attempt in 1 2 3; do
+            git push origin HEAD:main && exit 0
+            git pull --rebase origin main
+          done
+          echo "::error::could not push the manifests to main"
+          exit 1
+
+      - name: Install Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish the npm package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::notice::NPM_TOKEN is not set; skipping npm publish"
+            exit 0
+          fi
+          cd manifests/npm
+          npm publish --access public --provenance
