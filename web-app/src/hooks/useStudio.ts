@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { toast } from 'sonner'
 import { listen } from '@tauri-apps/api/event'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { allowNotifications, notifyInBackground } from '@/lib/notify'
@@ -31,6 +32,8 @@ let activityId = 0
 
 /** Stops the hosted request in flight, if the running job is one. */
 let remoteAbort: AbortController | null = null
+/** Who is rendering the hosted job in flight, for the note on Stop. */
+let remoteLabel = ''
 
 type StudioState = {
   status: StudioStatus | null
@@ -183,6 +186,7 @@ export const useStudio = create<StudioState>((set, get) => ({
     const startedAt = Date.now()
     void allowNotifications()
     remoteAbort = remote?.abort ?? null
+    remoteLabel = remote?.label ?? ''
     set({
       error: null,
       jobPrompt: prompt,
@@ -223,6 +227,11 @@ export const useStudio = create<StudioState>((set, get) => ({
   cancel: async () => {
     if (remoteAbort) {
       remoteAbort.abort()
+      // Stopping only ends the wait here. The provider keeps rendering, and
+      // some refuse a second job for the same key until it is done.
+      toast.info(
+        `Stopped waiting. ${remoteLabel || 'The provider'} may keep rendering, and a new request can be refused until it finishes.`
+      )
       return
     }
     try {

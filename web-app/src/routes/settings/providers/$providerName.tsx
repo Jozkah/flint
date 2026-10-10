@@ -172,6 +172,9 @@ function ProviderDetail() {
   const [failedModels, setFailedModels] = useState<string[]>([])
   /** A request with the saved keys succeeded while this page was open. */
   const [connectionVerified, setConnectionVerified] = useState(false)
+  // The last model refresh was refused or unreachable: "Connected" would be a
+  // claim about a key that has just been shown not to work.
+  const [connectionFailed, setConnectionFailed] = useState(false)
   const [localFiles, setLocalFiles] = useState<Record<string, LocalFileInfo>>(
     {}
   )
@@ -433,6 +436,7 @@ function ProviderDetail() {
     setApiKeysDraft(providerRemoteApiKeyChain(provider).join('\n'))
     // Other keys, or another provider: an earlier success says nothing now.
     setConnectionVerified(false)
+    setConnectionFailed(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerName, provider?.api_key, JSON.stringify(provider?.api_key_fallbacks ?? [])])
 
@@ -677,7 +681,10 @@ function ProviderDetail() {
       }
 
       setKeyCheckResults(results)
-      if (results.some((r) => r.status === 'ok')) setConnectionVerified(true)
+      if (results.some((r) => r.status === 'ok')) {
+        setConnectionVerified(true)
+        setConnectionFailed(false)
+      }
     } finally {
       setIsTestingKeys(false)
     }
@@ -715,6 +722,7 @@ function ProviderDetail() {
         .providers()
         .fetchModelsFromProvider(provider)
       setConnectionVerified(true)
+      setConnectionFailed(false)
       const newModels: Model[] = modelIds.map((id) => ({
         id,
         model: id,
@@ -763,6 +771,8 @@ function ProviderDetail() {
         })
       }
     } catch (error) {
+      setConnectionVerified(false)
+      setConnectionFailed(true)
       console.error(
         t('providers:refreshModelsFailed', { provider: getProviderTitle(provider.provider) }),
         error
@@ -1711,6 +1721,10 @@ function ProviderDetail() {
                   ) : apiKeyMissing ? (
                     <Chip tone="warn" dot>
                       {t('engine:status.noKey')}
+                    </Chip>
+                  ) : connectionFailed ? (
+                    <Chip tone="warn" dot>
+                      {t('providers:status.failed')}
                     </Chip>
                   ) : (
                     <Chip tone="ok" dot>

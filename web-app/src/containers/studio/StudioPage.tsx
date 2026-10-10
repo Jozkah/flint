@@ -1991,11 +1991,19 @@ export function StudioPage() {
     [shown, kind, convertFileSrc]
   )
 
+  // A hosted model runs on the provider's machines: the local engine is not
+  // needed for it, and the prompt does leave this computer.
+  const usingHosted = !!form.cloud && targets.some((t) => t.key === form.cloud)
+
   return (
     <EnginePage testId="studio-page">
       <PageHead
         title="Studio"
-        description="Create images and video locally on this computer. Nothing leaves your device."
+        description={
+          usingHosted
+            ? 'Create images with a hosted model. Your prompt is sent to its provider.'
+            : 'Create images and video locally on this computer. Nothing leaves your device.'
+        }
         actions={
           <Segmented<StudioKind>
             aria-label="What to make"
@@ -2031,8 +2039,8 @@ export function StudioPage() {
         </div>
       ) : (
         <>
-          <EngineSetup />
-          {status.supported && model && (
+          {!usingHosted && <EngineSetup />}
+          {(status.supported || usingHosted) && model && (
             <div className="grid gap-4 lg:grid-cols-[minmax(300px,1.1fr)_minmax(0,1.35fr)_minmax(260px,1fr)] lg:items-stretch">
               <div className="flex min-w-0 flex-col gap-4">
                 <ModelPanel
