@@ -7747,6 +7747,7 @@ dependencies = [
  "ignore",
  "jan-process",
  "libc",
+ "log",
  "nix 0.30.1",
  "rand 0.8.7",
  "regex",

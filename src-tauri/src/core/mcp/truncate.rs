@@ -8,6 +8,24 @@
 
 use rmcp::model::{CallToolResult, ContentBlock};
 
+/// Most characters of an MCP tool description (or server instructions) sent to
+/// the model. A server controls this text and it rides on every request, so an
+/// unbounded one is a standing tax on the context of every turn.
+pub const MCP_DESCRIPTION_MAX_CHARS: usize = 4096;
+
+/// Cap `text` at `max_chars` characters (not bytes, so a cut never lands inside
+/// a multi-byte character), appending `[truncated N chars]` where N is how much
+/// was dropped. Text within the cap is returned unchanged.
+pub fn cap_description(text: &str, max_chars: usize) -> String {
+    let total = text.chars().count();
+    if total <= max_chars {
+        return text.to_string();
+    }
+    let kept: String = text.chars().take(max_chars).collect();
+    format!("{kept}
+[truncated {} chars]", total - max_chars)
+}
+
 /// Total text characters carried by a result, across every text block.
 fn total_text_chars(result: &CallToolResult) -> usize {
     result
@@ -228,6 +246,17 @@ mod tests {
             capped.structured_content,
             Some(serde_json::json!({ "code": 42 }))
         );
+    }
+
+    #[test]
+    fn descriptions_are_capped_with_a_marker_on_char_boundaries() {
+        assert_eq!(cap_description("short", MCP_DESCRIPTION_MAX_CHARS), "short");
+        let exact = "x".repeat(MCP_DESCRIPTION_MAX_CHARS);
+        assert_eq!(cap_description(&exact, MCP_DESCRIPTION_MAX_CHARS), exact);
+        let long = "あ".repeat(MCP_DESCRIPTION_MAX_CHARS + 10);
+        let capped = cap_description(&long, MCP_DESCRIPTION_MAX_CHARS);
+        assert!(capped.ends_with("[truncated 10 chars]"), "{capped}");
+        assert!(capped.starts_with(&"あ".repeat(MCP_DESCRIPTION_MAX_CHARS)));
     }
 
     #[test]

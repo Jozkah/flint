@@ -6756,11 +6756,28 @@ async fn receive_steering(
 pub(crate) const BODY_COMPACT_AT: &str = "jan_compaction_compact_at";
 pub(crate) const BODY_EFFECTIVE_WINDOW: &str = "jan_compaction_effective_window";
 
+/// Body key a subagent dispatch sets from its definition's
+/// `auto_compact_window`: the token count at which this child compacts.
+pub(crate) const BODY_CHILD_COMPACT_WINDOW: &str = "jan_child_compact_window";
+
+/// A subagent's own compaction window can only bring the trigger forward: the
+/// result is never above `compact_at`, and never below 1 (0 would compact
+/// every turn). `None` or `0` leaves the trigger alone.
+pub(crate) fn apply_child_compact_window(compact_at: u64, window: Option<u64>) -> u64 {
+    match window {
+        Some(w) if w > 0 => compact_at.min(w),
+        _ => compact_at,
+    }
+}
+
 /// Read the proactive compaction thresholds off the request body, if present.
 fn read_compaction_thresholds(
     json_body: &serde_json::Value,
 ) -> Option<crate::core::agent::compaction_policy::Thresholds> {
-    let compact_at = json_body.get(BODY_COMPACT_AT)?.as_u64()?;
+    let compact_at = apply_child_compact_window(
+        json_body.get(BODY_COMPACT_AT)?.as_u64()?,
+        json_body.get(BODY_CHILD_COMPACT_WINDOW).and_then(|v| v.as_u64()),
+    );
     let effective_window = json_body.get(BODY_EFFECTIVE_WINDOW)?.as_u64()?;
     Some(crate::core::agent::compaction_policy::Thresholds {
         effective_window,
@@ -7877,6 +7894,22 @@ async fn run_turn_cycle(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_child_compact_window_only_lowers_the_trigger() {
+        assert_eq!(apply_child_compact_window(100_000, Some(20_000)), 20_000);
+        // Never raised past what the model window allows.
+        assert_eq!(apply_child_compact_window(100_000, Some(500_000)), 100_000);
+        assert_eq!(apply_child_compact_window(100_000, None), 100_000);
+        assert_eq!(apply_child_compact_window(100_000, Some(0)), 100_000);
+        let body = serde_json::json!({
+            BODY_COMPACT_AT: 100_000u64,
+            BODY_EFFECTIVE_WINDOW: 120_000u64,
+            BODY_CHILD_COMPACT_WINDOW: 8_000u64,
+        });
+        let t = read_compaction_thresholds(&body).expect("thresholds");
+        assert_eq!((t.compact_at, t.effective_window), (8_000, 120_000));
+    }
+
     /// After a full compaction the conversation is shorter than the number of
     /// messages already scanned; the scan must not slice past the end.
     #[test]

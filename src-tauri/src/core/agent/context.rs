@@ -1482,6 +1482,44 @@ We build with make.")
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A subagent runs with its own checkout as the project root
+    /// (`dispatch_subagent` swaps `project_root` before the child starts), so
+    /// its runtime block must name that checkout's branch, not the parent's.
+    #[test]
+    fn runtime_environment_block_names_the_branch_of_the_root_it_is_given() {
+        use std::process::Command;
+        let base = std::env::temp_dir().join(format!("jan-ctx-wt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let main = base.join("main");
+        let child = base.join("child");
+        std::fs::create_dir_all(&main).unwrap();
+        let git = |dir: &std::path::Path, args: &[&str]| {
+            Command::new("git")
+                .args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+                .arg("-C")
+                .arg(dir)
+                .args(args)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        };
+        let ready = git(&main, &["init", "-q", "-b", "trunk"])
+            && git(&main, &["commit", "-q", "--allow-empty", "-m", "init"])
+            && git(
+                &main,
+                &["worktree", "add", "-q", "-b", "child-branch", child.to_str().unwrap()],
+            );
+        if ready {
+            let parent_block = runtime_environment_block(&main, None);
+            let child_block = runtime_environment_block(&child, None);
+            assert!(parent_block.contains("Git branch: `trunk`"), "{parent_block}");
+            assert!(child_block.contains("Git branch: `child-branch`"), "{child_block}");
+            assert!(!child_block.contains("`trunk`"), "{child_block}");
+        }
+        let _ = git(&main, &["worktree", "remove", "--force", child.to_str().unwrap()]);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn runtime_environment_block_injected_into_system_prompt() {
         let root = scratch_project("inject");

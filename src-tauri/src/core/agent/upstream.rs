@@ -1259,10 +1259,17 @@ pub(crate) async fn collect_mcp_openai_tools(
                                 let mut parameters =
                                     serde_json::Value::Object((*tool.input_schema).clone());
                                 normalize_openai_tool_parameters_schema(&mut parameters);
+                                // A server's description rides on every request,
+                                // so it is bounded here, where it is assembled.
                                 let description = tool
                                     .description
                                     .as_ref()
-                                    .map(|d| d.to_string())
+                                    .map(|d| {
+                                        crate::core::mcp::truncate::cap_description(
+                                            d,
+                                            crate::core::mcp::truncate::MCP_DESCRIPTION_MAX_CHARS,
+                                        )
+                                    })
                                     .unwrap_or_default();
 
                                 (
