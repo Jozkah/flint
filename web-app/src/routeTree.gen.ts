@@ -42,6 +42,7 @@ import { Route as RoomsRoomIdRouteImport } from './routes/rooms/$roomId'
 import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
 import { Route as LocalApiServerLogsRouteImport } from './routes/local-api-server/logs'
 import { Route as HubModelIdRouteImport } from './routes/hub/$modelId'
+import { Route as CampaignCampaignIdRouteImport } from './routes/campaign/$campaignId'
 import { Route as SettingsProvidersIndexRouteImport } from './routes/settings/providers/index'
 import { Route as SettingsProvidersProviderNameRouteImport } from './routes/settings/providers/$providerName'
 
@@ -210,6 +211,11 @@ const HubModelIdRoute = HubModelIdRouteImport.update({
   path: '/hub/$modelId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CampaignCampaignIdRoute = CampaignCampaignIdRouteImport.update({
+  id: '/campaign/$campaignId',
+  path: '/campaign/$campaignId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsProvidersIndexRoute = SettingsProvidersIndexRouteImport.update({
   id: '/settings/providers/',
   path: '/settings/providers/',
@@ -232,6 +238,7 @@ export interface FileRoutesByFullPath {
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
+  '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
@@ -269,6 +276,7 @@ export interface FileRoutesByTo {
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
+  '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
@@ -307,6 +315,7 @@ export interface FileRoutesById {
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
+  '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
@@ -346,6 +355,7 @@ export interface FileRouteTypes {
     | '/overview'
     | '/studio'
     | '/system-monitor'
+    | '/campaign/$campaignId'
     | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
@@ -383,6 +393,7 @@ export interface FileRouteTypes {
     | '/overview'
     | '/studio'
     | '/system-monitor'
+    | '/campaign/$campaignId'
     | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
@@ -420,6 +431,7 @@ export interface FileRouteTypes {
     | '/overview'
     | '/studio'
     | '/system-monitor'
+    | '/campaign/$campaignId'
     | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
@@ -458,6 +470,7 @@ export interface RootRouteChildren {
   OverviewRoute: typeof OverviewRoute
   StudioRoute: typeof StudioRoute
   SystemMonitorRoute: typeof SystemMonitorRoute
+  CampaignCampaignIdRoute: typeof CampaignCampaignIdRoute
   HubModelIdRoute: typeof HubModelIdRoute
   LocalApiServerLogsRoute: typeof LocalApiServerLogsRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRoute
@@ -719,6 +732,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HubModelIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/campaign/$campaignId': {
+      id: '/campaign/$campaignId'
+      path: '/campaign/$campaignId'
+      fullPath: '/campaign/$campaignId'
+      preLoaderRoute: typeof CampaignCampaignIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/providers/': {
       id: '/settings/providers/'
       path: '/settings/providers'
@@ -746,6 +766,7 @@ const rootRouteChildren: RootRouteChildren = {
   OverviewRoute: OverviewRoute,
   StudioRoute: StudioRoute,
   SystemMonitorRoute: SystemMonitorRoute,
+  CampaignCampaignIdRoute: CampaignCampaignIdRoute,
   HubModelIdRoute: HubModelIdRoute,
   LocalApiServerLogsRoute: LocalApiServerLogsRoute,
   ProjectProjectIdRoute: ProjectProjectIdRoute,
