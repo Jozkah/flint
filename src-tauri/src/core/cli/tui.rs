@@ -140,6 +140,65 @@ fn sync_output_for(kind: super::terminal_setup::Kind) -> bool {
 fn use_synchronized_output() -> bool {
     sync_output_for(super::terminal_setup::identify(|k| std::env::var(k).ok()))
 }
+
+/// Everything `run` turns on, undone in one write for the panic hook: a held
+/// synchronized frame (a panic inside `terminal.draw` lands between its begin
+/// and end), bracketed paste, mouse tracking, keyboard enhancement, alternate
+/// scroll, the alternate screen, and a hidden cursor. Plain bytes, because the
+/// hook has no `&mut Terminal` to hand. Every sequence is a no-op when its mode
+/// is not on, so it is safe whatever `startup_modes` chose.
+fn panic_restore_sequence() -> String {
+    format!(
+        "\x1b[?2026l\x1b[?2004l\x1b[?1006l\x1b[?1002l\x1b[?1000l{KITTY_KEYS_OFF}{}\x1b[?1049l\x1b[?25h",
+        alt_scroll_restore(),
+    )
+}
+
+/// The thread running the render loop while it owns the terminal, or `None`
+/// once restored. A panic hook is process-wide, but only a panic on this thread
+/// ends the session; a spawned job's panic is a `JoinError` the loop survives,
+/// and tearing the modes down under a TUI that keeps drawing would wreck it.
+static TERMINAL_OWNER: std::sync::Mutex<Option<std::thread::ThreadId>> =
+    std::sync::Mutex::new(None);
+
+/// Give up the terminal if the current thread owns it, reporting whether it
+/// did. Taking the slot makes the restore run once.
+fn release_terminal() -> bool {
+    let mut owner = TERMINAL_OWNER.lock().unwrap_or_else(|e| e.into_inner());
+    if *owner == Some(std::thread::current().id()) {
+        *owner = None;
+        true
+    } else {
+        false
+    }
+}
+
+/// Install a hook that logs the panic and, when it lands on the render-loop
+/// thread, puts the terminal back before the previous hook prints its message,
+/// so the message is readable on a normal screen instead of lost in the
+/// alternate buffer. Chains the previous hook; unwinding continues as before.
+/// Call after `enable_raw_mode`, on the thread that runs the render loop.
+fn install_panic_hook() {
+    *TERMINAL_OWNER.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some(std::thread::current().id());
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // The stderr sink is muted for the session; the file log still records.
+        log::error!(
+            "panic in thread '{}': {info}\n{}",
+            std::thread::current().name().unwrap_or("unnamed"),
+            std::backtrace::Backtrace::force_capture()
+        );
+        if release_terminal() {
+            let _ = disable_raw_mode();
+            let mut stdout = io::stdout();
+            let _ = stdout.write_all(panic_restore_sequence().as_bytes());
+            let _ = stdout.flush();
+            super::file_log::set_stderr_enabled(true);
+        }
+        previous(info);
+    }));
+}
 /// How long the dock advertises a finished copy.
 const COPY_NOTICE: Duration = Duration::from_millis(1500);
 /// Terminals cap the OSC 52 payload they will accept; past this the sequence is
@@ -8438,6 +8497,9 @@ pub async fn run(
     let prev_stderr_log = super::file_log::set_stderr_enabled(false);
 
     enable_raw_mode().map_err(|e| e.to_string())?;
+    // From here a panic must not leave the shell in raw mode on the alternate
+    // screen: install before anything that can panic runs.
+    install_panic_hook();
     // Under raw mode (so an OSC 11 reply is not echoed) but before the alternate
     // screen, so a query the terminal ignores leaves no stray bytes on the frame.
     theme::resolve_and_apply(theme_pref);
@@ -8569,6 +8631,9 @@ pub async fn run(
     // process that exits now would lose it, and with it that turn's resume.
     app.join_journal();
 
+    // Clean exit: the terminal is restored below, so a later panic (the hook
+    // stays installed for the process) must not restore it a second time.
+    release_terminal();
     let _ = disable_raw_mode();
     let _ = execute!(
         terminal.backend_mut(),
@@ -29112,6 +29177,34 @@ mod tests {
         assert_eq!(flags & 2, 0, "event types would add releases and repeats");
         assert_eq!(flags & 8, 0, "all-keys-as-escapes would reroute plain text");
         assert_eq!(KITTY_KEYS_OFF, "\x1b[<u", "the push must be popped on exit");
+    }
+
+    /// The panic hook's restore turns every mode `run` can have enabled back
+    /// off, and ends a synchronized frame first so the message is not held.
+    #[test]
+    fn panic_restore_undoes_every_startup_mode() {
+        let seq = super::panic_restore_sequence();
+        for off in [
+            "\x1b[?2026l", "\x1b[?2004l", "\x1b[?1006l", "\x1b[?1002l", "\x1b[?1000l",
+            KITTY_KEYS_OFF, "\x1b[?1049l", "\x1b[?25h",
+        ] {
+            assert!(seq.contains(off), "missing {off:?}");
+        }
+        assert!(seq.starts_with("\x1b[?2026l"), "end the held frame first");
+        let alt_screen = seq.find("\x1b[?1049l").unwrap();
+        assert!(seq.find("\x1b[?1000l").unwrap() < alt_screen);
+    }
+
+    /// Only the render-loop thread's panic restores the terminal, and once.
+    #[test]
+    fn only_the_owning_thread_releases_the_terminal() {
+        *super::TERMINAL_OWNER.lock().unwrap() = None;
+        assert!(!super::release_terminal(), "nobody owns it yet");
+        *super::TERMINAL_OWNER.lock().unwrap() = Some(std::thread::current().id());
+        let other = std::thread::spawn(super::release_terminal).join().unwrap();
+        assert!(!other, "a job thread's panic must leave the TUI alone");
+        assert!(super::release_terminal(), "the owner restores");
+        assert!(!super::release_terminal(), "and only once");
     }
 
     /// Keyboard enhancement is not the mouse: it goes out whether or not
