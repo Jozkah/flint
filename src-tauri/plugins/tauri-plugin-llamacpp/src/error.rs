@@ -9,6 +9,12 @@ pub enum ErrorCode {
     ModelLoadTimedOut,
     MissingSharedLibrary,
     GpuDriverTooOld,
+    CpuNotSupported,
+    OsVersionUnsupported,
+    ModelQuantNotSupported,
+
+    // --- Engine Process Errors ---
+    EngineStopped,
 
     // --- Memory Errors ---
     OutOfMemory,
@@ -58,6 +64,20 @@ impl LlamacppError {
         })
     }
 
+    /// Classifies what is left of an engine process that died: its exit
+    /// description and last stderr lines, as `worker::ExitReport::text` writes
+    /// them. A crash with no recognizable cause is the engine having stopped,
+    /// not a model that failed to load.
+    pub fn from_engine_exit(report: &str) -> Self {
+        Self::classify(report).unwrap_or_else(|| {
+            Self::new(
+                ErrorCode::EngineStopped,
+                "The engine stopped unexpectedly.".into(),
+                Some(report.into()),
+            )
+        })
+    }
+
     /// None when no marker matched, so each caller supplies its own fallback.
     fn classify(output: &str) -> Option<Self> {
         let lower = output.to_lowercase();
@@ -73,6 +93,36 @@ impl LlamacppError {
             return Some(Self::new(
                 ErrorCode::OutOfMemory,
                 "Out of memory. The model requires more RAM or VRAM than available.".into(),
+                Some(output.into()),
+            ));
+        }
+
+        // A GPU backend with no kernel for one of the model's quantization
+        // types aborts on purpose (`ggml_abort`), and the process then exits
+        // with SIGABRT, which reads as a crash unless the cause is named.
+        if is_unsupported_quantization(&lower) {
+            return Some(Self::new(
+                ErrorCode::ModelQuantNotSupported,
+                "The model uses a quantization type the GPU backend cannot run.".into(),
+                Some(output.into()),
+            ));
+        }
+
+        // An engine that links a Metal symbol the installed macOS lacks fails
+        // in dyld before it prints anything of its own. Checked ahead of the
+        // missing-library markers, which a dyld report can also match.
+        if lower.contains("dyld") && lower.contains("symbol not found") {
+            return Some(Self::new(
+                ErrorCode::OsVersionUnsupported,
+                "This version of macOS is too old for the engine.".into(),
+                Some(output.into()),
+            ));
+        }
+
+        if is_illegal_instruction(&lower) {
+            return Some(Self::new(
+                ErrorCode::CpuNotSupported,
+                "This CPU does not support instructions the engine needs.".into(),
                 Some(output.into()),
             ));
         }
@@ -120,6 +170,32 @@ impl LlamacppError {
 
         None
     }
+}
+
+/// GPU backends whose kernel table can be missing a quantization type.
+const GPU_BACKEND_NAMES: [&str; 5] = [
+    "ggml-metal",
+    "ggml-cuda",
+    "ggml-vulkan",
+    "ggml-hip",
+    "ggml-sycl",
+];
+
+/// The abort ggml raises for a quantization type the backend cannot multiply:
+/// either llama.cpp's own "Asserting on type N", or a "not implemented" that
+/// names the backend source file. "not implemented" alone is too common to
+/// trust.
+fn is_unsupported_quantization(lower: &str) -> bool {
+    lower.contains("asserting on type")
+        || (lower.contains("not implemented") && GPU_BACKEND_NAMES.iter().any(|b| lower.contains(b)))
+}
+
+/// SIGILL on Unix, STATUS_ILLEGAL_INSTRUCTION on Windows: the engine executed
+/// an instruction the CPU lacks, which in practice means an x86 CPU without AVX.
+fn is_illegal_instruction(lower: &str) -> bool {
+    ["illegal instruction", "illegal_instruction", "sigill", "0xc000001d"]
+        .iter()
+        .any(|m| lower.contains(m))
 }
 
 fn is_image_model_failure(lower: &str) -> bool {
@@ -277,6 +353,10 @@ mod tests {
             (ErrorCode::ModelLoadTimedOut, "MODEL_LOAD_TIMED_OUT"),
             (ErrorCode::MissingSharedLibrary, "MISSING_SHARED_LIBRARY"),
             (ErrorCode::GpuDriverTooOld, "GPU_DRIVER_TOO_OLD"),
+            (ErrorCode::CpuNotSupported, "CPU_NOT_SUPPORTED"),
+            (ErrorCode::OsVersionUnsupported, "OS_VERSION_UNSUPPORTED"),
+            (ErrorCode::ModelQuantNotSupported, "MODEL_QUANT_NOT_SUPPORTED"),
+            (ErrorCode::EngineStopped, "ENGINE_STOPPED"),
             (ErrorCode::OutOfMemory, "OUT_OF_MEMORY"),
             (ErrorCode::InvalidArgument, "INVALID_ARGUMENT"),
             (ErrorCode::IoError, "IO_ERROR"),
@@ -312,6 +392,86 @@ mod tests {
 
         assert!(json.get("details").is_none(), "{json}");
         assert!(json.get("missing_libraries").is_none(), "{json}");
+    }
+
+    // janhq/jan#9199 and #9198: macOS reports a mapped model that outgrew the
+    // GPU working set as a command-buffer failure, with the cause on the next
+    // line.
+    #[test]
+    fn classifies_a_metal_working_set_overflow_as_out_of_memory() {
+        let err = classify(
+            "ggml_metal_synchronize: error: command buffer 0 failed with status 5\n\
+             error: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory)",
+        );
+        assert!(matches!(err.code, ErrorCode::OutOfMemory), "{err:?}");
+        assert!(err.details.unwrap().contains("command buffer 0"));
+    }
+
+    // Atomic-Chat#72: the CPU build runs AVX instructions unconditionally, so
+    // an x86 CPU without AVX dies on the first one, leaving no stderr.
+    #[test]
+    fn classifies_an_illegal_instruction_crash_as_cpu_not_supported() {
+        for report in [
+            "killed by signal 4 (SIGILL: illegal instruction)",
+            "exit code 0xC000001D (illegal instruction)",
+            "bash: line 1: 4242 Illegal instruction (core dumped) flint-llama-worker",
+            "STATUS_ILLEGAL_INSTRUCTION",
+        ] {
+            let err = LlamacppError::from_engine_exit(report);
+            assert!(matches!(err.code, ErrorCode::CpuNotSupported), "{report}: {err:?}");
+            assert_eq!(err.details.as_deref(), Some(report));
+        }
+    }
+
+    // Atomic-Chat#68: macOS Catalina lacks a Metal class the engine links.
+    #[test]
+    fn classifies_a_dyld_missing_metal_symbol_as_an_old_os() {
+        let err = classify(
+            "dyld[1234]: Symbol not found: _OBJC_CLASS_$_MTLResidencySetDescriptor\n  \
+             Referenced from: <5A1B> /Applications/Flint.app/Contents/MacOS/flint-llama-worker\n  \
+             Expected in: <7C2D> /System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+        );
+        assert!(matches!(err.code, ErrorCode::OsVersionUnsupported), "{err:?}");
+    }
+
+    // Atomic-Chat#228: TQ1_0 / TQ2_0 have no Metal matmul kernel.
+    #[test]
+    fn classifies_a_gpu_quantization_abort() {
+        for output in [
+            "/runner/ggml/src/ggml-metal/ggml-metal-device.cpp:988: not implemented\n\
+             ggml_abort: fatal error",
+            "ggml_metal_encode_node: error: unsupported op\nAsserting on type 35",
+        ] {
+            let err = classify(output);
+            assert!(
+                matches!(err.code, ErrorCode::ModelQuantNotSupported),
+                "{output}: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bare_not_implemented_is_not_a_quantization_failure() {
+        let err = classify("llama_model_loader: rope scaling not implemented for this model");
+        assert!(matches!(err.code, ErrorCode::ModelLoadFailed), "{err:?}");
+    }
+
+    // The crash with no recognizable cause is "the engine stopped", and its
+    // evidence is kept for the details area.
+    #[test]
+    fn an_unrecognized_exit_is_the_engine_stopping() {
+        let report = "exit code 0xC0000005 (access violation). Last output: llama_model_load: loading";
+        let err = LlamacppError::from_engine_exit(report);
+        assert!(matches!(err.code, ErrorCode::EngineStopped), "{err:?}");
+        assert_eq!(err.details.as_deref(), Some(report));
+    }
+
+    #[test]
+    fn an_exit_report_still_reaches_the_specific_classifications() {
+        let err = LlamacppError::from_engine_exit(
+            "exit code 3. Last output: CUDA error: out of memory / ggml_assert(...)",
+        );
+        assert!(matches!(err.code, ErrorCode::OutOfMemory), "{err:?}");
     }
 
     #[test]

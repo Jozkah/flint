@@ -180,7 +180,15 @@ pub async fn start_engine<R: tauri::Runtime>(
         Some(fault_emitter(app_handle.clone())),
     )
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| match e {
+        // Said as structured errors, so the UI shows "this CPU is not
+        // supported" or "macOS is too old" instead of a loader's last words.
+        worker::WorkerError::Exited(report) => {
+            let err = crate::error::LlamacppError::from_engine_exit(&report);
+            serde_json::to_string(&err).unwrap_or(err.message)
+        }
+        other => other.to_string(),
+    })?;
 
     let info = EngineInfo::from(&handle);
     // Subscribed here rather than lazily: an eviction can happen on the very
