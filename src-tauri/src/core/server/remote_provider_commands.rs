@@ -114,6 +114,25 @@ pub async fn register_provider_config(
     Ok(())
 }
 
+/// Switch certificate verification off for one provider's endpoint, or back on.
+///
+/// Called for every provider, keyed or not, because a keyless gateway with a
+/// self-signed certificate is the usual case. Default off; the setting applies
+/// to the provider's own `base_url` host and port only, and a machine policy
+/// that forbids custom certificate trust overrides it.
+#[tauri::command]
+pub fn set_provider_tls_trust(
+    provider: String,
+    base_url: Option<String>,
+    allow_invalid_certs: bool,
+) {
+    crate::core::net::tls::set_allow_invalid_certs(
+        &provider,
+        base_url.as_deref(),
+        allow_invalid_certs,
+    );
+}
+
 /// Register values the user marked secret for exact-value redaction in every
 /// log from now on. janhq/jan#8208.
 ///

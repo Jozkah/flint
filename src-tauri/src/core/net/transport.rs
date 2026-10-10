@@ -141,6 +141,12 @@ fn client_for(host: &str, port: u16) -> Result<Client, String> {
     if is_loopback_host(host) {
         builder = builder.no_proxy();
     }
+    // The user switched "allow invalid certificates" on for this exact
+    // endpoint (and the machine policy does not forbid it). Nothing else is
+    // affected: the client is per endpoint.
+    if crate::core::net::tls::allows_invalid_certs(host, port) {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
     let client = crate::core::net::tls::apply12(
         builder
             .dns_resolver(Arc::new(EndpointResolver {
@@ -762,6 +768,49 @@ mod tests {
     }
 
     use super::*;
+
+    /// A server whose certificate is not trusted is refused by default and
+    /// reachable once the user allows invalid certificates for that endpoint,
+    /// even when the certificate names another host. Other endpoints stay
+    /// strict.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn allow_invalid_certs_opens_only_the_chosen_endpoint() {
+        let ca = crate::core::net::tls::tests::make_ca();
+        let untrusted = crate::core::net::tls::tests::Server::start(ca.path(), "valid");
+        let wrong_host = crate::core::net::tls::tests::Server::start(ca.path(), "wrong-host");
+        let get = |port: u16| async move {
+            let client = client_for("127.0.0.1", port)?;
+            client
+                .get(format!("https://127.0.0.1:{port}/v1/models"))
+                .timeout(Duration::from_secs(10))
+                .send()
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        };
+
+        assert!(get(untrusted.port).await.is_err(), "refused by default");
+        assert!(get(wrong_host.port).await.is_err(), "refused by default");
+
+        crate::core::net::tls::set_allow_invalid_certs(
+            "p3n-transport",
+            Some(&format!("https://127.0.0.1:{}/v1", untrusted.port)),
+            true,
+        );
+        assert!(get(untrusted.port).await.is_ok(), "allowed endpoint is reachable");
+        assert!(get(wrong_host.port).await.is_err(), "another endpoint stays strict");
+
+        crate::core::net::tls::set_allow_invalid_certs(
+            "p3n-transport",
+            Some(&format!("https://127.0.0.1:{}/v1", wrong_host.port)),
+            true,
+        );
+        assert!(get(wrong_host.port).await.is_ok(), "a certificate for another host is accepted when allowed");
+        assert!(get(untrusted.port).await.is_err(), "the previous endpoint is strict again");
+
+        crate::core::net::tls::set_allow_invalid_certs("p3n-transport", None, false);
+        assert!(get(wrong_host.port).await.is_err(), "switched back off");
+    }
 
     #[tokio::test]
     async fn only_a_failure_to_connect_is_retryable() {

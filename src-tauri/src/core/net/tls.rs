@@ -376,16 +376,87 @@ pub fn configured() -> Option<Result<Bundle, CaError>> {
     Some(load(&path, source))
 }
 
+/// Providers the user has switched "allow invalid certificates" on for,
+/// by provider name, each with the one endpoint (lowercase host, port) it
+/// covers. Verification is skipped for those endpoints and no others.
+///
+/// Fed only by the desktop's `set_provider_tls_trust` command, which the
+/// settings page drives: a project's `agent.toml` and the CLI config cannot
+/// switch verification off, for the same reason they cannot name a CA bundle.
+static INVALID_CERT_ENDPOINTS: Mutex<Vec<(String, String, u16)>> = Mutex::new(Vec::new());
+
+fn invalid_cert_endpoints() -> std::sync::MutexGuard<'static, Vec<(String, String, u16)>> {
+    INVALID_CERT_ENDPOINTS.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// The lowercase host and port a base URL is dialled at, `None` when it is not
+/// an absolute http(s) URL with a host.
+fn endpoint_of(base_url: &str) -> Option<(String, u16)> {
+    let url = url::Url::parse(base_url.trim()).ok()?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return None;
+    }
+    let host = url.host_str()?.trim_matches(|c| c == '[' || c == ']').to_ascii_lowercase();
+    Some((host, url.port_or_known_default()?))
+}
+
+/// Record, for one provider, whether certificate verification is skipped for
+/// its endpoint. `allow == false`, or a base URL that is not an endpoint,
+/// clears the provider's entry. The endpoint is the provider's own `base_url`:
+/// a redirect elsewhere is never covered (the transport only follows
+/// same-origin redirects).
+pub fn set_allow_invalid_certs(provider: &str, base_url: Option<&str>, allow: bool) {
+    let endpoint = base_url.and_then(endpoint_of).filter(|_| allow);
+    let mut entries = invalid_cert_endpoints();
+    entries.retain(|(name, _, _)| name != provider);
+    if let Some((host, port)) = endpoint {
+        entries.push((provider.to_string(), host, port));
+    }
+}
+
+/// Whether verification is skipped for `host:port`. Always `false` while the
+/// machine policy forbids custom certificate trust.
+pub fn allows_invalid_certs(host: &str, port: u16) -> bool {
+    let host = host.trim_matches(|c| c == '[' || c == ']').to_ascii_lowercase();
+    let listed = invalid_cert_endpoints().iter().any(|(_, h, p)| *h == host && *p == port);
+    if !listed {
+        return false;
+    }
+    let (policy, _) = tauri_plugin_agent_tools::org_policy::load();
+    forbidden_by(policy.as_ref()).is_none()
+}
+
+/// [`allows_invalid_certs`] for a request URL.
+pub fn allows_invalid_certs_for_url(url: &str) -> bool {
+    endpoint_of(url).is_some_and(|(host, port)| allows_invalid_certs(&host, port))
+}
+
+fn invalid_certs_fingerprint() -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut entries: Vec<(String, u16)> =
+        invalid_cert_endpoints().iter().map(|(_, h, p)| (h.clone(), *p)).collect();
+    if entries.is_empty() {
+        return 0;
+    }
+    entries.sort();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    entries.hash(&mut h);
+    h.finish() | 1
+}
+
 /// A cheap key for "which bundle is in force": the path, its size and its
 /// modification time. A caller caching a client rebuilds it when this changes.
 pub fn fingerprint() -> u64 {
     // The HTTPS proxy setting changes what a rebuilt client does, so it is part
-    // of the key; `0` still means "nothing configured".
-    let (ca, proxy) = (bundle_fingerprint(), super::proxy::fingerprint());
-    if ca == 0 && proxy == 0 {
+    // of the key; `0` still means "nothing configured". The endpoints with
+    // verification off are part of it too, so switching one on or off
+    // replaces the cached clients.
+    let (ca, proxy, loose) =
+        (bundle_fingerprint(), super::proxy::fingerprint(), invalid_certs_fingerprint());
+    if ca == 0 && proxy == 0 && loose == 0 {
         return 0;
     }
-    (ca ^ proxy.rotate_left(17)) | 1
+    (ca ^ proxy.rotate_left(17) ^ loose.rotate_left(31)) | 1
 }
 
 fn bundle_fingerprint() -> u64 {
@@ -767,6 +838,29 @@ pub(crate) mod tests {
     /// meant for the classifier (found while fixing R13).
     fn reason(err: &(dyn std::error::Error + 'static)) -> String {
         certificate_failure(err).unwrap_or_else(|| panic!("not classified as a certificate failure: {err:?}"))
+    }
+
+    /// The "allow invalid certificates" registry covers exactly the provider's
+    /// own endpoint, is off until set, and clears when switched back.
+    #[test]
+    fn invalid_certificates_are_allowed_for_one_endpoint_only() {
+        let before = fingerprint();
+        assert!(!allows_invalid_certs("gateway.test", 8443));
+        set_allow_invalid_certs("p3n-a", Some("https://Gateway.test:8443/v1"), true);
+        assert!(allows_invalid_certs("gateway.test", 8443));
+        assert!(allows_invalid_certs_for_url("https://gateway.test:8443/v1/chat/completions"));
+        // Another port, another host, a sibling subdomain: not covered.
+        assert!(!allows_invalid_certs("gateway.test", 443));
+        assert!(!allows_invalid_certs("other.test", 8443));
+        assert!(!allows_invalid_certs("sub.gateway.test", 8443));
+        assert!(!allows_invalid_certs_for_url("not a url"));
+        assert_ne!(fingerprint(), before, "cached clients would not be rebuilt");
+        // Off again, and a non-URL base clears the entry too.
+        set_allow_invalid_certs("p3n-a", Some("https://gateway.test:8443/v1"), false);
+        assert!(!allows_invalid_certs("gateway.test", 8443));
+        set_allow_invalid_certs("p3n-a", Some("https://gateway.test:8443"), true);
+        set_allow_invalid_certs("p3n-a", Some("file:///etc/passwd"), true);
+        assert!(!allows_invalid_certs("gateway.test", 8443));
     }
 
     /// The five TLS proofs, on both HTTP stacks: (1) an untrusted server is
