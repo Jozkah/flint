@@ -14,6 +14,7 @@ mod compat_env;
 pub mod engine;
 pub mod error;
 pub mod gguf;
+pub mod load_cancel;
 mod process;
 pub mod state;
 #[cfg(feature = "tauri")]
@@ -29,6 +30,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             cleanup::cleanup_llama_processes,
             commands::load_llama_model,
             commands::unload_llama_model,
+            commands::cancel_model_load,
             engine::commands::start_engine,
             engine::commands::stop_engine,
             engine::commands::get_engine_info,
