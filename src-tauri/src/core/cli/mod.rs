@@ -3571,6 +3571,11 @@ async fn print_event(
             "{}",
             color::paint("2", format_args!("[compaction] {}", describe_compaction(phase, reason, messages)))
         ),
+        // so this is the only place a long retry shows.
+        StreamEvent::Retry { attempt, max_attempts, delay_ms, reason } => eprintln!(
+            "{}",
+            color::paint("2", format_args!("[retry] {reason}; attempt {attempt}/{max_attempts} in {delay_ms}ms"))
+        ),
         StreamEvent::SubagentFinished { name, status, usage, .. } => {
             let tokens = usage
                 .as_ref()
@@ -3596,6 +3601,16 @@ async fn print_event(
                         format_args!(
                             "[subagent:{name}] [compaction] {}",
                             describe_compaction(*phase, *reason, *messages)
+                        ),
+                    ),
+                );
+            } else if let StreamEvent::Retry { attempt, max_attempts, delay_ms, reason } = &*event {
+                eprintln!(
+                    "{}",
+                    color::paint(
+                        "2",
+                        format_args!(
+                            "[subagent:{name}] [retry] {reason}; attempt {attempt}/{max_attempts} in {delay_ms}ms"
                         ),
                     ),
                 );

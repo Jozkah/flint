@@ -47,6 +47,7 @@ EVENT_TAGS: tuple[str, ...] = (
     "subagent_finished",
     "subagent",
     "compaction",
+    "retry",
     "messages_updated",
     "ask_request",
     "ask_resolved",
@@ -97,6 +98,7 @@ EventTag = Literal[
     "subagent_finished",
     "subagent",
     "compaction",
+    "retry",
     "messages_updated",
     "ask_request",
     "ask_resolved",
@@ -445,6 +447,15 @@ class CompactionEvent(TypedDict):
     messages: NotRequired[Union[int, None]]
     type: Literal["compaction"]
 
+class RetryEvent(TypedDict):
+    """`item/retry`"""
+
+    attempt: int
+    max_attempts: int
+    delay_ms: int
+    reason: str
+    type: Literal["retry"]
+
 class MessagesUpdatedEvent(TypedDict):
     """`item/messages_updated`"""
 
@@ -557,6 +568,7 @@ StreamEvent = Union[
     SubagentFinishedEvent,
     SubagentEvent,
     CompactionEvent,
+    RetryEvent,
     MessagesUpdatedEvent,
     AskRequestEvent,
     AskResolvedEvent,

@@ -42,6 +42,7 @@ export type EventTag =
   | "subagent_finished"
   | "subagent"
   | "compaction"
+  | "retry"
   | "messages_updated"
   | "ask_request"
   | "ask_resolved"
@@ -416,6 +417,15 @@ export interface CompactionEvent {
   "type": "compaction"
 }
 
+/** The upstream request failed before anything streamed and is about to be sent again after `delay_ms`. `attempt` is the 1-based attempt that follows the wait, out of `max_attempts`; `reason` is the failure that prompted it. Sent once per retry so a consumer can say "retrying" rather than show a spinner that looks like a slow model. Display-only and never journaled; the turn continues with the next event or ends in `Error`. */
+export interface RetryEvent {
+  "attempt": number
+  "max_attempts": number
+  "delay_ms": number
+  "reason": string
+  "type": "retry"
+}
+
 /** The loop's compaction reduced the conversation while retrying a context overflow. The client should replace its session history with `messages` for subsequent turns. */
 export interface MessagesUpdatedEvent {
   "messages": unknown[]
@@ -528,6 +538,7 @@ export type StreamEvent =
   | SubagentFinishedEvent
   | SubagentEvent
   | CompactionEvent
+  | RetryEvent
   | MessagesUpdatedEvent
   | AskRequestEvent
   | AskResolvedEvent
@@ -560,6 +571,7 @@ export interface EventByTag {
   "subagent_finished": SubagentFinishedEvent
   "subagent": SubagentEvent
   "compaction": CompactionEvent
+  "retry": RetryEvent
   "messages_updated": MessagesUpdatedEvent
   "ask_request": AskRequestEvent
   "ask_resolved": AskResolvedEvent

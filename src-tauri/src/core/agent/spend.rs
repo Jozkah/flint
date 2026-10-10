@@ -202,6 +202,10 @@ pub fn since(period: Option<&str>) -> Result<Option<String>, SpendError> {
 }
 
 /// An instant as `YYYY-MM-DDTHH:MM:SSZ`.
+///
+/// Only the local API server's usage meter calls this, and the `cli` build has no
+/// server, so it would be dead code (an error under `-D warnings`) there.
+#[cfg(not(feature = "cli"))]
 pub(crate) fn rfc3339_of(at: std::time::SystemTime) -> String {
     rfc3339(at.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
 }

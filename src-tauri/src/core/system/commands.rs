@@ -1121,6 +1121,30 @@ fn path_without_dir(existing: &str, dir: &str) -> String {
         .join(";")
 }
 
+/// PowerShell that prints the user PATH exactly as stored: `%VAR%` entries
+/// stay unexpanded. `[Environment]::GetEnvironmentVariable` expands them, and
+/// writing that back would flatten every `%VAR%` entry in the user's PATH.
+#[cfg_attr(not(windows), allow(dead_code))]
+const READ_USER_PATH_RAW_SCRIPT: &str = "$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment'); \
+if ($k) { $k.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) }";
+
+/// PowerShell that stores `path` as the user PATH, keeping the value's existing
+/// registry type (REG_EXPAND_SZ when none exists yet), then broadcasts the
+/// environment change the way `SetEnvironmentVariable` does.
+/// `[Environment]::SetEnvironmentVariable` would rewrite it as REG_SZ.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn write_user_path_raw_script(path: &str) -> String {
+    format!(
+        "$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true); \
+$kind = [Microsoft.Win32.RegistryValueKind]::ExpandString; \
+try {{ $kind = $k.GetValueKind('Path') }} catch {{}}; \
+$k.SetValue('Path', '{}', $kind); \
+[Environment]::SetEnvironmentVariable('FLINT_ENV_REFRESH', '1', 'User'); \
+[Environment]::SetEnvironmentVariable('FLINT_ENV_REFRESH', $null, 'User')",
+        path.replace('\'', "''")
+    )
+}
+
 /// Add a directory to the Windows user PATH.
 #[cfg(windows)]
 fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
@@ -1132,7 +1156,7 @@ fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
     cmd.args([
         "-NoProfile",
         "-Command",
-        "[Environment]::GetEnvironmentVariable('Path', 'User')",
+        READ_USER_PATH_RAW_SCRIPT,
     ]);
     {
         use jan_process::CommandConsole;
@@ -1171,10 +1195,7 @@ fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
     cmd_write.args([
         "-NoProfile",
         "-Command",
-        &format!(
-            "[Environment]::SetEnvironmentVariable('Path', '{}', 'User')",
-            new_path.replace('\'', "''")
-        ),
+        &write_user_path_raw_script(&new_path),
     ]);
 
     {
@@ -1208,7 +1229,7 @@ fn remove_from_path_windows(dir: &Path) -> Result<(), String> {
     cmd.args([
         "-NoProfile",
         "-Command",
-        "[Environment]::GetEnvironmentVariable('Path', 'User')",
+        READ_USER_PATH_RAW_SCRIPT,
     ]);
     {
         use jan_process::CommandConsole;
@@ -1239,10 +1260,7 @@ fn remove_from_path_windows(dir: &Path) -> Result<(), String> {
         cmd_write.args([
             "-NoProfile",
             "-Command",
-            &format!(
-                "[Environment]::SetEnvironmentVariable('Path', '{}', 'User')",
-                new_path.replace('\'', "''")
-            ),
+            &write_user_path_raw_script(&new_path),
         ]);
 
         {
@@ -1284,6 +1302,25 @@ mod user_path_tests {
         assert_eq!(stale, "C:/jan;C:/a");
         let kept = path_with_dir_added("C:/old;C:/a", "C:/jan", Some("C:/old"), |_| true).unwrap();
         assert_eq!(kept, "C:/jan;C:/old;C:/a");
+    }
+
+    #[test]
+    fn user_path_scripts_keep_unexpanded_entries_and_the_registry_type() {
+        assert!(READ_USER_PATH_RAW_SCRIPT.contains("DoNotExpandEnvironmentNames"));
+        assert!(!READ_USER_PATH_RAW_SCRIPT.contains("GetEnvironmentVariable('Path'"));
+        let write = write_user_path_raw_script("%USERPROFILE%\\bin;C:\\it's");
+        assert!(write.contains("SetValue('Path', '%USERPROFILE%\\bin;C:\\it''s', $kind)"));
+        assert!(write.contains("ExpandString"));
+        assert!(write.contains("GetValueKind('Path')"));
+        assert!(!write.contains("SetEnvironmentVariable('Path'"));
+    }
+
+    #[test]
+    fn percent_entries_survive_adding_and_removing() {
+        let existing = "%USERPROFILE%\\bin;C:/a";
+        let added = path_with_dir_added(existing, "C:/jan", None, |_| false).unwrap();
+        assert_eq!(added, "C:/jan;%USERPROFILE%\\bin;C:/a");
+        assert_eq!(path_without_dir(&added, "C:/jan"), existing);
     }
 
     #[test]

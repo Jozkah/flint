@@ -33,6 +33,7 @@ import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { ProviderCustomHeaders } from '@/containers/ProviderCustomHeaders'
 import { applyCustomHeaders } from '@/lib/customHeaders'
+import { applyProviderAuthHeader } from '@/lib/anthropicHeaders'
 import { Switch } from '@/components/ui/switch'
 import {
   CircleCheck,
@@ -622,9 +623,8 @@ function ProviderDetail() {
         if (!key) continue
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
-          'x-api-key': key,
-          Authorization: `Bearer ${key}`,
         }
+        applyProviderAuthHeader(provider, headers, key)
         // Loopback and LAN endpoints are local engines, not remote services.
         // The old check matched the literal strings "localhost:" and
         // "127.0.0.1:", so a server on the LAN or on a Tailscale address was
@@ -1286,7 +1286,10 @@ function ProviderDetail() {
                             (p) => p.provider === provider.provider
                           ) &&
                           providerHasRemoteApiKeys(provider))) && (
-                        <FavoriteModelAction model={model} />
+                        <FavoriteModelAction
+                          model={model}
+                          provider={provider.provider}
+                        />
                       )}
                       <DialogDeleteModel provider={provider} modelId={model.id} />
                     </>

@@ -50,7 +50,7 @@ export function useRemoveProvider() {
     async (provider: ProviderObject) => {
       const ids = new Set(provider.models.map((m) => m.id))
       favoriteModels.forEach((f) => {
-        if (ids.has(f.id)) removeFavorite(f.id)
+        if (ids.has(f.id)) removeFavorite(f.id, provider.provider)
       })
       // deleteProvider also clears a selection pointing at this provider.
       deleteProvider(provider.provider)

@@ -224,7 +224,13 @@ pub fn store(path: &Path, state: &StateFile) -> std::io::Result<()> {
 /// Wait for a burst of pokes on `rx` to go quiet for `quiet`, then call
 /// `flush` once; repeat until every sender is gone. One thread and one write
 /// per burst, however many events the burst had.
-#[cfg_attr(not(all(windows, not(feature = "cli"))), allow(dead_code))]
+#[cfg_attr(
+    not(all(
+        not(feature = "cli"),
+        not(any(target_os = "android", target_os = "ios"))
+    )),
+    allow(dead_code)
+)]
 pub(crate) fn debounce_loop(
     rx: &std::sync::mpsc::Receiver<()>,
     quiet: std::time::Duration,
@@ -250,6 +256,162 @@ pub(crate) fn debounce_loop(
 
 #[cfg(all(windows, not(feature = "cli")))]
 pub use tauri_glue::{install, restore_and_show};
+
+#[cfg(all(
+    not(windows),
+    not(feature = "cli"),
+    not(any(target_os = "android", target_os = "ios"))
+))]
+pub use portable_glue::{install, restore_and_show};
+
+/// macOS and Linux: the same record, read and applied through Tauri's own
+/// window API. There is no placement record to read here, so the normal frame
+/// is only taken while the window is neither maximised, fullscreen nor
+/// minimised; in those states the last normal frame is kept and the state is
+/// noted on it.
+#[cfg(all(
+    not(windows),
+    not(feature = "cli"),
+    not(any(target_os = "android", target_os = "ios"))
+))]
+mod portable_glue {
+    use super::*;
+    use std::sync::{mpsc, Arc, Mutex};
+    use std::time::Duration;
+    use tauri::{
+        LogicalSize, PhysicalPosition, Runtime, WebviewWindow, WindowEvent,
+    };
+
+    pub fn restore_and_show<R: Runtime>(window: &WebviewWindow<R>, data_folder: &Path) {
+        let label = window.label().to_string();
+        if let Some(saved) = load(&state_path(data_folder)).get(&label).copied() {
+            let monitors: Vec<MonitorArea> = window
+                .available_monitors()
+                .unwrap_or_default()
+                .iter()
+                .map(|m| {
+                    let wa = m.work_area();
+                    MonitorArea {
+                        x: wa.position.x,
+                        y: wa.position.y,
+                        width: wa.size.width,
+                        height: wa.size.height,
+                        scale: m.scale_factor(),
+                    }
+                })
+                .collect();
+            let placement = resolve_placement(&saved, &monitors, (800.0, 740.0));
+            log::info!("window-state: restoring {label}: {placement:?}");
+            let (maximized, fullscreen) = match placement {
+                Placement::Restore {
+                    x,
+                    y,
+                    width,
+                    height,
+                    maximized,
+                    fullscreen,
+                } => {
+                    let _ = window.set_size(LogicalSize::new(width, height));
+                    let _ = window.set_position(PhysicalPosition::new(x, y));
+                    (maximized, fullscreen)
+                }
+                Placement::Default {
+                    maximized,
+                    fullscreen,
+                } => (maximized, fullscreen),
+            };
+            if fullscreen {
+                let _ = window.set_fullscreen(true);
+            } else if maximized {
+                let _ = window.maximize();
+            }
+        }
+        let _ = window.show();
+    }
+
+    /// Record the window's placement as it changes, through one debounced
+    /// worker thread; closing writes at once.
+    pub fn install<R: Runtime>(window: &WebviewWindow<R>, data_folder: PathBuf) {
+        let path = state_path(&data_folder);
+        let label = window.label().to_string();
+        let last: Arc<Mutex<Option<SavedWindow>>> =
+            Arc::new(Mutex::new(load(&path).get(&label).copied()));
+
+        let flush = {
+            let win = window.clone();
+            let path = path.clone();
+            move || {
+                let mut slot = last.lock().unwrap_or_else(|e| e.into_inner());
+                let Some(record) = read_record(&win, slot.as_ref()) else {
+                    return;
+                };
+                if *slot == Some(record) {
+                    return;
+                }
+                *slot = Some(record);
+                let mut file = load(&path);
+                file.insert(label.clone(), record);
+                if let Err(e) = store(&path, &file) {
+                    log::warn!("window-state: could not save {label}: {e}");
+                }
+            }
+        };
+        let flush = Arc::new(flush);
+
+        let (tx, rx) = mpsc::channel::<()>();
+        {
+            let flush = flush.clone();
+            let spawned = std::thread::Builder::new()
+                .name("window-state".into())
+                .spawn(move || debounce_loop(&rx, Duration::from_millis(400), || flush()));
+            if let Err(e) = spawned {
+                log::warn!("window-state: could not start saver: {e}");
+            }
+        }
+
+        window.on_window_event(move |event| match event {
+            WindowEvent::Moved(_)
+            | WindowEvent::Resized(_)
+            | WindowEvent::ScaleFactorChanged { .. } => {
+                let _ = tx.send(());
+            }
+            WindowEvent::CloseRequested { .. } => flush(),
+            _ => {}
+        });
+    }
+
+    fn read_record<R: Runtime>(
+        win: &WebviewWindow<R>,
+        prior: Option<&SavedWindow>,
+    ) -> Option<SavedWindow> {
+        if win.is_minimized().unwrap_or(false) {
+            return None;
+        }
+        let fullscreen = win.is_fullscreen().unwrap_or(false);
+        let maximized = win.is_maximized().unwrap_or(false);
+        if fullscreen || maximized {
+            // The frame now is the monitor's, not the user's.
+            let mut kept = *prior?;
+            kept.fullscreen = fullscreen;
+            kept.maximized = maximized;
+            return Some(kept);
+        }
+        let pos = win.outer_position().ok()?;
+        let size = win.outer_size().ok()?;
+        let scale = win.scale_factor().ok()?;
+        from_placement(
+            (
+                pos.x,
+                pos.y,
+                pos.x.saturating_add(size.width as i32),
+                pos.y.saturating_add(size.height as i32),
+            ),
+            scale,
+            Shown::Normal,
+            false,
+        )
+    }
+}
 
 #[cfg(all(windows, not(feature = "cli")))]
 mod tauri_glue {

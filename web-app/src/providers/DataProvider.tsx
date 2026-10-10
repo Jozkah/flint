@@ -1,4 +1,5 @@
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 
 import {
   useGeneralSetting,
@@ -16,6 +17,11 @@ import { ExtensionManager } from '@/lib/extension'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { getProviderApiType } from '@/lib/providerCaps'
 import { useAppState } from '@/hooks/useAppState'
+import {
+  guardServerStart,
+  MODEL_LOAD_WATCHDOG_MS,
+  withTimeout,
+} from '@/lib/utils'
 import { AppEvent, events } from '@janhq/core'
 import { SystemEvent } from '@/types/events'
 import { sweepThreadWorkspaces } from '@/lib/agentTools'
@@ -249,6 +255,11 @@ export function DataProvider() {
     console.log('Initializing DataProvider...')
     serviceHub.providers().getProviders().then(async (fetched) => {
       setProviders(fetched)
+      // Stars saved before they recorded a provider belong to the providers
+      // that list the model.
+      useFavoriteModel
+        .getState()
+        .assignLegacyProviders(useModelProvider.getState().providers)
       // Seed keyring keys into the merged store (predefined + engine + custom).
       await applyKeyringKeys()
       await applySecretHeaderValues()
@@ -470,7 +481,11 @@ export function DataProvider() {
                 const provider = getProviderByName(providerName)
                 if (!provider) return
                 try {
-                  await serviceHub.models().startModel(provider, model, true)
+                  await withTimeout(
+                    serviceHub.models().startModel(provider, model, true),
+                    MODEL_LOAD_WATCHDOG_MS,
+                    `Timed out waiting for model ${model} to load.`
+                  )
                   console.log(`Auto-started server model: ${model}`)
                 } catch (err) {
                   console.warn(`Failed to auto-start server model ${model}:`, err)
@@ -488,8 +503,8 @@ export function DataProvider() {
             )
           }
 
-          return window.core?.api
-            ?.startServer({
+          return guardServerStart(
+            window.core?.api?.startServer({
               host: serverHost,
               port: serverPort,
               prefix: apiPrefix,
@@ -502,7 +517,8 @@ export function DataProvider() {
               // the setting the user enabled (#156).
               enableServerToolExecution,
             })
-            .then(async (actualPort: number) => {
+          )
+            .then(async (actualPort: number | undefined) => {
               // Store the actual port that was assigned (important for mobile with port 0)
               if (actualPort && actualPort !== serverPort) {
                 setServerPort(actualPort)
