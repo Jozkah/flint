@@ -45,6 +45,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { modelIdKey } from '@/lib/modelIdPath'
 import {
   cleanHuggingFaceRepo,
+  pinExactRepo,
   explainQuantization,
   formatModelBytes,
   getHuggingFaceFiles,
@@ -314,7 +315,7 @@ function ModelDiscoverRoute() {
       )
     })
 
-    return filtered.sort((a, b) => {
+    const sorted = filtered.sort((a, b) => {
       if (sort === 'likes') return b.likes - a.likes
       if (sort === 'updated') {
         return Date.parse(b.lastModified ?? '') - Date.parse(a.lastModified ?? '')
@@ -324,7 +325,10 @@ function ModelDiscoverRoute() {
       }
       return b.downloads - a.downloads
     })
+    // A pasted exact repo id comes first, whatever the sort says.
+    return pinExactRepo(sorted, debouncedQuery)
   }, [
+    debouncedQuery,
     models,
     params,
     architecture,
