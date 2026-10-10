@@ -573,7 +573,19 @@
     "mediumModel": "Střední model",
     "mediumModelDesc": "Sonnet",
     "smallModel": "Malý model",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "overridesTitle": "Nastavení Claude Code, které tyto modely přebíjí",
+    "overrides": {
+      "model": "{{file}} připíná model na „{{value}}“, takže ho Claude Code používá bez ohledu na to, co je nastaveno zde. Smažte z tohoto souboru řádek \"model\" nebo v Claude Code spusťte /model a vyberte Default.",
+      "env": "{{file}} nastavuje {{key}} ve svém bloku env, což má přednost před proměnnou, kterou exportuje Flint. Odstraňte {{key}} z tohoto bloku env.",
+      "apiKeyHelper": "{{file}} nastavuje apiKeyHelper, který nahrazuje token exportovaný Flintem a může způsobit, že vás Claude Code znovu vyzve k přihlášení. Odstraňte z tohoto souboru řádek \"apiKeyHelper\"."
+    },
+    "contextRaised": "Kontext modelu {{model}} byl zvětšen na {{context}} tokenů, aby na něm mohl běžet Claude Code.",
+    "contextShortfall": {
+      "memory": "{{model}} poběží s kontextem {{context}} tokenů, což je maximum, které se vejde do paměti tohoto zařízení. Claude Code potřebuje asi {{needed}}, takže dlouhé požadavky mohou selhat. Zvolte menší nebo více komprimovaný model.",
+      "trained": "{{model}} byl trénován jen na {{context}} tokenů kontextu. Claude Code potřebuje asi {{needed}}, takže dlouhé požadavky selžou. Zvolte model s větším kontextem.",
+      "user-setting": "{{model}} má v nastavení modelu kontext {{context}} tokenů, který má přednost před automatickou volbou. Claude Code potřebuje asi {{needed}}, takže dlouhé požadavky mohou selhat. Zvyšte velikost kontextu v nastavení modelu."
+    }
   },
   "memory": {
     "automaticallySave": "Automaticky ukládat lokální paměti",

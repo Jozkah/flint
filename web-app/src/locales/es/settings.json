@@ -571,7 +571,19 @@
     "mediumModel": "Modelo mediano",
     "mediumModelDesc": "Sonnet",
     "smallModel": "Modelo pequeño",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "overridesTitle": "Ajustes de Claude Code que anulan estos modelos",
+    "overrides": {
+      "model": "{{file}} fija el modelo en «{{value}}», así que Claude Code lo sigue usando sea cual sea lo configurado aquí. Elimina la línea \"model\" de ese archivo o ejecuta /model en Claude Code y elige Default.",
+      "env": "{{file}} define {{key}} en su bloque env, que prevalece sobre la variable que exporta Flint. Quita {{key}} de ese bloque env.",
+      "apiKeyHelper": "{{file}} define un apiKeyHelper, que sustituye el token que exporta Flint y puede hacer que Claude Code te pida iniciar sesión de nuevo. Elimina la línea \"apiKeyHelper\" de ese archivo."
+    },
+    "contextRaised": "Se aumentó el contexto de {{model}} a {{context}} tokens para que Claude Code pueda funcionar con él.",
+    "contextShortfall": {
+      "memory": "{{model}} se ejecutará con un contexto de {{context}} tokens, el máximo que cabe en la memoria de este dispositivo. Claude Code necesita unos {{needed}}, así que las peticiones largas pueden fallar. Elige un modelo más pequeño o más comprimido.",
+      "trained": "{{model}} solo se entrenó con {{context}} tokens de contexto. Claude Code necesita unos {{needed}}, así que las peticiones largas fallarán. Elige un modelo con un contexto mayor.",
+      "user-setting": "{{model}} tiene un contexto de {{context}} tokens en la configuración del modelo, que prevalece sobre la elección automática. Claude Code necesita unos {{needed}}, así que las peticiones largas pueden fallar. Aumenta el tamaño del contexto en la configuración del modelo."
+    }
   },
   "memory": {
     "automaticallySave": "Guardar automáticamente las memorias locales",

@@ -569,7 +569,19 @@
     "mediumModel": "中型模型",
     "mediumModelDesc": "Sonnet",
     "smallModel": "小型模型",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "overridesTitle": "覆盖这些模型的 Claude Code 设置",
+    "overrides": {
+      "model": "{{file}} 将模型固定为“{{value}}”，因此无论这里如何设置，Claude Code 都会继续使用它。请删除该文件中的 \"model\" 行，或在 Claude Code 中运行 /model 并选择 Default。",
+      "env": "{{file}} 在其 env 块中设置了 {{key}}，它优先于 Flint 导出的变量。请从该 env 块中删除 {{key}}。",
+      "apiKeyHelper": "{{file}} 设置了 apiKeyHelper，它会替换 Flint 导出的令牌，并可能让 Claude Code 再次要求你登录。请删除该文件中的 \"apiKeyHelper\" 行。"
+    },
+    "contextRaised": "已将 {{model}} 的上下文提高到 {{context}} 个 token，以便 Claude Code 使用。",
+    "contextShortfall": {
+      "memory": "{{model}} 将以 {{context}} 个 token 的上下文运行，这是此设备内存能容纳的最大值。Claude Code 需要约 {{needed}}，较长的请求可能失败。请选择更小或压缩程度更高的模型。",
+      "trained": "{{model}} 只训练了 {{context}} 个 token 的上下文。Claude Code 需要约 {{needed}}，较长的请求会失败。请选择上下文更大的模型。",
+      "user-setting": "{{model}} 在模型设置中的上下文为 {{context}} 个 token，优先于自动选择。Claude Code 需要约 {{needed}}，较长的请求可能失败。请在模型设置中调大上下文大小。"
+    }
   },
   "memory": {
     "automaticallySave": "自动保存本地记忆",
