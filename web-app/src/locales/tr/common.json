@@ -1463,6 +1463,11 @@
     "dismiss": "Kapat",
     "failed": "Dosya eklenemedi"
   },
+  "largePaste": {
+    "attached": "Büyük yapıştırma {{name}} olarak eklendi",
+    "hint": "Metin olarak yapıştırmak için Ctrl/Cmd+Shift+V tuşlarına basın.",
+    "undo": "Geri al"
+  },
   "drop": {
     "openInCode": "Açmak için bırakın — salt okunur",
     "attachToMessage": "Mesajınıza eklemek için bırakın",

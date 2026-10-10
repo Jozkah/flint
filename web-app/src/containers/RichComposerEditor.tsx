@@ -20,6 +20,8 @@ export type RichComposerHandle = {
   element: HTMLElement | null
   /** Caret at the very start/end of the draft (collapsed), else null. */
   caretEdge: () => 'start' | 'end' | 'both' | null
+  /** Insert plain text at the caret, one paragraph per line. */
+  insertText: (text: string) => void
 }
 
 type Props = {
@@ -89,6 +91,13 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
         const atStart = from <= 1
         const atEnd = to >= editor.state.doc.content.size - 1
         return atStart && atEnd ? 'both' : atStart ? 'start' : atEnd ? 'end' : null
+      },
+      insertText: (text) => {
+        const paragraphs = text.split(/\r\n?|\n/).map((line) => ({
+          type: 'paragraph',
+          content: line ? [{ type: 'text', text: line }] : [],
+        }))
+        editor?.chain().focus().insertContent(paragraphs).run()
       },
     }), [editor])
 

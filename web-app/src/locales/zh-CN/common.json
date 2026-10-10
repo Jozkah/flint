@@ -1465,6 +1465,11 @@
     "dismiss": "忽略",
     "failed": "无法附加文件"
   },
+  "largePaste": {
+    "attached": "大段粘贴内容已作为 {{name}} 附加",
+    "hint": "按 Ctrl/Cmd+Shift+V 可作为文本粘贴。",
+    "undo": "撤销"
+  },
   "drop": {
     "openInCode": "拖放以打开 — 只读",
     "attachToMessage": "拖放以附加到你的消息",

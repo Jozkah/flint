@@ -1490,6 +1490,11 @@
     "dismiss": "Descartar",
     "failed": "No se pudo adjuntar el archivo"
   },
+  "largePaste": {
+    "attached": "Pegado grande adjuntado como {{name}}",
+    "hint": "Pulsa Ctrl/Cmd+Mayús+V para pegarlo como texto.",
+    "undo": "Deshacer"
+  },
   "drop": {
     "openInCode": "Suelta para abrir: solo lectura",
     "attachToMessage": "Suelta para adjuntar a tu mensaje",
