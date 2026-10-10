@@ -62,6 +62,33 @@ pub(crate) fn error_json(message: &str, kind: &str, code: &str) -> String {
     .to_string()
 }
 
+/// An engine `exceed_context_size_error` as the Anthropic error Claude Code
+/// reads, or `None` for any other body. Its own wording for an oversized
+/// prompt ("prompt is too long: N tokens > M maximum") is what makes it compact
+/// and retry rather than print an opaque 400, and the hint names the setting
+/// that fixes it (janhq/jan#8108).
+pub(crate) fn anthropic_context_error(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let error = value.get("error")?;
+    if error.get("type")?.as_str()? != "exceed_context_size_error" {
+        return None;
+    }
+    let prompt = error.get("n_prompt_tokens").and_then(|v| v.as_u64())?;
+    let context = error.get("n_ctx").and_then(|v| v.as_u64())?;
+    let message = format!(
+        "prompt is too long: {prompt} tokens > {context} maximum. The model is loaded with a \
+         {context}-token context; Claude Code needs about 32768. Raise Context Size in the \
+         model's settings in Flint, or choose a model with a larger context."
+    );
+    Some(
+        serde_json::json!({
+            "type": "error",
+            "error": { "type": "invalid_request_error", "message": message }
+        })
+        .to_string(),
+    )
+}
+
 /// Whether `url` points at this machine, i.e. a local engine that may simply
 /// not be up yet, as opposed to a remote provider.
 pub(crate) fn is_local_url(url: &str) -> bool {
@@ -2460,6 +2487,8 @@ async fn proxy_request(
                             // Return fallback error to client
                             let fallback_error = res.text().await.unwrap_or_else(|e| format!("Failed to read error: {}", e));
 
+                            let fallback_error = anthropic_context_error(&fallback_error)
+                                .unwrap_or(fallback_error);
                             // Return the error to client
                             let mut error_response = Response::builder().status(fallback_status);
                             error_response = add_cors_headers_with_host_and_origin(
@@ -2516,6 +2545,7 @@ async fn proxy_request(
                 }
 
                     // If fallback failed or wasn't attempted, return error to client
+                    let error_body = anthropic_context_error(&error_body).unwrap_or(error_body);
                     let mut error_response = Response::builder().status(status);
                     error_response = add_cors_headers_with_host_and_origin(
                         error_response,
@@ -3537,7 +3567,7 @@ mod tests {
     }
 
     use super::{
-        bind_with_fallback, error_json, is_insecure_public_bind, is_local_url, map_bind_error,
+        anthropic_context_error, bind_with_fallback, error_json, is_insecure_public_bind, is_local_url, map_bind_error,
         model_ids_match,
     };
     use std::net::SocketAddr;
@@ -3668,6 +3698,25 @@ mod tests {
         assert_eq!(v["error"]["message"], "it \"broke\"");
         assert_eq!(v["error"]["type"], "server_error");
         assert_eq!(v["error"]["code"], "backend_unavailable");
+    }
+
+    #[test]
+    fn a_context_overflow_reaches_claude_code_as_an_anthropic_error() {
+        let engine = r#"{"error":{"code":400,"message":"request (24100 tokens) exceeds the available context size (8192 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":24100,"n_ctx":8192}}"#;
+        let out = anthropic_context_error(engine).expect("rewritten");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["type"], "error");
+        assert_eq!(v["error"]["type"], "invalid_request_error");
+        let message = v["error"]["message"].as_str().unwrap();
+        // The wording Claude Code recognises as "compact and retry".
+        assert!(message.starts_with("prompt is too long: 24100 tokens > 8192 maximum"));
+        assert!(message.contains("Context Size"));
+    }
+
+    #[test]
+    fn other_engine_errors_are_left_alone() {
+        assert!(anthropic_context_error(r#"{"error":{"type":"server_error"}}"#).is_none());
+        assert!(anthropic_context_error("not json").is_none());
     }
 
     #[test]

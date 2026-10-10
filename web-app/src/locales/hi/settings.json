@@ -569,7 +569,13 @@
     "mediumModel": "मध्यम मॉडल",
     "mediumModelDesc": "Sonnet",
     "smallModel": "छोटा मॉडल",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "contextRaised": "Claude Code चल सके, इसके लिए {{model}} का संदर्भ बढ़ाकर {{context}} टोकन कर दिया गया है।",
+    "contextShortfall": {
+      "memory": "{{model}} {{context}} टोकन के संदर्भ के साथ चलेगा, जो इस डिवाइस की मेमोरी में समाने वाला अधिकतम है। Claude Code को लगभग {{needed}} चाहिए, इसलिए लंबे अनुरोध विफल हो सकते हैं। कोई छोटा या अधिक संपीड़ित मॉडल चुनें।",
+      "trained": "{{model}} को केवल {{context}} टोकन के संदर्भ के लिए प्रशिक्षित किया गया था। Claude Code को लगभग {{needed}} चाहिए, इसलिए लंबे अनुरोध विफल होंगे। बड़े संदर्भ वाला मॉडल चुनें।",
+      "user-setting": "{{model}} की मॉडल सेटिंग में संदर्भ {{context}} टोकन पर सेट है, जो स्वचालित चयन से ऊपर माना जाता है। Claude Code को लगभग {{needed}} चाहिए, इसलिए लंबे अनुरोध विफल हो सकते हैं। मॉडल की सेटिंग में संदर्भ आकार बढ़ाएँ।"
+    }
   },
   "memory": {
     "automaticallySave": "लोकल मेमोरी अपने-आप सहेजें",
