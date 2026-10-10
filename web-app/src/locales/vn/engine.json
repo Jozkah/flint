@@ -45,6 +45,10 @@
     "noneYet": "chưa có câu trả lời"
   },
   "providers": {
+    "disableAll": "Tắt tất cả",
+    "enableAll": "Bật tất cả",
+    "allDisabledToast": "Đã tắt tất cả nhà cung cấp",
+    "allEnabledToast": "Đã bật tất cả nhà cung cấp",
     "title": "Nhà cung cấp",
     "onDevice": "Trên thiết bị này",
     "remote": "Từ xa",

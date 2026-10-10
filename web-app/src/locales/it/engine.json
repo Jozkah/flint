@@ -45,6 +45,10 @@
     "noneYet": "ancora nessuna risposta"
   },
   "providers": {
+    "disableAll": "Disattiva tutti",
+    "enableAll": "Attiva tutti",
+    "allDisabledToast": "Tutti i provider disattivati",
+    "allEnabledToast": "Tutti i provider attivati",
     "title": "Provider",
     "onDevice": "Su questo dispositivo",
     "remote": "Remoti",

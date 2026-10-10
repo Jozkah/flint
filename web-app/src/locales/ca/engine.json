@@ -45,6 +45,10 @@
     "noneYet": "encara no hi ha respostes"
   },
   "providers": {
+    "disableAll": "Desactiva-ho tot",
+    "enableAll": "Activa-ho tot",
+    "allDisabledToast": "S'han desactivat tots els proveïdors",
+    "allEnabledToast": "S'han activat tots els proveïdors",
     "title": "Proveïdors",
     "onDevice": "En aquest dispositiu",
     "remote": "Remot",
