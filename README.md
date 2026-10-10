@@ -64,6 +64,20 @@ The installers are **not code-signed**, so your OS warns you the first time you 
 
 **Models are your choice.** Open **Discover** to search Hugging Face and choose the exact GGUF quantization (or MLX repository on Apple silicon) you want Flint to download. Downloads start only when you click **Download**, support pause/resume, and are size/hash verified when Hugging Face exposes that metadata. You can still import a GGUF you already have with **Import GGUF** on the **Models** page, or add a cloud provider with your own key.
 
+### The `flint` CLI
+
+The terminal agent console and headless runtime ship as a standalone `flint` binary, separate from the desktop app. Each stable release attaches archives for Linux (x64, arm64), macOS (Apple silicon) and Windows (x64), and publishes to these package managers:
+
+```bash
+brew tap Jozkah/flint https://github.com/Jozkah/flint
+brew install flint                     # Homebrew (macOS, Linux)
+scoop bucket add flint https://github.com/Jozkah/flint
+scoop install flint                    # Scoop (Windows)
+npm install -g @jozkah/flint           # npm (any platform above)
+```
+
+To build the CLI from source, see [AGENT-TUI.md](AGENT-TUI.md). Package-manager availability follows the release setup in [docs/PACKAGING.md](docs/PACKAGING.md).
+
 ## Getting started
 
 1. **Open Flint.** A short first-run guide asks what you want to do and explains the difference between local and cloud processing. You can skip it and reopen it from Settings → General.

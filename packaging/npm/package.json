@@ -1,0 +1,32 @@
+{
+  "name": "@jozkah/flint",
+  "version": "0.0.0",
+  "description": "Flint agent harness CLI: a local-first terminal agent console and headless runtime.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Jozkah/flint",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jozkah/flint.git"
+  },
+  "bin": {
+    "flint": "bin/flint.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node lib/install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": ["linux", "darwin", "win32"],
+  "cpu": ["x64", "arm64"],
+  "flintBinary": {
+    "repo": "Jozkah/flint",
+    "tag": "",
+    "assets": {}
+  }
+}
