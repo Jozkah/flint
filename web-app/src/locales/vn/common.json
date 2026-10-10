@@ -1465,6 +1465,11 @@
     "dismiss": "Bỏ qua",
     "failed": "Không thể đính kèm tệp"
   },
+  "largePaste": {
+    "attached": "Đã đính kèm nội dung dán lớn dưới dạng {{name}}",
+    "hint": "Nhấn Ctrl/Cmd+Shift+V để dán dưới dạng văn bản.",
+    "undo": "Hoàn tác"
+  },
   "drop": {
     "openInCode": "Thả để mở — chỉ đọc",
     "attachToMessage": "Thả để đính kèm vào tin nhắn của bạn",

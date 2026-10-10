@@ -569,7 +569,13 @@
     "mediumModel": "Orta model",
     "mediumModelDesc": "Sonnet",
     "smallModel": "Küçük model",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "contextRaised": "Claude Code çalışabilsin diye {{model}} bağlamı {{context}} token'a yükseltildi.",
+    "contextShortfall": {
+      "memory": "{{model}}, bu cihazın belleğine sığan en yüksek değer olan {{context}} token'lık bağlamla çalışacak. Claude Code yaklaşık {{needed}} gerektirir, bu yüzden uzun istekler başarısız olabilir. Daha küçük veya daha çok sıkıştırılmış bir model seçin.",
+      "trained": "{{model}} yalnızca {{context}} token'lık bağlam için eğitildi. Claude Code yaklaşık {{needed}} gerektirir, bu yüzden uzun istekler başarısız olur. Daha büyük bağlamlı bir model seçin.",
+      "user-setting": "{{model}} için model ayarlarında {{context}} token'lık bağlam belirlenmiş ve bu, otomatik seçimden önceliklidir. Claude Code yaklaşık {{needed}} gerektirir, bu yüzden uzun istekler başarısız olabilir. Model ayarlarında bağlam boyutunu artırın."
+    }
   },
   "memory": {
     "automaticallySave": "Yerel anıları otomatik kaydet",

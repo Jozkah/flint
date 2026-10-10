@@ -569,7 +569,13 @@
     "mediumModel": "中型模型",
     "mediumModelDesc": "Sonnet",
     "smallModel": "小型模型",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "contextRaised": "已将 {{model}} 的上下文提高到 {{context}} 个 token，以便 Claude Code 使用。",
+    "contextShortfall": {
+      "memory": "{{model}} 将以 {{context}} 个 token 的上下文运行，这是此设备内存能容纳的最大值。Claude Code 需要约 {{needed}}，较长的请求可能失败。请选择更小或压缩程度更高的模型。",
+      "trained": "{{model}} 只训练了 {{context}} 个 token 的上下文。Claude Code 需要约 {{needed}}，较长的请求会失败。请选择上下文更大的模型。",
+      "user-setting": "{{model}} 在模型设置中的上下文为 {{context}} 个 token，优先于自动选择。Claude Code 需要约 {{needed}}，较长的请求可能失败。请在模型设置中调大上下文大小。"
+    }
   },
   "memory": {
     "automaticallySave": "自动保存本地记忆",

@@ -567,7 +567,13 @@
     "mediumModel": "Model Sedang",
     "mediumModelDesc": "Sonnet",
     "smallModel": "Model Kecil",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "contextRaised": "Konteks {{model}} dinaikkan menjadi {{context}} token agar Claude Code dapat berjalan dengannya.",
+    "contextShortfall": {
+      "memory": "{{model}} akan berjalan dengan konteks {{context}} token, batas terbesar yang muat di memori perangkat ini. Claude Code membutuhkan sekitar {{needed}}, sehingga permintaan panjang bisa gagal. Pilih model yang lebih kecil atau lebih terkompresi.",
+      "trained": "{{model}} hanya dilatih untuk konteks {{context}} token. Claude Code membutuhkan sekitar {{needed}}, sehingga permintaan panjang akan gagal. Pilih model dengan konteks lebih besar.",
+      "user-setting": "{{model}} diatur ke konteks {{context}} token di pengaturan modelnya, yang lebih diutamakan daripada pilihan otomatis. Claude Code membutuhkan sekitar {{needed}}, sehingga permintaan panjang bisa gagal. Naikkan Ukuran Konteks di pengaturan model."
+    }
   },
   "memory": {
     "automaticallySave": "Simpan memori lokal secara otomatis",

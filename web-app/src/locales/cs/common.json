@@ -1518,6 +1518,11 @@
     "dismiss": "Zavřít",
     "failed": "Soubor se nepodařilo připojit"
   },
+  "largePaste": {
+    "attached": "Velké vložení přiloženo jako {{name}}",
+    "hint": "Stisknutím Ctrl/Cmd+Shift+V vložíte text přímo.",
+    "undo": "Zpět"
+  },
   "drop": {
     "openInCode": "Pusťte pro otevření — jen pro čtení",
     "attachToMessage": "Pusťte pro přiložení ke zprávě",

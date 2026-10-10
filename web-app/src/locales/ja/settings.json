@@ -569,7 +569,13 @@
     "mediumModel": "中型モデル",
     "mediumModelDesc": "Sonnet",
     "smallModel": "小型モデル",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "contextRaised": "Claude Code で使えるように、{{model}} のコンテキストを {{context}} トークンに引き上げました。",
+    "contextShortfall": {
+      "memory": "{{model}} は {{context}} トークンのコンテキストで動作します。これはこのデバイスのメモリに収まる最大値です。Claude Code は約 {{needed}} を必要とするため、長いリクエストは失敗することがあります。より小さい、またはより圧縮されたモデルを選んでください。",
+      "trained": "{{model}} は {{context}} トークンのコンテキストでしか学習されていません。Claude Code は約 {{needed}} を必要とするため、長いリクエストは失敗します。より大きなコンテキストを持つモデルを選んでください。",
+      "user-setting": "{{model}} はモデル設定でコンテキストが {{context}} トークンに設定されており、自動選択より優先されます。Claude Code は約 {{needed}} を必要とするため、長いリクエストは失敗することがあります。モデル設定でコンテキストサイズを引き上げてください。"
+    }
   },
   "memory": {
     "automaticallySave": "ローカルメモリを自動的に保存",

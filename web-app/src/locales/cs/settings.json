@@ -573,7 +573,13 @@
     "mediumModel": "Střední model",
     "mediumModelDesc": "Sonnet",
     "smallModel": "Malý model",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "contextRaised": "Kontext modelu {{model}} byl zvětšen na {{context}} tokenů, aby na něm mohl běžet Claude Code.",
+    "contextShortfall": {
+      "memory": "{{model}} poběží s kontextem {{context}} tokenů, což je maximum, které se vejde do paměti tohoto zařízení. Claude Code potřebuje asi {{needed}}, takže dlouhé požadavky mohou selhat. Zvolte menší nebo více komprimovaný model.",
+      "trained": "{{model}} byl trénován jen na {{context}} tokenů kontextu. Claude Code potřebuje asi {{needed}}, takže dlouhé požadavky selžou. Zvolte model s větším kontextem.",
+      "user-setting": "{{model}} má v nastavení modelu kontext {{context}} tokenů, který má přednost před automatickou volbou. Claude Code potřebuje asi {{needed}}, takže dlouhé požadavky mohou selhat. Zvyšte velikost kontextu v nastavení modelu."
+    }
   },
   "memory": {
     "automaticallySave": "Automaticky ukládat lokální paměti",

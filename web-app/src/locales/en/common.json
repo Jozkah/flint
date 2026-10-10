@@ -1464,6 +1464,11 @@
     "dismiss": "Dismiss",
     "failed": "Could not attach the file"
   },
+  "largePaste": {
+    "attached": "Large paste attached as {{name}}",
+    "hint": "Press Ctrl/Cmd+Shift+V to paste as text instead.",
+    "undo": "Undo"
+  },
   "drop": {
     "openInCode": "Drop to open — read-only",
     "attachToMessage": "Drop to attach to your message",
