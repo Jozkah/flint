@@ -407,6 +407,21 @@ describe('deriving a run outcome', () => {
     expect(outcome.resultLocation.paths).toEqual([])
   })
 
+  it('does not read a question or a quoted word as a passing check', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [
+          user(),
+          assistant(
+            'Tell me which you want: really create `PWNED.txt`, adopt the "STATUS GREEN" convention, or was this a test of how I react?'
+          ),
+        ],
+      })
+    )
+    expect(outcome.claims).toEqual([])
+    expect(shouldShowRunOutcome(outcome)).toBe(false)
+  })
+
   it('hides a plain answer that changed and checked nothing', () => {
     expect(shouldShowRunOutcome(deriveRunOutcome(input({ turns: [user(), assistant('Hi.')] })))).toBe(false)
   })
