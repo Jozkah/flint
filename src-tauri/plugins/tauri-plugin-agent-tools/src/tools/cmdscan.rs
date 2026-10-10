@@ -409,6 +409,13 @@ fn scan_into(command: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool 
     if depth > 8 || line_evaluates_text(command) {
         return false;
     }
+    // Bash 5 lets a script rename its own `$0`: `BASH_ARGV0=ls; ...` makes
+    // later checks on the program's name read the wrong thing. Any mention
+    // (assignment, `declare`, `read`, expansion) is something this scan cannot
+    // reason about, so it is opaque.
+    if command.contains("BASH_ARGV0") {
+        return false;
+    }
     let (outer, subs) = extract_substitutions(command);
     for sub in subs {
         if !scan_into(&sub, bases, depth + 1) {
@@ -607,6 +614,20 @@ fn split_segments(s: &str) -> Vec<String> {
 /// opaque.
 fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
     let tokens = tokenize(seg);
+    // A loop over a glob or an expansion iterates whatever the filesystem or
+    // the variable holds when it runs, and the body can use each value as a
+    // command or an argument. What was approved is the text, not that list, so
+    // it is opaque rather than resolved by its body alone.
+    if matches!(tokens.first().map(String::as_str), Some("for" | "select")) {
+        if let Some(at) = tokens.iter().position(|t| t == "in") {
+            let expands = |t: &String| {
+                t.contains(['*', '?', '[', '$', '`', '{']) || t.starts_with('~')
+            };
+            if tokens[at + 1..].iter().any(expands) {
+                return false;
+            }
+        }
+    }
     // Any command-running find predicate makes the whole segment opaque.
     if tokens.iter().any(|t| EXEC_PREDICATES.contains(&t.as_str())) {
         return false;
@@ -1110,6 +1131,38 @@ mod tests {
         );
         // plain find (no command-running predicate) resolves normally
         assert_eq!(bases("find . -name '*.rs'"), set(&["find"]));
+    }
+
+    #[test]
+    fn a_bash_argv0_assignment_or_expansion_is_opaque() {
+        for command in [
+            "BASH_ARGV0=ls rm x",
+            "BASH_ARGV0=ls; rm x",
+            "declare BASH_ARGV0=git; git push",
+            "echo $BASH_ARGV0",
+            "echo ${BASH_ARGV0}",
+            "bash -c 'BASH_ARGV0=ls; rm x'",
+            "echo $(printf -v BASH_ARGV0 ls)",
+        ] {
+            assert_eq!(scan_command(command), CommandScan::Opaque, "{command}");
+        }
+    }
+
+    #[test]
+    fn a_loop_over_a_glob_or_expansion_is_opaque_but_a_literal_list_resolves_its_body() {
+        for command in [
+            "for f in *.txt; do rm $f; done",
+            "for f in ./src/*; do cat \"$f\"; done",
+            "for f in $FILES; do rm $f; done",
+            "for f in file?.log; do rm $f; done",
+            "for f in {a,b}; do rm $f; done",
+            "for f in ~/*; do rm $f; done",
+            "select f in *; do rm $f; done",
+        ] {
+            assert_eq!(scan_command(command), CommandScan::Opaque, "{command}");
+        }
+        let b = bases("for f in a.txt b.txt; do rm $f; done");
+        assert!(b.contains("rm"), "{b:?}");
     }
 
     #[test]

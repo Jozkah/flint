@@ -552,6 +552,30 @@ mod tests {
         assert!(got.session_start.is_empty());
     }
 
+    /// These hooks only ever add to a prompt; none of them can hold it back.
+    /// A prompt hook that exits non-zero (Claude Code's "block" is exit 2) or
+    /// outlives its limit -- what a stopped run looks like from here -- adds
+    /// nothing and the turn still carries the prompt as written. There is no
+    /// outcome in which the prompt is dropped, or passed on as if a hook had
+    /// approved it.
+    #[tokio::test]
+    async fn a_failed_or_timed_out_prompt_hook_adds_nothing_and_leaves_the_prompt_alone() {
+        let cwd = tempfile::tempdir().unwrap();
+        let hook = |command: &str, timeout_secs| Hook {
+            event: Event::UserPromptSubmit,
+            command: command.into(),
+            timeout_secs,
+            plugin_root: None,
+        };
+        let hooks = vec![hook("exit 2", 5), hook("sleep 10", 1)];
+        let started = std::time::Instant::now();
+        let got = context_for_turn(&hooks, Some("s"), cwd.path(), Some("hi")).await;
+        assert!(got.enabled);
+        assert!(started.elapsed() < Duration::from_secs(8), "the slow hook was not bounded");
+        assert!(got.prompt_submit.is_empty());
+        assert!(got.session_start.is_empty());
+    }
+
     #[tokio::test]
     async fn a_blank_prompt_skips_the_prompt_hooks() {
         let cwd = tempfile::tempdir().unwrap();

@@ -110,7 +110,13 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
     // the warning that matters.
     named_pairs(trimmed).into_iter().find_map(|(name, v, w)| {
         let value = &trimmed[v..w];
-        if value.len() < 8 || is_placeholder(value) || is_code_reference(trimmed, v, value) {
+        // An already-redacted value is not a secret to find again; flagging it
+        // made a second redaction pass wipe the whole line.
+        if value.len() < 8
+            || value.contains(REDACTED)
+            || is_placeholder(value)
+            || is_code_reference(trimmed, v, value)
+        {
             return None;
         }
         let kind = secret_name_kind(&name)?;
@@ -508,8 +514,53 @@ pub fn redact_secrets(text: &str) -> String {
     out
 }
 
+/// A quoted key with a quoted value: `{"token":"abc"}` in a shell string or a
+/// JSON record. An assignment whatever the value's length, so a short value is
+/// still taken. Shared with the CLI log scrubber (`core::cli::secrets`), which
+/// compiles this same pattern.
+pub const QUOTED_KEY_VALUE_RE: &str = r#"(?i)((?:\\?["'])[A-Za-z0-9_\-]*(?:api[_-]?key|apikey|secret|token|password|passwd|pwd)(?:\\?["'])\s*:\s*\\?["'])[^"'\\<][^"'\\]*"#;
+
+/// An upper-case variable named for a key: `STRIPE_KEY= value`, `KEY=value`.
+/// Case-sensitive so prose ("the key = ...") is left. Shared with the CLI.
+pub const ENV_KEY_ASSIGNMENT_RE: &str = r#"(\b(?:[A-Z][A-Z0-9_]*)?KEY\s*=\s*)[^\s"'<;&|]{4,}"#;
+
+/// Take the value of a quoted-key or env-key assignment, keeping the label.
+/// `None` when nothing matched, so the caller keeps its original string.
+fn redact_assignment_patterns(line: &str) -> Option<String> {
+    use regex::{Captures, Regex};
+    use std::sync::LazyLock;
+    static RULES: LazyLock<[Regex; 2]> = LazyLock::new(|| {
+        [
+            Regex::new(QUOTED_KEY_VALUE_RE).expect("quoted key regex"),
+            Regex::new(ENV_KEY_ASSIGNMENT_RE).expect("env key regex"),
+        ]
+    });
+    let mut current = line.to_string();
+    for re in RULES.iter() {
+        let replaced = re.replace_all(&current, |caps: &Captures| {
+            let whole = &caps[0];
+            let label = caps.get(1).map_or("", |m| m.as_str());
+            let value = &whole[label.len()..];
+            // Already taken, or a reference to a value rather than the value.
+            if value.contains("redacted") || value.starts_with('$') || value.starts_with('[') {
+                whole.to_string()
+            } else {
+                format!("{label}{REDACTED}")
+            }
+        });
+        let replaced = replaced.into_owned();
+        current = replaced;
+    }
+    (current != line).then_some(current)
+}
+
 /// [`redact_secrets`] for a single line without its terminator.
 fn redact_one_line(line: &str) -> String {
+    let base = redact_one_line_core(line);
+    redact_assignment_patterns(&base).unwrap_or(base)
+}
+
+fn redact_one_line_core(line: &str) -> String {
     std::iter::once(line)
         // The word-level pass first, wherever it can do the job: it replaces
         // the credential and leaves the rest of the line standing. Falling back
@@ -961,6 +1012,41 @@ git clone https://user:hunter2hunter2@github.com/octocat/Hello-World\n";
     fn redacts_a_private_key_header_line() {
         let redacted = redact_secrets("-----BEGIN OPENSSH PRIVATE KEY-----");
         assert!(!redacted.contains("BEGIN"));
+    }
+
+    /// Parity with the CLI scrubber: a short value under a quoted key, and an
+    /// upper-case `...KEY=` assignment with a space after the `=`.
+    #[test]
+    fn redacts_quoted_key_and_env_key_assignments_like_the_cli() {
+        for (line, secret) in [
+            ("API_KEY= abcdefghijklmnop1234", "abcdefghijklmnop1234"),
+            ("export STRIPE_KEY= hunter2x", "hunter2x"),
+            ("KEY= s3cr3tvalue", "s3cr3tvalue"),
+            ("curl -d '{\"token\":\"abc\"}' https://x.test", "abc"),
+            ("curl -d '{\"password\": \"pw\"}' https://x.test", "pw"),
+            ("SECRET_KEY=hunter2hunter2", "hunter2hunter2"),
+        ] {
+            let out = redact_secrets(line);
+            assert!(!out.contains(secret), "{secret} survived: {out}");
+            assert!(out.contains(REDACTED), "{out}");
+        }
+        let record = serde_json::json!({"cmd": "curl -d '{\"token\":\"abc\"}'"}).to_string();
+        let out = redact_secrets(&record);
+        assert!(!out.contains("abc"), "{out}");
+        serde_json::from_str::<serde_json::Value>(&out).expect("still valid JSON");
+        // Idempotent, and prose / counts / short unquoted values stay.
+        assert_eq!(redact_secrets(&out), out);
+        for clean in [
+            "the key = value pair is stored in a map",
+            r#"{"max_tokens": 4096}"#,
+            r#"{"max_tokens": "10"}"#,
+            "tokens: 5",
+            "MONKEY=ab",
+            "PATH=/usr/bin",
+            "HOME=/home/user",
+        ] {
+            assert_eq!(redact_secrets(clean), clean);
+        }
     }
 
     #[test]
