@@ -6,7 +6,6 @@ import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { currentDescriber } from '@/lib/imageDescription'
 import { ImageViewer } from '@/components/ImageViewer'
 import { needsWeb } from '@/lib/needsWeb'
-import TextareaAutosize from 'react-textarea-autosize'
 import { RichComposerEditor, type RichComposerHandle } from '@/containers/RichComposerEditor'
 import { cn, formatBytes, getModelDisplayName } from '@/lib/utils'
 import { usePrompt } from '@/hooks/usePrompt'
@@ -402,12 +401,8 @@ const ChatInput = memo(function ChatInput({
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const richComposerRef = useRef<RichComposerHandle>(null)
-  const [richFormatting, setRichFormatting] = useState(true)
-  const richFormattingRef = useRef(richFormatting)
-  richFormattingRef.current = richFormatting
   const focusComposer = useCallback(() => {
-    if (richFormattingRef.current) richComposerRef.current?.focus()
-    else textareaRef.current?.focus()
+    richComposerRef.current?.focus()
   }, [])
   // Taking focus on mount or a thread change must not pull it out of another
   // field the person is already typing in (a parameter input, a dialog).
@@ -441,7 +436,6 @@ const ChatInput = memo(function ChatInput({
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
-  const [rows, setRows] = useState(1)
   const serviceHub = useServiceHub()
   const abortControllers = useAppState((state) => state.abortControllers)
   const tools = useAppState((state) => state.tools)
@@ -855,7 +849,6 @@ const ChatInput = memo(function ChatInput({
   // Get current thread messages for token counting
   const threadMessages = useActiveMessages(currentThreadId)
 
-  const maxRows = 10
   const ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES = 512 * 1024
 
   // This conversation's model: a split pane's own thread model, otherwise the
@@ -3201,158 +3194,61 @@ const ChatInput = memo(function ChatInput({
                 />
               </div>
             )}
-            <div className="flex justify-end px-3 pt-1">
-              <button
-                type="button"
-                className="text-[11px] text-muted-foreground hover:text-foreground"
-                onClick={() => setRichFormatting((value) => !value)}
-                aria-label={richFormatting ? 'Use plain text editor' : 'Use rich text editor'}
-              >
-                {richFormatting ? 'Plain text' : 'Rich text'}
-              </button>
-            </div>
-            {richFormatting ? (
-              <RichComposerEditor
-                ref={richComposerRef}
-                value={prompt}
-                onChange={(markdown) => {
-                  filePickerCursorPos.current = /(?:^|[^A-Za-z0-9_])@[\w./:-]*$/.test(markdown)
-                    ? markdown.length
-                    : null
-                  handlePromptChange(markdown)
-                  slashCommands.onTextChange(markdown)
-                }}
-                onSend={(markdown, steer) => {
-                  if (!ingestingAny && (markdown.trim() || hasSendableMedia)) {
-                    void handleSendMessage(markdown, { steer })
-                  }
-                }}
-                onPaste={handlePaste}
-                onKeyDownCapture={(event) => {
-                  if (event.nativeEvent.isComposing) return
-                  if (slashCommands.open) {
-                    const selection = slashCommands.onKeyDown(event)
-                    if (typeof selection === 'string') setPrompt(selection)
-                    if (event.defaultPrevented) return
-                  }
-                  if (filePickerOpen && !aliasDraft) {
-                    const count = filePickerEntries.length
-                    const active = filePickerEntries[Math.min(referenceActive, count - 1)]
-                    if (count > 0 && event.key === 'ArrowDown') {
-                      event.preventDefault()
-                      setReferenceActive((index) => (index + 1) % count)
-                    } else if (count > 0 && event.key === 'ArrowUp') {
-                      event.preventDefault()
-                      setReferenceActive((index) => (index - 1 + count) % count)
-                    } else if (active && (event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
-                      event.preventDefault()
-                      handleFilePickerSelect(active)
-                    } else if (event.key === 'Escape') {
-                      event.preventDefault()
-                      handleFilePickerClose()
-                    }
-                  }
-                }}
-                placeholder={t('common:placeholder.chatInput')}
-                className={className}
-              />
-            ) : <TextareaAutosize
-              dir="auto"
-              ref={textareaRef}
-              minRows={2}
-              rows={1}
-              maxRows={10}
+            <RichComposerEditor
+              ref={richComposerRef}
               value={prompt}
-              data-testid={'chat-input'}
-              // The `@` menu is a listbox the composer drives; these tell
-              // assistive technology which row is active without moving focus.
-              // No aria-expanded: a textarea may not carry it (axe aria-allowed-attr).
-              aria-autocomplete="list"
-              aria-controls={
-                slashCommands.open
-                  ? slashListId
-                  : filePickerOpen
-                    ? referenceListId
-                    : undefined
-              }
-              aria-activedescendant={
-                slashCommands.open && slashCommands.visible.length > 0
-                  ? slashOptionId(slashListId, slashCommands.activeIndex)
-                  : filePickerOpen && filePickerEntries.length > 0
-                    ? optionId(referenceListId, referenceActive)
-                    : undefined
-              }
-              onChange={(e) => {
-                const value = e.target.value
-                const cursorIdx = e.target.selectionStart
-
-                // Track when @ is freshly typed
-                const prevPrompt = prompt
-                handlePromptChange(value)
-                slashCommands.onTextChange(value)
-
-                // Snapshot cursor position when user types @
-                if (value.includes('@') && !prevPrompt.includes('@')) {
-                  filePickerCursorPos.current = cursorIdx
-                } else if (value.endsWith('@') && cursorIdx > 0) {
-                  filePickerCursorPos.current = cursorIdx
-                } else if (!value.includes('@')) {
-                  filePickerCursorPos.current = null
-                } else if (filePickerCursorPos.current == null) {
-                  // If picker already open, keep tracking cursor
-                  filePickerCursorPos.current = cursorIdx
-                }
-
-                // Count the number of newlines to estimate rows
-                const newRows = (value.match(/\n/g) || []).length + 1
-                setRows(Math.min(newRows, maxRows))
+              onChange={(markdown) => {
+                filePickerCursorPos.current = /(?:^|[^A-Za-z0-9_])@[\w./:-]*$/.test(markdown)
+                  ? markdown.length
+                  : null
+                handlePromptChange(markdown)
+                slashCommands.onTextChange(markdown)
               }}
-              onKeyDown={(e) => {
-                // e.keyCode 229 is for IME input with Safari
-                const isComposing =
-                  e.nativeEvent.isComposing || e.keyCode === 229
-                // The `/` menu owns the arrows, Enter/Tab and Esc while open.
-                if (!isComposing) {
-                  const slashKey = slashCommands.onKeyDown(e)
-                  if (typeof slashKey === 'string') {
-                    setPrompt(slashKey)
-                    return
-                  }
-                  if (slashKey) return
+              onSend={(markdown, steer) => {
+                if (!ingestingAny && (markdown.trim() || hasSendableMedia)) {
+                  void handleSendMessage(markdown, { steer })
                 }
-                // The `@` menu owns these keys while it is open: Enter inserts
-                // the reference rather than sending, and the arrows move the
-                // active row rather than walking prompt history.
-                if (filePickerOpen && !aliasDraft && !isComposing) {
+              }}
+              onPaste={handlePaste}
+              onKeyDownCapture={(event) => {
+                if (event.nativeEvent.isComposing) return
+                if (slashCommands.open) {
+                  const selection = slashCommands.onKeyDown(event)
+                  if (typeof selection === 'string') setPrompt(selection)
+                  if (event.defaultPrevented) return
+                }
+                // Prompt history: Up at the very start, Down at the very end.
+                if (
+                  (event.key === 'ArrowUp' || event.key === 'ArrowDown') &&
+                  !filePickerOpen &&
+                  !event.shiftKey &&
+                  !event.altKey
+                ) {
+                  const edge = richComposerRef.current?.caretEdge()
+                  const wanted = event.key === 'ArrowUp' ? 'start' : 'end'
+                  if (edge === wanted || edge === 'both') {
+                    event.preventDefault()
+                    navigateHistory(event.key === 'ArrowUp' ? 'up' : 'down')
+                    return
+                  }
+                }
+                if (filePickerOpen && !aliasDraft) {
                   const count = filePickerEntries.length
-                  const active =
-                    filePickerEntries[Math.min(referenceActive, count - 1)]
-                  if (count > 0 && e.key === 'ArrowDown') {
-                    e.preventDefault()
-                    setReferenceActive((i) => (i + 1) % count)
-                    return
-                  }
-                  if (count > 0 && e.key === 'ArrowUp') {
-                    e.preventDefault()
-                    setReferenceActive((i) => (i - 1 + count) % count)
-                    return
-                  }
-                  if (
-                    count > 0 &&
-                    (e.key === 'Enter' || e.key === 'Tab') &&
-                    !e.shiftKey
-                  ) {
-                    e.preventDefault()
+                  const active = filePickerEntries[Math.min(referenceActive, count - 1)]
+                  if (count > 0 && event.key === 'ArrowDown') {
+                    event.preventDefault()
+                    setReferenceActive((index) => (index + 1) % count)
+                  } else if (count > 0 && event.key === 'ArrowUp') {
+                    event.preventDefault()
+                    setReferenceActive((index) => (index - 1 + count) % count)
+                  } else if (active && (event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
+                    event.preventDefault()
                     handleFilePickerSelect(active)
-                    return
-                  }
-                  if (e.key === 'Escape') {
-                    e.preventDefault()
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
                     handleFilePickerClose()
-                    return
-                  }
-                  if (e.altKey && e.key.toLowerCase() === 'a' && active) {
-                    e.preventDefault()
+                  } else if (event.altKey && event.key.toLowerCase() === 'a' && active) {
+                    event.preventDefault()
                     if (active.kind === 'file' || active.kind === 'directory') {
                       setAliasDraft(active)
                       setAliasError(null)
@@ -3360,55 +3256,31 @@ const ChatInput = memo(function ChatInput({
                     } else {
                       setReferenceStatus('Only a file or folder can be named')
                     }
-                    return
-                  }
-                }
-                if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
-                  e.preventDefault()
-                  // Submit prompt when Enter is pressed without Shift and prompt is not empty.
-                  // If streaming, handleSendMessage will queue the message automatically.
-                  // Ctrl/Cmd+Enter during a run steers with the message
-                  // instead of queueing it; when idle it simply sends.
-                  if ((prompt.trim() || hasSendableMedia) && !ingestingAny) {
-                    handleSendMessage(prompt, { steer: e.ctrlKey || e.metaKey })
-                  }
-                  // When Shift+Enter is pressed, a new line is added (default behavior)
-                }
-                // Navigate prompt history with Up/Down arrow keys
-                if (e.key === 'ArrowUp' && !isComposing) {
-                  const textarea = e.currentTarget
-                  const cursorAtStart =
-                    textarea.selectionStart === 0 && textarea.selectionEnd === 0
-                  if (cursorAtStart || !prompt) {
-                    e.preventDefault()
-                    navigateHistory('up')
-                  }
-                }
-                if (e.key === 'ArrowDown' && !isComposing) {
-                  const textarea = e.currentTarget
-                  const cursorAtEnd =
-                    textarea.selectionStart === prompt.length &&
-                    textarea.selectionEnd === prompt.length
-                  if (cursorAtEnd) {
-                    e.preventDefault()
-                    navigateHistory('down')
                   }
                 }
               }}
-              onPaste={handlePaste}
               placeholder={t('common:placeholder.chatInput')}
-              autoFocus={takeFocus}
-              spellCheck={spellCheckChatInput}
-              data-gramm={spellCheckChatInput}
-              data-gramm_editor={spellCheckChatInput}
-              data-gramm_grammarly={spellCheckChatInput}
-              className={cn(
-                // 16px below md so a phone does not zoom into the field.
-                'w-full shrink-0 resize-none border-none bg-transparent px-3 pt-3 pb-1 text-base leading-normal text-foreground outline-0 placeholder:text-muted-foreground md:text-[13.5px]',
-                rows < maxRows && 'scrollbar-hide',
-                className
-              )}
-            />}
+              className={className}
+              domAttributes={{
+                'data-testid': 'chat-input',
+                // The `@` menu is a listbox the composer drives; these tell
+                // assistive technology which row is active without moving focus.
+                'aria-autocomplete': 'list',
+                'aria-controls': slashCommands.open
+                  ? slashListId
+                  : filePickerOpen
+                    ? referenceListId
+                    : undefined,
+                'aria-activedescendant':
+                  slashCommands.open && slashCommands.visible.length > 0
+                    ? slashOptionId(slashListId, slashCommands.activeIndex)
+                    : filePickerOpen && filePickerEntries.length > 0
+                      ? optionId(referenceListId, referenceActive)
+                      : undefined,
+                spellcheck: String(spellCheckChatInput),
+                'data-gramm': String(spellCheckChatInput),
+              }}
+            />
             {/* @path file reference picker popover */}
             {/* Shown wherever a folder is attached -- Cowork included, which
                 is not "agent mode" -- because that folder is all it offers. */}
