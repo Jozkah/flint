@@ -5709,19 +5709,38 @@ async fn orchestrate_inner(
     if !arranged.prompt.is_empty() {
         set_system_prompt(&mut conversation_messages, &arranged.prompt);
     }
+    // One id for this run, used by the cancellation scope, the execution
+    // record and every request's invocation (AH-004): minted once so a stop, a
+    // snapshot and a recorded call all name the same run.
+    let run_id = run_id_for_cancellation(session_id.as_deref());
     // `UserPromptSubmit` hooks see the prompt this run is answering. Their
     // output travels through the append-only reminder channel, like the todo
     // guidance below, so the system prompt stays byte-stable.
+    //
+    // Fail closed on a stop: a run cancelled while these hooks ran must not go
+    // on to answer a prompt nothing has checked. A hook that merely fails or
+    // times out adds nothing and the turn continues.
     if !cc_hooks.is_empty() {
         if let Some(prompt) = trailing_user_text(&conversation_messages) {
-            for block in crate::core::agent::cc_hooks::prompt_submit_context(
+            let hook_scope = tauri_plugin_agent_tools::lifecycle::register(
+                tauri_plugin_agent_tools::lifecycle::Token::new(
+                    tauri_plugin_agent_tools::lifecycle::Scope::new(
+                        session_id.clone().unwrap_or_default(),
+                        run_id.clone(),
+                        "prompt-submit-hooks".to_string(),
+                    ),
+                ),
+            );
+            let blocks = crate::core::agent::cc_hooks::prompt_submit_context(
                 &cc_hooks,
                 session_id.as_deref(),
                 &cc_cwd,
                 &prompt,
+                Some(hook_scope.token()),
             )
             .await
-            {
+            .map_err(|stopped| HarnessError::cancelled(stopped.message()))?;
+            for block in blocks {
                 crate::core::agent::reminder::attach(&mut conversation_messages, &block);
             }
         }
@@ -5910,10 +5929,6 @@ async fn orchestrate_inner(
         }
     }
 
-    // One id for this run, used by the cancellation scope, the execution
-    // record and every request's invocation (AH-004): minted once so a stop, a
-    // snapshot and a recorded call all name the same run.
-    let run_id = run_id_for_cancellation(session_id.as_deref());
     let invocations = std::sync::Arc::new(Invocations::new(
         session_id.clone().unwrap_or_default(),
         run_id.clone(),
