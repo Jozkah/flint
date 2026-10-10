@@ -60,5 +60,20 @@
   "reopenGuide": "Panduan memulai",
   "reopenGuideDescription": "Telusuri lagi cara memilih model, menambahkan materi, dan menyelesaikan tugas pertama.",
   "reopenGuideAction": "Buka panduan",
-  "resumeRecent": "Lanjutkan percakapan terakhir Anda: {{title}}"
+  "resumeRecent": "Lanjutkan percakapan terakhir Anda: {{title}}",
+  "modelSetup": {
+    "title": "Bagaimana Anda ingin mendapatkan model?",
+    "local": {
+      "title": "Gunakan model di komputer ini",
+      "body": "Jelajahi model dan lihat mana yang cocok dengan perangkat keras Anda."
+    },
+    "provider": {
+      "title": "Hubungkan penyedia",
+      "body": "Gunakan model yang di-hosting dengan akun Anda sendiri."
+    },
+    "import": {
+      "title": "Impor file",
+      "body": "Tambahkan file model yang sudah Anda miliki."
+    }
+  }
 }

@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Installati",
     "installedSub": "{{local}} locali · {{remote}} remoti",
+    "remoteAvailableSub": "{{count}} modelli remoti disponibili",
     "loaded": "Caricati ora",
     "loadedSub": "su {{count}} modelli locali",
     "disk": "Disco usato",
@@ -61,7 +62,8 @@
     "off": "Off",
     "loaded": "Caricato",
     "ready": "Pronto",
-    "noKey": "Nessuna chiave API"
+    "noKey": "Nessuna chiave API",
+    "keyless": "Nessuna chiave richiesta"
   },
   "installed": {
     "title": "Modelli installati",

@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "इंस्टॉल किए गए",
     "installedSub": "{{local}} लोकल · {{remote}} रिमोट",
+    "remoteAvailableSub": "{{count}} रिमोट मॉडल उपलब्ध",
     "loaded": "अभी लोड",
     "loadedSub": "{{count}} लोकल मॉडल में से",
     "disk": "उपयोग की गई डिस्क",
@@ -60,7 +61,8 @@
     "off": "बंद",
     "loaded": "लोड",
     "ready": "तैयार",
-    "noKey": "कोई API कुंजी नहीं"
+    "noKey": "कोई API कुंजी नहीं",
+    "keyless": "कुंजी की ज़रूरत नहीं"
   },
   "installed": {
     "title": "इंस्टॉल किए गए मॉडल",

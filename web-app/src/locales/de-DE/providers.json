@@ -11,6 +11,9 @@
   "noNewModels": "Keine neuen Modelle gefunden. Alle verfügbaren Modelle sind bereits hinzugefügt.",
   "refreshModelsFailed": "Das Abrufen der Modelle von {{provider}} ist fehlgeschlagen. Bitte überprüfe Deinen API-Schlüssel und die Basis-URL.",
   "models": "Modelle",
+  "filterModels": "{{count}} Modelle filtern",
+  "modelsShown": "{{shown}} von {{total}} angezeigt",
+  "showMoreModels": "Mehr anzeigen",
   "backendInstalled": "Installiert",
   "backendHistoryShow": "Update-Verlauf anzeigen",
   "backendHistoryHide": "Update-Verlauf ausblenden",
@@ -73,6 +76,8 @@
     "modelExists": "Modell bereits vorhanden",
     "modelExistsDesc": "Bitte wähle eine andere Modell-ID."
   },
+  "revealModelFile": "Modelldatei im Ordner anzeigen",
+  "revealModelFileFailed": "Der Modellordner konnte nicht geöffnet werden.",
   "deleteModel": {
     "title": "Lösche Modell: {{modelId}}",
     "description": "Möchtest Du dieses Modell wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Alle löschen",
+    "repoTitle": "Dieses heruntergeladene Modell löschen?",
+    "clearButton": "Liste leeren",
+    "clearTitle": "Alle Modelle dieses Anbieters entfernen?",
+    "clearDescription": "Dadurch werden {{count}} Modell(e) aus der Liste entfernt. Beim Anbieter wird nichts gelöscht, und „Aktualisieren“ kann sie wieder hinzufügen.",
     "title": "Alle heruntergeladenen Modelle löschen?",
     "description": "Dadurch werden {{count}} Modell(e) endgültig vom Datenträger entfernt.",
     "sizeLabel": "Freizugebender Speicherplatz:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Namen für den Anbieter eingeben",
   "baseUrl": {
     "title": "Basis-URL",
+    "openaiDescription": "Verwende einen Proxy oder ein Gateway, das die OpenAI-API spricht. Standard ist https://api.openai.com/v1.",
     "azureDescription": "Dein Azure-OpenAI-Endpunkt. Ersetze YOUR-RESOURCE-NAME durch den Namen deiner Azure-Ressource.",
     "qwenDescription": "Dein Model-Studio-Endpunkt. Ein Schlüssel funktioniert nur in der Region, in der er erstellt wurde: Verwende https://dashscope-intl.aliyuncs.com/compatible-mode/v1 für Singapur oder https://dashscope.aliyuncs.com/compatible-mode/v1 für das chinesische Festland."
   },

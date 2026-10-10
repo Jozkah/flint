@@ -330,7 +330,8 @@
     "continue": "Pokračovat",
     "toShort": "Komu",
     "placeholderTo": "Napište {{name}}…",
-    "mention": "Zmínit účastníka"
+    "mention": "Zmínit účastníka",
+    "dropSkipped": "Nepřidáno (není to text, jde o složku nebo je překročen limit zprávy): {{files}}"
   },
   "kpi": {
     "running": "Běží",

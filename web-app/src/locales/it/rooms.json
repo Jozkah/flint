@@ -330,7 +330,8 @@
     "continue": "Continua",
     "toShort": "A",
     "placeholderTo": "Scrivi a {{name}}…",
-    "mention": "Menziona un partecipante"
+    "mention": "Menziona un partecipante",
+    "dropSkipped": "Non aggiunto (non è testo, è una cartella o supera il limite del messaggio): {{files}}"
   },
   "kpi": {
     "running": "In esecuzione",

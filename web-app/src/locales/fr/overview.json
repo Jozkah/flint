@@ -59,5 +59,9 @@
     "approval": "Approbation requise",
     "done": "Terminé",
     "idle": "Non démarré"
-  }
+  },
+  "resumeSub": "Commencez quelque chose de nouveau ou reprenez là où vous vous êtes arrêté.",
+  "startChat": "Poser une question",
+  "startFiles": "Cowork",
+  "usage": "Utilisation"
 }

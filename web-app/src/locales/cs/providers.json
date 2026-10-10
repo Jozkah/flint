@@ -11,6 +11,9 @@
   "noNewModels": "Nebyly nalezeny žádné nové modely. Všechny dostupné modely již byly přidány.",
   "refreshModelsFailed": "Nepodařilo se načíst modely od {{provider}}. Zkontrolujte prosím váš API klíč a základní URL.",
   "models": "Modely",
+  "filterModels": "Filtrovat {{count}} modelů",
+  "modelsShown": "Zobrazeno {{shown}} z {{total}}",
+  "showMoreModels": "Zobrazit více",
   "backendInstalled": "Nainstalováno",
   "backendHistoryShow": "Zobrazit historii aktualizací",
   "backendHistoryHide": "Skrýt historii aktualizací",
@@ -73,6 +76,8 @@
     "modelExists": "Model již existuje",
     "modelExistsDesc": "Zvolte prosím jiné ID modelu."
   },
+  "revealModelFile": "Zobrazit soubor modelu ve složce",
+  "revealModelFileFailed": "Složku modelu se nepodařilo otevřít.",
   "deleteModel": {
     "title": "Smazat model: {{modelId}}",
     "description": "Opravdu chcete smazat tento model? Tuto akci nelze vrátit zpět.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Smazat vše",
+    "repoTitle": "Smazat tento stažený model?",
+    "clearButton": "Vymazat seznam",
+    "clearTitle": "Odebrat všechny modely tohoto poskytovatele?",
+    "clearDescription": "Tím se ze seznamu odebere modelů: {{count}}. U poskytovatele se nic nesmaže a tlačítkem Obnovit je lze přidat zpět.",
     "title": "Smazat všechny stažené modely?",
     "description": "Tímto se z disku natrvalo odebere modelů: {{count}}.",
     "sizeLabel": "Uvolněné místo na disku:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Zadejte název pro poskytovatele",
   "baseUrl": {
     "title": "Základní URL",
+    "openaiDescription": "Použijte proxy nebo bránu, která mluví API OpenAI. Výchozí hodnota je https://api.openai.com/v1.",
     "azureDescription": "Váš koncový bod Azure OpenAI. Nahraďte YOUR-RESOURCE-NAME názvem svého prostředku Azure.",
     "qwenDescription": "Váš koncový bod Model Studio. Klíč funguje jen v regionu, ve kterém byl vytvořen: použijte https://dashscope-intl.aliyuncs.com/compatible-mode/v1 pro Singapur nebo https://dashscope.aliyuncs.com/compatible-mode/v1 pro pevninskou Čínu."
   },

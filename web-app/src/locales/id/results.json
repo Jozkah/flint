@@ -11,7 +11,8 @@
     "where": "Lokasi hasil",
     "checked": "Yang diperiksa",
     "unresolved": "Belum selesai",
-    "next": "Langkah berikutnya"
+    "next": "Langkah berikutnya",
+    "details": "Detail"
   },
   "headline": {
     "running": "Eksekusi masih berjalan.",

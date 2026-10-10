@@ -11,6 +11,7 @@
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "Klíč API",
   "apiKeyPlaceholder": "Vložte svůj klíč API",
+  "apiKeyOptionalPlaceholder": "Vložte svůj klíč API (volitelné)",
   "invalidBaseUrl": "Základní URL musí být platná adresa URL http(s)",
   "globalSettings": "Globální nastavení",
   "stripReasoning": "Odstraňovat uvažování z kontextu",

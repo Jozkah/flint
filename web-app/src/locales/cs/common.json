@@ -74,6 +74,9 @@
     "back": "Zpět",
     "forward": "Vpřed",
     "close": "Zavřít náhled",
+    "copyUrl": "Kopírovat URL",
+    "urlCopied": "URL zkopírována",
+    "copyFailed": "URL se nepodařilo zkopírovat",
     "blockedBanner": "Tento web může blokovat vkládání. Otevřete ho v prohlížeči nebo ho vyjměte do okna.",
     "interceptSetting": "Otevírat odkazy v náhledu v aplikaci",
     "interceptSettingDesc": "Když je zapnuto, kliknutí na webový odkaz ho otevře v panelu náhledu místo v prohlížeči.",
@@ -579,6 +582,13 @@
   "modelSettings": {
     "title": "Nastavení modelu - {{modelId}}",
     "description": "Nakonfigurujte nastavení modelu pro optimalizaci výkonu a chování.",
+    "visionProjector": {
+      "title": "Vizuální projektor (mmproj)",
+      "paired": "Spárován",
+      "none": "Žádný",
+      "pairedHint": "Tento model umí přijímat obrázky. Projektor se vybírá při importu modelu; chcete-li použít jiný, importujte model znovu.",
+      "noneHint": "Bez vizuálního projektoru tento model nedokáže číst obrázky. Importujte model znovu se zapnutou funkcí Multimodální a vyberte jeho soubor mmproj; projektor uložený vedle souboru modelu se najde automaticky."
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "Výchozí parametry vzorkování",
@@ -593,7 +603,9 @@
       "nMin": "Minimum navržených tokenů",
       "nMinDescription": "Minimální počet tokenů navržených na krok. Výchozí 0.",
       "pMin": "Minimální pravděpodobnost návrhu",
-      "pMinDescription": "Minimální pravděpodobnost pro greedy navrhování (0–1). Výchozí 0,75."
+      "pMinDescription": "Minimální pravděpodobnost pro greedy navrhování (0–1). Výchozí 0,75.",
+      "probabilistic": "Vzorkovat návrh",
+      "probabilisticDescription": "Vzorkuje navržené tokeny místo výběru nejpravděpodobnějšího a ověřuje je rejection samplingem. Díky tomu zůstane zrychlení zachováno i při teplotě nad 0. Ve výchozím stavu vypnuto; u návrhů DFlash, které vyžadují greedy ověření, se ignoruje."
     },
     "templateKwargs": {
       "section": "Možnosti šablony chatu",
@@ -700,6 +712,9 @@
       "assistant": "Asistent",
       "selectAssistant": "Vyberte asistenta (volitelné)",
       "noAssistant": "Žádný asistent",
+      "model": "Výchozí model",
+      "selectModel": "Použít volbu ze selektoru modelů",
+      "noModel": "Žádný výchozí model",
       "addAssistant": "Přidat asistenta",
       "createButton": "Vytvořit",
       "updateButton": "Aktualizovat",
@@ -1067,6 +1082,7 @@
     "stopped": "Zastaveno.",
     "failed": "Běh se předčasně zastavil.",
     "tryAgain": "Zkusit znovu",
+    "attachFolder": "Připojit složku",
     "deadline": "Zastaveno — tento běh dosáhl časového limitu.",
     "timeout": "Zastaveno — model přestal odpovídat.",
     "loop": "Zastaveno — běh se opakoval, aniž by postupoval.",
@@ -1494,6 +1510,13 @@
       "enable": "Zapnout vidění",
       "needsMmproj": "Tento místní model potřebuje soubor mmproj, než bude moct vidět. Přidejte ho v nastavení modelu a poté obrázek přiložte znovu."
     }
+  },
+  "pastedPath": {
+    "file": "Připojit „{{name}}“ k této zprávě?",
+    "folder": "Připojit složku „{{name}}“ k této relaci?",
+    "attach": "Připojit",
+    "dismiss": "Zavřít",
+    "failed": "Soubor se nepodařilo připojit"
   },
   "drop": {
     "openInCode": "Pusťte pro otevření — jen pro čtení",
@@ -2034,6 +2057,7 @@
     "serverStopped": "Místní API vypnuto"
   },
   "shell": {
+    "discover": "Objevovat",
     "openNavigation": "Otevřít navigaci",
     "closeNavigation": "Zavřít navigaci",
     "showContent": "Obsah",
@@ -2101,6 +2125,9 @@
       "closed": "Zavřeno bez sloučení"
     },
     "overview": "Přehled",
+    "resume": "Pokračovat a využití",
+    "more": "Více",
+    "advanced": "Pokročilé",
     "usageOverview": "Přehled využití",
     "movedTo": "Přesunuto do {{name}}",
     "notifications": "Oznámení",
@@ -2525,6 +2552,11 @@
   },
   "voicePill": {
     "cancel": "Zrušit"
+  },
+  "coworkRunSettings": {
+    "label": "Nastavení běhu",
+    "title": "Jak tento běh funguje",
+    "effort": "Úsilí: {{level}}"
   },
   "motionMedia": {
     "queued": "Ve frontě",

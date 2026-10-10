@@ -73,6 +73,9 @@
     "back": "Enrere",
     "forward": "Endavant",
     "close": "Tanca la previsualització",
+    "copyUrl": "Copia l'URL",
+    "urlCopied": "URL copiat",
+    "copyFailed": "No s'ha pogut copiar l'URL",
     "blockedBanner": "Aquest lloc pot bloquejar la incrustació. Obre'l al navegador o treu-lo a una finestra.",
     "interceptSetting": "Obre els enllaços en una previsualització dins l'aplicació",
     "interceptSettingDesc": "Si està activat, en fer clic en un enllaç web s'obre en un tauler de previsualització en lloc del navegador.",
@@ -574,6 +577,13 @@
   "modelSettings": {
     "title": "Paràmetres del model - {{modelId}}",
     "description": "Configura els paràmetres del model per optimitzar el rendiment i el comportament.",
+    "visionProjector": {
+      "title": "Projector de visió (mmproj)",
+      "paired": "Associat",
+      "none": "Cap",
+      "pairedHint": "Aquest model pot rebre imatges com a entrada. El projector es tria en importar el model; torna'l a importar per usar-ne un de diferent.",
+      "noneHint": "Sense un projector de visió, aquest model no pot llegir imatges. Torna a importar el model amb Multimodal activat i tria el seu fitxer mmproj; un projector al costat del fitxer del model es troba automàticament."
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "Paràmetres de mostreig per defecte",
@@ -588,7 +598,9 @@
       "nMin": "Mínim de tokens d'esborrany",
       "nMinDescription": "Nombre mínim de tokens a redactar per pas. Per defecte 0.",
       "pMin": "Probabilitat mínima d'esborrany",
-      "pMinDescription": "Probabilitat mínima per a la redacció voraç (0–1). Per defecte 0,75."
+      "pMinDescription": "Probabilitat mínima per a la redacció voraç (0–1). Per defecte 0,75.",
+      "probabilistic": "Mostrejar l'esborrany",
+      "probabilisticDescription": "Mostreja els tokens d'esborrany en lloc de prendre el més probable i els verifica per mostreig de rebuig. Així es manté l'acceleració quan la temperatura és superior a 0. Desactivat per defecte; s'ignora per als esborranys DFlash, que necessiten verificació voraç."
     },
     "templateKwargs": {
       "section": "Opcions de la plantilla de xat",
@@ -695,6 +707,9 @@
       "assistant": "Assistent",
       "selectAssistant": "Selecciona un assistent (opcional)",
       "noAssistant": "Cap assistent",
+      "model": "Model per defecte",
+      "selectModel": "Usa l'opció del selector de models",
+      "noModel": "Cap model per defecte",
       "addAssistant": "Afegeix un assistent",
       "createButton": "Crea",
       "updateButton": "Actualitza",
@@ -1057,6 +1072,7 @@
     "stopped": "Aturat.",
     "failed": "L'execució s'ha aturat abans d'hora.",
     "tryAgain": "Torna-ho a provar",
+    "attachFolder": "Adjunta una carpeta",
     "deadline": "Aturat: aquesta execució ha arribat al límit de temps.",
     "timeout": "Aturat: el model ha deixat de respondre.",
     "loop": "Aturat: l'execució es repetia sense avançar.",
@@ -1467,6 +1483,13 @@
       "enable": "Activa la visió",
       "needsMmproj": "Aquest model local necessita un fitxer mmproj per poder veure. Afegeix-ne un des de la configuració del model i torna a adjuntar la imatge."
     }
+  },
+  "pastedPath": {
+    "file": "Vols adjuntar «{{name}}» a aquest missatge?",
+    "folder": "Vols adjuntar la carpeta «{{name}}» a aquesta sessió?",
+    "attach": "Adjunta",
+    "dismiss": "Descarta",
+    "failed": "No s'ha pogut adjuntar el fitxer"
   },
   "drop": {
     "openInCode": "Deixa anar per obrir: només lectura",
@@ -1998,6 +2021,7 @@
     "serverStopped": "API local desactivada"
   },
   "shell": {
+    "discover": "Descobreix",
     "openNavigation": "Obre la navegació",
     "closeNavigation": "Tanca la navegació",
     "showContent": "Contingut",
@@ -2063,6 +2087,9 @@
       "closed": "Tancada sense fusionar"
     },
     "overview": "Resum",
+    "resume": "Represa i ús",
+    "more": "Més",
+    "advanced": "Avançat",
     "usageOverview": "Resum d'ús",
     "movedTo": "S'ha mogut a {{name}}",
     "notifications": "Notificacions",
@@ -2479,6 +2506,11 @@
   },
   "voicePill": {
     "cancel": "Cancel·la"
+  },
+  "coworkRunSettings": {
+    "label": "Paràmetres de l'execució",
+    "title": "Com funciona aquesta execució",
+    "effort": "Esforç: {{level}}"
   },
   "motionMedia": {
     "queued": "A la cua",

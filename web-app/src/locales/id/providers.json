@@ -11,6 +11,9 @@
   "noNewModels": "Tidak ada model baru yang ditemukan. Semua model yang tersedia sudah ditambahkan.",
   "refreshModelsFailed": "Gagal mengambil model dari {{provider}}. Silakan periksa kunci API dan URL dasar Anda.",
   "models": "Model",
+  "filterModels": "Filter {{count}} model",
+  "modelsShown": "Menampilkan {{shown}} dari {{total}}",
+  "showMoreModels": "Tampilkan lebih banyak",
   "backendInstalled": "Terpasang",
   "backendHistoryShow": "Tampilkan riwayat pembaruan",
   "backendHistoryHide": "Sembunyikan riwayat pembaruan",
@@ -73,6 +76,8 @@
     "modelExists": "Model sudah ada",
     "modelExistsDesc": "Silakan pilih ID model yang berbeda."
   },
+  "revealModelFile": "Tampilkan file model di folder",
+  "revealModelFileFailed": "Tidak dapat membuka folder model.",
   "deleteModel": {
     "title": "Hapus Model: {{modelId}}",
     "description": "Apakah Anda yakin ingin menghapus model ini? Tindakan ini tidak dapat dibatalkan.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Hapus Semua",
+    "repoTitle": "Hapus model yang diunduh ini?",
+    "clearButton": "Kosongkan daftar",
+    "clearTitle": "Hapus semua model dari penyedia ini?",
+    "clearDescription": "Ini menghapus {{count}} model dari daftar. Tidak ada yang dihapus di sisi penyedia, dan Segarkan dapat menambahkannya kembali.",
     "title": "Hapus semua model yang diunduh?",
     "description": "Ini akan menghapus permanen {{count}} model dari disk.",
     "sizeLabel": "Ruang disk yang dibebaskan:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Masukkan nama untuk penyedia",
   "baseUrl": {
     "title": "Base URL",
+    "openaiDescription": "Gunakan proxy atau gateway yang kompatibel dengan API OpenAI. Defaultnya adalah https://api.openai.com/v1.",
     "azureDescription": "Endpoint Azure OpenAI Anda. Ganti YOUR-RESOURCE-NAME dengan nama resource Azure Anda.",
     "qwenDescription": "Endpoint Model Studio Anda. Kunci hanya berfungsi di wilayah tempat kunci dibuat: gunakan https://dashscope-intl.aliyuncs.com/compatible-mode/v1 untuk Singapura atau https://dashscope.aliyuncs.com/compatible-mode/v1 untuk Tiongkok daratan."
   },

@@ -72,6 +72,8 @@
     "openHint": "Ouvrir une autre conversation indépendante à côté de celle-ci",
     "openHintShortcut": "Ouvrir une autre conversation indépendante à côté de celle-ci ({{shortcut}})",
     "openInSplit": "Ouvrir en vue partagée",
+    "openIn": "Ouvrir dans",
+    "openInNewWindow": "Nouvelle fenêtre",
     "close": "Fermer la vue partagée",
     "closePane": "Fermer ce panneau",
     "addPane": "Ajouter un panneau",

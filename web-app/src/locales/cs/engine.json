@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Nainstalováno",
     "installedSub": "{{local}} lokálních · {{remote}} vzdálených",
+    "remoteAvailableSub": "K dispozici: {{count}} vzdálených modelů",
     "loaded": "Právě načteno",
     "loadedSub": "z {{count}} lokálních modelů",
     "disk": "Využitý disk",
@@ -62,7 +63,8 @@
     "off": "Vypnuto",
     "loaded": "Načteno",
     "ready": "Připraveno",
-    "noKey": "Bez klíče API"
+    "noKey": "Bez klíče API",
+    "keyless": "Klíč není potřeba"
   },
   "installed": {
     "title": "Nainstalované modely",

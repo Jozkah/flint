@@ -15,6 +15,7 @@
   "enterServerName": "Masukkan nama server",
   "command": "Perintah",
   "enterCommand": "Masukkan perintah (uvx atau npx)",
+  "commandHint": "Program apa pun di komputer ini dapat dipakai di sini, bukan hanya npx atau uvx (python, docker, node, sebuah binary). Program berjalan dengan hak akses pengguna Anda, jadi tambahkan hanya server yang Anda percayai.",
   "arguments": "Argumen",
   "argument": "Argumen {{index}}",
   "envVars": "Variabel Lingkungan",

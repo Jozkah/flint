@@ -11,6 +11,9 @@
   "noNewModels": "No s’han trobat models nous. Tots els disponibles ja s’han afegit.",
   "refreshModelsFailed": "No s’han pogut obtenir models de {{provider}}. Comprova la clau API i l’URL base.",
   "models": "Models",
+  "filterModels": "Filtra {{count}} models",
+  "modelsShown": "Es mostren {{shown}} de {{total}}",
+  "showMoreModels": "Mostra'n més",
   "backendInstalled": "Instal·lat",
   "backendHistoryShow": "Mostra l'historial d'actualitzacions",
   "backendHistoryHide": "Amaga l'historial d'actualitzacions",
@@ -73,6 +76,8 @@
     "modelExists": "El model ja existeix",
     "modelExistsDesc": "Si us plau, tria un altre ID de model."
   },
+  "revealModelFile": "Mostra el fitxer del model a la carpeta",
+  "revealModelFileFailed": "No s'ha pogut obrir la carpeta del model.",
   "deleteModel": {
     "title": "Suprimeix el model: {{modelId}}",
     "description": "Segur que vols suprimir aquest model? Aquesta acció no es pot desfer.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Suprimeix-ho tot",
+    "repoTitle": "Vols eliminar aquest model descarregat?",
+    "clearButton": "Esborra la llista",
+    "clearTitle": "Vols eliminar tots els models d'aquest proveïdor?",
+    "clearDescription": "S'eliminaran {{count}} model(s) de la llista. No s'elimina res al costat del proveïdor, i Actualitza els pot tornar a afegir.",
     "title": "Vols suprimir tots els models descarregats?",
     "description": "Això eliminarà definitivament {{count}} model(s) del disc.",
     "sizeLabel": "Espai de disc que s'alliberarà:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Introdueix el nom del proveïdor",
   "baseUrl": {
     "title": "URL base",
+    "openaiDescription": "Usa un servidor intermediari o una passarel·la que parli l'API d'OpenAI. El valor per defecte és https://api.openai.com/v1.",
     "azureDescription": "El teu endpoint d'Azure OpenAI. Substitueix YOUR-RESOURCE-NAME pel nom del teu recurs d'Azure.",
     "qwenDescription": "El teu endpoint de Model Studio. Una clau només funciona a la regió on es va crear: usa https://dashscope-intl.aliyuncs.com/compatible-mode/v1 per a Singapur o https://dashscope.aliyuncs.com/compatible-mode/v1 per a la Xina continental."
   },

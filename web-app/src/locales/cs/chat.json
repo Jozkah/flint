@@ -72,6 +72,8 @@
     "openHint": "Otevřít vedle této další, nezávislou konverzaci",
     "openHintShortcut": "Otevřít vedle této další, nezávislou konverzaci ({{shortcut}})",
     "openInSplit": "Otevřít v rozděleném zobrazení",
+    "openIn": "Otevřít v",
+    "openInNewWindow": "Nové okno",
     "close": "Zavřít rozdělení",
     "closePane": "Zavřít tento panel",
     "addPane": "Přidat panel",
