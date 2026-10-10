@@ -984,6 +984,13 @@ pub fn cli_agent_status(
                 "provider": c.provider,
                 "base_url": c.base_url,
                 "has_api_key": crate::core::cli::providers::has_credential(c),
+                // How this route reuses a prompt prefix: `explicit` (the
+                // request carries cache breakpoints), `implicit` (the provider
+                // caches by itself) or `none`.
+                "prompt_cache": crate::core::server::converters::CacheCapability::for_api_type(
+                    c.api_type.as_deref(),
+                )
+                .as_str(),
                 "models": c.models.len(),
             })
         })
