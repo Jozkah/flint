@@ -503,7 +503,7 @@ const CLAIM_SUBJECT: { kind: CheckClaim['kind']; pattern: RegExp }[] = [
 const CLAIM_SUCCESS =
   /\b(?:pass(?:es|ed|ing)?|succeed(?:s|ed)?|successful(?:ly)?|green|clean(?:ly)?|all good|no (?:errors|failures))\b/i
 const CLAIM_HEDGE =
-  /\b(?:not|never|no longer|didn'?t|doesn'?t|couldn'?t|can'?t|cannot|unable|should|would|could|might|may|if|once|after you|try|run the|please|failed|failing|fails)\b/i
+  /\b(?:not|never|no longer|didn'?t|doesn'?t|couldn'?t|can'?t|cannot|unable|should|would|could|might|may|if|once|after you|try|run the|please|failed|failing|fails|tell me|let me know|which|whether|want|convention)\b/i
 
 const MAX_CLAIMS = 3
 const MAX_CLAIM_LENGTH = 200
@@ -513,8 +513,12 @@ export function claimsFromText(text: string): CheckClaim[] {
   const sentences = text.replace(/```[\s\S]*?```/g, ' ').replace(/([.!?])\s+/g, '$1\n').split(/\n+/)
   for (const raw of sentences) {
     const sentence = raw.replace(/^[\s*>#-]+/, '').trim()
-    if (!sentence || !CLAIM_SUCCESS.test(sentence) || CLAIM_HEDGE.test(sentence)) continue
-    const subject = CLAIM_SUBJECT.find((one) => one.pattern.test(sentence))
+    // A question, an offer, or a success word that only sits inside quotes
+    // ("STATUS GREEN") is not the assistant saying a check passed.
+    if (!sentence || sentence.includes('?')) continue
+    const asserted = sentence.replace(/(["`]).*?\1|\u201c[^\u201d]*\u201d/g, ' ')
+    if (!CLAIM_SUCCESS.test(asserted) || CLAIM_HEDGE.test(asserted)) continue
+    const subject = CLAIM_SUBJECT.find((one) => one.pattern.test(asserted))
     if (!subject) continue
     claims.push({
       kind: subject.kind,
