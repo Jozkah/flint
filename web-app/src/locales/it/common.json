@@ -1490,6 +1490,11 @@
     "dismiss": "Ignora",
     "failed": "Impossibile allegare il file"
   },
+  "largePaste": {
+    "attached": "Incolla di grandi dimensioni allegato come {{name}}",
+    "hint": "Premi Ctrl/Cmd+Maiusc+V per incollarlo come testo.",
+    "undo": "Annulla"
+  },
   "drop": {
     "openInCode": "Rilascia per aprire — sola lettura",
     "attachToMessage": "Rilascia per allegare al messaggio",

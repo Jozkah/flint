@@ -1465,6 +1465,11 @@
     "dismiss": "Verwerfen",
     "failed": "Datei konnte nicht angehängt werden"
   },
+  "largePaste": {
+    "attached": "Großer Einfügetext als {{name}} angehängt",
+    "hint": "Mit Strg/Cmd+Umschalt+V fügen Sie stattdessen als Text ein.",
+    "undo": "Rückgängig"
+  },
   "drop": {
     "openInCode": "Zum Öffnen ablegen – schreibgeschützt",
     "attachToMessage": "Zum Anhängen an deine Nachricht ablegen",

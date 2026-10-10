@@ -1463,6 +1463,11 @@
     "dismiss": "閉じる",
     "failed": "ファイルを添付できませんでした"
   },
+  "largePaste": {
+    "attached": "長いテキストの貼り付けを {{name}} として添付しました",
+    "hint": "Ctrl/Cmd+Shift+V でテキストとして貼り付けられます。",
+    "undo": "元に戻す"
+  },
   "drop": {
     "openInCode": "ドロップして開く — 読み取り専用",
     "attachToMessage": "ドロップしてメッセージに添付",

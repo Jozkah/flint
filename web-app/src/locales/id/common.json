@@ -1442,6 +1442,11 @@
     "dismiss": "Tutup",
     "failed": "Tidak dapat melampirkan file"
   },
+  "largePaste": {
+    "attached": "Tempelan besar dilampirkan sebagai {{name}}",
+    "hint": "Tekan Ctrl/Cmd+Shift+V untuk menempel sebagai teks.",
+    "undo": "Urungkan"
+  },
   "drop": {
     "openInCode": "Jatuhkan untuk membuka — hanya-baca",
     "attachToMessage": "Jatuhkan untuk melampirkan ke pesan Anda",

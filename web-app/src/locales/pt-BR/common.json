@@ -1489,6 +1489,11 @@
     "dismiss": "Dispensar",
     "failed": "Não foi possível anexar o arquivo"
   },
+  "largePaste": {
+    "attached": "Colagem grande anexada como {{name}}",
+    "hint": "Pressione Ctrl/Cmd+Shift+V para colar como texto.",
+    "undo": "Desfazer"
+  },
   "drop": {
     "openInCode": "Solte para abrir — somente leitura",
     "attachToMessage": "Solte para anexar à sua mensagem",

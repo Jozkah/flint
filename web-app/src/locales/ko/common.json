@@ -1463,6 +1463,11 @@
     "dismiss": "닫기",
     "failed": "파일을 첨부하지 못했습니다"
   },
+  "largePaste": {
+    "attached": "긴 붙여넣기를 {{name}}(으)로 첨부했습니다",
+    "hint": "Ctrl/Cmd+Shift+V를 누르면 텍스트로 붙여넣습니다.",
+    "undo": "실행 취소"
+  },
   "drop": {
     "openInCode": "놓아서 열기 — 읽기 전용",
     "attachToMessage": "놓아서 메시지에 첨부",
