@@ -45,6 +45,10 @@
     "noneYet": "no replies yet"
   },
   "providers": {
+    "disableAll": "Disable all",
+    "enableAll": "Enable all",
+    "allDisabledToast": "All providers disabled",
+    "allEnabledToast": "All providers enabled",
     "title": "Providers",
     "onDevice": "On this device",
     "remote": "Remote",
