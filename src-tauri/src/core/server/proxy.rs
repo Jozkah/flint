@@ -2804,6 +2804,9 @@ pub(crate) fn add_cors_headers_with_host_and_origin(
         builder = builder
             .header("Access-Control-Allow-Origin", origin)
             .header("Access-Control-Allow-Credentials", "true");
+    } else if origin.is_empty() {
+        // curl and the OpenAI SDKs send no Origin; that is not a CORS problem.
+        log::debug!("CORS: request has no Origin header, nothing to reflect");
     } else {
         log::warn!(
             "CORS: Origin '{}' is not trusted, not reflecting origin",
