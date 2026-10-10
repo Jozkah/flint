@@ -20,7 +20,7 @@ import {
 } from '@/lib/mcpLiveTools'
 import { routeModelForTurn } from '@/lib/jevModelTurn'
 import { COWORK_SLOT_ID } from '@/constants/models'
-import { sandboxEnforces } from '@/lib/agentTools'
+import { AGENT_TOOL_NAMES, sandboxEnforces } from '@/lib/agentTools'
 import {
   chooseJevPromptRoute,
   jevModeSuggestion,
@@ -635,6 +635,13 @@ export class CoworkChatTransport extends CustomChatTransport {
       return
     }
     const tools = await buildCoworkTools(this.config)
+    // No built-in at all means the backend list failed to load. Use it for this
+    // turn but do not freeze or cache it, so the next turn asks again instead
+    // of keeping a run without file or messaging tools until restart.
+    if (!Object.keys(tools).some((name) => AGENT_TOOL_NAMES.has(name))) {
+      this.tools = tools
+      return
+    }
     this.builtTools = tools
     this.builtSig = sig
     this.frozenTools = tools
