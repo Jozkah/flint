@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn proxy_is_applied_to_a_public_url() {
         let p = settings(ON, None).unwrap();
-        let via = p.proxy_for_with_env(&u("https://huggingface.co/api/models"), &[]).unwrap();
+        let via = p.proxy_for_with_env(&u("https://huggingface.co/resolve-check"), &[]).unwrap();
         assert_eq!(via.host_str(), Some("proxy.corp"));
         assert_eq!(via.port(), Some(3128));
     }
