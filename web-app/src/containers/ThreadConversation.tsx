@@ -2,6 +2,7 @@ import { useModelToolsEnabled } from '@/hooks/useThreadToolGrants'
 import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
 import { switchedFromOf } from '@/lib/assistantSwitch'
 import { loadThreadMessages } from '@/lib/threadPrefetch'
+import { markThreadHasDocuments } from '@/lib/threadDocuments'
 import { markConversationOpened } from '@/lib/messageEntry'
 import { useRemoteChatActions, useRemoteComposer } from '@/lib/remote/composer'
 import { chatLiveReply } from '@/lib/remote/live'
@@ -1902,9 +1903,7 @@ export function ThreadConversation({
             for (const toolName of ragTools) {
               toolApproval.approveToolForThread(threadId, toolName)
             }
-            useThreads.getState().updateThread(threadId, {
-              metadata: { hasDocuments: true },
-            })
+            markThreadHasDocuments(threadId)
           }
         } catch (error) {
           console.error('Failed to process attachments:', error)
