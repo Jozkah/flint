@@ -180,13 +180,16 @@ export async function eraseThreadSlotState(args: {
 export async function reloadEngineModels(
   presetPath: string,
   modelsMax?: number,
-  slotCacheMib?: number
+  slotCacheMib?: number,
+  idleUnloadMinutes?: number
 ): Promise<ReloadReport> {
   return await invoke('plugin:llamacpp|reload_engine_models', {
     presetPath,
     modelsMax,
     slotCacheMib:
       slotCacheMib === undefined ? undefined : asI32(slotCacheMib),
+    idleUnloadMinutes:
+      idleUnloadMinutes === undefined ? undefined : asI32(idleUnloadMinutes),
   })
 }
 

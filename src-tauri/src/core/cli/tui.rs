@@ -140,6 +140,65 @@ fn sync_output_for(kind: super::terminal_setup::Kind) -> bool {
 fn use_synchronized_output() -> bool {
     sync_output_for(super::terminal_setup::identify(|k| std::env::var(k).ok()))
 }
+
+/// Everything `run` turns on, undone in one write for the panic hook: a held
+/// synchronized frame (a panic inside `terminal.draw` lands between its begin
+/// and end), bracketed paste, mouse tracking, keyboard enhancement, alternate
+/// scroll, the alternate screen, and a hidden cursor. Plain bytes, because the
+/// hook has no `&mut Terminal` to hand. Every sequence is a no-op when its mode
+/// is not on, so it is safe whatever `startup_modes` chose.
+fn panic_restore_sequence() -> String {
+    format!(
+        "\x1b[?2026l\x1b[?2004l\x1b[?1006l\x1b[?1002l\x1b[?1000l{KITTY_KEYS_OFF}{}\x1b[?1049l\x1b[?25h",
+        alt_scroll_restore(),
+    )
+}
+
+/// The thread running the render loop while it owns the terminal, or `None`
+/// once restored. A panic hook is process-wide, but only a panic on this thread
+/// ends the session; a spawned job's panic is a `JoinError` the loop survives,
+/// and tearing the modes down under a TUI that keeps drawing would wreck it.
+static TERMINAL_OWNER: std::sync::Mutex<Option<std::thread::ThreadId>> =
+    std::sync::Mutex::new(None);
+
+/// Give up the terminal if the current thread owns it, reporting whether it
+/// did. Taking the slot makes the restore run once.
+fn release_terminal() -> bool {
+    let mut owner = TERMINAL_OWNER.lock().unwrap_or_else(|e| e.into_inner());
+    if *owner == Some(std::thread::current().id()) {
+        *owner = None;
+        true
+    } else {
+        false
+    }
+}
+
+/// Install a hook that logs the panic and, when it lands on the render-loop
+/// thread, puts the terminal back before the previous hook prints its message,
+/// so the message is readable on a normal screen instead of lost in the
+/// alternate buffer. Chains the previous hook; unwinding continues as before.
+/// Call after `enable_raw_mode`, on the thread that runs the render loop.
+fn install_panic_hook() {
+    *TERMINAL_OWNER.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some(std::thread::current().id());
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // The stderr sink is muted for the session; the file log still records.
+        log::error!(
+            "panic in thread '{}': {info}\n{}",
+            std::thread::current().name().unwrap_or("unnamed"),
+            std::backtrace::Backtrace::force_capture()
+        );
+        if release_terminal() {
+            let _ = disable_raw_mode();
+            let mut stdout = io::stdout();
+            let _ = stdout.write_all(panic_restore_sequence().as_bytes());
+            let _ = stdout.flush();
+            super::file_log::set_stderr_enabled(true);
+        }
+        previous(info);
+    }));
+}
 /// How long the dock advertises a finished copy.
 const COPY_NOTICE: Duration = Duration::from_millis(1500);
 /// Terminals cap the OSC 52 payload they will accept; past this the sequence is
@@ -1766,6 +1825,9 @@ struct App {
     /// Token-spend ceiling for one message's run; `0` is unbounded. The only
     /// cap on run length -- there is no turn limit.
     max_session_tokens: u64,
+    /// `max_session_tokens` came from the flag or `[budget].max_tokens`; when
+    /// not, it follows the model's context window across a model switch.
+    max_session_tokens_pinned: bool,
     /// Repo top-level when the project is a git repo; enables workspace snapshots.
     /// Cleared if git setup fails, permanently disabling snapshots this session.
     repo_root: Option<PathBuf>,
@@ -2057,6 +2119,14 @@ struct App {
     compacting: Option<CompactKind>,
     /// When the in-flight compaction started, for the elapsed counter.
     compact_started: Option<Instant>,
+    /// The running turn is compacting itself (preflight, overflow or the
+    /// session budget), and since when. Display-only: unlike `compacting` it
+    /// gates nothing, because the run that compacts is the one already going.
+    run_compacting: Option<Instant>,
+    /// The running turn's upstream request failed before anything streamed and
+    /// the loop is waiting to resend it. Display-only; cleared by the next event
+    /// of the parent run, and by the run ending or being cancelled.
+    retrying: Option<RetryWait>,
     /// The in-flight compaction was triggered by a context-overflow error, so
     /// the errored turn is resumed once it lands.
     retry_after_compact: bool,
@@ -2448,6 +2518,7 @@ impl App {
             compaction_keep_recent: limits.compaction.keep_recent,
             max_tokens: limits.max_tokens,
             max_session_tokens: limits.max_session_tokens,
+            max_session_tokens_pinned: limits.max_session_tokens_pinned,
             repo_root,
             git_branch: git::current_branch(&project_root),
             project_root,
@@ -2544,6 +2615,8 @@ impl App {
             compact_request: None,
             compacting: None,
             compact_started: None,
+            run_compacting: None,
+            retrying: None,
             retry_after_compact: false,
             overflow_retries: 0,
             context_warned: false,
@@ -4741,6 +4814,17 @@ impl App {
         let changed = resolved.tokens != self.context_window;
         self.context_window = resolved.tokens;
         self.context_window_source = resolved.source;
+        // A window-derived session budget follows the model; one the user set
+        // (flag or `[budget].max_tokens`) stays put. An unknown model's guess
+        // is not a window, so it falls back to the default.
+        if !self.max_session_tokens_pinned {
+            self.max_session_tokens = match resolved.source {
+                crate::core::cli::model_capabilities::ContextWindowSource::Fallback => {
+                    super::DEFAULT_MAX_SESSION_TOKENS
+                }
+                _ => resolved.tokens,
+            };
+        }
         changed
     }
     /// Header label for the current selection: `provider/model` when the bare
@@ -5029,6 +5113,12 @@ impl App {
     /// Non-terminal stream events. `Done`/`Error` are handled by the loop since
     /// they mutate history and the run handle.
     fn apply(&mut self, ev: StreamEvent) {
+        // Whatever the parent run sends next -- a token, a tool call -- means
+        // the wait for a resend is over. A child's events say nothing about the
+        // parent's request.
+        if !matches!(ev, StreamEvent::Retry { .. } | StreamEvent::Subagent { .. }) {
+            self.retrying = None;
+        }
         match ev {
             StreamEvent::Token { text } => {
                 self.assistant_buf.push_str(&text);
@@ -5467,6 +5557,63 @@ impl App {
             // AH-174: the run's resource figures are recorded with its end and
             // shown on the timeline; the TUI's transcript does not repeat them.
             StreamEvent::Done { .. } | StreamEvent::Error { .. } | StreamEvent::RunResources { .. } => {}
+            // The loop's own compaction: a summarizer round trip the run is
+            // blocked on, which nothing else on screen would explain. The
+            // header and input row carry the throbber while it runs; the
+            // outcome is one transcript line saying why.
+            StreamEvent::Compaction { phase, reason, messages } => {
+                use crate::core::agent::events::{CompactionPhase, CompactionReason};
+                match phase {
+                    CompactionPhase::Started => self.run_compacting = Some(Instant::now()),
+                    CompactionPhase::Finished => {
+                        self.run_compacting = None;
+                        let why = match reason {
+                            CompactionReason::Preflight => "the prompt neared the context window",
+                            CompactionReason::ContextOverflow => {
+                                "the provider rejected the prompt as too long"
+                            }
+                            CompactionReason::SessionBudget => {
+                                "the session token budget was used up"
+                            }
+                        };
+                        self.finalize_tool_group();
+                        self.flush_assistant();
+                        match messages {
+                            Some(n) => self.note(&format!(
+                                "compacted {n} messages into a summary: {why}"
+                            )),
+                            None => self.note(&format!("compacted the conversation: {why}")),
+                        }
+                        // The next `MessagesUpdated` carries the shorter
+                        // history; the gauge is re-estimated against it.
+                        self.tokens_estimated = true;
+                    }
+                    CompactionPhase::Failed => {
+                        self.run_compacting = None;
+                        self.note("compaction did not shrink the conversation");
+                    }
+                }
+            }
+            // The live countdown carries every attempt; the transcript notes
+            // only the first, so a flaky link leaves one line, not ten.
+            StreamEvent::Retry {
+                attempt,
+                max_attempts,
+                delay_ms,
+                reason,
+            } => {
+                if attempt == 2 {
+                    self.finalize_tool_group();
+                    self.flush_assistant();
+                    self.note(&format!("{reason}; retrying"));
+                }
+                self.retrying = Some(RetryWait {
+                    attempt,
+                    max_attempts,
+                    at: Instant::now() + Duration::from_millis(delay_ms),
+                    reason,
+                });
+            }
             StreamEvent::MessagesUpdated { messages } => {
                 self.history = messages;
                 self.persist_in_background();
@@ -5724,6 +5871,8 @@ impl App {
         self.tokens = usage.and_then(|u| u.total_tokens).unwrap_or(self.tokens);
         self.status = Status::Idle;
         self.run_started = None;
+        self.run_compacting = None;
+        self.retrying = None;
         self.detail = format!("stop_reason={stop_reason}");
         self.scrollback = 0;
         self.publish_agent_status();
@@ -5832,6 +5981,8 @@ impl App {
         self.flush_assistant();
         self.status = Status::Idle;
         self.run_started = None;
+        self.run_compacting = None;
+        self.retrying = None;
         self.detail = if message.contains("budget") {
             format!("budget exhausted: {message}")
         } else {
@@ -5967,6 +6118,10 @@ impl App {
         }
         self.status = Status::Idle;
         self.run_started = None;
+        // A cancel sends no further event to close the compaction.
+        self.run_compacting = None;
+        // A cancel sends no further event to clear it.
+        self.retrying = None;
         // Drop any run queued but not yet spawned (still gated on model/MCP/
         // snapshot readiness); otherwise the loop starts it once ready and the
         // cancel is silently undone.
@@ -7077,6 +7232,30 @@ struct StartingPreview {
     /// the in-flight row shows the command being typed into the same terminal box
     /// the running call becomes. `None` for every other tool.
     command: Option<String>,
+}
+
+/// A pending resend of a failed upstream request, from `StreamEvent::Retry`.
+struct RetryWait {
+    attempt: u32,
+    max_attempts: u32,
+    /// When the resend goes out, for the countdown.
+    at: Instant,
+    reason: String,
+}
+
+/// The input row while a resend is pending: a countdown until it goes out,
+/// then the attempt itself, which can take as long as a connect timeout.
+fn retry_wait_label(wait: &RetryWait, now: Instant) -> String {
+    let left = wait.at.saturating_duration_since(now);
+    let when = if left.is_zero() {
+        "retrying".to_string()
+    } else {
+        format!("retrying in {}s", left.as_secs_f32().ceil() as u64)
+    };
+    format!(
+        "{when} (attempt {}/{})... {}",
+        wait.attempt, wait.max_attempts, wait.reason
+    )
 }
 
 /// A tool call announced by the model whose arguments are still arriving.
@@ -8438,6 +8617,9 @@ pub async fn run(
     let prev_stderr_log = super::file_log::set_stderr_enabled(false);
 
     enable_raw_mode().map_err(|e| e.to_string())?;
+    // From here a panic must not leave the shell in raw mode on the alternate
+    // screen: install before anything that can panic runs.
+    install_panic_hook();
     // Under raw mode (so an OSC 11 reply is not echoed) but before the alternate
     // screen, so a query the terminal ignores leaves no stray bytes on the frame.
     theme::resolve_and_apply(theme_pref);
@@ -8569,6 +8751,9 @@ pub async fn run(
     // process that exits now would lose it, and with it that turn's resume.
     app.join_journal();
 
+    // Clean exit: the terminal is restored below, so a later panic (the hook
+    // stays installed for the process) must not restore it a second time.
+    release_terminal();
     let _ = disable_raw_mode();
     let _ = execute!(
         terminal.backend_mut(),
@@ -17826,6 +18011,10 @@ fn header(app: &App) -> Paragraph<'static> {
 fn header_spans(app: &App) -> Vec<Span<'static>> {
     let (status, style): (String, Style) = if let Some(kind) = app.compacting {
         (kind.label().to_string(), Style::new().magenta().bold())
+    } else if app.run_compacting.is_some() {
+        ("compacting".to_string(), Style::new().magenta().bold())
+    } else if app.retrying.is_some() {
+        ("retrying".to_string(), Style::new().yellow().bold())
     } else if app.mcp_auth.is_some() {
         // A sign-in runs while the model is otherwise idle; the badge stands in
         // for `[ready]` so the pending auth is visible even off the `/mcp` screen.
@@ -18253,6 +18442,25 @@ fn input_box(app: &App) -> Paragraph<'static> {
             ),
         ]))
         .block(block)
+    } else if let Some(started) = app.run_compacting.filter(|_| app.input.is_empty()) {
+        // The run is waiting on the summarizer; without this the row reads
+        // "working" through a round trip that can take a while.
+        Paragraph::new(Line::from(vec![
+            Span::styled(format!("{} ", app.spinner()), Style::new().magenta()),
+            Span::styled(
+                format!("compacting conversation… {}", format_elapsed(started.elapsed().as_secs())),
+                Style::new().dim().italic(),
+            ),
+        ]))
+        .block(block)
+    } else if let Some(wait) = app.retrying.as_ref().filter(|_| app.input.is_empty()) {
+        // Without this the row reads "working" through up to the whole retry
+        // budget, indistinguishable from a slow model.
+        Paragraph::new(Line::from(vec![
+            Span::styled(format!("{} ", app.spinner()), Style::new().yellow()),
+            Span::styled(retry_wait_label(wait, Instant::now()), Style::new().dim().italic()),
+        ]))
+        .block(block)
     } else if app.picker.is_some() {
         Paragraph::new(Line::styled("selecting…", Style::new().dim().italic())).block(block)
     } else if app.status == Status::Running && app.input.is_empty() {
@@ -18633,6 +18841,7 @@ mod tests {
             compaction: Default::default(),
             max_tokens: None,
             max_session_tokens: 128_000,
+            max_session_tokens_pinned: true,
             max_turns: None,
             cost_ceiling: None,
         };
@@ -18964,6 +19173,7 @@ mod tests {
             compaction: Default::default(),
                     max_tokens: None,
                     max_session_tokens: 128_000,
+                    max_session_tokens_pinned: true,
                     max_turns: None,
                     cost_ceiling: None,
                 },
@@ -29114,6 +29324,34 @@ mod tests {
         assert_eq!(KITTY_KEYS_OFF, "\x1b[<u", "the push must be popped on exit");
     }
 
+    /// The panic hook's restore turns every mode `run` can have enabled back
+    /// off, and ends a synchronized frame first so the message is not held.
+    #[test]
+    fn panic_restore_undoes_every_startup_mode() {
+        let seq = super::panic_restore_sequence();
+        for off in [
+            "\x1b[?2026l", "\x1b[?2004l", "\x1b[?1006l", "\x1b[?1002l", "\x1b[?1000l",
+            KITTY_KEYS_OFF, "\x1b[?1049l", "\x1b[?25h",
+        ] {
+            assert!(seq.contains(off), "missing {off:?}");
+        }
+        assert!(seq.starts_with("\x1b[?2026l"), "end the held frame first");
+        let alt_screen = seq.find("\x1b[?1049l").unwrap();
+        assert!(seq.find("\x1b[?1000l").unwrap() < alt_screen);
+    }
+
+    /// Only the render-loop thread's panic restores the terminal, and once.
+    #[test]
+    fn only_the_owning_thread_releases_the_terminal() {
+        *super::TERMINAL_OWNER.lock().unwrap() = None;
+        assert!(!super::release_terminal(), "nobody owns it yet");
+        *super::TERMINAL_OWNER.lock().unwrap() = Some(std::thread::current().id());
+        let other = std::thread::spawn(super::release_terminal).join().unwrap();
+        assert!(!other, "a job thread's panic must leave the TUI alone");
+        assert!(super::release_terminal(), "the owner restores");
+        assert!(!super::release_terminal(), "and only once");
+    }
+
     /// Keyboard enhancement is not the mouse: it goes out whether or not
     /// tracking is on, since the composer's editing keys depend on it.
     #[test]
@@ -29553,6 +29791,127 @@ mod tests {
         start_subagent(&mut app, "r0", "alpha");
         let out = render_rows(&mut app, 100, 20).join("\n");
         assert!(out.contains("1 agent") && out.contains("alpha"), "{out}");
+    }
+
+    fn compaction_event(
+        phase: crate::core::agent::events::CompactionPhase,
+        messages: Option<usize>,
+    ) -> StreamEvent {
+        StreamEvent::Compaction {
+            phase,
+            reason: crate::core::agent::events::CompactionReason::SessionBudget,
+            messages,
+        }
+    }
+
+    /// A compaction the run does itself shows as `compacting` while it runs,
+    /// and leaves one line saying why when it lands.
+    #[test]
+    fn an_in_run_compaction_is_shown_and_then_explained() {
+        use crate::core::agent::events::CompactionPhase;
+        let mut app = test_app();
+        app.status = Status::Running;
+        app.apply(compaction_event(CompactionPhase::Started, None));
+        let header: String = header_spans(&app).iter().map(|s| s.content.to_string()).collect();
+        assert!(header.contains("compacting"), "{header}");
+        app.apply(compaction_event(CompactionPhase::Finished, Some(12)));
+        assert!(app.run_compacting.is_none());
+        let rows = render_rows(&mut app, 120, 30).join("\n");
+        assert!(
+            rows.contains("compacted 12 messages into a summary: the session token budget was used up"),
+            "{rows}"
+        );
+    }
+
+    #[test]
+    fn a_failed_or_cancelled_compaction_clears_the_throbber() {
+        use crate::core::agent::events::CompactionPhase;
+        let mut app = test_app();
+        app.status = Status::Running;
+        app.apply(compaction_event(CompactionPhase::Started, None));
+        app.apply(compaction_event(CompactionPhase::Failed, None));
+        assert!(app.run_compacting.is_none());
+        app.apply(compaction_event(CompactionPhase::Started, None));
+        app.cancel_run();
+        assert!(app.run_compacting.is_none());
+    }
+
+    /// A window-derived budget follows a model switch; a pinned one does not.
+    #[test]
+    fn a_window_derived_budget_follows_the_model_and_a_pinned_one_does_not() {
+        let mut t = test_app();
+        let app = &mut t.app;
+        app.max_session_tokens_pinned = false;
+        app.model = "claude-sonnet-4-6".into();
+        app.refresh_context_window();
+        if app.context_window_source
+            != crate::core::cli::model_capabilities::ContextWindowSource::Fallback
+        {
+            assert_eq!(app.max_session_tokens, app.context_window);
+        }
+        app.model = "no-such-model-anywhere".into();
+        app.refresh_context_window();
+        assert_eq!(app.max_session_tokens, crate::core::cli::DEFAULT_MAX_SESSION_TOKENS);
+
+        app.max_session_tokens_pinned = true;
+        app.max_session_tokens = 42_000;
+        app.model = "claude-sonnet-4-6".into();
+        app.refresh_context_window();
+        assert_eq!(app.max_session_tokens, 42_000, "a pinned budget stays put");
+    }
+
+    fn retry_event(attempt: u32, delay_ms: u64) -> StreamEvent {
+        StreamEvent::Retry {
+            attempt,
+            max_attempts: 10,
+            delay_ms,
+            reason: "Upstream returned HTTP 503: busy".into(),
+        }
+    }
+
+    /// A pending resend reads as `retrying`, not as a slow model, and the next
+    /// event of the run clears it.
+    #[test]
+    fn a_retry_is_shown_live_and_cleared_by_the_next_event() {
+        let mut app = test_app();
+        app.status = Status::Running;
+        app.apply(retry_event(2, 5_000));
+        let header: String = header_spans(&app).iter().map(|s| s.content.to_string()).collect();
+        assert!(header.contains("retrying"), "{header}");
+        assert!(!header.contains("working"), "{header}");
+        let wait = app.retrying.as_ref().expect("a retry is pending");
+        assert!(super::retry_wait_label(wait, Instant::now()).contains("attempt 2/10"));
+        // Only the first retry leaves a transcript line.
+        let notes = |app: &mut App| {
+            render_rows(app, 120, 30)
+                .iter()
+                .filter(|row| row.contains("busy; retrying"))
+                .count()
+        };
+        assert_eq!(notes(&mut app), 1, "the first retry leaves one transcript line");
+        app.apply(retry_event(3, 5_000));
+        assert_eq!(notes(&mut app), 1, "later retries stay out of the transcript");
+        app.apply(StreamEvent::Token { text: "hi".into() });
+        assert!(app.retrying.is_none(), "the answer arriving ends the wait");
+    }
+
+    #[test]
+    fn a_retry_past_its_wait_reads_as_in_flight_and_cancel_clears_it() {
+        let mut app = test_app();
+        app.status = Status::Running;
+        app.apply(retry_event(2, 0));
+        let wait = app.retrying.as_ref().expect("pending");
+        let label = super::retry_wait_label(wait, Instant::now() + Duration::from_secs(1));
+        assert!(label.starts_with("retrying ("), "{label}");
+        let counting = super::RetryWait {
+            attempt: 4,
+            max_attempts: 10,
+            at: Instant::now() + Duration::from_secs(3),
+            reason: "r".into(),
+        };
+        assert!(super::retry_wait_label(&counting, Instant::now()).starts_with("retrying in "));
+        app.cancel_run();
+        assert!(app.retrying.is_none());
     }
 
     fn subagent_event(app: &mut App, run_id: &str, name: &str, event: StreamEvent) {

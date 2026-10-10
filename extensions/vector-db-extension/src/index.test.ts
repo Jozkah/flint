@@ -159,6 +159,39 @@ describe('chunk sizing against embedding context', () => {
     ).rejects.toThrow(/embedding context size.*model failed to load/i)
   })
 
+  it('names the cause when the engine rejects with a plain object', async () => {
+    getByName.mockReturnValue(
+      makeEngine({
+        getEmbeddingContextSize: vi
+          .fn()
+          .mockRejectedValue({ message: 'model failed to load', code: 500 }),
+      })
+    )
+    const err = await (ext as any)
+      .ensureChunksFitEmbeddingContext(['x'])
+      .catch((e: Error) => e)
+    expect(err.message).toContain('model failed to load')
+    expect(err.message).not.toContain('[object Object]')
+  })
+
+  it('names the cause when the token count rejects with a string or object', async () => {
+    const asString = {
+      countEmbeddingTokens: vi.fn().mockRejectedValue('tokenizer offline'),
+    }
+    await expect(
+      (ext as any).splitChunkToFit('text', 10, asString)
+    ).rejects.toThrow(/count embedding tokens: tokenizer offline/)
+
+    const asObject = {
+      countEmbeddingTokens: vi.fn().mockRejectedValue({ error: { message: 'bad' } }),
+    }
+    const err = await (ext as any)
+      .splitChunkToFit('text', 10, asObject)
+      .catch((e: Error) => e)
+    expect(err.message).toContain('bad')
+    expect(err.message).not.toContain('[object Object]')
+  })
+
   it('splitChunkToFit propagates a failing token count instead of passing oversized chunks', async () => {
     const llm = {
       countEmbeddingTokens: vi.fn().mockRejectedValue(new Error('tokenize 500')),

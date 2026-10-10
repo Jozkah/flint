@@ -108,6 +108,11 @@ fn strip_thread_field(body: &str) -> String {
 /// unbounded memory.
 const STREAM_BUFFER: usize = 32;
 
+/// How often the idle-unload sweep runs. A model overstays its timeout by at
+/// most this much, which at a setting counted in minutes is not worth a
+/// finer-grained timer.
+const IDLE_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
+
 impl EngineServer {
     /// Binds `127.0.0.1:port`. Pass 0 to let the OS choose, then read `port`
     /// back -- unlike the old `49152 + random` guess, this cannot collide.
@@ -158,6 +163,19 @@ impl EngineServer {
         drain: Duration,
     ) {
         let state = self;
+        let sweeper = {
+            let state = Arc::clone(&state);
+            tokio::spawn(async move {
+                let mut tick = tokio::time::interval(IDLE_SWEEP_INTERVAL);
+                tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                loop {
+                    tick.tick().await;
+                    for model in state.sweep_idle().await {
+                        log::info!("unloaded {model} after sitting idle");
+                    }
+                }
+            })
+        };
         let mut connections = tokio::task::JoinSet::new();
         let shutdown = std::pin::pin!(shutdown);
 
@@ -190,6 +208,7 @@ impl EngineServer {
             }
         }
 
+        sweeper.abort();
         if connections.is_empty() {
             return;
         }
@@ -293,6 +312,21 @@ impl EngineServer {
         self.save_slots(Some(model)).await
     }
 
+    /// One pass of idle auto-unload: saves each expired model's thread caches,
+    /// then drops it. `unload_if_idle` re-checks under the lock, so a request
+    /// that arrived during the save keeps its model.
+    pub async fn sweep_idle(&self) -> Vec<String> {
+        let due = self.registry.lock().await.idle_expired();
+        let mut unloaded = Vec::new();
+        for model in due {
+            self.save_model_slots(&model).await;
+            if self.registry.lock().await.unload_if_idle(&model) {
+                unloaded.push(model);
+            }
+        }
+        unloaded
+    }
+
     async fn save_slots(&self, only: Option<&str>) {
         let Some(state) = &self.slots else { return };
         let resident: Vec<_> = state
@@ -314,21 +348,22 @@ impl EngineServer {
                     continue;
                 }
                 let identity = reg.state_identity(&model);
-                let engine = tokio::task::block_in_place(|| reg.acquire(&model));
-                match (engine, identity) {
-                    (Ok(e), Some(i)) => Some((e, i)),
-                    (Ok(_), None) => {
-                        reg.release(&model);
+                // Not `acquire`: a save is the engine's own housekeeping, and
+                // counting it as use would restart the idle-unload timer.
+                match (reg.pin_for_save(&model), identity) {
+                    (Some(e), Some(i)) => Some((e, i)),
+                    (Some(_), None) => {
+                        reg.unpin_after_save(&model);
                         None
                     }
-                    (Err(_), _) => None,
+                    (None, _) => None,
                 }
             };
             let Some((engine, identity)) = acquired else {
                 continue;
             };
             state.save(&engine, &model, slot, &thread, &identity).await;
-            self.registry.lock().await.release(&model);
+            self.registry.lock().await.unpin_after_save(&model);
         }
     }
 
@@ -477,6 +512,10 @@ impl EngineServer {
             .map(|v| v as usize)
             .unwrap_or_else(|| reg.models_max());
         let outcome = reg.reload(specs, models_max);
+        // Optional like `models_max`: omitted keeps the current setting.
+        if let Some(minutes) = parsed.get("idle_unload_minutes").and_then(|v| v.as_u64()) {
+            reg.set_idle_unload_minutes(minutes);
+        }
         drop(reg);
 
         // Applied here too, for the same reason models_max is: the value comes

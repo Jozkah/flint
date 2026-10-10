@@ -129,3 +129,57 @@ describe('useFavoriteModel', () => {
     expect(useFavoriteModel.getState().isFavorite('b')).toBe(false)
   })
 })
+
+describe('useFavoriteModel per provider', () => {
+  beforeEach(() => {
+    act(() => {
+      useFavoriteModel.setState({ favoriteModels: [] })
+    })
+  })
+
+  it('stars a model under one provider only', () => {
+    const model = makeModel('llama3')
+    act(() => {
+      useFavoriteModel.getState().toggleFavorite(model, 'ollama')
+    })
+    const { isFavorite } = useFavoriteModel.getState()
+    expect(isFavorite('llama3', 'ollama')).toBe(true)
+    expect(isFavorite('llama3', 'openrouter')).toBe(false)
+  })
+
+  it('keeps the same model starred under two providers independently', () => {
+    const model = makeModel('llama3')
+    act(() => {
+      useFavoriteModel.getState().addFavorite(model, 'ollama')
+      useFavoriteModel.getState().addFavorite(model, 'openrouter')
+    })
+    expect(useFavoriteModel.getState().favoriteModels).toHaveLength(2)
+
+    act(() => {
+      useFavoriteModel.getState().removeFavorite('llama3', 'ollama')
+    })
+    const { isFavorite } = useFavoriteModel.getState()
+    expect(isFavorite('llama3', 'ollama')).toBe(false)
+    expect(isFavorite('llama3', 'openrouter')).toBe(true)
+  })
+
+  it('gives a legacy entry to every provider that lists the model', () => {
+    act(() => {
+      useFavoriteModel.setState({
+        favoriteModels: [makeModel('llama3'), makeModel('gone')],
+      })
+    })
+    act(() => {
+      useFavoriteModel.getState().assignLegacyProviders([
+        { provider: 'ollama', models: [{ id: 'llama3' }] },
+        { provider: 'openrouter', models: [{ id: 'llama3' }, { id: 'x' }] },
+      ])
+    })
+    const favs = useFavoriteModel.getState().favoriteModels
+    expect(
+      favs.filter((f) => f.id === 'llama3').map((f) => f.provider).sort()
+    ).toEqual(['ollama', 'openrouter'])
+    // Listed by no provider: left as saved.
+    expect(favs.find((f) => f.id === 'gone')?.provider).toBeUndefined()
+  })
+})

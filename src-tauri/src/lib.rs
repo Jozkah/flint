@@ -671,6 +671,11 @@ pub fn build_app() -> tauri::App {
         |_ctx, request| core::preview::handle(request.uri().path()),
     );
 
+    // The Settings HTTPS proxy reaches the web search providers' API clients.
+    tauri_plugin_websearch::provider::set_proxy_hook(Box::new(|url| {
+        core::net::proxy::configured().and_then(|p| p.proxy_for(url))
+    }));
+
     let mut app_builder = builder
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
@@ -912,6 +917,15 @@ pub fn build_app() -> tauri::App {
                 core::window_state::restore_and_show(&window, &data_folder);
                 core::window_state::install(&window, data_folder);
                 suppress_beforeunload_dialog(&window);
+            }
+            #[cfg(all(
+                not(windows),
+                not(any(target_os = "android", target_os = "ios"))
+            ))]
+            if let Some(window) = app.get_webview_window("main") {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                core::window_state::restore_and_show(&window, &data_folder);
+                core::window_state::install(&window, data_folder);
             }
             // Remote access: off unless the user turned it on; if so the
             // listener starts now, with the settings they left.

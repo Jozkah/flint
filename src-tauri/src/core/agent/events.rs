@@ -32,6 +32,29 @@ pub struct ProvenanceImage {
 /// in `docs/src/pages/docs/agent/cli.mdx` under `jan cli agent run`.
 pub const PROTOCOL_VERSION: u32 = 1;
 
+/// Where a [`StreamEvent::Compaction`] is in its round trip.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactionPhase {
+    Started,
+    Finished,
+    /// The summarizer call failed or had nothing to fold; the history is
+    /// unchanged.
+    Failed,
+}
+
+/// Which path asked for a [`StreamEvent::Compaction`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactionReason {
+    /// The request about to be sent was over the window's trigger.
+    Preflight,
+    /// The provider rejected a request as too long for its window.
+    ContextOverflow,
+    /// The run used up its session token budget.
+    SessionBudget,
+}
+
 /// `Deserialize` as well as `Serialize`: a consumer validates what it received
 /// against these shapes, and `JsonSchema` is what `jan cli agent schema`
 /// publishes them as -- a consumer generates its own types from
@@ -214,6 +237,31 @@ pub enum StreamEvent {
         run_id: String,
         name: String,
         event: Box<StreamEvent>,
+    },
+    /// The loop is summarizing part of the conversation to make room. Sent as
+    /// `Started` before the summarizer call and `Finished` or `Failed` after
+    /// it, so a consumer can show progress for what is otherwise a silent
+    /// round trip. `reason` says which path asked. `messages` is how many
+    /// messages the compaction removed from the history, `None` except on
+    /// `Finished`. Display-only and never journaled; the compacted history
+    /// itself arrives as `MessagesUpdated`.
+    Compaction {
+        phase: CompactionPhase,
+        reason: CompactionReason,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        messages: Option<usize>,
+    },
+    /// The upstream request failed before anything streamed and is about to be
+    /// sent again after `delay_ms`. `attempt` is the 1-based attempt that
+    /// follows the wait, out of `max_attempts`; `reason` is the failure that
+    /// prompted it. Sent once per retry so a consumer can say "retrying" rather
+    /// than show a spinner that looks like a slow model. Display-only and never
+    /// journaled; the turn continues with the next event or ends in `Error`.
+    Retry {
+        attempt: u32,
+        max_attempts: u32,
+        delay_ms: u64,
+        reason: String,
     },
     /// The loop's compaction reduced the conversation while retrying a
     /// context overflow. The client should replace its session history with
@@ -575,6 +623,23 @@ pub(crate) mod tests {
                 },
             ),
             (
+                "Compaction",
+                StreamEvent::Compaction {
+                    phase: CompactionPhase::Finished,
+                    reason: CompactionReason::SessionBudget,
+                    messages: Some(12),
+                },
+            ),
+            (
+                "Retry",
+                StreamEvent::Retry {
+                    attempt: 2,
+                    max_attempts: 10,
+                    delay_ms: 250,
+                    reason: "Upstream returned HTTP 503: busy".into(),
+                },
+            ),
+            (
                 "MessagesUpdated",
                 StreamEvent::MessagesUpdated {
                     messages: vec![json!({ "role": "user", "content": "hi" })],
@@ -728,6 +793,8 @@ pub(crate) mod tests {
             | StreamEvent::Subagent { .. }
             | StreamEvent::PromptSnapshot { .. }
             | StreamEvent::RunResources { .. }
+            | StreamEvent::Compaction { .. }
+            | StreamEvent::Retry { .. }
             | StreamEvent::MessagesUpdated { .. }
             | StreamEvent::AskRequest { .. }
             | StreamEvent::AskResolved { .. }

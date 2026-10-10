@@ -679,12 +679,12 @@ const TEMP_ENV_KEYS: &[&str] = &["TMPDIR", "TMP", "TEMP"];
 /// at the host's value so a command that genuinely needs more can raise its own
 /// soft limit back up.
 ///
-/// `NPROC` is charged to the whole Unix user, not to this shell tree, so on a
-/// busy workstation unrelated processes can use up the allowance and make an
-/// ordinary tool command fail at `fork()`. Linux keeps a finite fork-bomb
-/// ceiling at 8192; macOS already enforces its own per-user ceiling
-/// (`kern.maxprocperuid`) that an unprivileged child cannot raise, so no cap is
-/// set there (adapted from janhq/jan#8785).
+/// `NPROC` is deliberately not set. The kernel charges it to the whole real
+/// UID, not to this shell tree, so on a busy workstation unrelated processes
+/// use up any Flint-specific allowance and an ordinary tool command fails at
+/// `fork()` before it runs. The child inherits the launcher's limit instead
+/// (janhq/jan#9140, a follow-up to #8785). A real per-run process bound is a
+/// cgroup `pids.max`, not a UID-wide rlimit.
 ///
 /// The bwrap wrapper execs `bwrap` itself, which sets up the namespace and then
 /// execs the real shell, so the limits carry over to every descendant. The
@@ -700,8 +700,6 @@ fn confine_limits(cmd: &mut Command) {
     unsafe {
         cmd.pre_exec(|| {
             for (resource, limit) in [
-                #[cfg(target_os = "linux")]
-                (nix::libc::RLIMIT_NPROC, 8192_u64),
                 (nix::libc::RLIMIT_NOFILE, 65536_u64),
                 (nix::libc::RLIMIT_FSIZE, 16_u64 * 1024 * 1024 * 1024),
             ] {
@@ -2308,8 +2306,8 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn confine_limits_caps_the_child_process_count() {
-        // The rlimit mounting must actually reach the spawned child: with NPROC
-        // clamped we still run up to the cap, but a fork-bomb past it fails.
+        // The rlimit mounting must actually reach the spawned child: NOFILE and
+        // FSIZE are raised to their targets, bounded by the host's hard limit.
         let child = spawn(shell(), "exit 0", &tmp(), None).await.unwrap();
         let pid = child.id().unwrap();
         child.wait_with_output().await.unwrap();
@@ -2354,6 +2352,39 @@ mod tests {
                 "{name} soft limit should be raised to the target, got: {val}"
             );
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn confine_limits_preserves_the_launcher_process_limit() {
+        // NPROC counts every process owned by the real UID, so a Flint-specific
+        // value lets unrelated workstation activity starve one tool shell. The
+        // child must see exactly what the launcher has.
+        let mut launcher = nix::libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        // # Safety: reads the test process's own limit into a local value.
+        assert_eq!(
+            unsafe { nix::libc::getrlimit(nix::libc::RLIMIT_NPROC, &mut launcher) },
+            0
+        );
+
+        let child = spawn(shell(), "ulimit -u", &tmp(), None).await.unwrap();
+        let pid = child.id().unwrap();
+        let out = child.wait_with_output().await.unwrap();
+        unregister(pid);
+        let actual = String::from_utf8_lossy(&out.stdout).trim().to_string();
+
+        let expected = if launcher.rlim_cur == nix::libc::RLIM_INFINITY {
+            "unlimited".to_string()
+        } else {
+            launcher.rlim_cur.to_string()
+        };
+        assert_eq!(
+            actual, expected,
+            "NPROC soft limit should be inherited from the launcher, got: {actual}"
+        );
     }
 }
 

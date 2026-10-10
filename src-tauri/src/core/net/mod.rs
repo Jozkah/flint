@@ -4,6 +4,7 @@
 //! `transport` is the single request path every provider call takes;
 //! `commands` exposes both to the web app.
 
+pub mod proxy;
 pub mod resolver;
 pub mod transport;
 pub mod tls;

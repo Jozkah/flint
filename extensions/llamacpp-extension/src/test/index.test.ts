@@ -819,7 +819,8 @@ describe('refreshEnginePreset embedding slot reservation', () => {
     expect(reloadEngineModels).toHaveBeenCalledWith(
       '/p/router.preset.ini',
       2,
-      expect.any(Number)
+      expect.any(Number),
+      0
     )
   })
 
@@ -833,7 +834,8 @@ describe('refreshEnginePreset embedding slot reservation', () => {
     expect(reloadEngineModels).toHaveBeenCalledWith(
       '/p/router.preset.ini',
       1,
-      expect.any(Number)
+      expect.any(Number),
+      0
     )
   })
 
@@ -847,8 +849,33 @@ describe('refreshEnginePreset embedding slot reservation', () => {
     expect(reloadEngineModels).toHaveBeenCalledWith(
       '/p/router.preset.ini',
       0,
-      expect.any(Number)
+      expect.any(Number),
+      0
     )
+  })
+
+  it('forwards the idle unload timeout, and 0 when it is unset or invalid', async () => {
+    const { reloadEngineModels } = await setupRunningEngine({
+      userModelsMax: 1,
+      embeddingCount: 0,
+    })
+    ;(extension as any).config.idle_unload_minutes = '15'
+    await extension['refreshEnginePreset']()
+    expect(reloadEngineModels).toHaveBeenLastCalledWith(
+      '/p/router.preset.ini',
+      1,
+      expect.any(Number),
+      15
+    )
+    ;(extension as any).config.idle_unload_minutes = 'abc'
+    await extension['refreshEnginePreset']()
+    expect(reloadEngineModels).toHaveBeenLastCalledWith(
+      '/p/router.preset.ini',
+      1,
+      expect.any(Number),
+      0
+    )
+    delete (extension as any).config.idle_unload_minutes
   })
 
   it('falls back to a restart when the live reload fails', async () => {

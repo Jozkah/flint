@@ -2,7 +2,7 @@
 //! discovery and download, from the terminal.
 //!
 //! Nothing here runs unless asked, and the only host contacted is
-//! huggingface.co. A download goes to `<data>/downloads/huggingface/<repo>/<file>`
+//! huggingface.co (or the `HF_ENDPOINT` mirror, when set). A download goes to `<data>/downloads/huggingface/<repo>/<file>`
 //! as a `.part` file that is resumed after an interruption, checked against the
 //! SHA-256 Hugging Face lists, and only then renamed into place. `import` copies
 //! a GGUF into `llamacpp/models/<id>/model.gguf`, where `models list-local`
@@ -16,8 +16,6 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-const HF_HOST: &str = "huggingface.co";
-
 fn client(token: Option<&str>) -> Result<reqwest::Client, String> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
@@ -29,8 +27,7 @@ fn client(token: Option<&str>) -> Result<reqwest::Client, String> {
             .map_err(|_| "Invalid Hugging Face token".to_string())?;
         headers.insert(reqwest::header::AUTHORIZATION, value);
     }
-    reqwest::Client::builder()
-        .default_headers(headers)
+    crate::core::net::tls::apply12(reqwest::Client::builder().default_headers(headers))
         .build()
         .map_err(|e| format!("Could not create Hugging Face client: {e}"))
 }
@@ -93,14 +90,7 @@ pub fn download_path(data: &Path, repo: &str, file: &str) -> PathBuf {
 }
 
 fn api_url(segments: &[&str]) -> Result<url::Url, String> {
-    let mut url = url::Url::parse(&format!("https://{HF_HOST}")).map_err(|e| e.to_string())?;
-    {
-        let mut s = url.path_segments_mut().map_err(|_| "bad base url".to_string())?;
-        for p in segments {
-            s.push(p);
-        }
-    }
-    Ok(url)
+    crate::core::hf_endpoint::endpoint_url(&crate::core::hf_endpoint::hf_endpoint()?, segments)
 }
 
 fn file_url(repo: &str, file: &str) -> Result<url::Url, String> {
@@ -272,7 +262,7 @@ fn sha256_of(path: &Path) -> Result<String, String> {
 /// `models download <repo> <file> [--out DIR]`: resumable, verified.
 pub async fn download(data: &Path, repo: &str, file: &str, quiet: bool) -> Result<PathBuf, String> {
     let url = file_url(repo, file)?;
-    if url.host_str() != Some(HF_HOST) {
+    if url.host_str() != crate::core::hf_endpoint::hf_endpoint()?.host_str() {
         return Err("Refusing a non-Hugging Face download URL".to_string());
     }
     let expected = files(repo)

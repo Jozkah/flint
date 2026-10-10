@@ -116,7 +116,8 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => h.navigate,
 }))
 
-vi.mock('@/lib/utils', () => ({
+vi.mock('@/lib/utils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/utils')>()),
   isDev: () => h.isDev(),
 }))
 

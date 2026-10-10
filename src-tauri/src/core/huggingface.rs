@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use url::Url;
 
-const HF_HOST: &str = "huggingface.co";
+use crate::core::hf_endpoint::{endpoint_url, hf_endpoint};
 const MAX_SEARCH_RESULTS: &str = "50";
 const MAX_README_BYTES: u64 = 512 * 1024;
 /// How much of a GGUF file's start is read to learn its architecture. The
@@ -188,24 +188,18 @@ fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
             .map_err(|_| "Invalid Hugging Face token".to_string())?;
         headers.insert(reqwest::header::AUTHORIZATION, value);
     }
-    reqwest::Client::builder()
-        .default_headers(headers)
-        .connect_timeout(std::time::Duration::from_secs(15))
-        .build()
+    // The Settings HTTPS proxy and CA bundle apply to Hugging Face traffic.
+    crate::core::net::tls::apply12(
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .connect_timeout(std::time::Duration::from_secs(15)),
+    )
+    .build()
         .map_err(|e| format!("Could not create Hugging Face client: {e}"))
 }
 
 fn api_url(path: &[&str]) -> Result<Url, String> {
-    let mut url = Url::parse("https://huggingface.co").map_err(|e| e.to_string())?;
-    {
-        let mut segments = url
-            .path_segments_mut()
-            .map_err(|_| "Invalid Hugging Face base URL".to_string())?;
-        for part in path {
-            segments.push(part);
-        }
-    }
-    Ok(url)
+    endpoint_url(&hf_endpoint()?, path)
 }
 
 pub(crate) fn valid_repo_id(repo: &str) -> bool {
@@ -280,28 +274,23 @@ fn download_path<R: Runtime>(app: &tauri::AppHandle<R>, repo: &str, filename: &s
 }
 
 fn remote_file_url(repo: &str, filename: &str) -> Result<Url, String> {
+    remote_file_url_on(&hf_endpoint()?, repo, filename)
+}
+
+fn remote_file_url_on(base: &Url, repo: &str, filename: &str) -> Result<Url, String> {
     if !valid_repo_id(repo) {
         return Err("Invalid Hugging Face repository id".to_string());
     }
     if !valid_remote_path(filename) {
         return Err("Invalid Hugging Face file path".to_string());
     }
-    let mut url = Url::parse("https://huggingface.co").map_err(|e| e.to_string())?;
-    {
-        let mut segments = url
-            .path_segments_mut()
-            .map_err(|_| "Invalid Hugging Face base URL".to_string())?;
-        for part in repo.split('/') {
-            segments.push(part);
-        }
-        segments.push("resolve");
-        segments.push("main");
-        for part in filename.split('/') {
-            segments.push(part);
-        }
-    }
-    if url.host_str() != Some(HF_HOST) {
-        return Err("Refusing a non-Hugging Face download URL".to_string());
+    let mut parts: Vec<&str> = repo.split('/').collect();
+    parts.push("resolve");
+    parts.push("main");
+    parts.extend(filename.split('/'));
+    let url = endpoint_url(base, &parts)?;
+    if url.host_str() != base.host_str() || url.scheme() != base.scheme() {
+        return Err("Refusing a download URL outside the Hugging Face endpoint".to_string());
     }
     Ok(url)
 }
@@ -627,6 +616,62 @@ fn path_too_long(path: &std::path::Path) -> bool {
     !text.starts_with(r"\\?\") && text.chars().count() >= 259
 }
 
+/// Headroom kept free beyond the download itself, so the disk is not driven to
+/// zero (the OS and the model's own `.part` rename need a little room).
+const DISK_MARGIN_BYTES: u64 = 64 * 1024 * 1024;
+
+fn gib(bytes: u64) -> String {
+    format!("{:.1} GB", bytes as f64 / 1_073_741_824.0)
+}
+
+/// Whether a download of `total` bytes, of which `already` are on disk as a
+/// partial file, fits in `free` bytes. An unknown total passes: there is
+/// nothing to compare against, and a write error is still named if the disk
+/// fills.
+fn disk_preflight(total: Option<u64>, already: u64, free: u64) -> Result<(), String> {
+    let Some(total) = total.filter(|total| *total > 0) else {
+        return Ok(());
+    };
+    let needed = total.saturating_sub(already).saturating_add(DISK_MARGIN_BYTES);
+    if free >= needed {
+        return Ok(());
+    }
+    Err(format!(
+        "Not enough free disk space for this download: it needs about {} more, but only {} is free on the drive holding the model folder. Free up space or choose another data folder in Settings.",
+        gib(needed),
+        gib(free)
+    ))
+}
+
+fn normalize_for_mount_match(path: &std::path::Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    let text = text.strip_prefix("\\\\?\\").unwrap_or(&text);
+    #[cfg(windows)]
+    let text = text.to_lowercase();
+    PathBuf::from(text.to_string())
+}
+
+/// Free bytes of the disk that holds `path`: the mount with the longest prefix
+/// of it. `None` when no mount matches, so the caller skips the check.
+fn free_space_on(path: &std::path::Path, mounts: &[(PathBuf, u64)]) -> Option<u64> {
+    let target = normalize_for_mount_match(path);
+    mounts
+        .iter()
+        .filter(|(mount, _)| target.starts_with(normalize_for_mount_match(mount)))
+        .max_by_key(|(mount, _)| normalize_for_mount_match(mount).components().count())
+        .map(|(_, free)| *free)
+}
+
+fn free_space_for_path(path: &std::path::Path) -> Option<u64> {
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    let mounts: Vec<(PathBuf, u64)> = disks
+        .list()
+        .iter()
+        .map(|disk| (disk.mount_point().to_path_buf(), disk.available_space()))
+        .collect();
+    free_space_on(path, &mounts)
+}
+
 enum Attempt {
     Finished,
     Paused,
@@ -828,6 +873,13 @@ pub async fn huggingface_download_model<R: Runtime>(
                 part_path.display()
             ));
         }
+        let already = tokio::fs::metadata(&part_path)
+            .await
+            .map(|meta| meta.len())
+            .unwrap_or(0);
+        if let Some(free) = free_space_for_path(&part_path) {
+            disk_preflight(expected_size, already, free)?;
+        }
         let client = hf_client(token.as_deref())?;
         let mut failures: u32 = 0;
         loop {
@@ -997,6 +1049,42 @@ mod tests {
     }
 
     #[test]
+    fn preflight_passes_when_the_download_fits() {
+        let gb = 1u64 << 30;
+        assert!(disk_preflight(Some(4 * gb), 0, 10 * gb).is_ok());
+        // A partial file already on disk is not needed again.
+        assert!(disk_preflight(Some(4 * gb), 3 * gb, 2 * gb).is_ok());
+        // An unknown size cannot be checked.
+        assert!(disk_preflight(None, 0, 0).is_ok());
+        assert!(disk_preflight(Some(0), 0, 0).is_ok());
+    }
+
+    #[test]
+    fn preflight_fails_early_with_an_actionable_message() {
+        let gb = 1u64 << 30;
+        let err = disk_preflight(Some(8 * gb), 0, 2 * gb).unwrap_err();
+        assert!(err.contains("Not enough free disk space"), "{err}");
+        assert!(err.contains("8.1 GB") && err.contains("2.0 GB"), "{err}");
+        assert!(err.contains("data folder"), "{err}");
+        // The margin counts: exactly the file size free is not enough.
+        assert!(disk_preflight(Some(gb), 0, gb).is_err());
+        assert!(disk_preflight(Some(gb), 0, gb + DISK_MARGIN_BYTES).is_ok());
+    }
+
+    #[test]
+    fn free_space_uses_the_most_specific_mount() {
+        let (root, data, inside, outside) = if cfg!(windows) {
+            ("C:\\", "C:\\Data", "C:\\Data\\models\\a.part", "C:\\Users\\a.part")
+        } else {
+            ("/", "/data", "/data/models/a.part", "/home/a.part")
+        };
+        let mounts = vec![(PathBuf::from(root), 100), (PathBuf::from(data), 7)];
+        assert_eq!(free_space_on(std::path::Path::new(inside), &mounts), Some(7));
+        assert_eq!(free_space_on(std::path::Path::new(outside), &mounts), Some(100));
+        assert_eq!(free_space_on(std::path::Path::new("relative/a.part"), &mounts), None);
+    }
+
+    #[test]
     fn remote_paths_allow_model_assets_but_not_traversal() {
         assert!(valid_remote_path("model-q4_k_m.gguf"));
         assert!(valid_remote_path("tokenizer/tokenizer.json"));
@@ -1008,8 +1096,9 @@ mod tests {
 
     #[test]
     fn resolve_url_stays_on_hugging_face() {
-        let url = remote_file_url("bartowski/Qwen3-GGUF", "sub/model.gguf").unwrap();
-        assert_eq!(url.host_str(), Some(HF_HOST));
+        let base = crate::core::hf_endpoint::parse_endpoint(None).unwrap();
+        let url = remote_file_url_on(&base, "bartowski/Qwen3-GGUF", "sub/model.gguf").unwrap();
+        assert_eq!(url.host_str(), Some("huggingface.co"));
         assert!(url.path().contains("/resolve/main/sub/model.gguf"));
     }
 

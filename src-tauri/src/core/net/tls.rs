@@ -379,6 +379,16 @@ pub fn configured() -> Option<Result<Bundle, CaError>> {
 /// A cheap key for "which bundle is in force": the path, its size and its
 /// modification time. A caller caching a client rebuilds it when this changes.
 pub fn fingerprint() -> u64 {
+    // The HTTPS proxy setting changes what a rebuilt client does, so it is part
+    // of the key; `0` still means "nothing configured".
+    let (ca, proxy) = (bundle_fingerprint(), super::proxy::fingerprint());
+    if ca == 0 && proxy == 0 {
+        return 0;
+    }
+    (ca ^ proxy.rotate_left(17)) | 1
+}
+
+fn bundle_fingerprint() -> u64 {
     use std::hash::{Hash, Hasher};
     let Some((path, source)) = configured_path() else { return 0 };
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -452,13 +462,15 @@ pub fn with_bundle13(builder: reqwest13::ClientBuilder, bundle: Option<&Result<B
 /// The configured bundle, applied to a reqwest 0.12 client.
 pub fn apply12(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     let bundle = configured();
-    with_bundle12(builder, bundle.as_ref())
+    // The HTTPS proxy from Settings rides along with the CA bundle: every
+    // client that trusts the bundle also goes through the proxy.
+    super::proxy::apply12(with_bundle12(builder, bundle.as_ref()))
 }
 
 /// The configured bundle, applied to a reqwest 0.13 client.
 pub fn apply13(builder: reqwest13::ClientBuilder) -> reqwest13::ClientBuilder {
     let bundle = configured();
-    with_bundle13(builder, bundle.as_ref())
+    super::proxy::apply13(with_bundle13(builder, bundle.as_ref()))
 }
 
 /// Why a failed request failed, when the reason is the server's certificate

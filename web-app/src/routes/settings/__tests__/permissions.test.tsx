@@ -136,7 +136,9 @@ describe('Permissions settings', () => {
     expect(
       screen.getByText('permissions:settings.serverLabel:local-only')
     ).toBeInTheDocument()
-    expect(screen.getByText('permissions:settings.serverAppOnly')).toBeInTheDocument()
+    expect(
+      await screen.findByText('permissions:settings.serverAppOnly')
+    ).toBeInTheDocument()
     expect(screen.getByText('permissions:settings.revokeEffect')).toBeInTheDocument()
     expect(
       screen.queryByText('permissions:settings.serverChanged')
