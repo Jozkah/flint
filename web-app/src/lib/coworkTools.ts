@@ -34,6 +34,7 @@ import { isBrowserActionTool } from '@/lib/browserAgent'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { visualizeSchemas } from '@/lib/visualize/tools'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
+import { campaignToolSchemas } from '@/lib/campaignToolSchemas'
 import {
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
@@ -505,6 +506,11 @@ export type CoworkToolOptions = {
    * decides what they mean; see `environmentReadiness`.
    */
   reported?: ComponentReport[]
+  /**
+   * This run is a top-level session that may coordinate a campaign
+   * (docs/CAMPAIGNS.md). Never set for a campaign task, a subagent or chat.
+   */
+  campaignCoordinator?: boolean
 }
 
 /**
@@ -523,6 +529,7 @@ export function coworkToolSignature(
     sandboxEnforces ? 'jail' : 'nojail',
     opts.allowSubagents ? opts.subagentNames.join(',') : 'nosub',
     opts.webSearch ? 'web' : 'noweb',
+    opts.campaignCoordinator && !opts.planMode ? 'campaign' : 'nocampaign',
     useVisualizeConfig.getState().enabled ? 'viz' : 'noviz',
     // Readiness is part of the signature because it changes the advertised
     // tools: a shell that starts after a retry must produce a different tool
@@ -665,7 +672,11 @@ export function coworkToolsFromSchemas(
   schemas: readonly ToolSchema[],
   opts: Pick<
     CoworkToolOptions,
-    'planMode' | 'webSearch' | 'allowSubagents' | 'subagentNames'
+    | 'planMode'
+    | 'webSearch'
+    | 'allowSubagents'
+    | 'subagentNames'
+    | 'campaignCoordinator'
   >
 ): Record<string, Tool> {
   const tools: Record<string, Tool> = {}
@@ -706,6 +717,17 @@ export function coworkToolsFromSchemas(
       tools[schema.function.name] = {
         description: schema.function.description,
         inputSchema: jsonSchema(schema.function.parameters),
+      } as Tool
+    }
+  }
+
+  // The coordinator's tools. Not in review mode: planning a campaign starts
+  // sessions that change files, and review mode changes nothing.
+  if (opts.campaignCoordinator && !opts.planMode) {
+    for (const schema of campaignToolSchemas()) {
+      tools[schema.name] = {
+        description: schema.description,
+        inputSchema: jsonSchema(schema.parameters),
       } as Tool
     }
   }

@@ -38,7 +38,8 @@
     "gitLocal": "Flint, {{command}} komutunu çalıştırmak istiyor",
     "gitLocalIn": "Flint, {{workspace}} içinde {{command}} komutunu çalıştırmak istiyor",
     "gitRemote": "Flint, {{target}} hedefini değiştiren {{command}} komutunu çalıştırmak istiyor",
-    "gitDestructive": "Flint, çalışma kaybına yol açabilecek {{command}} komutunu çalıştırmak istiyor"
+    "gitDestructive": "Flint, çalışma kaybına yol açabilecek {{command}} komutunu çalıştırmak istiyor",
+    "approveCampaign": "Flint wants to start the campaign \"{{title}}\" ({{count}} tasks)"
   },
   "consequence": {
     "fileChange": "Dosyalar oluşturabilir, üzerine yazabilir veya içeriklerini değiştirebilir.",
@@ -55,7 +56,8 @@
     "writeClipboard": "Panonuzda şu anda bulunan içeriğin yerine geçer.",
     "gitLocal": "Bu bilgisayardaki bu deponun dosyalarını, dallarını veya geçmişini değiştirir.",
     "gitRemote": "Başkalarının görebileceği uzak bir depoya değişiklik gönderir. Bu konuşma için sıradan uzak Git eylemlerine geçici olarak izin vermediyseniz Flint her seferinde sorar.",
-    "gitDestructive": "Kaldırdığı veya üzerine yazdığı şeyler geri alınamayabilir."
+    "gitDestructive": "Kaldırdığı veya üzerine yazdığı şeyler geri alınamayabilir.",
+    "campaignPlan": "It starts separate sessions, each on its own worktree branch, that read and change files and use your model quota in parallel. Approving the plan does not approve any call a task makes. Flint asks every time."
   },
   "repeat": {
     "allowedOnceBefore": "Bu komuta bu konuşmada zaten bir kez izin verdiniz."

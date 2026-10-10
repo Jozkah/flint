@@ -71,6 +71,7 @@ import {
   nullRerunApprovalScope,
 } from '@/lib/nullDeviceRetry'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
+import { CAMPAIGN_TOOLS } from '@/lib/campaignToolNames'
 import { gateStopSession } from '@/lib/sessionStopGate'
 import {
   GIT_TOOL_NAME,
@@ -236,6 +237,15 @@ export type DispatchContext = {
    * advertised.
    */
   onTeam?: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
+  /**
+   * Runs a campaign tool (docs/CAMPAIGNS.md). Provided only by the main run
+   * of a session that may coordinate a campaign. Absent for a campaign task,
+   * a subagent and chat, so a call to one of those tools is refused there.
+   */
+  onCampaign?: (
+    call: PendingToolCall,
+    signal?: AbortSignal
+  ) => Promise<ToolOutcome>
   /**
    * Instructions that govern one path's subtree and have not been delivered.
    *
@@ -804,6 +814,20 @@ async function routeCoworkTool(
   if (toolName === STOP_SESSION_TOOL_NAME) {
     const refused = await gateStopSession(call, ctx, signal)
     if (refused) return refused
+  }
+
+  // Campaign tools: the coordinator's alone. `campaign_plan` puts its own
+  // always-ask prompt to the user inside the handler.
+  if (CAMPAIGN_TOOLS.has(toolName)) {
+    if (!ctx.onCampaign) {
+      return {
+        output:
+          `\`${toolName}\` is not available here: campaign tools belong to ` +
+          'the coordinator session only.',
+        isError: true,
+      }
+    }
+    return ctx.onCampaign(call, signal)
   }
 
   // `git`: a read runs straight away; anything else is a mutation and goes

@@ -15,6 +15,7 @@ import {
   ALWAYS_ASK_TOOLS,
   STOP_SESSION_TOOL_NAME,
 } from '@/lib/sessionMessagingTools'
+import { CAMPAIGN_PLAN_TOOL_NAME } from '@/lib/campaignToolNames'
 import {
   GIT_TOOL_NAME,
   gitAlwaysAsks,
@@ -364,6 +365,15 @@ function resourcesFor(
     default:
       if (toolName === STOP_SESSION_TOOL_NAME) {
         raw = [str(args.session) ?? str(args.session_id)].filter(Boolean) as string[]
+      } else if (toolName === CAMPAIGN_PLAN_TOOL_NAME && Array.isArray(args.tasks)) {
+        // Each task by its title, then the paths it says it will change.
+        raw = args.tasks.flatMap((task) =>
+          isPlainObject(task)
+            ? [str(task.title), ...strings(task.paths)].filter(
+                (v): v is string => Boolean(v)
+              )
+            : []
+        )
       } else if (toolName === 'team' && Array.isArray(args.tasks)) {
         raw = args.tasks.flatMap((task) =>
           isPlainObject(task) ? strings(task.writes) : []
@@ -498,6 +508,15 @@ function actionFor(
           },
         }
       }
+      if (toolName === CAMPAIGN_PLAN_TOOL_NAME) {
+        return {
+          key: 'permissions:action.approveCampaign',
+          values: {
+            title: sanitizeResource(str(args.title) ?? '', 80),
+            count: Array.isArray(args.tasks) ? args.tasks.length : 0,
+          },
+        }
+      }
       if (HELPER_TOOLS.has(toolName)) return { key: 'permissions:action.startHelper' }
       return { key: 'permissions:action.useTool', values: { tool: toolName } }
   }
@@ -543,6 +562,9 @@ function consequencesFor(
       }
       if (toolName === STOP_SESSION_TOOL_NAME) {
         return [{ key: 'permissions:consequence.stopSession' }]
+      }
+      if (toolName === CAMPAIGN_PLAN_TOOL_NAME) {
+        return [{ key: 'permissions:consequence.campaignPlan' }]
       }
       return HELPER_TOOLS.has(toolName)
         ? [{ key: 'permissions:consequence.helper' }]
