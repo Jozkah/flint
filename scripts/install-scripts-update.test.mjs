@@ -20,3 +20,13 @@ test('install scripts only mention an update command the CLI has', () => {
     }
   }
 })
+
+// janhq/jan#9096, #9139: SetEnvironmentVariable('Path', ...) rewrites the user
+// PATH as REG_SZ from an expanded read, flattening every %VAR% entry.
+test('the PowerShell installer keeps the user PATH unexpanded and typed', () => {
+  const ps1 = scripts['install-jan-agent.ps1']
+  assert.doesNotMatch(ps1, /SetEnvironmentVariable\('Path'/)
+  assert.doesNotMatch(ps1, /GetEnvironmentVariable\('Path'/)
+  assert.match(ps1, /DoNotExpandEnvironmentNames/)
+  assert.match(ps1, /RegistryValueKind\]::ExpandString/)
+})
