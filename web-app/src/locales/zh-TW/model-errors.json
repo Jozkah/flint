@@ -31,7 +31,7 @@
   "serverPortOccupied": "連接埠使用中",
   "serverPortOccupiedDescription": "連接埠 {{port}} 已被使用。請嘗試其他連接埠。",
   "serverPortFallback": "伺服器已在其他連接埠啟動",
-  "serverPortFallbackDescription": "連接埠 {{requested}} 無法使用，因此本機 API 伺服器正在監聽連接埠 {{actual}}。連接埠設定已同步更新。",
+  "serverPortFallbackDescription": "連接埠 {{requested}} 無法使用，因此本機 API 伺服器正在監聽連接埠 {{actual}}。已儲存的連接埠設定維持不變。",
   "serverInvalidModelPath": "模型路徑無效或無法存取",
   "serverStartModelFailed": "無法啟動模型",
   "serverStartFailed": "無法啟動伺服器"

@@ -31,7 +31,7 @@
   "serverPortOccupied": "Port sedang dipakai",
   "serverPortOccupiedDescription": "Port {{port}} sudah dipakai. Silakan coba port lain.",
   "serverPortFallback": "Server dimulai di port lain",
-  "serverPortFallbackDescription": "Port {{requested}} tidak tersedia, sehingga Server API Lokal mendengarkan di port {{actual}}. Pengaturan port telah diperbarui agar sesuai.",
+  "serverPortFallbackDescription": "Port {{requested}} tidak tersedia, sehingga Server API Lokal mendengarkan di port {{actual}}. Pengaturan port yang tersimpan tidak berubah.",
   "serverInvalidModelPath": "Path model tidak valid atau tidak dapat diakses",
   "serverStartModelFailed": "Gagal memulai model",
   "serverStartFailed": "Gagal memulai server"

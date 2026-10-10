@@ -31,7 +31,7 @@
   "serverPortOccupied": "Port en ús",
   "serverPortOccupiedDescription": "El port {{port}} ja està en ús. Prova amb un port diferent.",
   "serverPortFallback": "El servidor s'ha iniciat en un altre port",
-  "serverPortFallbackDescription": "El port {{requested}} no està disponible, així que el servidor d'API local escolta al port {{actual}}. S'ha actualitzat la configuració del port perquè hi coincideixi.",
+  "serverPortFallbackDescription": "El port {{requested}} no està disponible, així que el servidor d'API local escolta al port {{actual}}. El port desat a la configuració no ha canviat.",
   "serverInvalidModelPath": "Ruta del model no vàlida o inaccessible",
   "serverStartModelFailed": "No s'ha pogut iniciar el model",
   "serverStartFailed": "No s'ha pogut iniciar el servidor"

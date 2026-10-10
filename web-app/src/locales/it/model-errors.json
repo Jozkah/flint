@@ -31,7 +31,7 @@
   "serverPortOccupied": "Porta in uso",
   "serverPortOccupiedDescription": "La porta {{port}} è già in uso. Prova con una porta diversa.",
   "serverPortFallback": "Il server è stato avviato su un'altra porta",
-  "serverPortFallbackDescription": "La porta {{requested}} non è disponibile, quindi il server API locale è in ascolto sulla porta {{actual}}. L'impostazione della porta è stata aggiornata di conseguenza.",
+  "serverPortFallbackDescription": "La porta {{requested}} non è disponibile, quindi il server API locale è in ascolto sulla porta {{actual}}. L'impostazione della porta salvata non è cambiata.",
   "serverInvalidModelPath": "Percorso del modello non valido o inaccessibile",
   "serverStartModelFailed": "Impossibile avviare il modello",
   "serverStartFailed": "Impossibile avviare il server"
