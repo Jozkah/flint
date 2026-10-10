@@ -8,6 +8,7 @@ import {
 } from '@/lib/utils'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { HtmlArtifact } from '@/components/HtmlArtifact'
+import { findNamedBlock } from '@/lib/codeBlockFilename'
 // import 'katex/dist/katex.min.css'
 import {
   defaultRehypePlugins,
@@ -242,6 +243,42 @@ const normalizeLatex = (input: string): string => {
   return s
 }
 
+const CODE_BLOCK_SELECTOR = '[data-streamdown="code-block"]'
+const CODE_BODY_SELECTOR = '[data-streamdown="code-block-body"]'
+const DOWNLOAD_BUTTON_SELECTOR = '[data-streamdown="code-block-download-button"]'
+
+// Streamdown saves every code block as `file.<ext>` and has no filename hook.
+// For a block whose fence or first-line comment names its file, take the click
+// before Streamdown's own handler and save the code under that name instead;
+// any other block keeps Streamdown's behavior.
+function saveNamedCodeBlock(
+  event: React.MouseEvent<HTMLElement>,
+  markdown: string
+) {
+  const target = event.target
+  if (!(target instanceof Element)) return
+  const button = target.closest(DOWNLOAD_BUTTON_SELECTOR)
+  if (!button) return
+  const body = button
+    .closest(CODE_BLOCK_SELECTOR)
+    ?.querySelector(CODE_BODY_SELECTOR)
+  const named = body ? findNamedBlock(markdown, body.textContent ?? '') : null
+  if (!named) return
+
+  event.preventDefault()
+  event.stopPropagation()
+  const url = URL.createObjectURL(
+    new Blob([named.code], { type: 'text/plain' })
+  )
+  const link = document.createElement('a')
+  link.href = url
+  link.download = named.fileName
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
 function RenderMarkdownComponent({
   content,
   className,
@@ -328,6 +365,7 @@ function RenderMarkdownComponent({
         isUser && 'is-user',
         className
       )}
+      onClickCapture={(event) => saveNamedCodeBlock(event, normalizedContent)}
     >
       {segments
         ? segments.map((seg, i) =>
