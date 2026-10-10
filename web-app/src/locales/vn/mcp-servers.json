@@ -260,5 +260,8 @@
     "startWithFlint": "Khởi động cùng Flint",
     "start": "Khởi động",
     "stop": "Dừng"
-  }
+  },
+  "cwd": "Thư mục làm việc",
+  "cwdPlaceholder": "Tùy chọn, ví dụ C:\\tools\\my-server",
+  "cwdHint": "Thư mục mà máy chủ khởi động trong đó. Để trống để khởi động từ thư mục của chính Flint."
 }

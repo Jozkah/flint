@@ -265,5 +265,8 @@
     "stop": "Atura"
   },
   "proactiveMode": "Mode proactiu d’ús del navegador",
-  "proactiveModeDesc": "Quan està activat, captura automàticament captures de pantalla del navegador per aportar context addicional a les tasques d’automatització. Requereix l’MCP Flint Browser amb visió i model d’ús d’eines."
+  "proactiveModeDesc": "Quan està activat, captura automàticament captures de pantalla del navegador per aportar context addicional a les tasques d’automatització. Requereix l’MCP Flint Browser amb visió i model d’ús d’eines.",
+  "cwd": "Directori de treball",
+  "cwdPlaceholder": "Opcional, p. ex. C:\\tools\\my-server",
+  "cwdHint": "La carpeta des de la qual s'inicia el servidor. Deixa-ho buit per iniciar-lo des de la carpeta del propi Flint."
 }

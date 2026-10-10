@@ -260,5 +260,8 @@
     "startWithFlint": "隨 Flint 啟動",
     "start": "啟動",
     "stop": "停止"
-  }
+  },
+  "cwd": "工作目錄",
+  "cwdPlaceholder": "選填,例如 C:\\tools\\my-server",
+  "cwdHint": "伺服器啟動時所在的資料夾。留空則從 Flint 自身的資料夾啟動。"
 }

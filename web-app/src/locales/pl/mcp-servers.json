@@ -266,5 +266,8 @@
     "startWithFlint": "Uruchamiaj z Flint",
     "start": "Uruchom",
     "stop": "Zatrzymaj"
-  }
+  },
+  "cwd": "Katalog roboczy",
+  "cwdPlaceholder": "Opcjonalnie, np. C:\\tools\\my-server",
+  "cwdHint": "Folder, w którym uruchamia się serwer. Zostaw puste, aby uruchomić go z folderu samego Flinta."
 }
