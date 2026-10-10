@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use url::Url;
 
-const HF_HOST: &str = "huggingface.co";
+const DEFAULT_HF_ENDPOINT: &str = "https://huggingface.co";
 const MAX_SEARCH_RESULTS: &str = "50";
 const MAX_README_BYTES: u64 = 512 * 1024;
 /// How much of a GGUF file's start is read to learn its architecture. The
@@ -195,17 +195,51 @@ fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
         .map_err(|e| format!("Could not create Hugging Face client: {e}"))
 }
 
-fn api_url(path: &[&str]) -> Result<Url, String> {
-    let mut url = Url::parse("https://huggingface.co").map_err(|e| e.to_string())?;
+/// Validate a Hugging Face endpoint, the way `HF_ENDPOINT` is used by
+/// `huggingface_hub`: an http(s) URL of a mirror or self-hosted hub. An unset or
+/// empty value means huggingface.co. Credentials, a query and a fragment are
+/// refused, and a trailing slash is dropped.
+pub(crate) fn parse_endpoint(raw: Option<&str>) -> Result<Url, String> {
+    let text = raw.map(str::trim).filter(|v| !v.is_empty()).unwrap_or(DEFAULT_HF_ENDPOINT);
+    let invalid = |why: &str| format!("HF_ENDPOINT is not a usable Hugging Face endpoint ({why}): {text}");
+    let url = Url::parse(text.trim_end_matches('/')).map_err(|_| invalid("not a URL"))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(invalid("only http and https are allowed"));
+    }
+    if url.host_str().is_none() {
+        return Err(invalid("no host"));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(invalid("credentials in the URL are not allowed"));
+    }
+    if url.query().is_some() || url.fragment().is_some() {
+        return Err(invalid("no query or fragment allowed"));
+    }
+    Ok(url)
+}
+
+/// The hub to talk to: `HF_ENDPOINT` when set, huggingface.co otherwise.
+pub(crate) fn hf_endpoint() -> Result<Url, String> {
+    parse_endpoint(std::env::var("HF_ENDPOINT").ok().as_deref())
+}
+
+/// `base` with `parts` appended as path segments.
+pub(crate) fn endpoint_url(base: &Url, parts: &[&str]) -> Result<Url, String> {
+    let mut url = base.clone();
     {
         let mut segments = url
             .path_segments_mut()
             .map_err(|_| "Invalid Hugging Face base URL".to_string())?;
-        for part in path {
+        segments.pop_if_empty();
+        for part in parts {
             segments.push(part);
         }
     }
     Ok(url)
+}
+
+fn api_url(path: &[&str]) -> Result<Url, String> {
+    endpoint_url(&hf_endpoint()?, path)
 }
 
 pub(crate) fn valid_repo_id(repo: &str) -> bool {
@@ -280,28 +314,23 @@ fn download_path<R: Runtime>(app: &tauri::AppHandle<R>, repo: &str, filename: &s
 }
 
 fn remote_file_url(repo: &str, filename: &str) -> Result<Url, String> {
+    remote_file_url_on(&hf_endpoint()?, repo, filename)
+}
+
+pub(crate) fn remote_file_url_on(base: &Url, repo: &str, filename: &str) -> Result<Url, String> {
     if !valid_repo_id(repo) {
         return Err("Invalid Hugging Face repository id".to_string());
     }
     if !valid_remote_path(filename) {
         return Err("Invalid Hugging Face file path".to_string());
     }
-    let mut url = Url::parse("https://huggingface.co").map_err(|e| e.to_string())?;
-    {
-        let mut segments = url
-            .path_segments_mut()
-            .map_err(|_| "Invalid Hugging Face base URL".to_string())?;
-        for part in repo.split('/') {
-            segments.push(part);
-        }
-        segments.push("resolve");
-        segments.push("main");
-        for part in filename.split('/') {
-            segments.push(part);
-        }
-    }
-    if url.host_str() != Some(HF_HOST) {
-        return Err("Refusing a non-Hugging Face download URL".to_string());
+    let mut parts: Vec<&str> = repo.split('/').collect();
+    parts.push("resolve");
+    parts.push("main");
+    parts.extend(filename.split('/'));
+    let url = endpoint_url(base, &parts)?;
+    if url.host_str() != base.host_str() || url.scheme() != base.scheme() {
+        return Err("Refusing a download URL outside the Hugging Face endpoint".to_string());
     }
     Ok(url)
 }
@@ -1008,9 +1037,44 @@ mod tests {
 
     #[test]
     fn resolve_url_stays_on_hugging_face() {
-        let url = remote_file_url("bartowski/Qwen3-GGUF", "sub/model.gguf").unwrap();
-        assert_eq!(url.host_str(), Some(HF_HOST));
+        let base = parse_endpoint(None).unwrap();
+        let url = remote_file_url_on(&base, "bartowski/Qwen3-GGUF", "sub/model.gguf").unwrap();
+        assert_eq!(url.host_str(), Some("huggingface.co"));
         assert!(url.path().contains("/resolve/main/sub/model.gguf"));
+    }
+
+    #[test]
+    fn endpoint_defaults_and_normalises() {
+        assert_eq!(parse_endpoint(None).unwrap().as_str(), "https://huggingface.co/");
+        assert_eq!(parse_endpoint(Some("  ")).unwrap().host_str(), Some("huggingface.co"));
+        let mirror = parse_endpoint(Some(" https://hf-mirror.com/ ")).unwrap();
+        assert_eq!(mirror.host_str(), Some("hf-mirror.com"));
+        let url = remote_file_url_on(&mirror, "o/n", "m.gguf").unwrap();
+        assert_eq!(url.as_str(), "https://hf-mirror.com/o/n/resolve/main/m.gguf");
+        let api = endpoint_url(&mirror, &["api", "models"]).unwrap();
+        assert_eq!(api.as_str(), "https://hf-mirror.com/api/models");
+    }
+
+    #[test]
+    fn endpoint_keeps_a_path_prefix() {
+        let base = parse_endpoint(Some("http://10.0.0.5:8080/hub/")).unwrap();
+        let url = remote_file_url_on(&base, "o/n", "m.gguf").unwrap();
+        assert_eq!(url.as_str(), "http://10.0.0.5:8080/hub/o/n/resolve/main/m.gguf");
+    }
+
+    #[test]
+    fn endpoint_refuses_other_schemes_and_embedded_secrets() {
+        for bad in [
+            "file:///etc/passwd",
+            "ftp://mirror.example",
+            "javascript:alert(1)",
+            "mirror.example",
+            "https://user:pw@mirror.example",
+            "https://mirror.example/?x=1",
+            "https://mirror.example/#frag",
+        ] {
+            assert!(parse_endpoint(Some(bad)).is_err(), "{bad} was accepted");
+        }
     }
 
     #[test]
