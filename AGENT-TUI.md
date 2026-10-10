@@ -264,6 +264,7 @@ Defined in the `SLASH_COMMANDS` const array and handled by `run_command()`:
 | `/effort [low\|medium\|high]` | Reasoning effort |
 | `/terminal-setup` | Make Shift+Enter insert a newline |
 | `/mcp` | Manage MCP servers |
+| `/reload` | Re-read config, skills, plugin commands and MCP servers |
 | `/agents` | Subagent inspector |
 | `/shells` | Background shell inspector |
 | `/plugin [list\|install\|remove\|search]` | Plugin management |

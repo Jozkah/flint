@@ -11390,6 +11390,12 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
         alias_of: None,
     },
     SlashCommand {
+        name: "/reload",
+        hint: "",
+        description: "Re-read provider config, skills, plugin commands and MCP servers",
+        alias_of: None,
+    },
+    SlashCommand {
         name: "/agents",
         hint: "",
         description: "Inspect running subagents: their stats and current activity",
@@ -11646,6 +11652,7 @@ async fn run_command(
             }
         }
         "mcp" => open_mcp_picker(app, mcp_servers).await,
+        "reload" => reload_command(app, mcp_servers).await,
         "agents" => open_agents_picker(app),
         "shells" | "jobs" => open_background_shells_picker(app),
         "plugin" => plugin_command(app, arg).await,
@@ -14798,6 +14805,51 @@ async fn reload_provider_configs(app: &mut App) {
             ));
         }
     }
+}
+
+/// `/reload`: re-read what is normally read once at startup, without leaving
+/// the session -- provider config, the skills and plugin commands the slash
+/// popup offers, and the MCP servers in `mcp_config.json`.
+///
+/// Skills are read from disk when a turn starts, so this only has to refresh
+/// the popup's snapshot. MCP is reconciled against the file: a server that is
+/// no longer configured or no longer enabled is disconnected, and every enabled
+/// one is reconnected in the background so a changed command, URL or header
+/// takes effect. Runs only while idle (see `run_command`).
+async fn reload_command(app: &mut App, mcp_servers: &crate::core::state::SharedMcpServers) {
+    reload_provider_configs(app).await;
+    app.refresh_slash_catalog();
+
+    let enabled: Vec<String> = super::mcp::list_servers()
+        .into_iter()
+        .filter(|entry| entry.active)
+        .map(|entry| entry.name)
+        .collect();
+    let connected: Vec<String> = mcp_servers.lock().await.keys().cloned().collect();
+    let mut dropped = 0usize;
+    for name in connected.iter().filter(|n| !enabled.contains(n)) {
+        super::mcp::disconnect(name, mcp_servers).await;
+        dropped += 1;
+    }
+    for name in &enabled {
+        let servers = mcp_servers.clone();
+        let name = name.clone();
+        tokio::spawn(async move {
+            super::mcp::disconnect(&name, &servers).await;
+            if let Err(e) = connect_mcp_server(&name, &servers).await {
+                log::warn!("MCP: {e}");
+            }
+        });
+    }
+
+    app.note(&format!(
+        "reloaded: provider config, {} skill(s), {} plugin command(s); \
+         MCP: {} server(s) reconnecting in the background, {} disconnected",
+        app.slash_catalog.skills.len(),
+        app.slash_catalog.commands.len(),
+        enabled.len(),
+        dropped,
+    ));
 }
 
 /// `/terminal-setup`: teach the host terminal to send `Shift+Enter`. See
@@ -33703,6 +33755,48 @@ mod tests {
             .join("commands");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(format!("{name}.md")), content).unwrap();
+    }
+
+    /// `/reload` picks up a skill added on disk after startup and says what it
+    /// did.
+    #[test]
+    fn reload_command_refreshes_the_skill_catalog() {
+        crate::core::agent::global_config::with_temp_home(|_| {
+            let (mut app, root) = skill_test_app("deploy", "How to deploy.");
+            app.refresh_slash_catalog();
+            app.input = "/ship".into();
+            assert!(!names(&app).contains(&"/ship".to_string()));
+
+            let skill = root.join(".jan/agent/skills/ship");
+            std::fs::create_dir_all(&skill).unwrap();
+            std::fs::write(
+                skill.join("SKILL.md"),
+                "---\nname: ship\ndescription: Ship it.\n---\n\n# ship\n\nBody.\n",
+            )
+            .unwrap();
+            // Not in the catalog until a reload: it is a startup snapshot.
+            assert!(!names(&app).contains(&"/ship".to_string()));
+
+            // No MCP servers configured or connected in the temp home.
+            let servers: crate::core::state::SharedMcpServers = std::sync::Arc::new(
+                tokio::sync::Mutex::new(std::collections::HashMap::new()),
+            );
+            let rt = tokio::runtime::Runtime::new().expect("runtime");
+            rt.block_on(super::reload_command(&mut app, &servers));
+
+            app.input = "/ship".into();
+            assert!(names(&app).contains(&"/ship".to_string()), "{:?}", names(&app));
+            assert!(
+                transcript_text(&app).contains("reloaded: provider config"),
+                "{}",
+                transcript_text(&app)
+            );
+        });
+    }
+
+    #[test]
+    fn reload_is_a_slash_command() {
+        assert!(SLASH_COMMANDS.iter().any(|c| c.name == "/reload"));
     }
 
     #[test]
