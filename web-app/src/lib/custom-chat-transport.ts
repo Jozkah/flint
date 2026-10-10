@@ -1148,10 +1148,39 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (this.turnModel) return this.turnModel
     // A conversation shown as one of two split panes sends with its own
     // thread's model; the global picker follows whichever pane is active.
+    // The model this run was sent with, so a model picked in another chat
+    // while a tool loop is under way does not reroute it (janhq/jan#8083).
+    if (this.runModel) return this.runModel
+    return this.liveModelSelection()
+  }
+
+  /** The model chosen for this conversation right now, not the run's. */
+  private liveModelSelection(): Pick<
+    ReturnType<typeof useModelProvider.getState>,
+    'selectedProvider' | 'selectedModel'
+  > {
     const scoped = this.modelSelectionResolver?.()
     if (scoped) return scoped
     const { selectedProvider, selectedModel } = useModelProvider.getState()
     return { selectedProvider, selectedModel }
+  }
+
+  /**
+   * The model a run was sent with. A run is a user message and the tool-loop
+   * steps that follow it; each step is its own `sendMessages`, so the model is
+   * captured when the user's message goes out and kept while the last message
+   * is the assistant's.
+   */
+  private runModel?: Pick<
+    ReturnType<typeof useModelProvider.getState>,
+    'selectedProvider' | 'selectedModel'
+  >
+
+  /** Capture the run's model at a send, or keep it for a tool-loop step. */
+  protected pinRunModel(messages: ReadonlyArray<{ role: string }>): void {
+    const last = messages[messages.length - 1]
+    if (this.runModel && last && last.role !== 'user') return
+    this.runModel = this.liveModelSelection()
   }
 
   /**
@@ -2362,6 +2391,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   async sendMessages(
     options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
+    this.pinRunModel(options.messages)
     // A server that refuses images ("At most 0 image(s) may be provided")
     // although the model can see: learned from the refusal, then the same
     // request goes again without them. Once per newly learned limit.
