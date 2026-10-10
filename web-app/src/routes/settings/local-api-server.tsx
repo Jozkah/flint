@@ -68,7 +68,8 @@ function LocalAPIServerContent() {
     setRunInBackground,
     serverHost,
     serverPort,
-    setServerPort,
+    activeServerPort,
+    setActiveServerPort,
     apiPrefix,
     apiKey,
     trustedHosts,
@@ -181,7 +182,9 @@ function LocalAPIServerContent() {
           )
         })
         .then((actualPort: number | undefined) => {
-          // Store the actual port that was assigned (important for mobile with port 0)
+          // Track the port actually bound (important for mobile with port 0).
+          // The configured port stays as the user set it.
+          if (actualPort) setActiveServerPort(actualPort)
           if (actualPort && actualPort !== serverPort) {
             // The backend falls back to a free port when the configured one
             // is taken or refused; say so rather than silently changing it.
@@ -191,7 +194,6 @@ function LocalAPIServerContent() {
                 actual: actualPort,
               }),
             })
-            setServerPort(actualPort)
           }
           setServerStatus('running')
         })
@@ -568,7 +570,7 @@ function LocalAPIServerContent() {
                       </Chip>
                       {isServerRunning && (
                         <code className="inline-flex h-[30px] items-center rounded-lg bg-muted px-2.5 font-mono text-[11.5px] text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
-                          http://{serverHost}:{serverPort}
+                          http://{serverHost}:{activeServerPort ?? serverPort}
                           {apiPrefix}
                         </code>
                       )}
@@ -581,7 +583,7 @@ function LocalAPIServerContent() {
                   description={t('settings:localApiServer.swaggerDocsDesc')}
                   actions={
                     <a
-                      href={`http://${serverHost}:${serverPort}`}
+                      href={`http://${serverHost}:${activeServerPort ?? serverPort}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={cn(

@@ -232,7 +232,7 @@ export function DataProvider() {
     enableOnStartup,
     serverHost,
     serverPort,
-    setServerPort,
+    setActiveServerPort,
     apiPrefix,
     apiKey,
     trustedHosts,
@@ -519,10 +519,9 @@ export function DataProvider() {
             })
           )
             .then(async (actualPort: number | undefined) => {
-              // Store the actual port that was assigned (important for mobile with port 0)
-              if (actualPort && actualPort !== serverPort) {
-                setServerPort(actualPort)
-              }
+              // Track the port actually bound (mobile port 0, or a fallback)
+              // without overwriting the user's configured port.
+              if (actualPort) setActiveServerPort(actualPort)
               setServerStatus('running')
               // Persist whichever models are actually running so next startup can restore them
               const activeModels = await serviceHub.models().getActiveModels().catch(() => [] as string[])
