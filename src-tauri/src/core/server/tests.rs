@@ -395,6 +395,42 @@ mod server_tests {
     }
 
     #[test]
+    fn strips_bounded_grammar_keywords_but_keeps_property_names_and_examples() {
+        let mut schema = json!({
+            "type": "object",
+            "properties": {
+                "maxLength": { "type": "number", "maximum": 10000 },
+                "query": {
+                    "type": "string", "minLength": 1, "maxLength": 10000
+                },
+                "sources": {
+                    "type": "array", "minItems": 1, "maxItems": 100,
+                    "items": { "type": "string", "maxLength": 2000 }
+                },
+                "bag": {
+                    "type": "object", "minProperties": 1, "maxProperties": 5
+                }
+            },
+            "required": ["query"],
+            "examples": [{ "maxLength": 50, "query": "docs" }]
+        });
+
+        crate::core::openai_schema::normalize_openai_tool_parameters_schema(&mut schema);
+
+        assert_eq!(
+            schema["properties"]["maxLength"],
+            json!({"type": "number", "maximum": 10000})
+        );
+        assert_eq!(schema["properties"]["query"], json!({"type": "string"}));
+        assert_eq!(
+            schema["properties"]["sources"],
+            json!({"type": "array", "items": {"type": "string"}})
+        );
+        assert_eq!(schema["properties"]["bag"], json!({"type": "object", "properties": {}}));
+        assert_eq!(schema["examples"], json!([{ "maxLength": 50, "query": "docs" }]));
+    }
+
+    #[test]
     fn expands_bare_string_shorthand_in_properties() {
         let mut schema = json!({
             "type": "object",
