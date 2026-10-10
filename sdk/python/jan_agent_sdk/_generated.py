@@ -46,6 +46,7 @@ EVENT_TAGS: tuple[str, ...] = (
     "subagent_end",
     "subagent_finished",
     "subagent",
+    "compaction",
     "retry",
     "messages_updated",
     "ask_request",
@@ -96,6 +97,7 @@ EventTag = Literal[
     "subagent_end",
     "subagent_finished",
     "subagent",
+    "compaction",
     "retry",
     "messages_updated",
     "ask_request",
@@ -120,6 +122,12 @@ class AskRequest(TypedDict):
 class ClientInfo(TypedDict):
     name: str
     version: str
+
+# Where a [`StreamEvent::Compaction`] is in its round trip.
+CompactionPhase = Union[Literal["started", "finished"], Literal["failed"]]
+
+# Which path asked for a [`StreamEvent::Compaction`].
+CompactionReason = Union[Literal["preflight"], Literal["context_overflow"], Literal["session_budget"]]
 
 # What a host says a tool does, which decides how the loop treats it. Absent means opaque: prompted unless `auto_approve`, sequential, withheld in Plan mode -- the plugin/MCP default.
 HostCapability = Union[Literal["read"], Literal["actuator"]]
@@ -431,6 +439,14 @@ class SubagentEvent(TypedDict):
     event: Any
     type: Literal["subagent"]
 
+class CompactionEvent(TypedDict):
+    """`item/compaction`"""
+
+    phase: CompactionPhase
+    reason: CompactionReason
+    messages: NotRequired[Union[int, None]]
+    type: Literal["compaction"]
+
 class RetryEvent(TypedDict):
     """`item/retry`"""
 
@@ -551,6 +567,7 @@ StreamEvent = Union[
     SubagentEndEvent,
     SubagentFinishedEvent,
     SubagentEvent,
+    CompactionEvent,
     RetryEvent,
     MessagesUpdatedEvent,
     AskRequestEvent,

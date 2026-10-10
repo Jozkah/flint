@@ -41,6 +41,7 @@ export type EventTag =
   | "subagent_end"
   | "subagent_finished"
   | "subagent"
+  | "compaction"
   | "retry"
   | "messages_updated"
   | "ask_request"
@@ -68,6 +69,12 @@ export interface ClientInfo {
   "name": string
   "version": string
 }
+
+/** Where a [`StreamEvent::Compaction`] is in its round trip. */
+export type CompactionPhase = "started" | "finished" | "failed"
+
+/** Which path asked for a [`StreamEvent::Compaction`]. */
+export type CompactionReason = "preflight" | "context_overflow" | "session_budget"
 
 /** What a host says a tool does, which decides how the loop treats it. Absent means opaque: prompted unless `auto_approve`, sequential, withheld in Plan mode -- the plugin/MCP default. */
 export type HostCapability = "read" | "actuator"
@@ -402,6 +409,14 @@ export interface SubagentEvent {
   "type": "subagent"
 }
 
+/** The loop is summarizing part of the conversation to make room. Sent as `Started` before the summarizer call and `Finished` or `Failed` after it, so a consumer can show progress for what is otherwise a silent round trip. `reason` says which path asked. `messages` is how many messages the compaction removed from the history, `None` except on `Finished`. Display-only and never journaled; the compacted history itself arrives as `MessagesUpdated`. */
+export interface CompactionEvent {
+  "phase": CompactionPhase
+  "reason": CompactionReason
+  "messages"?: number | null
+  "type": "compaction"
+}
+
 /** The upstream request failed before anything streamed and is about to be sent again after `delay_ms`. `attempt` is the 1-based attempt that follows the wait, out of `max_attempts`; `reason` is the failure that prompted it. Sent once per retry so a consumer can say "retrying" rather than show a spinner that looks like a slow model. Display-only and never journaled; the turn continues with the next event or ends in `Error`. */
 export interface RetryEvent {
   "attempt": number
@@ -522,6 +537,7 @@ export type StreamEvent =
   | SubagentEndEvent
   | SubagentFinishedEvent
   | SubagentEvent
+  | CompactionEvent
   | RetryEvent
   | MessagesUpdatedEvent
   | AskRequestEvent
@@ -554,6 +570,7 @@ export interface EventByTag {
   "subagent_end": SubagentEndEvent
   "subagent_finished": SubagentFinishedEvent
   "subagent": SubagentEvent
+  "compaction": CompactionEvent
   "retry": RetryEvent
   "messages_updated": MessagesUpdatedEvent
   "ask_request": AskRequestEvent

@@ -923,6 +923,35 @@
         ]
       },
       {
+        "description": "The loop is summarizing part of the conversation to make room. Sent as\n`Started` before the summarizer call and `Finished` or `Failed` after\nit, so a consumer can show progress for what is otherwise a silent\nround trip. `reason` says which path asked. `messages` is how many\nmessages the compaction removed from the history, `None` except on\n`Finished`. Display-only and never journaled; the compacted history\nitself arrives as `MessagesUpdated`.",
+        "type": "object",
+        "properties": {
+          "phase": {
+            "$ref": "#/$defs/CompactionPhase"
+          },
+          "reason": {
+            "$ref": "#/$defs/CompactionReason"
+          },
+          "messages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0
+          },
+          "type": {
+            "type": "string",
+            "const": "compaction"
+          }
+        },
+        "required": [
+          "type",
+          "phase",
+          "reason"
+        ]
+      },
+      {
         "description": "The upstream request failed before anything streamed and is about to be\nsent again after `delay_ms`. `attempt` is the 1-based attempt that\nfollows the wait, out of `max_attempts`; `reason` is the failure that\nprompted it. Sent once per retry so a consumer can say \"retrying\" rather\nthan show a spinner that looks like a slow model. Display-only and never\njournaled; the turn continues with the next event or ends in `Error`.",
         "type": "object",
         "properties": {
@@ -1334,6 +1363,43 @@
           "cpuMs",
           "peakMemoryBytes",
           "processes"
+        ]
+      },
+      "CompactionPhase": {
+        "description": "Where a [`StreamEvent::Compaction`] is in its round trip.",
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "started",
+              "finished"
+            ]
+          },
+          {
+            "description": "The summarizer call failed or had nothing to fold; the history is\nunchanged.",
+            "type": "string",
+            "const": "failed"
+          }
+        ]
+      },
+      "CompactionReason": {
+        "description": "Which path asked for a [`StreamEvent::Compaction`].",
+        "oneOf": [
+          {
+            "description": "The request about to be sent was over the window's trigger.",
+            "type": "string",
+            "const": "preflight"
+          },
+          {
+            "description": "The provider rejected a request as too long for its window.",
+            "type": "string",
+            "const": "context_overflow"
+          },
+          {
+            "description": "The run used up its session token budget.",
+            "type": "string",
+            "const": "session_budget"
+          }
         ]
       },
       "AskRequest": {
