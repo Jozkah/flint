@@ -33,6 +33,7 @@ import {
   type RunnerHost,
 } from '@/lib/campaignRunner'
 import type { CampaignToolDeps } from '@/lib/campaignTools'
+import { createBoardActions } from '@/lib/campaignBoardActions'
 import { errorText } from '@/lib/errorText'
 
 const dataFolder = async (): Promise<string> =>
@@ -336,4 +337,16 @@ export function startCampaignRunner(): () => void {
     offSettings()
     offPanes()
   }
+}
+
+/** The status board's actions, wired to the live app. */
+export function createLiveBoardActions() {
+  const r = getCampaignRunner()
+  return createBoardActions({
+    api: campaignApi,
+    runner: r,
+    sendMessage: createToolDeps(r).sendMessage,
+    abortRun: (sid) => abortRun(sid, 'cancelled'),
+    liveSessions: () => new Set(Object.keys(useCoworkRun.getState().runs)),
+  })
 }
