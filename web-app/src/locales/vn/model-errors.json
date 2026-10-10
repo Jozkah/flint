@@ -31,7 +31,7 @@
   "serverPortOccupied": "Cổng đang được dùng",
   "serverPortOccupiedDescription": "Cổng {{port}} đã được sử dụng. Vui lòng thử cổng khác.",
   "serverPortFallback": "Máy chủ đã khởi động trên một cổng khác",
-  "serverPortFallbackDescription": "Cổng {{requested}} không khả dụng, nên Máy chủ API cục bộ đang lắng nghe trên cổng {{actual}}. Cài đặt cổng đã được cập nhật cho khớp.",
+  "serverPortFallbackDescription": "Cổng {{requested}} không khả dụng, nên Máy chủ API cục bộ đang lắng nghe trên cổng {{actual}}. Cài đặt cổng đã lưu không thay đổi.",
   "serverInvalidModelPath": "Đường dẫn mô hình không hợp lệ hoặc không truy cập được",
   "serverStartModelFailed": "Không thể khởi động mô hình",
   "serverStartFailed": "Không thể khởi động máy chủ"
