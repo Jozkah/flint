@@ -32,6 +32,7 @@ import {
   type MigrationPlan,
   type MigrationResult,
 } from '@/lib/migration'
+import { Select } from '@/components/ui/select'
 
 type Step = 'detect' | 'nolegacy' | 'choose' | 'review' | 'running' | 'result'
 
@@ -368,7 +369,7 @@ export function MigrationAssistant() {
 
                 <label className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span>If an item already exists in Flint</span>
-                  <select
+                  <Select
                     className="rounded-md border border-foreground/15 bg-transparent px-2 py-1 text-xs"
                     value={defaultConflict}
                     onChange={(e) =>
@@ -381,7 +382,7 @@ export function MigrationAssistant() {
                         {CONFLICT_LABELS[c]}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
               </div>
             )}
@@ -426,7 +427,7 @@ export function MigrationAssistant() {
                     {conflicts.length} conflict
                     {conflicts.length === 1 ? '' : 's'}
                   </span>
-                  <select
+                  <Select
                     className="rounded-md border border-foreground/15 bg-transparent px-2 py-1 text-xs"
                     value={defaultConflict}
                     onChange={(e) => {
@@ -442,7 +443,7 @@ export function MigrationAssistant() {
                         {CONFLICT_LABELS[c]}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 <ul className="max-h-28 overflow-y-auto text-xs text-muted-foreground">
                   {conflicts.slice(0, 50).map((i) => (

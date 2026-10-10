@@ -45,6 +45,7 @@ import {
   type TaskForm,
 } from './scheduleForm'
 import { TimeChips } from './TimeChips'
+import { Select } from '@/components/ui/select'
 
 type Props = {
   open: boolean
@@ -499,7 +500,7 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
 
           <div className="grid gap-3 @min-[32rem]:grid-cols-2 sm:grid-cols-2">
             <Field label={t('schedules:editor.onBlock')} htmlFor={`${uid}-onblock`}>
-              <select
+              <Select
                 id={`${uid}-onblock`}
                 className={selectClassName}
                 value={form.onBlock}
@@ -507,10 +508,10 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
               >
                 <option value="continue">{t('schedules:editor.onBlockContinue')}</option>
                 <option value="end">{t('schedules:editor.onBlockEnd')}</option>
-              </select>
+              </Select>
             </Field>
             <Field label={t('schedules:editor.catchUp')} htmlFor={`${uid}-catchup`}>
-              <select
+              <Select
                 id={`${uid}-catchup`}
                 className={selectClassName}
                 value={form.catchUp}
@@ -519,7 +520,7 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
                 <option value="skip">{t('schedules:editor.catchUpSkip')}</option>
                 <option value="once">{t('schedules:editor.catchUpOnce')}</option>
                 <option value="all_capped">{t('schedules:editor.catchUpAllCapped')}</option>
-              </select>
+              </Select>
             </Field>
           </div>
 
