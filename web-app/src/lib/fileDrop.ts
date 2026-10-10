@@ -58,6 +58,26 @@ export function decideDrop(target: DropTarget, files: File[]): DropIntent {
     : { action: 'attach', files }
 }
 
+/**
+ * An absolute file-system path, if that is all `text` is.
+ *
+ * Pasted text is only a path when it is one line and unmistakably absolute: a
+ * drive or UNC path, or a POSIX path with at least two segments (so `/clear`
+ * stays a command). A URL is never a path. Surrounding quotes, which a shell
+ * "copy as path" adds, are stripped. Whether it exists is the caller's check.
+ */
+export function pastedPath(text: string): string | null {
+  let s = text.trim()
+  if (!s || s.length > 1024 || /[\r\n]/.test(s)) return null
+  const quoted = /^(["'])(.*)\1$/.exec(s)
+  if (quoted) s = quoted[2].trim()
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return null
+  const windows = /^[A-Za-z]:[\\/][^\\/]/.test(s)
+  const unc = /^\\\\[^\\/]+[\\/][^\\/]+/.test(s)
+  const posix = /^\/[^/\s][^/]*\/[^/]/.test(s)
+  return windows || unc || posix ? s : null
+}
+
 /** Does this drag carry files at all, as opposed to text or a selection? */
 export function dragHasFiles(transfer: DataTransfer | null): boolean {
   if (!transfer) return false

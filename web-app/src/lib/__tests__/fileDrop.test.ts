@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   decideDrop,
   inlineDroppedTexts,
+  pastedPath,
   dragHasFiles,
   DROP_ZONE_CLASS,
   dropLabelKey,
@@ -124,5 +125,27 @@ describe('inlineDroppedTexts', () => {
   it('uses a longer fence when the file contains one', () => {
     const r = inlineDroppedTexts([{ name: 'a.md', text: '```js\n```' }], 1000)
     expect(r.text.startsWith('a.md\n~~~~\n')).toBe(true)
+  })
+})
+
+describe('pastedPath', () => {
+  it('accepts absolute Windows, UNC and POSIX paths, quoted or not', () => {
+    expect(pastedPath('C:\\Users\\me\\proj')).toBe('C:\\Users\\me\\proj')
+    expect(pastedPath('"D:/work/app"')).toBe('D:/work/app')
+    expect(pastedPath('\\\\srv\\share\\dir')).toBe('\\\\srv\\share\\dir')
+    expect(pastedPath('  /home/me/proj  ')).toBe('/home/me/proj')
+  })
+
+  it('rejects commands, URLs, prose and multi-line text', () => {
+    const rejected = [
+      '/clear',
+      'https://example.com/a/b',
+      'C:\\',
+      'hello world',
+      'a/b/c',
+      '/a/b\n/c/d',
+      '',
+    ]
+    for (const s of rejected) expect(pastedPath(s)).toBeNull()
   })
 })

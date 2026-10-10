@@ -1,6 +1,7 @@
 import { unescapeComposerMarkdown } from '@/lib/composerText'
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
 import { toAssetUrl } from '@/lib/assetPath'
+import { pastedPath } from '@/lib/fileDrop'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { currentDescriber } from '@/lib/imageDescription'
@@ -288,6 +289,15 @@ type ChatInputProps = {
    */
   heldShownElsewhere?: boolean
   /**
+   * A surface that can hold a project folder (Cowork). When set, a pasted
+   * path to a folder offers to attach it; `attached` are the folders it
+   * already has, which are not offered again.
+   */
+  pastedFolder?: {
+    attached: readonly string[]
+    onAttach: (path: string) => void
+  }
+  /**
    * Usage for a surface that keeps no thread messages (Cowork). Rendering the
    * counter here rather than in the caller is what keeps its placement, the
    * `tokenCounterCompact` setting and the spacing to the send button identical
@@ -375,6 +385,7 @@ const ChatInput = memo(function ChatInput({
   onStop,
   chatStatus,
   heldShownElsewhere = false,
+  pastedFolder,
   scopeKey,
   ownsToolSet = true,
   referenceRoot,
@@ -2687,7 +2698,62 @@ const ChatInput = memo(function ChatInput({
     else attachMedia()
   }
 
+  // A pasted path is still pasted as text; this only notices it and offers,
+  // above the editor, to attach what it points at.
+  const [pathOffer, setPathOffer] = useState<{
+    path: string
+    kind: 'file' | 'folder'
+  } | null>(null)
+
+  const offerPastedPath = async (candidate: string) => {
+    if (!isPlatformTauri()) return
+    try {
+      const { fs } = await import('@janhq/core')
+      const stat = await fs.fileStat(candidate)
+      if (!stat) return
+      if (stat.isDirectory) {
+        if (!pastedFolder) return
+        const same = (a: string) =>
+          a.replace(/[\\/]+$/, '').toLowerCase() ===
+          candidate.replace(/[\\/]+$/, '').toLowerCase()
+        if (pastedFolder.attached.some(same)) return
+        setPathOffer({ path: candidate, kind: 'folder' })
+      } else {
+        setPathOffer({ path: candidate, kind: 'file' })
+      }
+    } catch {
+      // Not a path that exists: it was only text.
+    }
+  }
+
+  const acceptPathOffer = async () => {
+    const offer = pathOffer
+    setPathOffer(null)
+    if (!offer) return
+    if (offer.kind === 'folder') {
+      pastedFolder?.onAttach(offer.path)
+      return
+    }
+    try {
+      const response = await fetch(await toAssetUrl(offer.path))
+      if (!response.ok) throw new Error(response.statusText)
+      const blob = await response.blob()
+      const name = offer.path.split(/[\\/]/).filter(Boolean).pop() || 'file'
+      const file = new File([blob], name, { type: blob.type })
+      handleFileChange({
+        target: { files: [file] },
+      } as unknown as React.ChangeEvent<HTMLInputElement>)
+    } catch (error) {
+      toast.error(t('common:pastedPath.failed'), {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+    focusComposer()
+  }
+
   const handlePaste = async (e: React.ClipboardEvent) => {
+    const pasted = pastedPath(e.clipboardData?.getData('text/plain') ?? '')
+    if (pasted) void offerPastedPath(pasted)
     const mediaItems = e.clipboardData?.items
     if (mediaItems && mediaItems.length > 0) {
         const audioFiles: File[] = []
@@ -2826,6 +2892,10 @@ const ChatInput = memo(function ChatInput({
     .map((a) => ({ url: a.dataUrl as string, name: a.name }))
 
   const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
+  // The offer belongs to the draft it was pasted into; sending ends it.
+  useEffect(() => {
+    if (isStreaming) setPathOffer(null)
+  }, [isStreaming])
 
   /**
    * Write one or more settings into the model's own configuration, in one
@@ -2971,6 +3041,40 @@ const ChatInput = memo(function ChatInput({
             onDrop={handleDrop}
           >
             <DropRim active={isDragOver} />
+            {pathOffer && (
+              <div
+                role="status"
+                className="mx-2 mt-2 flex min-w-0 items-center gap-2 rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs text-secondary-foreground"
+              >
+                <span className="min-w-0 flex-1 truncate" title={pathOffer.path}>
+                  {t(
+                    pathOffer.kind === 'folder'
+                      ? 'common:pastedPath.folder'
+                      : 'common:pastedPath.file',
+                    {
+                      name:
+                        pathOffer.path.split(/[\\/]/).filter(Boolean).pop() ??
+                        pathOffer.path,
+                    }
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void acceptPathOffer()}
+                  className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 font-medium text-foreground hover:bg-accent"
+                >
+                  {t('common:pastedPath.attach')}
+                </button>
+                <button
+                  type="button"
+                  aria-label={t('common:pastedPath.dismiss')}
+                  onClick={() => setPathOffer(null)}
+                  className="grid size-5 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <X aria-hidden className="size-3" />
+                </button>
+              </div>
+            )}
             {attachments.length > 0 && (
               <div className="flex flex-col gap-2 p-2 pb-0">
                 {/* Attachments as chips: a thumbnail or kind icon, the name,
