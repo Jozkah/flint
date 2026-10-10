@@ -822,6 +822,7 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
             let web = POWERSHELL_WEB_DEFAULTS;
             let cd = POWERSHELL_WORKSPACE_CD;
             let shims = POWERSHELL_CMD_SHIMS;
+            let files = POWERSHELL_WORKSPACE_FILE_CMDS;
             format!(
                 "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{ws}' -Scope Global; \
                  Set-Location JanWorkspace:\\; [Environment]::CurrentDirectory = '{ws}'; \
@@ -829,12 +830,14 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
                  {web}\n\
                  {cd}\n\
                  {shims}\n\
+                 {files}\n\
                  {nested}\n\
                  . ([scriptblock]::Create('{body}'))\n\
                  $global:__JanThrown = @($Error | Select-Object -First ([Math]::Max(0, $Error.Count - $global:__JanErrors)) | \
                  Where-Object {{ $_ -is [System.Management.Automation.ErrorRecord] -and \
                  $_.InvocationInfo.MyCommand -isnot [System.Management.Automation.CmdletInfo] -and \
-                 $_.InvocationInfo.MyCommand -isnot [System.Management.Automation.ApplicationInfo] }}).Count\n\
+                 $_.InvocationInfo.MyCommand -isnot [System.Management.Automation.ApplicationInfo] -and \
+                 @('Rename-Item','Remove-Item','Move-Item') -notcontains $_.InvocationInfo.MyCommand.Name }}).Count\n\
                  if ($global:__JanThrown -or -not $global:__JanOk) {{ if ($LASTEXITCODE) {{ exit $LASTEXITCODE }}; exit 1 }}; exit 0"
             )
         }
@@ -875,6 +878,43 @@ pub(crate) const POWERSHELL_WEB_DEFAULTS: &str = "if (Get-Command curl.exe -Comm
      { Remove-Item Alias:curl -Force -ErrorAction SilentlyContinue }; \
      $global:ProgressPreference = 'SilentlyContinue'; \
      $global:PSDefaultParameterValues['Invoke-WebRequest:UseBasicParsing'] = $true";
+
+/// `Rename-Item`, `Remove-Item` and `Move-Item` given a path relative to the
+/// workspace fail with "Access is denied" in the AppContainer, because the
+/// provider reaches the file through the `JanWorkspace:` drive; the same call
+/// with the full path succeeds, as do the .NET methods. The relative path is
+/// sent to the cmdlet as a full one. Only a plain relative path changes: a
+/// drive-qualified, rooted or `~` path, and every other parameter, go through
+/// as given.
+pub(crate) const POWERSHELL_WORKSPACE_FILE_CMDS: &str = r#"foreach ($__jf in 'Rename-Item','Remove-Item','Move-Item') { Set-Item -Path "Function:global:$__jf" -Value ([scriptblock]::Create(@'
+$__cmd = $MyInvocation.MyCommand.Name
+$__ws = $env:JAN_WORKSPACE
+$__fix = { param($v) if ($v -is [string] -and $__ws -and $v.Length -gt 0 -and $v.IndexOf(':') -lt 0 -and -not $v.StartsWith('\') -and -not $v.StartsWith('/') -and -not $v.StartsWith('~')) { return ($__ws.TrimEnd('\') + '\' + $v.Replace('/', '\')) }; return $v }
+$__switches = @('force','recurse','whatif','confirm','passthru','usetransaction')
+$__pathNames = @('path','literalpath')
+$__named = @{}
+$__positional = New-Object System.Collections.ArrayList
+$__pos = 0
+for ($__i = 0; $__i -lt $args.Count; $__i++) {
+  $__a = $args[$__i]
+  if ($__a -is [string] -and $__a.Length -gt 1 -and $__a.StartsWith('-') -and -not [char]::IsDigit($__a[1])) {
+    $__n = $__a.Substring(1).TrimEnd(':')
+    if ($__switches -contains $__n.ToLowerInvariant() -or ($__i + 1) -ge $args.Count) { $__named[$__n] = $true }
+    else {
+      $__i++
+      $__v = $args[$__i]
+      if ($__pathNames -contains $__n.ToLowerInvariant()) { if ($__v -is [array]) { $__v = @($__v | ForEach-Object { & $__fix $_ }) } else { $__v = & $__fix $__v } }
+      $__named[$__n] = $__v
+    }
+  } else {
+    if ($__cmd -eq 'Remove-Item' -or $__pos -eq 0 -or ($__cmd -eq 'Move-Item' -and $__pos -eq 1)) { $__a = & $__fix $__a }
+    [void]$__positional.Add($__a)
+    $__pos++
+  }
+}
+& ('Microsoft.PowerShell.Management\' + $__cmd) @__positional @__named
+'@)) }"#;
+
 
 /// PowerShell prefers npm.ps1/npx.ps1 over their .cmd launchers. AppContainer
 /// rejects those scripts during AuthorizationManager checks; the .cmd launchers
@@ -1137,6 +1177,29 @@ mod located_tests {
         assert!(out.contains("JanWorkspace:\\"), "{out}");
         assert!(out.trim_end().ends_with("C:\\"), "{out}");
     }
+
+    /// A relative path given to Rename-Item, Remove-Item and Move-Item reaches
+    /// the cmdlet as a full one (the sandboxed provider refused the relative
+    /// form); switches, other parameters and rooted paths are untouched.
+    #[cfg(windows)]
+    #[test]
+    fn relative_rename_remove_and_move_work_through_the_wrapper() {
+        let (code, out, err) = run_wrapped(
+            "New-Item a.txt -ItemType File -Value x | Out-Null; \
+             Rename-Item a.txt b.txt; \
+             Rename-Item -Path b.txt -NewName c.txt -Force; \
+             Move-Item c.txt d.txt; \
+             New-Item -ItemType Directory sub | Out-Null; \
+             Move-Item d.txt sub/e.txt; \
+             Remove-Item -LiteralPath sub/e.txt -Force; \
+             Remove-Item sub -Recurse; \
+             (Get-ChildItem -Force | Measure-Object).Count; \
+             Remove-Item nothere.txt -ErrorAction SilentlyContinue; 'done'",
+        );
+        assert_eq!(code, 0, "{out} / {err}");
+        assert!(out.contains("0") && out.trim_end().ends_with("done"), "{out} / {err}");
+    }
+
 
     #[cfg(windows)]
     #[test]
