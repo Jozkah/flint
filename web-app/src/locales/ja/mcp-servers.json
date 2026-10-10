@@ -260,5 +260,8 @@
     "startWithFlint": "Flint と一緒に起動",
     "start": "起動",
     "stop": "停止"
-  }
+  },
+  "cwd": "作業ディレクトリ",
+  "cwdPlaceholder": "任意。例: C:\\tools\\my-server",
+  "cwdHint": "サーバーを起動するフォルダーです。空のままにすると Flint 自身のフォルダーから起動します。"
 }

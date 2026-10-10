@@ -21,6 +21,11 @@ export type MCPServerConfig = {
    * needed. Off (absent) by default: servers start on demand.
    */
   startWithFlint?: boolean
+  /**
+   * Working directory of a local (stdio) server. Absent: the server starts
+   * from Flint's own directory.
+   */
+  cwd?: string
 }
 
 // Define the structure of all MCP servers

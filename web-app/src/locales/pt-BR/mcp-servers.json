@@ -263,5 +263,8 @@
     "startWithFlint": "Iniciar com o Flint",
     "start": "Iniciar",
     "stop": "Parar"
-  }
+  },
+  "cwd": "Diretório de trabalho",
+  "cwdPlaceholder": "Opcional, ex.: C:\\tools\\my-server",
+  "cwdHint": "A pasta em que o servidor inicia. Deixe vazio para iniciá-lo a partir da pasta do próprio Flint."
 }

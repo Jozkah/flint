@@ -260,5 +260,8 @@
     "startWithFlint": "Flint ile başlat",
     "start": "Başlat",
     "stop": "Durdur"
-  }
+  },
+  "cwd": "Çalışma dizini",
+  "cwdPlaceholder": "İsteğe bağlı, örn. C:\\tools\\my-server",
+  "cwdHint": "Sunucunun başlatıldığı klasör. Flint'in kendi klasöründen başlatmak için boş bırakın."
 }
