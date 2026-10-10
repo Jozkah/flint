@@ -320,7 +320,41 @@ fn load_rejection_error(status: u16, body: &str) -> LlamacppError {
 /// backend without the endpoint costs nothing noticeable.
 const SUBSCRIBE_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Aborts its task when dropped, so a load wait that is cancelled (its future
+/// dropped) does not leave the progress listener streaming forever.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl AbortOnDrop {
+    fn abort(&self) {
+        self.0.abort();
+    }
+}
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 async fn post_load<S: ProgressSink>(
+    sink: &S,
+    state: &LlamacppState,
+    port: u16,
+    api_key: &str,
+    model_id: &str,
+) -> ServerResult<()> {
+    let guard = state.loads.begin(model_id);
+    tokio::select! {
+        r = post_load_inner(sink, state, port, api_key, model_id) => r,
+        _ = guard.cancelled() => Err(ServerError::Llamacpp(LlamacppError::new(
+            ErrorCode::ModelLoadCancelled,
+            format!("Loading {} was cancelled", model_id),
+            None,
+        ))),
+    }
+}
+
+async fn post_load_inner<S: ProgressSink>(
     sink: &S,
     state: &LlamacppState,
     port: u16,
@@ -333,14 +367,14 @@ async fn post_load<S: ProgressSink>(
     // been sent.
     let (fail_tx, fail_rx) = tokio::sync::oneshot::channel();
     let (subscribed_tx, subscribed_rx) = tokio::sync::oneshot::channel();
-    let progress_task = spawn_load_progress_listener(
+    let progress_task = AbortOnDrop(spawn_load_progress_listener(
         sink.clone(),
         port,
         api_key.to_string(),
         model_id.to_string(),
         fail_tx,
         subscribed_tx,
-    );
+    ));
     // Bounded: a backend without the feed still answers, but a hang here must
     // not become a hang in the load.
     if tokio::time::timeout(SUBSCRIBE_TIMEOUT, subscribed_rx).await.is_err() {
@@ -775,6 +809,97 @@ pub async fn load_llama_model<R: Runtime>(
 ) -> ServerResult<SessionInfo> {
     let state: State<TauriArc<LlamacppState>> = app_handle.state();
     load_model(&app_handle, &**state, model_id, is_embedding).await
+}
+
+/// What `cancel_model_load` did.
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+pub struct CancelLoadResult {
+    /// A load of the model was in flight and has been abandoned.
+    pub cancelled: bool,
+    /// The worker was stopped to end the load. The next load starts a fresh one.
+    pub engine_stopped: bool,
+}
+
+/// How long an abandoned load is waited out before giving up on unloading it.
+const ABANDONED_LOAD_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// Cancels the load of `model_id` that this app is waiting on.
+///
+/// The engine's load is one blocking call with no abort, so it cannot be
+/// interrupted in place. With `keep_worker` false (nothing else is resident)
+/// the worker is killed, which ends the load and frees its memory; the next
+/// load starts a worker afresh. With it true the wait is abandoned and the
+/// model is unloaded once the worker finishes loading it, so other resident
+/// models are not evicted.
+pub async fn cancel_load(
+    state: std::sync::Arc<LlamacppState>,
+    model_id: String,
+    keep_worker: bool,
+) -> CancelLoadResult {
+    use crate::load_cancel::{plan_cancel, CancelPlan};
+
+    let in_flight = state.loads.cancel(&model_id);
+    match plan_cancel(in_flight, keep_worker) {
+        CancelPlan::Nothing => CancelLoadResult { cancelled: false, engine_stopped: false },
+        CancelPlan::AbandonThenUnload => {
+            tokio::spawn(async move {
+                unload_after_abandoned_load(&state, &model_id).await;
+            });
+            CancelLoadResult { cancelled: true, engine_stopped: false }
+        }
+        CancelPlan::StopWorker => {
+            if let Some(task) = state.unload_watcher.lock().await.take() {
+                task.abort();
+            }
+            let handle = state.engine.lock().await.take();
+            if let Some(h) = handle {
+                h.kill().await;
+            }
+            CancelLoadResult { cancelled: true, engine_stopped: true }
+        }
+    }
+}
+
+/// Waits for the worker to finish an abandoned load, then unloads the model,
+/// unless the user has asked for it again in the meantime.
+async fn unload_after_abandoned_load(state: &LlamacppState, model_id: &str) {
+    let loaded = crate::load_cancel::poll_until(
+        || async {
+            if state.loads.is_loading(model_id) {
+                return true; // wanted again: leave it to that load
+            }
+            match engine_endpoint(state).await {
+                Ok((port, key, _)) => engine_loaded_model_ids(state, port, &key)
+                    .await
+                    .map(|ids| ids.iter().any(|id| id == model_id))
+                    .unwrap_or(false),
+                // The worker is gone, and the load with it.
+                Err(_) => true,
+            }
+        },
+        Duration::from_millis(500),
+        ABANDONED_LOAD_TIMEOUT,
+    )
+    .await;
+    if !loaded || state.loads.is_loading(model_id) {
+        return;
+    }
+    if let Ok((port, key, _)) = engine_endpoint(state).await {
+        if let Err(e) = post_unload(port, &key, model_id).await {
+            log::warn!("could not unload cancelled load of {model_id}: {e}");
+        }
+    }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn cancel_model_load<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    model_id: String,
+    keep_worker: bool,
+) -> CancelLoadResult {
+    let state: State<TauriArc<LlamacppState>> = app_handle.state();
+    cancel_load(state.inner().clone(), model_id, keep_worker).await
 }
 
 #[cfg(feature = "tauri")]

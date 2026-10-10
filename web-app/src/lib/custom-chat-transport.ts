@@ -98,7 +98,11 @@ import {
 } from '@/lib/requestAttribution'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { useAppState } from '@/hooks/useAppState'
-import { unloadLlamaModel, getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
+import {
+  cancelModelLoad,
+  unloadLlamaModel,
+  getLoadedModels,
+} from '@janhq/tauri-plugin-llamacpp-api'
 import { engineFailure } from '@/lib/engineError'
 import { chatSafetyGuidelines, todayLine } from '@/lib/promptSafety'
 import { replyLanguageLine } from '@/lib/replyLanguage'
@@ -1014,6 +1018,28 @@ type SendOptions = {
   trigger: 'submit-message' | 'regenerate-message'
   messageId: string | undefined
 } & ChatRequestOptions
+
+/**
+ * Cancels a load that was aborted. The engine cannot abort a load in place,
+ * so the plugin stops its worker when this model is the only one resident, and
+ * otherwise abandons the wait and unloads the model once it is up. When no
+ * load was in flight (it finished first), the model is unloaded as before.
+ * Best-effort: nothing here may throw into the abort path.
+ */
+function abandonModelLoad(modelId: string): void {
+  const active = useAppState.getState().activeModels
+  const keepWorker =
+    Array.isArray(active) && active.some((id) => id !== modelId)
+  void (async () => {
+    try {
+      const result = await cancelModelLoad(modelId, keepWorker)
+      if (result?.cancelled) return
+    } catch {
+      // Fall back to a plain unload.
+    }
+    await unloadLlamaModel(modelId).catch(() => {})
+  })()
+}
 
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   /** Record memory uses when a reply finishes. Cowork records its own. */
@@ -2012,17 +2038,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return new Promise<LanguageModel>((resolve, reject) => {
       const onAbort = () => {
         if (providerId === 'llamacpp') {
-          // Call the plugin's unload command directly instead of through the
+          // Cancel the load through the plugin directly instead of the
           // extension's `unload()` method: that method first looks up an
           // active *loaded* session and throws if none is found, but a
           // model aborted mid-load is still in the "loading" state (not
           // "loaded") and would never resolve to a session -- silently
-          // skipping the unload and leaking the still-loading llama-server.
+          // skipping the unload and leaking the still-loading engine.
           // See https://github.com/janhq/jan/issues/8432.
-          unloadLlamaModel(modelId).catch(() => {
-            // Best-effort: model may not have started loading yet, or may
-            // already have finished/failed on its own.
-          })
+          abandonModelLoad(modelId)
         }
         const err = new Error('Aborted')
         err.name = 'AbortError'
