@@ -10,6 +10,8 @@ pub mod provider_secrets;
 pub mod proxy;
 #[cfg(not(feature = "cli"))]
 pub mod remote_provider_commands;
+#[cfg(not(feature = "cli"))]
+pub mod usage_meter;
 #[cfg(test)]
 #[cfg(not(feature = "cli"))]
 pub mod tests;

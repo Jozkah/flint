@@ -156,6 +156,9 @@ pub struct Report {
     pub output_tokens: u64,
     /// Set when the log had more records than were read.
     pub truncated: bool,
+    /// When the oldest dispatch in the window happened, in seconds since the
+    /// epoch. A rolling window frees up when this one ages out.
+    pub earliest: Option<u64>,
 }
 
 /// A period like `7d`, `24h` or `30m`, as an RFC-3339 instant to compare
@@ -221,6 +224,25 @@ fn rfc3339(seconds: u64) -> String {
         (rem % 3600) / 60,
         rem % 60
     )
+}
+
+/// Seconds since the epoch for a `YYYY-MM-DDTHH:MM:SS` instant, the inverse of
+/// `rfc3339`. Fractions and a trailing zone are ignored; the log writes UTC.
+pub(crate) fn epoch_of(at: &str) -> Option<u64> {
+    let digits = |from: usize, len: usize| -> Option<i64> { at.get(from..from + len)?.parse().ok() };
+    let (y, m, d) = (digits(0, 4)?, digits(5, 2)?, digits(8, 2)?);
+    let (hh, mm, ss) = (digits(11, 2)?, digits(14, 2)?, digits(17, 2)?);
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = if m > 2 { m - 3 } else { m + 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    u64::try_from(days * 86_400 + hh * 3600 + mm * 60 + ss).ok()
 }
 
 /// One dispatch's tokens, from whichever record carries them.
@@ -342,6 +364,7 @@ pub fn report(
 
     let mut by_model: BTreeMap<String, ModelSpend> = BTreeMap::new();
     let mut dispatches = 0usize;
+    let mut earliest: Option<u64> = None;
     for record in all.into_iter().take(MAX_RECORDS) {
         if let Some(cutoff) = cutoff.as_ref() {
             if record.at.as_str() < cutoff.as_str() {
@@ -369,6 +392,9 @@ pub fn report(
         });
         entry.dispatches += 1;
         dispatches += 1;
+        if let Some(at) = epoch_of(&record.at) {
+            earliest = Some(earliest.map_or(at, |e| e.min(at)));
+        }
         entry.input_tokens += record.input;
         entry.output_tokens += record.output;
         entry.cached_input_tokens += record.cached;
@@ -406,6 +432,7 @@ pub fn report(
         unpriced_models: unpriced,
         dispatches,
         truncated,
+        earliest,
     })
 }
 

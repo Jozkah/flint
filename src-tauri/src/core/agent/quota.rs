@@ -81,9 +81,16 @@ pub struct Quotas {
 /// Tokens, counted across runs (AH-191).
 #[derive(Deserialize, Serialize, Default, Clone, Debug, PartialEq)]
 pub struct TokenQuotas {
-    /// Input plus output, over the last 24 hours.
+    /// Input plus output, over the last 5 hours. Rolling: every dispatch
+    /// counts for exactly 5 hours after it happened.
+    #[serde(default)]
+    pub per_5h: Option<u64>,
+    /// Over the last 24 hours.
     #[serde(default)]
     pub per_day: Option<u64>,
+    /// Over the last 7 days, rolling.
+    #[serde(default)]
+    pub per_week: Option<u64>,
     /// Over the last 30 days.
     #[serde(default)]
     pub per_month: Option<u64>,
@@ -93,9 +100,44 @@ pub struct TokenQuotas {
 #[derive(Deserialize, Serialize, Default, Clone, Debug, PartialEq)]
 pub struct SpendQuotas {
     #[serde(default)]
+    pub per_5h: Option<f64>,
+    #[serde(default)]
     pub per_day: Option<f64>,
     #[serde(default)]
+    pub per_week: Option<f64>,
+    #[serde(default)]
     pub per_month: Option<f64>,
+}
+
+/// The rolling windows a ceiling can be declared over: name, the period the
+/// ledger is read with, and its length in seconds.
+const WINDOWS: [(&str, &str, u64); 4] = [
+    ("5h", "5h", 5 * 3600),
+    ("day", "24h", 24 * 3600),
+    ("week", "7d", 7 * 24 * 3600),
+    ("month", "30d", 30 * 24 * 3600),
+];
+
+impl TokenQuotas {
+    fn limit(&self, window: &str) -> Option<u64> {
+        match window {
+            "5h" => self.per_5h,
+            "day" => self.per_day,
+            "week" => self.per_week,
+            _ => self.per_month,
+        }
+    }
+}
+
+impl SpendQuotas {
+    fn limit(&self, window: &str) -> Option<f64> {
+        match window {
+            "5h" => self.per_5h,
+            "day" => self.per_day,
+            "week" => self.per_week,
+            _ => self.per_month,
+        }
+    }
 }
 
 pub fn quotas_path(data_folder: &Path) -> PathBuf {
@@ -118,7 +160,9 @@ pub fn quotas(data_folder: &Path) -> Result<Quotas, QuotaError> {
         QuotaError::new(QuotaErrorKind::Malformed, format!("quotas.toml: {e}"))
     })?;
     for (what, value) in [
+        ("spend.per_5h", parsed.spend.per_5h),
         ("spend.per_day", parsed.spend.per_day),
+        ("spend.per_week", parsed.spend.per_week),
         ("spend.per_month", parsed.spend.per_month),
     ] {
         if let Some(value) = value {
@@ -137,10 +181,9 @@ impl Quotas {
     /// Whether anything is declared at all. Nothing declared means nothing to
     /// read, and nothing to read means no ledger work per turn.
     pub fn any(&self) -> bool {
-        self.tokens.per_day.is_some()
-            || self.tokens.per_month.is_some()
-            || self.spend.per_day.is_some()
-            || self.spend.per_month.is_some()
+        WINDOWS.iter().any(|(name, _, _)| {
+            self.tokens.limit(name).is_some() || self.spend.limit(name).is_some()
+        })
     }
 }
 
@@ -157,6 +200,11 @@ pub struct Standing {
     /// their use is real and cannot be turned into dollars, so it is named
     /// rather than counted as nothing.
     pub unpriced: Vec<String>,
+    /// Seconds until the oldest use in this window ages out and capacity
+    /// starts coming back. `None` when nothing has been used in the window.
+    /// Only the oldest dispatch frees up then, not necessarily enough to get
+    /// under the ceiling.
+    pub frees_in_secs: Option<u64>,
 }
 
 impl Standing {
@@ -186,7 +234,23 @@ impl Standing {
                 self.unpriced.join(", ")
             ));
         }
+        if self.exceeded() {
+            if let Some(secs) = self.frees_in_secs {
+                text.push_str(&format!("; capacity starts returning in {}", human_duration(secs)));
+            }
+        }
         text
+    }
+}
+
+/// `4h 12m`, `35m`, `50s`: what a person reads for a wait.
+pub fn human_duration(secs: u64) -> String {
+    let (h, m) = (secs / 3600, (secs % 3600) / 60);
+    match (secs / 86_400, h, m) {
+        (d, h, _) if d > 0 => format!("{d}d {}h", h % 24),
+        (_, h, m) if h > 0 => format!("{h}h {m}m"),
+        (_, _, m) if m > 0 => format!("{m}m"),
+        _ => format!("{secs}s"),
     }
 }
 
@@ -203,40 +267,47 @@ pub fn standing(data_folder: &Path, quotas: &Quotas) -> Result<Vec<Standing>, Qu
             QuotaError::new(QuotaErrorKind::Unreadable, format!("the ledger: {}", e.message))
         })
     };
-    let day = (quotas.tokens.per_day.is_some() || quotas.spend.per_day.is_some())
-        .then(|| read("24h"))
-        .transpose()?;
-    let month = (quotas.tokens.per_month.is_some() || quotas.spend.per_month.is_some())
-        .then(|| read("30d"))
-        .transpose()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
 
     let mut out = Vec::new();
-    let mut push_tokens = |name: &str, limit: Option<u64>, report: Option<&Report>| {
-        if let (Some(limit), Some(report)) = (limit, report) {
+    for (name, period, window_secs) in WINDOWS {
+        let tokens = quotas.tokens.limit(name);
+        let money = quotas.spend.limit(name);
+        if tokens.is_none() && money.is_none() {
+            continue;
+        }
+        let report = read(period)?;
+        let frees_in_secs = report
+            .earliest
+            .map(|at| (at + window_secs).saturating_sub(now));
+        let label = match name {
+            "5h" => "5 hours",
+            other => other,
+        };
+        let per = if name == "5h" { "per 5 hours".to_string() } else { format!("per {label}") };
+        if let Some(limit) = tokens {
             out.push(Standing {
-                ceiling: name.to_string(),
+                ceiling: format!("tokens {per}"),
                 used: (report.input_tokens + report.output_tokens) as f64,
                 limit: limit as f64,
                 // Tokens are tokens whether or not anybody priced them.
                 unpriced: Vec::new(),
+                frees_in_secs,
             });
         }
-    };
-    push_tokens("tokens per day", quotas.tokens.per_day, day.as_ref());
-    push_tokens("tokens per month", quotas.tokens.per_month, month.as_ref());
-
-    let mut push_spend = |name: &str, limit: Option<f64>, report: Option<&Report>| {
-        if let (Some(limit), Some(report)) = (limit, report) {
+        if let Some(limit) = money {
             out.push(Standing {
-                ceiling: name.to_string(),
+                ceiling: format!("spend {per}"),
                 used: report.priced_cost,
                 limit,
                 unpriced: report.unpriced_models.clone(),
+                frees_in_secs,
             });
         }
-    };
-    push_spend("spend per day", quotas.spend.per_day, day.as_ref());
-    push_spend("spend per month", quotas.spend.per_month, month.as_ref());
+    }
 
     // The one closest to its ceiling first: that is the one a person needs to
     // read, and the one a refusal should name.
@@ -443,6 +514,37 @@ mod tests {
         assert_eq!(reached.ceiling, "spend per day");
         assert!((reached.used - 0.02).abs() < 1e-9, "{}", reached.used);
         assert!(reached.exceeded());
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// Rolling windows: a 5 hour and a weekly ceiling are read from the same
+    /// ledger, and a reached one says when capacity starts coming back.
+    #[test]
+    fn five_hour_and_weekly_ceilings_roll_and_say_when_they_free_up() {
+        let data = temp_data("rolling");
+        std::fs::write(
+            quotas_path(&data),
+            "[tokens]\nper_5h = 100\nper_week = 100000\n",
+        )
+        .unwrap();
+        let quotas = quotas(&data).expect("reads");
+        assert!(quotas.any());
+        record(&data, "mock/m", 80, 40);
+
+        let standing = standing(&data, &quotas).expect("judged");
+        assert_eq!(standing[0].ceiling, "tokens per 5 hours");
+        assert_eq!(standing[0].used, 120.0);
+        assert!(standing[0].exceeded());
+        let wait = standing[0].frees_in_secs.expect("something is in the window");
+        assert!(wait > 5 * 3600 - 120 && wait <= 5 * 3600, "{wait}");
+        let said = standing[0].describe();
+        assert!(
+            said.contains("capacity starts returning in 4h")
+                || said.contains("capacity starts returning in 5h"),
+            "{said}"
+        );
+        assert_eq!(standing[1].ceiling, "tokens per week");
+        assert!(!standing[1].exceeded());
         let _ = std::fs::remove_dir_all(&data);
     }
 
