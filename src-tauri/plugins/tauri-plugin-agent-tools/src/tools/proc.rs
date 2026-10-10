@@ -1325,7 +1325,9 @@ pub async fn spawn(
     // it. `current_dir` on the workspace keeps relative work correct.
     cmd.env_clear();
     for key in SANDBOX_ENV_ALLOW {
-        if let Some(val) = std::env::var_os(key) {
+        // `host_env_var` drops AppImage mount entries from `PATH`, so the
+        // shell does not resolve the bundle's tools ahead of the host's.
+        if let Some(val) = jan_process::host_env_var(key) {
             cmd.env(key, val);
         }
     }

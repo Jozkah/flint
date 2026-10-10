@@ -616,9 +616,13 @@ pub fn setup_windows_process_flags(command: &mut tokio::process::Command) {
 /// the flags are decided; new code can call that directly on a std or tokio
 /// `Command`. Unlike [`setup_windows_process_flags`] this sets no process-group
 /// flag: these are one-shot `.output()`/`.status()` calls.
+///
+/// Every caller starts a host program (`git`, `gh`, `cmd`), so this also drops
+/// the AppImage runtime's library and `PATH` entries from what the child
+/// inherits (see [`jan_process::appimage`]).
 pub fn hide_console_window(command: &mut std::process::Command) {
-    use jan_process::CommandConsole;
-    command.background();
+    use jan_process::{CommandConsole, HostProcessEnv};
+    command.background().host_env();
 }
 
 #[cfg(test)]
