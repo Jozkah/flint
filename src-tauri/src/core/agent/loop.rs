@@ -4044,7 +4044,7 @@ impl CompositeToolInvoker {
                     // Inside the project or the run's own scratch directory is
                     // ordinary work; both are resolved and canonicalised, so an
                     // absolute path into either is not asked about.
-                    crate::core::agent::destructive::destructive_reason_in(
+                    crate::core::agent::destructive::forced_prompt_reason(
                         c,
                         &crate::core::agent::destructive::Scope::new([
                             &self.project_root,

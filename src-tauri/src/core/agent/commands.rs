@@ -948,7 +948,7 @@ pub fn discard_for_purge(
 #[tauri::command]
 pub fn agent_destructive_reason(command: String, roots: Vec<String>) -> Option<String> {
     let scope = crate::core::agent::destructive::Scope::new(roots.iter());
-    crate::core::agent::destructive::destructive_reason_in(&command, &scope)
+    crate::core::agent::destructive::forced_prompt_reason(&command, &scope)
 }
 
 /// What a worktree holds that removing it would destroy.

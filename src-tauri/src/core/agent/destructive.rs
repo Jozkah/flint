@@ -57,6 +57,30 @@ pub fn destructive_reason_in(command: &str, scope: &Scope) -> Option<String> {
     reason_at_depth(command, scope, 0)
 }
 
+/// Why a shell command must be put to the person even when a rule or
+/// auto-approval would allow it: it looks destructive, or the static command
+/// scan cannot say what it will run (`BASH_ARGV0`, a `for` loop over a glob or
+/// expansion, `eval`, `sudo`, `xargs`, ...).
+///
+/// Kept apart from [`destructive_reason_in`] on purpose: that function is
+/// parity-tested against the web app's port, while the scan lives only here.
+pub fn forced_prompt_reason(command: &str, scope: &Scope) -> Option<String> {
+    destructive_reason_in(command, scope).or_else(|| opaque_reason(command))
+}
+
+/// Why the command scan reports `command` as opaque, or `None` when it
+/// resolves to a known set of base commands.
+pub fn opaque_reason(command: &str) -> Option<String> {
+    use tauri_plugin_agent_tools::tools::cmdscan::{scan_command, CommandScan};
+    match scan_command(command) {
+        CommandScan::Opaque => Some(
+            "runs code that cannot be resolved statically (shell indirection, a loop over a glob, eval or a wrapper)"
+                .to_string(),
+        ),
+        CommandScan::Bases(_) => None,
+    }
+}
+
 /// The folders a command may delete inside without being asked about.
 ///
 /// Each root is resolved once, up front: canonicalised through the filesystem
@@ -807,5 +831,31 @@ mod tests {
         let scope = Scope::new([&canonical]);
         assert_eq!(destructive_reason_in(&rm(&proj.join("sub")), &scope), None);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn opaque_commands_force_a_prompt_and_ordinary_ones_do_not() {
+        let scope = Scope::new([std::env::temp_dir()]);
+        for cmd in [
+            "BASH_ARGV0=ls rm x",
+            "echo $BASH_ARGV0",
+            "for f in *.txt; do cat $f; done",
+            "for f in $FILES; do echo $f; done",
+            "eval \"$CMD\"",
+        ] {
+            assert!(forced_prompt_reason(cmd, &scope).is_some(), "{cmd}");
+        }
+        for cmd in [
+            "ls",
+            "ls -la src",
+            "git status",
+            "git log --oneline -5",
+            "cat README.md",
+            "echo hello",
+            "for f in a.txt b.txt; do cat $f; done",
+            "cargo test -p foo && echo ok",
+        ] {
+            assert_eq!(forced_prompt_reason(cmd, &scope), None, "{cmd}");
+        }
     }
 }
