@@ -43,8 +43,10 @@ function normalizeCiteUrl(raw: string): string {
 
 // Convert model-emitted [[cite:URL]] markers into anchors the Anchor override
 // renders as circular favicon chips.
-function linkifyWebCitations(text: string): string {
+function linkifyWebCitations(text: string, show = true): string {
   if (!text.includes('[[cite:')) return text
+  // Off: the markers are dropped; the sources still list under the answer.
+  if (!show) return text.replace(WEB_CITE_MARKER, '')
   return text.replace(
     WEB_CITE_MARKER,
     (_m, url: string) =>
@@ -291,6 +293,7 @@ function RenderMarkdownComponent({
   const renderHtmlArtifacts = useInterfaceSettings(
     (s) => s.renderHtmlArtifacts
   )
+  const showInlineCitations = useInterfaceSettings((s) => s.showInlineCitations)
 
   // Coalesce rapid streamed updates: React renders the deferred (older) value
   // while new tokens arrive and skips intermediates under load, so the memoized
@@ -304,9 +307,10 @@ function RenderMarkdownComponent({
   const normalizedContent = useMemo(
     () =>
       linkifyWebCitations(
-        isStreaming ? effectiveContent : normalizeLatex(effectiveContent)
+        isStreaming ? effectiveContent : normalizeLatex(effectiveContent),
+        showInlineCitations
       ),
-    [effectiveContent, isStreaming]
+    [effectiveContent, isStreaming, showInlineCitations]
   )
 
   const mergedComponents = useMemo<Components>(() => {

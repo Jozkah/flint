@@ -530,6 +530,24 @@ describe('RenderMarkdown', () => {
       expect(container.textContent).not.toContain('[[cite:')
     })
 
+    it('drops the markers when inline citations are turned off', () => {
+      useInterfaceSettings.setState({ showInlineCitations: false })
+      try {
+        const { container } = render(
+          <RenderMarkdown
+            content={'Paris is the capital.[[cite:https://en.wikipedia.org/wiki/Paris]]'}
+            messageId="m4"
+          />
+        )
+        expect(container.querySelector('a[href*="wikipedia"]')).toBeNull()
+        expect(container.querySelector('img')).toBeNull()
+        expect(container.textContent).toContain('Paris is the capital.')
+        expect(container.textContent).not.toContain('[[cite:')
+      } finally {
+        useInterfaceSettings.setState({ showInlineCitations: true })
+      }
+    })
+
     it('leaves text without markers untouched', () => {
       const { container } = render(
         <RenderMarkdown content={'No citations here.'} messageId="m2" />

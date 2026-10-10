@@ -186,7 +186,9 @@
     "transcriptViewThinking": "Penalaran",
     "transcriptViewThinkingDesc": "Menambahkan penalaran model. Panggilan alat tetap terlipat.",
     "transcriptViewVerbose": "Lengkap",
-    "transcriptViewVerboseDesc": "Semuanya: penalaran penuh dan setiap panggilan alat terbuka dengan parameter dan keluarannya."
+    "transcriptViewVerboseDesc": "Semuanya: penalaran penuh dan setiap panggilan alat terbuka dengan parameter dan keluarannya.",
+    "inlineCitations": "Ikon sumber sebaris",
+    "inlineCitationsDesc": "Tampilkan ikon situs kecil setelah kalimat yang berasal dari sumber web. Matikan untuk membaca jawaban tanpa ikon; sumber tetap tercantum di bawahnya."
   },
   "hardware": {
     "os": "Sistem Operasi",

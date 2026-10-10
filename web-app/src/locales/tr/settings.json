@@ -187,7 +187,9 @@
     "transcriptViewThinking": "Düşünme",
     "transcriptViewThinkingDesc": "Modelin akıl yürütmesini ekler. Araç çağrıları katlı kalır.",
     "transcriptViewVerbose": "Ayrıntılı",
-    "transcriptViewVerboseDesc": "Her şey: tam akıl yürütme ve parametreleri ile çıktısı açık her araç çağrısı."
+    "transcriptViewVerboseDesc": "Her şey: tam akıl yürütme ve parametreleri ile çıktısı açık her araç çağrısı.",
+    "inlineCitations": "Metin içi kaynak simgeleri",
+    "inlineCitationsDesc": "Bir web kaynağından gelen cümlenin ardından küçük bir site simgesi gösterir. Yanıtı simgesiz okumak için kapatın; kaynaklar altında listelenmeye devam eder."
   },
   "hardware": {
     "os": "İşletim Sistemi",
