@@ -91,7 +91,7 @@ pub fn download_path(data: &Path, repo: &str, file: &str) -> PathBuf {
 }
 
 fn api_url(segments: &[&str]) -> Result<url::Url, String> {
-    crate::core::huggingface::endpoint_url(&crate::core::huggingface::hf_endpoint()?, segments)
+    crate::core::hf_endpoint::endpoint_url(&crate::core::hf_endpoint::hf_endpoint()?, segments)
 }
 
 fn file_url(repo: &str, file: &str) -> Result<url::Url, String> {
@@ -263,7 +263,7 @@ fn sha256_of(path: &Path) -> Result<String, String> {
 /// `models download <repo> <file> [--out DIR]`: resumable, verified.
 pub async fn download(data: &Path, repo: &str, file: &str, quiet: bool) -> Result<PathBuf, String> {
     let url = file_url(repo, file)?;
-    if url.host_str() != crate::core::huggingface::hf_endpoint()?.host_str() {
+    if url.host_str() != crate::core::hf_endpoint::hf_endpoint()?.host_str() {
         return Err("Refusing a non-Hugging Face download URL".to_string());
     }
     let expected = files(repo)
