@@ -65,12 +65,12 @@ import {
   fitBasis,
   fitOfGroup,
   loadRepoArchitecture,
+  repoFit,
+  repoFitsHardware,
   type FitContext,
   type GroupFit,
 } from '@/lib/huggingfaceFit'
 import {
-  assessModelFit,
-  DEFAULT_CTX_LENGTH,
   type FitVerdict,
   type KvArchitecture,
 } from '@/lib/modelCompatibility'
@@ -162,6 +162,8 @@ function ModelDiscoverRoute() {
   const [source, setSource] = useState<'models' | 'studio'>('models')
   const [includeGated, setIncludeGated] = useState(true)
   const [downloadedOnly, setDownloadedOnly] = useState(false)
+  // Hide repos whose best variant is larger than this machine's memory.
+  const [fitsOnly, setFitsOnly] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [filesByRepo, setFilesByRepo] = useState<
     Record<string, HuggingFaceFile[]>
@@ -311,7 +313,16 @@ function ModelDiscoverRoute() {
         (architecture === 'all' || arch === architecture) &&
         (modality === 'all' || modalities.includes(modality)) &&
         (includeGated || !model.gated) &&
-        (!downloadedOnly || repoInstalled(model))
+        (!downloadedOnly || repoInstalled(model)) &&
+        (!fitsOnly ||
+          repoFitsHardware(
+            repoFit(model, files, {
+              hardware,
+              devices,
+              architecture: archByRepo[model.id],
+              parameterBillions: parameterCount,
+            })
+          ))
       )
     })
 
@@ -335,6 +346,10 @@ function ModelDiscoverRoute() {
     modality,
     includeGated,
     downloadedOnly,
+    fitsOnly,
+    hardware,
+    devices,
+    archByRepo,
     sort,
     filesByRepo,
     installedIds,
@@ -399,12 +414,14 @@ function ModelDiscoverRoute() {
     architecture !== 'all' ||
     modality !== 'all' ||
     downloadedOnly ||
+    fitsOnly ||
     !includeGated
   const clearFilters = () => {
     setParams('all')
     setArchitecture('all')
     setModality('all')
     setDownloadedOnly(false)
+    setFitsOnly(false)
     setIncludeGated(true)
   }
 
@@ -577,6 +594,17 @@ function ModelDiscoverRoute() {
                 />
                 Downloaded
               </label>
+              <label
+                className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-secondary-foreground"
+                title="Hide models whose best variant is larger than this machine's memory"
+              >
+                <Switch
+                  checked={fitsOnly}
+                  onCheckedChange={setFitsOnly}
+                  aria-label="Only models that fit"
+                />
+                Fits my hardware
+              </label>
               <label className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-secondary-foreground">
                 <Switch checked={includeGated} onCheckedChange={setIncludeGated} />
                 <LockKeyhole className="size-3.5" /> Gated
@@ -658,21 +686,11 @@ function ModelDiscoverRoute() {
                 const recommended = bestGroup(groups, fitContext)
                 const isMlx = repoLooksMlx(model)
                 const mlxBytes = isMlx ? mlxWeightsBytes(files) : null
-                const recommendedFit: GroupFit | null = isMlx
-                  ? mlxBytes
-                    ? {
-                        ...assessModelFit({
-                          weightsBytes: mlxBytes,
-                          ctxLength: DEFAULT_CTX_LENGTH,
-                          hardware,
-                          devices,
-                        }),
-                        sizeEstimated: false,
-                      }
-                    : null
-                  : recommended
-                    ? fitOfGroup(recommended, groups, fitContext)
-                    : null
+                const recommendedFit: GroupFit | null = repoFit(
+                  model,
+                  files,
+                  fitContext
+                )
                 const modalities = inferModalities(model, files)
                 const arch = inferArchitecture(model)
                 const opened = Boolean(expanded[model.id])
