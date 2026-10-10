@@ -60,5 +60,20 @@
   "reopenGuide": "Guide de prise en main",
   "reopenGuideDescription": "Reparcourez le choix d'un modèle, l'ajout de contenu et la réalisation d'une première tâche.",
   "reopenGuideAction": "Ouvrir le guide",
-  "resumeRecent": "Reprendre votre dernière conversation : {{title}}"
+  "resumeRecent": "Reprendre votre dernière conversation : {{title}}",
+  "modelSetup": {
+    "title": "Comment souhaitez-vous obtenir un modèle ?",
+    "local": {
+      "title": "Utiliser un modèle sur cet ordinateur",
+      "body": "Parcourez les modèles et voyez lesquels conviennent à votre matériel."
+    },
+    "provider": {
+      "title": "Connecter un fournisseur",
+      "body": "Utilisez un modèle hébergé avec votre propre compte."
+    },
+    "import": {
+      "title": "Importer un fichier",
+      "body": "Ajoutez un fichier de modèle que vous possédez déjà."
+    }
+  }
 }

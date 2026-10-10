@@ -62,6 +62,33 @@ pub(crate) fn error_json(message: &str, kind: &str, code: &str) -> String {
     .to_string()
 }
 
+/// An engine `exceed_context_size_error` as the Anthropic error Claude Code
+/// reads, or `None` for any other body. Its own wording for an oversized
+/// prompt ("prompt is too long: N tokens > M maximum") is what makes it compact
+/// and retry rather than print an opaque 400, and the hint names the setting
+/// that fixes it (janhq/jan#8108).
+pub(crate) fn anthropic_context_error(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let error = value.get("error")?;
+    if error.get("type")?.as_str()? != "exceed_context_size_error" {
+        return None;
+    }
+    let prompt = error.get("n_prompt_tokens").and_then(|v| v.as_u64())?;
+    let context = error.get("n_ctx").and_then(|v| v.as_u64())?;
+    let message = format!(
+        "prompt is too long: {prompt} tokens > {context} maximum. The model is loaded with a \
+         {context}-token context; Claude Code needs about 32768. Raise Context Size in the \
+         model's settings in Flint, or choose a model with a larger context."
+    );
+    Some(
+        serde_json::json!({
+            "type": "error",
+            "error": { "type": "invalid_request_error", "message": message }
+        })
+        .to_string(),
+    )
+}
+
 /// Whether `url` points at this machine, i.e. a local engine that may simply
 /// not be up yet, as opposed to a remote provider.
 pub(crate) fn is_local_url(url: &str) -> bool {
@@ -2460,6 +2487,8 @@ async fn proxy_request(
                             // Return fallback error to client
                             let fallback_error = res.text().await.unwrap_or_else(|e| format!("Failed to read error: {}", e));
 
+                            let fallback_error = anthropic_context_error(&fallback_error)
+                                .unwrap_or(fallback_error);
                             // Return the error to client
                             let mut error_response = Response::builder().status(fallback_status);
                             error_response = add_cors_headers_with_host_and_origin(
@@ -2516,6 +2545,7 @@ async fn proxy_request(
                 }
 
                     // If fallback failed or wasn't attempted, return error to client
+                    let error_body = anthropic_context_error(&error_body).unwrap_or(error_body);
                     let mut error_response = Response::builder().status(status);
                     error_response = add_cors_headers_with_host_and_origin(
                         error_response,
@@ -2725,6 +2755,34 @@ fn map_bind_error(
     Box::new(err)
 }
 
+/// Bind `addr`. When a specific port is taken by another process (AddrInUse)
+/// or the OS refuses it (PermissionDenied, Windows 10013 for reserved ranges),
+/// bind an OS-assigned free port on the same host instead of failing. The
+/// boolean says whether that fallback happened; the caller reads the real
+/// port from the listener and reports it. When even the fallback cannot bind,
+/// the original error is returned.
+async fn bind_with_fallback(
+    addr: SocketAddr,
+) -> std::io::Result<(tokio::net::TcpListener, bool)> {
+    match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => Ok((l, false)),
+        Err(e)
+            if addr.port() != 0
+                && matches!(
+                    e.kind(),
+                    std::io::ErrorKind::AddrInUse | std::io::ErrorKind::PermissionDenied
+                ) =>
+        {
+            let fallback = SocketAddr::new(addr.ip(), 0);
+            match tokio::net::TcpListener::bind(fallback).await {
+                Ok(l) => Ok((l, true)),
+                Err(_) => Err(e),
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// A JSON response for the image and video routes: the body on success, an
 /// OpenAI-shaped error with its own status otherwise.
 fn json_response(
@@ -2776,6 +2834,9 @@ pub(crate) fn add_cors_headers_with_host_and_origin(
         builder = builder
             .header("Access-Control-Allow-Origin", origin)
             .header("Access-Control-Allow-Credentials", "true");
+    } else if origin.is_empty() {
+        // curl and the OpenAI SDKs send no Origin; that is not a CORS problem.
+        log::debug!("CORS: request has no Origin header, nothing to reflect");
     } else {
         log::warn!(
             "CORS: Origin '{}' is not trusted, not reflecting origin",
@@ -2868,27 +2929,38 @@ async fn start_server_internal(
     // Calculate this before proxy_api_key is moved into ProxyConfig.
     let insecure_public_bind = is_insecure_public_bind(&host, &proxy_api_key);
 
-    let config = ProxyConfig {
-        prefix,
-        proxy_api_key,
-        trusted_hosts,
-        host: host.clone(),
-        port,
-        enable_server_tool_execution,
-        cors_enabled,
-    };
-
     let client = upstream_client(Some(proxy_timeout))?;
     let local_client = local_upstream_client(Some(proxy_timeout))?;
 
-    let listener = match tokio::net::TcpListener::bind(addr).await {
-        Ok(l) => l,
+    // Bind first: the port that ends up bound (it differs from the requested
+    // one after a fallback) is what the config and the caller must see.
+    let (listener, fell_back) = match bind_with_fallback(addr).await {
+        Ok(bound) => bound,
         Err(e) => {
             log::error!("Failed to bind to {addr}: {e}");
             return Err(map_bind_error(addr, e));
         }
     };
-    log::info!("Flint API server started on http://{addr}");
+    let bound_addr = listener.local_addr().unwrap_or(addr);
+    if fell_back {
+        log::warn!(
+            "Port {} on {} is unavailable; the Flint API server is using free port {} instead",
+            addr.port(),
+            addr.ip(),
+            bound_addr.port()
+        );
+    }
+    log::info!("Flint API server started on http://{bound_addr}");
+
+    let config = ProxyConfig {
+        prefix,
+        proxy_api_key,
+        trusted_hosts,
+        host: host.clone(),
+        port: bound_addr.port(),
+        enable_server_tool_execution,
+        cors_enabled,
+    };
 
     // Security: binding to a non-loopback interface exposes the OpenAI-compatible
     // API on the network. With no API key set, any reachable host can call it
@@ -2962,7 +3034,7 @@ async fn start_server_internal(
     });
 
     *handle_guard = Some(server_task);
-    let actual_port = addr.port();
+    let actual_port = bound_addr.port();
     log::info!("Flint API server started successfully on port {actual_port}");
     Ok(actual_port)
 }
@@ -3494,7 +3566,10 @@ mod tests {
         assert_eq!(ctx(&serde_json::json!({"id":"m"})), None);
     }
 
-    use super::{error_json, is_insecure_public_bind, is_local_url, map_bind_error, model_ids_match};
+    use super::{
+        anthropic_context_error, bind_with_fallback, error_json, is_insecure_public_bind, is_local_url, map_bind_error,
+        model_ids_match,
+    };
     use std::net::SocketAddr;
 
     /// #195: a final `data: [DONE]` with no trailing newline is still
@@ -3554,6 +3629,27 @@ mod tests {
         assert!(!is_insecure_public_bind("192.168.1.10", "secret"));
     }
 
+    /// A free port binds as asked; a taken port falls back to another free
+    /// port on the same host instead of failing.
+    #[tokio::test]
+    async fn bind_falls_back_to_a_free_port_when_the_port_is_taken() {
+        let holder = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let taken = holder.local_addr().unwrap();
+
+        let (listener, fell_back) = bind_with_fallback(taken).await.unwrap();
+        let bound = listener.local_addr().unwrap();
+        assert!(fell_back);
+        assert_ne!(bound.port(), taken.port());
+        assert_eq!(bound.ip(), taken.ip());
+        drop(listener);
+        drop(holder);
+
+        // Free now: no fallback, same port.
+        let (listener, fell_back) = bind_with_fallback(taken).await.unwrap();
+        assert!(!fell_back);
+        assert_eq!(listener.local_addr().unwrap(), taken);
+    }
+
     #[test]
     fn addr_in_use_maps_to_actionable_message() {
         let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
@@ -3602,6 +3698,25 @@ mod tests {
         assert_eq!(v["error"]["message"], "it \"broke\"");
         assert_eq!(v["error"]["type"], "server_error");
         assert_eq!(v["error"]["code"], "backend_unavailable");
+    }
+
+    #[test]
+    fn a_context_overflow_reaches_claude_code_as_an_anthropic_error() {
+        let engine = r#"{"error":{"code":400,"message":"request (24100 tokens) exceeds the available context size (8192 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":24100,"n_ctx":8192}}"#;
+        let out = anthropic_context_error(engine).expect("rewritten");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["type"], "error");
+        assert_eq!(v["error"]["type"], "invalid_request_error");
+        let message = v["error"]["message"].as_str().unwrap();
+        // The wording Claude Code recognises as "compact and retry".
+        assert!(message.starts_with("prompt is too long: 24100 tokens > 8192 maximum"));
+        assert!(message.contains("Context Size"));
+    }
+
+    #[test]
+    fn other_engine_errors_are_left_alone() {
+        assert!(anthropic_context_error(r#"{"error":{"type":"server_error"}}"#).is_none());
+        assert!(anthropic_context_error("not json").is_none());
     }
 
     #[test]

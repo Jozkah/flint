@@ -11,7 +11,8 @@
     "where": "결과 위치",
     "checked": "확인한 내용",
     "unresolved": "미해결",
-    "next": "다음 단계"
+    "next": "다음 단계",
+    "details": "세부 정보"
   },
   "headline": {
     "running": "실행이 아직 진행 중입니다.",

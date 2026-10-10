@@ -10,6 +10,11 @@ vi.mock('@/utils/getModelToStart', () => ({
   getModelToStart: vi.fn(),
 }))
 
+// Only the built-in engines load models; every other provider is a remote API.
+vi.mock('@/lib/utils', () => ({
+  isLocalProvider: (provider: string) => provider === 'llamacpp' || provider === 'mlx',
+}))
+
 import { ensureModelForServer, type EnsureModelDeps } from '../ensureModelForServer'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { getModelToStart } from '@/utils/getModelToStart'
@@ -208,5 +213,52 @@ describe('ensureModelForServer', () => {
 
     const result = await ensureModelForServer(deps)
     expect(result).toEqual({ status: 'no_model_available' })
+  })
+
+  describe('a remote provider is never loaded into an engine', () => {
+    it('falls back to a local model when the last used model is remote', async () => {
+      const remote = makeProvider('keylessfake', ['fake-model-a'])
+      const local = makeProvider('llamacpp', ['qwen3', 'other'])
+      vi.mocked(useModelProvider.getState).mockReturnValue({
+        providers: [remote, local],
+        selectedModel: null,
+        selectedProvider: null,
+        getProviderByName: vi.fn(),
+      } as any)
+      vi.mocked(getModelToStart).mockReturnValue({
+        model: 'fake-model-a',
+        provider: remote,
+      })
+
+      const deps = makeDeps()
+      const promise = ensureModelForServer(deps)
+      await vi.advanceTimersByTimeAsync(500)
+      const result = await promise
+
+      expect(deps.modelsService.startModel).toHaveBeenCalledTimes(1)
+      expect(deps.modelsService.startModel).toHaveBeenCalledWith(local, 'qwen3', true)
+      expect(result).toEqual({
+        status: 'loaded',
+        modelId: 'qwen3',
+        providerName: 'llamacpp',
+      })
+    })
+
+    it('reports no model available when only remote models exist', async () => {
+      const remote = makeProvider('openai', ['gpt-4'])
+      vi.mocked(useModelProvider.getState).mockReturnValue({
+        providers: [remote],
+        selectedModel: null,
+        selectedProvider: null,
+        getProviderByName: vi.fn(),
+      } as any)
+      vi.mocked(getModelToStart).mockReturnValue({ model: 'gpt-4', provider: remote })
+
+      const deps = makeDeps()
+      const result = await ensureModelForServer(deps)
+
+      expect(result).toEqual({ status: 'no_model_available' })
+      expect(deps.modelsService.startModel).not.toHaveBeenCalled()
+    })
   })
 })

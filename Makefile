@@ -145,8 +145,12 @@ lint: install-and-build
 # Both go through `test-rust`, which owns `stub-resources`: the app's build
 # script fails on any missing bundle.resources path, and neither entry point
 # builds the engine worker or the ggml backends.
+# `yarn test` includes web-app/src/__tests__/tauriResources.test.ts, which asserts
+# the resource preflight passes, so the stubs must exist before it runs. They are
+# guarded and never replace a real build output.
 test-prepare: lint
 	yarn download:bin
+	$(MAKE) stub-resources
 	yarn test
 	yarn copy:assets:tauri
 	yarn build:icon

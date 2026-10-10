@@ -10,7 +10,7 @@ import {
   getLocalPropsExtension,
   type LlamacppModelProps,
 } from '@/lib/llamacppRouterProps'
-import { fetchServerWindow } from '@/lib/serverWindow'
+import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
 import { listedWindow } from '@/lib/listedWindows'
 import { useContextBreakdown } from './useContextBreakdown'
 import { useModelProvider } from './useModelProvider'
@@ -264,19 +264,25 @@ export const useTokensCount = (
   const rememberedWindow =
     (sameModel(learnedWindowModel) ? learnedWindow : undefined) ??
     (lastKnown && sameModel(lastKnown.model) ? lastKnown.window : undefined)
-  const remoteBaseUrl = isLocalProvider
+  const remoteProvider = isLocalProvider
     ? undefined
-    : getProviderByName(selectedProvider)?.base_url
+    : getProviderByName(selectedProvider)
+  const remoteBaseUrl = remoteProvider?.base_url
+  // The key rides along: a gateway that wants it answers an anonymous probe
+  // with 401 and the card would have no window to show.
+  const remoteHeaders = serverWindowHeaders(remoteProvider)
+  const remoteHeadersKey = JSON.stringify(remoteHeaders ?? null)
   useEffect(() => {
     if (!threadId || !remoteBaseUrl) return
     let current = true
-    fetchServerWindow(remoteBaseUrl, selectedModel?.id).then((tokens) => {
+    fetchServerWindow(remoteBaseUrl, selectedModel?.id, remoteHeaders).then((tokens) => {
       if (current && tokens) setLearnedWindow(threadId, tokens, selectedModel?.id)
     })
     return () => {
       current = false
     }
-  }, [threadId, remoteBaseUrl, selectedModel?.id, setLearnedWindow])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, remoteBaseUrl, remoteHeadersKey, selectedModel?.id, setLearnedWindow])
 
   // What a loaded local engine says its window is, kept for the day it is not.
   const loadedWindow = usableContextValue(modelProps?.nCtx)

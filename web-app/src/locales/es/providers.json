@@ -11,6 +11,9 @@
   "noNewModels": "No se encontraron modelos nuevos. Todos los modelos disponibles ya están agregados.",
   "refreshModelsFailed": "No se pudieron obtener modelos de {{provider}}. Por favor verifica tu clave API y URL base.",
   "models": "Modelos",
+  "filterModels": "Filtrar {{count}} modelos",
+  "modelsShown": "Mostrando {{shown}} de {{total}}",
+  "showMoreModels": "Mostrar más",
   "backendInstalled": "Instalado",
   "backendHistoryShow": "Mostrar historial de actualizaciones",
   "backendHistoryHide": "Ocultar historial de actualizaciones",
@@ -73,6 +76,8 @@
     "modelExists": "El modelo ya existe",
     "modelExistsDesc": "Por favor elige un ID de modelo diferente."
   },
+  "revealModelFile": "Mostrar el archivo del modelo en la carpeta",
+  "revealModelFileFailed": "No se pudo abrir la carpeta del modelo.",
   "deleteModel": {
     "title": "Eliminar modelo: {{modelId}}",
     "description": "¿Estás seguro de que deseas eliminar este modelo? Esta acción no se puede deshacer.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Eliminar todos",
+    "repoTitle": "¿Eliminar este modelo descargado?",
+    "clearButton": "Vaciar la lista",
+    "clearTitle": "¿Quitar todos los modelos de este proveedor?",
+    "clearDescription": "Esto quita {{count}} modelo(s) de la lista. No se elimina nada en el proveedor y Actualizar puede volver a añadirlos.",
     "title": "¿Eliminar todos los modelos descargados?",
     "description": "Esto quitará definitivamente {{count}} modelo(s) del disco.",
     "sizeLabel": "Espacio en disco que se liberará:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Ingresa un nombre para el proveedor",
   "baseUrl": {
     "title": "URL base",
+    "openaiDescription": "Usa un proxy o una pasarela compatible con la API de OpenAI. El valor predeterminado es https://api.openai.com/v1.",
     "azureDescription": "Tu endpoint de Azure OpenAI. Sustituye YOUR-RESOURCE-NAME por el nombre de tu recurso de Azure.",
     "qwenDescription": "Tu endpoint de Model Studio. Una clave solo funciona en la región donde se creó: usa https://dashscope-intl.aliyuncs.com/compatible-mode/v1 para Singapur o https://dashscope.aliyuncs.com/compatible-mode/v1 para China continental."
   },
@@ -155,6 +165,11 @@
     "removeKey": "Quitar clave"
   },
   "dataFolderUnavailable": "No se pudo usar la carpeta de datos {{path}} en esta ejecución, así que Flint muestra los modelos de su carpeta predeterminada. Los modelos guardados allí no se eliminan: vuelven cuando esa carpeta esté disponible de nuevo. Consulta Ajustes > General.",
+  "tlsTrust": {
+    "title": "Permitir certificados no válidos",
+    "description": "Omite la verificación del certificado solo para la dirección de este proveedor. Úsalo con un servidor que administras tú, como una pasarela con certificado autofirmado. Desactivado por defecto.",
+    "warning": "La verificación del certificado está desactivada para este proveedor. Cualquiera en la ruta de red puede leer y modificar sus solicitudes, incluida tu clave de API. Desactívalo salvo que confíes en la red."
+  },
   "customHeaders": {
     "title": "Encabezados personalizados",
     "description": "Encabezados HTTP adicionales que se envían con cada solicitud a este proveedor, como un tenant de pasarela o una clave de suscripción. No pueden sustituir la clave de API.",

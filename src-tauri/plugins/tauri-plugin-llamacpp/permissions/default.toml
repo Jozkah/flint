@@ -7,6 +7,7 @@ permissions = [
     # Model lifecycle, served by the engine worker over loopback HTTP
     "allow-load-llama-model",
     "allow-unload-llama-model",
+    "allow-cancel-model-load",
     "allow-generate-api-key",
     "allow-ensure-session-ready",
     "allow-find-session-by-model",

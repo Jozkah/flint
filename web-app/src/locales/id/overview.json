@@ -53,5 +53,9 @@
     "approval": "Perlu persetujuan",
     "done": "Selesai",
     "idle": "Belum dimulai"
-  }
+  },
+  "resumeSub": "Mulai sesuatu yang baru atau lanjutkan dari terakhir kali.",
+  "startChat": "Tanya sesuatu",
+  "startFiles": "Cowork",
+  "usage": "Penggunaan"
 }

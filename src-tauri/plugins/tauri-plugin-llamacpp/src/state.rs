@@ -17,6 +17,8 @@ pub struct LlamacppState {
     /// It is what turns an eviction Jan did not initiate into a frontend
     /// event, so it is aborted whenever the worker stops.
     pub unload_watcher: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Loads this app is waiting on, so one can be cancelled.
+    pub loads: crate::load_cancel::LoadTracker,
 }
 
 impl Default for LlamacppState {
@@ -24,6 +26,7 @@ impl Default for LlamacppState {
         Self {
             engine: Mutex::new(None),
             unload_watcher: Mutex::new(None),
+            loads: crate::load_cancel::LoadTracker::new(),
         }
     }
 }

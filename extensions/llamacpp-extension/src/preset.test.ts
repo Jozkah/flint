@@ -347,6 +347,77 @@ describe('generatePreset 0.4.0 keys', () => {
   })
 })
 
+// A slot of a hybrid model with speculative decoding holds (1 + n_max) rows
+// of recurrent state, so auto's 4 slots overflow a 12 GB card.
+describe('generatePreset parallel with speculative decoding', () => {
+  const section = (ini: string, id: string) =>
+    ini.split(`[${id}]`)[1].split('load-on-startup')[0]
+
+  it('pins an embedded-MTP model to one user slot plus the reserved ones on auto', async () => {
+    setupModel('qwen', { mtp: true, mtp_layers: 1 })
+    await generatePreset('/p', '/jan', { parallel: 0 } as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(section(ini, 'qwen')).toContain('parallel = 3')
+    expect(section(ini, 'qwen')).toContain('kv-unified = true')
+    expect(ini.split('[qwen]')[0]).not.toContain('parallel =')
+  })
+
+  it('pins a draft-companion model when parallel is unset', async () => {
+    setupModel('qwen', {
+      mtp: true,
+      mtp_layers: 0,
+      mtp_model_path: 'models/qwen/mtp.gguf',
+    })
+    await generatePreset('/p', '/jan', {} as any)
+    expect(section(writtenFiles['/p/router.preset.ini'], 'qwen')).toContain(
+      'parallel = 3'
+    )
+  })
+
+  it('pins to exactly one slot when no background slots are reserved', async () => {
+    setupModel('qwen', { mtp: true, mtp_layers: 1 })
+    await generatePreset('/p', '/jan', {} as any, {
+      reservedBackgroundSlots: 0,
+    })
+    expect(section(writtenFiles['/p/router.preset.ini'], 'qwen')).toContain(
+      'parallel = 1'
+    )
+  })
+
+  it('leaves models without speculative decoding on auto', async () => {
+    setupModel('off', { mtp: false, mtp_layers: 1 })
+    setupModel('plain', {})
+    await generatePreset('/p', '/jan', { parallel: 0 } as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).not.toContain('parallel =')
+    expect(ini).not.toContain('kv-unified')
+  })
+
+  it('keeps an explicit global parallel for an MTP model', async () => {
+    setupModel('qwen', { mtp: true, mtp_layers: 1 })
+    await generatePreset('/p', '/jan', { parallel: 2 } as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini.split('[qwen]')[0]).toContain('parallel = 4')
+    expect(section(ini, 'qwen')).not.toContain('parallel =')
+  })
+
+  it('keeps an explicit per-model parallel for an MTP model', async () => {
+    setupModel('qwen', { mtp: true, mtp_layers: 1, parallel: 2 })
+    await generatePreset('/p', '/jan', {} as any)
+    const qwen = section(writtenFiles['/p/router.preset.ini'], 'qwen')
+    expect(qwen).toContain('parallel = 4')
+    expect(qwen).not.toContain('parallel = 3')
+  })
+
+  it('respects an explicit kv-unified off', async () => {
+    setupModel('qwen', { mtp: true, mtp_layers: 1 })
+    await generatePreset('/p', '/jan', { kv_unified: 'off' } as any)
+    const qwen = section(writtenFiles['/p/router.preset.ini'], 'qwen')
+    expect(qwen).toContain('parallel = 3')
+    expect(qwen).not.toContain('kv-unified = true')
+  })
+})
+
 describe('generatePreset kv-unified', () => {
   it('enables unified KV on auto when an explicit parallel is emitted', async () => {
     setupModel('llama', {})
@@ -1003,6 +1074,61 @@ describe('generatePreset KV cache and speculative guards', () => {
     const ini = writtenFiles['/p/router.preset.ini']
     expect(ini).toContain('cache-type-v = q8_0')
     expect(ini).toContain('cache-type-v = f16')
+  })
+
+  describe('auto KV cache default', () => {
+    const section = (ini: string, id: string) =>
+      ini.split(/\r?\n(?=\[)/).find((s) => s.startsWith(`[${id}]`)) ?? ''
+    const AUTO = { cache_type_k: 'auto', cache_type_v: 'auto' }
+
+    it('quantizes K only while flash attention is auto', async () => {
+      setupModel('m', {})
+      await generatePreset('/p', '/jan', { ...AUTO, flash_attn: 'auto' } as any)
+      const ini = writtenFiles['/p/router.preset.ini']
+      expect(ini).toContain('cache-type-k = q8_0')
+      expect(ini).not.toContain('cache-type-v')
+    })
+
+    it('quantizes K and V when flash attention is on', async () => {
+      setupModel('m', {})
+      await generatePreset('/p', '/jan', { ...AUTO, flash_attn: 'on' } as any)
+      const ini = writtenFiles['/p/router.preset.ini']
+      expect(ini).toContain('cache-type-k = q8_0')
+      expect(ini).toContain('cache-type-v = q8_0')
+    })
+
+    it('lets a model that turns flash attention on get a q8_0 V cache', async () => {
+      setupModel('m', { flash_attn: 'on' })
+      await generatePreset('/p', '/jan', { ...AUTO, flash_attn: 'auto' } as any)
+      const ini = writtenFiles['/p/router.preset.ini']
+      expect(section(ini, 'm')).toContain('cache-type-v = q8_0')
+      expect(section(ini, 'm')).not.toContain('cache-type-k')
+    })
+
+    it('lets an explicit f16 win globally and per model', async () => {
+      setupModel('m', { cache_type_k: 'f16' })
+      await generatePreset('/p', '/jan', {
+        ...AUTO,
+        cache_type_v: 'f16',
+        flash_attn: 'on',
+      } as any)
+      const ini = writtenFiles['/p/router.preset.ini']
+      expect(section(ini, 'm')).toContain('cache-type-k = f16')
+      expect(ini).not.toContain('cache-type-v')
+    })
+
+    it('writes f16 for a model in the fallback set', async () => {
+      setupModel('m', {})
+      await generatePreset(
+        '/p',
+        '/jan',
+        { ...AUTO, flash_attn: 'on' } as any,
+        { kvFallbackModels: new Set(['m']) }
+      )
+      const ini = writtenFiles['/p/router.preset.ini']
+      expect(section(ini, 'm')).toContain('cache-type-k = f16')
+      expect(section(ini, 'm')).toContain('cache-type-v = f16')
+    })
   })
 
   it('defaults to greedy sampling for a DFlash draft', async () => {

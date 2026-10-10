@@ -11,6 +11,31 @@ const MIN_CHUNK_SIZE_CHARS = 64
 // Reserves room for BOS/special tokens the tokenizer adds beyond raw content.
 const EMBEDDING_CONTEXT_SAFETY_TOKENS = 8
 
+/**
+ * Text for a rejection of any shape. An engine call can reject with a bare
+ * string or a plain `{ message }` object (a Tauri command error), which
+ * `String(e)` turns into "[object Object]".
+ */
+function describeError(e: unknown): string {
+  if (e instanceof Error) return e.message
+  if (typeof e === 'string') return e
+  if (e && typeof e === 'object') {
+    const record = e as Record<string, unknown>
+    for (const key of ['message', 'error', 'detail']) {
+      const inner = record[key]
+      if (typeof inner === 'string' && inner) return inner
+      if (inner && typeof inner === 'object') return describeError(inner)
+    }
+    try {
+      const json = JSON.stringify(e)
+      if (json && json !== '{}') return json
+    } catch {
+      // Unserialisable: fall through.
+    }
+  }
+  return String(e)
+}
+
 export default class VectorDBExt extends VectorDBExtension {
   async onLoad(): Promise<void> {
     // no-op
@@ -193,7 +218,7 @@ export default class VectorDBExt extends VectorDBExtension {
       return await llm.getEmbeddingContextSize()
     } catch (e) {
       throw new Error(
-        `Failed to determine embedding context size: ${e instanceof Error ? e.message : String(e)}`
+        `Failed to determine embedding context size: ${describeError(e)}`
       )
     }
   }
@@ -209,7 +234,7 @@ export default class VectorDBExt extends VectorDBExtension {
       ;[count] = await llm.countEmbeddingTokens([text])
     } catch (e) {
       throw new Error(
-        `Failed to count embedding tokens: ${e instanceof Error ? e.message : String(e)}`
+        `Failed to count embedding tokens: ${describeError(e)}`
       )
     }
     if (count <= budget || text.length <= MIN_CHUNK_SIZE_CHARS) return [text]

@@ -62,5 +62,9 @@
     "approval": "Wymaga zatwierdzenia",
     "done": "Gotowe",
     "idle": "Nierozpoczęte"
-  }
+  },
+  "resumeSub": "Zacznij coś nowego lub wróć do tego, co robiłeś.",
+  "startChat": "Zadaj pytanie",
+  "startFiles": "Cowork",
+  "usage": "Zużycie"
 }

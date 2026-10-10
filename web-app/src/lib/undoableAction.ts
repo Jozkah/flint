@@ -54,3 +54,39 @@ export function undoableDelete(opts: {
     },
   })
 }
+
+/**
+ * Like `undoableDelete` for a selection: every id is hidden at once and one
+ * toast covers them all, so Undo restores the whole batch.
+ */
+export function undoableDeleteMany(opts: {
+  ids: string[]
+  message: string
+  description?: string
+  undoLabel: string
+  run: (ids: string[]) => void | Promise<void>
+  delayMs?: number
+}) {
+  const { ids } = opts
+  if (ids.length === 0) return
+  const { hide, show } = usePendingDeletes.getState()
+  ids.forEach(hide)
+  let undone = false
+  const showAll = () => ids.forEach(show)
+  const timer = window.setTimeout(() => {
+    if (undone) return
+    void Promise.resolve(opts.run(ids)).finally(showAll)
+  }, opts.delayMs ?? UNDO_WINDOW_MS)
+  showUndoToast({
+    message: opts.message,
+    id: `undo-many-${ids[0]}-${ids.length}`,
+    description: opts.description,
+    durationMs: opts.delayMs ?? UNDO_WINDOW_MS,
+    undoLabel: opts.undoLabel,
+    onUndo: () => {
+      undone = true
+      window.clearTimeout(timer)
+      showAll()
+    },
+  })
+}

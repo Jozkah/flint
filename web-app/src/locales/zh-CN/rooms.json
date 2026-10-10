@@ -330,7 +330,8 @@
     "continue": "继续",
     "toShort": "发给",
     "placeholderTo": "给 {{name}} 发消息…",
-    "mention": "提及参与者"
+    "mention": "提及参与者",
+    "dropSkipped": "未添加（不是文本、是文件夹，或超出消息限制）：{{files}}"
   },
   "kpi": {
     "running": "进行中",

@@ -57,9 +57,46 @@ async fn engine_endpoint(state: &LlamacppState) -> Result<(u16, String, u32), St
     Ok((h.port, h.api_key.clone(), h.pid))
 }
 
+/// How long a model load may take, both for the `/models/load` request (the
+/// engine answers only once the load has finished) and for the readiness poll
+/// behind it. Large models on cold or slow storage legitimately need more than
+/// the 10 minutes this used to be.
+const MODEL_LOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+/// What became of the worker a request could not reach, when it is dead.
+///
+/// A worker that crashed mid-load answers nothing, and reqwest's own text
+/// ("error sending request") says only that. The process knows how it ended
+/// and what it last printed, which is what the user needs: a crash from an
+/// unsupported CPU, an out-of-memory abort and a GPU fault all look alike from
+/// the socket. `None` while it still runs, or when it is no longer the
+/// registered worker, so the caller keeps its own error.
+///
+/// A worker found dead is reaped here, as `get_engine_info` does, so the next
+/// load starts a fresh one instead of failing against the same closed port.
+async fn dead_worker_error(state: &LlamacppState, port: u16) -> Option<LlamacppError> {
+    let mut guard = state.engine.lock().await;
+    let handle = guard.as_mut().filter(|h| h.port == port)?;
+    let report = handle.exit_report()?;
+    let text = report.text();
+    log::error!("flint-llama-worker exited unexpectedly: {text}");
+    *guard = None;
+    Some(LlamacppError::from_engine_exit(&text))
+}
+
+/// For the commands that return `String` errors: the structured error as JSON,
+/// which `parseEngineError` on the web side recovers from a message string, so
+/// it is shown from its code like any other engine error.
+fn into_string_error(err: LlamacppError) -> String {
+    serde_json::to_string(&err).unwrap_or(err.message)
+}
+
 async fn http_client() -> reqwest::Client {
+    // The engine is on loopback: a system or environment proxy (a VPN client,
+    // a corporate proxy) must never carry these requests.
     reqwest::Client::builder()
-        .timeout(Duration::from_secs(600))
+        .timeout(MODEL_LOAD_TIMEOUT)
+        .no_proxy()
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
 }
@@ -289,8 +326,43 @@ fn load_rejection_error(status: u16, body: &str) -> LlamacppError {
 /// backend without the endpoint costs nothing noticeable.
 const SUBSCRIBE_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Aborts its task when dropped, so a load wait that is cancelled (its future
+/// dropped) does not leave the progress listener streaming forever.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl AbortOnDrop {
+    fn abort(&self) {
+        self.0.abort();
+    }
+}
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 async fn post_load<S: ProgressSink>(
     sink: &S,
+    state: &LlamacppState,
+    port: u16,
+    api_key: &str,
+    model_id: &str,
+) -> ServerResult<()> {
+    let guard = state.loads.begin(model_id);
+    tokio::select! {
+        r = post_load_inner(sink, state, port, api_key, model_id) => r,
+        _ = guard.cancelled() => Err(ServerError::Llamacpp(LlamacppError::new(
+            ErrorCode::ModelLoadCancelled,
+            format!("Loading {} was cancelled", model_id),
+            None,
+        ))),
+    }
+}
+
+async fn post_load_inner<S: ProgressSink>(
+    sink: &S,
+    state: &LlamacppState,
     port: u16,
     api_key: &str,
     model_id: &str,
@@ -301,14 +373,14 @@ async fn post_load<S: ProgressSink>(
     // been sent.
     let (fail_tx, fail_rx) = tokio::sync::oneshot::channel();
     let (subscribed_tx, subscribed_rx) = tokio::sync::oneshot::channel();
-    let progress_task = spawn_load_progress_listener(
+    let progress_task = AbortOnDrop(spawn_load_progress_listener(
         sink.clone(),
         port,
         api_key.to_string(),
         model_id.to_string(),
         fail_tx,
         subscribed_tx,
-    );
+    ));
     // Bounded: a backend without the feed still answers, but a hang here must
     // not become a hang in the load.
     if tokio::time::timeout(SUBSCRIBE_TIMEOUT, subscribed_rx).await.is_err() {
@@ -322,19 +394,20 @@ async fn post_load<S: ProgressSink>(
         .bearer_auth(api_key)
         .json(&ModelRequestBody { model: model_id })
         .send()
-        .await
-        .map_err(|e| {
-            ServerError::Llamacpp(LlamacppError::new(
-                ErrorCode::InternalError,
-                "Failed to call the engine's /models/load".into(),
-                Some(e.to_string()),
-            ))
-        });
+        .await;
     let resp = match resp {
         Ok(r) => r,
         Err(e) => {
             progress_task.abort();
-            return Err(e);
+            let err = match dead_worker_error(state, port).await {
+                Some(err) => err,
+                None => LlamacppError::new(
+                    ErrorCode::InternalError,
+                    "Failed to call the engine's /models/load".into(),
+                    Some(e.to_string()),
+                ),
+            };
+            return Err(ServerError::Llamacpp(err));
         }
     };
     let status = resp.status();
@@ -363,7 +436,7 @@ async fn post_load<S: ProgressSink>(
     // resolves on the first poll. It stays as the fallback for the case where
     // the answer said "already loading" and someone else owns the attempt.
     let result = tokio::select! {
-        r = wait_until_loaded(port, api_key, model_id, Duration::from_secs(600)) => r,
+        r = wait_until_loaded(state, port, api_key, model_id, MODEL_LOAD_TIMEOUT) => r,
         exit_code = sse_failure => Err(ServerError::Llamacpp(LlamacppError::new(
             ErrorCode::ModelLoadFailed,
             format!("Model {} failed to load", model_id),
@@ -433,6 +506,7 @@ fn evaluate_load_poll(
 const STALE_FAILURE_GRACE: Duration = Duration::from_secs(20);
 
 async fn wait_until_loaded(
+    state: &LlamacppState,
     port: u16,
     api_key: &str,
     model_id: &str,
@@ -445,18 +519,22 @@ async fn wait_until_loaded(
     let mut saw_loading = false;
 
     loop {
-        let resp = client
-            .get(&url)
-            .bearer_auth(api_key)
-            .send()
-            .await
-            .map_err(|e| {
-                ServerError::Llamacpp(LlamacppError::new(
-                    ErrorCode::InternalError,
-                    "Failed to poll router /models".into(),
-                    Some(e.to_string()),
-                ))
-            })?;
+        // A worker that dies mid-load (a GPU init crash, antivirus) surfaces
+        // here, as the next poll failing to connect.
+        let resp = match client.get(&url).bearer_auth(api_key).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                let err = match dead_worker_error(state, port).await {
+                    Some(err) => err,
+                    None => LlamacppError::new(
+                        ErrorCode::InternalError,
+                        "Failed to poll router /models".into(),
+                        Some(e.to_string()),
+                    ),
+                };
+                return Err(ServerError::Llamacpp(err));
+            }
+        };
 
         let json: serde_json::Value = resp.json().await.map_err(|e| {
             ServerError::Llamacpp(LlamacppError::new(
@@ -587,18 +665,28 @@ async fn wait_until_unloaded(
     }
 }
 
-async fn engine_loaded_model_ids(port: u16, api_key: &str) -> Result<Vec<String>, String> {
+async fn engine_loaded_model_ids(
+    state: &LlamacppState,
+    port: u16,
+    api_key: &str,
+) -> Result<Vec<String>, String> {
     // Router-aware listing: `/models` (not `/v1/models`, which is OAI-compat
     // and returns a single element). Each entry has a `status` object whose
     // `value` is one of "loaded" / "loading" / "unloaded" / "sleeping".
     let client = http_client().await;
     let url = format!("http://127.0.0.1:{}/models", port);
-    let resp = client
-        .get(&url)
-        .bearer_auth(api_key)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to query /models: {}", e))?;
+    // The first request of every model start (the frontend asks what is loaded
+    // before loading), so a dead worker is reported from here more often than
+    // from anywhere else.
+    let resp = match client.get(&url).bearer_auth(api_key).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(match dead_worker_error(state, port).await {
+                Some(err) => into_string_error(err),
+                None => format!("Failed to query /models: {}", e),
+            });
+        }
+    };
     if !resp.status().is_success() {
         return Err(format!("/models returned {}", resp.status()));
     }
@@ -638,7 +726,7 @@ pub async fn load_model<S: ProgressSink>(
     let (port, api_key, pid) = engine_endpoint(state)
         .await
         .map_err(ServerError::InvalidArgument)?;
-    post_load(sink, port, &api_key, &model_id).await?;
+    post_load(sink, state, port, &api_key, &model_id).await?;
     Ok(SessionInfo {
         pid: pid as i32,
         port: port as i32,
@@ -676,7 +764,7 @@ pub async fn ensure_session<S: ProgressSink>(
     is_embedding: bool,
 ) -> Result<SessionInfo, String> {
     let (port, api_key, pid) = engine_endpoint(state).await?;
-    post_load(sink, port, &api_key, &model_id)
+    post_load(sink, state, port, &api_key, &model_id)
         .await
         .map_err(|e| e.to_string())?;
     Ok(SessionInfo {
@@ -696,7 +784,7 @@ pub async fn find_session(
         Ok(v) => v,
         Err(_) => return Ok(None),
     };
-    let ids = engine_loaded_model_ids(port, &api_key).await?;
+    let ids = engine_loaded_model_ids(state, port, &api_key).await?;
     if ids.iter().any(|id| id == &model_id) {
         Ok(Some(SessionInfo {
             pid: pid as i32,
@@ -715,7 +803,7 @@ pub async fn loaded_models(state: &LlamacppState) -> Result<Vec<String>, String>
         Ok(v) => v,
         Err(_) => return Ok(Vec::new()),
     };
-    engine_loaded_model_ids(port, &api_key).await
+    engine_loaded_model_ids(state, port, &api_key).await
 }
 
 #[cfg(feature = "tauri")]
@@ -727,6 +815,97 @@ pub async fn load_llama_model<R: Runtime>(
 ) -> ServerResult<SessionInfo> {
     let state: State<TauriArc<LlamacppState>> = app_handle.state();
     load_model(&app_handle, &**state, model_id, is_embedding).await
+}
+
+/// What `cancel_model_load` did.
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+pub struct CancelLoadResult {
+    /// A load of the model was in flight and has been abandoned.
+    pub cancelled: bool,
+    /// The worker was stopped to end the load. The next load starts a fresh one.
+    pub engine_stopped: bool,
+}
+
+/// How long an abandoned load is waited out before giving up on unloading it.
+const ABANDONED_LOAD_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// Cancels the load of `model_id` that this app is waiting on.
+///
+/// The engine's load is one blocking call with no abort, so it cannot be
+/// interrupted in place. With `keep_worker` false (nothing else is resident)
+/// the worker is killed, which ends the load and frees its memory; the next
+/// load starts a worker afresh. With it true the wait is abandoned and the
+/// model is unloaded once the worker finishes loading it, so other resident
+/// models are not evicted.
+pub async fn cancel_load(
+    state: std::sync::Arc<LlamacppState>,
+    model_id: String,
+    keep_worker: bool,
+) -> CancelLoadResult {
+    use crate::load_cancel::{plan_cancel, CancelPlan};
+
+    let in_flight = state.loads.cancel(&model_id);
+    match plan_cancel(in_flight, keep_worker) {
+        CancelPlan::Nothing => CancelLoadResult { cancelled: false, engine_stopped: false },
+        CancelPlan::AbandonThenUnload => {
+            tokio::spawn(async move {
+                unload_after_abandoned_load(&state, &model_id).await;
+            });
+            CancelLoadResult { cancelled: true, engine_stopped: false }
+        }
+        CancelPlan::StopWorker => {
+            if let Some(task) = state.unload_watcher.lock().await.take() {
+                task.abort();
+            }
+            let handle = state.engine.lock().await.take();
+            if let Some(h) = handle {
+                h.kill().await;
+            }
+            CancelLoadResult { cancelled: true, engine_stopped: true }
+        }
+    }
+}
+
+/// Waits for the worker to finish an abandoned load, then unloads the model,
+/// unless the user has asked for it again in the meantime.
+async fn unload_after_abandoned_load(state: &LlamacppState, model_id: &str) {
+    let loaded = crate::load_cancel::poll_until(
+        || async {
+            if state.loads.is_loading(model_id) {
+                return true; // wanted again: leave it to that load
+            }
+            match engine_endpoint(state).await {
+                Ok((port, key, _)) => engine_loaded_model_ids(state, port, &key)
+                    .await
+                    .map(|ids| ids.iter().any(|id| id == model_id))
+                    .unwrap_or(false),
+                // The worker is gone, and the load with it.
+                Err(_) => true,
+            }
+        },
+        Duration::from_millis(500),
+        ABANDONED_LOAD_TIMEOUT,
+    )
+    .await;
+    if !loaded || state.loads.is_loading(model_id) {
+        return;
+    }
+    if let Ok((port, key, _)) = engine_endpoint(state).await {
+        if let Err(e) = post_unload(port, &key, model_id).await {
+            log::warn!("could not unload cancelled load of {model_id}: {e}");
+        }
+    }
+}
+
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn cancel_model_load<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    model_id: String,
+    keep_worker: bool,
+) -> CancelLoadResult {
+    let state: State<TauriArc<LlamacppState>> = app_handle.state();
+    cancel_load(state.inner().clone(), model_id, keep_worker).await
 }
 
 #[cfg(feature = "tauri")]
@@ -1079,7 +1258,7 @@ mod load_rejection_tests {
 /// The two sides of `/models/sse` in one place: what the worker serializes
 /// (`engine::events`) against what the desktop parses. They are separate
 /// modules with no shared type, so nothing but a test keeps them in step --
-/// and a drift here is silent, costing every load its full 600s timeout
+/// and a drift here is silent, costing every load its full load timeout
 /// instead of an error.
 #[cfg(test)]
 mod sse_contract_tests {

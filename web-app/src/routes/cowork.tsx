@@ -1791,9 +1791,12 @@ export function CoworkPage() {
     [t]
   )
 
-  const attachFolder = useCallback(async () => {
+  const attachFolder = useCallback(async (given?: string) => {
     const openingSessionId = session?.id
-    const picked = await serviceHub.dialog().open({ directory: true })
+    const picked =
+      typeof given === 'string'
+        ? given
+        : await serviceHub.dialog().open({ directory: true })
     if (typeof picked !== 'string') return
     if (openingSessionId &&
       useCoworkSessions.getState().currentId !== openingSessionId) return
@@ -6372,6 +6375,11 @@ export function CoworkPage() {
                 confirmModel={confirmSessionModel}
                 // Held input is shown once, in CoworkHeldInput above.
                 heldShownElsewhere
+                // A pasted folder path offers to attach it as the project.
+                pastedFolder={{
+                  attached: applyFolders,
+                  onAttach: (path) => void attachFolder(path),
+                }}
                 ownsToolSet={false}
                 // `@` names files in the folder the run works in, nothing else.
                 referenceRoot={treeRoot}

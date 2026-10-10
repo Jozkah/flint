@@ -9,12 +9,18 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useClaudeCodeModel } from '@/hooks/useClaudeCodeModel'
+import {
+  availableHelperModels,
+  claudeCodeApiUrl,
+} from '@/lib/claudeCodeLaunch'
+import { useClaudeCodeContextPlans } from '@/hooks/useClaudeCodeContext'
+import { CLAUDE_CODE_MIN_CONTEXT } from '@/lib/claudeCodeContext'
 import { useAppState } from '@/hooks/useAppState'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import AddEditCustomCliDialog from '@/containers/dialogs/AddEditCustomCliDialog'
 import { cn } from '@/lib/utils'
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { getModelToStart } from '@/utils/getModelToStart'
 import { invoke } from '@tauri-apps/api/core'
@@ -29,7 +35,11 @@ import { BrandMark } from '@/containers/engine/BrandMark'
 import { modelLogo } from '@/lib/brandLogos'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import Capabilities from '@/containers/Capabilities'
-import { getModelDisplayName, isLocalProvider } from '@/lib/utils'
+import {
+  getModelDisplayName,
+  guardServerStart,
+  isLocalProvider,
+} from '@/lib/utils'
 import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
 import { ModelFilterButton } from '@/containers/ModelFilterButton'
 
@@ -37,6 +47,13 @@ import { ModelFilterButton } from '@/containers/ModelFilterButton'
 export const Route = createFileRoute(route.settings.claude_code as any)({
   component: ClaudeCodeIntegration,
 })
+
+type ClaudeCodeOverride = {
+  kind: 'model' | 'env' | 'apiKeyHelper'
+  key: string
+  value: string | null
+  file: string
+}
 
 function ClaudeCodeIntegration() {
   const { t } = useTranslation()
@@ -56,8 +73,22 @@ function ClaudeCodeIntegration() {
   } = useLocalApiServer()
 
   const { serverStatus, setServerStatus } = useAppState()
-  const { providers, selectedModel, selectedProvider, getProviderByName } =
-    useModelProvider()
+  const {
+    providers,
+    selectedModel,
+    selectedProvider,
+    getProviderByName,
+    updateProvider,
+  } = useModelProvider()
+  const [overrides, setOverrides] = useState<ClaudeCodeOverride[]>([])
+
+  // Settings in the user's own Claude Code config that win over what is
+  // exported here (janhq/jan issue 8107). Read-only.
+  useEffect(() => {
+    invoke<ClaudeCodeOverride[]>('detect_claude_code_overrides')
+      .then((found) => setOverrides(Array.isArray(found) ? found : []))
+      .catch(() => setOverrides([]))
+  }, [])
   const setActiveModels = useAppState((state) => state.setActiveModels)
 
   const {
@@ -68,23 +99,102 @@ function ClaudeCodeIntegration() {
     clearModels,
   } = useClaudeCodeModel()
 
+  const contextPlans = useClaudeCodeContextPlans([
+    helperModels.fable,
+    helperModels.big,
+    helperModels.medium,
+    helperModels.small,
+  ])
+  const contextWarnings = Object.entries(contextPlans).flatMap(
+    ([id, plan]) => {
+      if (!plan.shortfall) return []
+      const model = providers
+        .flatMap((p) => p.models)
+        .find((m) => m.id === id)
+      return [
+        {
+          id,
+          text: t(`settings:claudeCode.contextShortfall.${plan.shortfall.reason}`, {
+            model: model ? getModelDisplayName(model) : id,
+            context: plan.shortfall.context.toLocaleString(),
+            needed: CLAUDE_CODE_MIN_CONTEXT.toLocaleString(),
+          }),
+        },
+      ]
+    }
+  )
+
   const [isCustomCliDialogOpen, setIsCustomCliDialogOpen] = useState(false)
   const [isModelLoading, setIsModelLoading] = useState(false)
 
   const handleLaunchClaudeCode = async () => {
-    const apiUrl = `http://${serverHost}:${serverPort}`
-    const modelFable = helperModels.fable
-    const modelBig = helperModels.big
-    const modelMedium = helperModels.medium
-    const modelSmall = helperModels.small
+    // Only models the selectors still show: a deleted or switched-off one
+    // would otherwise be exported though the page lists the tier as empty.
+    const chosen = availableHelperModels(
+      helperModels,
+      providers,
+      (name) => !!isLocalProvider(name)
+    )
+    const modelFable = chosen.fable
+    const modelBig = chosen.big
+    const modelMedium = chosen.medium
+    const modelSmall = chosen.small
     const customEnvVars = helperModels.envVars
+    // The port the server actually bound, which is not serverPort when that one
+    // was taken.
+    let boundPort = serverPort
+
+    // Claude Code's first request is far larger than the default 8192-token
+    // context (janhq/jan#8108). Raise the context of each local model that has
+    // not been given one by the user, through the same write-and-reload path the
+    // "Increase Context Size" button uses.
+    const llamacpp = getProviderByName('llamacpp')
+    for (const [id, plan] of Object.entries(contextPlans)) {
+      if (plan.raiseTo == null || !llamacpp) continue
+      try {
+        const latest = getProviderByName('llamacpp') ?? llamacpp
+        const index = latest.models.findIndex((m) => m.id === id)
+        if (index === -1) continue
+        const model = latest.models[index]
+        const models = [...latest.models]
+        models[index] = {
+          ...model,
+          settings: {
+            ...model.settings,
+            ctx_len: {
+              ...(model.settings?.ctx_len ?? {}),
+              controller_props: {
+                ...(model.settings?.ctx_len?.controller_props ?? {}),
+                value: plan.raiseTo,
+              },
+            },
+          },
+        } as typeof model
+        await serviceHub
+          .models()
+          .updateModelSettings(id, { ctx_len: plan.raiseTo })
+        updateProvider('llamacpp', { models })
+        const loaded = (await serviceHub.models().getActiveModels()) || []
+        if (loaded.includes(id)) {
+          await serviceHub.models().stopModel(id, 'llamacpp')
+        }
+        toast.info(
+          t('settings:claudeCode.contextRaised', {
+            model: getModelDisplayName(model),
+            context: plan.raiseTo.toLocaleString(),
+          })
+        )
+      } catch (e) {
+        console.error('Failed to raise the context for Claude Code', e)
+      }
+    }
 
     const startServer = async (): Promise<void> => {
       const helperModelsToStart = [
-        { id: helperModels.fable, role: 'Fable' },
-        { id: helperModels.big, role: 'Big' },
-        { id: helperModels.medium, role: 'Medium' },
-        { id: helperModels.small, role: 'Small' },
+        { id: chosen.fable, role: 'Fable' },
+        { id: chosen.big, role: 'Big' },
+        { id: chosen.medium, role: 'Medium' },
+        { id: chosen.small, role: 'Small' },
       ]
         .filter((m) => m.id)
         .map((m) => m.id as string)
@@ -144,18 +254,20 @@ function ClaudeCodeIntegration() {
 
       let actualPort: number | undefined
       try {
-        actualPort = await window.core?.api?.startServer({
-          host: serverHost,
-          port: serverPort,
-          prefix: apiPrefix,
-          apiKey,
-          trustedHosts,
-          isCorsEnabled: corsEnabled,
-          isVerboseEnabled: verboseLogs,
-          proxyTimeout: proxyTimeout,
-          // Omitted, the backend reads it as false (#156).
-          enableServerToolExecution,
-        })
+        actualPort = await guardServerStart(
+          window.core?.api?.startServer({
+            host: serverHost,
+            port: serverPort,
+            prefix: apiPrefix,
+            apiKey,
+            trustedHosts,
+            isCorsEnabled: corsEnabled,
+            isVerboseEnabled: verboseLogs,
+            proxyTimeout: proxyTimeout,
+            // Omitted, the backend reads it as false (#156).
+            enableServerToolExecution,
+          })
+        )
       } catch (startErr) {
         const msg =
           startErr instanceof Error ? startErr.message : String(startErr)
@@ -164,6 +276,7 @@ function ClaudeCodeIntegration() {
 
       if (actualPort && actualPort !== serverPort) {
         setServerPort(actualPort)
+        boundPort = actualPort
       }
       setServerStatus('running')
 
@@ -199,7 +312,7 @@ function ClaudeCodeIntegration() {
         }
       }
       await invoke('launch_claude_code_with_config', {
-        apiUrl,
+        apiUrl: claudeCodeApiUrl(serverHost, boundPort),
         apiKey: apiKey || undefined,
         bigModel: modelBig || undefined,
         mediumModel: modelMedium || undefined,
@@ -331,6 +444,37 @@ function ClaudeCodeIntegration() {
               </Button>
             </div>
           </div>
+
+          {overrides.length > 0 && (
+            <div
+              role="status"
+              className="mt-2.5 flex flex-col gap-1.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm"
+            >
+              <div className="font-medium">
+                {t('settings:claudeCode.overridesTitle')}
+              </div>
+              {overrides.map((o) => (
+                <div key={`${o.kind}:${o.key}`} className="break-words">
+                  {t(`settings:claudeCode.overrides.${o.kind}`, {
+                    key: o.key,
+                    value: o.value ?? '',
+                    file: o.file,
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {contextWarnings.length > 0 && (
+            <div
+              role="status"
+              className="mt-2.5 flex flex-col gap-1.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm"
+            >
+              {contextWarnings.map((w) => (
+                <div key={w.id}>{w.text}</div>
+              ))}
+            </div>
+          )}
 
           {(helperModels.customCli || helperModels.envVars.length > 0) && (
             <div className="mt-2.5 rounded-lg bg-muted px-3 py-2.5 font-mono text-xs leading-[1.6] text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">

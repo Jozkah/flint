@@ -11,6 +11,10 @@ export const ENGINE_ERROR_CODES = [
   'MODEL_LOAD_TIMED_OUT',
   'MISSING_SHARED_LIBRARY',
   'GPU_DRIVER_TOO_OLD',
+  'CPU_NOT_SUPPORTED',
+  'OS_VERSION_UNSUPPORTED',
+  'MODEL_QUANT_NOT_SUPPORTED',
+  'ENGINE_STOPPED',
   'OUT_OF_MEMORY',
   'INVALID_ARGUMENT',
   'IO_ERROR',
@@ -106,13 +110,28 @@ export function parseEngineError(
 const MAX_DETAIL_LENGTH = 240
 
 /**
+ * The engine wraps every failed start as "could not start the llama.cpp engine:
+ * failed to load model; <reason>". The reason is what tells one failure from
+ * another, so it leads; the full text stays in the details and the logs. When
+ * nothing follows the prefix, the text is kept as it is.
+ */
+const ENGINE_BOILERPLATE =
+  /^(?:could not start the llama\.cpp engine:\s*)?(?:failed to load model\s*[;:]\s*)/i
+
+function withoutBoilerplate(text: string): string {
+  const rest = text.replace(ENGINE_BOILERPLATE, '').trim()
+  return rest || text
+}
+
+/**
  * The engine's own words on one line. Untranslatable by nature, and the only
  * part that distinguishes one load failure from another, so it rides along
  * with the localized advice instead of being dropped.
  */
 function engineDetail(engineError: EngineError): string | undefined {
-  const raw = engineError.details?.replace(/\s+/g, ' ').trim()
-  if (!raw) return undefined
+  const flat = engineError.details?.replace(/\s+/g, ' ').trim()
+  if (!flat) return undefined
+  const raw = withoutBoilerplate(flat)
   return raw.length > MAX_DETAIL_LENGTH
     ? `${raw.slice(0, MAX_DETAIL_LENGTH).trimEnd()}...`
     : raw

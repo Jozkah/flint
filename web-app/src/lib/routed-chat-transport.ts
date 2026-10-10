@@ -252,6 +252,8 @@ export class RoutedChatTransport extends CustomChatTransport {
   override async sendMessages(
     options: Parameters<CustomChatTransport['sendMessages']>[0]
   ) {
+    // Before routing reads the model: a new message must not see the last run's.
+    this.pinRunModel(options.messages)
     await this.routeAssistant(options.messages, options.abortSignal)
     return super.sendMessages(options)
   }

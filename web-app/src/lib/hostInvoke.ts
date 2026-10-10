@@ -47,6 +47,7 @@ export async function hostInvoke<T = unknown>(
       await browserApi<void>(keysUrl(String(args?.provider)), { method: 'DELETE' })
       return undefined as T
     case 'unregister_provider_config':
+    case 'set_provider_tls_trust':
     case 'set_model_param_defaults':
       // Desktop-only runtime state (the local API server's registry).
       return undefined as T

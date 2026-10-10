@@ -5,7 +5,13 @@ import {
   groupHuggingFaceFiles,
   type HuggingFaceFile,
 } from '../huggingface'
-import { bestGroup, fitBasis, fitOfGroup } from '../huggingfaceFit'
+import {
+  bestGroup,
+  fitBasis,
+  fitOfGroup,
+  repoFit,
+  repoFitsHardware,
+} from '../huggingfaceFit'
 import { assessModelFit, withoutDisabledGpus } from '../modelCompatibility'
 
 const GB = 1024 ** 3
@@ -122,5 +128,35 @@ describe('fitOfGroup', () => {
     expect(bestGroup(groups, { hardware: hardware() })?.quantization).toBe(
       'Q5_K_M'
     )
+  })
+})
+
+describe('Hub "fits my hardware" filter', () => {
+  const repo = { id: 'a/b', author: 'a', downloads: 0, likes: 0, gated: false, tags: ['gguf'], files: [] }
+  const ctx = { hardware: hardware() }
+
+  it('drops a repo whose best variant exceeds memory', () => {
+    const fit = repoFit(repo, files(['m-Q4_K_M.gguf', 400]), ctx)
+    expect(fit?.verdict).toBe('exceeds')
+    expect(repoFitsHardware(fit)).toBe(false)
+  })
+
+  it('keeps a repo with a variant that fits', () => {
+    const fit = repoFit(repo, files(['m-Q4_K_M.gguf', 2]), ctx)
+    expect(repoFitsHardware(fit)).toBe(true)
+  })
+
+  it('picks the smaller variant when one fits and another does not', () => {
+    const fit = repoFit(
+      repo,
+      files(['m-Q8_0.gguf', 400], ['m-Q2_K.gguf', 2]),
+      ctx
+    )
+    expect(repoFitsHardware(fit)).toBe(true)
+  })
+
+  it('keeps a repo it cannot judge', () => {
+    expect(repoFit(repo, [], ctx)).toBeNull()
+    expect(repoFitsHardware(null)).toBe(true)
   })
 })

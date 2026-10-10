@@ -81,6 +81,9 @@ type ProviderObject = {
   models: Model[]
   persist?: boolean
   custom_header?: ProviderCustomHeader[] | null
+  /** Skip certificate verification for this provider's endpoint only. Off
+   * unless the user switched it on (janhq/jan#6792). */
+  allow_invalid_certs?: boolean
   /** Wire format of the provider's HTTP API. Missing = 'openai' (default). */
   api_type?: ProviderApiType
   /** Name the user gave the provider; `provider` stays the internal key. */

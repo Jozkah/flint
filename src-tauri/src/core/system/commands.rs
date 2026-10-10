@@ -454,7 +454,11 @@ pub fn open_app_directory<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     } else {
         "xdg-open"
     };
-    std::process::Command::new(program)
+    let mut command = std::process::Command::new(program);
+    // `xdg-open` hands off to the user's file manager, which must not load the
+    // AppImage's libraries.
+    jan_process::HostProcessEnv::host_env(&mut command);
+    command
         .arg(app_path)
         .status()
         .map_err(|e| format!("Failed to open app directory: {e}"))?;
@@ -564,6 +568,21 @@ fn build_claude_code_env_vars(
              server and reach remote models."
             .to_string()
     })?;
+
+    // A tier left unset keeps Claude Code's real model name for it, and the
+    // default (Sonnet) tier is the one a session starts on. That name reaches
+    // the local server, matches nothing, and surfaces as a login error
+    // (janhq/jan issue 8107). Every tier follows a chosen model instead, the
+    // medium one first since it is the default.
+    let fallback = medium_model
+        .clone()
+        .or_else(|| big_model.clone())
+        .or_else(|| small_model.clone())
+        .or_else(|| fable_model.clone());
+    let big_model = big_model.or_else(|| fallback.clone());
+    let medium_model = medium_model.or_else(|| fallback.clone());
+    let small_model = small_model.or_else(|| fallback.clone());
+    let fable_model = fable_model.or(fallback);
 
     let mut env_vars: Vec<(String, String)> = Vec::with_capacity(8);
     env_vars.push(("ANTHROPIC_BASE_URL".to_string(), api_url));
@@ -744,6 +763,94 @@ fn write_claude_code_env_vars(env_vars: &[(String, String)]) -> Result<(), Strin
         log::info!("Environment variables set permanently in Windows registry.");
         Ok(())
     }
+}
+
+/// A Claude Code setting that overrides the environment Flint writes.
+#[derive(serde::Serialize, Debug, Clone)]
+pub struct ClaudeCodeOverride {
+    /// `model`, `env` or `apiKeyHelper`.
+    pub kind: String,
+    /// The setting's name: `model`, `apiKeyHelper`, or the env variable.
+    pub key: String,
+    /// The value, for a model name only; credentials are never returned.
+    pub value: Option<String>,
+    /// The file the setting is in.
+    pub file: String,
+}
+
+/// Variables in Claude Code's `env` settings block that decide which server and
+/// model a session talks to.
+fn is_routing_env_key(key: &str) -> bool {
+    key.starts_with("ANTHROPIC_") || key.starts_with("CLAUDE_CODE_USE_")
+}
+
+/// What `settings.json` in Claude Code's config directory sets that wins over
+/// the environment variables Flint exports: a pinned `model` (what `/model`
+/// writes, so the old model keeps coming back), an `env` block with the routing
+/// variables, and an `apiKeyHelper`. Read-only; a missing or unreadable file
+/// reports nothing.
+fn claude_code_overrides_in(config_dir: &Path) -> Vec<ClaudeCodeOverride> {
+    let path = config_dir.join("settings.json");
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Vec::new();
+    };
+    let file = path.to_string_lossy().into_owned();
+    let mut found = Vec::new();
+    if let Some(model) = json
+        .get("model")
+        .and_then(|v| v.as_str())
+        .filter(|m| !m.is_empty())
+    {
+        found.push(ClaudeCodeOverride {
+            kind: "model".into(),
+            key: "model".into(),
+            value: Some(model.to_string()),
+            file: file.clone(),
+        });
+    }
+    if json
+        .get("apiKeyHelper")
+        .and_then(|v| v.as_str())
+        .is_some_and(|h| !h.is_empty())
+    {
+        found.push(ClaudeCodeOverride {
+            kind: "apiKeyHelper".into(),
+            key: "apiKeyHelper".into(),
+            value: None,
+            file: file.clone(),
+        });
+    }
+    if let Some(env) = json.get("env").and_then(|v| v.as_object()) {
+        for key in env.keys().filter(|k| is_routing_env_key(k)) {
+            found.push(ClaudeCodeOverride {
+                kind: "env".into(),
+                key: key.clone(),
+                value: None,
+                file: file.clone(),
+            });
+        }
+    }
+    found
+}
+
+/// Claude Code's config directory: `CLAUDE_CONFIG_DIR`, else `~/.claude`.
+fn claude_code_config_dir() -> Option<PathBuf> {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|h| h.join(".claude")))
+}
+
+/// Settings in the user's Claude Code config that override what Save & Enable
+/// exports. The settings page explains each one; nothing is changed here.
+#[tauri::command]
+pub fn detect_claude_code_overrides() -> Vec<ClaudeCodeOverride> {
+    claude_code_config_dir()
+        .map(|dir| claude_code_overrides_in(&dir))
+        .unwrap_or_default()
 }
 
 #[derive(serde::Serialize)]
@@ -1117,6 +1224,30 @@ fn path_without_dir(existing: &str, dir: &str) -> String {
         .join(";")
 }
 
+/// PowerShell that prints the user PATH exactly as stored: `%VAR%` entries
+/// stay unexpanded. `[Environment]::GetEnvironmentVariable` expands them, and
+/// writing that back would flatten every `%VAR%` entry in the user's PATH.
+#[cfg_attr(not(windows), allow(dead_code))]
+const READ_USER_PATH_RAW_SCRIPT: &str = "$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment'); \
+if ($k) { $k.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) }";
+
+/// PowerShell that stores `path` as the user PATH, keeping the value's existing
+/// registry type (REG_EXPAND_SZ when none exists yet), then broadcasts the
+/// environment change the way `SetEnvironmentVariable` does.
+/// `[Environment]::SetEnvironmentVariable` would rewrite it as REG_SZ.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn write_user_path_raw_script(path: &str) -> String {
+    format!(
+        "$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true); \
+$kind = [Microsoft.Win32.RegistryValueKind]::ExpandString; \
+try {{ $kind = $k.GetValueKind('Path') }} catch {{}}; \
+$k.SetValue('Path', '{}', $kind); \
+[Environment]::SetEnvironmentVariable('FLINT_ENV_REFRESH', '1', 'User'); \
+[Environment]::SetEnvironmentVariable('FLINT_ENV_REFRESH', $null, 'User')",
+        path.replace('\'', "''")
+    )
+}
+
 /// Add a directory to the Windows user PATH.
 #[cfg(windows)]
 fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
@@ -1128,7 +1259,7 @@ fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
     cmd.args([
         "-NoProfile",
         "-Command",
-        "[Environment]::GetEnvironmentVariable('Path', 'User')",
+        READ_USER_PATH_RAW_SCRIPT,
     ]);
     {
         use jan_process::CommandConsole;
@@ -1167,10 +1298,7 @@ fn add_to_path_windows(install_dir: &Path) -> Result<(), String> {
     cmd_write.args([
         "-NoProfile",
         "-Command",
-        &format!(
-            "[Environment]::SetEnvironmentVariable('Path', '{}', 'User')",
-            new_path.replace('\'', "''")
-        ),
+        &write_user_path_raw_script(&new_path),
     ]);
 
     {
@@ -1204,7 +1332,7 @@ fn remove_from_path_windows(dir: &Path) -> Result<(), String> {
     cmd.args([
         "-NoProfile",
         "-Command",
-        "[Environment]::GetEnvironmentVariable('Path', 'User')",
+        READ_USER_PATH_RAW_SCRIPT,
     ]);
     {
         use jan_process::CommandConsole;
@@ -1235,10 +1363,7 @@ fn remove_from_path_windows(dir: &Path) -> Result<(), String> {
         cmd_write.args([
             "-NoProfile",
             "-Command",
-            &format!(
-                "[Environment]::SetEnvironmentVariable('Path', '{}', 'User')",
-                new_path.replace('\'', "''")
-            ),
+            &write_user_path_raw_script(&new_path),
         ]);
 
         {
@@ -1280,6 +1405,25 @@ mod user_path_tests {
         assert_eq!(stale, "C:/jan;C:/a");
         let kept = path_with_dir_added("C:/old;C:/a", "C:/jan", Some("C:/old"), |_| true).unwrap();
         assert_eq!(kept, "C:/jan;C:/old;C:/a");
+    }
+
+    #[test]
+    fn user_path_scripts_keep_unexpanded_entries_and_the_registry_type() {
+        assert!(READ_USER_PATH_RAW_SCRIPT.contains("DoNotExpandEnvironmentNames"));
+        assert!(!READ_USER_PATH_RAW_SCRIPT.contains("GetEnvironmentVariable('Path'"));
+        let write = write_user_path_raw_script("%USERPROFILE%\\bin;C:\\it's");
+        assert!(write.contains("SetValue('Path', '%USERPROFILE%\\bin;C:\\it''s', $kind)"));
+        assert!(write.contains("ExpandString"));
+        assert!(write.contains("GetValueKind('Path')"));
+        assert!(!write.contains("SetEnvironmentVariable('Path'"));
+    }
+
+    #[test]
+    fn percent_entries_survive_adding_and_removing() {
+        let existing = "%USERPROFILE%\\bin;C:/a";
+        let added = path_with_dir_added(existing, "C:/jan", None, |_| false).unwrap();
+        assert_eq!(added, "C:/jan;%USERPROFILE%\\bin;C:/a");
+        assert_eq!(path_without_dir(&added, "C:/jan"), existing);
     }
 
     #[test]
@@ -1348,6 +1492,87 @@ mod tests {
         )
         .unwrap();
         assert!(!without.iter().any(|(k, _)| k == "ANTHROPIC_DEFAULT_FABLE_MODEL"));
+    }
+
+    /// janhq/jan issue 8107: with only one tier chosen, the other aliases kept
+    /// their real Claude names, so Claude Code's default (Sonnet) model went to
+    /// the local server as `claude-sonnet-*` and failed as a login error.
+    #[test]
+    fn unset_tiers_follow_a_chosen_model_so_no_alias_keeps_a_claude_name() {
+        let get = |vars: &Vec<(String, String)>, k: &str| {
+            vars.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone())
+        };
+        let only_big = build_claude_code_env_vars(
+            "http://127.0.0.1:1337".to_string(),
+            Some("k".to_string()),
+            Some("qwen".to_string()),
+            None,
+            None,
+            None,
+            vec![],
+        )
+        .unwrap();
+        for key in [
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL",
+        ] {
+            assert_eq!(get(&only_big, key).as_deref(), Some("qwen"), "{key}");
+        }
+
+        // A chosen tier is never replaced; the medium model is the default one.
+        let mixed = build_claude_code_env_vars(
+            "http://127.0.0.1:1337".to_string(),
+            Some("k".to_string()),
+            None,
+            Some("medium-m".to_string()),
+            Some("small-m".to_string()),
+            None,
+            vec![],
+        )
+        .unwrap();
+        assert_eq!(get(&mixed, "ANTHROPIC_DEFAULT_OPUS_MODEL").as_deref(), Some("medium-m"));
+        assert_eq!(get(&mixed, "ANTHROPIC_DEFAULT_SONNET_MODEL").as_deref(), Some("medium-m"));
+        assert_eq!(get(&mixed, "ANTHROPIC_DEFAULT_HAIKU_MODEL").as_deref(), Some("small-m"));
+        assert_eq!(get(&mixed, "ANTHROPIC_DEFAULT_FABLE_MODEL").as_deref(), Some("medium-m"));
+    }
+
+    #[test]
+    fn claude_code_settings_that_override_the_environment_are_reported() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("settings.json"),
+            r#"{"model":"claude-sonnet-4-5","apiKeyHelper":"~/k.sh",
+                "env":{"ANTHROPIC_BASE_URL":"https://x","ANTHROPIC_AUTH_TOKEN":"secret","FOO":"1"}}"#,
+        )
+        .unwrap();
+        let found = claude_code_overrides_in(dir.path());
+        let kinds: Vec<(&str, &str)> = found
+            .iter()
+            .map(|f| (f.kind.as_str(), f.key.as_str()))
+            .collect();
+        assert!(kinds.contains(&("model", "model")), "{kinds:?}");
+        assert!(kinds.contains(&("apiKeyHelper", "apiKeyHelper")), "{kinds:?}");
+        assert!(kinds.contains(&("env", "ANTHROPIC_BASE_URL")), "{kinds:?}");
+        assert!(kinds.contains(&("env", "ANTHROPIC_AUTH_TOKEN")), "{kinds:?}");
+        assert!(!kinds.iter().any(|(_, k)| *k == "FOO"));
+        // A credential's value is never handed to the UI.
+        let token = found.iter().find(|f| f.key == "ANTHROPIC_AUTH_TOKEN").unwrap();
+        assert!(token.value.is_none());
+        let model = found.iter().find(|f| f.kind == "model").unwrap();
+        assert_eq!(model.value.as_deref(), Some("claude-sonnet-4-5"));
+        assert!(found[0].file.ends_with("settings.json"));
+    }
+
+    #[test]
+    fn a_missing_or_clean_claude_code_settings_file_reports_nothing() {
+        let dir = tempdir().unwrap();
+        assert!(claude_code_overrides_in(dir.path()).is_empty());
+        fs::write(dir.path().join("settings.json"), r#"{"theme":"dark"}"#).unwrap();
+        assert!(claude_code_overrides_in(dir.path()).is_empty());
+        fs::write(dir.path().join("settings.json"), "not json").unwrap();
+        assert!(claude_code_overrides_in(dir.path()).is_empty());
     }
 
     #[test]

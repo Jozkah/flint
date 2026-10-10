@@ -7,6 +7,7 @@ use std::path::Path;
 use chrono::Local;
 
 use crate::core::agent::git;
+use crate::core::agent::prompt::Composer;
 use tauri_plugin_agent_tools::{memory, workspace};
 
 /// Default persona used only when no assistant instructions are supplied, so a
@@ -565,12 +566,11 @@ pub(crate) fn load_memories(
     (selection.render(), selection)
 }
 
-/// [`build_system_prompt`] with the session it is being built for.
-///
-/// Split out rather than widening the old signature, so every existing caller
-/// keeps compiling and keeps its behaviour. This is the path production
-/// dispatch takes, and it hands back the memory selection alongside the prompt
-/// so the injected ids can be recorded against the invocation.
+/// [`build_system_prompt`] with the session it is being built for: the named
+/// blocks of [`compose_system_blocks_for`] placed through the default policy.
+/// Production dispatch composes the blocks itself and places them through the
+/// project's `[prompt]` policy; this is the one-string form the tests read.
+#[cfg(test)]
 pub(crate) fn build_system_prompt_for(
     base: Option<&str>,
     project_root: &Path,
@@ -580,12 +580,45 @@ pub(crate) fn build_system_prompt_for(
     temporary: bool,
     offered: Option<&OfferedTools>,
 ) -> (Option<String>, memory::retrieve::Selection) {
-    let mut blocks: Vec<String> = Vec::new();
+    let (blocks, selection) = compose_system_blocks_for(
+        base,
+        project_root,
+        scratch,
+        subagents_enabled,
+        session_id,
+        temporary,
+        offered,
+    );
+    // The default policy keeps every block where it is, so this is the blocks
+    // joined in order -- the prompt as it was before contributors were named.
+    let prompt = crate::core::agent::prompt::PromptPolicy::default()
+        .arrange(blocks)
+        .map(|arranged| arranged.prompt)
+        .ok();
+    (prompt, selection)
+}
+
+/// The project system prompt as named blocks, in the order they enter it.
+///
+/// Each block carries the [`Composer`] that wrote it, so the caller can add the
+/// blocks it owns (hook output, a mode addendum, the date), then place the whole
+/// prompt through the `[prompt]` policy in one step. The match on what to render
+/// is the registry: a block with no [`Composer`] cannot be pushed.
+pub(crate) fn compose_system_blocks_for(
+    base: Option<&str>,
+    project_root: &Path,
+    scratch: Option<&Path>,
+    subagents_enabled: bool,
+    session_id: Option<&str>,
+    temporary: bool,
+    offered: Option<&OfferedTools>,
+) -> (Vec<(Composer, String)>, memory::retrieve::Selection) {
+    let mut blocks: Vec<(Composer, String)> = Vec::new();
     match base {
-        Some(b) => blocks.push(b.to_string()),
-        None => blocks.push(DEFAULT_IDENTITY.to_string()),
+        Some(b) => blocks.push((Composer::AssistantInstructions, b.to_string())),
+        None => blocks.push((Composer::AssistantInstructions, DEFAULT_IDENTITY.to_string())),
     }
-    blocks.push(guidelines(offered));
+    blocks.push((Composer::Guidelines, guidelines(offered)));
     // Stable text first, so a prompt cache keeps it across turns; what varies
     // by project follows, and what varies by day or branch comes last, just
     // before the remembered facts.
@@ -593,7 +626,7 @@ pub(crate) fn build_system_prompt_for(
     // advertised tool list, which drops it in plan mode or when it is denied,
     // and a guide for a tool the model cannot call just invites a failed call.
     if subagents_enabled && offers(offered, "dispatch_subagent") {
-        blocks.push(subagent_guide());
+        blocks.push((Composer::SubagentGuide, subagent_guide()));
     }
     if offers(offered, "skill_read") || offers(offered, "memory_read") {
         let mut guide = DEFAULT_SKILL_GUIDE.trim().to_string();
@@ -604,7 +637,7 @@ pub(crate) fn build_system_prompt_for(
 recording in your answer instead.",
             );
         }
-        blocks.push(guide);
+        blocks.push((Composer::SkillGuide, guide));
     }
     if offers(offered, "web_search") || offers(offered, "web_fetch") {
         let mut guide = WEB_TOOLS_GUIDE.to_string();
@@ -612,15 +645,18 @@ recording in your answer instead.",
             guide.push(' ');
             guide.push_str(REPO_SHELL_GUIDE);
         }
-        blocks.push(guide);
+        blocks.push((Composer::WebToolsGuide, guide));
     }
     // The chain that ranks everything in the prompt (AH-084).
-    blocks.push(memory::precedence::STATEMENT.to_string());
+    blocks.push((
+        Composer::MemoryPrecedence,
+        memory::precedence::STATEMENT.to_string(),
+    ));
     if let Some(context) = load_context_files(project_root) {
-        blocks.push(context);
+        blocks.push((Composer::ProjectContext, context));
     }
     if let Some(skills) = load_skills_for(project_root, offers(offered, "skill_read")) {
-        blocks.push(skills);
+        blocks.push((Composer::Skills, skills));
     }
     // How the project builds and tests, so the model does not rediscover it
     // with `ls` every run, or guess. AH-068 / AH-069 / AH-070. A detection
@@ -629,24 +665,27 @@ recording in your answer instead.",
     match crate::core::agent::tooling::detect(project_root, &no_cancel) {
         Ok(tooling) => {
             if let Some(block) = tooling.render() {
-                blocks.push(block);
+                blocks.push((Composer::ProjectTooling, block));
             }
         }
         Err(e) => log::warn!("{e}"),
     }
     if offers(offered, "memory_read") {
         if let Some(memory) = load_memory_catalog(project_root) {
-            blocks.push(memory);
+            blocks.push((Composer::MemoryCatalog, memory));
         }
     }
-    blocks.push(runtime_environment_block(project_root, scratch));
+    blocks.push((
+        Composer::RuntimeEnvironment,
+        runtime_environment_block(project_root, scratch),
+    ));
     // Remembered facts last: nothing already in the prompt is displaced by
     // them, and the block sits closest to the conversation it describes.
     let (remembered, selection) = load_memories(project_root, session_id, temporary);
     if let Some(remembered) = remembered {
-        blocks.push(remembered);
+        blocks.push((Composer::RememberedMemories, remembered));
     }
-    (Some(blocks.join("\n\n")), selection)
+    (blocks, selection)
 }
 
 #[cfg(test)]

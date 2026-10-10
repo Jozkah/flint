@@ -410,6 +410,10 @@ fn supervise_launch(
             let shell = crate::tools::proc::shell();
             let mut cmd = std::process::Command::new(&shell.program);
             cmd.args(&shell.args).arg(command);
+            // A job is the user's command, not the app's: it must not inherit
+            // the AppImage's library paths. The `Argv` arm below re-runs the
+            // app itself and keeps them.
+            jan_process::HostProcessEnv::host_env(&mut cmd);
             cmd
         }
         Launch::Argv(encoded) => {

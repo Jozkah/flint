@@ -17,6 +17,7 @@ import {
 import { usePendingDeletes } from '@/lib/undoableAction'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
+  CheckSquare,
   ChevronDown,
   FolderPlus,
   MessageSquarePlus,
@@ -53,6 +54,8 @@ import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
 import type { ProjectModel } from '@/services/projects/types'
 import { DeleteProjectDialog } from '@/containers/dialogs/DeleteProjectDialog'
 import { DeleteAllThreadsDialog } from '@/containers/dialogs/DeleteAllThreadsDialog'
+import { DeleteSelectedThreadsDialog } from '@/containers/dialogs/DeleteSelectedThreadsDialog'
+import { Button } from '@/components/ui/button'
 import { useThreads } from '@/hooks/useThreads'
 import { useThreadManagement } from '@/hooks/useThreadManagement'
 import { useSearchDialog } from '@/hooks/useSearchDialog'
@@ -113,6 +116,7 @@ export function ChatsNav() {
   const getFilteredThreads = useThreads((s) => s.getFilteredThreads)
   const isLoadingThreads = useThreads((s) => s.isLoadingThreads)
   const deleteAllThreads = useThreads((s) => s.deleteAllThreads)
+  const deleteThread = useThreads((s) => s.deleteThread)
   const folders = useThreadManagement((s) => s.folders)
   const addFolder = useThreadManagement((s) => s.addFolder)
   const updateFolder = useThreadManagement((s) => s.updateFolder)
@@ -136,6 +140,30 @@ export function ChatsNav() {
   const [editing, setEditing] = useState<ThreadFolder | null>(null)
   const [deleting, setDeleting] = useState<ThreadFolder | null>(null)
   const [filterMenuOpen, setFilterMenuOpen] = useState(false)
+  // Bulk delete: while selecting, rows toggle instead of opening.
+  const [selecting, setSelecting] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [confirmBulk, setConfirmBulk] = useState(false)
+  const selection = useMemo(
+    () =>
+      selecting
+        ? {
+            selected,
+            toggle: (id: string) =>
+              setSelected((prev) => {
+                const next = new Set(prev)
+                if (next.has(id)) next.delete(id)
+                else next.add(id)
+                return next
+              }),
+          }
+        : undefined,
+    [selecting, selected]
+  )
+  const stopSelecting = () => {
+    setSelecting(false)
+    setSelected(new Set())
+  }
   // A chat group is the Home group of the same id; its folders live there.
   const [foldersOf, setFoldersOf] = useState<string | null>(null)
   const foldersGroup = useConversationGroups((s) =>
@@ -292,6 +320,10 @@ export function ChatsNav() {
               {Object.keys(threads).length > 1 && (
                 <>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setSelecting(true)}>
+                    <CheckSquare className="size-4" />
+                    <span>{t('chat:bulkDelete.select')}</span>
+                  </DropdownMenuItem>
                   <DeleteAllThreadsDialog
                     onDeleteAll={deleteAllThreads}
                     onDropdownClose={() => setFilterMenuOpen(false)}
@@ -302,6 +334,29 @@ export function ChatsNav() {
           </DropdownMenu>
         </span>
       </div>
+
+      {selecting && (
+        <div
+          className="mb-1 flex items-center gap-1.5 px-1 text-xs text-muted-foreground"
+          data-testid="bulk-select-bar"
+        >
+          <span className="min-w-0 flex-1 truncate">
+            {t('chat:bulkDelete.selected', { count: selected.size })}
+          </span>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            disabled={selected.size === 0}
+            onClick={() => setConfirmBulk(true)}
+          >
+            {t('common:delete')}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={stopSelecting}>
+            {t('common:cancel')}
+          </Button>
+        </div>
+      )}
 
       {empty && isLoadingThreads ? (
         <div className="flex flex-col gap-1.5 px-1" aria-busy>
@@ -405,7 +460,7 @@ export function ChatsNav() {
                 </DropTarget>
                 <NavCollapse open={visible.length > 0}>
                   <NavList>
-                    <ThreadList threads={visible} draggable />
+                    <ThreadList threads={visible} draggable selection={selection} />
                   </NavList>
                   {hidden > 0 && (
                     <button
@@ -448,6 +503,13 @@ export function ChatsNav() {
           if (editing) await updateFolder(editing.id, name, assistantId, model)
           setEditing(null)
         }}
+      />
+      <DeleteSelectedThreadsDialog
+        ids={[...selected]}
+        onDelete={(id) => deleteThread(id)}
+        open={confirmBulk}
+        onOpenChange={setConfirmBulk}
+        onDone={stopSelecting}
       />
       <GroupPrompts surface="home" />
       {foldersGroup && (

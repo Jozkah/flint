@@ -60,5 +60,20 @@
   "reopenGuide": "はじめにガイド",
   "reopenGuideDescription": "モデルの選択、素材の追加、最初のタスクの完了までを、もう一度確認できます。",
   "reopenGuideAction": "ガイドを開く",
-  "resumeRecent": "前回の会話を続ける: {{title}}"
+  "resumeRecent": "前回の会話を続ける: {{title}}",
+  "modelSetup": {
+    "title": "モデルをどのように入手しますか?",
+    "local": {
+      "title": "このコンピューター上のモデルを使う",
+      "body": "モデルを探して、ハードウェアに合うものを確認できます。"
+    },
+    "provider": {
+      "title": "プロバイダーに接続",
+      "body": "ご自身のアカウントでホスト型モデルを使います。"
+    },
+    "import": {
+      "title": "ファイルをインポート",
+      "body": "すでにお持ちのモデルファイルを追加します。"
+    }
+  }
 }

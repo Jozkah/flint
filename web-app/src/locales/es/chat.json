@@ -72,6 +72,8 @@
     "openHint": "Abrir otra conversación independiente junto a esta",
     "openHintShortcut": "Abrir otra conversación independiente junto a esta ({{shortcut}})",
     "openInSplit": "Abrir en vista dividida",
+    "openIn": "Abrir en",
+    "openInNewWindow": "Ventana nueva",
     "close": "Cerrar división",
     "closePane": "Cerrar este panel",
     "addPane": "Añadir panel",
@@ -189,5 +191,13 @@
     "previousAt": "Versión anterior (mostrando {{index}} de {{count}})",
     "nextAt": "Versión siguiente (mostrando {{index}} de {{count}})",
     "position": "Versión {{index}} de {{count}}"
+  },
+  "bulkDelete": {
+    "select": "Seleccionar chats",
+    "selected": "{{count}} seleccionados",
+    "title": "¿Eliminar {{count}} chats?",
+    "description": "Se eliminarán {{count}} chats. Esta acción no se puede deshacer.",
+    "descriptionArchive": "{{count}} chats se moverán al archivo. Puedes restaurarlos desde allí.",
+    "done": "Se eliminaron {{count}} chats"
   }
 }

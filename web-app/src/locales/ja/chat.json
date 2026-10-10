@@ -72,6 +72,8 @@
     "openHint": "この会話の横に独立した別の会話を開く",
     "openHintShortcut": "この会話の横に独立した別の会話を開く（{{shortcut}}）",
     "openInSplit": "分割ビューで開く",
+    "openIn": "開く先",
+    "openInNewWindow": "新しいウィンドウ",
     "close": "分割を閉じる",
     "closePane": "このペインを閉じる",
     "addPane": "ペインを追加",
@@ -182,5 +184,13 @@
     "previousAt": "前のバージョン ({{count}} 件中 {{index}} 件目を表示)",
     "nextAt": "次のバージョン ({{count}} 件中 {{index}} 件目を表示)",
     "position": "バージョン {{index}} / {{count}}"
+  },
+  "bulkDelete": {
+    "select": "チャットを選択",
+    "selected": "{{count}} 件を選択中",
+    "title": "{{count}} 件のチャットを削除しますか?",
+    "description": "{{count}} 件のチャットが削除されます。この操作は元に戻せません。",
+    "descriptionArchive": "{{count}} 件のチャットがアーカイブに移動します。そこから復元できます。",
+    "done": "{{count}} 件のチャットを削除しました"
   }
 }

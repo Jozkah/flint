@@ -8,6 +8,9 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  LayoutGrid,
+  List as ListIcon,
+  ListFilter,
   Pencil,
   Plus,
   Power,
@@ -30,6 +33,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -1591,35 +1596,66 @@ function MCPServersDesktop() {
               </a>
             </span>
             {tab === 'servers' && serverEntries.length > 0 && (
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <Segmented<'all' | 'on' | 'off'>
-                  size="sm"
-                  aria-label={t('engine:mcp.filterLabel')}
-                  value={statusFilter}
-                  onValueChange={setStatusFilter}
-                  options={[
-                    { value: 'all', label: t('engine:mcp.filterAll') },
-                    { value: 'on', label: t('engine:mcp.filterOn') },
-                    { value: 'off', label: t('engine:mcp.filterOff') },
-                  ]}
-                />
-                <Segmented<ServersView>
-                  size="sm"
-                  aria-label={t('engine:mcp.viewLabel')}
-                  value={effectiveView}
-                  onValueChange={setView}
-                  options={[
-                    { value: 'cards', label: t('engine:mcp.viewCards') },
-                    { value: 'list', label: t('engine:mcp.viewList') },
-                  ]}
-                />
-                <SearchField
-                  className="w-[220px]"
-                  value={searchQuery}
-                  onChange={setSearchQuery}
-                  placeholder={t('mcp-servers:searchPlaceholder')}
-                />
-              </div>
+              <SearchField
+                className="ml-auto w-[300px] max-w-full"
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder={t('mcp-servers:searchPlaceholder')}
+                trailing={
+                  <>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label={t('engine:mcp.filterLabel')}
+                          title={t('engine:mcp.filterLabel')}
+                          className={cn(statusFilter !== 'all' && 'text-acc-text')}
+                        >
+                          <ListFilter aria-hidden />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuRadioGroup
+                          value={statusFilter}
+                          onValueChange={(v) =>
+                            setStatusFilter(v as 'all' | 'on' | 'off')
+                          }
+                        >
+                          <DropdownMenuRadioItem value="all">
+                            {t('engine:mcp.filterAll')}
+                          </DropdownMenuRadioItem>
+                          <DropdownMenuRadioItem value="on">
+                            {t('engine:mcp.filterOn')}
+                          </DropdownMenuRadioItem>
+                          <DropdownMenuRadioItem value="off">
+                            {t('engine:mcp.filterOff')}
+                          </DropdownMenuRadioItem>
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={t('engine:mcp.viewLabel')}
+                      title={
+                        effectiveView === 'list'
+                          ? t('engine:mcp.viewCards')
+                          : t('engine:mcp.viewList')
+                      }
+                      onClick={() =>
+                        setView(effectiveView === 'list' ? 'cards' : 'list')
+                      }
+                    >
+                      {effectiveView === 'list' ? (
+                        <LayoutGrid aria-hidden />
+                      ) : (
+                        <ListIcon aria-hidden />
+                      )}
+                    </Button>
+                  </>
+                }
+              />
             )}
           </div>
 

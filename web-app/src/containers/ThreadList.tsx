@@ -81,11 +81,13 @@ const ThreadItem = memo(
     isMobile,
     currentProjectId,
     draggable = false,
+    selection,
   }: {
     thread: Thread
     isMobile: boolean
     currentProjectId?: string
     draggable?: boolean
+    selection?: ThreadSelection
   }) => {
     // Rows in the sidebar can be dropped on a chat group. Only the pointer
     // listeners are applied: the link stays the row's one focusable element,
@@ -93,7 +95,7 @@ const ThreadItem = memo(
     const drag = useDraggable({
       id: thread.id,
       data: { threadId: thread.id },
-      disabled: !draggable,
+      disabled: !draggable || !!selection,
     })
     const deleteThread = useThreads((state) => state.deleteThread)
     const renameThread = useThreads((state) => state.renameThread)
@@ -270,8 +272,8 @@ const ThreadItem = memo(
 
     return (
       <NavItem
-        ref={draggable ? drag.setNodeRef : undefined}
-        {...(draggable ? drag.listeners : {})}
+        ref={draggable && !selection ? drag.setNodeRef : undefined}
+        {...(draggable && !selection ? drag.listeners : {})}
         onContextMenu={openRowMenu}
         onKeyDown={onRowKeyDown}
         className={cn(
@@ -324,13 +326,36 @@ const ThreadItem = memo(
                   to="/threads/$threadId"
                   params={{ threadId: thread.id }}
                   data-testid="thread-nav-item"
+                  onClick={
+                    selection
+                      ? (e: React.MouseEvent) => {
+                          e.preventDefault()
+                          selection.toggle(thread.id)
+                        }
+                      : undefined
+                  }
                   onPointerEnter={() =>
                     prefetchThreadMessages(thread.id, (id) =>
                       serviceHub.messages().fetchMessages(id)
                     )
                   }
                 >
-                  <ThreadStatusMark status={status} />
+                  {selection ? (
+                    <span
+                      data-testid="thread-select-box"
+                      data-checked={selection.selected.has(thread.id)}
+                      aria-hidden
+                      className={cn(
+                        'grid size-3.5 shrink-0 place-items-center rounded-[4px] border border-input',
+                        selection.selected.has(thread.id) &&
+                          'border-primary bg-primary text-primary-foreground'
+                      )}
+                    >
+                      {selection.selected.has(thread.id) && <Check className="size-3" />}
+                    </span>
+                  ) : (
+                    <ThreadStatusMark status={status} />
+                  )}
                   <FadeText className={isSelected ? 'font-medium' : undefined}>{thread.title || t('common:newThread')}</FadeText>
                 </Link>
               </NavButton>
@@ -583,14 +608,21 @@ function formatRowTime(ms: number, now = new Date()): string {
   return d.toLocaleDateString(document.documentElement.lang || [], { month: 'short', day: 'numeric' })
 }
 
+/** Rows toggle into `selected` instead of opening (bulk delete). */
+export type ThreadSelection = {
+  selected: ReadonlySet<string>
+  toggle: (id: string) => void
+}
+
 type ThreadListProps = {
   threads: Thread[]
   currentProjectId?: string
   /** Rows can be dragged onto a chat group (needs a DndContext above). */
   draggable?: boolean
+  selection?: ThreadSelection
 }
 
-function ThreadList({ threads, currentProjectId, draggable }: ThreadListProps) {
+function ThreadList({ threads, currentProjectId, draggable, selection }: ThreadListProps) {
   const { isMobile } = useShellNav()
 
   const sortedThreads = useMemo(() => {
@@ -608,6 +640,7 @@ function ThreadList({ threads, currentProjectId, draggable }: ThreadListProps) {
           isMobile={isMobile}
           currentProjectId={currentProjectId}
           draggable={draggable}
+          selection={selection}
         />
       ))}
     </>

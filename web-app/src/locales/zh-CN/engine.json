@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "已安装",
     "installedSub": "{{local}} 个本地 · {{remote}} 个远程",
+    "remoteAvailableSub": "{{count}} 个远程模型可用",
     "loaded": "当前已加载",
     "loadedSub": "共 {{count}} 个本地模型",
     "disk": "磁盘占用",
@@ -44,6 +45,10 @@
     "noneYet": "暂无回复"
   },
   "providers": {
+    "disableAll": "全部停用",
+    "enableAll": "全部启用",
+    "allDisabledToast": "已停用所有提供商",
+    "allEnabledToast": "已启用所有提供商",
     "title": "提供商",
     "onDevice": "在这台设备上",
     "remote": "远程",
@@ -60,7 +65,8 @@
     "off": "关闭",
     "loaded": "已加载",
     "ready": "就绪",
-    "noKey": "无 API 密钥"
+    "noKey": "无 API 密钥",
+    "keyless": "无需密钥"
   },
   "installed": {
     "title": "已安装的模型",

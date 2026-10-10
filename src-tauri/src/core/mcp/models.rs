@@ -42,6 +42,10 @@ pub struct McpServerConfig {
     pub envs: serde_json::Map<String, Value>,
     pub timeout: Option<Duration>,
     pub headers: serde_json::Map<String, Value>,
+    /// Working directory for a local server the user configured. `None` runs
+    /// it from Flint's own directory, as before. Ignored for an imported
+    /// server, which always runs in its session workspace.
+    pub cwd: Option<String>,
     /// Set for an imported server; `None` for one the user configured.
     pub confinement: Option<McpConfinement>,
     /// Did this definition come from a repository rather than from the user?
@@ -86,6 +90,12 @@ pub fn extract_command_args(config: &Value) -> Option<McpServerConfig> {
         .unwrap_or(&Value::Object(serde_json::Map::new()))
         .as_object()?
         .clone();
+    let cwd = obj
+        .get("cwd")
+        .and_then(|c| c.as_str())
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(String::from);
     Some(McpServerConfig {
         timeout,
         transport_type,
@@ -94,6 +104,7 @@ pub fn extract_command_args(config: &Value) -> Option<McpServerConfig> {
         args,
         envs,
         headers,
+        cwd,
         // Not read from the repository's own file: Flint writes these onto the
         // config it builds when a session activates an imported server. A
         // `.mcp.json` never reaches this function verbatim — the importer
@@ -298,6 +309,21 @@ mod tests {
         assert!(parsed.timeout.is_none());
         assert!(parsed.envs.is_empty());
         assert!(parsed.headers.is_empty());
+    }
+
+    #[test]
+    fn test_extract_command_args_reads_cwd() {
+        let cfg = serde_json::json!({"command": "node", "args": [], "cwd": "  /srv/tools  "});
+        let parsed = extract_command_args(&cfg).expect("should parse");
+        assert_eq!(parsed.cwd.as_deref(), Some("/srv/tools"));
+
+        let blank = serde_json::json!({"command": "node", "args": [], "cwd": "   "});
+        let blank = extract_command_args(&blank).expect("should parse");
+        assert!(blank.cwd.is_none());
+
+        let absent = serde_json::json!({"command": "node", "args": []});
+        let absent = extract_command_args(&absent).expect("should parse");
+        assert!(absent.cwd.is_none());
     }
 
     #[test]

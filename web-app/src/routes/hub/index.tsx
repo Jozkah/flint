@@ -45,6 +45,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { modelIdKey } from '@/lib/modelIdPath'
 import {
   cleanHuggingFaceRepo,
+  pinExactRepo,
   explainQuantization,
   formatModelBytes,
   getHuggingFaceFiles,
@@ -64,15 +65,16 @@ import {
   fitBasis,
   fitOfGroup,
   loadRepoArchitecture,
+  repoFit,
+  repoFitsHardware,
   type FitContext,
   type GroupFit,
 } from '@/lib/huggingfaceFit'
 import {
-  assessModelFit,
-  DEFAULT_CTX_LENGTH,
   type FitVerdict,
   type KvArchitecture,
 } from '@/lib/modelCompatibility'
+import { Select } from '@/components/ui/select'
 
 export const Route = createFileRoute(route.hub.index as any)({
   component: ModelDiscoverRoute,
@@ -161,6 +163,8 @@ function ModelDiscoverRoute() {
   const [source, setSource] = useState<'models' | 'studio'>('models')
   const [includeGated, setIncludeGated] = useState(true)
   const [downloadedOnly, setDownloadedOnly] = useState(false)
+  // Hide repos whose best variant is larger than this machine's memory.
+  const [fitsOnly, setFitsOnly] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [filesByRepo, setFilesByRepo] = useState<
     Record<string, HuggingFaceFile[]>
@@ -310,11 +314,20 @@ function ModelDiscoverRoute() {
         (architecture === 'all' || arch === architecture) &&
         (modality === 'all' || modalities.includes(modality)) &&
         (includeGated || !model.gated) &&
-        (!downloadedOnly || repoInstalled(model))
+        (!downloadedOnly || repoInstalled(model)) &&
+        (!fitsOnly ||
+          repoFitsHardware(
+            repoFit(model, files, {
+              hardware,
+              devices,
+              architecture: archByRepo[model.id],
+              parameterBillions: parameterCount,
+            })
+          ))
       )
     })
 
-    return filtered.sort((a, b) => {
+    const sorted = filtered.sort((a, b) => {
       if (sort === 'likes') return b.likes - a.likes
       if (sort === 'updated') {
         return Date.parse(b.lastModified ?? '') - Date.parse(a.lastModified ?? '')
@@ -324,13 +337,20 @@ function ModelDiscoverRoute() {
       }
       return b.downloads - a.downloads
     })
+    // A pasted exact repo id comes first, whatever the sort says.
+    return pinExactRepo(sorted, debouncedQuery)
   }, [
+    debouncedQuery,
     models,
     params,
     architecture,
     modality,
     includeGated,
     downloadedOnly,
+    fitsOnly,
+    hardware,
+    devices,
+    archByRepo,
     sort,
     filesByRepo,
     installedIds,
@@ -395,12 +415,14 @@ function ModelDiscoverRoute() {
     architecture !== 'all' ||
     modality !== 'all' ||
     downloadedOnly ||
+    fitsOnly ||
     !includeGated
   const clearFilters = () => {
     setParams('all')
     setArchitecture('all')
     setModality('all')
     setDownloadedOnly(false)
+    setFitsOnly(false)
     setIncludeGated(true)
   }
 
@@ -502,7 +524,7 @@ function ModelDiscoverRoute() {
             ))}
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />
             {IS_MACOS && (
-              <select
+              <Select
                 value={format}
                 onChange={(event) =>
                   setFormat(event.target.value as HuggingFaceFormat)
@@ -513,9 +535,9 @@ function ModelDiscoverRoute() {
                 <option value="all">GGUF + MLX</option>
                 <option value="gguf">GGUF</option>
                 <option value="mlx">MLX</option>
-              </select>
+              </Select>
             )}
-            <select
+            <Select
               value={params}
               onChange={(event) => setParams(event.target.value as ParamFilter)}
               className={SELECT}
@@ -526,8 +548,8 @@ function ModelDiscoverRoute() {
               <option value="small">3B–8B</option>
               <option value="medium">8B–34B</option>
               <option value="large">34B+</option>
-            </select>
-            <select
+            </Select>
+            <Select
               value={architecture}
               onChange={(event) => setArchitecture(event.target.value)}
               className={SELECT}
@@ -539,7 +561,7 @@ function ModelDiscoverRoute() {
                   {value}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           )}
         </div>
@@ -573,13 +595,24 @@ function ModelDiscoverRoute() {
                 />
                 Downloaded
               </label>
+              <label
+                className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-secondary-foreground"
+                title="Hide models whose best variant is larger than this machine's memory"
+              >
+                <Switch
+                  checked={fitsOnly}
+                  onCheckedChange={setFitsOnly}
+                  aria-label="Only models that fit"
+                />
+                Fits my hardware
+              </label>
               <label className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-secondary-foreground">
                 <Switch checked={includeGated} onCheckedChange={setIncludeGated} />
                 <LockKeyhole className="size-3.5" /> Gated
               </label>
             <label className="inline-flex items-center gap-2">
               Sort by
-              <select
+              <Select
                 value={sort}
                 onChange={(event) => setSort(event.target.value as SortMode)}
                 className={SELECT}
@@ -589,7 +622,7 @@ function ModelDiscoverRoute() {
                 <option value="likes">Most liked</option>
                 <option value="updated">Recently updated</option>
                 <option value="newest">Newest</option>
-              </select>
+              </Select>
             </label>
             </div>
           </div>
@@ -654,21 +687,11 @@ function ModelDiscoverRoute() {
                 const recommended = bestGroup(groups, fitContext)
                 const isMlx = repoLooksMlx(model)
                 const mlxBytes = isMlx ? mlxWeightsBytes(files) : null
-                const recommendedFit: GroupFit | null = isMlx
-                  ? mlxBytes
-                    ? {
-                        ...assessModelFit({
-                          weightsBytes: mlxBytes,
-                          ctxLength: DEFAULT_CTX_LENGTH,
-                          hardware,
-                          devices,
-                        }),
-                        sizeEstimated: false,
-                      }
-                    : null
-                  : recommended
-                    ? fitOfGroup(recommended, groups, fitContext)
-                    : null
+                const recommendedFit: GroupFit | null = repoFit(
+                  model,
+                  files,
+                  fitContext
+                )
                 const modalities = inferModalities(model, files)
                 const arch = inferArchitecture(model)
                 const opened = Boolean(expanded[model.id])

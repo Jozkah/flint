@@ -12,6 +12,11 @@ const h = vi.hoisted(() => ({
   serviceHub: null as unknown,
   getLoadedModels: vi.fn(async () => [] as string[]),
   unloadLlamaModel: vi.fn(async () => ({ success: true })),
+  cancelModelLoad: vi.fn(async () => ({
+    cancelled: false,
+    engine_stopped: false,
+  })),
+  activeModels: [] as string[],
   resolveCreateModel: undefined as (() => void) | undefined,
   createModelMock: vi.fn(
     () =>
@@ -68,7 +73,8 @@ vi.mock('@/hooks/useAppState', () => ({
       new Proxy(
         {},
         {
-          get: () => () => undefined,
+          get: (_t, key) =>
+            key === 'activeModels' ? h.activeModels : () => undefined,
         }
       ),
   },
@@ -76,6 +82,7 @@ vi.mock('@/hooks/useAppState', () => ({
 vi.mock('@janhq/tauri-plugin-llamacpp-api', () => ({
   getLoadedModels: h.getLoadedModels,
   unloadLlamaModel: h.unloadLlamaModel,
+  cancelModelLoad: h.cancelModelLoad,
 }))
 vi.mock('@/lib/extension', () => ({
   ExtensionManager: { getInstance: () => ({ get: () => null }) },
@@ -125,7 +132,51 @@ describe('CustomChatTransport: abort during model load', () => {
   beforeEach(() => {
     h.getLoadedModels.mockClear()
     h.unloadLlamaModel.mockClear()
+    h.cancelModelLoad.mockClear()
+    h.activeModels = []
     h.resolveCreateModel = undefined
+  })
+
+  async function abortMidLoad() {
+    const transport = new CustomChatTransport()
+    const controller = new AbortController()
+    const send = transport.sendMessages({
+      chatId: 'thread-1',
+      messages: [user('m1', 'hi')],
+      abortSignal: controller.signal,
+      trigger: 'submit-message',
+      messageId: undefined,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    controller.abort()
+    await expect(send).rejects.toMatchObject({ name: 'AbortError' })
+    await new Promise((r) => setTimeout(r, 0))
+  }
+
+  it('cancels the load, stopping the worker when no other model is resident', async () => {
+    h.cancelModelLoad.mockResolvedValueOnce({
+      cancelled: true,
+      engine_stopped: true,
+    })
+    await abortMidLoad()
+    expect(h.cancelModelLoad).toHaveBeenCalledWith('qwen3-4b', false)
+    expect(h.unloadLlamaModel).not.toHaveBeenCalled()
+  })
+
+  it('keeps the worker when another model is resident', async () => {
+    h.activeModels = ['other', 'qwen3-4b']
+    h.cancelModelLoad.mockResolvedValueOnce({
+      cancelled: true,
+      engine_stopped: false,
+    })
+    await abortMidLoad()
+    expect(h.cancelModelLoad).toHaveBeenCalledWith('qwen3-4b', true)
+  })
+
+  it('unloads when no load was in flight', async () => {
+    await abortMidLoad()
+    expect(h.unloadLlamaModel).toHaveBeenCalledWith('qwen3-4b')
   })
 
   it('rejects with AbortError and unloads the model when aborted mid-load', async () => {
@@ -147,6 +198,7 @@ describe('CustomChatTransport: abort during model load', () => {
     controller.abort()
 
     await expect(send).rejects.toMatchObject({ name: 'AbortError' })
+    await new Promise((r) => setTimeout(r, 0))
     expect(h.unloadLlamaModel).toHaveBeenCalledWith('qwen3-4b')
   })
 

@@ -330,7 +330,8 @@
     "continue": "Continua",
     "toShort": "A",
     "placeholderTo": "Escriu a {{name}}…",
-    "mention": "Esmenta un participant"
+    "mention": "Esmenta un participant",
+    "dropSkipped": "No s'ha afegit (no és text, és una carpeta o supera el límit del missatge): {{files}}"
   },
   "kpi": {
     "running": "En execució",

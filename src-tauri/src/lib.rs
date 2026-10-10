@@ -113,6 +113,7 @@ macro_rules! invoke_commands_with_extras {
         core::system::commands::install_jan_cli,
         core::system::commands::uninstall_jan_cli,
         core::system::commands::clear_claude_code_env,
+        core::system::commands::detect_claude_code_overrides,
         // Server commands
         core::server::commands::start_server,
         core::server::commands::stop_server,
@@ -276,6 +277,7 @@ macro_rules! invoke_commands_with_extras {
         core::server::remote_provider_commands::get_provider_keys,
         core::server::remote_provider_commands::list_provider_configs,
         core::server::remote_provider_commands::register_secret_values,
+        core::server::remote_provider_commands::set_provider_tls_trust,
         // MCP commands
         core::mcp::commands::get_tools,
         core::mcp::commands::get_tools_for_servers,
@@ -671,6 +673,11 @@ pub fn build_app() -> tauri::App {
         |_ctx, request| core::preview::handle(request.uri().path()),
     );
 
+    // The Settings HTTPS proxy reaches the web search providers' API clients.
+    tauri_plugin_websearch::provider::set_proxy_hook(Box::new(|url| {
+        core::net::proxy::configured().and_then(|p| p.proxy_for(url))
+    }));
+
     let mut app_builder = builder
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
@@ -912,6 +919,15 @@ pub fn build_app() -> tauri::App {
                 core::window_state::restore_and_show(&window, &data_folder);
                 core::window_state::install(&window, data_folder);
                 suppress_beforeunload_dialog(&window);
+            }
+            #[cfg(all(
+                not(windows),
+                not(any(target_os = "android", target_os = "ios"))
+            ))]
+            if let Some(window) = app.get_webview_window("main") {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                core::window_state::restore_and_show(&window, &data_folder);
+                core::window_state::install(&window, data_folder);
             }
             // Remote access: off unless the user turned it on; if so the
             // listener starts now, with the settings they left.

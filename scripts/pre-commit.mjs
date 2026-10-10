@@ -108,5 +108,13 @@ export function runChecks({
 const invokedDirectly =
   process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (invokedDirectly) {
+  // `--help` only describes the gate; it must not run it, because the lint step
+  // rewrites files (`--fix`) and takes longer than a smoke test should wait.
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    console.log(
+      'pre-commit: checks staged changes for whitespace errors and conflict markers, then runs the workspace lint.'
+    )
+    process.exit(0)
+  }
   process.exit(runChecks())
 }

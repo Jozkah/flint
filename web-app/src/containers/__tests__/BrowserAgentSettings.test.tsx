@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { chooseOption } from '@/test/select'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const invoke = vi.fn()
@@ -115,9 +116,7 @@ describe('BrowserAgentSettings', () => {
       ).toContain('*.example.org')
     )
     // A block rule cannot be a local-address rule.
-    fireEvent.change(screen.getByTestId('browser-rule-verdict'), {
-      target: { value: 'deny' },
-    })
+    chooseOption(screen.getByTestId('browser-rule-verdict'), 'deny')
     expect(screen.queryByTestId('browser-rule-private')).toBeNull()
   })
 
@@ -176,7 +175,7 @@ describe('BrowserAgentSettings pointer', () => {
       screen.getByTestId('browser-agent-pointer').getAttribute('data-state')
     ).toBe('checked')
     expect(
-      (screen.getByTestId('browser-agent-reduce-motion') as HTMLSelectElement).value
+      screen.getByTestId('browser-agent-reduce-motion').dataset.value
     ).toBe('system')
   })
 
@@ -196,9 +195,9 @@ describe('BrowserAgentSettings pointer', () => {
     render(<BrowserAgentSettings />)
     await screen.findAllByTestId('browser-rule-pattern')
     const select = screen.getByTestId('browser-agent-reduce-motion')
-    fireEvent.change(select, { target: { value: 'on' } })
+    chooseOption(select, 'on')
     expect(useAgentToolsConfig.getState().browserAgentReduceMotion).toBe('on')
-    fireEvent.change(select, { target: { value: 'off' } })
+    chooseOption(select, 'off')
     expect(useAgentToolsConfig.getState().browserAgentReduceMotion).toBe('off')
   })
 

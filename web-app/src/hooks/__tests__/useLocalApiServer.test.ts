@@ -32,6 +32,7 @@ describe('useLocalApiServer', () => {
     store.setEnableOnStartup(true)
     store.setServerHost('127.0.0.1')
     store.setServerPort(1337)
+    store.setActiveServerPort(null)
     store.setApiPrefix('/v1')
     store.setCorsEnabled(true)
     store.setVerboseLogs(true)
@@ -116,6 +117,30 @@ describe('useLocalApiServer', () => {
         key: 'local-api-server-key',
         value: 'k-secret',
       })
+    })
+  })
+
+  // The backend may fall back to a free port; that must not replace the
+  // user's pinned port in settings.json.
+  describe('activeServerPort', () => {
+    it('is unset by default and does not touch the pinned port', () => {
+      expect(useLocalApiServer.getState().activeServerPort).toBeNull()
+      act(() => {
+        useLocalApiServer.getState().setActiveServerPort(1338)
+      })
+      expect(useLocalApiServer.getState().activeServerPort).toBe(1338)
+      expect(useLocalApiServer.getState().serverPort).toBe(1337)
+    })
+
+    it('is kept out of the persisted blob', () => {
+      act(() => {
+        useLocalApiServer.getState().setActiveServerPort(1338)
+      })
+      const persisted = persistedLocalApiServerState(
+        useLocalApiServer.getState()
+      )
+      expect(persisted).not.toHaveProperty('activeServerPort')
+      expect(persisted.serverPort).toBe(1337)
     })
   })
 

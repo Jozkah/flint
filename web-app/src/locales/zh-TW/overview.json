@@ -56,5 +56,9 @@
     "approval": "需要核准",
     "done": "已完成",
     "idle": "未開始"
-  }
+  },
+  "resumeSub": "開始新的內容，或從上次中斷的地方繼續。",
+  "startChat": "提個問題",
+  "startFiles": "Cowork",
+  "usage": "用量"
 }

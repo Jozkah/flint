@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   decideDrop,
+  inlineDroppedTexts,
+  pastedPath,
   dragHasFiles,
   DROP_ZONE_CLASS,
   dropLabelKey,
@@ -92,5 +94,58 @@ describe('telling the zones apart', () => {
   it('gives each target a different treatment and a different label', () => {
     expect(DROP_ZONE_CLASS.code).not.toBe(DROP_ZONE_CLASS.composer)
     expect(dropLabelKey('code')).not.toBe(dropLabelKey('composer'))
+  })
+})
+
+describe('inlineDroppedTexts', () => {
+  it('fences each file under its name', () => {
+    const r = inlineDroppedTexts([{ name: 'a.ts', text: 'x' }], 1000)
+    expect(r.text).toBe('a.ts\n```\nx\n```')
+    expect(r.skipped).toEqual([])
+  })
+
+  it('skips binary content and names it', () => {
+    const r = inlineDroppedTexts([{ name: 'b.bin', text: 'a\u0000b' }], 1000)
+    expect(r.text).toBe('')
+    expect(r.skipped).toEqual(['b.bin'])
+  })
+
+  it('truncates to the budget and skips what no longer fits', () => {
+    const r = inlineDroppedTexts(
+      [
+        { name: 'a.txt', text: 'y'.repeat(500) },
+        { name: 'b.txt', text: 'z'.repeat(500) },
+      ],
+      120
+    )
+    expect(r.text.length).toBeLessThanOrEqual(120)
+    expect(r.skipped).toEqual(['b.txt'])
+  })
+
+  it('uses a longer fence when the file contains one', () => {
+    const r = inlineDroppedTexts([{ name: 'a.md', text: '```js\n```' }], 1000)
+    expect(r.text.startsWith('a.md\n~~~~\n')).toBe(true)
+  })
+})
+
+describe('pastedPath', () => {
+  it('accepts absolute Windows, UNC and POSIX paths, quoted or not', () => {
+    expect(pastedPath('C:\\Users\\me\\proj')).toBe('C:\\Users\\me\\proj')
+    expect(pastedPath('"D:/work/app"')).toBe('D:/work/app')
+    expect(pastedPath('\\\\srv\\share\\dir')).toBe('\\\\srv\\share\\dir')
+    expect(pastedPath('  /home/me/proj  ')).toBe('/home/me/proj')
+  })
+
+  it('rejects commands, URLs, prose and multi-line text', () => {
+    const rejected = [
+      '/clear',
+      'https://example.com/a/b',
+      'C:\\',
+      'hello world',
+      'a/b/c',
+      '/a/b\n/c/d',
+      '',
+    ]
+    for (const s of rejected) expect(pastedPath(s)).toBeNull()
   })
 })

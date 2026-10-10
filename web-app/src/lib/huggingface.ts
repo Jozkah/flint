@@ -124,6 +124,23 @@ export function cleanHuggingFaceRepo(value: string): string {
 }
 
 /**
+ * Moves the repo whose id equals a pasted `owner/name` (or a Hugging Face URL
+ * for it) to the front, so sorting by downloads cannot sink it below popular
+ * near-matches. Case-insensitive; the other rows keep their order. A query
+ * that is not an `owner/name` pair, or names no listed repo, changes nothing.
+ */
+export function pinExactRepo<T extends { id: string }>(
+  models: T[],
+  query: string
+): T[] {
+  const wanted = cleanHuggingFaceRepo(query).toLowerCase()
+  if (!wanted.includes('/')) return models
+  const at = models.findIndex((m) => m.id.toLowerCase() === wanted)
+  if (at <= 0) return models
+  return [models[at], ...models.slice(0, at), ...models.slice(at + 1)]
+}
+
+/**
  * The repository a `flint://models/huggingface/<owner>/<repo>` (or legacy
  * `jan://`) link names, or null when it names none. Strict on purpose: a link
  * arrives from outside the app, so anything that is not a plain owner/name

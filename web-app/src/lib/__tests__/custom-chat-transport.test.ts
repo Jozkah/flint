@@ -205,6 +205,35 @@ describe('normalizeToolInputSchema', () => {
     expect(normalizeToolInputSchema(schema)).toEqual(schema)
   })
 
+  it('strips bounded grammar keywords but keeps property names and examples', () => {
+    expect(
+      normalizeToolInputSchema({
+        type: 'object',
+        properties: {
+          maxLength: { type: 'number', maximum: 10000 },
+          query: { type: 'string', minLength: 1, maxLength: 10000 },
+          sources: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            items: { type: 'string', maxLength: 2000 },
+          },
+          bag: { type: 'object', minProperties: 1, maxProperties: 5 },
+        },
+        examples: [{ maxLength: 50, query: 'docs' }],
+      })
+    ).toEqual({
+      type: 'object',
+      properties: {
+        maxLength: { type: 'number', maximum: 10000 },
+        query: { type: 'string' },
+        sources: { type: 'array', items: { type: 'string' } },
+        bag: { type: 'object', properties: {} },
+      },
+      examples: [{ maxLength: 50, query: 'docs' }],
+    })
+  })
+
   it('strips date/time/date-time format from string leaves', () => {
     expect(
       normalizeToolInputSchema({

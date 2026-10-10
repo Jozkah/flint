@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Installiert",
     "installedSub": "{{local}} lokal · {{remote}} remote",
+    "remoteAvailableSub": "{{count}} Remote-Modelle verfügbar",
     "loaded": "Jetzt geladen",
     "loadedSub": "von {{count}} lokalen Modellen",
     "disk": "Speicherplatz belegt",
@@ -44,6 +45,10 @@
     "noneYet": "noch keine Antworten"
   },
   "providers": {
+    "disableAll": "Alle deaktivieren",
+    "enableAll": "Alle aktivieren",
+    "allDisabledToast": "Alle Anbieter deaktiviert",
+    "allEnabledToast": "Alle Anbieter aktiviert",
     "title": "Anbieter",
     "onDevice": "Auf diesem Gerät",
     "remote": "Remote",
@@ -60,7 +65,8 @@
     "off": "Aus",
     "loaded": "Geladen",
     "ready": "Bereit",
-    "noKey": "Kein API-Schlüssel"
+    "noKey": "Kein API-Schlüssel",
+    "keyless": "Kein Schlüssel nötig"
   },
   "installed": {
     "title": "Installierte Modelle",

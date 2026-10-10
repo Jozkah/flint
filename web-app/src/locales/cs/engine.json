@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Nainstalováno",
     "installedSub": "{{local}} lokálních · {{remote}} vzdálených",
+    "remoteAvailableSub": "K dispozici: {{count}} vzdálených modelů",
     "loaded": "Právě načteno",
     "loadedSub": "z {{count}} lokálních modelů",
     "disk": "Využitý disk",
@@ -44,6 +45,10 @@
     "noneYet": "zatím žádné odpovědi"
   },
   "providers": {
+    "disableAll": "Vypnout vše",
+    "enableAll": "Zapnout vše",
+    "allDisabledToast": "Všichni poskytovatelé jsou vypnuti",
+    "allEnabledToast": "Všichni poskytovatelé jsou zapnuti",
     "title": "Poskytovatelé",
     "onDevice": "Na tomto zařízení",
     "remote": "Vzdálení",
@@ -62,7 +67,8 @@
     "off": "Vypnuto",
     "loaded": "Načteno",
     "ready": "Připraveno",
-    "noKey": "Bez klíče API"
+    "noKey": "Bez klíče API",
+    "keyless": "Klíč není potřeba"
   },
   "installed": {
     "title": "Nainstalované modely",

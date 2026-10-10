@@ -11,7 +11,8 @@
     "where": "結果の場所",
     "checked": "確認した内容",
     "unresolved": "未解決",
-    "next": "次のステップ"
+    "next": "次のステップ",
+    "details": "詳細"
   },
   "headline": {
     "running": "実行はまだ続いています。",

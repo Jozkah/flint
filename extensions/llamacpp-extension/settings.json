@@ -36,6 +36,18 @@
     }
   },
   {
+    "key": "idle_unload_minutes",
+    "title": "Unload Idle Models After (minutes)",
+    "description": "Unload a local model that has not been used for this many minutes, to free memory. It reloads on the next request. Embedding models and models with a request in progress are never unloaded. 0 = never.",
+    "controllerType": "input",
+    "controllerProps": {
+      "value": 0,
+      "placeholder": "e.g 10",
+      "type": "number",
+      "textAlign": "right"
+    }
+  },
+  {
     "key": "timeout",
     "title": "Timeout for llamacpp",
     "description": "Llamacpp connection and load timeout in seconds",
@@ -341,11 +353,15 @@
   {
     "key": "cache_type_k",
     "title": "KV Cache K Type",
-    "description": "KV cache data type for Keys (default: f16).",
+    "description": "KV cache data type for Keys. Auto uses q8_0, which halves the cache at a negligible quality cost.",
     "controllerType": "dropdown",
     "controllerProps": {
-      "value": "f16",
+      "value": "auto",
       "options": [
+        {
+          "value": "auto",
+          "name": "Auto"
+        },
         {
           "value": "f32",
           "name": "f32"
@@ -388,11 +404,15 @@
   {
     "key": "cache_type_v",
     "title": "KV Cache V Type",
-    "description": "KV cache data type for Values (default: f16).",
+    "description": "KV cache data type for Values. Auto uses q8_0 when Flash Attention is On and f16 otherwise, since a quantized V cache needs Flash Attention. A model that fails to load with it is retried once with f16.",
     "controllerType": "dropdown",
     "controllerProps": {
-      "value": "f16",
+      "value": "auto",
       "options": [
+        {
+          "value": "auto",
+          "name": "Auto"
+        },
         {
           "value": "f32",
           "name": "f32"

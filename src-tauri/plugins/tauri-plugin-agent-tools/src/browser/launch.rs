@@ -121,6 +121,8 @@ pub fn spawn(browser_path: &str, profile_prefix: &str, policy: &OriginPolicy) ->
     use jan_process::CommandConsole;
     let profile = ProfileDir::create(profile_prefix)?;
     let mut cmd = tokio::process::Command::new(browser_path);
+    // A system Chrome loads its own libraries, not the AppImage's.
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     cmd.args(browser_args(profile.path(), running_as_root(), policy.allowed()))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())

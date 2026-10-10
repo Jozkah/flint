@@ -60,5 +60,20 @@
   "reopenGuide": "Başlangıç rehberi",
   "reopenGuideDescription": "Model seçme, materyal ekleme ve ilk görevi tamamlama adımlarını yeniden gözden geçirin.",
   "reopenGuideAction": "Rehberi aç",
-  "resumeRecent": "Son konuşmanıza devam edin: {{title}}"
+  "resumeRecent": "Son konuşmanıza devam edin: {{title}}",
+  "modelSetup": {
+    "title": "Modeli nasıl edinmek istersiniz?",
+    "local": {
+      "title": "Bu bilgisayardaki bir modeli kullan",
+      "body": "Modellere göz atın ve donanımınıza hangilerinin uyduğunu görün."
+    },
+    "provider": {
+      "title": "Bir sağlayıcı bağla",
+      "body": "Barındırılan bir modeli kendi hesabınızla kullanın."
+    },
+    "import": {
+      "title": "Dosya içe aktar",
+      "body": "Zaten sahip olduğunuz bir model dosyasını ekleyin."
+    }
+  }
 }

@@ -4,8 +4,13 @@ import {
   approxWeightsBytes,
   chooseMmproj,
   getHuggingFaceGgufHeader,
+  groupHuggingFaceFiles,
+  mlxWeightsBytes,
   quantPreference,
+  repoLooksMlx,
+  type HuggingFaceFile,
   type HuggingFaceFileGroup,
+  type HuggingFaceModel,
 } from '@/lib/huggingface'
 import {
   assessModelFit,
@@ -83,6 +88,43 @@ export function bestGroup(
       (b.totalSize ?? Number.MAX_SAFE_INTEGER)
     )
   })[0]
+}
+
+/**
+ * The fit of the variant a repo would be downloaded as (the best one for this
+ * machine), or null when its files are not known well enough to say. MLX
+ * repos are sized from their weight files.
+ */
+export function repoFit(
+  model: HuggingFaceModel,
+  files: HuggingFaceFile[],
+  context: FitContext
+): GroupFit | null {
+  if (repoLooksMlx(model)) {
+    const bytes = mlxWeightsBytes(files)
+    if (!bytes) return null
+    return {
+      ...assessModelFit({
+        weightsBytes: bytes,
+        ctxLength: DEFAULT_CTX_LENGTH,
+        hardware: context.hardware,
+        devices: context.devices,
+      }),
+      sizeEstimated: false,
+    }
+  }
+  const groups = groupHuggingFaceFiles(files)
+  const best = bestGroup(groups, context)
+  return best ? fitOfGroup(best, groups, context) : null
+}
+
+/**
+ * Whether the "fits my hardware" filter keeps a repo. Only a verdict of
+ * `exceeds` hides it: an unknown fit (no file sizes listed) stays, since the
+ * estimate is a guess and hiding it would drop models it cannot judge.
+ */
+export function repoFitsHardware(fit: GroupFit | null): boolean {
+  return fit === null || fit.verdict !== 'exceeds'
 }
 
 /** One line on how firm an estimate is, for a tooltip beside the verdict. */

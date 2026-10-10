@@ -114,7 +114,7 @@ Desktop. Most projects don't need it. See [Providers](/docs/agent/providers#per-
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `max_tokens` | `128000` | Token-spend ceiling for one run (new spend across all turns). Set `0` to disable the cap. Overridden per invocation by `--max-session-tokens`; `--max-turns` adds a turn cap. Defaults to `128000` when unset |
+| `max_tokens` | model's context window (`128000` if unknown) | Token-spend ceiling for one run (new spend across all turns). Set `0` to disable the cap. Overridden per invocation by `--max-session-tokens`; `--max-turns` adds a turn cap. Defaults to the model's context window when it is known, else `128000` |
 | `max_usd` | unset | USD one run may spend before it stops. Priced from `prices.toml`; a model with no declared price is refused. Overridden per invocation by `--max-budget-usd` |
 
 A bound on how far one run goes, distinct from the per-request context window. It bounds the run's
@@ -125,6 +125,44 @@ marginal token spend (replayed context is not recharged each turn).
 See [Tool permissions](/docs/agent/permissions#project-policy). `sandbox` is how a project requires
 [shell confinement](/docs/agent/permissions#the-shell-sandbox) for everyone who checks it out; it is
 off by default on the CLI.
+
+### `[prompt]`
+
+Which contributor to the system prompt may sit above the **cache line**. A provider reuses a request
+only while its leading bytes are identical to the previous request, so the contributors that never
+change should lead and the ones that do should come after them. Every writer of the prompt is a named
+contributor, and each declares where it sits. Unset, every contributor stays where it is today and
+the prompt is unchanged.
+
+```toml
+[prompt]
+# Only these lead the system prompt. The rest follow them, in their usual order.
+prefix_allow = ["assistant_instructions", "guidelines", "skills"]
+# Kept behind the leading part whatever else says. Deny wins, like [tools].
+prefix_deny = ["project_context"]
+```
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `prefix_allow` | unset | Contributor ids that may lead the system prompt. Unset keeps each contributor's own placement; setting it narrows the leading part to exactly the ids listed and moves every other block behind it. Nothing is dropped. An id that names nothing is an error, not a silent no-op |
+| `prefix_deny` | `[]` | Contributor ids kept behind the leading part. Applied after `prefix_allow`, so a deny always wins |
+
+`[prompt]` can only narrow what leads the prompt. Moving a contributor in is a code change, because
+"is this constant for the run" has to be reviewed once per contributor. A contributor that changes
+while a run works never enters the system prompt (the todo upkeep nudge and prompt-submit hook output
+reach the model after the conversation instead), and listing one in `prefix_allow` fails the run.
+Because the project's `FLINT.md`, skills and memory are repo-controlled, this is also the way to keep
+them out of the leading, cached bytes. The tool schemas are a request field rather than a prompt
+block and always stay above the line.
+
+```bash
+flint cli agent status   # where each contributor lands, and which were demoted
+```
+
+Contributor ids: `assistant_instructions`, `guidelines`, `subagent_guide`, `skill_guide`,
+`web_tools_guide`, `memory_precedence`, `project_context`, `skills`, `project_tooling`,
+`memory_catalog`, `runtime_environment`, `remembered_memories`, `date`, `session_hooks`,
+`plan_addendum`, `eager_todo_addendum`, `tool_schemas`, `prompt_submit_hooks`, `todo_upkeep`.
 
 ### `[skills]`
 

@@ -29,6 +29,7 @@ import {
 import { studioApi, type StudioFamily } from '@/lib/studio/studio'
 import { useStudio } from '@/hooks/useStudio'
 import { pickLicense, weightsFiles } from '@/lib/studio/discover'
+import { Select } from '@/components/ui/select'
 
 const SELECT =
   'h-8 cursor-pointer rounded-lg border-[0.8px] border-border bg-card px-2 text-xs text-foreground transition-colors hover:border-border-strong'
@@ -272,7 +273,7 @@ export function StudioDiscover({
                 <div className="border-t border-border bg-muted/40 p-3 motion-safe:animate-rise-in">
                   <label className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     What kind of model is this?
-                    <select
+                    <Select
                       className={SELECT}
                       value={family[model.id] ?? ''}
                       onChange={(e) =>
@@ -289,7 +290,7 @@ export function StudioDiscover({
                           {f.label}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     {family[model.id] && (
                       <span>
                         {

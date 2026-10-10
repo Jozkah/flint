@@ -376,9 +376,90 @@ pub fn configured() -> Option<Result<Bundle, CaError>> {
     Some(load(&path, source))
 }
 
+/// Providers the user has switched "allow invalid certificates" on for,
+/// by provider name, each with the one endpoint (lowercase host, port) it
+/// covers. Verification is skipped for those endpoints and no others.
+///
+/// Fed only by the desktop's `set_provider_tls_trust` command, which the
+/// settings page drives: a project's `agent.toml` and the CLI config cannot
+/// switch verification off, for the same reason they cannot name a CA bundle.
+static INVALID_CERT_ENDPOINTS: Mutex<Vec<(String, String, u16)>> = Mutex::new(Vec::new());
+
+fn invalid_cert_endpoints() -> std::sync::MutexGuard<'static, Vec<(String, String, u16)>> {
+    INVALID_CERT_ENDPOINTS.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// The lowercase host and port a base URL is dialled at, `None` when it is not
+/// an absolute http(s) URL with a host.
+fn endpoint_of(base_url: &str) -> Option<(String, u16)> {
+    let url = url::Url::parse(base_url.trim()).ok()?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return None;
+    }
+    let host = url.host_str()?.trim_matches(|c| c == '[' || c == ']').to_ascii_lowercase();
+    Some((host, url.port_or_known_default()?))
+}
+
+/// Record, for one provider, whether certificate verification is skipped for
+/// its endpoint. `allow == false`, or a base URL that is not an endpoint,
+/// clears the provider's entry. The endpoint is the provider's own `base_url`:
+/// a redirect elsewhere is never covered (the transport only follows
+/// same-origin redirects).
+pub fn set_allow_invalid_certs(provider: &str, base_url: Option<&str>, allow: bool) {
+    let endpoint = base_url.and_then(endpoint_of).filter(|_| allow);
+    let mut entries = invalid_cert_endpoints();
+    entries.retain(|(name, _, _)| name != provider);
+    if let Some((host, port)) = endpoint {
+        entries.push((provider.to_string(), host, port));
+    }
+}
+
+/// Whether verification is skipped for `host:port`. Always `false` while the
+/// machine policy forbids custom certificate trust.
+pub fn allows_invalid_certs(host: &str, port: u16) -> bool {
+    let host = host.trim_matches(|c| c == '[' || c == ']').to_ascii_lowercase();
+    let listed = invalid_cert_endpoints().iter().any(|(_, h, p)| *h == host && *p == port);
+    if !listed {
+        return false;
+    }
+    let (policy, _) = tauri_plugin_agent_tools::org_policy::load();
+    forbidden_by(policy.as_ref()).is_none()
+}
+
+/// [`allows_invalid_certs`] for a request URL.
+pub fn allows_invalid_certs_for_url(url: &str) -> bool {
+    endpoint_of(url).is_some_and(|(host, port)| allows_invalid_certs(&host, port))
+}
+
+fn invalid_certs_fingerprint() -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut entries: Vec<(String, u16)> =
+        invalid_cert_endpoints().iter().map(|(_, h, p)| (h.clone(), *p)).collect();
+    if entries.is_empty() {
+        return 0;
+    }
+    entries.sort();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    entries.hash(&mut h);
+    h.finish() | 1
+}
+
 /// A cheap key for "which bundle is in force": the path, its size and its
 /// modification time. A caller caching a client rebuilds it when this changes.
 pub fn fingerprint() -> u64 {
+    // The HTTPS proxy setting changes what a rebuilt client does, so it is part
+    // of the key; `0` still means "nothing configured". The endpoints with
+    // verification off are part of it too, so switching one on or off
+    // replaces the cached clients.
+    let (ca, proxy, loose) =
+        (bundle_fingerprint(), super::proxy::fingerprint(), invalid_certs_fingerprint());
+    if ca == 0 && proxy == 0 && loose == 0 {
+        return 0;
+    }
+    (ca ^ proxy.rotate_left(17) ^ loose.rotate_left(31)) | 1
+}
+
+fn bundle_fingerprint() -> u64 {
     use std::hash::{Hash, Hasher};
     let Some((path, source)) = configured_path() else { return 0 };
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -452,13 +533,15 @@ pub fn with_bundle13(builder: reqwest13::ClientBuilder, bundle: Option<&Result<B
 /// The configured bundle, applied to a reqwest 0.12 client.
 pub fn apply12(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     let bundle = configured();
-    with_bundle12(builder, bundle.as_ref())
+    // The HTTPS proxy from Settings rides along with the CA bundle: every
+    // client that trusts the bundle also goes through the proxy.
+    super::proxy::apply12(with_bundle12(builder, bundle.as_ref()))
 }
 
 /// The configured bundle, applied to a reqwest 0.13 client.
 pub fn apply13(builder: reqwest13::ClientBuilder) -> reqwest13::ClientBuilder {
     let bundle = configured();
-    with_bundle13(builder, bundle.as_ref())
+    super::proxy::apply13(with_bundle13(builder, bundle.as_ref()))
 }
 
 /// Why a failed request failed, when the reason is the server's certificate
@@ -493,6 +576,8 @@ pub fn certificate_failure(err: &(dyn std::error::Error + 'static)) -> Option<St
         ("self-signed certificate", "the server's certificate is self-signed and not trusted"),
         ("certificate has expired", "the certificate has expired"),
         ("hostname mismatch", "the certificate is not valid for this host name"),
+        // OpenSSL names the verdict for an IP-address URL this way.
+        ("ip address mismatch", "the certificate is not valid for this host name"),
         ("notvalidforname", "the certificate is not valid for this host name"),
         ("not valid for name", "the certificate is not valid for this host name"),
         ("unknownissuer", "the certificate chain ends in a root certificate that is not trusted"),
@@ -501,6 +586,9 @@ pub fn certificate_failure(err: &(dyn std::error::Error + 'static)) -> Option<St
         ("certificate verify failed", "the server's certificate could not be verified"),
         ("certificate is not trusted", "the server's certificate is not trusted"),
     ];
+    // Wordings that name no cause; a more specific one further down the chain wins.
+    const GENERIC: &[&str] = &["certificate verify failed", "invalid peer certificate"];
+    let mut generic: Option<&str> = None;
     let mut current: Option<&(dyn std::error::Error + 'static)> = Some(err);
     while let Some(e) = current {
         if let Some(code) = e.downcast_ref::<std::io::Error>().and_then(std::io::Error::raw_os_error) {
@@ -516,12 +604,20 @@ pub fn certificate_failure(err: &(dyn std::error::Error + 'static)) -> Option<St
         if let Some((_, reason)) = WINDOWS.iter().find(|(code, _)| text.contains(&format!("os error {code}"))) {
             return Some(reason.to_string());
         }
-        if let Some((_, reason)) = WORDING.iter().find(|(needle, _)| text.contains(needle)) {
-            return Some(reason.to_string());
+        if let Some((needle, reason)) = WORDING.iter().find(|(needle, _)| text.contains(needle)) {
+            // OpenSSL wraps the specific verdict ("Hostname mismatch") in a
+            // generic "certificate verify failed", so the outermost error says
+            // only that. Keep looking down the chain for a specific reason and
+            // use the generic one only when nothing better turns up.
+            if GENERIC.contains(needle) {
+                generic.get_or_insert(*reason);
+            } else {
+                return Some(reason.to_string());
+            }
         }
         current = e.source();
     }
-    None
+    generic.map(str::to_string)
 }
 
 /// What is in force, for `flint cli net ca status` and the settings page.
@@ -755,6 +851,59 @@ pub(crate) mod tests {
     /// meant for the classifier (found while fixing R13).
     fn reason(err: &(dyn std::error::Error + 'static)) -> String {
         certificate_failure(err).unwrap_or_else(|| panic!("not classified as a certificate failure: {err:?}"))
+    }
+
+    /// The "allow invalid certificates" registry covers exactly the provider's
+    /// own endpoint, is off until set, and clears when switched back.
+    #[test]
+    fn invalid_certificates_are_allowed_for_one_endpoint_only() {
+        let before = fingerprint();
+        assert!(!allows_invalid_certs("gateway.test", 8443));
+        set_allow_invalid_certs("p3n-a", Some("https://Gateway.test:8443/v1"), true);
+        assert!(allows_invalid_certs("gateway.test", 8443));
+        assert!(allows_invalid_certs_for_url("https://gateway.test:8443/v1/chat/completions"));
+        // Another port, another host, a sibling subdomain: not covered.
+        assert!(!allows_invalid_certs("gateway.test", 443));
+        assert!(!allows_invalid_certs("other.test", 8443));
+        assert!(!allows_invalid_certs("sub.gateway.test", 8443));
+        assert!(!allows_invalid_certs_for_url("not a url"));
+        assert_ne!(fingerprint(), before, "cached clients would not be rebuilt");
+        // Off again, and a non-URL base clears the entry too.
+        set_allow_invalid_certs("p3n-a", Some("https://gateway.test:8443/v1"), false);
+        assert!(!allows_invalid_certs("gateway.test", 8443));
+        set_allow_invalid_certs("p3n-a", Some("https://gateway.test:8443"), true);
+        set_allow_invalid_certs("p3n-a", Some("file:///etc/passwd"), true);
+        assert!(!allows_invalid_certs("gateway.test", 8443));
+    }
+
+    /// OpenSSL reports a host-name mismatch as a generic "certificate verify
+    /// failed" wrapping the specific cause; the specific cause must win.
+    #[test]
+    fn a_specific_cause_beats_a_generic_wrapper_in_the_error_chain() {
+        #[derive(Debug)]
+        struct Wrapped(&'static str, Option<Box<Wrapped>>);
+        impl std::fmt::Display for Wrapped {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.0)
+            }
+        }
+        impl std::error::Error for Wrapped {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                self.1.as_deref().map(|e| e as &(dyn std::error::Error + 'static))
+            }
+        }
+        let err = Wrapped(
+            "error trying to connect: certificate verify failed",
+            Some(Box::new(Wrapped("Hostname mismatch", None))),
+        );
+        assert!(certificate_failure(&err).unwrap().contains("host name"));
+        let ip = Wrapped(
+            "error trying to connect: certificate verify failed: IP address mismatch",
+            None,
+        );
+        assert!(certificate_failure(&ip).unwrap().contains("host name"));
+        let plain = Wrapped("certificate verify failed", None);
+        assert!(certificate_failure(&plain).unwrap().contains("could not be verified"));
     }
 
     /// The five TLS proofs, on both HTTP stacks: (1) an untrusted server is

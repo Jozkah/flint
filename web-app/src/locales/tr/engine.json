@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Yüklü",
     "installedSub": "{{local}} yerel · {{remote}} uzak",
+    "remoteAvailableSub": "{{count}} uzak model kullanılabilir",
     "loaded": "Şu an yüklü",
     "loadedSub": "{{count}} yerel modelden",
     "disk": "Kullanılan disk",
@@ -44,6 +45,10 @@
     "noneYet": "henüz yanıt yok"
   },
   "providers": {
+    "disableAll": "Tümünü devre dışı bırak",
+    "enableAll": "Tümünü etkinleştir",
+    "allDisabledToast": "Tüm sağlayıcılar devre dışı bırakıldı",
+    "allEnabledToast": "Tüm sağlayıcılar etkinleştirildi",
     "title": "Sağlayıcılar",
     "onDevice": "Bu cihazda",
     "remote": "Uzak",
@@ -60,7 +65,8 @@
     "off": "Kapalı",
     "loaded": "Yüklü",
     "ready": "Hazır",
-    "noKey": "API anahtarı yok"
+    "noKey": "API anahtarı yok",
+    "keyless": "Anahtar gerekmez"
   },
   "installed": {
     "title": "Yüklü modeller",

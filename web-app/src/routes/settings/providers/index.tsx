@@ -10,11 +10,13 @@ import {
   Copy,
   ExternalLink,
   Play,
+  Power,
   Square,
 } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
 import { formatBytes, getDefaultProviderTitle, getProviderTitle } from '@/lib/utils'
 import { AddProviderDialog } from '@/containers/dialogs'
+import { markFirstModelFetch } from '@/lib/pendingFirstModelFetch'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
 import { Switch } from '@/components/ui/switch'
 import { Chip } from '@/components/ui/chip'
@@ -117,6 +119,17 @@ function ModelProviders() {
     updateProvider(provider.provider, { ...provider, active })
   }
 
+  const anyActive = providers.some((p) => p.active)
+  const setAllProviders = async (active: boolean) => {
+    if (!active) await serviceHub.models().stopAllModels()
+    for (const p of providers) {
+      if (p.active !== active) updateProvider(p.provider, { ...p, active })
+    }
+    toast.success(
+      t(active ? 'engine:providers.allEnabledToast' : 'engine:providers.allDisabledToast')
+    )
+  }
+
   const confirmRemoval = () => {
     const provider = pendingRemoval
     if (!provider) return
@@ -208,6 +221,7 @@ function ModelProviders() {
         ...(apiType === 'anthropic' ? { api_type: 'anthropic' as const } : {}),
       }
       addProvider(newProvider)
+      markFirstModelFetch(name)
       setTimeout(() => {
         navigate({
           to: route.settings.providers,
@@ -493,7 +507,21 @@ function ModelProviders() {
           <FrameHeader
             icon={<Icon name="x-key" />}
             title={t('engine:providers.title')}
-            actions={addProviderButton}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="pointer-coarse:h-11"
+                  disabled={providers.length === 0}
+                  onClick={() => void setAllProviders(!anyActive)}
+                >
+                  <Power aria-hidden />
+                  {t(anyActive ? 'engine:providers.disableAll' : 'engine:providers.enableAll')}
+                </Button>
+                {addProviderButton}
+              </>
+            }
           />
           <FrameBody className="p-3">
             <ul className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2.5">

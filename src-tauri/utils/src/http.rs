@@ -15,6 +15,22 @@ pub fn is_cors_header(header_name: &str) -> bool {
     header_lower.starts_with("access-control-")
 }
 
+/// Whether `ip` is assigned to one of this machine's own network interfaces
+/// (a public or CGNAT address such as a Tailscale 100.x one, which the
+/// private-range check does not cover). A UDP bind only succeeds on an address
+/// the host owns, so it answers this without enumerating interfaces. Wildcard,
+/// multicast and broadcast addresses are refused up front because some
+/// platforms let a socket bind to them.
+fn is_local_interface_ip(ip: std::net::IpAddr) -> bool {
+    let bindable = match ip {
+        std::net::IpAddr::V4(v4) => {
+            !(v4.is_unspecified() || v4.is_multicast() || v4.is_broadcast())
+        }
+        std::net::IpAddr::V6(v6) => !(v6.is_unspecified() || v6.is_multicast()),
+    };
+    bindable && std::net::UdpSocket::bind((ip, 0)).is_ok()
+}
+
 /// Validates if host is in trusted hosts list
 pub fn is_valid_host(host: &str, trusted_hosts: &[Vec<String>]) -> bool {
     if trusted_hosts.iter().any(|hosts| hosts.contains(&"*".to_string())) {
@@ -53,7 +69,7 @@ pub fn is_valid_host(host: &str, trusted_hosts: &[Vec<String>]) -> bool {
             std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
             std::net::IpAddr::V6(_) => false,
         };
-        if ip.is_loopback() || private {
+        if ip.is_loopback() || private || is_local_interface_ip(ip) {
             return true;
         }
     }
@@ -141,5 +157,43 @@ mod tests {
         assert!(is_valid_host(&host, &trusted));
         let other = extract_host_from_origin("chrome-extension://zzzz");
         assert!(!is_valid_host(&other, &trusted));
+    }
+
+    // The machine's own interface address is trusted even when it is not in a
+    // private range (Swagger UI opened from the LAN/VPN address, #8216), but
+    // an address that belongs to someone else, or a hostname, is not.
+    #[test]
+    fn own_interface_address_accepted_foreign_rejected() {
+        let trusted: Vec<Vec<String>> = vec![vec![]];
+
+        // Learn an address this machine owns without sending a packet.
+        let own = std::net::UdpSocket::bind("0.0.0.0:0")
+            .and_then(|s| s.connect("192.0.2.1:9").map(|_| s))
+            .and_then(|s| s.local_addr())
+            .ok()
+            .map(|a| a.ip());
+        if let Some(ip) = own {
+            assert!(is_valid_host(&format!("{ip}:1337"), &trusted), "{ip}");
+            assert!(is_valid_host(&ip.to_string(), &trusted), "{ip}");
+        }
+
+        // The probe itself: loopback is always an owned address.
+        assert!(is_local_interface_ip("127.0.0.1".parse().unwrap()));
+        assert!(!is_local_interface_ip("203.0.113.77".parse().unwrap()));
+
+        // Public addresses that are not ours (documentation + DNS resolvers).
+        assert!(!is_valid_host("203.0.113.77:1337", &trusted));
+        assert!(!is_valid_host("198.51.100.9", &trusted));
+        assert!(!is_valid_host("8.8.4.4", &trusted));
+        assert!(!is_valid_host("[2001:db8::1]:1337", &trusted));
+        // Hostnames never take this path, even ones that embed an IP.
+        assert!(!is_valid_host("evil.example.com", &trusted));
+        assert!(!is_valid_host("203.0.113.77.nip.io", &trusted));
+        assert!(!is_valid_host("rebind.attacker.com:1337", &trusted));
+        // Addresses a socket may bind to without them being interfaces.
+        assert!(!is_valid_host("255.255.255.255", &trusted));
+        assert!(!is_valid_host("224.0.0.1", &trusted));
+        assert!(!is_valid_host("[::]:1337", &trusted));
+        assert!(!is_valid_host("[ff02::1]", &trusted));
     }
 }

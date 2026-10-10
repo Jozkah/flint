@@ -444,7 +444,7 @@ export const paramsSettings: Record<string, ParamDef> = {
     key: 'openrouter_provider',
     title: 'OpenRouter Provider Routing',
     description:
-      'JSON routing preferences sent as "provider": order, only, ignore (provider slugs) and allow_fallbacks (true/false).',
+      'JSON routing preferences sent as "provider": order, only, ignore (provider slugs), quantizations, sort (price/throughput/latency), require_parameters and allow_fallbacks (true/false), data_collection (allow/deny).',
     value: '',
     controllerType: 'textarea',
     controllerProps: {

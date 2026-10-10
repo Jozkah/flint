@@ -22,7 +22,7 @@ use tokio::sync::{mpsc, Mutex};
 /// failures crosses into it once, at `From<String>`.
 use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
 
-use crate::core::agent::events::{StreamEvent, Usage};
+use crate::core::agent::events::{CompactionPhase, CompactionReason, StreamEvent, Usage};
 use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
     arguments_are_executable, collect_mcp_openai_tools, copy_optional_chat_params,
@@ -1608,6 +1608,9 @@ struct ResolvedSettings {
     /// The project's domain lists, capped by the machine policy.
     allow_domains: Vec<String>,
     deny_domains: Vec<String>,
+    /// `[prompt]`: which contributors may sit above the cache line. Resolved
+    /// with the rest so composition and `agent status` answer from one parse.
+    prompt: crate::core::agent::prompt::PromptPolicy,
 }
 
 /// Kept out of the invoker's struct literal so it is reachable from a test.
@@ -1628,6 +1631,7 @@ fn resolve_run_settings(
         nul_programs: settings.nul_programs,
         allow_domains: settings.allow_domains,
         deny_domains: settings.deny_domains,
+        prompt: settings.prompt,
     }
 }
 
@@ -5167,7 +5171,10 @@ fn trailing_user_text(messages: &[serde_json::Value]) -> Option<String> {
 /// built around it when a project is selected — a subagent gets the same
 /// grounding (guidelines, web access, tool docs) as a normal run, not a bare
 /// verbatim prompt with no instruction on how to actually use its tools.
-fn build_run_system_prompt(
+///
+/// The prompt comes back as named blocks, one per contributor, so the caller
+/// can add the ones it owns and place the whole prompt through `[prompt]`.
+fn run_prompt_blocks(
     assistant_instructions: Option<&str>,
     override_prompt: Option<&str>,
     project_root: Option<&std::path::Path>,
@@ -5175,7 +5182,8 @@ fn build_run_system_prompt(
     subagents_enabled: bool,
     sandbox: bool,
     offered: Option<&crate::core::agent::context::OfferedTools>,
-) -> Option<String> {
+) -> Option<Vec<(crate::core::agent::prompt::Composer, String)>> {
+    use crate::core::agent::prompt::Composer;
     let base = override_prompt.or(assistant_instructions);
     match project_root {
         Some(root) => {
@@ -5187,27 +5195,65 @@ fn build_run_system_prompt(
             // and so project memory is matched against this run's project
             // rather than every project's. A run with no session gets user and
             // project memory only -- never another session's.
-            crate::core::agent::context::build_system_prompt_for(
-                base,
-                root,
-                scratch.as_deref(),
-                subagents_enabled,
-                session_id,
-                false,
-                offered,
+            Some(
+                crate::core::agent::context::compose_system_blocks_for(
+                    base,
+                    root,
+                    scratch.as_deref(),
+                    subagents_enabled,
+                    session_id,
+                    false,
+                    offered,
+                )
+                .0,
             )
-            .0
         }
         None => {
             // No project: the API-server proxy, whose caller brings its own
             // system message. No skill catalog -- the run has no `skill_read`
             // -- but the rules on tool content and destructive actions hold
             // for every run that executes tools.
-            let mut blocks: Vec<String> = base.map(str::to_string).into_iter().collect();
-            blocks.push(format!("# Guidelines\n\n{}", crate::core::agent::context::safety_guidelines()));
-            Some(blocks.join("\n\n"))
+            let mut blocks: Vec<(Composer, String)> = base
+                .map(|b| (Composer::AssistantInstructions, b.to_string()))
+                .into_iter()
+                .collect();
+            blocks.push((
+                Composer::Guidelines,
+                format!("# Guidelines\n\n{}", crate::core::agent::context::safety_guidelines()),
+            ));
+            Some(blocks)
         }
     }
+}
+
+/// [`run_prompt_blocks`] placed through the default policy: the prompt as one
+/// string, with no `[prompt]` narrowing. What the tests read; a run places its
+/// blocks through the project's own policy.
+#[cfg(test)]
+fn build_run_system_prompt(
+    assistant_instructions: Option<&str>,
+    override_prompt: Option<&str>,
+    project_root: Option<&std::path::Path>,
+    session_id: Option<&str>,
+    subagents_enabled: bool,
+    sandbox: bool,
+    offered: Option<&crate::core::agent::context::OfferedTools>,
+) -> Option<String> {
+    run_prompt_blocks(
+        assistant_instructions,
+        override_prompt,
+        project_root,
+        session_id,
+        subagents_enabled,
+        sandbox,
+        offered,
+    )
+    .and_then(|blocks| {
+        crate::core::agent::prompt::PromptPolicy::default()
+            .arrange(blocks)
+            .ok()
+    })
+    .map(|arranged| arranged.prompt)
 }
 
 /// The system prompt the *next* ordinary turn in `project_root` would carry,
@@ -5228,7 +5274,9 @@ pub(crate) fn context_system_prompt_preview(
     // A preview is of the project's own settings: a profile belongs to a run,
     // and this is not one.
     let settings = resolve_run_settings(project_root, sandbox_flag, None);
-    build_run_system_prompt(
+    // Placed through the project's `[prompt]` policy, like a run. `None` when
+    // the policy cannot be honored: the run itself reports that failure.
+    let blocks = run_prompt_blocks(
         None,
         override_prompt,
         Some(project_root),
@@ -5236,7 +5284,12 @@ pub(crate) fn context_system_prompt_preview(
         subagents_enabled,
         settings.sandbox,
         None,
-    )
+    )?;
+    settings
+        .prompt
+        .arrange(blocks)
+        .ok()
+        .map(|arranged| arranged.prompt)
 }
 
 /// The tool array the *next* ordinary turn would advertise: the MCP tools
@@ -5550,7 +5603,12 @@ async fn orchestrate_inner(
             .filter_map(|t| t["function"]["name"].as_str().map(String::from))
             .collect()
     };
-    let system_prompt = build_run_system_prompt(
+    // Every writer of the system prompt is a named contributor
+    // (`core::agent::prompt::Composer`): the blocks are collected here, in the
+    // order they have always entered the prompt, and placed through the
+    // project's `[prompt]` policy once, below.
+    use crate::core::agent::prompt::Composer;
+    let mut prompt_blocks: Vec<(Composer, String)> = run_prompt_blocks(
         assistant_instructions.as_deref(),
         system_prompt_override.as_deref(),
         project_root.as_deref(),
@@ -5558,8 +5616,9 @@ async fn orchestrate_inner(
         *subagents_enabled,
         settings.as_ref().is_some_and(|s| s.sandbox),
         Some(&offered),
-    );
-    // Memory reaches the prompt only through `build_run_system_prompt`, which
+    )
+    .unwrap_or_default();
+    // Memory reaches the prompt only through `run_prompt_blocks`, which
     // selects canonical records by session, project identity and user scope.
     // The BM25 "# Project Memory" block that used to be appended here recalled
     // raw past answers keyed by the project's path text: transcript, not
@@ -5568,16 +5627,12 @@ async fn orchestrate_inner(
     // project run carries it in the runtime environment block; any other run
     // gets it at the end, where a daily change does not invalidate a cached
     // prefix.
-    let system_prompt = match (system_prompt, project_root.is_some()) {
-        (Some(sys), true) => sys,
-        (system_prompt, _) => {
-            let date_line = format!("Today's date is {}.", chrono::Local::now().format("%Y-%m-%d"));
-            match system_prompt {
-                Some(sys) => format!("{sys}\n\n{date_line}"),
-                None => date_line,
-            }
-        }
-    };
+    if project_root.is_none() {
+        prompt_blocks.push((
+            Composer::Date,
+            format!("Today's date is {}.", chrono::Local::now().format("%Y-%m-%d")),
+        ));
+    }
     // Claude Code hooks the user opted in to by importing from Claude Code
     // (`SessionStart`, `UserPromptSubmit`). Never for a child run: a subagent
     // has its own prompt, and the hooks describe the user's session.
@@ -5590,26 +5645,17 @@ async fn orchestrate_inner(
         .clone()
         .or_else(crate::core::app::commands::jan_home_dir)
         .unwrap_or_default();
-    let system_prompt = if cc_hooks.is_empty() {
-        system_prompt
-    } else {
+    if !cc_hooks.is_empty() {
         let blocks = crate::core::agent::cc_hooks::session_start_context(
             &cc_hooks,
             session_id.as_deref(),
             &cc_cwd,
         )
         .await;
-        if blocks.is_empty() {
-            system_prompt
-        } else {
-            format!("{system_prompt}
-
-{}", blocks.join("
-
-"))
+        if !blocks.is_empty() {
+            prompt_blocks.push((Composer::SessionHooks, blocks.join("\n\n")));
         }
-    };
-    let system_prompt = Some(system_prompt);
+    }
     // Child (subagent) runs are excluded from the forced goal plan via
     // `system_prompt_override`, which only a child run sets.
     // `/goal` is a per-request flag like `run_mode`: the TUI sets it while a
@@ -5623,25 +5669,45 @@ async fn orchestrate_inner(
     let eager_todo_plan = run_mode != crate::core::agent::plan::RunMode::Plan
         && system_prompt_override.is_none()
         && should_force_goal_todo_plan(goal_mode, todo_registry).await;
-    let system_prompt = if run_mode == crate::core::agent::plan::RunMode::Plan {
-        let addendum = crate::core::agent::plan::plan_mode_prompt_addendum();
-        Some(match system_prompt {
-            Some(sys) => format!("{sys}\n\n{addendum}"),
-            None => addendum.to_string(),
-        })
+    if run_mode == crate::core::agent::plan::RunMode::Plan {
+        prompt_blocks.push((
+            Composer::PlanAddendum,
+            crate::core::agent::plan::plan_mode_prompt_addendum().to_string(),
+        ));
     } else if eager_todo_plan {
         // The goal-mode init instruction holds for the whole run, so it can sit
         // in the system prompt without the prompt changing from turn to turn.
-        let addendum = crate::core::agent::context::EAGER_TODO_PROMPT_ADDENDUM;
-        Some(match system_prompt {
-            Some(sys) => format!("{sys}\n\n{addendum}"),
-            None => addendum.to_string(),
-        })
-    } else {
-        system_prompt
-    };
-    if let Some(sys) = system_prompt {
-        set_system_prompt(&mut conversation_messages, &sys);
+        prompt_blocks.push((
+            Composer::EagerTodoAddendum,
+            crate::core::agent::context::EAGER_TODO_PROMPT_ADDENDUM.to_string(),
+        ));
+    }
+    // Where each block lands is `[prompt]`'s decision. A policy that cannot be
+    // honored -- a typo, or a contributor that changes while the run works asked
+    // to sit above the cache line -- refuses the run rather than costing a cache
+    // miss per turn.
+    let prompt_policy = settings
+        .as_ref()
+        .map(|s| s.prompt.clone())
+        .unwrap_or_default();
+    let arranged = prompt_policy
+        .arrange(prompt_blocks)
+        .map_err(|e| format!("[prompt] config: {e}"))?;
+    if !arranged.demoted.is_empty() {
+        // Visible, not silent: this is the one place a block is moved from
+        // where its own contributor asked to be.
+        log::info!(
+            "agent: [prompt] kept below the cache line: {}",
+            arranged
+                .demoted
+                .iter()
+                .map(|c| c.id())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    if !arranged.prompt.is_empty() {
+        set_system_prompt(&mut conversation_messages, &arranged.prompt);
     }
     // `UserPromptSubmit` hooks see the prompt this run is answering. Their
     // output travels through the append-only reminder channel, like the todo
@@ -5691,8 +5757,14 @@ async fn orchestrate_inner(
             // The llama.cpp router is a desktop-only listing call on the app's
             // reqwest 0.12 stack, not agent upstream traffic, so it does not use
             // the genai client threaded through `OrchestrationArgs`.
+            // The router is on loopback: no system or environment proxy.
             static ROUTER_CLIENT: std::sync::LazyLock<reqwest::Client> =
-                std::sync::LazyLock::new(reqwest::Client::new);
+                std::sync::LazyLock::new(|| {
+                    reqwest::Client::builder()
+                        .no_proxy()
+                        .build()
+                        .unwrap_or_default()
+                });
             if let Some(first) = router_first_model(llama_state, &ROUTER_CLIENT).await {
                 model_id = Some(first);
             }
@@ -6274,6 +6346,18 @@ fn build_completion_request(
     }
     copy_optional_chat_params(json_body, &mut completion_map);
     serde_json::Value::Object(completion_map)
+}
+
+/// Tell a consumer an in-run compaction is starting or has ended. The TUI runs
+/// with logging off, so without this a compaction -- a summarizer round trip and
+/// a cache break -- is indistinguishable from a stall.
+fn report_compaction(
+    events: &mpsc::UnboundedSender<StreamEvent>,
+    phase: CompactionPhase,
+    reason: CompactionReason,
+    messages: Option<usize>,
+) {
+    let _ = events.send(StreamEvent::Compaction { phase, reason, messages });
 }
 
 /// Manually compact `messages` for the given model, resolving the upstream from
@@ -6866,20 +6950,43 @@ async fn run_turn_cycle(
                         if cpol::should_compact(&projected, &thresholds) {
                             let opts =
                                 crate::core::agent::compaction::CompactOptions::from_body(json_body);
+                            report_compaction(
+                                events,
+                                CompactionPhase::Started,
+                                CompactionReason::Preflight,
+                                None,
+                            );
                             match crate::core::agent::compaction::compact_conversation_with(
                                 &projected, model_id, model, &opts,
                             )
                             .await
                             {
                                 Ok(full) if full.len() < projected.len() => {
+                                    report_compaction(
+                                        events,
+                                        CompactionPhase::Finished,
+                                        CompactionReason::Preflight,
+                                        Some(projected.len() - full.len()),
+                                    );
                                     projected = full;
                                     full_shrunk = true;
                                 }
                                 // A full pass that could not shrink, or errored,
                                 // is not fatal here: the reactive path is still
                                 // the safety net. Record the miss for the guard.
-                                Ok(_) => {}
+                                Ok(_) => report_compaction(
+                                    events,
+                                    CompactionPhase::Failed,
+                                    CompactionReason::Preflight,
+                                    None,
+                                ),
                                 Err(error) => {
+                                    report_compaction(
+                                        events,
+                                        CompactionPhase::Failed,
+                                        CompactionReason::Preflight,
+                                        None,
+                                    );
                                     if let Some(record) = record {
                                         record.note(
                                             "compaction.preflight_failed",
@@ -6977,6 +7084,12 @@ async fn run_turn_cycle(
                                 }),
                             );
                         }
+                        report_compaction(
+                            events,
+                            CompactionPhase::Started,
+                            CompactionReason::ContextOverflow,
+                            None,
+                        );
                         let compacted = match crate::core::agent::compaction::compact_conversation_with(
                             &conversation_messages,
                             model_id,
@@ -6990,6 +7103,12 @@ async fn run_turn_cycle(
                         {
                             Ok(compacted) => compacted,
                             Err(error) => {
+                                report_compaction(
+                                    events,
+                                    CompactionPhase::Failed,
+                                    CompactionReason::ContextOverflow,
+                                    None,
+                                );
                                 if let Some(record) = record {
                                     record.note(
                                         "compaction.failed",
@@ -7003,6 +7122,12 @@ async fn run_turn_cycle(
                             }
                         };
                         if compacted.len() >= conversation_messages.len() {
+                            report_compaction(
+                                events,
+                                CompactionPhase::Failed,
+                                CompactionReason::ContextOverflow,
+                                None,
+                            );
                             // Nothing left to drop: the request is too large
                             // for this model and saying so is the honest end.
                             if let Some(record) = record {
@@ -7028,6 +7153,12 @@ async fn run_turn_cycle(
                                 }),
                             );
                         }
+                        report_compaction(
+                            events,
+                            CompactionPhase::Finished,
+                            CompactionReason::ContextOverflow,
+                            Some(conversation_messages.len() - compacted.len()),
+                        );
                         log::info!(
                             "agent: context overflow, compacted {} -> {} messages (attempt {})",
                             conversation_messages.len(),
@@ -7231,6 +7362,12 @@ async fn run_turn_cycle(
                         }),
                     );
                 }
+                report_compaction(
+                    events,
+                    CompactionPhase::Started,
+                    CompactionReason::SessionBudget,
+                    None,
+                );
                 match crate::core::agent::compaction::compact_conversation_with(
                     &conversation_messages,
                     model_id,
@@ -7240,6 +7377,12 @@ async fn run_turn_cycle(
                 .await
                 {
                     Ok(compacted) if compacted.len() < conversation_messages.len() => {
+                        report_compaction(
+                            events,
+                            CompactionPhase::Finished,
+                            CompactionReason::SessionBudget,
+                            Some(conversation_messages.len() - compacted.len()),
+                        );
                         log::info!(
                             "agent: budget exhausted at end of run, compacted {} -> {} messages",
                             conversation_messages.len(),
@@ -7258,9 +7401,21 @@ async fn run_turn_cycle(
                         conversation_messages = compacted;
                     }
                     // Too little to drop: not a failure, and not a compaction
-                    // either, so the record says nothing happened.
-                    Ok(_) => {}
+                    // either, so the record says nothing happened. The event
+                    // still closes the `Started` a consumer is showing.
+                    Ok(_) => report_compaction(
+                        events,
+                        CompactionPhase::Failed,
+                        CompactionReason::SessionBudget,
+                        None,
+                    ),
                     Err(error) => {
+                        report_compaction(
+                            events,
+                            CompactionPhase::Failed,
+                            CompactionReason::SessionBudget,
+                            None,
+                        );
                         log::warn!("agent: budget exhausted but compaction failed: {error}");
                         if let Some(record) = record {
                             record.note(
@@ -8097,7 +8252,7 @@ mod tests {
     /// and the dispatched turn carrying a shorter, compacted conversation.
     #[tokio::test]
     async fn preflight_compaction_runs_when_the_threshold_is_crossed() {
-        let (events, _rx) = mpsc::unbounded_channel();
+        let (events, mut rx) = mpsc::unbounded_channel();
         // A long conversation whose estimate is well over the tiny threshold.
         let mut conversation = Vec::new();
         for i in 0..40 {
@@ -8159,6 +8314,22 @@ mod tests {
             "the conversation was compacted before dispatch: {} vs {original_len}",
             dispatched.len()
         );
+        // The cache break is announced, start and end, with what it removed.
+        let announced: Vec<(CompactionPhase, Option<usize>)> =
+            std::iter::from_fn(|| rx.try_recv().ok())
+                .filter_map(|ev| match ev {
+                    StreamEvent::Compaction {
+                        phase,
+                        reason: CompactionReason::Preflight,
+                        messages,
+                    } => Some((phase, messages)),
+                    _ => None,
+                })
+                .collect();
+        assert_eq!(announced.len(), 2, "{announced:?}");
+        assert_eq!(announced[0], (CompactionPhase::Started, None));
+        assert_eq!(announced[1].0, CompactionPhase::Finished);
+        assert!(announced[1].1.is_some_and(|n| n > 0), "{announced:?}");
     }
 
     /// The circuit breaker blocks proactive compaction once it has failed to
@@ -8264,6 +8435,110 @@ mod tests {
         assert!(prompt.contains("# Web Access"));
         assert!(prompt.contains("web_search"));
         assert!(prompt.contains("web_fetch"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn write_agent_toml(root: &std::path::Path, text: &str) {
+        let dir = root.join(".jan").join("agent");
+        std::fs::create_dir_all(&dir).expect("agent dir");
+        std::fs::write(dir.join("agent.toml"), text).expect("agent.toml");
+    }
+
+    /// `[prompt]` in agent.toml is what a run composes through: the policy the
+    /// run resolves is the one the file says, and an allowlist moves the rest of
+    /// the prompt behind the allowed contributors without dropping any of it.
+    #[test]
+    fn agent_toml_narrows_what_leads_the_system_prompt() {
+        use crate::core::agent::prompt::Composer;
+        let root = unique_project_root();
+        write_agent_toml(
+            &root,
+            "[prompt]\nprefix_allow = [\"assistant_instructions\", \"web_tools_guide\"]\n",
+        );
+        let policy = resolve_run_settings(&root, None, None).prompt;
+        assert_eq!(
+            policy.prefix_allow().map(<[String]>::len),
+            Some(2),
+            "the run reads the same policy status does"
+        );
+
+        let blocks = run_prompt_blocks(
+            Some("main assistant"),
+            None,
+            Some(&root),
+            Some("s1"),
+            false,
+            false,
+            None,
+        )
+        .expect("project prompt");
+        let in_default_order: Vec<Composer> = blocks.iter().map(|(c, _)| *c).collect();
+        let arranged = policy.arrange(blocks).expect("policy");
+
+        // The allowed contributors lead, in their own order...
+        assert!(arranged.prompt.starts_with("main assistant"));
+        let web = arranged.prompt.find("# Web Access").expect("web guide kept");
+        let guidelines = arranged.prompt.find("# Guidelines").expect("guidelines kept");
+        assert!(web < guidelines, "the web guide now leads the guidelines");
+        // ...and everything else is still there, below them.
+        assert!(arranged.demoted.contains(&Composer::Guidelines));
+        assert!(arranged.demoted.contains(&Composer::RuntimeEnvironment));
+        assert!(!arranged.demoted.contains(&Composer::WebToolsGuide));
+        assert!(arranged.prompt.contains("# Runtime Environment"));
+        // Same blocks either way: placement orders them, it does not drop any.
+        assert_eq!(
+            arranged.demoted.len() + 2,
+            in_default_order.len(),
+            "{in_default_order:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The default prompt is the prompt before contributors were named: the
+    /// blocks arrive in registry order, and a run with no `[prompt]` section
+    /// places each where it already was.
+    #[test]
+    fn without_a_prompt_section_the_blocks_stay_in_registry_order() {
+        use crate::core::agent::prompt::Composer;
+        let root = unique_project_root();
+        let policy = resolve_run_settings(&root, None, None).prompt;
+        assert_eq!(policy.prefix_allow(), None);
+        let blocks = run_prompt_blocks(None, None, Some(&root), Some("s1"), true, true, None)
+            .expect("project prompt");
+        let order: Vec<usize> = blocks
+            .iter()
+            .map(|(c, _)| Composer::ALL.iter().position(|a| a == c).unwrap())
+            .collect();
+        assert!(order.windows(2).all(|w| w[0] < w[1]), "{order:?}");
+        let joined = blocks
+            .iter()
+            .map(|(_, b)| b.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let arranged = policy.arrange(blocks).expect("default policy");
+        assert_eq!(arranged.prompt, joined, "byte-identical to the joined blocks");
+        assert!(arranged.demoted.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A contributor that changes while a run works cannot be allowed above the
+    /// cache line: the policy refuses instead of costing a miss per turn.
+    #[test]
+    fn agent_toml_allowing_a_varying_contributor_is_refused() {
+        let root = unique_project_root();
+        write_agent_toml(&root, "[prompt]\nprefix_allow = [\"todo_upkeep\"]\n");
+        let policy = resolve_run_settings(&root, None, None).prompt;
+        let error = policy
+            .arrange(Vec::new())
+            .expect_err("a per-turn contributor cannot lead the prompt");
+        assert!(error.contains("todo_upkeep"), "{error}");
+
+        write_agent_toml(&root, "[prompt]\nprefix_allow = [\"skils\"]\n");
+        let error = resolve_run_settings(&root, None, None)
+            .prompt
+            .arrange(Vec::new())
+            .expect_err("a typo is not an empty policy");
+        assert!(error.contains("skils"), "{error}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -9795,14 +10070,34 @@ mod tests {
             "one turn, plus the summarizer call compaction makes"
         );
 
+        let events: Vec<StreamEvent> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        // The TUI runs with logging off, so without an event this compaction is
+        // invisible to the user.
+        let phases: Vec<CompactionPhase> = events
+            .iter()
+            .filter_map(|ev| match ev {
+                StreamEvent::Compaction {
+                    phase,
+                    reason: CompactionReason::SessionBudget,
+                    ..
+                } => Some(*phase),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            phases,
+            [CompactionPhase::Started, CompactionPhase::Finished],
+            "the budget compaction is announced, start and end"
+        );
         // The published history is the compacted one: shorter, and carrying the
         // summary in place of the dropped middle.
-        let published = std::iter::from_fn(|| rx.try_recv().ok())
-            .filter_map(|ev| match ev {
+        let published = events
+            .into_iter()
+            .rev()
+            .find_map(|ev| match ev {
                 StreamEvent::MessagesUpdated { messages } => Some(messages),
                 _ => None,
             })
-            .last()
             .expect("a MessagesUpdated is published");
         assert!(
             published.len() < original_len,
@@ -10359,7 +10654,7 @@ mod tests {
 
     #[tokio::test]
     async fn turn_cycle_compacts_and_retries_on_context_overflow() {
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::unbounded_channel();
         // 1) main request overflows, 2) summarizer succeeds, 3) retry succeeds.
         let overflow = Err(format!(
             "[{}] Upstream returned HTTP 400: context_length_exceeded",
@@ -10406,6 +10701,17 @@ mod tests {
 
         assert_eq!(result["choices"][0]["message"]["content"], "final");
         assert!(tool.calls.lock().unwrap().is_empty());
+        assert!(
+            std::iter::from_fn(|| rx.try_recv().ok()).any(|ev| matches!(
+                ev,
+                StreamEvent::Compaction {
+                    phase: CompactionPhase::Finished,
+                    reason: CompactionReason::ContextOverflow,
+                    messages: Some(_),
+                }
+            )),
+            "the overflow compaction is announced"
+        );
     }
 
     /// A strict endpoint rejects the DeepSeek `reasoning_content` extension

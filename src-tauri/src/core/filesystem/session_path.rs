@@ -142,10 +142,28 @@ pub async fn open_session_path<R: tauri::Runtime>(
             .opener()
             .open_path(target.to_string_lossy(), None::<&str>)
             .map_err(|e| e.to_string()),
-        OpenMode::Reveal => app
-            .opener()
-            .reveal_item_in_dir(&target)
-            .map_err(|e| e.to_string()),
+        OpenMode::Reveal => {
+            // On Linux the opener asks the file manager over D-Bus with zbus's
+            // blocking API, which starts its own runtime and panics ("Cannot
+            // start a runtime from within a runtime") when called from this
+            // async command now that zbus runs on tokio (Atomic-Chat #340).
+            #[cfg(target_os = "linux")]
+            {
+                let app = app.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    app.opener().reveal_item_in_dir(&target)
+                })
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(|e| e.to_string())
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                app.opener()
+                    .reveal_item_in_dir(&target)
+                    .map_err(|e| e.to_string())
+            }
+        }
     }
 }
 

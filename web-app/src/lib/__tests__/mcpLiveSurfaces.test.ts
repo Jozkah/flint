@@ -42,6 +42,7 @@ vi.mock('@/hooks/useModelProvider', () => ({
 }))
 vi.mock('@/lib/agentTools', () => ({
   sandboxEnforces: () => true,
+  AGENT_TOOL_NAMES: new Set(['read']),
   getAgentToolSchemas: async () => [],
 }))
 vi.mock('@/lib/coworkTools', async (orig) => ({

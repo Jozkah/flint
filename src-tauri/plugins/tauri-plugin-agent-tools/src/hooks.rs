@@ -627,7 +627,7 @@ async fn execute(
             .iter()
             .chain(HOOK_ENV_EXTRA)
         {
-            if let Some(val) = std::env::var_os(key) {
+            if let Some(val) = jan_process::host_env_var(key) {
                 cmd.env(key, val);
             }
         }

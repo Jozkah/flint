@@ -413,6 +413,11 @@ flint cli agent status
 flint cli agent status --project ~/code/app
 ```
 
+Each provider reports a `prompt_cache` field: how that route reuses a request prefix. `explicit`
+means the request carries cache breakpoints (Anthropic), `implicit` means the provider caches a
+byte-identical prefix by itself (OpenAI-compatible routes, OpenAI Responses, Google), and `none`
+means the route is not known to cache, so nothing is sent for it.
+
 ### `rpc`
 
 Run one long-lived Jan process with multiple addressable sessions over LF-delimited JSON-RPC on stdin/stdout. `flint cli agent rpc` prints **protocol lines only** to stdout. The first request is `initialize` with `protocolVersion: 1` and a `clientInfo` name/version; wait for its response, then send the `initialized` notification before any other method. Calling a method early returns `-32002`.

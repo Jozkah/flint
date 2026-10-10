@@ -375,3 +375,80 @@ export const extractThinkingContent = (text: string) => {
     .replace(/<\|start\|>/g, '') // remove any remaining start markers
     .trim()
 }
+
+/** Code on the error `withTimeout` rejects with when the deadline passes. */
+export const OPERATION_TIMED_OUT_CODE = 'OPERATION_TIMED_OUT'
+
+/**
+ * Ceiling for the native `startServer` call (bind a listener, build the
+ * routing config). It has no reason to take more than a few seconds.
+ */
+export const SERVER_START_WATCHDOG_MS = 60 * 1000
+
+/**
+ * Ceiling for loading a model as part of starting the Local API Server. Kept
+ * above the engine's own load-readiness limit so a slow but healthy load is
+ * never cut off; it only stops a step with no timeout of its own from leaving
+ * the "Starting Server" state forever.
+ */
+export const MODEL_LOAD_WATCHDOG_MS = 35 * 60 * 1000
+
+/**
+ * Settle with `promise`, or reject with an error carrying
+ * `OPERATION_TIMED_OUT_CODE` once `ms` have passed. A promise cannot be
+ * cancelled, so the underlying work keeps running; this only stops the
+ * caller from waiting on it forever.
+ */
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error(message) as Error & { code?: string }
+      err.code = OPERATION_TIMED_OUT_CODE
+      reject(err)
+    }, ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
+/**
+ * Wait for a `startServer` call at most `SERVER_START_WATCHDOG_MS`. On expiry
+ * the server is torn down (now, and again if the start completes late) so the
+ * caller can report the error and reset its status to stopped without a
+ * server left running behind it.
+ */
+export function guardServerStart(
+  call: Promise<number> | undefined
+): Promise<number | undefined> {
+  if (!call) return Promise.resolve(undefined)
+  return withTimeout(
+    call,
+    SERVER_START_WATCHDOG_MS,
+    'Timed out waiting for the Local API Server to start.'
+  ).catch((error: unknown) => {
+    if ((error as { code?: string } | null)?.code === OPERATION_TIMED_OUT_CODE) {
+      const stop = () => {
+        try {
+          void Promise.resolve(window.core?.api?.stopServer?.()).catch(() => {})
+        } catch {
+          // best effort
+        }
+      }
+      stop()
+      call.then(stop, () => {})
+    }
+    throw error
+  })
+}

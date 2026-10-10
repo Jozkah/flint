@@ -124,6 +124,37 @@ describe('AddEditMCPServer', () => {
     expect(props.onOpenChange).toHaveBeenCalledWith(false)
   })
 
+  it('saves a working directory for a stdio server and prefills it on edit', () => {
+    const props = baseProps()
+    render(<AddEditMCPServer {...props} />)
+    fireEvent.change(
+      screen.getByPlaceholderText('mcp-servers:enterServerName'),
+      { target: { value: 'withCwd' } }
+    )
+    fireEvent.change(screen.getByPlaceholderText('mcp-servers:enterCommand'), {
+      target: { value: 'node' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('mcp-servers:cwdPlaceholder'), {
+      target: { value: '  /srv/tools ' },
+    })
+    fireEvent.click(screen.getByText('mcp-servers:save').closest('button')!)
+    expect(props.onSave.mock.calls[0][1].cwd).toBe('/srv/tools')
+  })
+
+  it('leaves cwd out when the field is blank', () => {
+    const props = baseProps()
+    render(<AddEditMCPServer {...props} />)
+    fireEvent.change(
+      screen.getByPlaceholderText('mcp-servers:enterServerName'),
+      { target: { value: 'plain' } }
+    )
+    fireEvent.change(screen.getByPlaceholderText('mcp-servers:enterCommand'), {
+      target: { value: 'node' },
+    })
+    fireEvent.click(screen.getByText('mcp-servers:save').closest('button')!)
+    expect(props.onSave.mock.calls[0][1].cwd).toBeUndefined()
+  })
+
   it('switches transport to HTTP and saves URL-based config', () => {
     const props = baseProps()
     render(<AddEditMCPServer {...props} />)

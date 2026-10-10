@@ -264,16 +264,19 @@ export function SearchField({
   onChange,
   placeholder,
   className,
+  trailing,
 }: {
   value: string
   onChange: (value: string) => void
   placeholder: string
   className?: string
+  /** Controls docked inside the right edge of the field (filters, view toggle). */
+  trailing?: ReactNode
 }) {
   return (
-    <label
+    <div
       className={cn(
-        'flex h-8 min-w-0 items-center gap-2 rounded-lg border-[0.8px] border-input bg-card px-2.5 transition-[border-color,box-shadow] duration-150 focus-within:border-border-strong focus-within:ring-[3px] focus-within:ring-ring/25 pointer-coarse:h-11',
+        'flex h-8 min-w-0 items-center gap-2 rounded-lg border-[0.8px] border-input bg-card pl-2.5 pr-1 transition-[border-color,box-shadow] duration-150 focus-within:border-border-strong focus-within:ring-[3px] focus-within:ring-ring/25 pointer-coarse:h-11',
         className
       )}
     >
@@ -286,7 +289,12 @@ export function SearchField({
         aria-label={placeholder}
         className="w-full min-w-0 bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none md:text-xs"
       />
-    </label>
+      {trailing && (
+        <div className="flex shrink-0 items-center gap-0.5 border-l border-border pl-1">
+          {trailing}
+        </div>
+      )}
+    </div>
   )
 }
 

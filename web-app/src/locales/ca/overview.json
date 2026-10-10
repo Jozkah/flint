@@ -59,5 +59,9 @@
     "approval": "Necessita aprovació",
     "done": "Feta",
     "idle": "No iniciada"
-  }
+  },
+  "resumeSub": "Comença alguna cosa nova o continua on ho vas deixar.",
+  "startChat": "Pregunta alguna cosa",
+  "startFiles": "Cowork",
+  "usage": "Ús"
 }

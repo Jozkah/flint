@@ -16,7 +16,10 @@ import {
   API_KEY_FALLBACKS_SETTING_KEY,
   providerRemoteApiKeyChain,
 } from '@/lib/provider-api-keys'
-import { ensureAnthropicHeaders } from '@/lib/anthropicHeaders'
+import {
+  applyProviderAuthHeader,
+  ensureAnthropicHeaders,
+} from '@/lib/anthropicHeaders'
 import { applyCustomHeaders } from '@/lib/customHeaders'
 import {
   EndpointError,
@@ -168,10 +171,7 @@ export class TauriProvidersService extends DefaultProvidersService {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       }
-      if (key) {
-        headers['x-api-key'] = key
-        headers['Authorization'] = `Bearer ${key}`
-      }
+      applyProviderAuthHeader(provider, headers, key)
       applyCustomHeaders(headers, provider)
       ensureAnthropicHeaders(provider, headers)
       for (const url of modelsUrlCandidates(provider.base_url)) {
@@ -211,10 +211,7 @@ export class TauriProvidersService extends DefaultProvidersService {
           headers['Origin'] = 'tauri://localhost'
         }
 
-        if (key) {
-          headers['x-api-key'] = key
-          headers['Authorization'] = `Bearer ${key}`
-        }
+        applyProviderAuthHeader(provider, headers, key)
 
         // After the key: reserved names are never applied, so a custom header
         // cannot replace it. janhq/jan#8208.

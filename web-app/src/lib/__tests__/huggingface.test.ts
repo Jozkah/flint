@@ -5,6 +5,7 @@ import {
   cleanHuggingFaceRepo,
   groupHuggingFaceFiles,
   mlxWeightsBytes,
+  pinExactRepo,
   quantizationFromFilename,
   repoFromDeepLink,
   splitInfo,
@@ -23,6 +24,37 @@ describe('Hugging Face repository input', () => {
     expect(
       cleanHuggingFaceRepo('https://huggingface.co/bartowski/Qwen3-GGUF?foo=bar')
     ).toBe('bartowski/Qwen3-GGUF')
+  })
+})
+
+describe('pinExactRepo', () => {
+  const rows = [
+    { id: 'big/popular-GGUF' },
+    { id: 'unsloth/Gemma-4-GGUF' },
+    { id: 'other/thing' },
+  ]
+
+  it('moves a pasted exact repo id to the front, case-insensitively', () => {
+    const out = pinExactRepo(rows, 'unsloth/gemma-4-gguf')
+    expect(out.map((r) => r.id)).toEqual([
+      'unsloth/Gemma-4-GGUF',
+      'big/popular-GGUF',
+      'other/thing',
+    ])
+  })
+
+  it('accepts a pasted Hugging Face URL', () => {
+    const out = pinExactRepo(
+      rows,
+      'https://huggingface.co/unsloth/Gemma-4-GGUF/tree/main'
+    )
+    expect(out[0].id).toBe('unsloth/Gemma-4-GGUF')
+  })
+
+  it('leaves the order alone for free text or an unlisted repo', () => {
+    expect(pinExactRepo(rows, 'gemma')).toBe(rows)
+    expect(pinExactRepo(rows, 'nobody/nothing')).toBe(rows)
+    expect(pinExactRepo(rows, '')).toBe(rows)
   })
 })
 

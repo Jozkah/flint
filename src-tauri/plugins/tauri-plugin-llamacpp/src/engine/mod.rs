@@ -17,6 +17,7 @@ use std::fmt;
 pub mod commands;
 pub mod events;
 pub mod http;
+pub mod idle;
 pub mod preset;
 pub mod registry;
 pub mod slots;

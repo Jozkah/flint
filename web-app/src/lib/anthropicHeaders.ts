@@ -27,6 +27,23 @@ function isAnthropicProvider(provider: {
   )
 }
 
+/// The one auth header a model-list or key-test request carries. Anthropic
+/// authenticates with `x-api-key`; every other provider takes
+/// `Authorization: Bearer`. Sending both breaks upstreams that reject mixed
+/// auth (AWS Bedrock answers 401).
+export function applyProviderAuthHeader(
+  provider: { provider?: string; base_url?: string; api_type?: string },
+  headers: Record<string, string>,
+  key: string | undefined
+): void {
+  if (!key) return
+  if (isAnthropicProvider(provider)) {
+    headers['x-api-key'] = key
+  } else {
+    headers['Authorization'] = `Bearer ${key}`
+  }
+}
+
 function setDefaultHeader(
   headers: Record<string, string>,
   name: string,

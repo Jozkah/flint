@@ -96,6 +96,8 @@ function InterfaceSettings() {
     setColoredUserBubble,
     renderHtmlArtifacts,
     setRenderHtmlArtifacts,
+    showInlineCitations,
+    setShowInlineCitations,
     autoGenerateTitle,
     setAutoGenerateTitle,
     reduceMotion,
@@ -207,6 +209,18 @@ function InterfaceSettings() {
           <Switch
             checked={renderHtmlArtifacts}
             onCheckedChange={setRenderHtmlArtifacts}
+          />
+        }
+      />
+      <CardItem
+        anchor="settings-appearance-inline-citations"
+        title={t('settings:interface.inlineCitations')}
+        description={t('settings:interface.inlineCitationsDesc')}
+        actions={
+          <Switch
+            aria-label={t('settings:interface.inlineCitations')}
+            checked={showInlineCitations}
+            onCheckedChange={setShowInlineCitations}
           />
         }
       />

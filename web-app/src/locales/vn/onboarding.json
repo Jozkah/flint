@@ -60,5 +60,20 @@
   "reopenGuide": "Hướng dẫn bắt đầu",
   "reopenGuideDescription": "Xem lại các bước chọn mô hình, thêm tài liệu và hoàn thành tác vụ đầu tiên.",
   "reopenGuideAction": "Mở hướng dẫn",
-  "resumeRecent": "Tiếp tục cuộc trò chuyện gần nhất: {{title}}"
+  "resumeRecent": "Tiếp tục cuộc trò chuyện gần nhất: {{title}}",
+  "modelSetup": {
+    "title": "Bạn muốn lấy mô hình bằng cách nào?",
+    "local": {
+      "title": "Dùng mô hình trên máy tính này",
+      "body": "Duyệt các mô hình và xem mô hình nào phù hợp với phần cứng của bạn."
+    },
+    "provider": {
+      "title": "Kết nối nhà cung cấp",
+      "body": "Dùng mô hình được lưu trữ bằng tài khoản của riêng bạn."
+    },
+    "import": {
+      "title": "Nhập một tệp",
+      "body": "Thêm tệp mô hình mà bạn đã có."
+    }
+  }
 }

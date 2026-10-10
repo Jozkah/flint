@@ -412,7 +412,8 @@ describe('remembering that the chosen model is down', () => {
     await drain(await t.sendMessages(followUp()))
     expect(t.seen[2].turnModel).toBeUndefined()
 
-    // Fail again, then change the picker: the follow-up uses the new choice.
+    // Fail again, then change the picker: the next message uses the new choice
+    // (a follow-up step of the run in flight keeps the model it was sent with).
     t.script = [
       async () => streamOf(failure('Overloaded')),
       async () => streamOf(reply),
@@ -422,7 +423,7 @@ describe('remembering that the chosen model is down', () => {
     await drain(await t.sendMessages(userTurn()))
     h.selectedModel = { id: 'local-b' }
     h.fallbackModels = ['openai::gpt']
-    await drain(await t.sendMessages(followUp()))
+    await drain(await t.sendMessages(userTurn()))
     expect(t.seen[t.seen.length - 1].model).toBe('local-b')
     expect(t.seen[t.seen.length - 1].turnModel).toBeUndefined()
     now.mockRestore()

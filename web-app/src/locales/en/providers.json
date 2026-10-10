@@ -165,6 +165,11 @@
     "removeKey": "Remove key"
   },
   "dataFolderUnavailable": "The data folder {{path}} could not be used this run, so Flint is showing the models in its default folder. Models stored there are not deleted: they come back once that folder is available again. See Settings > General.",
+  "tlsTrust": {
+    "title": "Allow invalid certificates",
+    "description": "Skip certificate verification for this provider's address only. Use it for a server you run yourself, such as a gateway with a self-signed certificate. Off by default.",
+    "warning": "Certificate verification is off for this provider. Anyone on the network path can read and change its requests, including your API key. Turn this off unless you trust the network."
+  },
   "customHeaders": {
     "title": "Custom headers",
     "description": "Extra HTTP headers sent with every request to this provider, such as a gateway tenant or subscription key. They cannot replace the API key.",

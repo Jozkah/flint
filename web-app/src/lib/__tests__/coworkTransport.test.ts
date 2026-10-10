@@ -4,7 +4,10 @@ const { sandboxEnforces, buildCoworkTools } = vi.hoisted(() => ({
   sandboxEnforces: vi.fn(() => true),
   buildCoworkTools: vi.fn(),
 }))
-vi.mock('@/lib/agentTools', () => ({ sandboxEnforces }))
+vi.mock('@/lib/agentTools', () => ({
+  sandboxEnforces,
+  AGENT_TOOL_NAMES: new Set(['read', 'write', 'edit', 'bash', 'task']),
+}))
 vi.mock('@/lib/coworkTools', async (orig) => ({
   ...(await orig<typeof import('../coworkTools')>()),
   buildCoworkTools,

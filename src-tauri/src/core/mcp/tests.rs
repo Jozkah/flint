@@ -1114,6 +1114,7 @@ mod mcp_confinement_tests {
             envs,
             timeout: None,
             headers: serde_json::Map::new(),
+            cwd: None,
             confinement: None,
             imported: false,
         }

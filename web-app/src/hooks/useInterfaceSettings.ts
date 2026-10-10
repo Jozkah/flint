@@ -88,6 +88,8 @@ interface InterfaceSettingsState {
   showTokenSpeed: boolean
   coloredUserBubble: boolean
   renderHtmlArtifacts: boolean
+  /** Favicon chips for the sources a web answer cites, inline in the text. */
+  showInlineCitations: boolean
   autoGenerateTitle: boolean
   /** How much of each turn the Chat, Cowork and Rooms transcripts show. */
   transcriptView: TranscriptView
@@ -116,6 +118,7 @@ interface InterfaceSettingsState {
   setShowTokenSpeed: (show: boolean) => void
   setColoredUserBubble: (colored: boolean) => void
   setRenderHtmlArtifacts: (render: boolean) => void
+  setShowInlineCitations: (show: boolean) => void
   setAutoGenerateTitle: (auto: boolean) => void
   setTranscriptView: (view: TranscriptView) => void
   setSidebarWidth: (width: number) => void
@@ -136,6 +139,7 @@ type InterfaceSettingsPersistedSlice = Pick<
   | 'showTokenSpeed'
   | 'coloredUserBubble'
   | 'renderHtmlArtifacts'
+  | 'showInlineCitations'
   | 'autoGenerateTitle'
   | 'transcriptView'
   | 'sidebarWidth'
@@ -165,6 +169,7 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     showTokenSpeed: true,
     coloredUserBubble: false,
     renderHtmlArtifacts: false,
+    showInlineCitations: true,
     autoGenerateTitle: true,
     transcriptView: DEFAULT_TRANSCRIPT_VIEW,
     sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
@@ -224,6 +229,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             showTokenSpeed: true,
             coloredUserBubble: false,
             renderHtmlArtifacts: false,
+            showInlineCitations: true,
             autoGenerateTitle: true,
             transcriptView: DEFAULT_TRANSCRIPT_VIEW,
             sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
@@ -291,6 +297,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
           set({ renderHtmlArtifacts: render })
         },
 
+        setShowInlineCitations: (show) => {
+          set({ showInlineCitations: show })
+        },
+
         setAutoGenerateTitle: (auto) => {
           set({ autoGenerateTitle: auto })
         },
@@ -354,6 +364,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         showTokenSpeed: state.showTokenSpeed,
         coloredUserBubble: state.coloredUserBubble,
         renderHtmlArtifacts: state.renderHtmlArtifacts,
+        showInlineCitations: state.showInlineCitations,
         autoGenerateTitle: state.autoGenerateTitle,
         transcriptView: state.transcriptView,
         sidebarWidth: state.sidebarWidth,
@@ -409,6 +420,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
 
           if (typeof state.renderHtmlArtifacts !== 'boolean') {
             state.renderHtmlArtifacts = false
+          }
+
+          if (typeof state.showInlineCitations !== 'boolean') {
+            state.showInlineCitations = true
           }
 
           if (typeof state.autoGenerateTitle !== 'boolean') {

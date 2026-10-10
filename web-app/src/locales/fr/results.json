@@ -11,7 +11,8 @@
     "where": "Où se trouve le résultat",
     "checked": "Ce qui a été vérifié",
     "unresolved": "Non résolu",
-    "next": "Prochaines étapes"
+    "next": "Prochaines étapes",
+    "details": "Détails"
   },
   "headline": {
     "running": "L'exécution est toujours en cours.",

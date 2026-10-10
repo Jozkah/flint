@@ -324,6 +324,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
       keywords: ['html', 'preview', 'artifacts'],
     }
   ),
+  item('appearance', 'inline-citations', 'settings:interface.inlineCitations', {
+    descriptionKey: 'settings:interface.inlineCitationsDesc',
+    keywords: ['sources', 'favicon', 'web search', 'links'],
+  }),
   item('appearance', 'auto-title', 'settings:interface.autoGenerateTitle', {
     descriptionKey: 'settings:interface.autoGenerateTitleDesc',
     keywords: ['thread title', 'naming'],

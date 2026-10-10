@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "इंस्टॉल किए गए",
     "installedSub": "{{local}} लोकल · {{remote}} रिमोट",
+    "remoteAvailableSub": "{{count}} रिमोट मॉडल उपलब्ध",
     "loaded": "अभी लोड",
     "loadedSub": "{{count}} लोकल मॉडल में से",
     "disk": "उपयोग की गई डिस्क",
@@ -44,6 +45,10 @@
     "noneYet": "अभी कोई जवाब नहीं"
   },
   "providers": {
+    "disableAll": "सभी बंद करें",
+    "enableAll": "सभी चालू करें",
+    "allDisabledToast": "सभी प्रदाता बंद कर दिए गए",
+    "allEnabledToast": "सभी प्रदाता चालू कर दिए गए",
     "title": "प्रदाता",
     "onDevice": "इस डिवाइस पर",
     "remote": "रिमोट",
@@ -60,7 +65,8 @@
     "off": "बंद",
     "loaded": "लोड",
     "ready": "तैयार",
-    "noKey": "कोई API कुंजी नहीं"
+    "noKey": "कोई API कुंजी नहीं",
+    "keyless": "कुंजी की ज़रूरत नहीं"
   },
   "installed": {
     "title": "इंस्टॉल किए गए मॉडल",

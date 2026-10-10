@@ -16,7 +16,7 @@ import {
   userMessageText,
   withPromptContext,
 } from '@/lib/ccContextHooks'
-import { fetchServerWindow } from '@/lib/serverWindow'
+import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
 import { knownContextWindowDetail } from '@/lib/knownContextWindow'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -98,7 +98,11 @@ import {
 } from '@/lib/requestAttribution'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { useAppState } from '@/hooks/useAppState'
-import { unloadLlamaModel, getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
+import {
+  cancelModelLoad,
+  unloadLlamaModel,
+  getLoadedModels,
+} from '@janhq/tauri-plugin-llamacpp-api'
 import { engineFailure } from '@/lib/engineError'
 import { chatSafetyGuidelines, todayLine } from '@/lib/promptSafety'
 import { replyLanguageLine } from '@/lib/replyLanguage'
@@ -227,6 +231,7 @@ import {
   type TokenUsage,
 } from '@/lib/tokenUsage'
 import { createDecodeClock, generationSpeed } from '@/lib/tokenSpeed'
+import { createReasoningClock } from '@/lib/reasoningClock'
 
 export type TokenUsageCallback = (
   usage: TokenUsage,
@@ -457,6 +462,8 @@ function normalizeToolInputSchemaValue(value: unknown): unknown {
         if (Array.isArray(childValue)) return [key, childValue.map(coerceSchemaNode)]
         return [key, coerceSchemaNode(childValue)]
       }
+      // Literal data, not sub-schemas: leave untouched.
+      if (SCHEMA_LITERAL_KEYS.has(key)) return [key, childValue]
       return [key, normalizeToolInputSchemaValue(childValue)]
     })
   )
@@ -478,6 +485,10 @@ function normalizeToolInputSchemaValue(value: unknown): unknown {
   if (hasDescription && !hasType && !hasNestedSchemaKeywords) {
     normalized.type = 'string'
   }
+
+  // Bounded repetition (`char{0,10000}`, 100-item arrays) explodes llama.cpp's
+  // grammar compiler; the model keeps `type` and `description`.
+  for (const keyword of LLAMACPP_BOUNDED_KEYWORDS) delete normalized[keyword]
 
   // llama.cpp's json-schema-to-grammar emits PCRE `\d` for these formats,
   // which GBNF rejects; the failed grammar silently disables tool-call JSON.
@@ -502,6 +513,17 @@ function normalizeToolInputSchemaValue(value: unknown): unknown {
 }
 
 const LLAMACPP_BROKEN_STRING_FORMATS = new Set(['date', 'time', 'date-time'])
+const LLAMACPP_BOUNDED_KEYWORDS = [
+  'minLength',
+  'maxLength',
+  'minItems',
+  'maxItems',
+  'minProperties',
+  'maxProperties',
+  'minContains',
+  'maxContains',
+]
+const SCHEMA_LITERAL_KEYS = new Set(['examples', 'example', 'default', 'enum', 'const'])
 const PCRE_SHORTHAND = /\\[dDwWsS]/
 
 /**
@@ -998,6 +1020,28 @@ type SendOptions = {
   messageId: string | undefined
 } & ChatRequestOptions
 
+/**
+ * Cancels a load that was aborted. The engine cannot abort a load in place,
+ * so the plugin stops its worker when this model is the only one resident, and
+ * otherwise abandons the wait and unloads the model once it is up. When no
+ * load was in flight (it finished first), the model is unloaded as before.
+ * Best-effort: nothing here may throw into the abort path.
+ */
+function abandonModelLoad(modelId: string): void {
+  const active = useAppState.getState().activeModels
+  const keepWorker =
+    Array.isArray(active) && active.some((id) => id !== modelId)
+  void (async () => {
+    try {
+      const result = await cancelModelLoad(modelId, keepWorker)
+      if (result?.cancelled) return
+    } catch {
+      // Fall back to a plain unload.
+    }
+    await unloadLlamaModel(modelId).catch(() => {})
+  })()
+}
+
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   /** Record memory uses when a reply finishes. Cowork records its own. */
   protected recordsMemoryUsesOnFinish = true
@@ -1148,10 +1192,39 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (this.turnModel) return this.turnModel
     // A conversation shown as one of two split panes sends with its own
     // thread's model; the global picker follows whichever pane is active.
+    // The model this run was sent with, so a model picked in another chat
+    // while a tool loop is under way does not reroute it (janhq/jan#8083).
+    if (this.runModel) return this.runModel
+    return this.liveModelSelection()
+  }
+
+  /** The model chosen for this conversation right now, not the run's. */
+  private liveModelSelection(): Pick<
+    ReturnType<typeof useModelProvider.getState>,
+    'selectedProvider' | 'selectedModel'
+  > {
     const scoped = this.modelSelectionResolver?.()
     if (scoped) return scoped
     const { selectedProvider, selectedModel } = useModelProvider.getState()
     return { selectedProvider, selectedModel }
+  }
+
+  /**
+   * The model a run was sent with. A run is a user message and the tool-loop
+   * steps that follow it; each step is its own `sendMessages`, so the model is
+   * captured when the user's message goes out and kept while the last message
+   * is the assistant's.
+   */
+  private runModel?: Pick<
+    ReturnType<typeof useModelProvider.getState>,
+    'selectedProvider' | 'selectedModel'
+  >
+
+  /** Capture the run's model at a send, or keep it for a tool-loop step. */
+  protected pinRunModel(messages: ReadonlyArray<{ role: string }>): void {
+    const last = messages[messages.length - 1]
+    if (this.runModel && last && last.role !== 'user') return
+    this.runModel = this.liveModelSelection()
   }
 
   /**
@@ -1966,17 +2039,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return new Promise<LanguageModel>((resolve, reject) => {
       const onAbort = () => {
         if (providerId === 'llamacpp') {
-          // Call the plugin's unload command directly instead of through the
+          // Cancel the load through the plugin directly instead of the
           // extension's `unload()` method: that method first looks up an
           // active *loaded* session and throws if none is found, but a
           // model aborted mid-load is still in the "loading" state (not
           // "loaded") and would never resolve to a session -- silently
-          // skipping the unload and leaking the still-loading llama-server.
+          // skipping the unload and leaking the still-loading engine.
           // See https://github.com/janhq/jan/issues/8432.
-          unloadLlamaModel(modelId).catch(() => {
-            // Best-effort: model may not have started loading yet, or may
-            // already have finished/failed on its own.
-          })
+          abandonModelLoad(modelId)
         }
         const err = new Error('Aborted')
         err.name = 'AbortError'
@@ -2362,6 +2432,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   async sendMessages(
     options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
+    this.pinRunModel(options.messages)
     // A server that refuses images ("At most 0 image(s) may be provided")
     // although the model can see: learned from the refusal, then the same
     // request goes again without them. Once per newly learned limit.
@@ -2929,7 +3000,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         threadId,
         modelId
       ),
-      fetchServer: () => fetchServerWindow(provider?.base_url, modelId),
+      fetchServer: () =>
+        fetchServerWindow(
+          provider?.base_url,
+          modelId,
+          serverWindowHeaders(provider)
+        ),
     })
     const knownContextTokens = resolvedWindow.tokens
     // The resend after a length refusal plans against what the refusal named
@@ -3202,6 +3278,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     let streamStartTime: number | undefined
     // Generation time, for the speed: output only, per step. See createDecodeClock.
     const decodeClock = createDecodeClock()
+    // Time spent thinking, stored on the message so "Thought for N s" survives a reload.
+    const reasoningClock = createReasoningClock()
     useAppState.getState().updatePromptProgress(undefined)
     useAppState.getState().updateThreadPromptProgress(threadId, undefined)
     useAppState.getState().updateLiveTokenStats(undefined)
@@ -3293,6 +3371,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           decodeClock.tick(piece?.length ?? 0)
         }
         if (part.type === 'finish-step') decodeClock.endStep()
+        reasoningClock.observe(part.type)
 
         usageCollector.observe(part)
 
@@ -3447,6 +3526,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             finishReason: finishPart.finishReason,
             streamCutOff: streamCutOff(part),
             usage,
+            ...(reasoningClock.totalMs() > 0
+              ? { reasoningMs: Math.round(reasoningClock.totalMs()) }
+              : {}),
             // Which remembered records this request carried, and which were
             // withheld as conflicting: ids only, never their text.
             ...(this.memorySelection

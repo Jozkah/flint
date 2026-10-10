@@ -56,5 +56,9 @@
     "approval": "承認が必要",
     "done": "完了",
     "idle": "未開始"
-  }
+  },
+  "resumeSub": "新しく始めるか、前回の続きから再開できます。",
+  "startChat": "質問する",
+  "startFiles": "Cowork",
+  "usage": "使用状況"
 }

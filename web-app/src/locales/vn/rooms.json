@@ -330,7 +330,8 @@
     "continue": "Tiếp tục",
     "toShort": "Đến",
     "placeholderTo": "Viết cho {{name}}…",
-    "mention": "Nhắc đến một người tham gia"
+    "mention": "Nhắc đến một người tham gia",
+    "dropSkipped": "Chưa được thêm (không phải văn bản, là thư mục, hoặc vượt giới hạn tin nhắn): {{files}}"
   },
   "kpi": {
     "running": "Đang chạy",

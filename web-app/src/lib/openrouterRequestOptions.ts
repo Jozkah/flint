@@ -3,7 +3,8 @@
  * - `openrouter_web_search`: appends `:online` to the model slug (documented
  *   shorthand for the `web` plugin).
  * - `openrouter_provider`: JSON for the documented `provider` routing object
- *   (order / only / ignore / allow_fallbacks).
+ *   (order / only / ignore / quantizations / sort / require_parameters /
+ *   data_collection / allow_fallbacks).
  * - `openrouter_image_output`: asks for `modalities: ['image','text']` so
  *   image-capable models return pictures (see openrouterImages).
  * Only applied to OpenRouter endpoints; see model-factory.
@@ -11,7 +12,9 @@
 
 type Json = Record<string, unknown>
 
-const SLUG_LISTS = ['order', 'only', 'ignore'] as const
+const SLUG_LISTS = ['order', 'only', 'ignore', 'quantizations'] as const
+const SORT_VALUES = ['price', 'throughput', 'latency']
+const DATA_COLLECTION_VALUES = ['allow', 'deny']
 
 /** Parses the routing JSON, keeping only documented, well-typed fields. */
 export function parseProviderRouting(raw: unknown): Json | undefined {
@@ -33,6 +36,18 @@ export function parseProviderRouting(raw: unknown): Json | undefined {
       const slugs = v.filter((x): x is string => typeof x === 'string' && !!x)
       if (slugs.length) out[key] = slugs
     }
+  }
+  if (typeof src.sort === 'string' && SORT_VALUES.includes(src.sort)) {
+    out.sort = src.sort
+  }
+  if (
+    typeof src.data_collection === 'string' &&
+    DATA_COLLECTION_VALUES.includes(src.data_collection)
+  ) {
+    out.data_collection = src.data_collection
+  }
+  if (typeof src.require_parameters === 'boolean') {
+    out.require_parameters = src.require_parameters
   }
   if (typeof src.allow_fallbacks === 'boolean') {
     out.allow_fallbacks = src.allow_fallbacks

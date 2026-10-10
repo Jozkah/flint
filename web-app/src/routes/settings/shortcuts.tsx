@@ -17,6 +17,7 @@ import {
   SPLIT_MIN_MAX_PANES,
   useSplitConversation,
 } from '@/hooks/useSplitConversation'
+import { Select } from '@/components/ui/select'
 
 /** How many panes split view may show, the main one included. */
 function MaxPanesSelect({ label }: { label: string }) {
@@ -27,7 +28,7 @@ function MaxPanesSelect({ label }: { label: string }) {
     (_, i) => SPLIT_MIN_MAX_PANES + i
   )
   return (
-    <select
+    <Select
       aria-label={label}
       data-testid="split-max-panes"
       value={maxPanes}
@@ -39,7 +40,7 @@ function MaxPanesSelect({ label }: { label: string }) {
           {n}
         </option>
       ))}
-    </select>
+    </Select>
   )
 }
 

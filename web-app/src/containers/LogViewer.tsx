@@ -21,7 +21,7 @@ import { useHeaderSlot } from '@/components/shell/HeaderSlot'
 function formatLogTimestamp(timestamp: string | number): string {
   const date = new Date(timestamp)
   return date.toLocaleTimeString('en-US', {
-    hour12: false,
+    hourCycle: 'h23',
     timeZone: 'UTC',
     hour: '2-digit',
     minute: '2-digit',

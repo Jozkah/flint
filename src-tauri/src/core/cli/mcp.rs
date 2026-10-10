@@ -505,6 +505,8 @@ async fn connect_in(
                         cmd.process_group(0);
                     }
                     cmd.kill_on_drop(true);
+                    // Flint's own gateway/worker keys are not the server's to read.
+                    jan_process::WithoutAppSecrets::without_app_secrets(&mut cmd);
                     for arg in params.args.iter().filter_map(Value::as_str) {
                         cmd.arg(arg);
                     }

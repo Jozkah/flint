@@ -79,7 +79,7 @@ describe('DialogDeleteModel', () => {
     await waitFor(() => expect(mocks.setProviders).toHaveBeenCalled())
     expect(mocks.deleteModel).toHaveBeenCalledWith('m1', 'llamacpp')
     expect(mocks.deleteModelCache).toHaveBeenCalledWith('m1')
-    expect(mocks.removeFavorite).toHaveBeenCalledWith('m1')
+    expect(mocks.removeFavorite).toHaveBeenCalledWith('m1', 'llamacpp')
     expect(mocks.toastSuccess).toHaveBeenCalled()
     expect(mocks.setProviders.mock.calls[0][0][0].models).toEqual([{ id: 'm2' }])
   })

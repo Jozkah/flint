@@ -161,6 +161,12 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
+  // `describeEngineError` reads this directly; keep the interpolated detail
+  // visible so a test can tell it was passed along.
+  i18n: {
+    t: (k: string, o?: { detail?: string }) =>
+      o?.detail ? `${k}: ${o.detail}` : k,
+  },
 }))
 
 vi.mock('@/containers/HeaderPage', () => ({
@@ -185,6 +191,11 @@ vi.mock('@/containers/Card', () => ({
       {actions && <div data-testid="card-item-actions">{actions}</div>}
     </div>
   ),
+}))
+
+// Has its own switch, which the mocked Switch below would share a test id with.
+vi.mock('@/containers/ProviderTlsTrust', () => ({
+  ProviderTlsTrust: () => null,
 }))
 
 vi.mock('@/containers/Capabilities', () => ({
@@ -330,6 +341,7 @@ vi.mock('zustand/shallow', () => ({
 
 // Import AFTER mocks
 import { Route } from '../$providerName'
+import { markFirstModelFetch } from '@/lib/pendingFirstModelFetch'
 
 const renderComponent = () => {
   const Component = Route.component as React.ComponentType
@@ -601,6 +613,26 @@ describe('ProviderDetail route', () => {
   })
 
   describe('Refresh models', () => {
+    it('fetches the model list once, unasked, for a provider just created', async () => {
+      h.providersSvc.fetchModelsFromProvider = vi
+        .fn()
+        .mockResolvedValue(['gpt-4', 'gpt-5'])
+      markFirstModelFetch('openai')
+      renderComponent()
+      await waitFor(() => {
+        expect(h.providersSvc.fetchModelsFromProvider).toHaveBeenCalledTimes(1)
+      })
+      await waitFor(() => {
+        expect(h.updateProvider).toHaveBeenCalled()
+      })
+    })
+
+    it('does not fetch on a plain visit to a provider page', async () => {
+      renderComponent()
+      await act(async () => {})
+      expect(h.providersSvc.fetchModelsFromProvider).not.toHaveBeenCalled()
+    })
+
     it('refreshing adds newly fetched models and toasts success', async () => {
       h.providersSvc.fetch = vi.fn(() =>
         vi.fn().mockResolvedValue(
@@ -727,6 +759,29 @@ describe('ProviderDetail route', () => {
       await waitFor(() => {
         expect(h.modelsSvc.stopModel).toHaveBeenCalledWith('local-model', 'llamacpp')
       })
+    })
+
+    it('says why the engine refused a model instead of only that it did', async () => {
+      // What a damaged GGUF produces: a generic message, with the engine's own
+      // words in `details`. The chat path shows both; this page showed neither.
+      h.modelsSvc.startModel = vi.fn().mockRejectedValue({
+        code: 'MODEL_LOAD_FAILED',
+        message: 'The model could not be loaded.',
+        details: 'gguf_init_from_reader: failed to read header',
+      })
+      renderComponent()
+      await act(async () => {
+        fireEvent.click(screen.getByText('providers:start'))
+      })
+      await waitFor(() => {
+        expect(h.toastError).toHaveBeenCalled()
+      })
+      const [, options] = h.toastError.mock.calls[0]
+      expect(options.description).toContain('model-errors:engine.MODEL_LOAD_FAILED')
+      expect(options.description).toContain('failed to read header')
+      expect(h.modelLoad.setModelLoadError).toHaveBeenCalledWith(
+        expect.stringContaining('failed to read header')
+      )
     })
 
     it('captures error via setModelLoadError when startModel rejects', async () => {

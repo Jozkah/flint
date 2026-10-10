@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Установлено",
     "installedSub": "{{local}} локальных · {{remote}} удалённых",
+    "remoteAvailableSub": "Доступно удалённых моделей: {{count}}",
     "loaded": "Загружено сейчас",
     "loadedSub": "из {{count}} локальных моделей",
     "disk": "Занято на диске",
@@ -44,6 +45,10 @@
     "noneYet": "ответов пока нет"
   },
   "providers": {
+    "disableAll": "Отключить все",
+    "enableAll": "Включить все",
+    "allDisabledToast": "Все провайдеры отключены",
+    "allEnabledToast": "Все провайдеры включены",
     "title": "Провайдеры",
     "onDevice": "На этом устройстве",
     "remote": "Удалённые",
@@ -62,7 +67,8 @@
     "off": "Выкл.",
     "loaded": "Загружена",
     "ready": "Готова",
-    "noKey": "Нет API-ключа"
+    "noKey": "Нет API-ключа",
+    "keyless": "Ключ не нужен"
   },
   "installed": {
     "title": "Установленные модели",

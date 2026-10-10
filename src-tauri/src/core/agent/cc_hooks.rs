@@ -234,6 +234,8 @@ async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Option<String> {
     };
 
     let mut cmd = tokio::process::Command::new(&shell.program);
+    // A hook is the user's script: it gets the host's libraries, not the AppImage's.
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     cmd.args(&shell.args)
         .arg(&command)
         .current_dir(&cwd)

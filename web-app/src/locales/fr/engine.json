@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Installés",
     "installedSub": "{{local}} locaux · {{remote}} distants",
+    "remoteAvailableSub": "{{count}} modèles distants disponibles",
     "loaded": "Chargés maintenant",
     "loadedSub": "sur {{count}} modèles locaux",
     "disk": "Disque utilisé",
@@ -44,6 +45,10 @@
     "noneYet": "aucune réponse pour l'instant"
   },
   "providers": {
+    "disableAll": "Tout désactiver",
+    "enableAll": "Tout activer",
+    "allDisabledToast": "Tous les fournisseurs sont désactivés",
+    "allEnabledToast": "Tous les fournisseurs sont activés",
     "title": "Fournisseurs",
     "onDevice": "Sur cet appareil",
     "remote": "Distants",
@@ -61,7 +66,8 @@
     "off": "Désactivé",
     "loaded": "Chargé",
     "ready": "Prêt",
-    "noKey": "Pas de clé API"
+    "noKey": "Pas de clé API",
+    "keyless": "Aucune clé requise"
   },
   "installed": {
     "title": "Modèles installés",

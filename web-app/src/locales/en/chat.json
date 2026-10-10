@@ -184,5 +184,13 @@
     "previousAt": "Previous version (showing {{index}} of {{count}})",
     "nextAt": "Next version (showing {{index}} of {{count}})",
     "position": "Version {{index}} of {{count}}"
+  },
+  "bulkDelete": {
+    "select": "Select chats",
+    "selected": "{{count}} selected",
+    "title": "Delete {{count}} chats?",
+    "description": "{{count}} chats will be deleted. This action cannot be undone.",
+    "descriptionArchive": "{{count}} chats will move to the Archive. You can restore them from there.",
+    "done": "Deleted {{count}} chats"
   }
 }

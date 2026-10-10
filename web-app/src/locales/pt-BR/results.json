@@ -11,7 +11,8 @@
     "where": "Onde está o resultado",
     "checked": "O que foi verificado",
     "unresolved": "Pendências",
-    "next": "Próximos passos"
+    "next": "Próximos passos",
+    "details": "Detalhes"
   },
   "headline": {
     "running": "A execução ainda está em andamento.",

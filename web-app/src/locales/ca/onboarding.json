@@ -60,5 +60,20 @@
   "reopenGuide": "Guia de primers passos",
   "reopenGuideDescription": "Torna a fer el recorregut per triar un model, afegir material i completar una primera tasca.",
   "reopenGuideAction": "Obre la guia",
-  "resumeRecent": "Continua la teva última conversa: {{title}}"
+  "resumeRecent": "Continua la teva última conversa: {{title}}",
+  "modelSetup": {
+    "title": "Com vols obtenir un model?",
+    "local": {
+      "title": "Usa un model en aquest ordinador",
+      "body": "Explora models i mira quins s'adapten al teu maquinari."
+    },
+    "provider": {
+      "title": "Connecta un proveïdor",
+      "body": "Usa un model allotjat amb el teu propi compte."
+    },
+    "import": {
+      "title": "Importa un fitxer",
+      "body": "Afegeix un fitxer de model que ja tinguis."
+    }
+  }
 }

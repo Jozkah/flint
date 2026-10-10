@@ -58,6 +58,26 @@ export function decideDrop(target: DropTarget, files: File[]): DropIntent {
     : { action: 'attach', files }
 }
 
+/**
+ * An absolute file-system path, if that is all `text` is.
+ *
+ * Pasted text is only a path when it is one line and unmistakably absolute: a
+ * drive or UNC path, or a POSIX path with at least two segments (so `/clear`
+ * stays a command). A URL is never a path. Surrounding quotes, which a shell
+ * "copy as path" adds, are stripped. Whether it exists is the caller's check.
+ */
+export function pastedPath(text: string): string | null {
+  let s = text.trim()
+  if (!s || s.length > 1024 || /[\r\n]/.test(s)) return null
+  const quoted = /^(["'])(.*)\1$/.exec(s)
+  if (quoted) s = quoted[2].trim()
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return null
+  const windows = /^[A-Za-z]:[\\/][^\\/]/.test(s)
+  const unc = /^\\\\[^\\/]+[\\/][^\\/]+/.test(s)
+  const posix = /^\/[^/\s][^/]*\/[^/]/.test(s)
+  return windows || unc || posix ? s : null
+}
+
 /** Does this drag carry files at all, as opposed to text or a selection? */
 export function dragHasFiles(transfer: DataTransfer | null): boolean {
   if (!transfer) return false
@@ -96,4 +116,40 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
   // Inside an open dialog or a menu, the shortcut is not ours to take.
   return Boolean(el.closest('[role="dialog"], [role="menu"], [contenteditable="true"]'))
+}
+
+/**
+ * Dropped files as fenced blocks for a text-only composer (Rooms).
+ *
+ * A room message is plain text, so a file can only be sent as its contents.
+ * Anything that is not text (an image, an archive, a file with a NUL byte) is
+ * skipped and named, and the whole result stays within `budget` characters
+ * so the message can still be sent.
+ */
+export function inlineDroppedTexts(
+  items: Array<{ name: string; text: string }>,
+  budget: number
+): { text: string; skipped: string[] } {
+  const blocks: string[] = []
+  const skipped: string[] = []
+  let used = 0
+  for (const { name, text } of items) {
+    if (text.includes('\u0000')) {
+      skipped.push(name)
+      continue
+    }
+    const fence = text.includes('```') ? '~~~~' : '```'
+    const head = name + '\n' + fence + '\n'
+    const tail = '\n' + fence
+    const room = budget - used - head.length - tail.length - 2
+    if (room <= 0) {
+      skipped.push(name)
+      continue
+    }
+    const body = text.length > room ? text.slice(0, room) : text
+    const block = head + body + tail
+    blocks.push(block)
+    used += block.length + 2
+  }
+  return { text: blocks.join('\n\n'), skipped }
 }
