@@ -155,6 +155,11 @@
     "removeKey": "Anahtarı kaldır"
   },
   "dataFolderUnavailable": "{{path}} veri klasörü bu çalıştırmada kullanılamadı, bu nedenle Flint varsayılan klasöründeki modelleri gösteriyor. Orada saklanan modeller silinmez: o klasör yeniden kullanılabilir olduğunda geri gelirler. Ayarlar > Genel bölümüne bakın.",
+  "tlsTrust": {
+    "title": "Geçersiz sertifikalara izin ver",
+    "description": "Sertifika doğrulamasını yalnızca bu sağlayıcının adresi için atlar. Kendi işlettiğiniz bir sunucu için kullanın; örneğin kendinden imzalı sertifikalı bir ağ geçidi. Varsayılan olarak kapalıdır.",
+    "warning": "Bu sağlayıcı için sertifika doğrulaması kapalı. Ağ yolundaki herkes API anahtarınız dahil isteklerini okuyabilir ve değiştirebilir. Ağa güvenmiyorsanız kapatın."
+  },
   "customHeaders": {
     "title": "Özel üstbilgiler",
     "description": "Bu sağlayıcıya yapılan her istekle gönderilen ek HTTP üstbilgileri; örneğin bir ağ geçidi kiracısı veya abonelik anahtarı. API anahtarının yerini alamazlar.",

@@ -64,12 +64,38 @@ pub(crate) fn shared_http_client() -> reqwest13::Client {
     }
 }
 
+/// The client for one request URL: the shared one, or -- only when the user
+/// switched "allow invalid certificates" on for this exact endpoint -- a
+/// sibling that skips certificate verification. Kept apart from the shared
+/// pool so nothing else can ride on the relaxed trust.
+pub(crate) fn http_client_for_url(shared: &reqwest13::Client, url: &str) -> reqwest13::Client {
+    if !crate::core::net::tls::allows_invalid_certs_for_url(url) {
+        return shared.clone();
+    }
+    static LOOSE: std::sync::Mutex<Option<(u64, reqwest13::Client)>> = std::sync::Mutex::new(None);
+    let key = crate::core::net::tls::fingerprint();
+    let mut loose = LOOSE.lock().unwrap_or_else(|p| p.into_inner());
+    match loose.as_ref() {
+        Some((built_for, client)) if *built_for == key => client.clone(),
+        _ => {
+            let client = build_http_client_with(true);
+            *loose = Some((key, client.clone()));
+            client
+        }
+    }
+}
+
 fn build_http_client() -> reqwest13::Client {
+    build_http_client_with(false)
+}
+
+fn build_http_client_with(accept_invalid_certs: bool) -> reqwest13::Client {
     crate::core::net::tls::apply13(
         reqwest13::Client::builder()
             .pool_idle_timeout(POOL_IDLE_TIMEOUT)
             .tcp_keepalive(TCP_KEEPALIVE)
-            .connect_timeout(CONNECT_TIMEOUT),
+            .connect_timeout(CONNECT_TIMEOUT)
+            .danger_accept_invalid_certs(accept_invalid_certs),
     )
     .build()
     // A client that cannot be built with the bundle's roots must not quietly
@@ -809,6 +835,7 @@ pub(crate) async fn stream_chat_completions(
     let options = options_from_body(body);
     let endpoint_base = endpoint_base_from_chat_url(upstream_url);
     let adapter = adapter_kind_for(api_type);
+    let http = &http_client_for_url(http, upstream_url);
 
     let keys: Vec<Option<&str>> = if api_keys.is_empty() {
         vec![None]

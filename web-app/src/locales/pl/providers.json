@@ -155,6 +155,11 @@
     "removeKey": "Usuń klucz"
   },
   "dataFolderUnavailable": "Nie udało się użyć folderu danych {{path}} w tym uruchomieniu, więc Flint pokazuje modele w folderze domyślnym. Modele zapisane tam nie są usuwane: wrócą, gdy ten folder znów będzie dostępny. Zobacz Ustawienia > Ogólne.",
+  "tlsTrust": {
+    "title": "Zezwalaj na nieprawidłowe certyfikaty",
+    "description": "Pomija weryfikację certyfikatu tylko dla adresu tego dostawcy. Używaj dla serwera, który sam prowadzisz, np. bramy z certyfikatem z podpisem własnym. Domyślnie wyłączone.",
+    "warning": "Weryfikacja certyfikatu jest wyłączona dla tego dostawcy. Każdy na trasie sieciowej może czytać i zmieniać jego żądania, w tym Twój klucz API. Wyłącz, jeśli nie ufasz sieci."
+  },
   "customHeaders": {
     "title": "Własne nagłówki",
     "description": "Dodatkowe nagłówki HTTP wysyłane z każdym żądaniem do tego dostawcy, takie jak najemca bramy lub klucz subskrypcji. Nie mogą zastąpić klucza API.",

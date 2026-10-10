@@ -155,6 +155,11 @@
     "removeKey": "Hapus kunci"
   },
   "dataFolderUnavailable": "Folder data {{path}} tidak dapat dipakai pada eksekusi ini, jadi Flint menampilkan model di folder defaultnya. Model yang tersimpan di sana tidak dihapus: akan kembali setelah folder itu tersedia lagi. Lihat Pengaturan > Umum.",
+  "tlsTrust": {
+    "title": "Izinkan sertifikat tidak valid",
+    "description": "Lewati verifikasi sertifikat hanya untuk alamat penyedia ini. Gunakan untuk server yang Anda kelola sendiri, seperti gateway dengan sertifikat yang ditandatangani sendiri. Nonaktif secara default.",
+    "warning": "Verifikasi sertifikat dimatikan untuk penyedia ini. Siapa pun di jalur jaringan dapat membaca dan mengubah permintaannya, termasuk kunci API Anda. Matikan kecuali Anda memercayai jaringan."
+  },
   "customHeaders": {
     "title": "Header kustom",
     "description": "Header HTTP tambahan yang dikirim bersama setiap permintaan ke provider ini, seperti tenant gateway atau kunci langganan. Tidak dapat menggantikan kunci API.",

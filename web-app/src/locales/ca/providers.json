@@ -155,6 +155,11 @@
     "removeKey": "Elimina la clau"
   },
   "dataFolderUnavailable": "La carpeta de dades {{path}} no s'ha pogut usar en aquesta execució, de manera que Flint mostra els models de la seva carpeta per defecte. Els models emmagatzemats allà no se suprimeixen: tornaran quan aquella carpeta torni a estar disponible. Consulta Configuració > General.",
+  "tlsTrust": {
+    "title": "Permet certificats no vàlids",
+    "description": "Omet la verificació del certificat només per a l'adreça d'aquest proveïdor. Fes-ho servir per a un servidor que gestiones tu, com una passarel·la amb certificat autosignat. Desactivat per defecte.",
+    "warning": "La verificació del certificat està desactivada per a aquest proveïdor. Qualsevol persona a la ruta de la xarxa pot llegir i modificar les seves peticions, inclosa la teva clau d'API. Desactiva-ho tret que confiïs en la xarxa."
+  },
   "customHeaders": {
     "title": "Capçaleres personalitzades",
     "description": "Capçaleres HTTP addicionals que s'envien amb cada sol·licitud a aquest proveïdor, com ara un tenant de passarel·la o una clau de subscripció. No poden substituir la clau d'API.",

@@ -155,6 +155,11 @@
     "removeKey": "Retirer la clé"
   },
   "dataFolderUnavailable": "Le dossier de données {{path}} n'a pas pu être utilisé pour cette exécution, Flint affiche donc les modèles de son dossier par défaut. Les modèles qui y sont stockés ne sont pas supprimés : ils reviennent dès que ce dossier est de nouveau disponible. Voir Réglages > Général.",
+  "tlsTrust": {
+    "title": "Autoriser les certificats non valides",
+    "description": "Ignore la vérification du certificat pour l'adresse de ce fournisseur uniquement. À utiliser pour un serveur que vous gérez vous-même, comme une passerelle avec un certificat auto-signé. Désactivé par défaut.",
+    "warning": "La vérification du certificat est désactivée pour ce fournisseur. Toute personne sur le chemin réseau peut lire et modifier ses requêtes, y compris votre clé d'API. Désactivez-la sauf si vous faites confiance au réseau."
+  },
   "customHeaders": {
     "title": "En-têtes personnalisés",
     "description": "En-têtes HTTP supplémentaires envoyés avec chaque requête à ce fournisseur, comme un tenant de passerelle ou une clé d'abonnement. Ils ne peuvent pas remplacer la clé API.",

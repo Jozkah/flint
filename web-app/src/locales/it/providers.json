@@ -155,6 +155,11 @@
     "removeKey": "Rimuovi chiave"
   },
   "dataFolderUnavailable": "La cartella dati {{path}} non ha potuto essere usata in questa esecuzione, quindi Flint mostra i modelli nella sua cartella predefinita. I modelli lì conservati non vengono eliminati: torneranno quando quella cartella sarà di nuovo disponibile. Vedi Impostazioni > Generale.",
+  "tlsTrust": {
+    "title": "Consenti certificati non validi",
+    "description": "Salta la verifica del certificato solo per l'indirizzo di questo provider. Usalo per un server che gestisci tu, come un gateway con certificato autofirmato. Disattivato per impostazione predefinita.",
+    "warning": "La verifica del certificato è disattivata per questo provider. Chiunque si trovi sul percorso di rete può leggere e modificare le sue richieste, inclusa la tua chiave API. Disattivala a meno che tu non ti fidi della rete."
+  },
   "customHeaders": {
     "title": "Intestazioni personalizzate",
     "description": "Intestazioni HTTP aggiuntive inviate con ogni richiesta a questo provider, come un tenant del gateway o una chiave di sottoscrizione. Non possono sostituire la chiave API.",

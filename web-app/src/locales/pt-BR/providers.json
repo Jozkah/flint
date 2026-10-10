@@ -155,6 +155,11 @@
     "removeKey": "Remover chave"
   },
   "dataFolderUnavailable": "A pasta de dados {{path}} não pôde ser usada nesta execução, então o Flint está mostrando os modelos da sua pasta padrão. Os modelos armazenados lá não são excluídos: eles voltam assim que essa pasta estiver disponível novamente. Veja Configurações > Geral.",
+  "tlsTrust": {
+    "title": "Permitir certificados inválidos",
+    "description": "Ignora a verificação do certificado somente para o endereço deste provedor. Use para um servidor que você mesmo administra, como um gateway com certificado autoassinado. Desativado por padrão.",
+    "warning": "A verificação do certificado está desativada para este provedor. Qualquer pessoa no caminho da rede pode ler e alterar suas requisições, inclusive sua chave de API. Desative, a menos que você confie na rede."
+  },
   "customHeaders": {
     "title": "Cabeçalhos personalizados",
     "description": "Cabeçalhos HTTP extras enviados com toda requisição a este provedor, como um tenant de gateway ou chave de assinatura. Eles não podem substituir a chave de API.",

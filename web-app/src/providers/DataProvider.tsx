@@ -178,6 +178,43 @@ const syncRemoteProviders = () => {
   }
 
   registeredProviderNames = currentActive
+
+  syncTlsTrust(providers)
+}
+
+// Providers the backend currently skips certificate verification for, so a
+// provider that was switched off or removed is cleared there too.
+let trustedProviderNames = new Set<string>()
+
+// "Allow invalid certificates" is per provider and applies to that provider's
+// own base URL only. Sent for keyless providers as well (the usual case for a
+// self-signed gateway), which `registerRemoteProvider` skips.
+function syncTlsTrust(providers: ModelProvider[]) {
+  const now = new Set<string>()
+  providers.forEach((provider) => {
+    if (provider.provider === 'llamacpp') return
+    const allow = provider.allow_invalid_certs === true && !!provider.base_url
+    if (allow) now.add(provider.provider)
+    if (allow || trustedProviderNames.has(provider.provider)) {
+      hostInvoke('set_provider_tls_trust', {
+        provider: provider.provider,
+        baseUrl: provider.base_url ?? null,
+        allowInvalidCerts: allow,
+      }).catch(() => {})
+    }
+  })
+  // A provider removed from the list while it was trusted.
+  const listed = new Set(providers.map((p) => p.provider))
+  trustedProviderNames.forEach((name) => {
+    if (!listed.has(name)) {
+      hostInvoke('set_provider_tls_trust', {
+        provider: name,
+        baseUrl: null,
+        allowInvalidCerts: false,
+      }).catch(() => {})
+    }
+  })
+  trustedProviderNames = now
 }
 
 // MLX honors only these samplers; map Flint's setting keys to MLX request-body
