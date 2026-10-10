@@ -149,6 +149,10 @@ export class DefaultModelsService implements ModelsService {
 
     return engine
       .load(model, settings, false, bypassAutoUnload)
+      .then(async (session) => {
+        await this.syncLoadedModels(engine, provider, model)
+        return session
+      })
       .catch((error) => {
         console.error(
           `Failed to start model ${model} for provider ${provider.provider}:`,
@@ -166,6 +170,31 @@ export class DefaultModelsService implements ModelsService {
           app.updateModelLoadProgress(undefined)
         }
       })
+  }
+
+  /**
+   * Only settings pages wrote the app-wide loaded list, so a model loaded by a
+   * chat or the API server left the sidebar count behind until a page change.
+   * Record what the engine now has loaded for this provider: its new model in,
+   * and any of its models it unloaded to make room out. Other providers' ids
+   * are left as they are.
+   */
+  private async syncLoadedModels(
+    engine: AIEngine,
+    provider: ProviderObject,
+    model: string
+  ): Promise<void> {
+    try {
+      const loaded = await engine.getLoadedModels()
+      if (!Array.isArray(loaded)) return
+      const ours = new Set(provider.models.map((m) => m.id))
+      const app = useAppState.getState()
+      const kept = app.activeModels.filter((id) => !ours.has(id))
+      const next = Array.from(new Set([...kept, ...loaded, model]))
+      app.setActiveModels(next)
+    } catch {
+      // The list is a display aid; a failed read must not fail the load.
+    }
   }
 
   private reloadingModels = new Map<

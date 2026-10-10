@@ -387,6 +387,49 @@ describe('DefaultModelsService - additional coverage', () => {
       })
     })
 
+    describe('the app-wide loaded-model list', () => {
+      const provider = {
+        provider: 'llamacpp',
+        models: [{ id: 'm1' }, { id: 'm2' }],
+      } as any
+
+      beforeEach(() => {
+        useAppState.setState({ activeModels: [] })
+      })
+
+      it('gains a model loaded from chat or the API server', async () => {
+        // Only settings pages used to write this list, so the sidebar kept
+        // reading 0 while a model loaded elsewhere was answering.
+        mockEngine.getLoadedModels
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce(['m1'])
+        mockEngine.load.mockResolvedValue({ id: 'session' })
+        await svc.startModel(provider, 'm1')
+        expect(useAppState.getState().activeModels).toEqual(['m1'])
+      })
+
+      it('drops a model of the same provider the engine unloaded to make room', async () => {
+        useAppState.setState({ activeModels: ['m2', 'remote-only'] })
+        mockEngine.getLoadedModels
+          .mockResolvedValueOnce(['m2'])
+          .mockResolvedValueOnce(['m1'])
+        mockEngine.load.mockResolvedValue({ id: 'session' })
+        await svc.startModel(provider, 'm1')
+        expect(useAppState.getState().activeModels.sort()).toEqual([
+          'm1',
+          'remote-only',
+        ])
+      })
+
+      it('is left alone when the load fails', async () => {
+        useAppState.setState({ activeModels: ['m2'] })
+        mockEngine.getLoadedModels.mockResolvedValue([])
+        mockEngine.load.mockRejectedValue(new Error('boom'))
+        await expect(svc.startModel(provider, 'm1')).rejects.toThrow('boom')
+        expect(useAppState.getState().activeModels).toEqual(['m2'])
+      })
+    })
+
     it('handles model not found in provider models list', async () => {
       mockEngine.getLoadedModels.mockResolvedValue({ includes: () => false })
       mockEngine.load.mockResolvedValue({ id: 'session' })
