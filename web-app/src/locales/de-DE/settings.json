@@ -187,7 +187,9 @@
     "transcriptViewThinking": "Denken",
     "transcriptViewThinkingDesc": "Zeigt zusätzlich die Überlegungen des Modells. Tool-Aufrufe bleiben eingeklappt.",
     "transcriptViewVerbose": "Ausführlich",
-    "transcriptViewVerboseDesc": "Alles: vollständige Überlegungen und jeder Tool-Aufruf geöffnet mit Parametern und Ausgabe."
+    "transcriptViewVerboseDesc": "Alles: vollständige Überlegungen und jeder Tool-Aufruf geöffnet mit Parametern und Ausgabe.",
+    "inlineCitations": "Quellensymbole im Text",
+    "inlineCitationsDesc": "Zeigt hinter einem Satz aus einer Webquelle ein kleines Website-Symbol. Schalte es aus, um die Antwort ohne Symbole zu lesen; die Quellen bleiben darunter aufgelistet."
   },
   "hardware": {
     "os": "Betriebssystem",

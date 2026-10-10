@@ -187,7 +187,9 @@
     "transcriptViewThinking": "思考",
     "transcriptViewThinkingDesc": "额外显示模型的推理。工具调用保持折叠。",
     "transcriptViewVerbose": "详细",
-    "transcriptViewVerboseDesc": "全部显示：完整推理，以及展开参数和输出的每个工具调用。"
+    "transcriptViewVerboseDesc": "全部显示：完整推理，以及展开参数和输出的每个工具调用。",
+    "inlineCitations": "行内来源图标",
+    "inlineCitationsDesc": "在来自网络来源的句子后显示小型网站图标。关闭后可无图标阅读回答,来源仍会列在下方。"
   },
   "hardware": {
     "os": "操作系统",

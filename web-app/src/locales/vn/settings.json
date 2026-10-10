@@ -187,7 +187,9 @@
     "transcriptViewThinking": "Suy luận",
     "transcriptViewThinkingDesc": "Thêm phần suy luận của mô hình. Lệnh gọi công cụ vẫn được gộp.",
     "transcriptViewVerbose": "Chi tiết",
-    "transcriptViewVerboseDesc": "Mọi thứ: toàn bộ suy luận và mỗi lệnh gọi công cụ mở kèm tham số và kết quả."
+    "transcriptViewVerboseDesc": "Mọi thứ: toàn bộ suy luận và mỗi lệnh gọi công cụ mở kèm tham số và kết quả.",
+    "inlineCitations": "Biểu tượng nguồn trong văn bản",
+    "inlineCitationsDesc": "Hiển thị biểu tượng trang nhỏ sau câu lấy từ nguồn web. Tắt để đọc câu trả lời không có biểu tượng; các nguồn vẫn được liệt kê bên dưới."
   },
   "hardware": {
     "os": "Hệ điều hành",

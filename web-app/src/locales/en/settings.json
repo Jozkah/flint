@@ -187,7 +187,9 @@
     "transcriptViewThinking": "Thinking",
     "transcriptViewThinkingDesc": "Adds the model's reasoning. Tool calls stay folded.",
     "transcriptViewVerbose": "Verbose",
-    "transcriptViewVerboseDesc": "Everything: full reasoning and every tool call open with its parameters and output."
+    "transcriptViewVerboseDesc": "Everything: full reasoning and every tool call open with its parameters and output.",
+    "inlineCitations": "Inline source icons",
+    "inlineCitationsDesc": "Show a small site icon after a sentence that comes from a web source. Turn this off to read the answer without them; the sources stay listed below it."
   },
   "hardware": {
     "os": "Operating System",

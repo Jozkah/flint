@@ -189,7 +189,9 @@
     "transcriptViewThinking": "Uvažování",
     "transcriptViewThinkingDesc": "Přidá uvažování modelu. Volání nástrojů zůstanou sbalená.",
     "transcriptViewVerbose": "Podrobné",
-    "transcriptViewVerboseDesc": "Vše: celé uvažování a každé volání nástroje otevřené s parametry a výstupem."
+    "transcriptViewVerboseDesc": "Vše: celé uvažování a každé volání nástroje otevřené s parametry a výstupem.",
+    "inlineCitations": "Ikony zdrojů v textu",
+    "inlineCitationsDesc": "Za větou, která pochází z webového zdroje, zobrazí malou ikonu webu. Vypněte, chcete-li odpověď číst bez nich; zdroje zůstanou uvedeny pod ní."
   },
   "hardware": {
     "os": "Operační systém",

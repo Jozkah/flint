@@ -190,7 +190,9 @@
     "transcriptViewVerbose": "Detallada",
     "transcriptViewVerboseDesc": "Tot: el raonament complet i cada crida d'eina oberta amb paràmetres i resultat.",
     "chatWidth": "Amplada del xat",
-    "chatWidthDesc": "Tria una amplada predefinida que s’adapti al teu espai."
+    "chatWidthDesc": "Tria una amplada predefinida que s’adapti al teu espai.",
+    "inlineCitations": "Icones de font en línia",
+    "inlineCitationsDesc": "Mostra una icona petita del lloc després d'una frase que prové d'una font web. Desactiva-ho per llegir la resposta sense icones; les fonts continuen llistades a sota."
   },
   "hardware": {
     "os": "Sistema operatiu",

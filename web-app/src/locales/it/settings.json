@@ -188,7 +188,9 @@
     "transcriptViewThinking": "Ragionamento",
     "transcriptViewThinkingDesc": "Aggiunge il ragionamento del modello. Le chiamate agli strumenti restano raccolte.",
     "transcriptViewVerbose": "Dettagliata",
-    "transcriptViewVerboseDesc": "Tutto: il ragionamento completo e ogni chiamata a strumento aperta con parametri e output."
+    "transcriptViewVerboseDesc": "Tutto: il ragionamento completo e ogni chiamata a strumento aperta con parametri e output.",
+    "inlineCitations": "Icone delle fonti nel testo",
+    "inlineCitationsDesc": "Mostra una piccola icona del sito dopo una frase che proviene da una fonte web. Disattivala per leggere la risposta senza icone; le fonti restano elencate sotto."
   },
   "hardware": {
     "os": "Sistema operativo",

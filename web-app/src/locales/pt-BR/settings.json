@@ -188,7 +188,9 @@
     "transcriptViewThinking": "Raciocínio",
     "transcriptViewThinkingDesc": "Adiciona o raciocínio do modelo. Chamadas de ferramentas continuam recolhidas.",
     "transcriptViewVerbose": "Detalhada",
-    "transcriptViewVerboseDesc": "Tudo: raciocínio completo e cada chamada de ferramenta aberta com parâmetros e saída."
+    "transcriptViewVerboseDesc": "Tudo: raciocínio completo e cada chamada de ferramenta aberta com parâmetros e saída.",
+    "inlineCitations": "Ícones de fonte no texto",
+    "inlineCitationsDesc": "Mostra um pequeno ícone do site depois de uma frase que vem de uma fonte da web. Desative para ler a resposta sem eles; as fontes continuam listadas abaixo."
   },
   "hardware": {
     "os": "Sistema Operacional",
