@@ -1582,8 +1582,10 @@ pub async fn with_read_success<F: std::future::Future>(work: F) -> (F::Output, O
 /// forgets that session's records, which only asks the model to read again.
 const MAX_TRACKED_FILES: usize = 4096;
 
-fn read_hashes() -> &'static Mutex<HashMap<String, HashMap<PathBuf, [u8; 32]>>> {
-    static HASHES: OnceLock<Mutex<HashMap<String, HashMap<PathBuf, [u8; 32]>>>> = OnceLock::new();
+type ReadHashes = Mutex<HashMap<String, HashMap<PathBuf, [u8; 32]>>>;
+
+fn read_hashes() -> &'static ReadHashes {
+    static HASHES: OnceLock<ReadHashes> = OnceLock::new();
     HASHES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
