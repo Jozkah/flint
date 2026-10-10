@@ -330,7 +330,8 @@
     "continue": "Continue",
     "toShort": "To",
     "placeholderTo": "Write to {{name}}…",
-    "mention": "Mention a participant"
+    "mention": "Mention a participant",
+    "dropSkipped": "Not added (not text, a folder, or past the message limit): {{files}}"
   },
   "kpi": {
     "running": "Running",

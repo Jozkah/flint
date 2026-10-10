@@ -97,3 +97,39 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   // Inside an open dialog or a menu, the shortcut is not ours to take.
   return Boolean(el.closest('[role="dialog"], [role="menu"], [contenteditable="true"]'))
 }
+
+/**
+ * Dropped files as fenced blocks for a text-only composer (Rooms).
+ *
+ * A room message is plain text, so a file can only be sent as its contents.
+ * Anything that is not text (an image, an archive, a file with a NUL byte) is
+ * skipped and named, and the whole result stays within `budget` characters
+ * so the message can still be sent.
+ */
+export function inlineDroppedTexts(
+  items: Array<{ name: string; text: string }>,
+  budget: number
+): { text: string; skipped: string[] } {
+  const blocks: string[] = []
+  const skipped: string[] = []
+  let used = 0
+  for (const { name, text } of items) {
+    if (text.includes('\u0000')) {
+      skipped.push(name)
+      continue
+    }
+    const fence = text.includes('```') ? '~~~~' : '```'
+    const head = name + '\n' + fence + '\n'
+    const tail = '\n' + fence
+    const room = budget - used - head.length - tail.length - 2
+    if (room <= 0) {
+      skipped.push(name)
+      continue
+    }
+    const body = text.length > room ? text.slice(0, room) : text
+    const block = head + body + tail
+    blocks.push(block)
+    used += block.length + 2
+  }
+  return { text: blocks.join('\n\n'), skipped }
+}
