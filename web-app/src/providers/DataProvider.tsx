@@ -1,4 +1,5 @@
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 
 import {
   useGeneralSetting,
@@ -249,6 +250,11 @@ export function DataProvider() {
     console.log('Initializing DataProvider...')
     serviceHub.providers().getProviders().then(async (fetched) => {
       setProviders(fetched)
+      // Stars saved before they recorded a provider belong to the providers
+      // that list the model.
+      useFavoriteModel
+        .getState()
+        .assignLegacyProviders(useModelProvider.getState().providers)
       // Seed keyring keys into the merged store (predefined + engine + custom).
       await applyKeyringKeys()
       await applySecretHeaderValues()
