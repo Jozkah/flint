@@ -671,6 +671,11 @@ pub fn build_app() -> tauri::App {
         |_ctx, request| core::preview::handle(request.uri().path()),
     );
 
+    // The Settings HTTPS proxy reaches the web search providers' API clients.
+    tauri_plugin_websearch::provider::set_proxy_hook(Box::new(|url| {
+        core::net::proxy::configured().and_then(|p| p.proxy_for(url))
+    }));
+
     let mut app_builder = builder
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())

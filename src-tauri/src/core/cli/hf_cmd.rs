@@ -27,8 +27,7 @@ fn client(token: Option<&str>) -> Result<reqwest::Client, String> {
             .map_err(|_| "Invalid Hugging Face token".to_string())?;
         headers.insert(reqwest::header::AUTHORIZATION, value);
     }
-    reqwest::Client::builder()
-        .default_headers(headers)
+    crate::core::net::tls::apply12(reqwest::Client::builder().default_headers(headers))
         .build()
         .map_err(|e| format!("Could not create Hugging Face client: {e}"))
 }
