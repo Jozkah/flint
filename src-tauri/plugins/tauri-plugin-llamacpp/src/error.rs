@@ -7,6 +7,8 @@ pub enum ErrorCode {
     ModelLoadFailed,
     ModelArchNotSupported,
     ModelLoadTimedOut,
+    /// The user cancelled the load; not a failure to report.
+    ModelLoadCancelled,
     MissingSharedLibrary,
     GpuDriverTooOld,
     CpuNotSupported,
@@ -351,6 +353,7 @@ mod tests {
             (ErrorCode::ModelLoadFailed, "MODEL_LOAD_FAILED"),
             (ErrorCode::ModelArchNotSupported, "MODEL_ARCH_NOT_SUPPORTED"),
             (ErrorCode::ModelLoadTimedOut, "MODEL_LOAD_TIMED_OUT"),
+            (ErrorCode::ModelLoadCancelled, "MODEL_LOAD_CANCELLED"),
             (ErrorCode::MissingSharedLibrary, "MISSING_SHARED_LIBRARY"),
             (ErrorCode::GpuDriverTooOld, "GPU_DRIVER_TOO_OLD"),
             (ErrorCode::CpuNotSupported, "CPU_NOT_SUPPORTED"),

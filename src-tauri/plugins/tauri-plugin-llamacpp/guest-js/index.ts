@@ -45,6 +45,29 @@ export async function unloadLlamaModel(modelId: string): Promise<UnloadResult> {
   return await invoke('plugin:llamacpp|unload_llama_model', { modelId })
 }
 
+export interface CancelLoadResult {
+  /** A load of the model was in flight and has been abandoned. */
+  cancelled: boolean
+  /** The worker was stopped to end the load; the next load starts afresh. */
+  engine_stopped: boolean
+}
+
+/**
+ * Cancels the in-progress load of a model. The engine cannot abort a load in
+ * place: with `keepWorker` false the worker is stopped (ending the load and
+ * freeing its memory), with it true the wait is abandoned and the model is
+ * unloaded once the worker finishes it, so other resident models stay loaded.
+ */
+export async function cancelModelLoad(
+  modelId: string,
+  keepWorker: boolean
+): Promise<CancelLoadResult> {
+  return await invoke('plugin:llamacpp|cancel_model_load', {
+    modelId,
+    keepWorker,
+  })
+}
+
 export async function ensureSessionReady(
   modelId: string,
   isEmbedding: boolean = false
