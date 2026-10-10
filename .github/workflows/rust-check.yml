@@ -1,6 +1,23 @@
 name: Rust Check
 on:
   workflow_dispatch:
+  # Free hosted runners only. A PR touching the Rust side gets cargo check and
+  # clippy; the push to main is what populates the rust-cache (jobs below save
+  # the cache only on refs/heads/main), so PRs restore a warm cache.
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src-tauri/**'
+      - 'protocol/**'
+      - 'scripts/stub-tauri-resources.sh'
+      - '.github/workflows/rust-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/**'
+      - 'protocol/**'
+      - 'scripts/stub-tauri-resources.sh'
+      - '.github/workflows/rust-check.yml'
 
 concurrency:
   group: rust-check-${{ github.ref }}

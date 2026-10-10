@@ -1,6 +1,23 @@
 name: Linter & Test
 on:
   workflow_dispatch:
+  # PRs to main run the Ubuntu job only (script tests, locale parity, action
+  # pins, make test-ci, check-cli). macOS and Windows run on the push to main
+  # and on manual dispatch, so a PR does not fan out into three full builds.
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'website/**'
+      - '**/*.md'
+      - '**/*.mdx'
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'website/**'
+      - '**/*.md'
+      - '**/*.mdx'
 
 concurrency:
   group: linter-test-${{ github.ref }}
@@ -102,7 +119,7 @@ jobs:
 
   test-on-macos:
     runs-on: 'macos-latest'
-    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Getting the repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -179,7 +196,9 @@ jobs:
           make test
 
   test-on-windows-pr:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    # windows-latest is a free hosted runner; it runs on the push to main and on
+    # dispatch, not on every PR push.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: 'windows-latest'
     steps:
       - name: Getting the repo
