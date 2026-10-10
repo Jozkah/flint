@@ -1457,6 +1457,13 @@
       "needsMmproj": "This local model needs an mmproj file before it can see. Add one from the model's settings, then attach the image again."
     }
   },
+  "pastedPath": {
+    "file": "Attach \"{{name}}\" to this message?",
+    "folder": "Attach folder \"{{name}}\" to this session?",
+    "attach": "Attach",
+    "dismiss": "Dismiss",
+    "failed": "Could not attach the file"
+  },
   "drop": {
     "openInCode": "Drop to open — read-only",
     "attachToMessage": "Drop to attach to your message",

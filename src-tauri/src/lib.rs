@@ -913,6 +913,15 @@ pub fn build_app() -> tauri::App {
                 core::window_state::install(&window, data_folder);
                 suppress_beforeunload_dialog(&window);
             }
+            #[cfg(all(
+                not(windows),
+                not(any(target_os = "android", target_os = "ios"))
+            ))]
+            if let Some(window) = app.get_webview_window("main") {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                core::window_state::restore_and_show(&window, &data_folder);
+                core::window_state::install(&window, data_folder);
+            }
             // Remote access: off unless the user turned it on; if so the
             // listener starts now, with the settings they left.
             #[cfg(not(any(target_os = "android", target_os = "ios")))]

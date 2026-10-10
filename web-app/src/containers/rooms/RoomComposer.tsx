@@ -16,6 +16,8 @@ import { SlashCommandMenu } from '@/components/SlashCommandMenu'
 import { slashOptionId } from '@/lib/slashCommands'
 import { useSlashCommands } from '@/hooks/useSlashCommands'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
+import { DropRim } from '@/components/ui/drop-rim'
+import { dragHasFiles, inlineDroppedTexts, looksLikeDirectory } from '@/lib/fileDrop'
 
 const toValue = (a: Address) =>
   a.kind === 'participant' ? `participant:${a.participantId}` : a.kind
@@ -38,6 +40,7 @@ export function RoomComposer({ room }: { room: Room }) {
   const [error, setError] = useState<RoomsUiError | null>(null)
   const [extendBy, setExtendBy] = useState(3)
   const textRef = useRef<HTMLTextAreaElement>(null)
+  const [dragOver, setDragOver] = useState(false)
   // The same `/` commands as the other composers, filtered for Rooms; a
   // command expands into the message the room receives.
   const [clearOpen, setClearOpen] = useState(false)
@@ -164,6 +167,33 @@ export function RoomComposer({ room }: { room: Room }) {
     document.getElementById(`${id}-to-${next.value}`)?.focus()
   }
 
+  // A room message is text, so a dropped file is added as its contents.
+  const dropFiles = async (dropped: File[]) => {
+    const folders = dropped.filter((f) => looksLikeDirectory(f)).map((f) => f.name)
+    const read = await Promise.all(
+      dropped
+        .filter((f) => !looksLikeDirectory(f))
+        .map(async (f) => ({
+          name: f.name,
+          text: /^(image|audio|video)\//.test(f.type)
+            ? '\u0000'
+            : await f.text().catch(() => '\u0000'),
+        }))
+    )
+    const budget = ROOM_LIMIT_CEILINGS.maxTextLength - text.length - (text ? 2 : 0)
+    const { text: added, skipped } = inlineDroppedTexts(read, budget)
+    if (added) {
+      changeText(text ? text + '\n\n' + added : added)
+      textRef.current?.focus()
+    }
+    const unread = [...folders, ...skipped]
+    setError(
+      unread.length > 0
+        ? { message: t('rooms:composer.dropSkipped', { files: unread.join(', ') }) }
+        : null
+    )
+  }
+
   const mention = () => {
     setText((v) => v + (v && !v.endsWith(' ') ? ' @' : '@'))
     textRef.current?.focus()
@@ -180,12 +210,28 @@ export function RoomComposer({ room }: { room: Room }) {
         onClear={(scope) => void clear(scope)}
       />
       <form
+        data-drop-zone="true"
+        onDragOver={(e) => {
+          if (!dragHasFiles(e.dataTransfer)) return
+          e.preventDefault()
+          setDragOver(true)
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false)
+        }}
+        onDrop={(e) => {
+          if (!dragHasFiles(e.dataTransfer)) return
+          e.preventDefault()
+          setDragOver(false)
+          void dropFiles(Array.from(e.dataTransfer.files))
+        }}
         className="relative z-10 mx-auto flex w-full max-w-[780px] flex-col rounded-xl border-[0.8px] border-border bg-card shadow-[0_4px_14px_rgba(0,0,0,.04)] transition-[border-color,box-shadow,transform] duration-300 ease-expo focus-within:border-border-strong focus-within:shadow-[0_0_0_3px_rgba(156,163,175,.18),0_12px_30px_-12px_rgba(0,0,0,.25)] motion-safe:focus-within:-translate-y-0.5"
         onSubmit={(e) => {
           e.preventDefault()
           void (limitStop ? extend() : send())
         }}
       >
+        <DropRim active={dragOver} />
         {limitStop && (
           <p
             className="mx-2.5 mt-2.5 rounded-lg bg-warning-tint px-2.5 py-1.5 text-xs text-warning"
