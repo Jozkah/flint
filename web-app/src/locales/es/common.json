@@ -73,6 +73,9 @@
     "back": "Atrás",
     "forward": "Adelante",
     "close": "Cerrar vista previa",
+    "copyUrl": "Copiar URL",
+    "urlCopied": "URL copiada",
+    "copyFailed": "No se pudo copiar la URL",
     "blockedBanner": "Es posible que este sitio bloquee la inserción. Ábrelo en tu navegador o en una ventana aparte.",
     "interceptSetting": "Abrir enlaces en una vista previa integrada",
     "interceptSettingDesc": "Si está activado, al hacer clic en un enlace web se abre en un panel de vista previa en lugar de en tu navegador.",
@@ -574,6 +577,13 @@
   "modelSettings": {
     "title": "Configuración del modelo - {{modelId}}",
     "description": "Configura los ajustes del modelo para optimizar el rendimiento y el comportamiento.",
+    "visionProjector": {
+      "title": "Proyector de visión (mmproj)",
+      "paired": "Emparejado",
+      "none": "Ninguno",
+      "pairedHint": "Este modelo admite imágenes como entrada. El proyector se elige al importar el modelo; impórtalo de nuevo para usar otro.",
+      "noneHint": "Sin un proyector de visión, este modelo no puede leer imágenes. Importa el modelo de nuevo con Multimodal activado y elige su archivo mmproj; un proyector junto al archivo del modelo se encuentra automáticamente."
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "Parámetros de muestreo predeterminados",
@@ -588,7 +598,9 @@
       "nMin": "Mín. de tokens borrador",
       "nMinDescription": "Número mínimo de tokens a redactar por paso. Predeterminado 0.",
       "pMin": "Probabilidad mínima del borrador",
-      "pMinDescription": "Probabilidad mínima para el borrador voraz (0–1). Predeterminado 0.75."
+      "pMinDescription": "Probabilidad mínima para el borrador voraz (0–1). Predeterminado 0.75.",
+      "probabilistic": "Muestrear el borrador",
+      "probabilisticDescription": "Muestrea los tokens del borrador en lugar de tomar el más probable y los verifica mediante muestreo por rechazo. Así se mantiene la aceleración cuando la temperatura es superior a 0. Desactivado de forma predeterminada; se ignora para los borradores DFlash, que necesitan verificación voraz."
     },
     "templateKwargs": {
       "section": "Opciones de la plantilla de chat",
@@ -695,6 +707,9 @@
       "assistant": "Asistente",
       "selectAssistant": "Selecciona un asistente (opcional)",
       "noAssistant": "Sin asistente",
+      "model": "Modelo predeterminado",
+      "selectModel": "Usar la elección del selector de modelos",
+      "noModel": "Sin modelo predeterminado",
       "addAssistant": "Agregar asistente",
       "createButton": "Crear",
       "updateButton": "Actualizar",
@@ -1056,6 +1071,7 @@
     "stopped": "Detenido.",
     "failed": "La ejecución se detuvo antes de tiempo.",
     "tryAgain": "Intentar de nuevo",
+    "attachFolder": "Adjuntar una carpeta",
     "deadline": "Detenido: esta ejecución alcanzó su límite de tiempo.",
     "timeout": "Detenido: el modelo dejó de responder.",
     "loop": "Detenido: la ejecución se repetía sin avanzar.",
@@ -1466,6 +1482,13 @@
       "enable": "Activar la visión",
       "needsMmproj": "Este modelo local necesita un archivo mmproj para poder ver. Añade uno desde los ajustes del modelo y vuelve a adjuntar la imagen."
     }
+  },
+  "pastedPath": {
+    "file": "¿Adjuntar «{{name}}» a este mensaje?",
+    "folder": "¿Adjuntar la carpeta «{{name}}» a esta sesión?",
+    "attach": "Adjuntar",
+    "dismiss": "Descartar",
+    "failed": "No se pudo adjuntar el archivo"
   },
   "drop": {
     "openInCode": "Suelta para abrir: solo lectura",
@@ -1997,6 +2020,7 @@
     "serverStopped": "API local desactivada"
   },
   "shell": {
+    "discover": "Descubrir",
     "openNavigation": "Abrir navegación",
     "closeNavigation": "Cerrar navegación",
     "showContent": "Contenido",
@@ -2062,6 +2086,9 @@
       "closed": "Cerrada sin fusionar"
     },
     "overview": "Resumen",
+    "resume": "Reanudar y uso",
+    "more": "Más",
+    "advanced": "Avanzado",
     "usageOverview": "Resumen de uso",
     "movedTo": "Movido a {{name}}",
     "notifications": "Notificaciones",
@@ -2480,6 +2507,11 @@
   "openclawAgent": "Agente OpenClaw",
   "voicePill": {
     "cancel": "Cancelar"
+  },
+  "coworkRunSettings": {
+    "label": "Ajustes de la ejecución",
+    "title": "Cómo funciona esta ejecución",
+    "effort": "Esfuerzo: {{level}}"
   },
   "motionMedia": {
     "queued": "En cola",

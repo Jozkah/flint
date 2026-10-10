@@ -11,6 +11,9 @@
   "noNewModels": "Nessun nuovo modello trovato. Tutti i modelli disponibili sono già stati aggiunti.",
   "refreshModelsFailed": "Impossibile recuperare i modelli da {{provider}}. Verifica la chiave API e l'URL di base.",
   "models": "Modelli",
+  "filterModels": "Filtra {{count}} modelli",
+  "modelsShown": "Mostrati {{shown}} di {{total}}",
+  "showMoreModels": "Mostra altro",
   "backendInstalled": "Installato",
   "backendHistoryShow": "Mostra la cronologia degli aggiornamenti",
   "backendHistoryHide": "Nascondi la cronologia degli aggiornamenti",
@@ -73,6 +76,8 @@
     "modelExists": "Il modello esiste già",
     "modelExistsDesc": "Scegli un ID modello diverso."
   },
+  "revealModelFile": "Mostra il file del modello nella cartella",
+  "revealModelFileFailed": "Impossibile aprire la cartella del modello.",
   "deleteModel": {
     "title": "Elimina modello: {{modelId}}",
     "description": "Sei sicuro di voler eliminare questo modello? Questa azione non può essere annullata.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Elimina tutto",
+    "repoTitle": "Eliminare questo modello scaricato?",
+    "clearButton": "Svuota elenco",
+    "clearTitle": "Rimuovere tutti i modelli di questo provider?",
+    "clearDescription": "Questo rimuove {{count}} modello/i dall'elenco. Nulla viene eliminato lato provider e Aggiorna può riaggiungerli.",
     "title": "Eliminare tutti i modelli scaricati?",
     "description": "Questo rimuoverà definitivamente {{count}} modello/i dal disco.",
     "sizeLabel": "Spazio su disco da liberare:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Inserisci il nome del provider",
   "baseUrl": {
     "title": "URL di base",
+    "openaiDescription": "Usa un proxy o un gateway compatibile con l'API OpenAI. Il valore predefinito è https://api.openai.com/v1.",
     "azureDescription": "Il tuo endpoint Azure OpenAI. Sostituisci YOUR-RESOURCE-NAME con il nome della tua risorsa Azure.",
     "qwenDescription": "Il tuo endpoint Model Studio. Una chiave funziona solo nella regione in cui è stata creata: usa https://dashscope-intl.aliyuncs.com/compatible-mode/v1 per Singapore o https://dashscope.aliyuncs.com/compatible-mode/v1 per la Cina continentale."
   },

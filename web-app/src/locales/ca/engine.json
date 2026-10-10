@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Instal·lats",
     "installedSub": "{{local}} locals · {{remote}} remots",
+    "remoteAvailableSub": "{{count}} models remots disponibles",
     "loaded": "Carregats ara",
     "loadedSub": "de {{count}} models locals",
     "disk": "Disc usat",
@@ -61,7 +62,8 @@
     "off": "Desactivat",
     "loaded": "Carregat",
     "ready": "A punt",
-    "noKey": "Sense clau d'API"
+    "noKey": "Sense clau d'API",
+    "keyless": "No cal clau"
   },
   "installed": {
     "title": "Models instal·lats",

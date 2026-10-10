@@ -11,6 +11,7 @@
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "Clau d'API",
   "apiKeyPlaceholder": "Enganxa la teva clau d'API",
+  "apiKeyOptionalPlaceholder": "Enganxa la teva clau d'API (opcional)",
   "invalidBaseUrl": "L'URL base ha de ser un URL http(s) vàlid",
   "globalSettings": "Configuració global",
   "stripReasoning": "Elimina el raonament del context",

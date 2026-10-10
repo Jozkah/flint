@@ -71,6 +71,9 @@
     "back": "Kembali",
     "forward": "Maju",
     "close": "Tutup pratinjau",
+    "copyUrl": "Salin URL",
+    "urlCopied": "URL disalin",
+    "copyFailed": "Tidak dapat menyalin URL",
     "blockedBanner": "Situs ini mungkin memblokir penyematan. Buka di browser Anda atau keluarkan ke jendela.",
     "interceptSetting": "Buka tautan di pratinjau dalam aplikasi",
     "interceptSettingDesc": "Saat aktif, mengklik tautan web membukanya di panel pratinjau, bukan di browser Anda.",
@@ -566,6 +569,13 @@
   "modelSettings": {
     "title": "Pengaturan Model - {{modelId}}",
     "description": "Konfigurasikan pengaturan model untuk mengoptimalkan kinerja dan perilaku.",
+    "visionProjector": {
+      "title": "Proyektor visi (mmproj)",
+      "paired": "Terpasang",
+      "none": "Tidak ada",
+      "pairedHint": "Model ini dapat menerima masukan gambar. Proyektor dipilih saat model diimpor; impor ulang model untuk memakai proyektor yang berbeda.",
+      "noneHint": "Tanpa proyektor visi, model ini tidak dapat membaca gambar. Impor ulang model dengan Multimodal diaktifkan dan pilih file mmproj-nya; proyektor di samping file model ditemukan secara otomatis."
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "Parameter sampling default",
@@ -580,7 +590,9 @@
       "nMin": "Min token draf",
       "nMinDescription": "Jumlah minimum token yang disusun per langkah. Default 0.",
       "pMin": "Min probabilitas draf",
-      "pMinDescription": "Probabilitas minimum untuk penyusunan greedy (0–1). Default 0,75."
+      "pMinDescription": "Probabilitas minimum untuk penyusunan greedy (0–1). Default 0,75.",
+      "probabilistic": "Sampel draf",
+      "probabilisticDescription": "Mengambil sampel token draf alih-alih memilih yang paling mungkin, lalu memverifikasinya dengan rejection sampling. Ini menjaga percepatan saat temperatur di atas 0. Nonaktif secara default; diabaikan untuk draf DFlash, yang memerlukan verifikasi greedy."
     },
     "templateKwargs": {
       "section": "Opsi templat obrolan",
@@ -688,6 +700,9 @@
       "assistant": "Asisten",
       "selectAssistant": "Pilih asisten (opsional)",
       "noAssistant": "Tanpa asisten",
+      "model": "Model default",
+      "selectModel": "Gunakan pilihan pemilih model",
+      "noModel": "Tanpa model default",
       "addAssistant": "Tambah Asisten",
       "createButton": "Buat",
       "updateButton": "Perbarui",
@@ -1041,6 +1056,7 @@
     "stopped": "Dihentikan.",
     "failed": "Eksekusi berhenti lebih awal.",
     "tryAgain": "Coba lagi",
+    "attachFolder": "Lampirkan folder",
     "deadline": "Dihentikan — eksekusi ini mencapai batas waktunya.",
     "timeout": "Dihentikan — model berhenti merespons.",
     "loop": "Dihentikan — eksekusi mengulang dirinya sendiri tanpa kemajuan.",
@@ -1418,6 +1434,13 @@
       "enable": "Aktifkan visi",
       "needsMmproj": "Model lokal ini membutuhkan file mmproj sebelum dapat melihat. Tambahkan dari pengaturan model, lalu lampirkan gambar lagi."
     }
+  },
+  "pastedPath": {
+    "file": "Lampirkan \"{{name}}\" ke pesan ini?",
+    "folder": "Lampirkan folder \"{{name}}\" ke sesi ini?",
+    "attach": "Lampirkan",
+    "dismiss": "Tutup",
+    "failed": "Tidak dapat melampirkan file"
   },
   "drop": {
     "openInCode": "Jatuhkan untuk membuka — hanya-baca",
@@ -1930,6 +1953,7 @@
     "serverStopped": "API lokal mati"
   },
   "shell": {
+    "discover": "Jelajahi",
     "openNavigation": "Buka navigasi",
     "closeNavigation": "Tutup navigasi",
     "showContent": "Konten",
@@ -1991,6 +2015,9 @@
       "closed": "Ditutup tanpa digabung"
     },
     "overview": "Ringkasan",
+    "resume": "Lanjutkan & penggunaan",
+    "more": "Lainnya",
+    "advanced": "Lanjutan",
     "usageOverview": "Ringkasan penggunaan",
     "movedTo": "Dipindahkan ke {{name}}",
     "notifications": "Notifikasi",
@@ -2391,6 +2418,11 @@
   },
   "voicePill": {
     "cancel": "Batal"
+  },
+  "coworkRunSettings": {
+    "label": "Pengaturan eksekusi",
+    "title": "Cara kerja eksekusi ini",
+    "effort": "Upaya: {{level}}"
   },
   "motionMedia": {
     "queued": "Mengantre",

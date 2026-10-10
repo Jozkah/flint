@@ -15,6 +15,7 @@
   "enterServerName": "Zadejte název serveru",
   "command": "Příkaz",
   "enterCommand": "Zadejte příkaz (uvx nebo npx)",
+  "commandHint": "Zde lze použít jakýkoli program na tomto počítači, nejen npx nebo uvx (python, docker, node, binární soubor). Běží s oprávněními vašeho uživatele, proto přidávejte jen servery, kterým důvěřujete.",
   "arguments": "Argumenty",
   "argument": "Argument {{index}}",
   "envVars": "Proměnné prostředí",

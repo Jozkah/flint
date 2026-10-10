@@ -60,5 +60,20 @@
   "reopenGuide": "Průvodce začátky",
   "reopenGuideDescription": "Znovu projděte výběr modelu, přidání materiálu a dokončení prvního úkolu.",
   "reopenGuideAction": "Otevřít průvodce",
-  "resumeRecent": "Pokračovat v poslední konverzaci: {{title}}"
+  "resumeRecent": "Pokračovat v poslední konverzaci: {{title}}",
+  "modelSetup": {
+    "title": "Jak chcete získat model?",
+    "local": {
+      "title": "Použít model na tomto počítači",
+      "body": "Prohlédněte si modely a zjistěte, které se hodí pro váš hardware."
+    },
+    "provider": {
+      "title": "Připojit poskytovatele",
+      "body": "Použijte hostovaný model s vlastním účtem."
+    },
+    "import": {
+      "title": "Importovat soubor",
+      "body": "Přidejte soubor modelu, který už máte."
+    }
+  }
 }

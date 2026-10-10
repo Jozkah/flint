@@ -72,6 +72,8 @@
     "openHint": "Buka percakapan lain yang independen di samping yang ini",
     "openHintShortcut": "Buka percakapan lain yang independen di samping yang ini ({{shortcut}})",
     "openInSplit": "Buka di tampilan terbagi",
+    "openIn": "Buka di",
+    "openInNewWindow": "Jendela baru",
     "close": "Tutup tampilan terbagi",
     "closePane": "Tutup panel ini",
     "addPane": "Tambah panel",

@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Terpasang",
     "installedSub": "{{local}} lokal · {{remote}} jarak jauh",
+    "remoteAvailableSub": "{{count}} model jarak jauh tersedia",
     "loaded": "Dimuat sekarang",
     "loadedSub": "dari {{count}} model lokal",
     "disk": "Disk terpakai",
@@ -59,7 +60,8 @@
     "off": "Mati",
     "loaded": "Dimuat",
     "ready": "Siap",
-    "noKey": "Tanpa kunci API"
+    "noKey": "Tanpa kunci API",
+    "keyless": "Tidak perlu kunci"
   },
   "installed": {
     "title": "Model terpasang",

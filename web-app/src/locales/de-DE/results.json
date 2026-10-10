@@ -11,7 +11,8 @@
     "where": "Wo das Ergebnis liegt",
     "checked": "Was geprüft wurde",
     "unresolved": "Offen",
-    "next": "Nächste Schritte"
+    "next": "Nächste Schritte",
+    "details": "Details"
   },
   "headline": {
     "running": "Der Lauf ist noch im Gange.",

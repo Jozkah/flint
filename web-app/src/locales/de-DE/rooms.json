@@ -330,7 +330,8 @@
     "continue": "Fortfahren",
     "toShort": "An",
     "placeholderTo": "An {{name}} schreiben …",
-    "mention": "Einen Teilnehmer erwähnen"
+    "mention": "Einen Teilnehmer erwähnen",
+    "dropSkipped": "Nicht hinzugefügt (kein Text, ein Ordner oder über dem Nachrichtenlimit): {{files}}"
   },
   "kpi": {
     "running": "Läuft",

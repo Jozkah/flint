@@ -72,6 +72,8 @@
     "openHint": "Apri un'altra conversazione indipendente accanto a questa",
     "openHintShortcut": "Apri un'altra conversazione indipendente accanto a questa ({{shortcut}})",
     "openInSplit": "Apri in vista divisa",
+    "openIn": "Apri in",
+    "openInNewWindow": "Nuova finestra",
     "close": "Chiudi divisione",
     "closePane": "Chiudi questo riquadro",
     "addPane": "Aggiungi riquadro",

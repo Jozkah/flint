@@ -60,5 +60,20 @@
   "reopenGuide": "Anleitung für die ersten Schritte",
   "reopenGuideDescription": "Gehe noch einmal durch, wie du ein Modell wählst, Material hinzufügst und eine erste Aufgabe abschließt.",
   "reopenGuideAction": "Anleitung öffnen",
-  "resumeRecent": "Letzte Unterhaltung fortsetzen: {{title}}"
+  "resumeRecent": "Letzte Unterhaltung fortsetzen: {{title}}",
+  "modelSetup": {
+    "title": "Wie möchtest du ein Modell bekommen?",
+    "local": {
+      "title": "Modell auf diesem Computer verwenden",
+      "body": "Durchsuche Modelle und sieh, welche zu deiner Hardware passen."
+    },
+    "provider": {
+      "title": "Anbieter verbinden",
+      "body": "Nutze ein gehostetes Modell mit deinem eigenen Konto."
+    },
+    "import": {
+      "title": "Datei importieren",
+      "body": "Füge eine Modelldatei hinzu, die du schon hast."
+    }
+  }
 }

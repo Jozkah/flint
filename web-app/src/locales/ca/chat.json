@@ -72,6 +72,8 @@
     "openHint": "Obre una altra conversa independent al costat d'aquesta",
     "openHintShortcut": "Obre una altra conversa independent al costat d'aquesta ({{shortcut}})",
     "openInSplit": "Obre en vista dividida",
+    "openIn": "Obre a",
+    "openInNewWindow": "Finestra nova",
     "close": "Tanca la divisió",
     "closePane": "Tanca aquest panell",
     "addPane": "Afegeix un panell",

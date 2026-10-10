@@ -11,7 +11,8 @@
     "where": "On és el resultat",
     "checked": "Què s'ha comprovat",
     "unresolved": "Sense resoldre",
-    "next": "Propers passos"
+    "next": "Propers passos",
+    "details": "Detalls"
   },
   "headline": {
     "running": "L'execució encara continua.",

@@ -11,6 +11,7 @@
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "Clave de API",
   "apiKeyPlaceholder": "Pega tu clave de API",
+  "apiKeyOptionalPlaceholder": "Pega tu clave de API (opcional)",
   "invalidBaseUrl": "La URL base debe ser una URL http(s) válida",
   "globalSettings": "Ajustes globales",
   "stripReasoning": "Quitar el razonamiento del contexto",
