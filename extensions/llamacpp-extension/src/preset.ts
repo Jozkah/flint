@@ -808,8 +808,28 @@ export async function generatePreset(
         lines.push(`cache-type-v = ${escapeIniValue(config.cache_type_v)}`)
       }
     }
+    // MTP either lives in the main gguf (mtp_layers > 0) or ships as a separate
+    // draft gguf (mtp_model_path), which is passed to the engine as the draft.
+    const hasMtpModel =
+      typeof mc.mtp_model_path === 'string' && mc.mtp_model_path.length > 0
+    const hasMtpLayers =
+      typeof mc.mtp_layers === 'number' && mc.mtp_layers > 0
+    const specDecoding = mc.mtp === true && (hasMtpLayers || hasMtpModel)
+
     if (typeof mc.parallel === 'number' && mc.parallel > 0) {
       lines.push(`parallel = ${mc.parallel + reservedBackgroundSlots}`)
+      if (kvUnifiedIsAuto) lines.push('kv-unified = true')
+    } else if (
+      specDecoding &&
+      !(typeof config.parallel === 'number' && config.parallel > 0)
+    ) {
+      // With parallel on auto, a speculative-decoding model gets one user slot.
+      // Every slot of a hybrid model carries (1 + spec-draft-n-max) rows of
+      // recurrent state for draft rollback, so llama.cpp's auto resolution to
+      // 4 slots overflows a 12 GB card; the driver then spills into shared
+      // system RAM and decode drops about 4x. Only a positive value, global or
+      // per-model, counts as the user's choice.
+      lines.push(`parallel = ${1 + reservedBackgroundSlots}`)
       if (kvUnifiedIsAuto) lines.push('kv-unified = true')
     }
     if (mc.cont_batching === false) {
@@ -851,14 +871,8 @@ export async function generatePreset(
       lines.push('mmproj-offload = false')
     }
 
-    // MTP either lives in the main gguf (mtp_layers > 0) or ships as a separate
-    // draft gguf (mtp_model_path), which is passed to the engine as the draft.
     let dflashActive = false
-    const hasMtpModel =
-      typeof mc.mtp_model_path === 'string' && mc.mtp_model_path.length > 0
-    const hasMtpLayers =
-      typeof mc.mtp_layers === 'number' && mc.mtp_layers > 0
-    if (mc.mtp === true && (hasMtpLayers || hasMtpModel)) {
+    if (specDecoding) {
       const specType =
         typeof mc.spec_type === 'string' && SPEC_TYPES.has(mc.spec_type)
           ? mc.spec_type
