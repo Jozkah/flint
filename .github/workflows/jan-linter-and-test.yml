@@ -14,7 +14,7 @@ jobs:
     # Restore `github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository`
     # if a pull_request trigger is added back.
     if: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,7 +59,7 @@ jobs:
     # Restore `github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository`
     # if a pull_request trigger is added back.
     if: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -221,7 +221,7 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=2048'
 
   test-on-ubuntu:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Getting the repo
@@ -290,7 +290,7 @@ jobs:
     # Restore `github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository`
     # if a pull_request trigger is added back.
     if: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [base_branch_cov, base_branch_rust_cov]
     continue-on-error: true
     steps:

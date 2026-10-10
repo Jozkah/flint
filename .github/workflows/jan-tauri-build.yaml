@@ -23,7 +23,7 @@ jobs:
   # draft, then remove stale assets so re-uploads do not 422. Published
   # releases are never touched.
   resolve-release-url:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       upload_url: ${{ steps.resolve.outputs.upload_url }}
     permissions:
@@ -103,7 +103,7 @@ jobs:
 
   sync-temp-to-latest:
     needs: [resolve-release-url, get-update-version, build-macos, build-windows-x64, build-linux-x64]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
