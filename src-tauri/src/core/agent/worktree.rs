@@ -2057,6 +2057,18 @@ mod tests {
     }
 
     #[test]
+    fn commit_pending_commits_dirty_work_once_and_is_a_no_op_when_clean() {
+        let f = fixture();
+        let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
+        assert!(!commit_pending(&r, "nothing").unwrap());
+        std::fs::write(PathBuf::from(&r.path).join("n.txt"), "n").unwrap();
+        assert!(commit_pending(&r, "Add n").unwrap());
+        assert!(pending(&r).is_empty());
+        assert_eq!(unmerged_commits(&r, None).len(), 1);
+        assert!(!commit_pending(&r, "again").unwrap());
+    }
+
+    #[test]
     fn merging_commits_pending_work_only_when_asked() {
         let f = fixture();
         let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();

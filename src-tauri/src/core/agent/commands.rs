@@ -1449,6 +1449,62 @@ pub async fn agent_campaign_decisions_append(
     .await
 }
 
+/// The decisions so far and the named tasks' handoffs, size-capped.
+#[tauri::command]
+pub async fn agent_campaign_context(
+    app: tauri::AppHandle,
+    id: String,
+    task_ids: Vec<String>,
+) -> Result<crate::core::agent::campaign::CampaignContext, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::context(&data_folder, &id, &task_ids).map_err(campaign_failure)
+    })
+    .await
+}
+
+/// The campaign's event log, oldest first.
+#[tauri::command]
+pub async fn agent_campaign_events(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<Vec<serde_json::Value>, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::events(&data_folder, &id).map_err(campaign_failure)
+    })
+    .await
+}
+
+/// Record that the coordinator was told how a task ended.
+#[tauri::command]
+pub async fn agent_campaign_notified(
+    app: tauri::AppHandle,
+    id: String,
+    task_id: String,
+) -> Result<(), ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::note_notified(&data_folder, &id, &task_id).map_err(campaign_failure)
+    })
+    .await
+}
+
+/// Commit what a session left uncommitted in its worktree, on its own branch.
+/// The record is checked against the repository's worktree list first, like
+/// merge and discard. Returns `false` when there was nothing to commit.
+#[tauri::command]
+pub fn agent_worktree_commit_pending(
+    data_folder: String,
+    record: WorktreeRecordInput,
+    message: String,
+) -> Result<bool, String> {
+    let roots = owned_worktrees_root(&data_folder)?;
+    let record: worktree::WorktreeRecord = record.into();
+    worktree::ensure_owned(&record, &roots)?;
+    worktree::commit_pending(&record, &message)
+}
+
 /// Take a checkpoint of the tree a run is about to change.
 ///
 /// The snapshot is a commit object off to one side: the user's branch, HEAD,

@@ -898,7 +898,24 @@ pub struct TaskMove {
     pub patch: TaskPatch,
 }
 
-/// Exactly one of `campaign` or `task`.
+/// The integration branch and worktree, recorded when a plan is approved: they
+/// are created only then, so a denied plan leaves nothing behind. Taken as
+/// given; the merge phase re-derives worktree identity from Git.
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrationInfo {
+    #[serde(default)]
+    pub branch: String,
+    #[serde(default)]
+    pub worktree: String,
+    #[serde(default)]
+    pub base_branch: String,
+    #[serde(default)]
+    pub base_sha: String,
+}
+
+/// Exactly one of `campaign` or `task`. `integration` rides along with a
+/// campaign move only.
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TransitionInput {
@@ -906,6 +923,8 @@ pub struct TransitionInput {
     pub campaign: Option<CampaignStatus>,
     #[serde(default)]
     pub task: Option<TaskMove>,
+    #[serde(default)]
+    pub integration: Option<IntegrationInfo>,
 }
 
 pub fn transition(data_folder: &Path, id: &str, input: TransitionInput) -> Result<Campaign, CampaignError> {
@@ -915,6 +934,17 @@ pub fn transition(data_folder: &Path, id: &str, input: TransitionInput) -> Resul
         (Some(to), None) => {
             let from = c.status;
             transition_campaign(&mut c, to)?;
+            if let Some(info) = input.integration {
+                let cap = |s: String, n: usize| s.chars().take(n).collect::<String>();
+                c.integration_branch = cap(info.branch, 300);
+                c.integration_worktree = cap(info.worktree, 1000);
+                if !info.base_branch.is_empty() {
+                    c.base_branch = cap(info.base_branch, 300);
+                }
+                if !info.base_sha.is_empty() {
+                    c.base_sha = cap(info.base_sha, 64);
+                }
+            }
             c.updated_at = now();
             save(data_folder, &c)?;
             append_event(data_folder, id, "campaign-status", None, &format!("{from:?} -> {to:?}"));
@@ -1076,6 +1106,68 @@ pub fn decisions_append(data_folder: &Path, id: &str, text: &str) -> Result<(), 
     write!(f, "## {}\n\n{}\n\n", now(), text).map_err(io)?;
     drop(f);
     append_event(data_folder, id, "decision", None, text);
+    Ok(())
+}
+
+/// What a starting task, or the coordinator collecting results, reads from the
+/// campaign folder. All of it is untrusted text.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CampaignContext {
+    /// The tail of `decisions.md`.
+    pub decisions: String,
+    pub handoffs: Vec<HandoffText>,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HandoffText {
+    pub task_id: String,
+    pub text: String,
+}
+
+const MAX_CONTEXT_DECISIONS: usize = 16_000;
+const MAX_CONTEXT_HANDOFF: usize = 12_000;
+
+fn tail_chars(text: &str, n: usize) -> String {
+    let count = text.chars().count();
+    if count <= n {
+        return text.to_string();
+    }
+    text.chars().skip(count - n).collect()
+}
+
+/// The decisions so far and the named tasks' handoffs, each cut to a size a
+/// seed turn can carry. A task with no handoff is simply absent.
+pub fn context(data_folder: &Path, id: &str, task_ids: &[String]) -> Result<CampaignContext, CampaignError> {
+    let dir = campaign_dir(data_folder, id)?;
+    if !dir.join("campaign.json").exists() {
+        return Err(CampaignError::new(CampaignErrorKind::NotFound, format!("no campaign {id} was recorded")));
+    }
+    let decisions = std::fs::read_to_string(dir.join("decisions.md")).unwrap_or_default();
+    let mut handoffs = Vec::new();
+    for task_id in task_ids {
+        check_id("task", task_id)?;
+        let path = dir.join("tasks").join(task_id).join("handoff.md");
+        if let Ok(text) = std::fs::read_to_string(path) {
+            handoffs.push(HandoffText {
+                task_id: task_id.clone(),
+                text: text.chars().take(MAX_CONTEXT_HANDOFF).collect(),
+            });
+        }
+    }
+    Ok(CampaignContext { decisions: tail_chars(&decisions, MAX_CONTEXT_DECISIONS), handoffs })
+}
+
+/// Record that the coordinator was told how a task ended, so a restart does
+/// not tell it twice and does not forget to.
+pub fn note_notified(data_folder: &Path, id: &str, task_id: &str) -> Result<(), CampaignError> {
+    check_id("task", task_id)?;
+    let _held = lock();
+    let c = load_reconciled(data_folder, id)?;
+    c.task(task_id)
+        .ok_or_else(|| CampaignError::new(CampaignErrorKind::NotFound, format!("no task {task_id} in this campaign")))?;
+    append_event(data_folder, id, "coordinator-notified", Some(task_id), "");
     Ok(())
 }
 
@@ -1404,9 +1496,10 @@ pub(crate) mod tests {
         let mv = |to, verdict| TransitionInput {
             campaign: None,
             task: Some(TaskMove { id: "a".into(), to, verdict, patch: TaskPatch::default() }),
+            integration: None,
         };
         for s in [CampaignStatus::Approved, CampaignStatus::Running] {
-            transition(&d, "c", TransitionInput { campaign: Some(s), task: None }).unwrap();
+            transition(&d, "c", TransitionInput { campaign: Some(s), task: None, integration: None }).unwrap();
         }
         transition(&d, "c", mv(TaskStatus::Queued, None)).unwrap();
         let running = TransitionInput {
@@ -1417,6 +1510,7 @@ pub(crate) mod tests {
                 verdict: None,
                 patch: TaskPatch { session_id: Some("sess-a".into()), branch: Some("flint/a".into()), ..Default::default() },
             }),
+            integration: None,
         };
         let c = transition(&d, "c", running).unwrap();
         assert_eq!(c.tasks[0].session_id.as_deref(), Some("sess-a"));
@@ -1488,8 +1582,59 @@ pub(crate) mod tests {
         let mv = TransitionInput {
             campaign: None,
             task: Some(TaskMove { id: "a".into(), to: TaskStatus::Queued, verdict: None, patch: TaskPatch::default() }),
+            integration: None,
         };
         assert!(transition(&d, "c", mv).is_err());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn approval_records_the_integration_branch() {
+        let d = data_dir("integration");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[])])).unwrap();
+        let c = transition(
+            &d,
+            "c",
+            TransitionInput {
+                campaign: Some(CampaignStatus::Approved),
+                task: None,
+                integration: Some(IntegrationInfo {
+                    branch: "flint/campaign-c".into(),
+                    worktree: "/w/c".into(),
+                    base_branch: "main".into(),
+                    base_sha: "abc123".into(),
+                }),
+            },
+        )
+        .unwrap();
+        assert_eq!(c.integration_branch, "flint/campaign-c");
+        assert_eq!((c.base_branch.as_str(), c.base_sha.as_str()), ("main", "abc123"));
+        assert_eq!(get(&d, "c").unwrap().integration_worktree, "/w/c");
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn context_returns_decisions_and_requested_handoffs_only() {
+        let d = data_dir("context");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[]), plan("b", &[], &[])])).unwrap();
+        decisions_append(&d, "c", "use serde").unwrap();
+        write_handoff(&d, "c", "a", "a is done").unwrap();
+        let ctx = context(&d, "c", &["a".into(), "b".into()]).unwrap();
+        assert!(ctx.decisions.contains("use serde"));
+        assert_eq!(ctx.handoffs, vec![HandoffText { task_id: "a".into(), text: "a is done".into() }]);
+        assert!(context(&d, "c", &["../x".into()]).is_err());
+        assert!(context(&d, "nope", &[]).is_err());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn a_notice_is_recorded_only_for_a_real_task() {
+        let d = data_dir("notified");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[])])).unwrap();
+        note_notified(&d, "c", "a").unwrap();
+        assert!(note_notified(&d, "c", "zzz").is_err());
+        let seen = events(&d, "c").unwrap().iter().filter(|e| e["kind"] == "coordinator-notified").count();
+        assert_eq!(seen, 1);
         std::fs::remove_dir_all(&d).ok();
     }
 
@@ -1519,6 +1664,7 @@ pub(crate) mod tests {
         let mv = TransitionInput {
             campaign: None,
             task: Some(TaskMove { id: "a".into(), to: TaskStatus::Queued, verdict: None, patch: TaskPatch::default() }),
+            integration: None,
         };
         let c = transition(&d, "c", mv).unwrap();
         assert_eq!((c.tasks[0].status, c.tasks[0].attempt), (TaskStatus::Queued, 0));
