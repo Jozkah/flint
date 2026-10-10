@@ -106,10 +106,32 @@ describe('describeEngineError', () => {
     })
 
     expect(mockT).toHaveBeenCalledWith('model-errors:engineReportedDetail', {
-      detail:
-        'could not start the llama.cpp engine: failed to load model; cudaMalloc failed: out of memory',
+      detail: 'cudaMalloc failed: out of memory',
     })
     expect(text).toContain('cudaMalloc failed: out of memory')
+    expect(text).not.toContain('could not start the llama.cpp engine')
+  })
+
+  it('leads with the reason when only part of the boilerplate is present', () => {
+    describeEngineError({
+      code: 'MODEL_LOAD_FAILED',
+      details: 'failed to load model; tensor token_embd.weight is missing',
+    })
+
+    expect(mockT).toHaveBeenCalledWith('model-errors:engineReportedDetail', {
+      detail: 'tensor token_embd.weight is missing',
+    })
+  })
+
+  it('keeps the text when the boilerplate is all there is', () => {
+    describeEngineError({
+      code: 'MODEL_LOAD_FAILED',
+      details: 'could not start the llama.cpp engine: failed to load model',
+    })
+
+    expect(mockT).toHaveBeenCalledWith('model-errors:engineReportedDetail', {
+      detail: 'could not start the llama.cpp engine: failed to load model',
+    })
   })
 
   it('collapses whitespace and clips a log-sized detail', () => {
