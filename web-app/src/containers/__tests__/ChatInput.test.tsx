@@ -4,6 +4,44 @@ import '@testing-library/jest-dom'
 
 // --- Module mocks (must be declared before component import) ---------------
 
+vi.mock('@/containers/RichComposerEditor', async () => {
+  const React = await import('react')
+  const RichComposerEditor = React.forwardRef<any, any>(
+    function RichComposerEditor(props, ref) {
+      const inner = React.useRef<HTMLTextAreaElement>(null)
+      React.useImperativeHandle(ref, () => ({
+        focus: () => inner.current?.focus(),
+        element: inner.current,
+        caretEdge: () => {
+          const t = inner.current
+          if (!t || t.selectionStart !== t.selectionEnd) return null
+          const start = t.selectionStart === 0
+          const end = t.selectionStart === t.value.length
+          return start && end ? 'both' : start ? 'start' : end ? 'end' : null
+        },
+      }))
+      return (
+        <textarea
+          ref={inner}
+          placeholder={props.placeholder}
+          value={props.value}
+          onChange={(e) => props.onChange(e.target.value)}
+          {...props.domAttributes}
+          onPaste={props.onPaste}
+          onKeyDownCapture={props.onKeyDownCapture}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.defaultPrevented) {
+              e.preventDefault()
+              props.onSend(props.value, e.ctrlKey || e.metaKey)
+            }
+          }}
+        />
+      )
+    }
+  )
+  return { RichComposerEditor }
+})
+
 // Store backing state for usePrompt (settable by tests)
 let promptState = ''
 const setPromptMock = vi.fn((val: string) => {
@@ -378,15 +416,9 @@ const getTextarea = () =>
   screen.getByTestId('chat-input') as HTMLTextAreaElement
 
 // Shared render helper that returns last rerender handle. The composer opens
-// as a rich editor; these tests drive the plain textarea, so switch to it.
-const renderInput = (props: any = {}) => {
-  const view = render(
-    <ChatInput onSubmit={props.onSubmit} onStop={props.onStop} {...props} />
-  )
-  const plain = screen.queryByRole('button', { name: 'Use plain text editor' })
-  if (plain) fireEvent.click(plain)
-  return view
-}
+// as a rich editor; jsdom cannot drive ProseMirror, so a textarea stands in.
+const renderInput = (props: any = {}) =>
+  render(<ChatInput onSubmit={props.onSubmit} onStop={props.onStop} {...props} />)
 
 describe('ChatInput', () => {
   beforeEach(() => {
