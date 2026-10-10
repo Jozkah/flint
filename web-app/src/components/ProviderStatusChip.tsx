@@ -18,7 +18,11 @@ export function ProviderStatusChip({ status }: { status: ProviderKeyStatus }) {
   }
   return (
     <Chip tone="ok" dot>
-      {status === 'local' ? t('engine:status.running') : t('engine:status.connected')}
+      {status === 'local'
+        ? t('engine:status.running')
+        : status === 'keyless'
+          ? t('engine:status.keyless')
+          : t('engine:status.connected')}
     </Chip>
   )
 }

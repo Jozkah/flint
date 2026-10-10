@@ -350,11 +350,8 @@ function ModelProviders() {
           <KpiTile
             title={t('engine:kpi.installed')}
             icon={<Icon name="x-cube" />}
-            value={rows.length}
-            sub={t('engine:kpi.installedSub', {
-              local: localCount,
-              remote: remoteCount,
-            })}
+            value={localCount}
+            sub={t('engine:kpi.remoteAvailableSub', { count: remoteCount })}
             delay={40}
           />
           <KpiTile
@@ -737,7 +734,9 @@ function ModelProviders() {
                           )
                         ) : hasKey ? (
                           <Chip tone="ok" dot>
-                            {t('engine:status.connected')}
+                            {providerKeyStatus(provider) === 'keyless'
+                              ? t('engine:status.keyless')
+                              : t('engine:status.connected')}
                           </Chip>
                         ) : (
                           <Chip tone="warn" dot>
