@@ -35,6 +35,8 @@
 
 pub mod appimage;
 pub use appimage::{host_env_var, HostProcessEnv};
+pub mod app_secrets;
+pub use app_secrets::{WithoutAppSecrets, APP_SECRET_ENV};
 
 use std::process::Command as StdCommand;
 use tokio::process::Command as TokioCommand;

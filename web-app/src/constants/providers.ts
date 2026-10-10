@@ -700,4 +700,25 @@ export const predefinedProviders = [
     ],
     models: [],
   },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'http://localhost:11434/v1',
+    explore_models_url: 'https://ollama.com/library',
+    provider: 'ollama',
+    settings: [
+      {
+        key: 'base-url',
+        title: 'Base URL',
+        description:
+          'The base endpoint to use. A local Ollama serves an OpenAI-compatible API on port 11434 by default and needs no API key; point this at another host if Ollama runs elsewhere.',
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'http://localhost:11434/v1',
+          value: 'http://localhost:11434/v1',
+        },
+      },
+    ],
+    models: [],
+  },
 ]

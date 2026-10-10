@@ -52,7 +52,8 @@ export function AddProviderDialog({
     const trimmedName = name.trim()
     const trimmedBaseUrl = baseUrl.trim().replace(/\/+$/, '')
     const trimmedApiKey = apiKey.trim()
-    if (!trimmedName || !trimmedBaseUrl || !trimmedApiKey) return
+    if (!trimmedName || !trimmedBaseUrl) return
+    if (apiType === 'anthropic' && !trimmedApiKey) return
     if (!URL_PATTERN.test(trimmedBaseUrl)) {
       setError(t('provider:invalidBaseUrl'))
       return
@@ -70,7 +71,9 @@ export function AddProviderDialog({
   const canSubmit =
     name.trim().length > 0 &&
     baseUrl.trim().length > 0 &&
-    apiKey.trim().length > 0
+    // OpenAI-compatible servers (LM Studio, mlx_lm.server, a LAN Ollama) are
+    // often keyless; only the Anthropic API always needs one.
+    (apiType !== 'anthropic' || apiKey.trim().length > 0)
   const baseUrlPlaceholder =
     apiType === 'anthropic'
       ? t('provider:baseUrlPlaceholderAnthropic')
@@ -149,7 +152,11 @@ export function AddProviderDialog({
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={t('provider:apiKeyPlaceholder')}
+              placeholder={
+                apiType === 'anthropic'
+                  ? t('provider:apiKeyPlaceholder')
+                  : t('provider:apiKeyOptionalPlaceholder')
+              }
               onKeyDown={(e) => {
                 e.stopPropagation()
                 if (e.key === 'Enter' && canSubmit) {
