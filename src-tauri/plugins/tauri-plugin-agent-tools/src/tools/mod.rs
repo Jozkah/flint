@@ -227,6 +227,11 @@ pub struct ToolContext<'a> {
     /// together with `session_id`. `None` everywhere else -- chat threads, the
     /// CLI, subagent children -- and the mailbox tools refuse without it.
     pub mailbox_root: Option<&'a Path>,
+    /// The mailbox identity of a run that has one without being a Cowork
+    /// session: the headless server and CLI keep `session_id` unset so memory
+    /// and job ownership are unchanged, and name the sender here instead.
+    /// Wins over `session_id` for the messaging tools only.
+    pub mailbox_session: Option<&'a str>,
     /// Who owns the background commands this call starts or touches: the
     /// conversation. `bash` job listing, status, collection and cancellation
     /// are confined to it, so a job id learned from one session is useless in
@@ -268,6 +273,7 @@ impl std::fmt::Debug for ToolContext<'_> {
             .field("write_roots", &self.write_roots)
             .field("call_id", &self.call_id)
             .field("mailbox_root", &self.mailbox_root)
+            .field("mailbox_session", &self.mailbox_session)
             .field("job_owner", &self.job_owner)
             .field("job_record_to", &self.job_record_to)
             .field("user_skills_root", &self.user_skills_root)
@@ -310,6 +316,7 @@ impl<'a> ToolContext<'a> {
             write_roots: &[],
             call_id: None,
             mailbox_root: None,
+            mailbox_session: None,
             job_owner: None,
             job_record_to: None,
             user_skills_root: None,
@@ -325,6 +332,14 @@ impl<'a> ToolContext<'a> {
 
     /// Give the session-messaging tools a mailbox. See [`Self::mailbox_root`].
     pub fn with_mailbox(mut self, data_folder: &'a Path) -> Self {
+        self.mailbox_root = Some(data_folder);
+        self
+    }
+
+    /// Give the session-messaging tools a mailbox and the identity to send
+    /// from, for a run with no Cowork session id. See [`Self::mailbox_session`].
+    pub fn with_mailbox_as(mut self, session_id: &'a str, data_folder: &'a Path) -> Self {
+        self.mailbox_session = Some(session_id);
         self.mailbox_root = Some(data_folder);
         self
     }
