@@ -120,7 +120,7 @@ async fn a_preset_that_does_not_exist_still_starts_and_serves_no_models() {
     )
     .await
     .expect_err("a missing preset must be reported");
-    assert!(matches!(err, WorkerError::Handshake(_)), "got {err:?}");
+    assert!(matches!(err, WorkerError::Exited(_)), "got {err:?}");
 }
 
 /// The app's exit path calls `try_graceful_stop_engine`. Before that existed the

@@ -32,6 +32,9 @@ pub enum WorkerError {
     Spawn(String),
     /// The worker exited or said nothing intelligible before serving.
     Handshake(String),
+    /// The worker died before serving: the exit description and the last
+    /// stderr lines, which is where a loader or CPU-feature failure says why.
+    Exited(String),
     Timeout(Duration),
 }
 
@@ -40,6 +43,7 @@ impl std::fmt::Display for WorkerError {
         match self {
             Self::Spawn(m) => write!(f, "could not start flint-llama-worker: {m}"),
             Self::Handshake(m) => write!(f, "flint-llama-worker did not come up: {m}"),
+            Self::Exited(m) => write!(f, "flint-llama-worker exited before serving: {m}"),
             Self::Timeout(d) => {
                 write!(f, "flint-llama-worker did not report a port within {d:?}")
             }
@@ -83,7 +87,13 @@ pub fn classify_fault(line_lower: &str) -> Option<RuntimeFault> {
 }
 
 fn is_oom_line(line_lower: &str) -> bool {
-    if line_lower.contains("erroroutofdevicememory") || line_lower.contains("erroroutofhostmemory")
+    // The Metal code is what macOS reports when the mapped model outgrows
+    // `recommendedMaxWorkingSetSize`; "insufficient memory" is both its
+    // localized text and ggml_aligned_malloc's ENOMEM message.
+    if line_lower.contains("erroroutofdevicememory")
+        || line_lower.contains("erroroutofhostmemory")
+        || line_lower.contains("kiogpucommandbuffercallbackerroroutofmemory")
+        || line_lower.contains("insufficient memory")
     {
         return true;
     }
@@ -124,6 +134,150 @@ fn is_backend_error_line(line_lower: &str) -> bool {
     ]
     .iter()
     .any(|m| line_lower.contains(m))
+}
+
+/// Turns worker stderr lines into faults, one call per line.
+///
+/// Metal reports a failed command buffer as two lines: a status line that
+/// only says "failed with status N", then the cause (`error: Insufficient
+/// Memory (...)`). Classified one at a time, the status line would be
+/// reported as a backend fault and the debounce would swallow the OOM line
+/// after it, so the status line is held until the next line decides it.
+#[derive(Debug, Default)]
+struct FaultReader {
+    pending_metal_status: Option<String>,
+}
+
+impl FaultReader {
+    fn feed(&mut self, line: &str) -> Vec<(RuntimeFault, String)> {
+        let lower = line.to_lowercase();
+        let mut out = Vec::new();
+        let is_status = lower.contains("command buffer") && lower.contains("failed with status");
+        if let Some(status) = self.pending_metal_status.take() {
+            // ggml-metal prints the detail as `error: <description>`, behind
+            // whatever prefix the log sink adds, so match loosely.
+            if !is_status && lower.contains("error:") {
+                let fault = classify_fault(&lower).unwrap_or(RuntimeFault::Backend);
+                out.push((fault, format!("{status} {line}")));
+                return out;
+            }
+            out.push((RuntimeFault::Backend, status));
+        }
+        if is_status {
+            self.pending_metal_status = Some(line.to_string());
+            return out;
+        }
+        if let Some(fault) = classify_fault(&lower) {
+            out.push((fault, line.to_string()));
+        }
+        out
+    }
+
+    /// A held status line whose detail never came (stderr closed or went
+    /// quiet), reported as the backend fault it is on its own.
+    fn flush(&mut self) -> Option<(RuntimeFault, String)> {
+        self.pending_metal_status
+            .take()
+            .map(|status| (RuntimeFault::Backend, status))
+    }
+}
+
+/// How long a held Metal status line waits for its detail line. The two are
+/// printed back to back, so this only bounds the no-detail case.
+const METAL_DETAIL_WAIT: Duration = Duration::from_millis(500);
+
+/// How many trailing stderr lines are kept, and how long each may be. A crash
+/// leaves its explanation in the last few lines; the rest is load chatter.
+const STDERR_TAIL_LINES: usize = 12;
+const STDERR_TAIL_LINE_CHARS: usize = 300;
+
+/// The most recent worker stderr lines, shared between the task draining the
+/// pipe and whoever later has to say why the worker died.
+#[derive(Debug, Clone, Default)]
+struct StderrTail(std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>>);
+
+impl StderrTail {
+    fn push(&self, line: &str) {
+        let line = line.trim();
+        if line.is_empty() {
+            return;
+        }
+        let line: String = line.chars().take(STDERR_TAIL_LINE_CHARS).collect();
+        let Ok(mut lines) = self.0.lock() else { return };
+        if lines.len() == STDERR_TAIL_LINES {
+            lines.pop_front();
+        }
+        lines.push_back(line);
+    }
+
+    fn lines(&self) -> Vec<String> {
+        self.0
+            .lock()
+            .map(|l| l.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+}
+
+/// How a dead worker ended, in words a person can search for: the exit
+/// description, and the last stderr lines. Plain text on purpose, so the one
+/// classifier in `error.rs` reads it like any other engine output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExitReport {
+    pub status: String,
+    pub last_lines: Vec<String>,
+}
+
+impl ExitReport {
+    /// Status followed by the tail, which is what gets classified and shown.
+    pub fn text(&self) -> String {
+        if self.last_lines.is_empty() {
+            self.status.clone()
+        } else {
+            format!("{}. Last output: {}", self.status, self.last_lines.join(" / "))
+        }
+    }
+}
+
+/// Describes an exit. A Unix signal is named, and a Windows NTSTATUS is shown
+/// in hex with its name where it is one a user is likely to meet, because
+/// "exit code -1073741795" tells nobody anything.
+pub fn describe_exit(code: Option<i32>, signal: Option<i32>) -> String {
+    if let Some(sig) = signal {
+        let name = match sig {
+            4 => " (SIGILL: illegal instruction)",
+            6 => " (SIGABRT: abort)",
+            7 => " (SIGBUS: bus error)",
+            8 => " (SIGFPE: arithmetic exception)",
+            9 => " (SIGKILL)",
+            11 => " (SIGSEGV: segmentation fault)",
+            _ => "",
+        };
+        return format!("killed by signal {sig}{name}");
+    }
+    let Some(code) = code else {
+        return "exited without a status".to_string();
+    };
+    let status = code as u32;
+    if status < 0x8000_0000 {
+        return format!("exit code {code}");
+    }
+    let name = match status {
+        0xC000_001D => " (illegal instruction)",
+        0xC000_0005 => " (access violation)",
+        0xC000_0409 => " (stack buffer overrun)",
+        0xC000_0135 => " (a required DLL was not found)",
+        0xC000_007B => " (invalid image format)",
+        _ => "",
+    };
+    format!("exit code 0x{status:08X}{name}")
+}
+
+fn describe_status(status: &std::process::ExitStatus) -> String {
+    #[cfg(unix)]
+    let signal = std::os::unix::process::ExitStatusExt::signal(status);
+    #[cfg(not(unix))]
+    let signal = None;
+    describe_exit(status.code(), signal)
 }
 
 /// Called once per classified line, with the line itself. Boxed rather than
@@ -262,6 +416,7 @@ pub struct WorkerHandle {
     pub api_key: String,
     pub models: Vec<String>,
     child: Child,
+    stderr_tail: StderrTail,
     #[cfg(windows)]
     _job: Option<reap::Job>,
 }
@@ -333,6 +488,15 @@ impl WorkerHandle {
     pub fn exited(&mut self) -> Option<std::process::ExitStatus> {
         self.child.try_wait().ok().flatten()
     }
+
+    /// None while still running, otherwise how it ended and what it last said.
+    pub fn exit_report(&mut self) -> Option<ExitReport> {
+        let status = self.exited()?;
+        Some(ExitReport {
+            status: describe_status(&status),
+            last_lines: self.stderr_tail.lines(),
+        })
+    }
 }
 
 /// Spawns the worker and waits for its handshake line.
@@ -394,27 +558,48 @@ pub async fn spawn(
         .ok_or_else(|| WorkerError::Spawn("no stdout pipe".into()))?;
     // Drained on its own task: a full stderr pipe would otherwise block the
     // worker mid-generation, which is a hang with no error message.
-    if let Some(stderr) = child.stderr.take() {
+    let stderr_tail = StderrTail::default();
+    let drain = child.stderr.take().map(|stderr| {
+        let tail = stderr_tail.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
+            let mut reader = FaultReader::default();
             let mut last_fault_at: Option<tokio::time::Instant> = None;
-            while let Ok(Some(line)) = lines.next_line().await {
-                log::debug!("flint-llama-worker: {line}");
-                let Some(cb) = on_fault.as_ref() else {
-                    continue;
-                };
-                let Some(fault) = classify_fault(&line.to_lowercase()) else {
-                    continue;
-                };
+            let mut report = |fault: RuntimeFault, line: String| {
+                let Some(cb) = on_fault.as_ref() else { return };
                 let now = tokio::time::Instant::now();
                 if last_fault_at.is_some_and(|t| now.duration_since(t) <= FAULT_DEBOUNCE) {
-                    continue;
+                    return;
                 }
                 last_fault_at = Some(now);
                 cb(fault, line);
+            };
+            loop {
+                let next = if reader.pending_metal_status.is_some() {
+                    match tokio::time::timeout(METAL_DETAIL_WAIT, lines.next_line()).await {
+                        Ok(next) => next,
+                        Err(_) => {
+                            if let Some((fault, line)) = reader.flush() {
+                                report(fault, line);
+                            }
+                            continue;
+                        }
+                    }
+                } else {
+                    lines.next_line().await
+                };
+                let Ok(Some(line)) = next else { break };
+                log::debug!("flint-llama-worker: {line}");
+                tail.push(&line);
+                for (fault, text) in reader.feed(&line) {
+                    report(fault, text);
+                }
             }
-        });
-    }
+            if let Some((fault, line)) = reader.flush() {
+                report(fault, line);
+            }
+        })
+    });
 
     let mut lines = BufReader::new(stdout).lines();
     let first = tokio::time::timeout(HANDSHAKE_TIMEOUT, lines.next_line()).await;
@@ -429,12 +614,21 @@ pub async fn spawn(
             return Err(WorkerError::Handshake(e.to_string()));
         }
         Ok(Ok(None)) => {
-            // Closed stdout without a line: it died. The exit status is the
-            // most useful thing we can report.
+            // Closed stdout without a line: it died. The exit status and what
+            // it said last are the most useful things we can report; the
+            // drain task is given a moment to read the pipe to its end.
             let status = child.wait().await.ok();
-            return Err(WorkerError::Handshake(format!(
-                "exited before serving (status {status:?})"
-            )));
+            if let Some(drain) = drain {
+                let _ = tokio::time::timeout(Duration::from_secs(1), drain).await;
+            }
+            let report = ExitReport {
+                status: status
+                    .as_ref()
+                    .map(describe_status)
+                    .unwrap_or_else(|| "exited without a status".to_string()),
+                last_lines: stderr_tail.lines(),
+            };
+            return Err(WorkerError::Exited(report.text()));
         }
         Ok(Ok(Some(line))) => line,
     };
@@ -460,6 +654,7 @@ pub async fn spawn(
         api_key: api_key.to_string(),
         models: hs.models,
         child,
+        stderr_tail,
         #[cfg(windows)]
         _job: job,
     })
@@ -552,6 +747,132 @@ mod tests {
             classify_fault("common_fit_params: failed to allocate a plan"),
             None
         );
+    }
+
+    #[test]
+    fn classifies_metal_and_host_out_of_memory_as_oom() {
+        for line in [
+            "error: insufficient memory (00000008:kiogpucommandbuffercallbackerroroutofmemory)",
+            "ggml_aligned_malloc: insufficient memory (attempted to allocate 512.00 mb)",
+        ] {
+            assert_eq!(classify_fault(line), Some(RuntimeFault::Oom), "{line:?}");
+        }
+    }
+
+    // The status line alone looks like a generic Metal error; only the line
+    // after it says it was memory (janhq/jan#9198).
+    #[test]
+    fn a_metal_status_line_is_reported_together_with_its_oom_detail() {
+        let mut r = FaultReader::default();
+        assert_eq!(
+            r.feed("E ggml_metal_synchronize: error: command buffer 0 failed with status 5"),
+            vec![]
+        );
+        let out = r.feed(
+            "E error: Insufficient Memory (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory)",
+        );
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0, RuntimeFault::Oom);
+        assert!(out[0].1.contains("failed with status 5"), "{:?}", out[0].1);
+        assert!(out[0].1.contains("Insufficient Memory"), "{:?}", out[0].1);
+        assert_eq!(r.flush(), None);
+    }
+
+    #[test]
+    fn a_metal_status_line_with_a_non_memory_detail_stays_a_backend_fault() {
+        let mut r = FaultReader::default();
+        r.feed("ggml_metal_synchronize: error: command buffer 0 failed with status 5");
+        let out = r.feed(
+            "error: Caused GPU Timeout Error (00000002:kIOGPUCommandBufferCallbackErrorTimeout)",
+        );
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0, RuntimeFault::Backend);
+        assert!(out[0].1.contains("Timeout"), "{:?}", out[0].1);
+    }
+
+    // A status that prints no detail line must not swallow what follows.
+    #[test]
+    fn a_metal_status_line_without_detail_is_reported_alone() {
+        let mut r = FaultReader::default();
+        let status = "ggml_metal_synchronize: error: command buffer 1 failed with status 4";
+        r.feed(status);
+        assert_eq!(
+            r.feed("srv log_server_r: request: post /v1/chat/completions"),
+            vec![(RuntimeFault::Backend, status.to_string())]
+        );
+
+        r.feed(status);
+        assert_eq!(r.flush(), Some((RuntimeFault::Backend, status.to_string())));
+        assert_eq!(r.flush(), None);
+    }
+
+    #[test]
+    fn the_reader_passes_other_lines_straight_through() {
+        let mut r = FaultReader::default();
+        assert_eq!(
+            r.feed("ErrorOutOfDeviceMemory"),
+            vec![(RuntimeFault::Oom, "ErrorOutOfDeviceMemory".to_string())]
+        );
+        assert_eq!(r.feed("main: server is listening"), vec![]);
+        assert_eq!(r.flush(), None);
+    }
+
+    #[test]
+    fn exits_are_described_by_signal_and_ntstatus() {
+        assert_eq!(
+            describe_exit(None, Some(4)),
+            "killed by signal 4 (SIGILL: illegal instruction)"
+        );
+        assert_eq!(describe_exit(Some(1), None), "exit code 1");
+        assert_eq!(
+            describe_exit(Some(-1073741795), None),
+            "exit code 0xC000001D (illegal instruction)"
+        );
+        assert_eq!(
+            describe_exit(Some(-1073741819), None),
+            "exit code 0xC0000005 (access violation)"
+        );
+        assert_eq!(
+            describe_exit(Some(-1073740791), None),
+            "exit code 0xC0000409 (stack buffer overrun)"
+        );
+        assert_eq!(describe_exit(None, None), "exited without a status");
+    }
+
+    #[test]
+    fn the_stderr_tail_keeps_only_the_last_lines_and_clips_long_ones() {
+        let tail = StderrTail::default();
+        for i in 0..(STDERR_TAIL_LINES + 5) {
+            tail.push(&format!("line {i}"));
+        }
+        tail.push("   ");
+        tail.push(&"x".repeat(STDERR_TAIL_LINE_CHARS * 2));
+        let lines = tail.lines();
+        assert_eq!(lines.len(), STDERR_TAIL_LINES);
+        // 17 lines then one long one: the oldest 6 are gone.
+        assert_eq!(lines[0], "line 6");
+        assert_eq!(lines.last().unwrap().chars().count(), STDERR_TAIL_LINE_CHARS);
+    }
+
+    #[test]
+    fn an_exit_report_reads_as_one_line_of_evidence() {
+        let report = ExitReport {
+            status: "exit code 0xC0000005 (access violation)".into(),
+            last_lines: vec![
+                "ggml_cuda_init: found 1 CUDA devices".into(),
+                "CUDA error".into(),
+            ],
+        };
+        assert_eq!(
+            report.text(),
+            "exit code 0xC0000005 (access violation). Last output: \
+             ggml_cuda_init: found 1 CUDA devices / CUDA error"
+        );
+        let silent = ExitReport {
+            status: "exit code 1".into(),
+            last_lines: vec![],
+        };
+        assert_eq!(silent.text(), "exit code 1");
     }
 
     #[test]
@@ -686,6 +1007,6 @@ mod tests {
         )
         .await
         .expect_err("a silent exit must fail");
-        assert!(matches!(err, WorkerError::Handshake(_)), "got {err:?}");
+        assert!(matches!(err, WorkerError::Exited(_)), "got {err:?}");
     }
 }
