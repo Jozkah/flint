@@ -32,11 +32,31 @@ pub fn clean_name(raw: &str) -> String {
         })
         .take(MAX_NAME_LEN)
         .collect();
-    let kept = kept.trim().trim_start_matches('.').to_string();
+    let kept = kept
+        .trim()
+        .trim_start_matches('.')
+        .trim_end_matches(['.', ' '])
+        .to_string();
     if kept.is_empty() {
         "upload".to_string()
     } else {
-        kept
+        avoid_device_name(kept)
+    }
+}
+
+/// Windows opens these names as devices whatever the extension (`CON.txt`), and
+/// reading one blocks on console input. Such a name gets a leading underscore.
+fn avoid_device_name(name: String) -> String {
+    let stem = name.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.as_bytes()[3].is_ascii_digit()
+            && stem.as_bytes()[3] != b'0');
+    if reserved {
+        format!("_{name}")
+    } else {
+        name
     }
 }
 
@@ -44,10 +64,33 @@ fn is_id(id: &str) -> bool {
     id.len() == 32 && id.bytes().all(|c| c.is_ascii_hexdigit())
 }
 
+/// Uploads older than this are removed: a closed tab never asks for its files
+/// to be deleted, so nothing else would.
+const UPLOAD_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Removes the uploads nobody has touched for [`UPLOAD_MAX_AGE`].
+pub fn sweep(data_folder: &Path) {
+    let Ok(entries) = fs::read_dir(root(data_folder)) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > UPLOAD_MAX_AGE);
+        if old && entry.file_name().to_str().is_some_and(is_id) {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
 pub fn store(data_folder: &Path, name: &str, bytes: &[u8]) -> Result<Value, String> {
     if bytes.len() > MAX_UPLOAD_BYTES {
         return Err("file too large".into());
     }
+    sweep(data_folder);
     let mut id = [0u8; 16];
     rand::thread_rng().fill_bytes(&mut id);
     let id = hex::encode(id);
@@ -118,6 +161,12 @@ mod tests {
         assert_eq!(clean_name(".hidden"), "hidden");
         assert_eq!(clean_name(""), "upload");
         assert_eq!(clean_name("..."), "upload");
+        // Device names are not file names on Windows, with or without an extension.
+        assert_eq!(clean_name("CON"), "_CON");
+        assert_eq!(clean_name("nul.txt"), "_nul.txt");
+        assert_eq!(clean_name("com1.log"), "_com1.log");
+        assert_eq!(clean_name("console.txt"), "console.txt");
+        assert_eq!(clean_name("report."), "report");
         assert!(clean_name(&"x".repeat(500)).len() <= MAX_NAME_LEN);
     }
 

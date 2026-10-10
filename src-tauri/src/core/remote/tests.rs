@@ -194,8 +194,16 @@ fn nothing_is_issued_until_the_desktop_confirms() {
         other => panic!("{other:?}"),
     };
     assert!(store.verify(&token).is_some());
-    // The token is handed out once.
-    assert_eq!(book.poll(&claim.poll_id, t0), PollResult::Expired);
+    // A lost response can be retried for a short while, with the same token,
+    // and after that the pairing is gone.
+    match book.poll(&claim.poll_id, t0) {
+        PollResult::Approved { token: again, .. } => assert_eq!(again, token),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        book.poll(&claim.poll_id, t0 + APPROVED_POLL_GRACE + Duration::from_secs(1)),
+        PollResult::Expired
+    );
 }
 
 #[test]

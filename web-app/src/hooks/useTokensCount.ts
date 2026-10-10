@@ -11,6 +11,7 @@ import {
   type LlamacppModelProps,
 } from '@/lib/llamacppRouterProps'
 import { fetchServerWindow } from '@/lib/serverWindow'
+import { listedWindow } from '@/lib/listedWindows'
 import { useContextBreakdown } from './useContextBreakdown'
 import { useModelProvider } from './useModelProvider'
 import { useAppState } from './useAppState'
@@ -104,6 +105,32 @@ const getLatestServerUsage = (messages: ThreadMessage[]): UsageMeta => {
       return usage
   }
   return {}
+}
+
+/**
+ * Tokens in the messages after the last one the provider measured: a message
+ * sent and then stopped never gets a usage record, and the card kept showing
+ * the figure from before it. Roughly four characters a token, the same rough
+ * count used where nothing was measured.
+ */
+export const estimateUnmeasuredTokens = (messages: ThreadMessage[]): number => {
+  let last = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const usage = readTokenUsage(
+      (messages[i].metadata as { usage?: unknown } | undefined)?.usage
+    )
+    if (usage && typeof usage.totalTokens === 'number' && usage.totalTokens > 0) {
+      last = i
+      break
+    }
+  }
+  let chars = 0
+  for (let i = last + 1; i < messages.length; i++) {
+    for (const part of messages[i].content ?? []) {
+      chars += part?.text?.value?.length ?? 0
+    }
+  }
+  return Math.ceil(chars / 4)
 }
 
 /**
@@ -271,8 +298,10 @@ export const useTokensCount = (
         }
       }
       const usage = source?.usage ?? getLatestServerUsage(messages)
+      const unmeasured = source?.usage ? 0 : estimateUnmeasuredTokens(messages)
       return {
-        tokenCount: sourceOverflow?.requestTokens ?? usage.totalTokens ?? 0,
+        tokenCount:
+          sourceOverflow?.requestTokens ?? (usage.totalTokens ?? 0) + unmeasured,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         usage,
@@ -284,6 +313,10 @@ export const useTokensCount = (
         maxTokens: plausibleWindow(
           usableContextValue(sourceOverflow?.contextTokens) ??
             usableContextValue(rememberedWindow) ??
+            // What the provider's own model list said when it was fetched: a
+            // hosted endpoint is never probed here, so this is the only place
+            // a window named by `/models` reaches the card.
+            usableContextValue(listedWindow(remoteBaseUrl, selectedModel?.id)) ??
             cappedContextWindow(contextCap,
               readCapabilityField(selectedModel, CONTEXT_FIELDS) ?? undefined)
         ),
@@ -373,6 +406,7 @@ export const useTokensCount = (
     configuredCtxLen,
     contextCap,
     rememberedWindow,
+    remoteBaseUrl,
   ])
 
   return {

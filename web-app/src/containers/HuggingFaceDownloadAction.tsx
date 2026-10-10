@@ -41,6 +41,7 @@ import {
   recordHuggingFaceInstall,
 } from '@/lib/huggingfaceRegistry'
 import { cn } from '@/lib/utils'
+import { listedModelId, modelIdKey } from '@/lib/modelIdPath'
 import { formatEta, secondsRemaining } from '@/lib/downloadSpeed'
 import { startGgufBundle } from '@/lib/huggingfaceStart'
 
@@ -78,7 +79,12 @@ export function HuggingFaceDownloadAction({
       : repo
   const providerName = format === 'mlx' ? 'mlx' : 'llamacpp'
   const provider = providers.find((candidate) => candidate.provider === providerName)
-  const installed = Boolean(provider?.models.some((model) => model.id === modelId))
+  // The provider lists a downloaded model by its folder, which on Windows is
+  // written with backslashes: compare and navigate by the id it lists.
+  const listedId = listedModelId(provider?.models, modelId)
+  const installed = Boolean(
+    provider?.models.some((model) => modelIdKey(model.id) === modelIdKey(modelId))
+  )
   const updateAvailable = installed && hasHuggingFaceUpdate(modelId, revision)
   const bundleId = `hf:${providerName}:${modelId}`
   const task = useHuggingFaceDownloads((state) => state.tasks[bundleId])
@@ -106,7 +112,7 @@ export function HuggingFaceDownloadAction({
   const useModel = () => {
     navigate({
       to: route.home,
-      search: { threadModel: { id: modelId, provider: providerName } },
+      search: { threadModel: { id: listedId, provider: providerName } },
     })
   }
 

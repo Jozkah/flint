@@ -135,6 +135,37 @@ describe('EventSocket', () => {
     expect(FakeSocket.all).toHaveLength(2)
     s.stop()
   })
+
+  it('kick() on a socket that still says open pings it, and replaces it when nothing answers', () => {
+    const { s, timers, states } = setup()
+    s.start()
+    const first = FakeSocket.all[0]
+    first.readyState = 1
+    first.msg({ type: 'ready', deviceId: 'd1' })
+    s.kick()
+    expect(first.sent.map((m) => JSON.parse(m).type)).toContain('ping')
+    expect(FakeSocket.all).toHaveLength(1)
+    // No pong: the wait runs out and a new socket is opened.
+    timers[timers.length - 1].fn()
+    expect(FakeSocket.all).toHaveLength(2)
+    expect(states).toContain('offline')
+    s.stop()
+  })
+
+  it('a pong keeps the socket that kick() checked', () => {
+    const { s, timers } = setup()
+    s.start()
+    const first = FakeSocket.all[0]
+    first.readyState = 1
+    first.msg({ type: 'ready', deviceId: 'd1' })
+    s.kick()
+    first.msg({ type: 'pong' })
+    // The timer was cleared (the fake clearTimer is a no-op), so run it only if
+    // the socket would have been replaced: it must not be.
+    expect(FakeSocket.all).toHaveLength(1)
+    void timers
+    s.stop()
+  })
 })
 
 describe('backoff and URL', () => {

@@ -3,6 +3,7 @@ import { syncListedModels } from '@/lib/providerModelSync'
 import { listedCapabilities } from '@/lib/listedCapabilities'
 import { CardItem } from '@/containers/Card'
 import { classifyModelLocation } from '@/lib/modelLocation'
+import { providerKeyStatus } from '@/lib/providerKeyStatus'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import {
   cn,
@@ -1730,7 +1731,9 @@ function ProviderDetail() {
                     <Chip tone="ok" dot>
                       {connectionVerified
                         ? t('engine:status.verified')
-                        : t('engine:status.connected')}
+                        : providerKeyStatus(provider) === 'keyless'
+                          ? t('engine:status.keyless')
+                          : t('engine:status.connected')}
                     </Chip>
                   )
                 ) : (

@@ -159,6 +159,24 @@ const EMPTY_FORM: Form = {
   loras: [],
 }
 
+/** Time spent waiting on a hosted job, ticking each second, so a slow render shows it is alive. */
+function Elapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  const seconds = Math.max(0, Math.floor((now - since) / 1000))
+  const text = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+  return (
+    <>
+      {' · '}
+      {text}
+      {seconds >= 300 ? ' · taking longer than usual' : ''}
+    </>
+  )
+}
+
 /** The hosted image models that can be used now: the providers with an API key set, and picture models on the user's own servers. */
 function useCloudTargets(kind: StudioKind): CloudTarget[] {
   const providers = useModelProvider((s) => s.providers)
@@ -1188,6 +1206,7 @@ function PromptPanel({
         {job.remote
           ? `Waiting for ${job.remote}…`
           : `${phaseLabel(job.phase)} · ${percent}%`}
+        {job.remote ? <Elapsed since={job.startedAt} /> : null}
         {etaText}
       </span>
     </>
@@ -1457,6 +1476,9 @@ function PromptPanel({
                   {job?.remote
                     ? `Waiting for ${job.remote}…`
                     : `${phaseLabel(job?.phase ?? 'queued')} · ${percent}%`}
+                  {job?.remote && job.startedAt ? (
+                    <Elapsed since={job.startedAt} />
+                  ) : null}
                   {!job?.remote &&
                   job?.startedAt &&
                   job.fraction > 0.05 &&
@@ -1567,6 +1589,7 @@ function ActivityPanel({
                   </Chip>
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {job.remote ? `Waiting for ${job.remote}` : `${phaseLabel(job.phase)} · ${percent}%`}
+                    {job.remote ? <Elapsed since={job.startedAt} /> : null}
                   </span>
                 </div>
                 <p className="line-clamp-2 text-[12.5px] text-foreground">{jobPrompt}</p>

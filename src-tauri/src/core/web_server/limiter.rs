@@ -92,8 +92,11 @@ impl LoginLimiter {
 pub fn client_ip(peer: IpAddr, forwarded_for: Option<&str>) -> IpAddr {
     if peer.is_loopback() {
         if let Some(client) = forwarded_for
-            .and_then(|list| list.split(',').next())
-            .and_then(|first| first.trim().parse::<IpAddr>().ok())
+            // The last entry is the one the nearest proxy added: a proxy that
+            // appends (rather than replaces) keeps whatever the client sent in
+            // the earlier ones, and those are the client's to forge.
+            .and_then(|list| list.rsplit(',').next())
+            .and_then(|last| last.trim().parse::<IpAddr>().ok())
         {
             return client;
         }
@@ -153,7 +156,9 @@ mod tests {
     fn a_proxy_on_this_machine_names_the_client_and_nobody_else_can() {
         let loopback = IpAddr::from([127, 0, 0, 1]);
         let remote = IpAddr::from([203, 0, 113, 9]);
-        assert_eq!(client_ip(loopback, Some("100.64.0.7, 10.0.0.1")), ip(7));
+        // The entry the trusted proxy added is the last one; what a client put in
+        // front of it is not believed.
+        assert_eq!(client_ip(loopback, Some("10.0.0.1, 100.64.0.7")), ip(7));
         assert_eq!(client_ip(loopback, Some("not an address")), loopback);
         assert_eq!(client_ip(loopback, None), loopback);
         assert_eq!(client_ip(remote, Some("100.64.0.7")), remote, "a remote peer cannot pick its own address");

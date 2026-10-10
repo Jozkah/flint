@@ -44,6 +44,8 @@ export function defaultBackoff(attempt: number, random = Math.random): number {
 /** WebSocket policy-violation close, used by the server for a revoked token. */
 const CLOSE_POLICY = 1008
 const PING_EVERY_MS = 25_000
+/** How long a ping sent to check a socket may go unanswered. */
+const PONG_WAIT_MS = 5_000
 
 export function eventsUrl(loc: { protocol: string; host: string } = globalThis.location): string {
   const scheme = loc.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -83,6 +85,8 @@ export class EventSocket {
     this.stopped = true
     if (this.timer !== null) this.o.clearTimer(this.timer)
     this.timer = null
+    if (this.deadTimer !== null) this.o.clearTimer(this.deadTimer)
+    this.deadTimer = null
     this.stopPing()
     const ws = this.ws
     this.ws = null
@@ -145,10 +149,46 @@ export class EventSocket {
    * changed), instead of waiting out the backoff. */
   kick() {
     if (this.stopped) return
-    if (this.ws && this.ws.readyState <= 1) return
+    if (this.ws && this.ws.readyState === 0) return
+    // A socket that still says "open" after the phone slept or changed network
+    // may be dead without having closed. Ask it; if nothing answers, replace it.
+    if (this.ws && this.ws.readyState === 1) {
+      this.verify()
+      return
+    }
     if (this.timer !== null) this.o.clearTimer(this.timer)
     this.timer = null
     this.attempt = 0
+    this.open()
+  }
+
+  private deadTimer: unknown = null
+
+  /** Ping now and replace the socket when no pong comes back in time. */
+  private verify() {
+    if (this.deadTimer !== null) return
+    this.send({ type: 'ping' })
+    this.deadTimer = this.o.setTimer(() => {
+      this.deadTimer = null
+      this.dropAndReopen()
+    }, PONG_WAIT_MS)
+  }
+
+  private dropAndReopen() {
+    const ws = this.ws
+    this.ws = null
+    this.stopPing()
+    if (ws) {
+      ws.onopen = ws.onclose = ws.onmessage = ws.onerror = null
+      try {
+        ws.close()
+      } catch {
+        // Already gone.
+      }
+    }
+    if (this.stopped) return
+    this.attempt = 0
+    this.o.onState('offline')
     this.open()
   }
 
@@ -184,6 +224,9 @@ export class EventSocket {
         if (this.hidden) this.send({ type: 'visibility', hidden: true })
         this.o.onState('connected')
         this.startPing()
+      } else if (msg.type === 'pong') {
+        if (this.deadTimer !== null) this.o.clearTimer(this.deadTimer)
+        this.deadTimer = null
       } else if (msg.type === 'event') {
         this.o.onEvent(msg.event)
       } else if (msg.type === 'lagged') {

@@ -12,6 +12,11 @@ fn names_are_cleaned() {
     assert_eq!(clean_name(".bashrc"), "bashrc");
     assert_eq!(clean_name("a<b>.png"), "ab.png");
     assert_eq!(clean_name(""), "upload");
+    // Device names are not file names on Windows, with or without an extension.
+    assert_eq!(clean_name("AUX"), "_AUX");
+    assert_eq!(clean_name("lpt3.pdf"), "_lpt3.pdf");
+    assert_eq!(clean_name("photo.jpg"), "photo.jpg");
+    assert_eq!(clean_name("scan. "), "scan");
 }
 
 #[test]
