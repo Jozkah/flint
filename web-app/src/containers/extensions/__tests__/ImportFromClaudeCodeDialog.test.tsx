@@ -93,7 +93,9 @@ describe('ImportFromClaudeCodeDialog', () => {
     // 'superpowers' is already checked by default (not alreadyExists), and
     // 'existing-skill' stays unchecked by default -- so both non-existing
     // items ('brainstorming' and 'superpowers') are selected here.
-    const overwriteSwitch = screen.getByLabelText(
+    // The manifest renders after the scan promise resolves, which is a tick after
+    // `ccScan` is called, so wait for the switch rather than reading it at once.
+    const overwriteSwitch = await screen.findByLabelText(
       'common:extensionsManager.import.overwrite'
     )
     fireEvent.click(overwriteSwitch)
