@@ -18,7 +18,12 @@ import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useAppState } from '@/hooks/useAppState'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import { cn } from '@/lib/utils'
+import {
+  cn,
+  guardServerStart,
+  MODEL_LOAD_WATCHDOG_MS,
+  withTimeout,
+} from '@/lib/utils'
 import { ApiKeyInput } from '@/containers/ApiKeyInput'
 import { UsageCeilingsCard } from '@/containers/UsageCeilingsCard'
 import { useEffect, useMemo, useState } from 'react'
@@ -127,12 +132,16 @@ function LocalAPIServerContent() {
 
       setServerStatus('pending')
 
-      ensureModelForServer({
-        modelsService: serviceHub.models(),
-        modelOverride: defaultModelLocalApiServer,
-        onLoadStart: () => setIsModelLoading(true),
-        onLoadEnd: () => setIsModelLoading(false),
-      })
+      withTimeout(
+        ensureModelForServer({
+          modelsService: serviceHub.models(),
+          modelOverride: defaultModelLocalApiServer,
+          onLoadStart: () => setIsModelLoading(true),
+          onLoadEnd: () => setIsModelLoading(false),
+        }),
+        MODEL_LOAD_WATCHDOG_MS,
+        'Timed out waiting for the model to finish loading.'
+      )
         .then(async (result) => {
           if (result.status === 'no_model_available') {
             throw new Error('No model available to load')
@@ -157,19 +166,21 @@ function LocalAPIServerContent() {
         })
         .then(() => {
           // Then start the server
-          return window.core?.api?.startServer({
-            host: serverHost,
-            port: serverPort,
-            prefix: apiPrefix,
-            apiKey,
-            trustedHosts,
-            isCorsEnabled: corsEnabled,
-            isVerboseEnabled: verboseLogs,
-            proxyTimeout: proxyTimeout,
-            enableServerToolExecution,
-          })
+          return guardServerStart(
+            window.core?.api?.startServer({
+              host: serverHost,
+              port: serverPort,
+              prefix: apiPrefix,
+              apiKey,
+              trustedHosts,
+              isCorsEnabled: corsEnabled,
+              isVerboseEnabled: verboseLogs,
+              proxyTimeout: proxyTimeout,
+              enableServerToolExecution,
+            })
+          )
         })
-        .then((actualPort: number) => {
+        .then((actualPort: number | undefined) => {
           // Store the actual port that was assigned (important for mobile with port 0)
           if (actualPort && actualPort !== serverPort) {
             setServerPort(actualPort)
