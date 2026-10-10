@@ -198,5 +198,13 @@
     "previousAt": "Předchozí verze (zobrazena {{index}} z {{count}})",
     "nextAt": "Další verze (zobrazena {{index}} z {{count}})",
     "position": "Verze {{index}} z {{count}}"
+  },
+  "bulkDelete": {
+    "select": "Vybrat chaty",
+    "selected": "Vybráno: {{count}}",
+    "title": "Smazat chaty: {{count}}?",
+    "description": "Chaty k smazání: {{count}}. Tuto akci nelze vrátit zpět.",
+    "descriptionArchive": "Chaty přesunuté do archivu: {{count}}. Odtud je můžete obnovit.",
+    "done": "Smazáno chatů: {{count}}"
   }
 }

@@ -191,5 +191,13 @@
     "previousAt": "Version précédente (affichage {{index}} sur {{count}})",
     "nextAt": "Version suivante (affichage {{index}} sur {{count}})",
     "position": "Version {{index}} sur {{count}}"
+  },
+  "bulkDelete": {
+    "select": "Sélectionner des chats",
+    "selected": "{{count}} sélectionnés",
+    "title": "Supprimer {{count}} chats ?",
+    "description": "{{count}} chats seront supprimés. Cette action est irréversible.",
+    "descriptionArchive": "{{count}} chats seront déplacés vers les archives. Vous pourrez les restaurer à partir de là.",
+    "done": "{{count}} chats supprimés"
   }
 }
