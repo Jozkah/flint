@@ -1349,6 +1349,106 @@ pub async fn agent_team_child_propose(
     .await
 }
 
+/// Campaigns: the commands only record and validate. Ids are checked against
+/// `[A-Za-z0-9_-]` inside `campaign`, before a path is built.
+fn campaign_failure(e: crate::core::agent::campaign::CampaignError) -> ProposalFailure {
+    proposal_failure(e.message)
+}
+
+/// Validate a plan and record a new `planned` campaign.
+#[tauri::command]
+pub async fn agent_campaign_create(
+    app: tauri::AppHandle,
+    input: crate::core::agent::campaign::CreateInput,
+) -> Result<crate::core::agent::campaign::Campaign, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::create(&data_folder, input).map_err(campaign_failure)
+    })
+    .await
+}
+
+/// One campaign; work another process left running reads as interrupted.
+#[tauri::command]
+pub async fn agent_campaign_get(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<crate::core::agent::campaign::Campaign, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::get(&data_folder, &id).map_err(campaign_failure)
+    })
+    .await
+}
+
+/// Every recorded campaign, newest first.
+#[tauri::command]
+pub async fn agent_campaign_list(app: tauri::AppHandle) -> Vec<crate::core::agent::campaign::Campaign> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || Ok(crate::core::agent::campaign::list(&data_folder)))
+        .await
+        .unwrap_or_default()
+}
+
+/// Move the campaign or one of its tasks along its state machine.
+#[tauri::command]
+pub async fn agent_campaign_transition(
+    app: tauri::AppHandle,
+    id: String,
+    input: crate::core::agent::campaign::TransitionInput,
+) -> Result<crate::core::agent::campaign::Campaign, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::transition(&data_folder, &id, input).map_err(campaign_failure)
+    })
+    .await
+}
+
+/// Record how a task's run ended, with its handoff. First ending wins.
+#[tauri::command]
+pub async fn agent_campaign_task_settle(
+    app: tauri::AppHandle,
+    id: String,
+    task_id: String,
+    input: crate::core::agent::campaign::SettleInput,
+) -> Result<crate::core::agent::campaign::Campaign, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::task_settle(&data_folder, &id, &task_id, input)
+            .map_err(campaign_failure)
+    })
+    .await
+}
+
+/// Cancel the campaign and every task that has not finished.
+#[tauri::command]
+pub async fn agent_campaign_cancel(
+    app: tauri::AppHandle,
+    id: String,
+    detail: Option<String>,
+) -> Result<crate::core::agent::campaign::Campaign, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::cancel(&data_folder, &id, detail.as_deref().unwrap_or_default())
+            .map_err(campaign_failure)
+    })
+    .await
+}
+
+/// Append to the campaign's `decisions.md`. Coordinator only.
+#[tauri::command]
+pub async fn agent_campaign_decisions_append(
+    app: tauri::AppHandle,
+    id: String,
+    text: String,
+) -> Result<(), ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::decisions_append(&data_folder, &id, &text).map_err(campaign_failure)
+    })
+    .await
+}
+
 /// Take a checkpoint of the tree a run is about to change.
 ///
 /// The snapshot is a commit object off to one side: the user's branch, HEAD,
