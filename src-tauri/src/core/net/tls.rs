@@ -576,6 +576,8 @@ pub fn certificate_failure(err: &(dyn std::error::Error + 'static)) -> Option<St
         ("self-signed certificate", "the server's certificate is self-signed and not trusted"),
         ("certificate has expired", "the certificate has expired"),
         ("hostname mismatch", "the certificate is not valid for this host name"),
+        // OpenSSL names the verdict for an IP-address URL this way.
+        ("ip address mismatch", "the certificate is not valid for this host name"),
         ("notvalidforname", "the certificate is not valid for this host name"),
         ("not valid for name", "the certificate is not valid for this host name"),
         ("unknownissuer", "the certificate chain ends in a root certificate that is not trusted"),
@@ -895,6 +897,11 @@ pub(crate) mod tests {
             Some(Box::new(Wrapped("Hostname mismatch", None))),
         );
         assert!(certificate_failure(&err).unwrap().contains("host name"));
+        let ip = Wrapped(
+            "error trying to connect: certificate verify failed: IP address mismatch",
+            None,
+        );
+        assert!(certificate_failure(&ip).unwrap().contains("host name"));
         let plain = Wrapped("certificate verify failed", None);
         assert!(certificate_failure(&plain).unwrap().contains("could not be verified"));
     }
