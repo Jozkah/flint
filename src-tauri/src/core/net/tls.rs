@@ -584,6 +584,9 @@ pub fn certificate_failure(err: &(dyn std::error::Error + 'static)) -> Option<St
         ("certificate verify failed", "the server's certificate could not be verified"),
         ("certificate is not trusted", "the server's certificate is not trusted"),
     ];
+    // Wordings that name no cause; a more specific one further down the chain wins.
+    const GENERIC: &[&str] = &["certificate verify failed", "invalid peer certificate"];
+    let mut generic: Option<&str> = None;
     let mut current: Option<&(dyn std::error::Error + 'static)> = Some(err);
     while let Some(e) = current {
         if let Some(code) = e.downcast_ref::<std::io::Error>().and_then(std::io::Error::raw_os_error) {
@@ -599,12 +602,20 @@ pub fn certificate_failure(err: &(dyn std::error::Error + 'static)) -> Option<St
         if let Some((_, reason)) = WINDOWS.iter().find(|(code, _)| text.contains(&format!("os error {code}"))) {
             return Some(reason.to_string());
         }
-        if let Some((_, reason)) = WORDING.iter().find(|(needle, _)| text.contains(needle)) {
-            return Some(reason.to_string());
+        if let Some((needle, reason)) = WORDING.iter().find(|(needle, _)| text.contains(needle)) {
+            // OpenSSL wraps the specific verdict ("Hostname mismatch") in a
+            // generic "certificate verify failed", so the outermost error says
+            // only that. Keep looking down the chain for a specific reason and
+            // use the generic one only when nothing better turns up.
+            if GENERIC.contains(needle) {
+                generic.get_or_insert(*reason);
+            } else {
+                return Some(reason.to_string());
+            }
         }
         current = e.source();
     }
-    None
+    generic.map(str::to_string)
 }
 
 /// What is in force, for `flint cli net ca status` and the settings page.
@@ -861,6 +872,31 @@ pub(crate) mod tests {
         set_allow_invalid_certs("p3n-a", Some("https://gateway.test:8443"), true);
         set_allow_invalid_certs("p3n-a", Some("file:///etc/passwd"), true);
         assert!(!allows_invalid_certs("gateway.test", 8443));
+    }
+
+    /// OpenSSL reports a host-name mismatch as a generic "certificate verify
+    /// failed" wrapping the specific cause; the specific cause must win.
+    #[test]
+    fn a_specific_cause_beats_a_generic_wrapper_in_the_error_chain() {
+        #[derive(Debug)]
+        struct Wrapped(&'static str, Option<Box<Wrapped>>);
+        impl std::fmt::Display for Wrapped {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.0)
+            }
+        }
+        impl std::error::Error for Wrapped {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                self.1.as_deref().map(|e| e as &(dyn std::error::Error + 'static))
+            }
+        }
+        let err = Wrapped(
+            "error trying to connect: certificate verify failed",
+            Some(Box::new(Wrapped("Hostname mismatch", None))),
+        );
+        assert!(certificate_failure(&err).unwrap().contains("host name"));
+        let plain = Wrapped("certificate verify failed", None);
+        assert!(certificate_failure(&plain).unwrap().contains("could not be verified"));
     }
 
     /// The five TLS proofs, on both HTTP stacks: (1) an untrusted server is
