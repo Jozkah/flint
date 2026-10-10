@@ -227,6 +227,7 @@ import {
   type TokenUsage,
 } from '@/lib/tokenUsage'
 import { createDecodeClock, generationSpeed } from '@/lib/tokenSpeed'
+import { createReasoningClock } from '@/lib/reasoningClock'
 
 export type TokenUsageCallback = (
   usage: TokenUsage,
@@ -3249,6 +3250,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     let streamStartTime: number | undefined
     // Generation time, for the speed: output only, per step. See createDecodeClock.
     const decodeClock = createDecodeClock()
+    // Time spent thinking, stored on the message so "Thought for N s" survives a reload.
+    const reasoningClock = createReasoningClock()
     useAppState.getState().updatePromptProgress(undefined)
     useAppState.getState().updateThreadPromptProgress(threadId, undefined)
     useAppState.getState().updateLiveTokenStats(undefined)
@@ -3340,6 +3343,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           decodeClock.tick(piece?.length ?? 0)
         }
         if (part.type === 'finish-step') decodeClock.endStep()
+        reasoningClock.observe(part.type)
 
         usageCollector.observe(part)
 
@@ -3494,6 +3498,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             finishReason: finishPart.finishReason,
             streamCutOff: streamCutOff(part),
             usage,
+            ...(reasoningClock.totalMs() > 0
+              ? { reasoningMs: Math.round(reasoningClock.totalMs()) }
+              : {}),
             // Which remembered records this request carried, and which were
             // withheld as conflicting: ids only, never their text.
             ...(this.memorySelection
