@@ -45,6 +45,10 @@
     "noneYet": "zatím žádné odpovědi"
   },
   "providers": {
+    "disableAll": "Vypnout vše",
+    "enableAll": "Zapnout vše",
+    "allDisabledToast": "Všichni poskytovatelé jsou vypnuti",
+    "allEnabledToast": "Všichni poskytovatelé jsou zapnuti",
     "title": "Poskytovatelé",
     "onDevice": "Na tomto zařízení",
     "remote": "Vzdálení",

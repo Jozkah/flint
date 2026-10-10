@@ -45,6 +45,10 @@
     "noneYet": "belum ada balasan"
   },
   "providers": {
+    "disableAll": "Nonaktifkan semua",
+    "enableAll": "Aktifkan semua",
+    "allDisabledToast": "Semua penyedia dinonaktifkan",
+    "allEnabledToast": "Semua penyedia diaktifkan",
     "title": "Provider",
     "onDevice": "Di perangkat ini",
     "remote": "Jarak jauh",

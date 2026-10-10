@@ -45,6 +45,10 @@
     "noneYet": "尚無回覆"
   },
   "providers": {
+    "disableAll": "全部停用",
+    "enableAll": "全部啟用",
+    "allDisabledToast": "已停用所有提供者",
+    "allEnabledToast": "已啟用所有提供者",
     "title": "供應商",
     "onDevice": "在這台裝置上",
     "remote": "遠端",

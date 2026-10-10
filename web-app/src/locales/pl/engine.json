@@ -45,6 +45,10 @@
     "noneYet": "brak odpowiedzi"
   },
   "providers": {
+    "disableAll": "Wyłącz wszystkie",
+    "enableAll": "Włącz wszystkie",
+    "allDisabledToast": "Wyłączono wszystkich dostawców",
+    "allEnabledToast": "Włączono wszystkich dostawców",
     "title": "Dostawcy",
     "onDevice": "Na tym urządzeniu",
     "remote": "Zdalni",
