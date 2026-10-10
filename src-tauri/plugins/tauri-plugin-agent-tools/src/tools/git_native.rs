@@ -30,10 +30,8 @@ fn hide_console(cmd: &mut Command) {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    #[cfg(not(windows))]
-    {
-        let _ = cmd;
-    }
+    // `git` and `gh` are host programs: keep the AppImage's libraries out of them.
+    jan_process::HostProcessEnv::host_env(cmd);
 }
 
 /// A GitHub repository coordinate, compared case-insensitively with any trailing
@@ -666,6 +664,7 @@ async fn list_owner_repos(owner: &str) -> Vec<String> {
         return Vec::new();
     };
     let mut cmd = tokio::process::Command::new(gh);
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     cmd.args([
         "repo", "list", owner, "--limit", "100", "--json", "name", "--jq", ".[].name",
     ])
@@ -755,6 +754,7 @@ pub async fn git_clone(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> Str
     // Rebuilt from the validated parts, never the raw argument.
     let canonical = format!("https://github.com/{owner}/{repo}.git");
     let mut cmd = tokio::process::Command::new(&git);
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     // Hooks off (empty hooksPath), https as the only transport, no credential
     // prompt, and `--` so the URL can never be read as an option.
     cmd.args([

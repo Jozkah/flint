@@ -44,7 +44,9 @@ fn launch(url: &str) -> Result<(), String> {
         return Err("no graphical session detected".to_string());
     }
 
-    std::process::Command::new(program)
+    let mut command = std::process::Command::new(program);
+    jan_process::HostProcessEnv::host_env(&mut command);
+    command
         .args(args)
         .arg(url)
         .stdin(std::process::Stdio::null())

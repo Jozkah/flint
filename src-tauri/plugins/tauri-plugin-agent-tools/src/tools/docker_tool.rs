@@ -181,6 +181,7 @@ pub async fn docker(args: &Value) -> String {
         Err(message) => return message,
     };
     let mut cmd = tokio::process::Command::new("docker");
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     cmd.args(&argv)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())

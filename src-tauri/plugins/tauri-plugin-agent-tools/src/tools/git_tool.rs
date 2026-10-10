@@ -1279,6 +1279,7 @@ pub async fn check_repo_config(cwd: &Path) -> Result<(), String> {
         return Ok(());
     };
     let mut cmd = tokio::process::Command::new(&git);
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     cmd.args(["config", "--list", "--show-scope", "--no-includes", "-z"])
         .current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -1425,6 +1426,7 @@ impl GitIdentity {
 /// when it did not start, timed out or failed.
 async fn quiet_output(bin: &Path, args: &[&str], cwd: &Path) -> Option<String> {
     let mut cmd = tokio::process::Command::new(bin);
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     cmd.args(args)
         .current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -1641,6 +1643,7 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
         };
     };
     let mut cmd = tokio::process::Command::new(&bin);
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     if plan.program == Program::Git && plan.args.first().map(String::as_str) == Some("merge-tree") {
         // Repository attributes may name a merge driver. Local drivers are
         // refused by check_repo_config; do not inherit one from user or system

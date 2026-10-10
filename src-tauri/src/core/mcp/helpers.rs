@@ -679,18 +679,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
                 });
             // Scrub the AppImage runtime's library/path variables so host tools
             // (node, git, python) do not load the bundle's older libs (#015, #136, #375).
-            #[cfg(target_os = "linux")]
-            if let Some(appdir) = std::env::var_os("APPDIR")
-                .and_then(|v| v.into_string().ok())
-                .filter(|_| std::env::var_os("APPIMAGE").is_some())
-            {
-                for (var, value) in appimage_env_scrubs(&appdir, |k| std::env::var(k).ok()) {
-                    match value {
-                        Some(v) => cmd.env(var, v),
-                        None => cmd.env_remove(var),
-                    };
-                }
-            }
+            jan_process::HostProcessEnv::host_env(&mut cmd);
             // A PYTHONHOME inherited from the host points uv's Python at a tree
             // without a stdlib ("No module named 'encodings'", #376). A value in
             // the server's own config is applied below and still wins.
@@ -1794,79 +1783,4 @@ pub fn spawn_idle_shutdown_loop<R: Runtime>(app: AppHandle<R>) {
             }
         }
     });
-}
-
-/// Variables an AppImage's AppRun prepends its own mount to; a spawned host
-/// program that inherits them loads the bundle's libraries instead of the host's.
-#[cfg(any(target_os = "linux", test))]
-const APPIMAGE_PATH_VARS: &[&str] = &[
-    "LD_LIBRARY_PATH",
-    "PATH",
-    "XDG_DATA_DIRS",
-    "PYTHONHOME",
-    "PYTHONPATH",
-    "PERLLIB",
-    "GST_PLUGIN_PATH",
-    "GTK_PATH",
-    "GIO_EXTRA_MODULES",
-];
-
-/// For each inherited variable that has an entry under `appdir`, the value to
-/// set (`Some`) or `None` to remove it. Variables that are unset or have no
-/// such entry are left out, so the child still inherits them untouched.
-#[cfg(any(target_os = "linux", test))]
-fn appimage_env_scrubs(
-    appdir: &str,
-    get: impl Fn(&str) -> Option<String>,
-) -> Vec<(&'static str, Option<String>)> {
-    let appdir = appdir.trim_end_matches('/');
-    if appdir.is_empty() {
-        return Vec::new();
-    }
-    let under = |entry: &str| {
-        entry == appdir || entry.strip_prefix(appdir).is_some_and(|r| r.starts_with('/'))
-    };
-    APPIMAGE_PATH_VARS
-        .iter()
-        .filter_map(|&var| {
-            let value = get(var)?;
-            if !value.split(':').any(under) {
-                return None;
-            }
-            let kept: Vec<&str> = value
-                .split(':')
-                .filter(|e| !e.is_empty() && !under(e))
-                .collect();
-            Some((var, (!kept.is_empty()).then(|| kept.join(":"))))
-        })
-        .collect()
-}
-
-#[cfg(test)]
-mod appimage_env_tests {
-    use super::appimage_env_scrubs;
-
-    #[test]
-    fn drops_appdir_entries_and_keeps_host_ones() {
-        let get = |k: &str| match k {
-            "LD_LIBRARY_PATH" => Some("/tmp/.mount_x/usr/lib:/opt/cuda/lib".to_string()),
-            "PYTHONHOME" => Some("/tmp/.mount_x/usr".to_string()),
-            "PATH" => Some("/usr/bin:/bin".to_string()),
-            _ => None,
-        };
-        let out = appimage_env_scrubs("/tmp/.mount_x", get);
-        assert_eq!(
-            out,
-            vec![
-                ("LD_LIBRARY_PATH", Some("/opt/cuda/lib".to_string())),
-                ("PYTHONHOME", None),
-            ]
-        );
-    }
-
-    #[test]
-    fn sibling_prefix_is_not_under_appdir() {
-        let get = |k: &str| (k == "PATH").then(|| "/tmp/.mount_xy/bin".to_string());
-        assert!(appimage_env_scrubs("/tmp/.mount_x", get).is_empty());
-    }
 }

@@ -454,7 +454,11 @@ pub fn open_app_directory<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     } else {
         "xdg-open"
     };
-    std::process::Command::new(program)
+    let mut command = std::process::Command::new(program);
+    // `xdg-open` hands off to the user's file manager, which must not load the
+    // AppImage's libraries.
+    jan_process::HostProcessEnv::host_env(&mut command);
+    command
         .arg(app_path)
         .status()
         .map_err(|e| format!("Failed to open app directory: {e}"))?;

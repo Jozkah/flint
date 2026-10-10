@@ -33,6 +33,9 @@
 //! method puts the child in its own process group, which is what the Windows
 //! flag does on that side.
 
+pub mod appimage;
+pub use appimage::{host_env_var, HostProcessEnv};
+
 use std::process::Command as StdCommand;
 use tokio::process::Command as TokioCommand;
 

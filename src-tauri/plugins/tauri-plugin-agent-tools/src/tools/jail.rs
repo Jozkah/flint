@@ -1570,7 +1570,7 @@ fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> (ProbeOutcome, Verdict)
     // will actually happen rather than a friendlier version of it.
     command.env_clear();
     for name in proc::SANDBOX_ENV_ALLOW {
-        if let Some(value) = std::env::var_os(name) {
+        if let Some(value) = jan_process::host_env_var(name) {
             command.env(name, value);
         }
     }
