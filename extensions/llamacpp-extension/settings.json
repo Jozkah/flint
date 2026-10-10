@@ -353,11 +353,15 @@
   {
     "key": "cache_type_k",
     "title": "KV Cache K Type",
-    "description": "KV cache data type for Keys (default: f16).",
+    "description": "KV cache data type for Keys. Auto uses q8_0, which halves the cache at a negligible quality cost.",
     "controllerType": "dropdown",
     "controllerProps": {
-      "value": "f16",
+      "value": "auto",
       "options": [
+        {
+          "value": "auto",
+          "name": "Auto"
+        },
         {
           "value": "f32",
           "name": "f32"
@@ -400,11 +404,15 @@
   {
     "key": "cache_type_v",
     "title": "KV Cache V Type",
-    "description": "KV cache data type for Values (default: f16).",
+    "description": "KV cache data type for Values. Auto uses q8_0 when Flash Attention is On and f16 otherwise, since a quantized V cache needs Flash Attention. A model that fails to load with it is retried once with f16.",
     "controllerType": "dropdown",
     "controllerProps": {
-      "value": "f16",
+      "value": "auto",
       "options": [
+        {
+          "value": "auto",
+          "name": "Auto"
+        },
         {
           "value": "f32",
           "name": "f32"

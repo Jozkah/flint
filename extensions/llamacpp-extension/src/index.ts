@@ -57,6 +57,11 @@ import {
   DEFAULT_EMBEDDING_UBATCH,
 } from './preset'
 import {
+  kvDefaultsInEffect,
+  resolveKvCacheTypes,
+  shouldRetryLoadWithF16Kv,
+} from './kvCache'
+import {
   evaluateEmbeddingVector,
   evaluateGpuOffload,
   backendFromDeviceIds,
@@ -431,6 +436,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   private userModelsMax: number = 1
   private engineEmbeddingBonus: number = 0
   private loadedChatOrder: string[] = []
+  // Models whose `auto` KV cache defaults failed to load and now run f16. Kept
+  // for the session so the next load does not fail the same way; cleared when
+  // a KV or flash-attn setting changes.
+  private kvFallbackModels = new Set<string>()
 
   // The engine worker spawn runs off the onLoad critical path; awaited via
   // ensureEngineReady() before any model load so inference never races it.
@@ -784,7 +793,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     const { path: presetPath, embeddingCount } = await generatePreset(
       providerPath,
       janDataFolderPath,
-      this.config
+      this.config,
+      { kvFallbackModels: this.kvFallbackModels }
     )
 
     const modelsMax = this.resolveModelsMax(embeddingCount)
@@ -904,7 +914,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     const { path: presetPath, embeddingCount } = await generatePreset(
       providerPath,
       janDataFolderPath,
-      this.config
+      this.config,
+      { kvFallbackModels: this.kvFallbackModels }
     )
     this.presetPath = presetPath
 
@@ -1238,6 +1249,9 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
   onSettingUpdate<T>(key: string, value: T): void {
     this.config[key] = value
+    if (key === 'cache_type_k' || key === 'cache_type_v' || key === 'flash_attn') {
+      this.kvFallbackModels.clear()
+    }
 
     if (key === 'llamacpp_env') {
       this.llamacpp_env = value as string
@@ -2114,7 +2128,20 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
 
     try {
-      const info = await loadLlamaModel(modelId, isEmbedding)
+      let info: SessionInfo
+      try {
+        info = await loadLlamaModel(modelId, isEmbedding)
+      } catch (error) {
+        // One retry with f16 KV when the `auto` defaults are what failed.
+        if (!(await this.shouldFallBackToF16Kv(modelId, error))) throw error
+        logger.warn(
+          `Load of ${modelId} failed with the quantized KV cache default; retrying once with an f16 KV cache:`,
+          error
+        )
+        this.kvFallbackModels.add(modelId)
+        await this.refreshEnginePreset()
+        info = await loadLlamaModel(modelId, isEmbedding)
+      }
       if (!isEmbedding) {
         this.loadedChatOrder = this.loadedChatOrder.filter((m) => m !== modelId)
         this.loadedChatOrder.push(modelId)
@@ -2124,6 +2151,42 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       logger.error('Error in load command:\n', error)
       throw error
     }
+  }
+
+  /**
+   * Whether `error` came from the `auto` KV cache defaults, i.e. a retry with
+   * f16 could succeed. Explicit user settings never qualify.
+   */
+  private async shouldFallBackToF16Kv(
+    modelId: string,
+    error: unknown
+  ): Promise<boolean> {
+    if (this.kvFallbackModels.has(modelId)) return false
+    let mc: { cache_type_k?: string; cache_type_v?: string; flash_attn?: string } = {}
+    try {
+      mc =
+        (await invoke<typeof mc>('read_yaml', {
+          path: await joinPath([
+            await this.getProviderPath(),
+            'models',
+            modelId,
+            'model.yml',
+          ]),
+        })) ?? {}
+    } catch {
+      // No per-model overrides readable: the global settings decide.
+    }
+    const cfg = this.config as Partial<LlamacppConfig>
+    const has = (v: unknown) => typeof v === 'string' && v.length > 0
+    return shouldRetryLoadWithF16Kv({
+      error,
+      alreadyRetried: false,
+      defaultsInEffect: kvDefaultsInEffect({
+        cacheTypeK: has(mc.cache_type_k) ? mc.cache_type_k : cfg.cache_type_k,
+        cacheTypeV: has(mc.cache_type_v) ? mc.cache_type_v : cfg.cache_type_v,
+        flashAttn: mc.flash_attn ?? cfg.flash_attn,
+      }),
+    })
   }
 
   /**
@@ -2924,12 +2987,12 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     try {
       // The estimate must use the cache width the model will load with.
       const cfg = this.config as Partial<LlamacppConfig> | undefined
-      const result = await isModelSupported(
-        path,
-        Number(ctxSize),
-        cfg?.cache_type_k,
-        cfg?.cache_type_v
-      )
+      const kv = resolveKvCacheTypes({
+        cacheTypeK: cfg?.cache_type_k,
+        cacheTypeV: cfg?.cache_type_v,
+        flashAttn: cfg?.flash_attn,
+      })
+      const result = await isModelSupported(path, Number(ctxSize), kv.k, kv.v)
       return result
     } catch (e) {
       throw new Error(String(e))
