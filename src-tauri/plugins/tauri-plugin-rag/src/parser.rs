@@ -10,30 +10,87 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use zip::read::ZipArchive;
 
+/// Run `f`, turning a panic into an error message (parsers can panic on
+/// malformed PDFs; that must not take the app down).
+fn guard<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(r) => r,
+        Err(payload) => {
+            let reason = if let Some(s) = payload.downcast_ref::<&str>() {
+                (*s).to_string()
+            } else if let Some(s) = payload.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "unknown parser panic".to_string()
+            };
+            Err(format!("parser panicked: {reason}"))
+        }
+    }
+}
+
+/// Lenient second extractor. `pdf-extract` aborts on the first page, font or
+/// content stream it cannot interpret; this walks the pages with lopdf
+/// directly and keeps whatever text each page yields. Encrypted documents are
+/// opened with the empty user password.
+fn extract_pdf_text_lenient(bytes: &[u8]) -> Result<String, String> {
+    guard(|| {
+        let mut doc = lopdf::Document::load_mem(bytes).map_err(|e| e.to_string())?;
+        if doc.is_encrypted() {
+            doc.decrypt("").map_err(|e| match e {
+                lopdf::Error::Decryption(lopdf::encryption::DecryptionError::IncorrectPassword) => {
+                    "the PDF is password protected".to_string()
+                }
+                other => format!("unsupported encryption ({other})"),
+            })?;
+        }
+        let mut out = String::new();
+        let mut first_err = None;
+        for page in doc.get_pages().keys() {
+            for chunk in doc.extract_text_chunks(&[*page]) {
+                match chunk {
+                    Ok(t) => out.push_str(&t),
+                    Err(e) => {
+                        first_err.get_or_insert_with(|| e.to_string());
+                    }
+                }
+            }
+            out.push_str("\n");
+        }
+        if out.chars().all(char::is_whitespace) {
+            if let Some(e) = first_err {
+                return Err(e);
+            }
+        }
+        Ok(out)
+    })
+}
+
+/// Strict extractor first, lenient lopdf walk second, clear error if both fail.
+fn extract_pdf_text(bytes: &[u8]) -> Result<String, RagError> {
+    let primary = guard(|| pdf_extract::extract_text_from_mem(bytes).map_err(|e| e.to_string()));
+    let primary_err = match primary {
+        Ok(t) if t.chars().any(|c| !c.is_whitespace()) => return Ok(t),
+        // Parsed but empty: let the fallback try before calling it a scan.
+        Ok(t) => {
+            return Ok(extract_pdf_text_lenient(bytes).unwrap_or(t));
+        }
+        Err(e) => e,
+    };
+    match extract_pdf_text_lenient(bytes) {
+        Ok(t) => Ok(t),
+        Err(fallback_err) => Err(RagError::ParseError(format!(
+            "Could not read this PDF. It may be corrupted, password protected or use unsupported encryption.              (primary parser: {primary_err}; fallback parser: {fallback_err})"
+        ))),
+    }
+}
+
 pub fn parse_pdf(file_path: &str) -> Result<String, RagError> {
     let metadata = fs::metadata(file_path)?;
     if metadata.len() > MAX_PARSE_FILE_SIZE {
         return Err(RagError::ParseError("File too large (max 200MB)".to_string()));
     }
     let bytes = fs::read(file_path)?;
-    // pdf-extract can panic on some malformed PDFs; guard to avoid crashing the app
-    let text = match catch_unwind(AssertUnwindSafe(|| pdf_extract::extract_text_from_mem(&bytes))) {
-        Ok(Ok(t)) => t,
-        Ok(Err(e)) => return Err(RagError::ParseError(format!("PDF parse error: {}", e))),
-        Err(payload) => {
-            let reason = if let Some(s) = payload.downcast_ref::<&str>() {
-                *s
-            } else if let Some(s) = payload.downcast_ref::<String>() {
-                s.as_str()
-            } else {
-                "unknown parser panic"
-            };
-            return Err(RagError::ParseError(format!(
-                "PDF parsing failed unexpectedly: {}",
-                reason
-            )));
-        }
-    };
+    let text = extract_pdf_text(&bytes)?;
 
     // Validate that the PDF has extractable text (not image-based/scanned)
     // Count meaningful characters (excluding whitespace)
@@ -582,6 +639,112 @@ mod tests {
             .as_bytes(),
         );
         pdf
+    }
+
+    /// Build a PDF from object bodies (1-based ids) with a real xref table.
+    fn build_pdf(objects: &[String], trailer_extra: &str) -> Vec<u8> {
+        let mut pdf = b"%PDF-1.4
+".to_vec();
+        let mut offsets = Vec::new();
+        for (i, body) in objects.iter().enumerate() {
+            offsets.push(pdf.len());
+            pdf.extend_from_slice(format!("{} 0 obj
+{}
+endobj
+", i + 1, body).as_bytes());
+        }
+        let xref_at = pdf.len();
+        pdf.extend_from_slice(format!("xref
+0 {}
+", objects.len() + 1).as_bytes());
+        pdf.extend_from_slice(b"0000000000 65535 f 
+");
+        for off in offsets {
+            pdf.extend_from_slice(format!("{:010} 00000 n 
+", off).as_bytes());
+        }
+        pdf.extend_from_slice(
+            format!(
+                "trailer
+<< /Size {} /Root 1 0 R {} >>
+startxref
+{}
+%%EOF
+",
+                objects.len() + 1,
+                trailer_extra,
+                xref_at
+            )
+            .as_bytes(),
+        );
+        pdf
+    }
+
+    fn stream(body: &str) -> String {
+        format!("<< /Length {} >>
+stream
+{}
+endstream", body.len(), body)
+    }
+
+    const SENTENCE: &str =
+        "The quick brown fox jumps over the lazy dog while the PDF fallback extractor keeps reading";
+
+    /// Page 1 is ordinary text. Page 2 selects a font whose resource points at
+    /// an object that does not exist, which the strict extractor rejects.
+    fn pdf_with_a_broken_second_page() -> Vec<u8> {
+        let page1 = stream(&format!("BT /F1 12 Tf 20 100 Td ({SENTENCE}) Tj ET"));
+        let page2 = stream("BT /F9 12 Tf 20 100 Td (Second page text) Tj ET");
+        build_pdf(
+            &[
+                "<< /Type /Catalog /Pages 2 0 R >>".into(),
+                "<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>".into(),
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] /Resources << /Font << /F1 7 0 R >> >> /Contents 4 0 R >>".into(),
+                page1,
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] /Resources << /Font << /F9 99 0 R >> >> /Contents 6 0 R >>".into(),
+                page2,
+                "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".into(),
+            ],
+            "",
+        )
+    }
+
+    #[test]
+    fn strict_extractor_rejects_the_broken_page_pdf() {
+        let bytes = pdf_with_a_broken_second_page();
+        // It panics rather than erroring; `guard` turns that into an Err.
+        assert!(guard(|| pdf_extract::extract_text_from_mem(&bytes).map_err(|e| e.to_string())).is_err());
+    }
+
+    #[test]
+    fn the_lenient_fallback_recovers_text_the_strict_parser_rejects() {
+        let dir = TempDir::new("pdffallback");
+        let path = dir.file("broken.pdf", &pdf_with_a_broken_second_page());
+        let text = parse_document(&path, "pdf").unwrap();
+        assert!(text.contains("quick brown fox"), "{text}");
+    }
+
+    #[test]
+    fn unsupported_encryption_yields_a_clear_error() {
+        let page = stream(&format!("BT /F1 12 Tf 20 100 Td ({SENTENCE}) Tj ET"));
+        let bytes = build_pdf(
+            &[
+                "<< /Type /Catalog /Pages 2 0 R >>".into(),
+                "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".into(),
+                page,
+                "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".into(),
+                "<< /Filter /NoSuchHandler /V 9 /R 9 /O (x) /U (y) /P -4 >>".into(),
+            ],
+            "/Encrypt 6 0 R /ID [<00112233445566778899aabbccddeeff> <00112233445566778899aabbccddeeff>]",
+        );
+        let dir = TempDir::new("pdfenc");
+        let path = dir.file("enc.pdf", &bytes);
+        let err = parse_document(&path, "pdf").unwrap_err();
+        assert!(
+            matches!(err, RagError::ParseError(ref m) if m.contains("Could not read this PDF") && m.contains("encryption")),
+            "{err:?}"
+        );
     }
 
     #[test]
