@@ -16,8 +16,14 @@
 //! [models."anthropic/claude-sonnet-4-5"]
 //! input = 3.0
 //! output = 15.0
-//! cached_input = 0.3   # optional; falls back to `input` when absent
+//! cache_read = 0.3     # optional (alias `cached_input`); cached prompt reads
+//! cache_write = 3.75   # optional; prompt tokens written to the cache
 //! ```
+//!
+//! When `cache_read` / `cache_write` are absent they are not invented, with one
+//! exception: for the Claude family Anthropic's published ratios apply (read =
+//! 0.1x input, write = 1.25x input, the 5-minute cache). Any other model's
+//! cached tokens are priced at the normal `input` rate.
 //!
 //! Everything else follows from that one decision:
 //!
@@ -83,8 +89,60 @@ pub struct Price {
     pub input: f64,
     pub output: f64,
     /// What a cache read costs, when the provider charges less for it.
-    #[serde(default)]
+    /// `cache_read` in prices.toml is the preferred spelling.
+    #[serde(default, alias = "cache_read")]
     pub cached_input: Option<f64>,
+    /// What writing prompt tokens to the cache costs, when it differs.
+    #[serde(default)]
+    pub cache_write: Option<f64>,
+}
+
+/// Whether a model name is in the Claude family, whose cache ratios Anthropic
+/// publishes. Matched on the part after any provider prefix.
+pub(crate) fn is_claude_family(model: &str) -> bool {
+    let bare = model.rsplit('/').next().unwrap_or(model).to_ascii_lowercase();
+    ["claude", "sonnet", "opus", "haiku"].iter().any(|m| bare.contains(m))
+}
+
+impl Price {
+    /// `(cache_read, cache_write)` in dollars per million, with the family
+    /// defaults described in the module docs where nothing was declared.
+    pub fn cache_rates(&self, model: &str) -> (f64, f64) {
+        let claude = is_claude_family(model);
+        let read = self
+            .cached_input
+            .unwrap_or(if claude { self.input * 0.1 } else { self.input });
+        let write = self
+            .cache_write
+            .unwrap_or(if claude { self.input * 1.25 } else { self.input });
+        (read, write)
+    }
+}
+
+/// Dollars for token counts at `price`. `cached` and `written` are **shares of
+/// `input`** (the prompt total, cache included). Providers that report the
+/// prompt total including cache (OpenAI, DeepSeek, and genai's normalized
+/// Anthropic count) are passed straight in; Anthropic's native
+/// `input_tokens` excludes both, so the caller adds them first
+/// (`events::Usage::from_completion` does). Clamped so a count that
+/// disagrees with the total cannot go negative.
+pub fn cost_usd(
+    price: &Price,
+    model: &str,
+    input: u64,
+    cached: u64,
+    written: u64,
+    output: u64,
+) -> f64 {
+    let cached = cached.min(input);
+    let written = written.min(input - cached);
+    let plain = input - cached - written;
+    let (read_rate, write_rate) = price.cache_rates(model);
+    (plain as f64 * price.input
+        + cached as f64 * read_rate
+        + written as f64 * write_rate
+        + output as f64 * price.output)
+        / 1_000_000.0
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -108,7 +166,7 @@ pub fn prices(data_folder: &Path) -> Result<BTreeMap<String, Price>, SpendError>
         SpendError::new(SpendErrorKind::PricesMalformed, format!("prices.toml: {e}"))
     })?;
     for (model, price) in &parsed.models {
-        let sane = [Some(price.input), Some(price.output), price.cached_input]
+        let sane = [Some(price.input), Some(price.output), price.cached_input, price.cache_write]
             .into_iter()
             .flatten()
             .all(|v| v.is_finite() && v >= 0.0);
@@ -130,6 +188,9 @@ pub struct ModelSpend {
     pub dispatches: usize,
     pub input_tokens: u64,
     pub cached_input_tokens: u64,
+    /// Prompt tokens written to the provider's cache (part of `input_tokens`).
+    #[serde(default)]
+    pub cache_write_tokens: u64,
     pub output_tokens: u64,
     /// Dollars, when this model has a declared price. `None` means nobody said
     /// what it costs -- never a zero.
@@ -262,6 +323,7 @@ struct Counted {
     model: String,
     input: u64,
     cached: u64,
+    cache_write: u64,
     output: u64,
     estimated: bool,
 }
@@ -286,6 +348,7 @@ fn counted(data_folder: &Path) -> Vec<Counted> {
             model: record.model.clone(),
             input: record.prompt_tokens.unwrap_or(0),
             cached: cached_of(&record),
+            cache_write: record.cache_write_tokens.unwrap_or(0),
             output: record.completion_tokens.unwrap_or(0),
             estimated: record.source == tauri_plugin_agent_tools::usage::UsageSource::Estimated,
         })
@@ -342,6 +405,10 @@ fn counted(data_folder: &Path) -> Vec<Counted> {
                     .get("cachedInputTokens")
                     .and_then(serde_json::Value::as_u64)
                     .unwrap_or(0),
+                cache_write: payload
+                    .get("cacheWriteTokens")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0),
                 output,
                 // The event log records what the provider said; an estimate
                 // never reaches it as a count.
@@ -395,6 +462,7 @@ pub fn report(
             dispatches: 0,
             input_tokens: 0,
             cached_input_tokens: 0,
+            cache_write_tokens: 0,
             output_tokens: 0,
             cost: None,
             estimated_dispatches: 0,
@@ -407,6 +475,7 @@ pub fn report(
         entry.input_tokens += record.input;
         entry.output_tokens += record.output;
         entry.cached_input_tokens += record.cached;
+        entry.cache_write_tokens += record.cache_write;
         if record.estimated {
             entry.estimated_dispatches += 1;
         }
@@ -417,13 +486,14 @@ pub fn report(
     for entry in by_model.values_mut() {
         match price_for(&prices, &entry.model) {
             Some(price) => {
-                let cached = entry.cached_input_tokens.min(entry.input_tokens);
-                let plain = entry.input_tokens - cached;
-                let cached_rate = price.cached_input.unwrap_or(price.input);
-                let cost = (plain as f64 * price.input
-                    + cached as f64 * cached_rate
-                    + entry.output_tokens as f64 * price.output)
-                    / 1_000_000.0;
+                let cost = cost_usd(
+                    &price,
+                    &entry.model,
+                    entry.input_tokens,
+                    entry.cached_input_tokens,
+                    entry.cache_write_tokens,
+                    entry.output_tokens,
+                );
                 entry.cost = Some(cost);
                 priced_cost += cost;
             }
@@ -490,6 +560,14 @@ pub fn render(report: &Report) -> String {
                 None => "not priced".to_string(),
             }
         ));
+        if model.cached_input_tokens > 0 || model.cache_write_tokens > 0 {
+            out.push_str(&format!(
+                "      cache: {} read, {} written, {:.0}% of input served from cache\n",
+                model.cached_input_tokens,
+                model.cache_write_tokens,
+                model.cached_input_tokens as f64 * 100.0 / model.input_tokens.max(1) as f64
+            ));
+        }
         if model.estimated_dispatches > 0 {
             out.push_str(&format!(
                 "      {} of those were Jan's own estimate, not the provider's count\n",
@@ -639,5 +717,64 @@ mod tests {
         // And no price file at all is simply no prices.
         let none = Workspace::new("spend-no-prices");
         assert!(prices(none.path()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn cache_rates_default_by_family_and_explicit_wins() {
+        let plain = Price { input: 10.0, output: 20.0, cached_input: None, cache_write: None };
+        // Not Claude: no discount invented.
+        assert_eq!(plain.cache_rates("openai/gpt-x"), (10.0, 10.0));
+        // Claude: Anthropic's ratios.
+        assert_eq!(plain.cache_rates("anthropic/claude-sonnet-5"), (1.0, 12.5));
+        let set = Price { cached_input: Some(0.5), cache_write: Some(4.0), ..plain };
+        assert_eq!(set.cache_rates("claude-x"), (0.5, 4.0));
+    }
+
+    #[test]
+    fn cost_treats_cache_as_a_share_of_the_prompt_total() {
+        let p = Price { input: 3.0, output: 15.0, cached_input: Some(0.3), cache_write: Some(3.75) };
+        // Prompt total 1M of which 600k read and 100k written, 100k out.
+        let c = cost_usd(&p, "m", 1_000_000, 600_000, 100_000, 100_000);
+        let want = 0.3 * 3.0 + 0.6 * 0.3 + 0.1 * 3.75 + 0.1 * 15.0;
+        assert!((c - want).abs() < 1e-9, "{c} vs {want}");
+        // Cache counts larger than the total cannot underflow.
+        let c = cost_usd(&p, "m", 100, 500, 500, 0);
+        assert!((c - 100.0 * 0.3 / 1e6).abs() < 1e-12);
+    }
+
+    #[test]
+    fn prices_toml_cache_fields_are_optional_and_cache_read_is_an_alias() {
+        let old = Workspace::new("spend-cache-old")
+            .file("prices.toml", "[models.\"a\"]\ninput = 1.0\noutput = 2.0\n");
+        let m = prices(old.path()).unwrap();
+        assert_eq!((m["a"].cached_input, m["a"].cache_write), (None, None));
+        let new = Workspace::new("spend-cache-new").file(
+            "prices.toml",
+            "[models.\"a\"]\ninput = 1.0\noutput = 2.0\ncache_read = 0.1\ncache_write = 1.25\n",
+        );
+        let m = prices(new.path()).unwrap();
+        assert_eq!((m["a"].cached_input, m["a"].cache_write), (Some(0.1), Some(1.25)));
+    }
+
+    #[test]
+    fn a_report_prices_cache_reads_and_writes_separately() {
+        let data = Workspace::new("spend-cache-report").file(
+            "prices.toml",
+            "[models.\"claude-x\"]\ninput = 3.0\noutput = 15.0\n",
+        );
+        let mut r = usage::record("inv-c", UsageSource::Provider);
+        r.model = "claude-x".into();
+        r.prompt_tokens = Some(1_000_000);
+        r.completion_tokens = Some(0);
+        r.cached_prompt_tokens = Some(500_000);
+        r.cache_write_tokens = Some(100_000);
+        usage::append(data.path(), &r);
+        let report = report(data.path(), None, None).unwrap();
+        let m = &report.by_model[0];
+        assert_eq!((m.cached_input_tokens, m.cache_write_tokens), (500_000, 100_000));
+        // 400k plain at 3, 500k read at 0.3, 100k write at 3.75.
+        let want = 0.4 * 3.0 + 0.5 * 0.3 + 0.1 * 3.75;
+        assert!((m.cost.unwrap() - want).abs() < 1e-9, "{:?}", m.cost);
+        assert!(render(&report).contains("cache: 500000 read, 100000 written, 50%"));
     }
 }

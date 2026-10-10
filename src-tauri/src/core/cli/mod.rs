@@ -906,12 +906,13 @@ fn resolve_cost_ceiling(
     })?;
     // prices.toml is dollars per million tokens.
     let per_token = |per_million: f64| per_million / 1_000_000.0;
+    let (cache_read, cache_write) = price.cache_rates(model);
     Ok(Some(crate::core::agent::session::CostCeiling {
         rates: crate::core::agent::session::TokenRates {
             prompt_usd: per_token(price.input),
             completion_usd: per_token(price.output),
-            cache_read_usd: price.cached_input.map(per_token),
-            cache_write_usd: None,
+            cache_read_usd: Some(per_token(cache_read)),
+            cache_write_usd: Some(per_token(cache_write)),
         },
         max_usd,
     }))
@@ -5610,6 +5611,7 @@ mod tests {
                 input: 3.0,
                 output: 15.0,
                 cached_input: Some(0.3),
+                cache_write: None,
             },
         );
         let ceiling = resolve_cost_ceiling(Some(0.0), None, &prices, "anthropic/claude-x")

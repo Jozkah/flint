@@ -1180,16 +1180,24 @@ impl HttpModelInvoker {
 
     fn record_completion(&self, invocation: &str, completion: &serde_json::Value) {
         if let Some(usage) = Usage::from_completion(completion) {
+            let mut payload = serde_json::json!({
+                "inputTokens": usage.prompt_tokens,
+                "outputTokens": usage.completion_tokens,
+                "totalTokens": usage.total_tokens,
+                "requests": 1,
+            });
+            // Cache shares of the prompt, only when the provider said.
+            if let Some(v) = usage.cached_prompt_tokens {
+                payload["cachedInputTokens"] = v.into();
+            }
+            if let Some(v) = usage.cache_write_tokens {
+                payload["cacheWriteTokens"] = v.into();
+            }
             self.invocations.record(
                 "usage.reported",
                 &format!("usage:{invocation}"),
                 invocation,
-                serde_json::json!({
-                    "inputTokens": usage.prompt_tokens,
-                    "outputTokens": usage.completion_tokens,
-                    "totalTokens": usage.total_tokens,
-                    "requests": 1,
-                }),
+                payload,
             );
         }
         let message = extract_choice_message(completion);
