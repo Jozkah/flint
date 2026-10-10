@@ -41,6 +41,16 @@ vi.mock('@/hooks/useGeneralSetting', () => ({
 }))
 
 describe('cleanTitle', () => {
+  it('keeps the punctuation that is part of a name', () => {
+    expect(cleanTitle('Reading hello.txt File Contents')).toBe(
+      'Reading hello.txt File Contents'
+    )
+    expect(cleanTitle('Porting C++ to node.js, fast!')).toBe(
+      'Porting C++ to node.js fast'
+    )
+    expect(cleanTitle('snake_case vs camelCase.')).toBe('snake_case vs camelCase')
+  })
+
   it('returns a clean title from normal text', () => {
     expect(cleanTitle('Hello World')).toBe('Hello World')
   })
@@ -81,10 +91,10 @@ describe('cleanTitle', () => {
   })
 
   it('removes special characters but keeps letters and numbers', () => {
-    expect(cleanTitle('Title! With@ Special# Chars$')).toBe(
+    expect(cleanTitle('Title! With@ Special* Chars$')).toBe(
       'Title With Special Chars'
     )
-    expect(cleanTitle('Version 2.0 Release')).toBe('Version 20 Release')
+    expect(cleanTitle('Version 2.0 Release')).toBe('Version 2.0 Release')
   })
 
   it('returns null for empty or very short text', () => {

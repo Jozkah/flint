@@ -153,6 +153,8 @@
     width: max-content;
     overflow-x: auto;
     border-collapse: collapse;
+    /* The renderer adds `border border-border`; the design is row rules only. */
+    border: 0;
     margin-bottom: 0.85em;
     font-size: var(--text-sm);
     line-height: 1.45;

@@ -139,6 +139,7 @@ import {
 } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { enableModelCapabilities } from '@/lib/modelCapabilityEnable'
 import { parseServerContextLimit, rememberServerLimit } from '@/lib/contextLimitRecovery'
 import { selectionForThreadModel } from '@/hooks/useConversationPane'
 import { MessageItem } from '@/containers/MessageItem'
@@ -2772,7 +2773,29 @@ export function CoworkPage() {
     // agent then narrates work it never did. Refusing up front is honest; a
     // toolless "agent" run is worse than no run.
     if (!selectedModel.capabilities?.includes('tools')) {
-      toast.error(t('common:modelNoTools', { model: selectedModel.id }))
+      // A custom endpoint never reports capabilities, so the model can be fine
+      // and still look toolless. Offer the user's own override where the
+      // refusal is, the way a tool-call message offers it in chat.
+      const modelId = selectedModel.id
+      const providerId = resolved.choice?.provider ?? globalProvider
+      toast.error(t('common:modelNoTools', { model: modelId }), {
+        action: providerId
+          ? {
+              label: t('common:modelCapability.enableAlways'),
+              onClick: () => {
+                const store = useModelProvider.getState()
+                const owner = store.getProviderByName(providerId)
+                if (!owner) return
+                store.updateProvider(providerId, {
+                  ...owner,
+                  models: enableModelCapabilities(owner.models, modelId, [
+                    'tools',
+                  ]),
+                })
+              },
+            }
+          : undefined,
+      })
       onRefused?.()
       return
     }

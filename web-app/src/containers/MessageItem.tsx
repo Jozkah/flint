@@ -680,9 +680,11 @@ export const MessageItem = memo(
       flushCot(false)
       // A run that ended after tool calls with no reply: say so, and name
       // the last tool failure, rather than leaving only the tool trace.
+      // Not for a reply the user stopped: that was not the model giving up.
       if (
         message.role === 'assistant' &&
         !isStreaming &&
+        !isStopped &&
         !awaitingApproval &&
         !midReply
       ) {
@@ -735,6 +737,7 @@ export const MessageItem = memo(
       citationOffsets,
       midReply,
       runParts,
+      isStopped,
     ])
 
     const versionNav =

@@ -1598,11 +1598,6 @@ export function ThreadConversation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId, isActive])
 
-  useEffect(() => {
-    titleAbortRef.current?.abort()
-    titleAbortRef.current = null
-  }, [threadId])
-
   // Load messages on first mount
   useEffect(() => {
     // Skip if chat already has messages (e.g., returning to a streaming conversation)
@@ -1714,7 +1709,8 @@ export function ThreadConversation({
 
   useEffect(() => {
     return () => {
-      titleAbortRef.current?.abort()
+      // The title is not aborted here: it is small, belongs to the thread (not
+      // this view) and was thrown away by every quick switch to a new chat.
       // In a split the other pane may be the current thread by now.
       if (
         !isSplitRef.current ||

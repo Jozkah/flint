@@ -35,7 +35,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ExtensionManager } from '@/lib/extension'
 import { extractFilesFromPrompt, type FileMetadata } from '@/lib/fileMetadata'
 import { contextUsage } from '@/lib/contextUsage'
-import { classifyModelLocation } from '@/lib/modelLocation'
+import { useProviderLocations } from '@/hooks/useEndpointLocations'
 import { cn, isLocalProvider } from '@/lib/utils'
 import {
   evidenceFromSnapshot,
@@ -532,6 +532,13 @@ export function WhatJanIsUsingPanel({
     }
   }, [open, lookupIds, lookupProject, threadId, serviceHub, refreshKey])
 
+  // A host name that is neither localhost nor an address (`v100`) needs the
+  // resolver's answer; without it the card said "still checking" for ever.
+  const locateProvider = useProviderLocations(
+    provider ? [provider] : [],
+    (name) => Boolean(isLocalProvider(name))
+  )
+
   const currentProject = thread?.metadata?.project
   const sections = useMemo(
     () =>
@@ -539,12 +546,7 @@ export function WhatJanIsUsingPanel({
         model: {
           id: selectedModel?.id,
           provider: selectedProvider,
-          location: provider
-            ? classifyModelLocation({
-                baseUrl: provider.base_url,
-                builtInEngine: Boolean(isLocalProvider(provider.provider)),
-              })
-            : 'unknown',
+          location: provider ? locateProvider(provider) : 'unknown',
         },
         assistant: {
           name: thread?.assistants?.[0]?.name,
@@ -586,6 +588,7 @@ export function WhatJanIsUsingPanel({
       evidence,
       currentProject,
       lastProjectName,
+      locateProvider,
     ]
   )
 

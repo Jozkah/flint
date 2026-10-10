@@ -42,8 +42,16 @@ export function cleanTitle(raw: string): string | null {
   text = text.replace(/\s+/g, ' ').trim()
   // Remove surrounding quotes
   text = text.replace(/^["']+|["']+$/g, '').trim()
-  // Keep only letters, numbers, and spaces (unicode-aware)
-  text = text.replace(/[^\p{L}\p{N}\s]/gu, '').trim()
+  // Keep letters, numbers and spaces (unicode-aware), plus the punctuation
+  // that is part of a name: `hello.txt`, `node.js`, `C++`, `snake_case`,
+  // `v1-2`, `a/b`. Whatever else the model added around a word is dropped.
+  text = text.replace(/[^\p{L}\p{N}\s._+#/'-]/gu, '')
+  text = text
+    .split(/\s+/)
+    .map((word) => word.replace(/^[._/'-]+|[._-]+$/g, ''))
+    .filter(Boolean)
+    .join(' ')
+    .trim()
   // Enforce word limit
   text = text.split(/\s+/).slice(0, MAX_TITLE_WORDS).join(' ')
   return !text || text.length < 2 ? null : text
@@ -143,10 +151,14 @@ async function requestTitle(
   abortSignal: AbortSignal,
   session: string
 ): Promise<string | null | typeof ABORTED> {
+  // Room for a reasoning model to think and still answer: thinking can only be
+  // switched off for the local engine, and on a hosted or custom endpoint 128
+  // tokens were spent before the title started, leaving the first words of the
+  // prompt as the chat's name.
   const text = await runUtilityText(
     'title',
     buildSummarizePrompt(transcript),
-    128,
+    1024,
     abortSignal,
     session
   )
