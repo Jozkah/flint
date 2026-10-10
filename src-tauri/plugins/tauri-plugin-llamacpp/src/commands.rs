@@ -57,6 +57,12 @@ async fn engine_endpoint(state: &LlamacppState) -> Result<(u16, String, u32), St
     Ok((h.port, h.api_key.clone(), h.pid))
 }
 
+/// How long a model load may take, both for the `/models/load` request (the
+/// engine answers only once the load has finished) and for the readiness poll
+/// behind it. Large models on cold or slow storage legitimately need more than
+/// the 10 minutes this used to be.
+const MODEL_LOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
 /// What became of the worker a request could not reach, when it is dead.
 ///
 /// A worker that crashed mid-load answers nothing, and reqwest's own text
@@ -89,7 +95,7 @@ async fn http_client() -> reqwest::Client {
     // The engine is on loopback: a system or environment proxy (a VPN client,
     // a corporate proxy) must never carry these requests.
     reqwest::Client::builder()
-        .timeout(Duration::from_secs(600))
+        .timeout(MODEL_LOAD_TIMEOUT)
         .no_proxy()
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
@@ -396,7 +402,7 @@ async fn post_load<S: ProgressSink>(
     // resolves on the first poll. It stays as the fallback for the case where
     // the answer said "already loading" and someone else owns the attempt.
     let result = tokio::select! {
-        r = wait_until_loaded(state, port, api_key, model_id, Duration::from_secs(600)) => r,
+        r = wait_until_loaded(state, port, api_key, model_id, MODEL_LOAD_TIMEOUT) => r,
         exit_code = sse_failure => Err(ServerError::Llamacpp(LlamacppError::new(
             ErrorCode::ModelLoadFailed,
             format!("Model {} failed to load", model_id),
@@ -1127,7 +1133,7 @@ mod load_rejection_tests {
 /// The two sides of `/models/sse` in one place: what the worker serializes
 /// (`engine::events`) against what the desktop parses. They are separate
 /// modules with no shared type, so nothing but a test keeps them in step --
-/// and a drift here is silent, costing every load its full 600s timeout
+/// and a drift here is silent, costing every load its full load timeout
 /// instead of an error.
 #[cfg(test)]
 mod sse_contract_tests {
