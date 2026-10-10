@@ -95,13 +95,24 @@ fn run_app_owns_the_lifecycle_handler_and_nothing_else() {
     for shutdown in [
         "RunEvent::ExitRequested",
         "RunEvent::Exit",
-        "background_cleanup_mcp_servers",
-        "cleanup_llama_processes",
+        "core::system::shutdown::shutdown_cleanup",
         "flush_settings()",
     ] {
         assert!(
             body.contains(shutdown),
             "run_app() lost shutdown behaviour `{shutdown}`"
+        );
+    }
+    // The teardown itself lives in one place, shared with the update path, so
+    // the guard on it follows the code there rather than run_app()'s text.
+    let shutdown_rs = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/system/shutdown.rs"),
+    )
+    .expect("src/core/system/shutdown.rs must be readable");
+    for step in ["background_cleanup_mcp_servers", "cleanup_llama_processes"] {
+        assert!(
+            shutdown_rs.contains(step),
+            "shutdown_cleanup() lost shutdown behaviour `{step}`"
         );
     }
     assert!(
