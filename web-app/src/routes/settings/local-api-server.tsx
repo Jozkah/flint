@@ -172,6 +172,14 @@ function LocalAPIServerContent() {
         .then((actualPort: number) => {
           // Store the actual port that was assigned (important for mobile with port 0)
           if (actualPort && actualPort !== serverPort) {
+            // The backend falls back to a free port when the configured one
+            // is taken or refused; say so rather than silently changing it.
+            toast.warning(t('model-errors:serverPortFallback'), {
+              description: t('model-errors:serverPortFallbackDescription', {
+                requested: serverPort,
+                actual: actualPort,
+              }),
+            })
             setServerPort(actualPort)
           }
           setServerStatus('running')
