@@ -2725,6 +2725,34 @@ fn map_bind_error(
     Box::new(err)
 }
 
+/// Bind `addr`. When a specific port is taken by another process (AddrInUse)
+/// or the OS refuses it (PermissionDenied, Windows 10013 for reserved ranges),
+/// bind an OS-assigned free port on the same host instead of failing. The
+/// boolean says whether that fallback happened; the caller reads the real
+/// port from the listener and reports it. When even the fallback cannot bind,
+/// the original error is returned.
+async fn bind_with_fallback(
+    addr: SocketAddr,
+) -> std::io::Result<(tokio::net::TcpListener, bool)> {
+    match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => Ok((l, false)),
+        Err(e)
+            if addr.port() != 0
+                && matches!(
+                    e.kind(),
+                    std::io::ErrorKind::AddrInUse | std::io::ErrorKind::PermissionDenied
+                ) =>
+        {
+            let fallback = SocketAddr::new(addr.ip(), 0);
+            match tokio::net::TcpListener::bind(fallback).await {
+                Ok(l) => Ok((l, true)),
+                Err(_) => Err(e),
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// A JSON response for the image and video routes: the body on success, an
 /// OpenAI-shaped error with its own status otherwise.
 fn json_response(
@@ -2868,27 +2896,38 @@ async fn start_server_internal(
     // Calculate this before proxy_api_key is moved into ProxyConfig.
     let insecure_public_bind = is_insecure_public_bind(&host, &proxy_api_key);
 
-    let config = ProxyConfig {
-        prefix,
-        proxy_api_key,
-        trusted_hosts,
-        host: host.clone(),
-        port,
-        enable_server_tool_execution,
-        cors_enabled,
-    };
-
     let client = upstream_client(Some(proxy_timeout))?;
     let local_client = local_upstream_client(Some(proxy_timeout))?;
 
-    let listener = match tokio::net::TcpListener::bind(addr).await {
-        Ok(l) => l,
+    // Bind first: the port that ends up bound (it differs from the requested
+    // one after a fallback) is what the config and the caller must see.
+    let (listener, fell_back) = match bind_with_fallback(addr).await {
+        Ok(bound) => bound,
         Err(e) => {
             log::error!("Failed to bind to {addr}: {e}");
             return Err(map_bind_error(addr, e));
         }
     };
-    log::info!("Flint API server started on http://{addr}");
+    let bound_addr = listener.local_addr().unwrap_or(addr);
+    if fell_back {
+        log::warn!(
+            "Port {} on {} is unavailable; the Flint API server is using free port {} instead",
+            addr.port(),
+            addr.ip(),
+            bound_addr.port()
+        );
+    }
+    log::info!("Flint API server started on http://{bound_addr}");
+
+    let config = ProxyConfig {
+        prefix,
+        proxy_api_key,
+        trusted_hosts,
+        host: host.clone(),
+        port: bound_addr.port(),
+        enable_server_tool_execution,
+        cors_enabled,
+    };
 
     // Security: binding to a non-loopback interface exposes the OpenAI-compatible
     // API on the network. With no API key set, any reachable host can call it
@@ -2962,7 +3001,7 @@ async fn start_server_internal(
     });
 
     *handle_guard = Some(server_task);
-    let actual_port = addr.port();
+    let actual_port = bound_addr.port();
     log::info!("Flint API server started successfully on port {actual_port}");
     Ok(actual_port)
 }
@@ -3494,7 +3533,10 @@ mod tests {
         assert_eq!(ctx(&serde_json::json!({"id":"m"})), None);
     }
 
-    use super::{error_json, is_insecure_public_bind, is_local_url, map_bind_error, model_ids_match};
+    use super::{
+        bind_with_fallback, error_json, is_insecure_public_bind, is_local_url, map_bind_error,
+        model_ids_match,
+    };
     use std::net::SocketAddr;
 
     /// #195: a final `data: [DONE]` with no trailing newline is still
@@ -3552,6 +3594,27 @@ mod tests {
     fn public_bind_with_key_is_ok() {
         assert!(!is_insecure_public_bind("0.0.0.0", "secret"));
         assert!(!is_insecure_public_bind("192.168.1.10", "secret"));
+    }
+
+    /// A free port binds as asked; a taken port falls back to another free
+    /// port on the same host instead of failing.
+    #[tokio::test]
+    async fn bind_falls_back_to_a_free_port_when_the_port_is_taken() {
+        let holder = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let taken = holder.local_addr().unwrap();
+
+        let (listener, fell_back) = bind_with_fallback(taken).await.unwrap();
+        let bound = listener.local_addr().unwrap();
+        assert!(fell_back);
+        assert_ne!(bound.port(), taken.port());
+        assert_eq!(bound.ip(), taken.ip());
+        drop(listener);
+        drop(holder);
+
+        // Free now: no fallback, same port.
+        let (listener, fell_back) = bind_with_fallback(taken).await.unwrap();
+        assert!(!fell_back);
+        assert_eq!(listener.local_addr().unwrap(), taken);
     }
 
     #[test]
