@@ -182,3 +182,19 @@ describe('ChainOfThoughtGroup view switching', () => {
     expect(screen.getByText(/tailtoken/)).toBeInTheDocument()
   })
 })
+
+describe('ChainOfThoughtGroup stored thinking time', () => {
+  const finished = (extra: Record<string, unknown> = {}) =>
+    renderGroup({ isStreaming: false, hasFollowingContent: true, ...extra })
+
+  it('names the stored thinking time on a reply that was not timed live', () => {
+    finished({ persistedThoughtSeconds: 7 })
+    expect(screen.getByText('chat:reasoning.thoughtFor')).toBeInTheDocument()
+    expect(screen.queryByText('chat:reasoning.thoughtForAWhile')).not.toBeInTheDocument()
+  })
+
+  it('falls back to "a while" when nothing was stored', () => {
+    finished()
+    expect(screen.getByText('chat:reasoning.thoughtForAWhile')).toBeInTheDocument()
+  })
+})
