@@ -36,6 +36,18 @@
     }
   },
   {
+    "key": "idle_unload_minutes",
+    "title": "Unload Idle Models After (minutes)",
+    "description": "Unload a local model that has not been used for this many minutes, to free memory. It reloads on the next request. Embedding models and models with a request in progress are never unloaded. 0 = never.",
+    "controllerType": "input",
+    "controllerProps": {
+      "value": 0,
+      "placeholder": "e.g 10",
+      "type": "number",
+      "textAlign": "right"
+    }
+  },
+  {
     "key": "timeout",
     "title": "Timeout for llamacpp",
     "description": "Llamacpp connection and load timeout in seconds",

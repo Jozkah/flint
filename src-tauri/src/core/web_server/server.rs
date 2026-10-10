@@ -830,7 +830,8 @@ async fn rpc_route(state: &State, command: &str, args: serde_json::Value) -> Res
             };
             let models_max = args.get("modelsMax").and_then(serde_json::Value::as_u64).map(|v| v as u32);
             let slot_cache = args.get("slotCacheMib").and_then(serde_json::Value::as_u64);
-            match tauri_plugin_llamacpp::engine::commands::reload_models(&state.engine.state, preset, models_max, slot_cache).await {
+            let idle_unload = args.get("idleUnloadMinutes").and_then(serde_json::Value::as_u64).map(|v| v as u32);
+            match tauri_plugin_llamacpp::engine::commands::reload_models(&state.engine.state, preset, models_max, slot_cache, idle_unload).await {
                 Ok(report) => json(&report),
                 Err(message) => reply(StatusCode::BAD_GATEWAY, "text/plain; charset=utf-8", message),
             }
