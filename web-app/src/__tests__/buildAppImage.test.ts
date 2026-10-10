@@ -58,4 +58,27 @@ describe.skipIf(!hasBash)('buildAppImage.sh', () => {
     // The AppImage tauri built is left alone rather than deleted.
     expect(existsSync(join(dir, 'src-tauri/target/release/bundle/appimage/Flint.AppImage'))).toBe(true)
   })
+
+  it('fails, without repackaging, when the AppDir bundles the host Vulkan loader', () => {
+    dir = mkdtempSync(join(tmpdir(), 'appimage-'))
+    mkdirSync(join(dir, 'stub'))
+    writeFileSync(join(dir, 'stub', 'wget'), WGET_STUB, { mode: 0o755 })
+    const appDir = join(dir, 'src-tauri/target/release/bundle/appimage/Flint.AppDir')
+    mkdirSync(join(appDir, 'usr/bin'), { recursive: true })
+    mkdirSync(join(appDir, 'usr/lib'), { recursive: true })
+    writeFileSync(join(appDir, 'usr/lib/libvulkan.so.1'), 'x')
+    mkdirSync(join(dir, 'src-tauri/resources/bin'), { recursive: true })
+    writeFileSync(join(dir, 'src-tauri/resources/bin/bun'), 'x')
+    writeFileSync(join(dir, 'src-tauri/target/release/bundle/appimage/Flint.AppImage'), 'x')
+
+    const run = spawnSync('bash', ['-s'], {
+      cwd: dir,
+      input: `export PATH="$PWD/stub:$PATH"\n${SCRIPT}`,
+      encoding: 'utf8',
+    })
+
+    expect(run.status).not.toBe(0)
+    expect(run.stdout + run.stderr).toContain('libvulkan.so.1')
+    expect(existsSync(join(dir, 'appimagetool-ran'))).toBe(false)
+  })
 })
