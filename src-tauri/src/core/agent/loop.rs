@@ -6785,14 +6785,27 @@ pub(crate) fn apply_child_compact_window(compact_at: u64, window: Option<u64>) -
     }
 }
 
+/// Whether a subagent's window actually moved the trigger (it was set and
+/// below the trigger the model's own window allows).
+pub(crate) fn child_compact_window_applied(compact_at: u64, window: Option<u64>) -> bool {
+    apply_child_compact_window(compact_at, window) < compact_at
+}
+
 /// Read the proactive compaction thresholds off the request body, if present.
 fn read_compaction_thresholds(
     json_body: &serde_json::Value,
 ) -> Option<crate::core::agent::compaction_policy::Thresholds> {
-    let compact_at = apply_child_compact_window(
-        json_body.get(BODY_COMPACT_AT)?.as_u64()?,
-        json_body.get(BODY_CHILD_COMPACT_WINDOW).and_then(|v| v.as_u64()),
-    );
+    let base_compact_at = json_body.get(BODY_COMPACT_AT)?.as_u64()?;
+    let child_window = json_body.get(BODY_CHILD_COMPACT_WINDOW).and_then(|v| v.as_u64());
+    let compact_at = apply_child_compact_window(base_compact_at, child_window);
+    // Read once per run: say when a subagent's own window moved the trigger,
+    // so a QA run can see the override took effect.
+    if child_compact_window_applied(base_compact_at, child_window) {
+        log::debug!(
+            "agent: subagent compact window applied: compact_at {base_compact_at} -> {compact_at} (definition window {})",
+            child_window.unwrap_or_default()
+        );
+    }
     let effective_window = json_body.get(BODY_EFFECTIVE_WINDOW)?.as_u64()?;
     Some(crate::core::agent::compaction_policy::Thresholds {
         effective_window,
@@ -7909,6 +7922,15 @@ async fn run_turn_cycle(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_child_compact_window_override_is_reported_only_when_it_lowers_the_trigger() {
+        assert!(child_compact_window_applied(100_000, Some(20_000)));
+        assert!(!child_compact_window_applied(100_000, Some(500_000)));
+        assert!(!child_compact_window_applied(100_000, Some(100_000)));
+        assert!(!child_compact_window_applied(100_000, None));
+        assert!(!child_compact_window_applied(100_000, Some(0)));
+    }
+
     #[test]
     fn a_child_compact_window_only_lowers_the_trigger() {
         assert_eq!(apply_child_compact_window(100_000, Some(20_000)), 20_000);
