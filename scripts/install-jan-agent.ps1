@@ -83,12 +83,26 @@ function Install-Binary {
     Write-Host "installed $dest"
   }
 
-  $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+  # Read the user PATH as stored: GetEnvironmentVariable expands %VAR% entries,
+  # and writing that back would flatten them and turn REG_EXPAND_SZ into REG_SZ.
+  $envKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+  $userPath = ''
+  if ($envKey) {
+    $userPath = [string]$envKey.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    $envKey.Close()
+  }
   $onPath = ($env:Path -split ';') -contains $Dir
   if ($AddToPath) {
     if (($userPath -split ';') -notcontains $Dir) {
       $updated = if ([string]::IsNullOrEmpty($userPath)) { $Dir } else { "$userPath;$Dir" }
-      [Environment]::SetEnvironmentVariable('Path', $updated, 'User')
+      $envKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+      $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+      try { $kind = $envKey.GetValueKind('Path') } catch { }
+      $envKey.SetValue('Path', $updated, $kind)
+      $envKey.Close()
+      # Setting and clearing a variable broadcasts the environment change.
+      [Environment]::SetEnvironmentVariable('FLINT_ENV_REFRESH', '1', 'User')
+      [Environment]::SetEnvironmentVariable('FLINT_ENV_REFRESH', $null, 'User')
       Write-Host "added $Dir to your user PATH; open a new terminal to pick it up"
     } else {
       Write-Host "$Dir is already on your user PATH"
