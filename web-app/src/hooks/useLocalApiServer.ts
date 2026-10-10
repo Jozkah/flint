@@ -30,6 +30,11 @@ type LocalApiServerState = {
   // Server port (default 1337)
   serverPort: number
   setServerPort: (value: number) => void
+  // Port the running server actually bound. It differs from serverPort when the
+  // backend fell back to a free port; it is never persisted, so the user's
+  // configured port is tried again on the next start.
+  activeServerPort: number | null
+  setActiveServerPort: (value: number | null) => void
   // API prefix (default /v1)
   apiPrefix: string
   setApiPrefix: (value: string) => void
@@ -62,7 +67,7 @@ export function persistedLocalApiServerState(
   state: LocalApiServerState
 ): Partial<LocalApiServerState> {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { apiKey, ...rest } = state
+  const { apiKey, activeServerPort, ...rest } = state
   return rest
 }
 
@@ -83,6 +88,8 @@ export const useLocalApiServer = create<LocalApiServerState>()(
       // Use port 0 (auto-assign) for mobile to avoid conflicts, 1337 for desktop
       serverPort: (typeof window !== 'undefined' && (window as { IS_ANDROID?: boolean }).IS_ANDROID) || (typeof window !== 'undefined' && (window as { IS_IOS?: boolean }).IS_IOS) ? 0 : 1337,
       setServerPort: (value) => set({ serverPort: value }),
+      activeServerPort: null,
+      setActiveServerPort: (value) => set({ activeServerPort: value }),
       apiPrefix: '/v1',
       setApiPrefix: (value) => set({ apiPrefix: value }),
       corsEnabled: true,

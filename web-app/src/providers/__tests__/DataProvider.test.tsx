@@ -20,6 +20,7 @@ const h = vi.hoisted(() => {
     registrationListeners: new Set<() => void>(),
     setLastServerModels: vi.fn(),
     setServerPort: vi.fn(),
+    setActiveServerPort: vi.fn(),
     setServerStatus: vi.fn(),
     navigate: vi.fn(),
     invoke: vi.fn().mockResolvedValue(undefined),
@@ -104,6 +105,7 @@ vi.mock('@/hooks/useLocalApiServer', () => ({
     ...h.localApi,
     setLastServerModels: h.setLastServerModels,
     setServerPort: h.setServerPort,
+    setActiveServerPort: h.setActiveServerPort,
   }),
 }))
 
@@ -572,7 +574,9 @@ describe('DataProvider', () => {
     })
 
     await waitFor(() => {
-      expect(h.setServerPort).toHaveBeenCalledWith(2000)
+      expect(h.setActiveServerPort).toHaveBeenCalledWith(2000)
+      // the fallback port must not replace the user's pinned port
+      expect(h.setServerPort).not.toHaveBeenCalled()
       expect(h.setServerStatus).toHaveBeenCalledWith('running')
       expect(h.setLastServerModels).toHaveBeenCalledWith([
         { model: 'm1', provider: 'openai' },
@@ -624,6 +628,21 @@ describe('DataProvider', () => {
       await Promise.resolve()
     })
     expect(h.navigate).not.toHaveBeenCalled()
+  })
+
+  it('fills the composer from a prompt link without sending', async () => {
+    const { usePrompt } = await import('@/hooks/usePrompt')
+    usePrompt.getState().setPrompt('')
+    hubState.deeplinkGetCurrent.mockResolvedValue([
+      'flint://chat?prompt=Summarize%20this%20page',
+    ])
+    render(<DataProvider />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(usePrompt.getState().prompt).toBe('Summarize this page')
+    expect(h.navigate).toHaveBeenCalledTimes(1)
+    usePrompt.getState().setPrompt('')
   })
 
   it('ignores null deep link payload', async () => {

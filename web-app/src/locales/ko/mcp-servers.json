@@ -260,5 +260,8 @@
     "startWithFlint": "Flint와 함께 시작",
     "start": "시작",
     "stop": "중지"
-  }
+  },
+  "cwd": "작업 디렉터리",
+  "cwdPlaceholder": "선택 사항, 예: C:\\tools\\my-server",
+  "cwdHint": "서버가 시작되는 폴더입니다. 비워 두면 Flint 자체 폴더에서 시작합니다."
 }

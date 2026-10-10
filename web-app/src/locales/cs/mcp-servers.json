@@ -266,5 +266,8 @@
     "startWithFlint": "Spouštět s Flintem",
     "start": "Spustit",
     "stop": "Zastavit"
-  }
+  },
+  "cwd": "Pracovní adresář",
+  "cwdPlaceholder": "Volitelné, např. C:\\tools\\my-server",
+  "cwdHint": "Složka, ve které se server spustí. Nechte prázdné, aby se spustil ze složky samotného Flintu."
 }

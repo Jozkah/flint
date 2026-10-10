@@ -191,5 +191,13 @@
     "previousAt": "Versione precedente (mostra {{index}} di {{count}})",
     "nextAt": "Versione successiva (mostra {{index}} di {{count}})",
     "position": "Versione {{index}} di {{count}}"
+  },
+  "bulkDelete": {
+    "select": "Seleziona chat",
+    "selected": "{{count}} selezionate",
+    "title": "Eliminare {{count}} chat?",
+    "description": "{{count}} chat verranno eliminate. Questa azione non può essere annullata.",
+    "descriptionArchive": "{{count}} chat verranno spostate nell'archivio. Puoi ripristinarle da lì.",
+    "done": "{{count}} chat eliminate"
   }
 }

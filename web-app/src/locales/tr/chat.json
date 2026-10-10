@@ -184,5 +184,13 @@
     "previousAt": "Önceki sürüm ({{count}} içinden {{index}}. gösteriliyor)",
     "nextAt": "Sonraki sürüm ({{count}} içinden {{index}}. gösteriliyor)",
     "position": "Sürüm {{index}} / {{count}}"
+  },
+  "bulkDelete": {
+    "select": "Sohbetleri seç",
+    "selected": "{{count}} seçildi",
+    "title": "{{count}} sohbet silinsin mi?",
+    "description": "{{count}} sohbet silinecek. Bu işlem geri alınamaz.",
+    "descriptionArchive": "{{count}} sohbet arşive taşınacak. Oradan geri yükleyebilirsiniz.",
+    "done": "{{count}} sohbet silindi"
   }
 }

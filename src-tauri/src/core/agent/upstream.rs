@@ -1927,6 +1927,26 @@ pub(crate) async fn stream_openai_chat_completions(
     result
 }
 
+/// The converter-path client that skips certificate verification, kept per
+/// process and replaced when the trust settings change.
+fn loose_converter_client() -> Client {
+    static LOOSE: std::sync::Mutex<Option<(u64, Client)>> = std::sync::Mutex::new(None);
+    let key = crate::core::net::tls::fingerprint();
+    let mut loose = LOOSE.lock().unwrap_or_else(|p| p.into_inner());
+    match loose.as_ref() {
+        Some((built_for, client)) if *built_for == key => client.clone(),
+        _ => {
+            let client = crate::core::net::tls::apply12(
+                Client::builder().danger_accept_invalid_certs(true),
+            )
+            .build()
+            .unwrap_or_default();
+            *loose = Some((key, client.clone()));
+            client
+        }
+    }
+}
+
 /// Streaming counterpart of [`stream_openai_chat_completions`] for providers
 /// that speak a native (non-chat/completions) wire API. Uses the provider's
 /// [`UpstreamConverter`] to rewrite the request body, point at the native path,
@@ -1955,6 +1975,11 @@ pub(crate) async fn stream_converted_chat_completions(
         .trim_end_matches('/');
     let native_path = converter.upstream_path(body);
     let native_url = format!("{base}{native_path}");
+    // Only for an endpoint the user switched "allow invalid certificates" on
+    // for; everything else keeps the client it was given.
+    let loose = crate::core::net::tls::allows_invalid_certs_for_url(&native_url)
+        .then(loose_converter_client);
+    let client = loose.as_ref().unwrap_or(client);
 
     // Force streaming so the converter emits the SSE form and `upstream_path`
     // (Google) selects the `?alt=sse` variant, matching the OpenAI path.

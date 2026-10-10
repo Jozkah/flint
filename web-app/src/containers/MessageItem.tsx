@@ -60,6 +60,7 @@ import {
   type PartEntry,
 } from './message/types'
 import { CopyButton } from './CopyButton'
+import { thoughtSecondsFromMetadata } from '@/lib/reasoningClock'
 import { ExportSubmenu } from '@/components/ExportMenu'
 import { docFromUIMessage } from '@/lib/exportDoc'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -624,6 +625,7 @@ export const MessageItem = memo(
       return null
     }
 
+    const persistedThoughtSeconds = thoughtSecondsFromMetadata(metadata)
     const renderedParts = useMemo(() => {
       const parts = message.parts as MessagePartLike[]
       const elements: React.ReactNode[] = []
@@ -647,6 +649,7 @@ export const MessageItem = memo(
             hasFollowingContent={hasFollowing}
             awaitingApproval={awaitingApproval}
             keepToolActivity={keepToolActivity}
+            persistedThoughtSeconds={persistedThoughtSeconds}
             citationOffsets={citationOffsets}
             reasoningContainerRef={reasoningContainerRef}
             isReasoningAtBottom={isReasoningAtBottom}
@@ -738,6 +741,7 @@ export const MessageItem = memo(
       midReply,
       runParts,
       isStopped,
+      persistedThoughtSeconds,
     ])
 
     const versionNav =

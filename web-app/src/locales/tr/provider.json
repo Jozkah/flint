@@ -7,6 +7,8 @@
   "apiTypeOpenAI": "OpenAI uyumlu",
   "apiTypeAnthropic": "Anthropic uyumlu",
   "baseUrlLabel": "Temel URL",
+  "detectedLocal": "Bu bilgisayarda bulundu",
+  "useDetected": "{{name}} kullan",
   "baseUrlPlaceholder": "https://your-endpoint/v1",
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "API anahtarı",

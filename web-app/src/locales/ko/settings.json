@@ -187,7 +187,9 @@
     "transcriptViewThinking": "사고",
     "transcriptViewThinkingDesc": "모델의 추론을 함께 표시합니다. 도구 호출은 접힌 상태로 유지됩니다.",
     "transcriptViewVerbose": "자세히",
-    "transcriptViewVerboseDesc": "모두 표시: 전체 추론과 매개변수 및 출력이 펼쳐진 모든 도구 호출."
+    "transcriptViewVerboseDesc": "모두 표시: 전체 추론과 매개변수 및 출력이 펼쳐진 모든 도구 호출.",
+    "inlineCitations": "본문 내 출처 아이콘",
+    "inlineCitationsDesc": "웹 출처에서 가져온 문장 뒤에 작은 사이트 아이콘을 표시합니다. 끄면 아이콘 없이 답변을 읽을 수 있으며, 출처는 아래에 계속 나열됩니다."
   },
   "hardware": {
     "os": "운영 체제",

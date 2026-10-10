@@ -10,6 +10,8 @@ import { useEffect, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { repoFromDeepLink } from '@/lib/huggingface'
+import { promptFromDeepLink } from '@/lib/deepLinkPrompt'
+import { usePrompt } from '@/hooks/usePrompt'
 import { useMCPServers, DEFAULT_MCP_SETTINGS } from '@/hooks/useMCPServers'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
@@ -178,6 +180,43 @@ const syncRemoteProviders = () => {
   }
 
   registeredProviderNames = currentActive
+
+  syncTlsTrust(providers)
+}
+
+// Providers the backend currently skips certificate verification for, so a
+// provider that was switched off or removed is cleared there too.
+let trustedProviderNames = new Set<string>()
+
+// "Allow invalid certificates" is per provider and applies to that provider's
+// own base URL only. Sent for keyless providers as well (the usual case for a
+// self-signed gateway), which `registerRemoteProvider` skips.
+function syncTlsTrust(providers: ModelProvider[]) {
+  const now = new Set<string>()
+  providers.forEach((provider) => {
+    if (provider.provider === 'llamacpp') return
+    const allow = provider.allow_invalid_certs === true && !!provider.base_url
+    if (allow) now.add(provider.provider)
+    if (allow || trustedProviderNames.has(provider.provider)) {
+      hostInvoke('set_provider_tls_trust', {
+        provider: provider.provider,
+        baseUrl: provider.base_url ?? null,
+        allowInvalidCerts: allow,
+      }).catch(() => {})
+    }
+  })
+  // A provider removed from the list while it was trusted.
+  const listed = new Set(providers.map((p) => p.provider))
+  trustedProviderNames.forEach((name) => {
+    if (!listed.has(name)) {
+      hostInvoke('set_provider_tls_trust', {
+        provider: name,
+        baseUrl: null,
+        allowInvalidCerts: false,
+      }).catch(() => {})
+    }
+  })
+  trustedProviderNames = now
 }
 
 // MLX honors only these samplers; map Flint's setting keys to MLX request-body
@@ -232,7 +271,7 @@ export function DataProvider() {
     enableOnStartup,
     serverHost,
     serverPort,
-    setServerPort,
+    setActiveServerPort,
     apiPrefix,
     apiKey,
     trustedHosts,
@@ -519,10 +558,9 @@ export function DataProvider() {
             })
           )
             .then(async (actualPort: number | undefined) => {
-              // Store the actual port that was assigned (important for mobile with port 0)
-              if (actualPort && actualPort !== serverPort) {
-                setServerPort(actualPort)
-              }
+              // Track the port actually bound (mobile port 0, or a fallback)
+              // without overwriting the user's configured port.
+              if (actualPort) setActiveServerPort(actualPort)
               setServerStatus('running')
               // Persist whichever models are actually running so next startup can restore them
               const activeModels = await serviceHub.models().getActiveModels().catch(() => [] as string[])
@@ -551,6 +589,14 @@ export function DataProvider() {
    * owner/name model link is ignored.
    */
   const handleDeepLink = (urls: string[] | null) => {
+    // A prompt link fills a new chat's composer and stops there: nothing is
+    // sent until the user reads it and presses Send.
+    const prompt = urls?.length ? promptFromDeepLink(urls[0]) : null
+    if (prompt) {
+      usePrompt.getState().setPrompt(prompt)
+      navigate({ to: route.home })
+      return
+    }
     const repo = urls?.length ? repoFromDeepLink(urls[0]) : null
     if (!repo) return
     navigate({ to: route.hub.model, params: { modelId: repo }, search: { repo } })

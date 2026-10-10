@@ -187,6 +187,11 @@ vi.mock('@/containers/Card', () => ({
   ),
 }))
 
+// Has its own switch, which the mocked Switch below would share a test id with.
+vi.mock('@/containers/ProviderTlsTrust', () => ({
+  ProviderTlsTrust: () => null,
+}))
+
 vi.mock('@/containers/Capabilities', () => ({
   default: ({ capabilities }: any) => (
     <div data-testid="capabilities">{(capabilities || []).join(',')}</div>

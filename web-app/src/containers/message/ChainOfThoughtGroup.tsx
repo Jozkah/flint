@@ -64,6 +64,11 @@ export type ChainOfThoughtGroupProps = {
    * always has; the compact modes use it for the reasoning they keep.
    */
   transcriptView?: TranscriptView | 'trace'
+  /**
+   * Seconds spent thinking, stored with the message (`reasoningMs`). Shown for a
+   * trace that was not timed live, i.e. after a reload.
+   */
+  persistedThoughtSeconds?: number
 }
 
 /**
@@ -207,6 +212,7 @@ export const ChainOfThoughtGroup = memo(
     onReasoningScroll,
     onReasoningScrollToBottom,
     transcriptView,
+    persistedThoughtSeconds,
   } = props
     const { t } = useTranslation()
     const storedView = useInterfaceSettings((s) => s.transcriptView)
@@ -440,7 +446,13 @@ export const ChainOfThoughtGroup = memo(
         shouldCollapse={shouldCollapse}
         forceOpen={awaitingApproval}
         defaultOpen={verbose || (hasDisplayableContent && !hasFollowingContent)}
-        fallbackDuration={toolSpanSeconds}
+        // Tool runs are timed from their own records; a reasoning-only
+        // reply has no such record, so the stored thinking time stands in.
+        fallbackDuration={
+          hasTools
+            ? (toolSpanSeconds ?? persistedThoughtSeconds)
+            : (persistedThoughtSeconds ?? toolSpanSeconds)
+        }
       >
         <ChainOfThoughtHeader
           // A finished trace says what it did ("Ran 3 commands, created 1

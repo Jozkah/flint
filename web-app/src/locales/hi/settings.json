@@ -187,7 +187,9 @@
     "transcriptViewThinking": "चिंतन",
     "transcriptViewThinkingDesc": "मॉडल का तर्क भी दिखाता है। टूल कॉल समेटे रहते हैं।",
     "transcriptViewVerbose": "विस्तृत",
-    "transcriptViewVerboseDesc": "सब कुछ: पूरा तर्क और हर टूल कॉल पैरामीटर और आउटपुट के साथ खुला।"
+    "transcriptViewVerboseDesc": "सब कुछ: पूरा तर्क और हर टूल कॉल पैरामीटर और आउटपुट के साथ खुला।",
+    "inlineCitations": "टेक्स्ट में स्रोत आइकन",
+    "inlineCitationsDesc": "वेब स्रोत से आने वाले वाक्य के बाद साइट का छोटा आइकन दिखाएं। उत्तर को उनके बिना पढ़ने के लिए इसे बंद करें; स्रोत नीचे सूचीबद्ध रहते हैं।"
   },
   "hardware": {
     "os": "ऑपरेटिंग सिस्टम",

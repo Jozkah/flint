@@ -187,7 +187,9 @@
     "transcriptViewThinking": "思考",
     "transcriptViewThinkingDesc": "額外顯示模型的推理。工具呼叫維持收合。",
     "transcriptViewVerbose": "詳細",
-    "transcriptViewVerboseDesc": "全部顯示：完整推理，以及展開參數和輸出的每個工具呼叫。"
+    "transcriptViewVerboseDesc": "全部顯示：完整推理，以及展開參數和輸出的每個工具呼叫。",
+    "inlineCitations": "行內來源圖示",
+    "inlineCitationsDesc": "在來自網路來源的句子後顯示小型網站圖示。關閉後可無圖示閱讀回答,來源仍會列在下方。"
   },
   "hardware": {
     "os": "作業系統",

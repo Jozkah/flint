@@ -165,6 +165,11 @@
     "removeKey": "Schlüssel entfernen"
   },
   "dataFolderUnavailable": "Der Datenordner {{path}} konnte in diesem Lauf nicht verwendet werden, daher zeigt Flint die Modelle in seinem Standardordner an. Dort gespeicherte Modelle werden nicht gelöscht: Sie kommen zurück, sobald dieser Ordner wieder verfügbar ist. Siehe Einstellungen > Allgemein.",
+  "tlsTrust": {
+    "title": "Ungültige Zertifikate zulassen",
+    "description": "Überspringt die Zertifikatsprüfung nur für die Adresse dieses Anbieters. Nutze das für einen Server, den du selbst betreibst, etwa ein Gateway mit selbstsigniertem Zertifikat. Standardmäßig aus.",
+    "warning": "Die Zertifikatsprüfung ist für diesen Anbieter ausgeschaltet. Jeder auf dem Netzwerkweg kann seine Anfragen lesen und ändern, auch deinen API-Schlüssel. Schalte das aus, wenn du dem Netzwerk nicht vertraust."
+  },
   "customHeaders": {
     "title": "Benutzerdefinierte Header",
     "description": "Zusätzliche HTTP-Header, die mit jeder Anfrage an diesen Anbieter gesendet werden, etwa ein Gateway-Mandant oder ein Abonnementschlüssel. Sie können den API-Schlüssel nicht ersetzen.",

@@ -187,7 +187,9 @@
     "transcriptViewThinking": "思考",
     "transcriptViewThinkingDesc": "モデルの推論も表示します。ツール呼び出しはまとめたままです。",
     "transcriptViewVerbose": "詳細",
-    "transcriptViewVerboseDesc": "すべて：推論全体と、パラメーターと出力を開いた各ツール呼び出し。"
+    "transcriptViewVerboseDesc": "すべて：推論全体と、パラメーターと出力を開いた各ツール呼び出し。",
+    "inlineCitations": "本文中のソースアイコン",
+    "inlineCitationsDesc": "Web ソースに基づく文の後ろに小さなサイトアイコンを表示します。オフにすると回答をアイコンなしで読めます。ソースは下に一覧表示されたままです。"
   },
   "hardware": {
     "os": "オペレーティングシステム",

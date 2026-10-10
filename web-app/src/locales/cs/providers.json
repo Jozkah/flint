@@ -165,6 +165,11 @@
     "removeKey": "Odebrat klíč"
   },
   "dataFolderUnavailable": "Datovou složku {{path}} se v tomto běhu nepodařilo použít, proto Flint zobrazuje modely ve své výchozí složce. Modely uložené tam se nemažou: vrátí se, jakmile bude tato složka opět dostupná. Viz Nastavení > Obecné.",
+  "tlsTrust": {
+    "title": "Povolit neplatné certifikáty",
+    "description": "Přeskočí ověření certifikátu pouze pro adresu tohoto poskytovatele. Použijte pro server, který sami provozujete, například bránu s certifikátem podepsaným sebou samým. Ve výchozím nastavení vypnuto.",
+    "warning": "Ověření certifikátu je pro tohoto poskytovatele vypnuto. Kdokoli na síťové cestě může číst a měnit jeho požadavky, včetně vašeho klíče API. Vypněte, pokud nedůvěřujete síti."
+  },
   "customHeaders": {
     "title": "Vlastní hlavičky",
     "description": "Další hlavičky HTTP odesílané s každým požadavkem tomuto poskytovateli, například nájemce brány nebo klíč předplatného. Nemohou nahradit klíč API.",

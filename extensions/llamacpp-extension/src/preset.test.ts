@@ -1076,6 +1076,61 @@ describe('generatePreset KV cache and speculative guards', () => {
     expect(ini).toContain('cache-type-v = f16')
   })
 
+  describe('auto KV cache default', () => {
+    const section = (ini: string, id: string) =>
+      ini.split(/\r?\n(?=\[)/).find((s) => s.startsWith(`[${id}]`)) ?? ''
+    const AUTO = { cache_type_k: 'auto', cache_type_v: 'auto' }
+
+    it('quantizes K only while flash attention is auto', async () => {
+      setupModel('m', {})
+      await generatePreset('/p', '/jan', { ...AUTO, flash_attn: 'auto' } as any)
+      const ini = writtenFiles['/p/router.preset.ini']
+      expect(ini).toContain('cache-type-k = q8_0')
+      expect(ini).not.toContain('cache-type-v')
+    })
+
+    it('quantizes K and V when flash attention is on', async () => {
+      setupModel('m', {})
+      await generatePreset('/p', '/jan', { ...AUTO, flash_attn: 'on' } as any)
+      const ini = writtenFiles['/p/router.preset.ini']
+      expect(ini).toContain('cache-type-k = q8_0')
+      expect(ini).toContain('cache-type-v = q8_0')
+    })
+
+    it('lets a model that turns flash attention on get a q8_0 V cache', async () => {
+      setupModel('m', { flash_attn: 'on' })
+      await generatePreset('/p', '/jan', { ...AUTO, flash_attn: 'auto' } as any)
+      const ini = writtenFiles['/p/router.preset.ini']
+      expect(section(ini, 'm')).toContain('cache-type-v = q8_0')
+      expect(section(ini, 'm')).not.toContain('cache-type-k')
+    })
+
+    it('lets an explicit f16 win globally and per model', async () => {
+      setupModel('m', { cache_type_k: 'f16' })
+      await generatePreset('/p', '/jan', {
+        ...AUTO,
+        cache_type_v: 'f16',
+        flash_attn: 'on',
+      } as any)
+      const ini = writtenFiles['/p/router.preset.ini']
+      expect(section(ini, 'm')).toContain('cache-type-k = f16')
+      expect(ini).not.toContain('cache-type-v')
+    })
+
+    it('writes f16 for a model in the fallback set', async () => {
+      setupModel('m', {})
+      await generatePreset(
+        '/p',
+        '/jan',
+        { ...AUTO, flash_attn: 'on' } as any,
+        { kvFallbackModels: new Set(['m']) }
+      )
+      const ini = writtenFiles['/p/router.preset.ini']
+      expect(section(ini, 'm')).toContain('cache-type-k = f16')
+      expect(section(ini, 'm')).toContain('cache-type-v = f16')
+    })
+  })
+
   it('defaults to greedy sampling for a DFlash draft', async () => {
     setupModel('qwen', {
       mtp: true,

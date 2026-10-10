@@ -165,6 +165,11 @@
     "removeKey": "Xóa khóa"
   },
   "dataFolderUnavailable": "Không thể dùng thư mục dữ liệu {{path}} trong lần chạy này, nên Flint đang hiển thị các mô hình trong thư mục mặc định. Các mô hình lưu ở đó không bị xóa: chúng sẽ trở lại khi thư mục đó khả dụng lại. Xem Cài đặt > Chung.",
+  "tlsTrust": {
+    "title": "Cho phép chứng chỉ không hợp lệ",
+    "description": "Bỏ qua việc xác minh chứng chỉ chỉ với địa chỉ của nhà cung cấp này. Dùng cho máy chủ do chính bạn vận hành, như cổng kết nối dùng chứng chỉ tự ký. Mặc định là tắt.",
+    "warning": "Việc xác minh chứng chỉ đang tắt với nhà cung cấp này. Bất kỳ ai trên đường truyền mạng đều có thể đọc và sửa yêu cầu của nó, kể cả khóa API của bạn. Hãy tắt trừ khi bạn tin tưởng mạng."
+  },
   "customHeaders": {
     "title": "Header tùy chỉnh",
     "description": "Các HTTP header bổ sung được gửi cùng mọi yêu cầu đến nhà cung cấp này, chẳng hạn một tenant cổng hoặc khóa đăng ký. Chúng không thể thay thế khóa API.",

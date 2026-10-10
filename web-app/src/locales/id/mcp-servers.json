@@ -257,5 +257,8 @@
     "startWithFlint": "Mulai bersama Flint",
     "start": "Mulai",
     "stop": "Hentikan"
-  }
+  },
+  "cwd": "Direktori kerja",
+  "cwdPlaceholder": "Opsional, mis. C:\\tools\\my-server",
+  "cwdHint": "Folder tempat server dimulai. Biarkan kosong untuk memulainya dari folder Flint sendiri."
 }

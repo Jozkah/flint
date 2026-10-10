@@ -694,6 +694,13 @@ async fn schedule_mcp_start_task<R: Runtime>(
                     cmd.env(k, v_str);
                 }
             });
+            // The user's own working directory for the server. An imported
+            // server never gets one: it runs in its session workspace.
+            if !config_params.imported {
+                if let Some(dir) = config_params.cwd.as_deref() {
+                    cmd.current_dir(dir);
+                }
+            }
             cmd
         };
 

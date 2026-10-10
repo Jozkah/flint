@@ -7,6 +7,8 @@
   "apiTypeOpenAI": "OpenAI-kompatibel",
   "apiTypeAnthropic": "Anthropic-kompatibel",
   "baseUrlLabel": "Basis-URL",
+  "detectedLocal": "Auf diesem Computer gefunden",
+  "useDetected": "{{name}} verwenden",
   "baseUrlPlaceholder": "https://your-endpoint/v1",
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "API-Schlüssel",

@@ -188,7 +188,9 @@
     "transcriptViewThinking": "Réflexion",
     "transcriptViewThinkingDesc": "Ajoute le raisonnement du modèle. Les appels d'outils restent regroupés.",
     "transcriptViewVerbose": "Détaillé",
-    "transcriptViewVerboseDesc": "Tout : le raisonnement complet et chaque appel d'outil ouvert avec ses paramètres et sa sortie."
+    "transcriptViewVerboseDesc": "Tout : le raisonnement complet et chaque appel d'outil ouvert avec ses paramètres et sa sortie.",
+    "inlineCitations": "Icônes de sources dans le texte",
+    "inlineCitationsDesc": "Affiche une petite icône du site après une phrase issue d'une source web. Désactivez-la pour lire la réponse sans ; les sources restent listées en dessous."
   },
   "hardware": {
     "os": "Système d'exploitation",

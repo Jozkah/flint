@@ -189,7 +189,9 @@
     "transcriptViewThinking": "Rozumowanie",
     "transcriptViewThinkingDesc": "Dodaje rozumowanie modelu. Wywołania narzędzi pozostają zwinięte.",
     "transcriptViewVerbose": "Szczegółowy",
-    "transcriptViewVerboseDesc": "Wszystko: pełne rozumowanie i każde wywołanie narzędzia rozwinięte z parametrami i wynikiem."
+    "transcriptViewVerboseDesc": "Wszystko: pełne rozumowanie i każde wywołanie narzędzia rozwinięte z parametrami i wynikiem.",
+    "inlineCitations": "Ikony źródeł w tekście",
+    "inlineCitationsDesc": "Po zdaniu pochodzącym ze źródła internetowego pokazuje małą ikonę witryny. Wyłącz, aby czytać odpowiedź bez nich; źródła nadal są wymienione pod spodem."
   },
   "hardware": {
     "os": "System Operacyjny",

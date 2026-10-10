@@ -188,7 +188,9 @@
     "transcriptViewThinking": "Razonamiento",
     "transcriptViewThinkingDesc": "Añade el razonamiento del modelo. Las llamadas a herramientas siguen agrupadas.",
     "transcriptViewVerbose": "Detallada",
-    "transcriptViewVerboseDesc": "Todo: el razonamiento completo y cada llamada a herramienta abierta con parámetros y resultado."
+    "transcriptViewVerboseDesc": "Todo: el razonamiento completo y cada llamada a herramienta abierta con parámetros y resultado.",
+    "inlineCitations": "Iconos de fuente en línea",
+    "inlineCitationsDesc": "Muestra un pequeño icono del sitio después de una frase que proviene de una fuente web. Desactívalo para leer la respuesta sin ellos; las fuentes siguen listadas debajo."
   },
   "hardware": {
     "os": "Sistema operativo",

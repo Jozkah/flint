@@ -184,5 +184,13 @@
     "previousAt": "이전 버전({{count}}개 중 {{index}}번째 표시 중)",
     "nextAt": "다음 버전({{count}}개 중 {{index}}번째 표시 중)",
     "position": "버전 {{index}}/{{count}}"
+  },
+  "bulkDelete": {
+    "select": "채팅 선택",
+    "selected": "{{count}}개 선택됨",
+    "title": "채팅 {{count}}개를 삭제할까요?",
+    "description": "채팅 {{count}}개가 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+    "descriptionArchive": "채팅 {{count}}개가 보관함으로 이동합니다. 보관함에서 복원할 수 있습니다.",
+    "done": "채팅 {{count}}개를 삭제했습니다"
   }
 }

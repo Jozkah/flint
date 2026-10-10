@@ -184,5 +184,13 @@
     "previousAt": "Vorherige Version (zeigt {{index}} von {{count}})",
     "nextAt": "Nächste Version (zeigt {{index}} von {{count}})",
     "position": "Version {{index}} von {{count}}"
+  },
+  "bulkDelete": {
+    "select": "Chats auswählen",
+    "selected": "{{count}} ausgewählt",
+    "title": "{{count}} Chats löschen?",
+    "description": "{{count}} Chats werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.",
+    "descriptionArchive": "{{count}} Chats werden ins Archiv verschoben. Dort kannst du sie wiederherstellen.",
+    "done": "{{count}} Chats gelöscht"
   }
 }

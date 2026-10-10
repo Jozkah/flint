@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SecretInput } from '@/components/ui/secret-input'
 import { ProviderCustomHeaders } from '@/containers/ProviderCustomHeaders'
+import { ProviderTlsTrust } from '@/containers/ProviderTlsTrust'
 import { applyCustomHeaders } from '@/lib/customHeaders'
 import { applyProviderAuthHeader } from '@/lib/anthropicHeaders'
 import { Switch } from '@/components/ui/switch'
@@ -1645,6 +1646,7 @@ function ProviderDetail() {
           )}
         </div>
         <ProviderCustomHeaders provider={provider} />
+        <ProviderTlsTrust provider={provider} />
       </FrameBody>
     </Frame>
   )

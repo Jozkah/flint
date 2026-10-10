@@ -205,6 +205,7 @@ export default function AddEditMCPServer({
   const [serverName, setServerName] = useState('')
   const [command, setCommand] = useState('')
   const [args, setArgs] = useState<string[]>([''])
+  const [cwd, setCwd] = useState('')
   const [envKeys, setEnvKeys] = useState<string[]>([''])
   const [envValues, setEnvValues] = useState<string[]>([''])
   const [transportType, setTransportType] = useState<'stdio' | 'http' | 'sse'>(
@@ -226,6 +227,7 @@ export default function AddEditMCPServer({
       setUrl(initialData.url || '')
       setTimeout(initialData.timeout ? initialData.timeout.toString() : '')
       setArgs(initialData.args?.length > 0 ? initialData.args : [''])
+      setCwd(initialData.cwd || '')
       setTransportType(initialData?.type || 'stdio')
 
       // Initialize JSON content for toggle mode
@@ -267,6 +269,7 @@ export default function AddEditMCPServer({
     setUrl('')
     setTimeout('')
     setArgs([''])
+    setCwd('')
     setEnvKeys([''])
     setEnvValues([''])
     setHeaderKeys([''])
@@ -502,6 +505,8 @@ export default function AddEditMCPServer({
       command: transportType === 'stdio' ? command.trim() : '',
       args: transportType === 'stdio' ? filteredArgs : [],
       env: transportType === 'stdio' ? envObj : {},
+      cwd:
+        transportType === 'stdio' && cwd.trim() !== '' ? cwd.trim() : undefined,
       type: transportType,
       ...(transportType !== 'stdio' && {
         url: url.trim(),
@@ -728,6 +733,26 @@ export default function AddEditMCPServer({
                     })}
                   </SortableContext>
                 </DndContext>
+              </div>
+            )}
+
+            {transportType === 'stdio' && (
+              <div className="space-y-2">
+                <label
+                  htmlFor={`${idPrefix}-cwd`}
+                  className="text-sm mb-2 inline-block"
+                >
+                  {t('mcp-servers:cwd')}
+                </label>
+                <Input
+                  id={`${idPrefix}-cwd`}
+                  value={cwd}
+                  onChange={(e) => setCwd(e.target.value)}
+                  placeholder={t('mcp-servers:cwdPlaceholder')}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('mcp-servers:cwdHint')}
+                </p>
               </div>
             )}
 
