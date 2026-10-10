@@ -7,6 +7,8 @@
   "apiTypeOpenAI": "OpenAI 호환",
   "apiTypeAnthropic": "Anthropic 호환",
   "baseUrlLabel": "기본 URL",
+  "detectedLocal": "이 컴퓨터에서 찾음",
+  "useDetected": "{{name}} 사용",
   "baseUrlPlaceholder": "https://your-endpoint/v1",
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "API 키",

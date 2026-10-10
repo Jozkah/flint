@@ -7,6 +7,8 @@
   "apiTypeOpenAI": "Kompatibilní s OpenAI",
   "apiTypeAnthropic": "Kompatibilní s Anthropic",
   "baseUrlLabel": "Základní URL",
+  "detectedLocal": "Nalezeno v tomto počítači",
+  "useDetected": "Použít {{name}}",
   "baseUrlPlaceholder": "https://your-endpoint/v1",
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "Klíč API",

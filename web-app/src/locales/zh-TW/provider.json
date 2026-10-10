@@ -7,6 +7,8 @@
   "apiTypeOpenAI": "相容 OpenAI",
   "apiTypeAnthropic": "相容 Anthropic",
   "baseUrlLabel": "基礎 URL",
+  "detectedLocal": "在此電腦上找到",
+  "useDetected": "使用 {{name}}",
   "baseUrlPlaceholder": "https://your-endpoint/v1",
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "API 金鑰",

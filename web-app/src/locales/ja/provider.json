@@ -7,6 +7,8 @@
   "apiTypeOpenAI": "OpenAI互換",
   "apiTypeAnthropic": "Anthropic互換",
   "baseUrlLabel": "ベースURL",
+  "detectedLocal": "このコンピューターで見つかりました",
+  "useDetected": "{{name}} を使う",
   "baseUrlPlaceholder": "https://your-endpoint/v1",
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "APIキー",
