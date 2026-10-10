@@ -204,6 +204,29 @@ pub struct Campaign {
     pub created_at: String,
     pub updated_at: String,
     pub tasks: Vec<CampaignTask>,
+    /// The last build and test gate run on the integration worktree.
+    #[serde(default)]
+    pub gate: Option<GateReport>,
+    /// The proposal handed to the user's checkout, once the gate passed.
+    #[serde(default)]
+    pub proposal_id: Option<String>,
+}
+
+/// What the final build and test gate did.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GateReport {
+    /// `agent_toml`, `detected`, or `none` when nothing could be run.
+    pub source: String,
+    pub command: String,
+    /// Nothing was run: no command is configured or detectable.
+    pub skipped: bool,
+    pub passed: bool,
+    pub timed_out: bool,
+    pub exit_code: Option<i32>,
+    /// The tail of the combined output, size-capped.
+    pub output: String,
+    pub at: String,
 }
 
 impl Campaign {
@@ -211,7 +234,7 @@ impl Campaign {
         self.tasks.iter().find(|t| t.id == id)
     }
 
-    fn task_mut(&mut self, id: &str) -> Result<&mut CampaignTask, CampaignError> {
+    pub(crate) fn task_mut(&mut self, id: &str) -> Result<&mut CampaignTask, CampaignError> {
         self.tasks
             .iter_mut()
             .find(|t| t.id == id)
@@ -241,7 +264,7 @@ pub struct CampaignError {
 }
 
 impl CampaignError {
-    fn new(kind: CampaignErrorKind, message: impl Into<String>) -> Self {
+    pub(crate) fn new(kind: CampaignErrorKind, message: impl Into<String>) -> Self {
         CampaignError { kind, message: message.into() }
     }
 }
@@ -263,7 +286,7 @@ pub fn valid_id(id: &str) -> bool {
         && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
-fn check_id(what: &str, id: &str) -> Result<(), CampaignError> {
+pub(crate) fn check_id(what: &str, id: &str) -> Result<(), CampaignError> {
     if valid_id(id) {
         Ok(())
     } else {
@@ -457,7 +480,7 @@ fn parallel_overlaps(tasks: &[PlanTask]) -> Vec<String> {
 // State machines
 // ---------------------------------------------------------------------------
 
-fn illegal(what: &str, from: impl std::fmt::Debug, to: impl std::fmt::Debug) -> CampaignError {
+pub(crate) fn illegal(what: &str, from: impl std::fmt::Debug, to: impl std::fmt::Debug) -> CampaignError {
     CampaignError::new(CampaignErrorKind::IllegalTransition, format!("{what} cannot move from {from:?} to {to:?}"))
 }
 
@@ -605,7 +628,7 @@ fn campaign_dir(data_folder: &Path, id: &str) -> Result<PathBuf, CampaignError> 
 /// Read-modify-write of one record must not interleave.
 static RECORDS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-fn lock() -> std::sync::MutexGuard<'static, ()> {
+pub(crate) fn lock() -> std::sync::MutexGuard<'static, ()> {
     RECORDS.lock().unwrap_or_else(|p| p.into_inner())
 }
 
@@ -613,22 +636,22 @@ fn epoch() -> String {
     tauri_plugin_agent_tools::session_mailbox::process_epoch().to_string()
 }
 
-fn now() -> String {
+pub(crate) fn now() -> String {
     tauri_plugin_agent_tools::audit::now()
 }
 
-fn io(e: impl std::fmt::Display) -> CampaignError {
+pub(crate) fn io(e: impl std::fmt::Display) -> CampaignError {
     CampaignError::new(CampaignErrorKind::Io, e.to_string())
 }
 
-fn save(data_folder: &Path, c: &Campaign) -> Result<(), CampaignError> {
+pub(crate) fn save(data_folder: &Path, c: &Campaign) -> Result<(), CampaignError> {
     let dir = campaign_dir(data_folder, &c.id)?;
     std::fs::create_dir_all(&dir).map_err(io)?;
     let body = serde_json::to_vec_pretty(c).map_err(io)?;
     tauri_plugin_agent_tools::atomic_file::write_atomic(&dir.join("campaign.json"), &body).map_err(io)
 }
 
-fn append_event(data_folder: &Path, id: &str, kind: &str, task: Option<&str>, detail: &str) {
+pub(crate) fn append_event(data_folder: &Path, id: &str, kind: &str, task: Option<&str>, detail: &str) {
     // The log is a trail, not the record: failing to write it never fails the
     // operation that already succeeded.
     let Ok(dir) = campaign_dir(data_folder, id) else { return };
@@ -669,7 +692,7 @@ fn read_raw(data_folder: &Path, id: &str) -> Result<Campaign, CampaignError> {
 
 /// Load, and rewrite as interrupted anything another process left running.
 /// Caller holds the lock.
-fn load_reconciled(data_folder: &Path, id: &str) -> Result<Campaign, CampaignError> {
+pub(crate) fn load_reconciled(data_folder: &Path, id: &str) -> Result<Campaign, CampaignError> {
     let mut c = read_raw(data_folder, id)?;
     let me = epoch();
     if c.process_epoch == me {
@@ -808,6 +831,8 @@ pub fn create(data_folder: &Path, input: CreateInput) -> Result<Campaign, Campai
                 detail: String::new(),
             })
             .collect(),
+        gate: None,
+        proposal_id: None,
     };
     save(data_folder, &c)?;
     append_event(data_folder, &id, "campaign-created", None, &format!("{} tasks", c.tasks.len()));
@@ -970,6 +995,33 @@ pub fn transition(data_folder: &Path, id: &str, input: TransitionInput) -> Resul
         }
     }
     Ok(c)
+}
+
+/// One read-modify-write under the record lock, for the integration phase
+/// (`campaign_integration`). `f` returns the events to log as
+/// `(kind, task, detail)`. A finished campaign is never changed.
+pub(crate) fn update<T>(
+    data_folder: &Path,
+    id: &str,
+    f: impl FnOnce(&mut Campaign) -> Result<(T, Vec<(String, Option<String>, String)>), CampaignError>,
+) -> Result<(Campaign, T), CampaignError> {
+    let _held = lock();
+    let mut c = load_reconciled(data_folder, id)?;
+    if c.status.is_terminal() {
+        return Err(illegal("a finished campaign", c.status, "a change"));
+    }
+    let (value, events) = f(&mut c)?;
+    c.updated_at = now();
+    save(data_folder, &c)?;
+    for (kind, task, detail) in events {
+        append_event(data_folder, id, &kind, task.as_deref(), &detail);
+    }
+    Ok((c, value))
+}
+
+/// First `n` characters.
+pub(crate) fn clip_text(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
 }
 
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -1231,6 +1283,8 @@ pub(crate) mod tests {
                     detail: String::new(),
                 })
                 .collect(),
+            gate: None,
+            proposal_id: None,
         }
     }
 

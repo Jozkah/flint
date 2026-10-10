@@ -13,6 +13,7 @@ pub mod agent_import;
 pub mod auto_mode;
 pub mod bundle_import;
 pub mod campaign;
+pub mod campaign_integration;
 pub mod campaign_scheduler;
 pub mod cc_hooks;
 // Claude Code import: Tauri commands on the desktop, plain async fns that the

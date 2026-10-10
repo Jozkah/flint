@@ -36,7 +36,7 @@ use std::process::Command;
 /// refuses operations that might need one. Supplying it here means the feature
 /// works on a fresh machine rather than failing with a message about
 /// configuring an identity the user has no reason to care about.
-fn run(repo: &Path, args: &[&str]) -> Result<String, String> {
+pub(crate) fn run(repo: &Path, args: &[&str]) -> Result<String, String> {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
         .arg(repo)
@@ -733,7 +733,7 @@ pub(crate) fn current_branch(repo: &Path) -> Option<String> {
 /// Run `git` in `repo` and hand back the exit status with stdout, for the
 /// commands whose non-zero exit carries an answer (`merge-tree`,
 /// `merge-base --is-ancestor`).
-fn run_status(repo: &Path, args: &[&str]) -> Result<(bool, String), String> {
+pub(crate) fn run_status(repo: &Path, args: &[&str]) -> Result<(bool, String), String> {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
         .arg(repo)
