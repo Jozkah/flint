@@ -175,5 +175,13 @@
     "previousAt": "Versi sebelumnya (menampilkan {{index}} dari {{count}})",
     "nextAt": "Versi berikutnya (menampilkan {{index}} dari {{count}})",
     "position": "Versi {{index}} dari {{count}}"
+  },
+  "bulkDelete": {
+    "select": "Pilih obrolan",
+    "selected": "{{count}} dipilih",
+    "title": "Hapus {{count}} obrolan?",
+    "description": "{{count}} obrolan akan dihapus. Tindakan ini tidak dapat dibatalkan.",
+    "descriptionArchive": "{{count}} obrolan akan dipindahkan ke Arsip. Anda dapat memulihkannya dari sana.",
+    "done": "{{count}} obrolan dihapus"
   }
 }

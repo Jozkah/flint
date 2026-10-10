@@ -182,5 +182,13 @@
     "previousAt": "Phiên bản trước (đang hiển thị {{index}}/{{count}})",
     "nextAt": "Phiên bản tiếp theo (đang hiển thị {{index}}/{{count}})",
     "position": "Phiên bản {{index}}/{{count}}"
+  },
+  "bulkDelete": {
+    "select": "Chọn cuộc trò chuyện",
+    "selected": "Đã chọn {{count}}",
+    "title": "Xóa {{count}} cuộc trò chuyện?",
+    "description": "{{count}} cuộc trò chuyện sẽ bị xóa. Không thể hoàn tác thao tác này.",
+    "descriptionArchive": "{{count}} cuộc trò chuyện sẽ được chuyển vào Kho lưu trữ. Bạn có thể khôi phục từ đó.",
+    "done": "Đã xóa {{count}} cuộc trò chuyện"
   }
 }

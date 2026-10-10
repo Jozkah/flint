@@ -182,5 +182,13 @@
     "previousAt": "上一个版本（显示第 {{index}} 个，共 {{count}} 个）",
     "nextAt": "下一个版本（显示第 {{index}} 个，共 {{count}} 个）",
     "position": "第 {{index}} 个版本，共 {{count}} 个"
+  },
+  "bulkDelete": {
+    "select": "选择对话",
+    "selected": "已选择 {{count}} 个",
+    "title": "删除 {{count}} 个对话?",
+    "description": "将删除 {{count}} 个对话。此操作无法撤销。",
+    "descriptionArchive": "{{count}} 个对话将移入归档。你可以从那里恢复。",
+    "done": "已删除 {{count}} 个对话"
   }
 }

@@ -196,5 +196,13 @@
     "previousAt": "Poprzednia wersja (pokazano {{index}} z {{count}})",
     "nextAt": "Następna wersja (pokazano {{index}} z {{count}})",
     "position": "Wersja {{index}} z {{count}}"
+  },
+  "bulkDelete": {
+    "select": "Wybierz czaty",
+    "selected": "Wybrano: {{count}}",
+    "title": "Usunąć czaty: {{count}}?",
+    "description": "Zostanie usuniętych czatów: {{count}}. Tej operacji nie można cofnąć.",
+    "descriptionArchive": "Czaty ({{count}}) zostaną przeniesione do archiwum. Możesz je stamtąd przywrócić.",
+    "done": "Usunięto czaty: {{count}}"
   }
 }

@@ -189,5 +189,13 @@
     "previousAt": "Versió anterior (es mostra {{index}} de {{count}})",
     "nextAt": "Versió següent (es mostra {{index}} de {{count}})",
     "position": "Versió {{index}} de {{count}}"
+  },
+  "bulkDelete": {
+    "select": "Selecciona xats",
+    "selected": "{{count}} seleccionats",
+    "title": "Vols suprimir {{count}} xats?",
+    "description": "Se suprimiran {{count}} xats. Aquesta acció no es pot desfer.",
+    "descriptionArchive": "{{count}} xats es mouran a l'arxiu. Els pots restaurar des d'allà.",
+    "done": "S'han suprimit {{count}} xats"
   }
 }
