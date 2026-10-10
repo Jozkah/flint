@@ -26,6 +26,7 @@ import {
   extractToolContextFromMetadata,
 } from './tokenCountToolContext'
 import { releaseImageModelForChat } from '@/lib/studio/arbiter'
+import { useAppState } from '@/hooks/useAppState'
 
 // TODO: Replace this with the actual provider later
 const defaultProvider = 'llamacpp'
@@ -154,6 +155,16 @@ export class DefaultModelsService implements ModelsService {
           error
         )
         throw error
+      })
+      .finally(() => {
+        // The engine's progress events set an app-wide marker, and only a chat
+        // turn clears it. A start from a settings page, the API server or a
+        // room leaves it behind, and the model's status chip then reads
+        // "Loading" for good. The load is over here, whichever way it ended.
+        const app = useAppState.getState()
+        if (app.modelLoadProgress?.modelId === model) {
+          app.updateModelLoadProgress(undefined)
+        }
       })
   }
 
