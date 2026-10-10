@@ -50,9 +50,15 @@ pub mod openai_schema;
 // Sandboxed HTML preview scheme (#135); desktop-only like filesystem.
 #[cfg(not(feature = "cli"))]
 pub mod preview;
-// Discussion room files; the commands are desktop-only like filesystem.
+// Discussion room files. The Tauri commands are desktop-only like filesystem;
+// the headless server serves the same store over its RPC.
 #[cfg(not(feature = "cli"))]
 pub mod rooms;
+#[cfg(feature = "cli")]
+pub mod rooms {
+    #[path = "../rooms/store.rs"]
+    pub mod store;
+}
 // Remote access for a paired phone; desktop-only (the WebSocket stack is not
 // built for mobile targets, and the CLI has no window to bridge to).
 #[cfg(all(not(feature = "cli"), not(any(target_os = "android", target_os = "ios"))))]

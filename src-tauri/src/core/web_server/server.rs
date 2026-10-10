@@ -29,6 +29,7 @@ use super::files;
 use super::mcp;
 use super::provider;
 use super::resources;
+use super::rooms;
 use super::settings;
 use super::uploads;
 use super::static_files::{self, StaticError};
@@ -751,6 +752,14 @@ async fn rpc_route(state: &State, command: &str, args: serde_json::Value) -> Res
             Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
         };
     }
+    if rooms::handles(command) {
+        let (root, command) = (state.data_folder.clone(), command.to_owned());
+        return match tokio::task::spawn_blocking(move || rooms::call(&root, &command, &args)).await {
+            Ok(Ok(value)) => json(&value),
+            Ok(Err(message)) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
+            Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
+        };
+    }
     if settings::handles(command) {
         return match settings::call(&state.settings, command, &args) {
             Ok(value) => json(&value),
@@ -758,6 +767,11 @@ async fn rpc_route(state: &State, command: &str, args: serde_json::Value) -> Res
         };
     }
     match command {
+        // The skills and slash-command catalogue are the desktop agent's. A
+        // browser session has none, which is an answer the pages handle (an
+        // empty list), where an unknown command stopped a room before it began.
+        "agent_resolve_extensions" | "agent_slash_catalog" => json(&serde_json::json!([])),
+        "archive_get_settings" => json(&serde_json::json!(crate::core::archive::store::read_settings(&state.data_folder))),
         "plugin:hardware|get_system_info" => {
             blocking(|| Ok(tauri_plugin_hardware::get_system_info())).await
         }
