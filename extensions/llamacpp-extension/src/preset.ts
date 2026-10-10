@@ -15,6 +15,7 @@
 
 import { fs, joinPath } from '@janhq/core'
 import { invoke } from '@tauri-apps/api/core'
+import { resolveKvCacheTypes } from './kvCache'
 import type { LlamacppConfig, ModelConfig } from '@janhq/tauri-plugin-llamacpp-api'
 
 // ModelConfig is intentionally widened — model.yml may carry extra fields like
@@ -127,26 +128,8 @@ const SPEC_TYPES = new Set([
 ])
 const DEFAULT_SPEC_TYPE = 'draft-mtp'
 
-/** KV cache types that are not block-quantized. */
-const UNQUANTIZED_CACHE_TYPES = new Set(['f32', 'f16', 'bf16'])
-
-function isQuantizedCacheType(type: unknown): type is string {
-  return (
-    typeof type === 'string' &&
-    type.length > 0 &&
-    !UNQUANTIZED_CACHE_TYPES.has(type)
-  )
-}
-
-/**
- * llama.cpp cannot quantize the V cache without flash attention (it fails the
- * context creation), so an explicit flash-attn=off wins and V stays at f16.
- */
-function valueCacheNeedsFlashAttention(
-  flashAttn: unknown,
-  cacheTypeV: unknown
-): boolean {
-  return flashAttn === 'off' && isQuantizedCacheType(cacheTypeV)
+function hasValue(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0
 }
 
 /**
@@ -312,7 +295,11 @@ export async function generatePreset(
   providerPath: string,
   janDataFolderPath: string,
   config: LlamacppConfig,
-  opts: { reservedBackgroundSlots?: number } = {}
+  opts: {
+    reservedBackgroundSlots?: number
+    /** Models whose KV cache defaults failed to load; they get f16 instead. */
+    kvFallbackModels?: ReadonlySet<string>
+  } = {}
 ): Promise<{ path: string; embeddingCount: number }> {
   // Overridable for tests only. Production callers take the default: gating it
   // on the auto-title setting made the reservation appear and disappear behind
@@ -406,6 +393,11 @@ export async function generatePreset(
   if (!fitEnabled) {
     lines.push(`ctx-size = ${DEFAULT_CTX_SIZE}`)
   }
+  const globalKv = resolveKvCacheTypes({
+    cacheTypeK: config.cache_type_k,
+    cacheTypeV: config.cache_type_v,
+    flashAttn: config.flash_attn,
+  })
   // flash-attn default = 'auto'; explicit on/off only.
   if (
     typeof config.flash_attn === 'string' &&
@@ -413,21 +405,13 @@ export async function generatePreset(
   ) {
     lines.push(`flash-attn = ${config.flash_attn}`)
   }
-  // cache-type-k/v default = 'f16'
-  if (
-    typeof config.cache_type_k === 'string' &&
-    config.cache_type_k.length > 0 &&
-    config.cache_type_k !== 'f16'
-  ) {
-    lines.push(`cache-type-k = ${escapeIniValue(config.cache_type_k)}`)
+  // cache-type-k/v: llama.cpp's own default is f16; the `auto` setting maps to
+  // q8_0 where that is safe (see kvCache.ts). Only non-f16 is written.
+  if (globalKv.k !== 'f16') {
+    lines.push(`cache-type-k = ${escapeIniValue(globalKv.k)}`)
   }
-  if (
-    typeof config.cache_type_v === 'string' &&
-    config.cache_type_v.length > 0 &&
-    config.cache_type_v !== 'f16' &&
-    !valueCacheNeedsFlashAttention(config.flash_attn, config.cache_type_v)
-  ) {
-    lines.push(`cache-type-v = ${escapeIniValue(config.cache_type_v)}`)
+  if (globalKv.v !== 'f16') {
+    lines.push(`cache-type-v = ${escapeIniValue(globalKv.v)}`)
   }
   // parallel default = -1 (auto); positive user value is intent. The reserved
   // slot is added on top and never exposed in the setting's own value.
@@ -770,42 +754,33 @@ export async function generatePreset(
     ) {
       lines.push(`flash-attn = ${mc.flash_attn}`)
     }
-    if (
-      typeof mc.cache_type_k === 'string' &&
-      mc.cache_type_k.length > 0 &&
-      mc.cache_type_k !== 'f16'
-    ) {
-      lines.push(`cache-type-k = ${escapeIniValue(mc.cache_type_k)}`)
-    }
     {
-      const effectiveFlashAttn = mc.flash_attn ?? config.flash_attn
-      const effectiveV =
-        typeof mc.cache_type_v === 'string' && mc.cache_type_v.length > 0
-          ? mc.cache_type_v
-          : config.cache_type_v
-      if (valueCacheNeedsFlashAttention(effectiveFlashAttn, effectiveV)) {
-        // Overrides a quantized global value this model would inherit.
-        if (
-          isQuantizedCacheType(config.cache_type_v) &&
-          config.flash_attn !== 'off'
-        ) {
-          lines.push('cache-type-v = f16')
-        }
-      } else if (
-        typeof mc.cache_type_v === 'string' &&
-        mc.cache_type_v.length > 0 &&
-        mc.cache_type_v !== 'f16'
+      // The model's value, else the global one, resolved the same way as the
+      // [*] block; a line is written when it differs from what the model would
+      // inherit, or when the model names a non-f16 type itself.
+      const modelKv = resolveKvCacheTypes(
+        {
+          cacheTypeK: hasValue(mc.cache_type_k)
+            ? mc.cache_type_k
+            : config.cache_type_k,
+          cacheTypeV: hasValue(mc.cache_type_v)
+            ? mc.cache_type_v
+            : config.cache_type_v,
+          flashAttn: mc.flash_attn ?? config.flash_attn,
+        },
+        { fallback: opts.kvFallbackModels?.has(modelId) === true }
+      )
+      if (
+        modelKv.k !== globalKv.k ||
+        (hasValue(mc.cache_type_k) && modelKv.k !== 'f16')
       ) {
-        lines.push(`cache-type-v = ${escapeIniValue(mc.cache_type_v)}`)
-      } else if (
-        mc.cache_type_v === undefined &&
-        config.flash_attn === 'off' &&
-        mc.flash_attn === 'on' &&
-        isQuantizedCacheType(config.cache_type_v)
+        lines.push(`cache-type-k = ${escapeIniValue(modelKv.k)}`)
+      }
+      if (
+        modelKv.v !== globalKv.v ||
+        (hasValue(mc.cache_type_v) && modelKv.v !== 'f16')
       ) {
-        // The global value was withheld because flash attention is off
-        // globally; this model turns it on, so it gets the global value back.
-        lines.push(`cache-type-v = ${escapeIniValue(config.cache_type_v)}`)
+        lines.push(`cache-type-v = ${escapeIniValue(modelKv.v)}`)
       }
     }
     // MTP either lives in the main gguf (mtp_layers > 0) or ships as a separate
