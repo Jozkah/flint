@@ -42,6 +42,7 @@ import { route } from '@/constants/routes'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useFitContext } from '@/hooks/useFitContext'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { modelIdKey } from '@/lib/modelIdPath'
 import {
   cleanHuggingFaceRepo,
   explainQuantization,
@@ -233,7 +234,7 @@ function ModelDiscoverRoute() {
     for (const provider of providers) {
       if (provider.provider !== 'llamacpp' && provider.provider !== 'mlx') continue
       for (const model of provider.models ?? []) {
-        ids.add(`${provider.provider}:${model.id}`)
+        ids.add(`${provider.provider}:${modelIdKey(model.id)}`)
       }
     }
     return ids
@@ -254,7 +255,9 @@ function ModelDiscoverRoute() {
     const owner = providers.find((p) => p.provider === (mlx ? 'mlx' : 'llamacpp'))
     if (!owner) return null
     const models = (owner.models ?? []).filter(
-      (m) => !m.imported && (mlx ? m.id === model.id : m.id.startsWith(`${model.id}/`))
+      (m) =>
+        !m.imported &&
+        (mlx ? m.id === model.id : modelIdKey(m.id).startsWith(`${model.id}/`))
     )
     return models.length ? { ...owner, models } : null
   }

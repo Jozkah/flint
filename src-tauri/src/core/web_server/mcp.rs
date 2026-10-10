@@ -57,11 +57,22 @@ fn data_folder() -> std::path::PathBuf {
     crate::core::app::commands::resolve_jan_data_folder()
 }
 
+/// Whether connecting this config can start a local program, which only an
+/// operator who passed `--allow-mcp-stdio` may allow. The connect path treats a
+/// config as remote only for `type` http or sse with a url; anything else that
+/// names a `command` is spawned, whatever other fields it carries.
 fn is_stdio(config: &Value) -> bool {
-    match config.get("type").and_then(Value::as_str) {
-        Some("http") | Some("sse") | Some("streamable-http") => false,
-        _ => config.get("url").is_none(),
+    let remote_type = matches!(
+        config.get("type").and_then(Value::as_str),
+        Some("http") | Some("sse")
+    );
+    if remote_type && config.get("url").and_then(Value::as_str).is_some() {
+        return false;
     }
+    if config.get("command").is_some() {
+        return true;
+    }
+    config.get("url").is_none()
 }
 
 /// A definition without its on/off switch: what a trust grant is about.
@@ -554,6 +565,12 @@ mod tests {
         assert!(!is_stdio(&json!({"type": "http", "url": "https://x"})));
         assert!(!is_stdio(&json!({"type": "sse", "url": "https://x"})));
         assert!(!is_stdio(&json!({"url": "https://x"})));
+        // A url beside a command does not make it remote: the connect path
+        // spawns the command unless the type is http or sse.
+        assert!(is_stdio(&json!({"command": "calc.exe", "args": [], "url": "http://x"})));
+        assert!(is_stdio(&json!({"type": "stdio", "command": "x", "args": [], "url": "http://x"})));
+        assert!(is_stdio(&json!({"type": "streamable-http", "command": "x", "args": [], "url": "http://x"})));
+        assert!(!is_stdio(&json!({"type": "http", "url": "https://x", "command": "ignored"})));
     }
 
     #[test]

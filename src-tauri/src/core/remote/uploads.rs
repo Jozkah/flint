@@ -98,11 +98,31 @@ pub fn clean_name(raw: &str) -> String {
         .filter(|c| !c.is_control() && !matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|'))
         .take(120)
         .collect();
-    let cleaned = cleaned.trim().trim_start_matches('.').trim().to_string();
+    let cleaned = cleaned
+        .trim()
+        .trim_start_matches('.')
+        .trim_end_matches(['.', ' '])
+        .to_string();
     if cleaned.is_empty() {
         "upload".into()
     } else {
-        cleaned
+        avoid_device_name(cleaned)
+    }
+}
+
+/// Windows opens these names as devices whatever the extension (`CON.txt`), and
+/// reading one blocks on console input. Such a name gets a leading underscore.
+pub fn avoid_device_name(name: String) -> String {
+    let stem = name.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.as_bytes()[3].is_ascii_digit()
+            && stem.as_bytes()[3] != b'0');
+    if reserved {
+        format!("_{name}")
+    } else {
+        name
     }
 }
 

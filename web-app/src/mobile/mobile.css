@@ -338,7 +338,7 @@ svg.i{width:16px;height:16px;flex:none}
 .push .tx b{display:flex;justify-content:space-between;font-size:13px}
 .push .tx b span{font-weight:400;color:var(--muted-foreground);font-size:11.5px}
 .push .pa{display:flex;gap:6px;margin-top:8px}
-.toast{position:fixed;left:50%;bottom:90px;transform:translate(-50%,20px);opacity:0;z-index:85;background:var(--popover);box-shadow:var(--pop-shadow);padding:8px 14px;border-radius:10px;font-size:12.5px;transition:all .3s var(--expo);pointer-events:none;white-space:nowrap}
+.toast{position:fixed;left:50%;bottom:90px;transform:translate(-50%,20px);opacity:0;z-index:85;background:var(--popover);box-shadow:var(--pop-shadow);padding:8px 14px;border-radius:10px;font-size:12.5px;transition:all .3s var(--expo);pointer-events:none;max-width:calc(100vw - 32px);text-align:center;overflow-wrap:anywhere}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 /* pages */
 .ph{padding:8px 2px 12px;display:flex;flex-direction:column;gap:3px}

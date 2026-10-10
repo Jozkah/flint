@@ -36,6 +36,11 @@ use super::static_files::{self, StaticError};
 pub(super) type Resp = Response<UnsyncBoxBody<Bytes, std::convert::Infallible>>;
 const MAX_LOGIN_BODY: usize = 4 * 1024;
 const MAX_JSON_BODY: usize = 1024 * 1024;
+/// A body that may carry pictures: a chat message with attachments, or the
+/// provider request that sends them.
+pub(super) const MAX_LARGE_JSON_BODY: usize = 64 * 1024 * 1024;
+/// Open connections the headless server serves at once.
+const MAX_CONNECTIONS: usize = 256;
 const COOKIE_NAME: &str = "flint_session";
 
 pub struct Options {
@@ -134,7 +139,13 @@ fn json_created(value: &impl serde::Serialize) -> Resp {
 
 #[allow(clippy::result_large_err)]
 async fn read_json(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
-    let value = read_json_value(req).await?;
+    read_json_max(req, MAX_JSON_BODY).await
+}
+
+/// A JSON object body of up to `max` bytes. Messages that carry pictures and
+/// the provider request that sends them are far over the default limit.
+async fn read_json_max(req: Request<Incoming>, max: usize) -> Result<serde_json::Value, Resp> {
+    let value = read_json_value_max(req, max).await?;
     if !value.is_object() {
         return Err(text(StatusCode::BAD_REQUEST, "Expected JSON object"));
     }
@@ -143,12 +154,20 @@ async fn read_json(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
 
 #[allow(clippy::result_large_err)]
 pub(super) async fn read_json_value(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
+    read_json_value_max(req, MAX_JSON_BODY).await
+}
+
+/// Like `read_json_value`, for a route that is allowed a larger body.
+pub(super) async fn read_json_value_max(
+    req: Request<Incoming>,
+    max: usize,
+) -> Result<serde_json::Value, Resp> {
     let is_json = req.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.split(';').next().is_some_and(|kind| kind.trim().eq_ignore_ascii_case("application/json")));
     if !is_json {
         return Err(text(StatusCode::UNSUPPORTED_MEDIA_TYPE, "Expected application/json"));
     }
-    let body = Limited::new(req.into_body(), MAX_JSON_BODY).collect().await
+    let body = Limited::new(req.into_body(), max).collect().await
         .map_err(|_| text(StatusCode::PAYLOAD_TOO_LARGE, "Request too large"))?.to_bytes();
     let value: serde_json::Value = serde_json::from_slice(&body)
         .map_err(|_| text(StatusCode::BAD_REQUEST, "Invalid JSON"))?;
@@ -175,6 +194,16 @@ fn host_allowed(state: &State, headers: &hyper::HeaderMap) -> bool {
         .get(header::HOST)
         .and_then(|h| h.to_str().ok())
         .is_some_and(|h| state.hosts.contains(&h.to_ascii_lowercase()))
+}
+
+/// An `Origin` that is present, is not `null`, and is not one of this server's
+/// own names.
+fn foreign_origin(state: &State, headers: &hyper::HeaderMap) -> bool {
+    match headers.get(header::ORIGIN).and_then(|h| h.to_str().ok()) {
+        None => false,
+        Some("null") => false,
+        Some(_) => !same_origin(state, headers),
+    }
 }
 
 fn same_origin(state: &State, headers: &hyper::HeaderMap) -> bool {
@@ -944,6 +973,16 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
         state.shutdown.notify_one();
         return no_content();
     }
+    // A page on another site can post well-formed junk to a local server and
+    // use up the sign-in attempts of the person it is open for. A request that
+    // names a foreign origin never gets as far as the limiter. (`Origin: null`
+    // is what a browser sends on some legitimate form posts, so it passes.)
+    if (path == "/api/v1/token" || path == "/api/v1/session")
+        && method == Method::POST
+        && foreign_origin(&state, req.headers())
+    {
+        return text(StatusCode::FORBIDDEN, "Invalid origin");
+    }
     // A bearer token is sent on purpose, never added by the browser, so a
     // request carrying one cannot be a cross-site forgery and needs no Origin.
     let has_bearer = bearer_token(req.headers()).is_some();
@@ -1141,7 +1180,7 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
                 };
             }
             (Method::POST, [id, "messages"]) => {
-                let message = match read_json(req).await {
+                let message = match read_json_max(req, MAX_LARGE_JSON_BODY).await {
                     Ok(value) => value,
                     Err(response) => return response,
                 };
@@ -1154,7 +1193,7 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
                 };
             }
             (Method::PUT, [id, "messages", message_id]) => {
-                let message = match read_json(req).await {
+                let message = match read_json_max(req, MAX_LARGE_JSON_BODY).await {
                     Ok(value) => value,
                     Err(response) => return response,
                 };
@@ -1438,9 +1477,22 @@ pub async fn serve(options: Options) -> io::Result<()> {
             }
         }
     }
+    uploads::sweep(&data_folder_for_run);
+    // At most this many connections at once, so idle sockets cannot use up the
+    // process's file descriptors and take the server down with them.
+    let connections = Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS));
     loop {
         let (socket, peer) = tokio::select! {
-            accepted = listener.accept() => accepted?,
+            accepted = listener.accept() => match accepted {
+                Ok(pair) => pair,
+                // A failed accept (too many open files, a reset before the
+                // handshake) is that connection's problem, not the server's.
+                Err(error) => {
+                    eprintln!("accept failed: {error}");
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    continue;
+                }
+            },
             _ = tokio::signal::ctrl_c() => {
                 engine::stop(&state.engine, false).await;
                 break;
@@ -1453,14 +1505,24 @@ pub async fn serve(options: Options) -> io::Result<()> {
         if loopback && !peer.ip().is_loopback() {
             continue;
         }
+        let Ok(permit) = connections.clone().try_acquire_owned() else {
+            continue; // dropped: the server is at its connection limit
+        };
         let state = state.clone();
         tokio::spawn(async move {
+            let _permit = permit;
             let io = TokioIo::new(socket);
             let service = service_fn(move |req| {
                 let state = state.clone();
                 async move { Ok::<_, std::convert::Infallible>(route(state, req, peer.ip()).await) }
             });
-            let _ = http1::Builder::new().serve_connection(io, service).await;
+            // The header timeout needs a timer. Without it a client that opens
+            // a socket and says nothing would hold it for ever.
+            let _ = http1::Builder::new()
+                .timer(hyper_util::rt::TokioTimer::new())
+                .header_read_timeout(std::time::Duration::from_secs(15))
+                .serve_connection(io, service)
+                .await;
         });
     }
     control::remove_run_file(&data_folder_for_run, std::process::id());

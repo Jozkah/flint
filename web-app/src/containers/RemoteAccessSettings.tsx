@@ -391,7 +391,7 @@ export function PairPhoneDialog({
       window.setTimeout(() => setCopied(false), 1800)
     } catch {
       setCopied(false)
-      setCopyError('Could not copy the pairing link. Select the link below and copy it manually.')
+      setCopyError(t('remote:pairCopyFailed'))
     }
   }
 
@@ -406,7 +406,7 @@ export function PairPhoneDialog({
         <DialogHeader>
           <DialogTitle>{t('remote:pairTitle')}</DialogTitle>
           <DialogDescription>
-            Scan the QR code with your phone, or copy the pairing link and open it there.
+            {t('remote:pairScan')}
           </DialogDescription>
         </DialogHeader>
         {lastPaired ? (
@@ -425,7 +425,7 @@ export function PairPhoneDialog({
             {!expired && (
               <div className="flex w-full flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium">Pairing link</span>
+                  <span className="text-xs font-medium">{t('remote:pairLink')}</span>
                   <Button
                     type="button"
                     size="sm"
@@ -433,12 +433,12 @@ export function PairPhoneDialog({
                     data-testid="remote-copy-pair-link"
                     onClick={() => void copyPairingLink()}
                   >
-                    {copied ? 'Copied' : 'Copy link'}
+                    {copied ? t('remote:pairCopied') : t('remote:pairCopy')}
                   </Button>
                 </div>
                 <input
                   readOnly
-                  aria-label="Pairing link"
+                  aria-label={t('remote:pairLink')}
                   value={pairing.url}
                   onFocus={(e) => e.currentTarget.select()}
                   className="w-full rounded border border-border bg-card px-2 py-2 font-mono text-[11px]"
@@ -449,7 +449,7 @@ export function PairPhoneDialog({
                   </span>
                 )}
                 <span className="text-[11px] text-muted-foreground">
-                  Open this exact link on the phone you want to connect. You will still confirm the matching number on this computer.
+                  {t('remote:pairHint')}
                 </span>
               </div>
             )}

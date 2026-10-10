@@ -1986,6 +1986,7 @@
     "serverStopped": "Local API off"
   },
   "shell": {
+    "discover": "Discover",
     "openNavigation": "Open navigation",
     "closeNavigation": "Close navigation",
     "showContent": "Content",

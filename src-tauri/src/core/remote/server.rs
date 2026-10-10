@@ -216,13 +216,25 @@ fn too_large() -> Resp {
     )
 }
 
+/// A request body of up to `limit` bytes, within [`BODY_DEADLINE`]. A client
+/// that trickles a byte a second would otherwise hold its task for ever.
 async fn read_bytes(body: Incoming, limit: usize) -> Result<Bytes, Resp> {
-    Ok(Limited::new(body, limit)
-        .collect()
-        .await
-        .map_err(|_| too_large())?
-        .to_bytes())
+    match tokio::time::timeout(BODY_DEADLINE, Limited::new(body, limit).collect()).await {
+        Ok(Ok(collected)) => Ok(collected.to_bytes()),
+        Ok(Err(_)) => Err(too_large()),
+        Err(_) => Err(error(
+            StatusCode::REQUEST_TIMEOUT,
+            "request_timeout",
+            "The request body took too long to arrive",
+        )),
+    }
 }
+
+/// How long a phone's socket may stay silent before it is dropped.
+const SOCKET_IDLE_LIMIT: Duration = Duration::from_secs(70);
+
+/// How long a request body may take to arrive in full.
+const BODY_DEADLINE: Duration = Duration::from_secs(30);
 
 fn parse_json<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, Resp> {
     serde_json::from_slice(bytes)
@@ -518,19 +530,42 @@ async fn upload_start(hub: &RemoteHub, device: &Device, body: Incoming) -> Resp 
     }
 }
 
-fn append_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
-    use std::io::Write;
+/// Writes `bytes` at `offset`, first cutting the file back to it. A failed or
+/// repeated write of the same chunk (disk full, a retry after a dropped
+/// connection) then replaces what it wrote instead of adding to it, which an
+/// append would have left as a longer, corrupt file.
+fn write_chunk_private(path: &std::path::Path, offset: u64, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::{Seek, SeekFrom, Write};
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let mut opts = std::fs::OpenOptions::new();
-    opts.create(true).append(true);
+    opts.create(true).write(true).truncate(false);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
         opts.mode(0o600);
     }
-    opts.open(path)?.write_all(bytes)
+    let mut file = opts.open(path)?;
+    file.set_len(offset)?;
+    file.seek(SeekFrom::Start(offset))?;
+    file.write_all(bytes)
+}
+
+/// The claim on an upload's next chunk, given back when the request ends any
+/// way but a finished write (an error, or the client hanging up mid-request).
+struct ChunkClaim<'a> {
+    hub: &'a RemoteHub,
+    id: &'a str,
+    armed: bool,
+}
+
+impl Drop for ChunkClaim<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.hub.upload_release(self.id);
+        }
+    }
 }
 
 async fn upload_chunk(hub: &RemoteHub, device: &Device, id: &str, offset: Option<u64>, body: Incoming) -> Resp {
@@ -545,19 +580,17 @@ async fn upload_chunk(hub: &RemoteHub, device: &Device, id: &str, offset: Option
         Ok(u) => u,
         Err(e) => return upload_error(e),
     };
+    let mut claim = ChunkClaim { hub, id, armed: true };
     let path = up.path.clone();
     let len = bytes.len();
-    let wrote = tokio::task::spawn_blocking(move || append_private(&path, &bytes)).await;
+    let wrote = tokio::task::spawn_blocking(move || write_chunk_private(&path, offset, &bytes)).await;
     match wrote {
-        Ok(Ok(())) => json_resp(StatusCode::OK, json!({ "received": hub.upload_wrote(id, len) })),
-        Ok(Err(e)) => {
-            hub.upload_release(id);
-            upload_error(UploadError::Io(e.to_string()))
+        Ok(Ok(())) => {
+            claim.armed = false;
+            json_resp(StatusCode::OK, json!({ "received": hub.upload_wrote(id, len) }))
         }
-        Err(e) => {
-            hub.upload_release(id);
-            upload_error(UploadError::Io(e.to_string()))
-        }
+        Ok(Err(e)) => upload_error(UploadError::Io(e.to_string())),
+        Err(e) => upload_error(UploadError::Io(e.to_string())),
     }
 }
 
@@ -919,9 +952,20 @@ async fn run_socket<S>(
     let mut topics: HashSet<String> = HashSet::new();
     let ready = json!({ "type": "ready", "deviceId": device.id }).to_string();
     let mut alive = ws.send(Message::Text(ready.into())).await.is_ok();
+    // The phone pings every 25 s. A socket that has said nothing for much longer
+    // is half open (it left the network without closing): drop it, so its
+    // "visible" flag stops suppressing push for a phone that is not there.
+    let mut last_heard = tokio::time::Instant::now();
+    let mut idle_check = tokio::time::interval(Duration::from_secs(15));
 
     while alive {
         tokio::select! {
+            _ = idle_check.tick() => {
+                if last_heard.elapsed() > SOCKET_IDLE_LIMIT {
+                    let _ = ws.close(Some(CloseFrame { code: CloseCode::Away, reason: "idle".into() })).await;
+                    alive = false;
+                }
+            },
             ev = events.recv() => match ev {
                 Ok(ev) if event_matches(&ev, &topics) => {
                     let msg = json!({ "type": "event", "topic": ev.topic, "event": ev.event }).to_string();
@@ -945,7 +989,11 @@ async fn run_socket<S>(
                     alive = false;
                 }
             },
-            msg = ws.next() => match msg {
+            msg = ws.next() => {
+                if matches!(msg, Some(Ok(_))) {
+                    last_heard = tokio::time::Instant::now();
+                }
+                match msg {
                 Some(Ok(Message::Text(t))) => match serde_json::from_str::<ClientMessage>(&t) {
                     Ok(ClientMessage::Subscribe { topics: t }) => topics.extend(t.into_iter().take(64)),
                     Ok(ClientMessage::Unsubscribe { topics: t }) => t.iter().for_each(|x| { topics.remove(x); }),
@@ -962,6 +1010,7 @@ async fn run_socket<S>(
                 },
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => alive = false,
                 Some(Ok(_)) => {}
+                }
             },
         }
     }
@@ -1039,6 +1088,8 @@ pub async fn start(
                 _ = stop.changed() => break,
             };
             let Ok((stream, peer)) = accepted else {
+                // A persistent failure (out of file descriptors) must not spin.
+                tokio::time::sleep(Duration::from_millis(50)).await;
                 continue;
             };
             let peer_ip = peer.ip();

@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::StreamExt;
 
-use super::server::{read_json_value, reply, text, Resp};
+use super::server::{read_json_value, read_json_value_max, reply, text, Resp, MAX_LARGE_JSON_BODY};
 use crate::core::net::transport::{self, ChunkSink, ProviderRequest, StreamChunk};
 
 /// Writes each chunk as one JSON line. When the browser disconnects the
@@ -47,7 +47,7 @@ fn valid_url(url: &str) -> bool {
 }
 
 pub async fn stream(req: Request<Incoming>) -> Resp {
-    let value = match read_json_value(req).await {
+    let value = match read_json_value_max(req, MAX_LARGE_JSON_BODY).await {
         Ok(value) => value,
         Err(response) => return response,
     };

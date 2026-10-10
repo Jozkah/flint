@@ -22,6 +22,9 @@ pub const PAIRING_TTL: Duration = Duration::from_secs(5 * 60);
 /// How long a claimed code waits for the user to click Confirm, and then for
 /// the phone to collect its token.
 pub const CONFIRM_TTL: Duration = Duration::from_secs(2 * 60);
+/// How long an approved pairing can be polled again after the token was
+/// handed out, so a lost response can be retried.
+pub const APPROVED_POLL_GRACE: Duration = Duration::from_secs(30);
 /// Longest device name kept; anything longer is cut, not rejected.
 pub const MAX_DEVICE_NAME_CHARS: usize = 64;
 
@@ -440,8 +443,11 @@ impl PairingBook {
         }
     }
 
-    /// The phone asks how its request stands. The token is handed out once;
-    /// the pairing is gone after that.
+    /// The phone asks how its request stands. An approved token can be asked
+    /// for again for a short while ([`APPROVED_POLL_GRACE`]): the device is
+    /// already stored when the phone first asks, and a response lost on a flaky
+    /// link must not leave a paired device whose token nobody holds. After the
+    /// grace the pairing is gone.
     pub fn poll(&mut self, poll_id: &str, now: Instant) -> PollResult {
         let Some(p) = self.live(now) else {
             return PollResult::Expired;
@@ -453,10 +459,14 @@ impl PairingBook {
                 poll_id: id,
                 device_id,
                 token,
-            } if matches(id) => PollResult::Approved {
-                token: token.clone(),
-                device_id: device_id.clone(),
-            },
+            } if matches(id) => {
+                let result = PollResult::Approved {
+                    token: token.clone(),
+                    device_id: device_id.clone(),
+                };
+                p.expires_at = now + APPROVED_POLL_GRACE;
+                return result;
+            }
             Stage::Rejected { poll_id: id } if matches(id) => PollResult::Rejected,
             _ => return PollResult::Expired,
         };
@@ -517,6 +527,16 @@ impl RateLimiter {
             return false;
         }
         self.hits.entry(ip).or_default().push_back(now);
+        // An address that is never seen again is never pruned by its own
+        // calls, so a spread of sources would grow the table without end.
+        if self.hits.len() > MAX_TRACKED_IPS {
+            let window = self.window;
+            self.hits
+                .retain(|_, q| q.back().is_some_and(|t| now.duration_since(*t) < window));
+        }
         true
     }
 }
+
+/// Addresses a limiter tracks before it sweeps out the idle ones.
+const MAX_TRACKED_IPS: usize = 4096;
