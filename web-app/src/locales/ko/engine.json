@@ -45,6 +45,10 @@
     "noneYet": "아직 답변 없음"
   },
   "providers": {
+    "disableAll": "모두 비활성화",
+    "enableAll": "모두 활성화",
+    "allDisabledToast": "모든 공급자를 비활성화했습니다",
+    "allEnabledToast": "모든 공급자를 활성화했습니다",
     "title": "공급자",
     "onDevice": "이 기기에서",
     "remote": "원격",

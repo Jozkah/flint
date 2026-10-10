@@ -45,6 +45,10 @@
     "noneYet": "henüz yanıt yok"
   },
   "providers": {
+    "disableAll": "Tümünü devre dışı bırak",
+    "enableAll": "Tümünü etkinleştir",
+    "allDisabledToast": "Tüm sağlayıcılar devre dışı bırakıldı",
+    "allEnabledToast": "Tüm sağlayıcılar etkinleştirildi",
     "title": "Sağlayıcılar",
     "onDevice": "Bu cihazda",
     "remote": "Uzak",

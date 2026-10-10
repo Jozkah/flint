@@ -45,6 +45,10 @@
     "noneYet": "अभी कोई जवाब नहीं"
   },
   "providers": {
+    "disableAll": "सभी बंद करें",
+    "enableAll": "सभी चालू करें",
+    "allDisabledToast": "सभी प्रदाता बंद कर दिए गए",
+    "allEnabledToast": "सभी प्रदाता चालू कर दिए गए",
     "title": "प्रदाता",
     "onDevice": "इस डिवाइस पर",
     "remote": "रिमोट",

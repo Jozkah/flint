@@ -45,6 +45,10 @@
     "noneYet": "返信はまだありません"
   },
   "providers": {
+    "disableAll": "すべて無効にする",
+    "enableAll": "すべて有効にする",
+    "allDisabledToast": "すべてのプロバイダーを無効にしました",
+    "allEnabledToast": "すべてのプロバイダーを有効にしました",
     "title": "プロバイダー",
     "onDevice": "このデバイス上",
     "remote": "リモート",

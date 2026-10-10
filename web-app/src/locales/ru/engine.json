@@ -45,6 +45,10 @@
     "noneYet": "ответов пока нет"
   },
   "providers": {
+    "disableAll": "Отключить все",
+    "enableAll": "Включить все",
+    "allDisabledToast": "Все провайдеры отключены",
+    "allEnabledToast": "Все провайдеры включены",
     "title": "Провайдеры",
     "onDevice": "На этом устройстве",
     "remote": "Удалённые",
