@@ -7,7 +7,12 @@ import { useAssistant } from '../useAssistant'
 import { useThreads } from '../useThreads'
 
 const h = vi.hoisted(() => ({ fetchWindow: vi.fn() }))
-vi.mock('@/lib/serverWindow', () => ({ fetchServerWindow: h.fetchWindow }))
+vi.mock('@/lib/serverWindow', () => ({
+  fetchServerWindow: h.fetchWindow,
+  // The real one builds the provider's request headers; a key is enough here.
+  serverWindowHeaders: (p?: { api_key?: string }) =>
+    p?.api_key ? { Authorization: `Bearer ${p.api_key}` } : undefined,
+}))
 // No local engine answers: a model unloaded after sitting idle.
 vi.mock('@/lib/llamacppRouterProps', () => ({ getLocalPropsExtension: () => undefined }))
 
@@ -17,12 +22,17 @@ const state = {
   selectedModel: { id: 'pxa-qwen3.8-27b', name: 'pxa', capabilities: [] },
   selectedProvider: 'Qwen 3.8 500k (8081)',
   baseUrl: 'http://127.0.0.1:8081/v1' as string | undefined,
+  apiKey: undefined as string | undefined,
 }
 vi.mock('../useModelProvider', () => ({
   useModelProvider: () => ({
     selectedModel: state.selectedModel,
     selectedProvider: state.selectedProvider,
-    getProviderByName: () => ({ base_url: state.baseUrl, settings: [] }),
+    getProviderByName: () => ({
+      base_url: state.baseUrl,
+      api_key: state.apiKey,
+      settings: [],
+    }),
   }),
 }))
 
@@ -42,6 +52,7 @@ describe('the window of a custom server', () => {
   beforeEach(() => {
     h.fetchWindow.mockReset()
     state.baseUrl = 'http://127.0.0.1:8081/v1'
+    state.apiKey = undefined
     act(() => {
       useAssistant.setState({ currentAssistant: undefined })
       useThreads.setState({ threads: {} })
@@ -54,6 +65,19 @@ describe('the window of a custom server', () => {
         lastById: {},
       })
     })
+  })
+
+  it('asks a server that wants a key with the provider key', async () => {
+    state.apiKey = 'sk-gateway'
+    h.fetchWindow.mockResolvedValue(262144)
+    renderHook(() => useTokensCount([reply]))
+    await waitFor(() =>
+      expect(h.fetchWindow).toHaveBeenCalledWith(
+        'http://127.0.0.1:8081/v1',
+        'pxa-qwen3.8-27b',
+        { Authorization: 'Bearer sk-gateway' }
+      )
+    )
   })
 
   it('has none to begin with, so the counter shows the plain badge', () => {
