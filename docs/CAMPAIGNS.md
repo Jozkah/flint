@@ -1,6 +1,6 @@
 # Campaigns (multi-thread coordinator)
 
-Status: design, not implemented. The feature is called Campaigns in the UI and `campaign` in code, because "project" already means a folder in Flint.
+Status: P0 to P3 implemented, P4 to P7 open; see "Status" below. The feature is called Campaigns in the UI and `campaign` in code, because "project" already means a folder in Flint.
 
 ## Goal
 
@@ -83,6 +83,28 @@ Each phase is independently committable and testable.
 - P6: board route with cards, actions and budget bar.
 - P2 also adds the `campaigns.maxParallel` setting and its settings control (web-app settings route, locale keys).
 - P7: hardening: aggregate budget, wall-clock cap, pause and resume, orphan worktree sweep. Optional headless runner through the durable worker to remove the pane cap.
+
+## Status
+
+Implemented (P0 to P3):
+
+- Rust model, scheduler, persistence and commands (`campaign.rs`, `campaign_scheduler.rs`, `agent_campaign_*`), plus `agent_campaign_context` (decisions tail and handoffs), `agent_campaign_events`, `agent_campaign_notified` and `agent_worktree_commit_pending`. A campaign move may carry the integration branch and worktree (`TransitionInput.integration`), recorded on approval so a denied plan creates nothing.
+- Renderer: `lib/campaignModel.ts` (types, clamp, mode rules, a TS port of `next_actions`), `campaignRunner.ts` (start, settle, resume, cancel, re-push notices), `campaignSeed.ts` (fenced seed turn), `campaignTools.ts` and `campaignToolSchemas.ts` (the six tools), `campaignHost.ts` (store wiring, started from `useMailboxDelivery`).
+- Tools `campaign_plan`, `campaign_status`, `campaign_collect`, `campaign_cancel`, `campaign_steer`, `campaign_decide`, offered only to a top-level Cowork run that is not a campaign task (`campaignCoordinator` tool option, `DispatchContext.onCampaign`). Every campaign id is checked against the calling session.
+- `campaign_plan` is always-ask, allow-once only (`ALWAYS_ASK_TOOLS`), asked in every mode including bypass. It records `planned`, asks, then `approved` and `running`; a denial leaves it `planned`. The plan card is the existing approval card (title, task titles and paths, summary of count, mode, budget, parallelism); the dedicated board components are P6.
+- Setting `campaigns.maxParallel` (store `useCampaignSettings`, default 4, clamped 1 to 6, Settings, Agent tools, Behaviour) and the optional `campaign?: {id, taskId, role}` on `CoworkSession` (persisted shape v5, additive migration).
+
+Known gaps and limits:
+
+- No merge yet (P4). The scheduler starts a dependent task only when its dependencies are `merged`, so a task with `depends_on` does not start, and a campaign never reaches `reviewing`. Plans of independent tasks run fully. `campaign_plan` says so in its description.
+- No verification (P4). `completed` stays a worker claim.
+- A task is `running` in the record once its pane is opened and its seed queued; the run itself starts when that pane drains its queue. Closing the pane before that leaves the task `running` with no run. Pane-bound parallelism and this window are the P7 hardening items.
+- `awaiting_input` and `awaiting_approval` are never recorded; a task waiting on a person reads as `running`.
+- A notice reaches the coordinator at its next step boundary. An idle coordinator is not woken; it reads `campaign_status` or `campaign_collect`. Notices are re-pushed from the event log after a restart.
+- Per-task token, step and wall-clock limits are recorded but not enforced; only the campaign token budget gates new starts.
+- The integration worktree (`campaign-<id>` key) and task worktrees are kept until the user discards them; there is no orphan sweep.
+- Added locale keys are English in every locale file.
+- Not smoke-tested in the live app; covered by vitest with mocked invoke and stores, and Rust temp-dir tests.
 
 ## Open questions
 
