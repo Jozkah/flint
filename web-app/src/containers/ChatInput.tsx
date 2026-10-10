@@ -61,6 +61,7 @@ import {
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { QueuedMessageList } from '@/containers/QueuedMessageBubble'
 import { SamplerPopover } from '@/containers/SamplerPopover'
+import { useLargePaste } from '@/hooks/useLargePaste'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -2751,7 +2752,25 @@ const ChatInput = memo(function ChatInput({
     focusComposer()
   }
 
+  const largePaste = useLargePaste({
+    enabled: attachmentsEnabled,
+    attachedNames: attachments.map((a) => a.name),
+    attach: (file) => processImageFiles([file]),
+    insertText: (text) => {
+      if (richComposerRef.current) richComposerRef.current.insertText(text)
+      else setPrompt(latestPromptRef.current + text)
+    },
+    detach: (name) =>
+      setAttachmentsForThread(attachmentsKey, (prev) =>
+        prev.filter((a) => a.name !== name)
+      ),
+    t,
+  })
+
   const handlePaste = async (e: React.ClipboardEvent) => {
+    // A large text paste becomes a .txt attachment; default is prevented
+    // before anything below can await.
+    if (largePaste.handlePaste(e)) return
     const pasted = pastedPath(e.clipboardData?.getData('text/plain') ?? '')
     if (pasted) void offerPastedPath(pasted)
     const mediaItems = e.clipboardData?.items
@@ -3315,6 +3334,7 @@ const ChatInput = memo(function ChatInput({
               }}
               onPaste={handlePaste}
               onKeyDownCapture={(event) => {
+                largePaste.noteKeyDown(event)
                 if (event.nativeEvent.isComposing) return
                 if (slashCommands.open) {
                   const selection = slashCommands.onKeyDown(event)

@@ -1515,6 +1515,11 @@
     "dismiss": "Odrzuć",
     "failed": "Nie udało się załączyć pliku"
   },
+  "largePaste": {
+    "attached": "Duże wklejenie dołączono jako {{name}}",
+    "hint": "Naciśnij Ctrl/Cmd+Shift+V, aby wkleić jako tekst.",
+    "undo": "Cofnij"
+  },
   "drop": {
     "openInCode": "Upuść, aby otworzyć — tylko do odczytu",
     "attachToMessage": "Upuść, aby załączyć do wiadomości",

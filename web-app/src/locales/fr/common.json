@@ -1487,6 +1487,11 @@
     "dismiss": "Ignorer",
     "failed": "Impossible de joindre le fichier"
   },
+  "largePaste": {
+    "attached": "Long collage joint en tant que {{name}}",
+    "hint": "Appuyez sur Ctrl/Cmd+Maj+V pour le coller comme texte.",
+    "undo": "Annuler"
+  },
   "drop": {
     "openInCode": "Déposez pour ouvrir — lecture seule",
     "attachToMessage": "Déposez pour joindre à votre message",

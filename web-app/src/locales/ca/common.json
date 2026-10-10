@@ -1491,6 +1491,11 @@
     "dismiss": "Descarta",
     "failed": "No s'ha pogut adjuntar el fitxer"
   },
+  "largePaste": {
+    "attached": "Enganxat gran adjuntat com a {{name}}",
+    "hint": "Prem Ctrl/Cmd+Maj+V per enganxar-lo com a text.",
+    "undo": "Desfés"
+  },
   "drop": {
     "openInCode": "Deixa anar per obrir: només lectura",
     "attachToMessage": "Deixa anar per adjuntar al missatge",
