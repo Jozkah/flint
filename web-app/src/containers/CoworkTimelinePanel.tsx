@@ -45,6 +45,7 @@ import {
 } from '@/lib/runReplay'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { Select } from '@/components/ui/select'
 
 /** Rows drawn in full below this; above it the list is virtualized. */
 export const TIMELINE_FULL_RENDER_LIMIT = 200
@@ -506,7 +507,7 @@ function ReplayControls({
       onKeyDown={onKeyDown}
     >
       {replay.runs.length > 1 && (
-        <select
+        <Select
           aria-label={t('common:timeline.replay.run')}
           data-testid="timeline-replay-run"
           value={replay.recording.run}
@@ -522,7 +523,7 @@ function ReplayControls({
               })}
             </option>
           ))}
-        </select>
+        </Select>
       )}
       <div className="flex items-center gap-1">
         <button

@@ -62,6 +62,7 @@ import {
   type MemoryStorageSummary,
   type MemoryView,
 } from '@janhq/tauri-plugin-agent-tools-api'
+import { Select } from '@/components/ui/select'
 
 // `as any` matches every other settings route: the typed route tree is
 // generated during the build, after this file is typechecked, so the literal is
@@ -851,7 +852,7 @@ function MemorySettings() {
                 {scope === 'chat' && (
                   <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                     Conversation
-                    <select
+                    <Select
                       className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
                       aria-label="Conversation whose memory to show"
                       data-testid="memory-session-picker"
@@ -870,13 +871,13 @@ function MemorySettings() {
                           {s.title}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 )}
                 {scope === 'project' && (
                   <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                     Project folder
-                    <select
+                    <Select
                       className="h-9 w-full min-w-0 rounded-md border border-input bg-card px-2 text-base text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-sm"
                       aria-label="Project whose memory to show"
                       data-testid="memory-project-picker"
@@ -899,7 +900,7 @@ function MemorySettings() {
                           {p}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 )}
 
@@ -908,7 +909,7 @@ function MemorySettings() {
                     <label htmlFor="memory-project" className="text-xs text-muted-foreground sm:text-sm">
                       Project
                     </label>
-                    <select
+                    <Select
                       id="memory-project"
                       value={projectId}
                       onChange={(e) => {
@@ -926,7 +927,7 @@ function MemorySettings() {
                           {project.name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 )}
 
