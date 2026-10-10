@@ -57,9 +57,40 @@ async fn engine_endpoint(state: &LlamacppState) -> Result<(u16, String, u32), St
     Ok((h.port, h.api_key.clone(), h.pid))
 }
 
+/// What became of the worker a request could not reach, when it is dead.
+///
+/// A worker that crashed mid-load answers nothing, and reqwest's own text
+/// ("error sending request") says only that. The process knows how it ended
+/// and what it last printed, which is what the user needs: a crash from an
+/// unsupported CPU, an out-of-memory abort and a GPU fault all look alike from
+/// the socket. `None` while it still runs, or when it is no longer the
+/// registered worker, so the caller keeps its own error.
+///
+/// A worker found dead is reaped here, as `get_engine_info` does, so the next
+/// load starts a fresh one instead of failing against the same closed port.
+async fn dead_worker_error(state: &LlamacppState, port: u16) -> Option<LlamacppError> {
+    let mut guard = state.engine.lock().await;
+    let handle = guard.as_mut().filter(|h| h.port == port)?;
+    let report = handle.exit_report()?;
+    let text = report.text();
+    log::error!("flint-llama-worker exited unexpectedly: {text}");
+    *guard = None;
+    Some(LlamacppError::from_engine_exit(&text))
+}
+
+/// For the commands that return `String` errors: the structured error as JSON,
+/// which `parseEngineError` on the web side recovers from a message string, so
+/// it is shown from its code like any other engine error.
+fn into_string_error(err: LlamacppError) -> String {
+    serde_json::to_string(&err).unwrap_or(err.message)
+}
+
 async fn http_client() -> reqwest::Client {
+    // The engine is on loopback: a system or environment proxy (a VPN client,
+    // a corporate proxy) must never carry these requests.
     reqwest::Client::builder()
         .timeout(Duration::from_secs(600))
+        .no_proxy()
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
 }
@@ -291,6 +322,7 @@ const SUBSCRIBE_TIMEOUT: Duration = Duration::from_secs(2);
 
 async fn post_load<S: ProgressSink>(
     sink: &S,
+    state: &LlamacppState,
     port: u16,
     api_key: &str,
     model_id: &str,
@@ -322,19 +354,20 @@ async fn post_load<S: ProgressSink>(
         .bearer_auth(api_key)
         .json(&ModelRequestBody { model: model_id })
         .send()
-        .await
-        .map_err(|e| {
-            ServerError::Llamacpp(LlamacppError::new(
-                ErrorCode::InternalError,
-                "Failed to call the engine's /models/load".into(),
-                Some(e.to_string()),
-            ))
-        });
+        .await;
     let resp = match resp {
         Ok(r) => r,
         Err(e) => {
             progress_task.abort();
-            return Err(e);
+            let err = match dead_worker_error(state, port).await {
+                Some(err) => err,
+                None => LlamacppError::new(
+                    ErrorCode::InternalError,
+                    "Failed to call the engine's /models/load".into(),
+                    Some(e.to_string()),
+                ),
+            };
+            return Err(ServerError::Llamacpp(err));
         }
     };
     let status = resp.status();
@@ -363,7 +396,7 @@ async fn post_load<S: ProgressSink>(
     // resolves on the first poll. It stays as the fallback for the case where
     // the answer said "already loading" and someone else owns the attempt.
     let result = tokio::select! {
-        r = wait_until_loaded(port, api_key, model_id, Duration::from_secs(600)) => r,
+        r = wait_until_loaded(state, port, api_key, model_id, Duration::from_secs(600)) => r,
         exit_code = sse_failure => Err(ServerError::Llamacpp(LlamacppError::new(
             ErrorCode::ModelLoadFailed,
             format!("Model {} failed to load", model_id),
@@ -433,6 +466,7 @@ fn evaluate_load_poll(
 const STALE_FAILURE_GRACE: Duration = Duration::from_secs(20);
 
 async fn wait_until_loaded(
+    state: &LlamacppState,
     port: u16,
     api_key: &str,
     model_id: &str,
@@ -445,18 +479,22 @@ async fn wait_until_loaded(
     let mut saw_loading = false;
 
     loop {
-        let resp = client
-            .get(&url)
-            .bearer_auth(api_key)
-            .send()
-            .await
-            .map_err(|e| {
-                ServerError::Llamacpp(LlamacppError::new(
-                    ErrorCode::InternalError,
-                    "Failed to poll router /models".into(),
-                    Some(e.to_string()),
-                ))
-            })?;
+        // A worker that dies mid-load (a GPU init crash, antivirus) surfaces
+        // here, as the next poll failing to connect.
+        let resp = match client.get(&url).bearer_auth(api_key).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                let err = match dead_worker_error(state, port).await {
+                    Some(err) => err,
+                    None => LlamacppError::new(
+                        ErrorCode::InternalError,
+                        "Failed to poll router /models".into(),
+                        Some(e.to_string()),
+                    ),
+                };
+                return Err(ServerError::Llamacpp(err));
+            }
+        };
 
         let json: serde_json::Value = resp.json().await.map_err(|e| {
             ServerError::Llamacpp(LlamacppError::new(
@@ -587,18 +625,28 @@ async fn wait_until_unloaded(
     }
 }
 
-async fn engine_loaded_model_ids(port: u16, api_key: &str) -> Result<Vec<String>, String> {
+async fn engine_loaded_model_ids(
+    state: &LlamacppState,
+    port: u16,
+    api_key: &str,
+) -> Result<Vec<String>, String> {
     // Router-aware listing: `/models` (not `/v1/models`, which is OAI-compat
     // and returns a single element). Each entry has a `status` object whose
     // `value` is one of "loaded" / "loading" / "unloaded" / "sleeping".
     let client = http_client().await;
     let url = format!("http://127.0.0.1:{}/models", port);
-    let resp = client
-        .get(&url)
-        .bearer_auth(api_key)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to query /models: {}", e))?;
+    // The first request of every model start (the frontend asks what is loaded
+    // before loading), so a dead worker is reported from here more often than
+    // from anywhere else.
+    let resp = match client.get(&url).bearer_auth(api_key).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(match dead_worker_error(state, port).await {
+                Some(err) => into_string_error(err),
+                None => format!("Failed to query /models: {}", e),
+            });
+        }
+    };
     if !resp.status().is_success() {
         return Err(format!("/models returned {}", resp.status()));
     }
@@ -638,7 +686,7 @@ pub async fn load_model<S: ProgressSink>(
     let (port, api_key, pid) = engine_endpoint(state)
         .await
         .map_err(ServerError::InvalidArgument)?;
-    post_load(sink, port, &api_key, &model_id).await?;
+    post_load(sink, state, port, &api_key, &model_id).await?;
     Ok(SessionInfo {
         pid: pid as i32,
         port: port as i32,
@@ -676,7 +724,7 @@ pub async fn ensure_session<S: ProgressSink>(
     is_embedding: bool,
 ) -> Result<SessionInfo, String> {
     let (port, api_key, pid) = engine_endpoint(state).await?;
-    post_load(sink, port, &api_key, &model_id)
+    post_load(sink, state, port, &api_key, &model_id)
         .await
         .map_err(|e| e.to_string())?;
     Ok(SessionInfo {
@@ -696,7 +744,7 @@ pub async fn find_session(
         Ok(v) => v,
         Err(_) => return Ok(None),
     };
-    let ids = engine_loaded_model_ids(port, &api_key).await?;
+    let ids = engine_loaded_model_ids(state, port, &api_key).await?;
     if ids.iter().any(|id| id == &model_id) {
         Ok(Some(SessionInfo {
             pid: pid as i32,
@@ -715,7 +763,7 @@ pub async fn loaded_models(state: &LlamacppState) -> Result<Vec<String>, String>
         Ok(v) => v,
         Err(_) => return Ok(Vec::new()),
     };
-    engine_loaded_model_ids(port, &api_key).await
+    engine_loaded_model_ids(state, port, &api_key).await
 }
 
 #[cfg(feature = "tauri")]

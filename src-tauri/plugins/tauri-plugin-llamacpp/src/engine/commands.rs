@@ -180,7 +180,15 @@ pub async fn start_engine<R: tauri::Runtime>(
         Some(fault_emitter(app_handle.clone())),
     )
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| match e {
+        // Said as structured errors, so the UI shows "this CPU is not
+        // supported" or "macOS is too old" instead of a loader's last words.
+        worker::WorkerError::Exited(report) => {
+            let err = crate::error::LlamacppError::from_engine_exit(&report);
+            serde_json::to_string(&err).unwrap_or(err.message)
+        }
+        other => other.to_string(),
+    })?;
 
     let info = EngineInfo::from(&handle);
     // Subscribed here rather than lazily: an eviction can happen on the very
@@ -259,16 +267,14 @@ const RELOAD_MODELS_TIMEOUT: std::time::Duration = std::time::Duration::from_sec
 ///
 /// Never falls back to `reqwest::Client::new()`: that client has no timeout,
 /// which is the hang this exists to prevent. If the builder fails (system
-/// proxy discovery is the usual cause), one retry skips proxies -- the worker
-/// is on loopback anyway -- and a second failure is an error.
+/// proxy discovery is the usual cause) it is an error. The worker is on
+/// loopback, so no proxy is ever used: a VPN or corporate proxy would otherwise
+/// carry the request away from the engine and every model load would fail.
 fn worker_client(timeout: std::time::Duration) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(timeout)
+        .no_proxy()
         .build()
-        .or_else(|e| {
-            log::warn!("could not build the engine worker client ({e}); retrying without proxies");
-            reqwest::Client::builder().timeout(timeout).no_proxy().build()
-        })
         .map_err(|e| {
             log::error!("could not build the engine worker client: {e}");
             format!("could not build an HTTP client for the engine worker: {e}")
@@ -393,6 +399,7 @@ pub async fn reload_models(
     preset_path: String,
     models_max: Option<u32>,
     slot_cache_mib: Option<u64>,
+    idle_unload_minutes: Option<u32>,
 ) -> Result<ReloadReport, String> {
     let (port, api_key) = {
         let guard = state.engine.lock().await;
@@ -408,6 +415,9 @@ pub async fn reload_models(
     }
     if let Some(m) = slot_cache_mib {
         body["slot_cache_mib"] = serde_json::json!(m);
+    }
+    if let Some(m) = idle_unload_minutes {
+        body["idle_unload_minutes"] = serde_json::json!(m);
     }
 
     let resp = worker_client(RELOAD_MODELS_TIMEOUT)?
@@ -620,8 +630,9 @@ pub async fn reload_engine_models(
     preset_path: String,
     models_max: Option<u32>,
     slot_cache_mib: Option<u64>,
+    idle_unload_minutes: Option<u32>,
 ) -> Result<ReloadReport, String> {
-    reload_models(&**state, preset_path, models_max, slot_cache_mib).await
+    reload_models(&**state, preset_path, models_max, slot_cache_mib, idle_unload_minutes).await
 }
 
 #[cfg(feature = "tauri")]

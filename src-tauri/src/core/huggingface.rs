@@ -188,10 +188,13 @@ fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
             .map_err(|_| "Invalid Hugging Face token".to_string())?;
         headers.insert(reqwest::header::AUTHORIZATION, value);
     }
-    reqwest::Client::builder()
-        .default_headers(headers)
-        .connect_timeout(std::time::Duration::from_secs(15))
-        .build()
+    // The Settings HTTPS proxy and CA bundle apply to Hugging Face traffic.
+    crate::core::net::tls::apply12(
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .connect_timeout(std::time::Duration::from_secs(15)),
+    )
+    .build()
         .map_err(|e| format!("Could not create Hugging Face client: {e}"))
 }
 

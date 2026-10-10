@@ -109,7 +109,7 @@ const TEMPLATE_KWARGS_CHECK_VERSION = 1
 // Provider settings that end up in `router.preset.ini` (`[*]` global section
 // in preset.ts). Mutating any of these needs the preset reloaded so the new
 // value is read; cosmetic / process-only keys (models_max, timeout,
-// llamacpp_env) are handled separately or not at all.
+// llamacpp_env, idle_unload_minutes) are handled separately or not at all.
 const PRESET_AFFECTING_KEYS = new Set<string>([
   'fit',
   'fit_target',
@@ -798,6 +798,9 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     // parent; it does not, it gets reparented.
     const envs: Record<string, string> = {}
     envs['LLAMA_ARG_TIMEOUT'] = String(this.timeout)
+    envs['LLAMA_FLINT_IDLE_UNLOAD_MINUTES'] = String(
+      this.resolveIdleUnloadMinutes()
+    )
     if (this.llamacpp_env) this.parseEnvFromString(envs, this.llamacpp_env)
 
     const info = await startEngine(
@@ -844,6 +847,16 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   private resolveThreadCacheBudget(): number {
     if (this.config.persist_thread_cache === false) return 0
     const raw = Number(this.config.thread_cache_size)
+    if (!Number.isFinite(raw) || raw <= 0) return 0
+    return Math.floor(raw)
+  }
+
+  /**
+   * Minutes a model may sit unused before the worker unloads it. 0 (the
+   * default) is off, so a missing, blank or invalid value changes nothing.
+   */
+  private resolveIdleUnloadMinutes(): number {
+    const raw = Number((this.config as { idle_unload_minutes?: unknown }).idle_unload_minutes)
     if (!Number.isFinite(raw) || raw <= 0) return 0
     return Math.floor(raw)
   }
@@ -899,7 +912,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       const report = await reloadEngineModels(
         presetPath,
         this.resolveModelsMax(embeddingCount),
-        this.resolveThreadCacheBudget()
+        this.resolveThreadCacheBudget(),
+        this.resolveIdleUnloadMinutes()
       )
       logger.info(
         `Engine preset reloaded: +${report.added.length} ~${report.changed.length} -${report.removed.length}, ${report.kept.length} kept loaded`
@@ -1232,10 +1246,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       // clearing it yields '' and a bare cast produced NaN. 0 or negative would
       // make the request timeout fire immediately and abort every stream.
       this.timeout = asI32(value, DEFAULT_TIMEOUT) || DEFAULT_TIMEOUT
-    } else if (key === 'models_max') {
+    } else if (key === 'models_max' || key === 'idle_unload_minutes') {
       // Not a `[*]` preset key, so it is deliberately absent from
       // PRESET_AFFECTING_KEYS -- but the worker still has to be told, or
-      // "Max Concurrently Loaded Models" only ever updated this.config.
+      // "Max Concurrently Loaded Models" (and the idle-unload timeout) only
+      // ever updated this.config.
       this.schedulePresetRefresh()
     } else if (PRESET_AFFECTING_KEYS.has(key)) {
       // The running worker was started with the previous preset; without a

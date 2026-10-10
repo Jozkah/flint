@@ -126,9 +126,31 @@ fn require_key(provider: &str, api_key: Option<String>) -> Result<String, String
     })
 }
 
+/// A way for the host application to route provider API calls through the
+/// user's configured HTTPS proxy: given the request URL it returns the proxy to
+/// use, or `None` to connect directly. Set once at startup.
+///
+/// It applies only to [`build_http_client`] (the providers' own search/API
+/// endpoints). The page-fetch client ([`public_fetch_client`]) never uses it: a
+/// proxy resolves the host name on its side, which would bypass that client's
+/// public-addresses-only DNS rule.
+pub type ProxyHook = Box<dyn Fn(&reqwest::Url) -> Option<reqwest::Url> + Send + Sync>;
+
+static PROXY_HOOK: std::sync::OnceLock<ProxyHook> = std::sync::OnceLock::new();
+
+pub fn set_proxy_hook(hook: ProxyHook) {
+    let _ = PROXY_HOOK.set(hook);
+}
+
 fn build_http_client(provider: &str) -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
+    let mut builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS));
+    if PROXY_HOOK.get().is_some() {
+        builder = builder.proxy(reqwest::Proxy::custom(|url| {
+            PROXY_HOOK.get().and_then(|hook| hook(url))
+        }));
+    }
+    builder
         .build()
         .map_err(|e| format!("failed to build HTTP client for {provider}: {e}"))
 }
