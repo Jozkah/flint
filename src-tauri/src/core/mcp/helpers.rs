@@ -680,6 +680,9 @@ async fn schedule_mcp_start_task<R: Runtime>(
             // Scrub the AppImage runtime's library/path variables so host tools
             // (node, git, python) do not load the bundle's older libs (#015, #136, #375).
             jan_process::HostProcessEnv::host_env(&mut cmd);
+            // Flint's own gateway/worker keys are not the server's to read; the
+            // server's `env` below is applied last and still wins.
+            jan_process::WithoutAppSecrets::without_app_secrets(&mut cmd);
             // A PYTHONHOME inherited from the host points uv's Python at a tree
             // without a stdlib ("No module named 'encodings'", #376). A value in
             // the server's own config is applied below and still wins.
