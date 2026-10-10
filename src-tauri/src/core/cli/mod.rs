@@ -974,6 +974,30 @@ pub fn cli_agent_status(
     let cfg = load_agent_config(&project_root)?;
     let provider_configs = load_provider_configs(Some(&project_root), overrides)?;
 
+    // Where every contributor to the system prompt lands relative to the cache
+    // line, and why: "which of my writers sits in the leading bytes" is one
+    // command, not an investigation. A `[prompt]` policy that cannot be honored
+    // (a typo, or a contributor that changes while a run works) fails here with
+    // the message a run would give.
+    let prompt_policy = crate::core::agent::project::prompt_policy(&project_root);
+    let prompt_components: Vec<serde_json::Value> = prompt_policy
+        .placements()
+        .map_err(|e| format!("[prompt] config: {e}"))?
+        .into_iter()
+        .map(|(composer, placement)| {
+            serde_json::json!({
+                "id": composer.id(),
+                "placement": placement.as_str(),
+                "constant": composer.constant(),
+                "source": composer.source().as_str(),
+                // True when `[prompt]` moved it below the line from where the
+                // code would have put it.
+                "demoted": placement != composer.declared(),
+                "what": composer.what(),
+            })
+        })
+        .collect();
+
     // Only providers this build can reach: local-engine entries inherited from
     // the desktop store have no upstream here (see `is_cli_reachable`).
     let mut providers: Vec<serde_json::Value> = provider_configs
@@ -1028,6 +1052,13 @@ pub fn cli_agent_status(
         "sandbox": {
             "enabled": crate::core::agent::r#loop::effective_sandbox(&project_root),
             "backend": tauri_plugin_agent_tools::tools::jail::backend().as_str(),
+        },
+        // Who may write above the cache line: the configured lists and the
+        // resolved placement of every contributor.
+        "prompt": {
+            "prefix_allow": prompt_policy.prefix_allow(),
+            "prefix_deny": prompt_policy.prefix_deny(),
+            "components": prompt_components,
         },
         "providers": providers,
     }))
@@ -3788,6 +3819,56 @@ mod tests {
         assert!(PermissionMode::resolve(Some("ask"), true, false).is_err());
         assert!(PermissionMode::resolve(Some("nope"), false, false).is_err());
         assert_eq!(PermissionMode::parse("review").unwrap().as_str(), "review");
+    }
+
+    /// `agent status` names every contributor to the prompt and where `[prompt]`
+    /// put it, and says which ones the policy demoted. A policy that cannot be
+    /// honored fails the command with the same message a run gives.
+    #[test]
+    fn agent_status_reports_where_each_contributor_lands() {
+        let root = tempfile::tempdir().unwrap();
+        let agent_dir = root.path().join(".jan").join("agent");
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        std::fs::write(
+            agent_dir.join("agent.toml"),
+            "[prompt]\nprefix_allow = [\"assistant_instructions\", \"guidelines\"]\n",
+        )
+        .unwrap();
+
+        let status = cli_agent_status(
+            root.path().to_str().unwrap(),
+            &ProviderOverrides::default(),
+        )
+        .expect("status");
+        let components = status["prompt"]["components"].as_array().expect("components");
+        let find = |id: &str| {
+            components
+                .iter()
+                .find(|c| c["id"] == id)
+                .unwrap_or_else(|| panic!("{id} not reported"))
+        };
+        assert_eq!(find("guidelines")["placement"], "prefix");
+        assert_eq!(find("guidelines")["demoted"], false);
+        assert_eq!(find("skills")["placement"], "tail");
+        assert_eq!(find("skills")["demoted"], true);
+        // Varies while a run works: below the line by its own declaration, not
+        // because the policy demoted it.
+        assert_eq!(find("todo_upkeep")["placement"], "tail");
+        assert_eq!(find("todo_upkeep")["demoted"], false);
+        assert_eq!(find("tool_schemas")["placement"], "prefix");
+        assert_eq!(status["prompt"]["prefix_allow"].as_array().map(Vec::len), Some(2));
+
+        std::fs::write(
+            agent_dir.join("agent.toml"),
+            "[prompt]\nprefix_allow = [\"todo_upkeep\"]\n",
+        )
+        .unwrap();
+        let error = cli_agent_status(
+            root.path().to_str().unwrap(),
+            &ProviderOverrides::default(),
+        )
+        .expect_err("a per-turn contributor cannot lead the prompt");
+        assert!(error.contains("todo_upkeep"), "{error}");
     }
 
     /// #200: every colored line goes through `color::paint`, so NO_COLOR and
