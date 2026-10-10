@@ -66,6 +66,7 @@ import {
   isLocalEndpoint,
 } from '@/lib/endpointDiagnostics'
 import { errorText } from '@/lib/errorText'
+import { describeEngineError, parseEngineError } from '@/lib/engineError'
 import {
   deriveModelStatus,
   modelStatusLabelKey,
@@ -812,7 +813,11 @@ function ProviderDetail() {
         setFailedModels((prev) =>
           prev.includes(modelId) ? prev : [...prev, modelId]
         )
-        const message = errorText(error, 'Model could not start')
+        // An engine failure carries a code and the engine's own words; the
+        // plain text of it is only "The model could not be loaded."
+        const message = parseEngineError(error)
+          ? describeEngineError(error)
+          : errorText(error, 'Model could not start')
         setModelLoadError(message)
         toast.error(`Could not start ${modelId}`, { description: message })
       } finally {
