@@ -569,7 +569,13 @@
     "mediumModel": "中型模型",
     "mediumModelDesc": "Sonnet",
     "smallModel": "小型模型",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "overridesTitle": "覆盖这些模型的 Claude Code 设置",
+    "overrides": {
+      "model": "{{file}} 将模型固定为“{{value}}”，因此无论这里如何设置，Claude Code 都会继续使用它。请删除该文件中的 \"model\" 行，或在 Claude Code 中运行 /model 并选择 Default。",
+      "env": "{{file}} 在其 env 块中设置了 {{key}}，它优先于 Flint 导出的变量。请从该 env 块中删除 {{key}}。",
+      "apiKeyHelper": "{{file}} 设置了 apiKeyHelper，它会替换 Flint 导出的令牌，并可能让 Claude Code 再次要求你登录。请删除该文件中的 \"apiKeyHelper\" 行。"
+    }
   },
   "memory": {
     "automaticallySave": "自动保存本地记忆",

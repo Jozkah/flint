@@ -569,7 +569,13 @@
     "mediumModel": "Orta model",
     "mediumModelDesc": "Sonnet",
     "smallModel": "Küçük model",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "overridesTitle": "Bu modelleri geçersiz kılan Claude Code ayarları",
+    "overrides": {
+      "model": "{{file}} modeli \"{{value}}\" olarak sabitliyor, bu yüzden Claude Code burada ne ayarlanırsa ayarlansın onu kullanmaya devam eder. O dosyadan \"model\" satırını silin veya Claude Code'da /model çalıştırıp Default seçin.",
+      "env": "{{file}} env bloğunda {{key}} değerini ayarlıyor ve bu, Flint'in dışa aktardığı değişkenden önceliklidir. {{key}} değerini o env bloğundan kaldırın.",
+      "apiKeyHelper": "{{file}} bir apiKeyHelper ayarlıyor; bu, Flint'in dışa aktardığı belirteci değiştirir ve Claude Code'un yeniden oturum açmanızı istemesine yol açabilir. O dosyadan \"apiKeyHelper\" satırını kaldırın."
+    }
   },
   "memory": {
     "automaticallySave": "Yerel anıları otomatik kaydet",

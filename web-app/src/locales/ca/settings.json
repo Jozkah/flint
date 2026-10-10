@@ -573,7 +573,13 @@
     "mediumModel": "Model mitjà",
     "mediumModelDesc": "Sonnet",
     "smallModel": "Model petit",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "overridesTitle": "Configuració de Claude Code que anul·la aquests models",
+    "overrides": {
+      "model": "{{file}} fixa el model a «{{value}}», així que Claude Code el continua utilitzant sigui quin sigui el que s'hagi definit aquí. Elimineu la línia \"model\" d'aquest fitxer o executeu /model a Claude Code i trieu Default.",
+      "env": "{{file}} defineix {{key}} al seu bloc env, que preval sobre la variable que exporta Flint. Elimineu {{key}} d'aquest bloc env.",
+      "apiKeyHelper": "{{file}} defineix un apiKeyHelper, que substitueix el testimoni que exporta Flint i pot fer que Claude Code us demani iniciar sessió de nou. Elimineu la línia \"apiKeyHelper\" d'aquest fitxer."
+    }
   },
   "memory": {
     "automaticallySave": "Desa automàticament les memòries locals",

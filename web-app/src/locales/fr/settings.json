@@ -571,7 +571,13 @@
     "mediumModel": "Modèle moyen",
     "mediumModelDesc": "Sonnet",
     "smallModel": "Petit modèle",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "overridesTitle": "Réglages de Claude Code qui remplacent ces modèles",
+    "overrides": {
+      "model": "{{file}} fixe le modèle sur « {{value}} », donc Claude Code continue de l'utiliser quoi que vous définissiez ici. Supprimez la ligne \"model\" de ce fichier, ou exécutez /model dans Claude Code et choisissez Default.",
+      "env": "{{file}} définit {{key}} dans son bloc env, qui l'emporte sur la variable exportée par Flint. Retirez {{key}} de ce bloc env.",
+      "apiKeyHelper": "{{file}} définit un apiKeyHelper, qui remplace le jeton exporté par Flint et peut amener Claude Code à vous demander de vous reconnecter. Supprimez la ligne \"apiKeyHelper\" de ce fichier."
+    }
   },
   "memory": {
     "automaticallySave": "Enregistrer automatiquement les mémoires locales",

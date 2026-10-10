@@ -573,7 +573,13 @@
     "mediumModel": "Średni model",
     "mediumModelDesc": "Sonnet",
     "smallModel": "Mały model",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "overridesTitle": "Ustawienia Claude Code, które nadpisują te modele",
+    "overrides": {
+      "model": "{{file}} przypina model do „{{value}}”, więc Claude Code nadal go używa niezależnie od tego, co ustawiono tutaj. Usuń wiersz \"model\" z tego pliku albo uruchom w Claude Code /model i wybierz Default.",
+      "env": "{{file}} ustawia {{key}} w swoim bloku env, który ma pierwszeństwo przed zmienną eksportowaną przez Flint. Usuń {{key}} z tego bloku env.",
+      "apiKeyHelper": "{{file}} ustawia apiKeyHelper, który zastępuje token eksportowany przez Flint i może sprawić, że Claude Code poprosi o ponowne zalogowanie. Usuń wiersz \"apiKeyHelper\" z tego pliku."
+    }
   },
   "memory": {
     "automaticallySave": "Automatycznie zapisuj lokalne wspomnienia",

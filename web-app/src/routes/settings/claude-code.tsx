@@ -9,12 +9,16 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useClaudeCodeModel } from '@/hooks/useClaudeCodeModel'
+import {
+  availableHelperModels,
+  claudeCodeApiUrl,
+} from '@/lib/claudeCodeLaunch'
 import { useAppState } from '@/hooks/useAppState'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import AddEditCustomCliDialog from '@/containers/dialogs/AddEditCustomCliDialog'
 import { cn } from '@/lib/utils'
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { getModelToStart } from '@/utils/getModelToStart'
 import { invoke } from '@tauri-apps/api/core'
@@ -42,6 +46,13 @@ export const Route = createFileRoute(route.settings.claude_code as any)({
   component: ClaudeCodeIntegration,
 })
 
+type ClaudeCodeOverride = {
+  kind: 'model' | 'env' | 'apiKeyHelper'
+  key: string
+  value: string | null
+  file: string
+}
+
 function ClaudeCodeIntegration() {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
@@ -62,6 +73,15 @@ function ClaudeCodeIntegration() {
   const { serverStatus, setServerStatus } = useAppState()
   const { providers, selectedModel, selectedProvider, getProviderByName } =
     useModelProvider()
+  const [overrides, setOverrides] = useState<ClaudeCodeOverride[]>([])
+
+  // Settings in the user's own Claude Code config that win over what is
+  // exported here (janhq/jan issue 8107). Read-only.
+  useEffect(() => {
+    invoke<ClaudeCodeOverride[]>('detect_claude_code_overrides')
+      .then((found) => setOverrides(Array.isArray(found) ? found : []))
+      .catch(() => setOverrides([]))
+  }, [])
   const setActiveModels = useAppState((state) => state.setActiveModels)
 
   const {
@@ -76,19 +96,28 @@ function ClaudeCodeIntegration() {
   const [isModelLoading, setIsModelLoading] = useState(false)
 
   const handleLaunchClaudeCode = async () => {
-    const apiUrl = `http://${serverHost}:${serverPort}`
-    const modelFable = helperModels.fable
-    const modelBig = helperModels.big
-    const modelMedium = helperModels.medium
-    const modelSmall = helperModels.small
+    // Only models the selectors still show: a deleted or switched-off one
+    // would otherwise be exported though the page lists the tier as empty.
+    const chosen = availableHelperModels(
+      helperModels,
+      providers,
+      (name) => !!isLocalProvider(name)
+    )
+    const modelFable = chosen.fable
+    const modelBig = chosen.big
+    const modelMedium = chosen.medium
+    const modelSmall = chosen.small
     const customEnvVars = helperModels.envVars
+    // The port the server actually bound, which is not serverPort when that one
+    // was taken.
+    let boundPort = serverPort
 
     const startServer = async (): Promise<void> => {
       const helperModelsToStart = [
-        { id: helperModels.fable, role: 'Fable' },
-        { id: helperModels.big, role: 'Big' },
-        { id: helperModels.medium, role: 'Medium' },
-        { id: helperModels.small, role: 'Small' },
+        { id: chosen.fable, role: 'Fable' },
+        { id: chosen.big, role: 'Big' },
+        { id: chosen.medium, role: 'Medium' },
+        { id: chosen.small, role: 'Small' },
       ]
         .filter((m) => m.id)
         .map((m) => m.id as string)
@@ -170,6 +199,7 @@ function ClaudeCodeIntegration() {
 
       if (actualPort && actualPort !== serverPort) {
         setServerPort(actualPort)
+        boundPort = actualPort
       }
       setServerStatus('running')
 
@@ -205,7 +235,7 @@ function ClaudeCodeIntegration() {
         }
       }
       await invoke('launch_claude_code_with_config', {
-        apiUrl,
+        apiUrl: claudeCodeApiUrl(serverHost, boundPort),
         apiKey: apiKey || undefined,
         bigModel: modelBig || undefined,
         mediumModel: modelMedium || undefined,
@@ -337,6 +367,26 @@ function ClaudeCodeIntegration() {
               </Button>
             </div>
           </div>
+
+          {overrides.length > 0 && (
+            <div
+              role="status"
+              className="mt-2.5 flex flex-col gap-1.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm"
+            >
+              <div className="font-medium">
+                {t('settings:claudeCode.overridesTitle')}
+              </div>
+              {overrides.map((o) => (
+                <div key={`${o.kind}:${o.key}`} className="break-words">
+                  {t(`settings:claudeCode.overrides.${o.kind}`, {
+                    key: o.key,
+                    value: o.value ?? '',
+                    file: o.file,
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
 
           {(helperModels.customCli || helperModels.envVars.length > 0) && (
             <div className="mt-2.5 rounded-lg bg-muted px-3 py-2.5 font-mono text-xs leading-[1.6] text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">

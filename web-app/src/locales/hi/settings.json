@@ -569,7 +569,13 @@
     "mediumModel": "मध्यम मॉडल",
     "mediumModelDesc": "Sonnet",
     "smallModel": "छोटा मॉडल",
-    "smallModelDesc": "Haiku"
+    "smallModelDesc": "Haiku",
+    "overridesTitle": "Claude Code की वे सेटिंग जो इन मॉडलों को ओवरराइड करती हैं",
+    "overrides": {
+      "model": "{{file}} मॉडल को \"{{value}}\" पर पिन करता है, इसलिए यहाँ जो भी सेट हो, Claude Code उसी का उपयोग करता रहता है। उस फ़ाइल से \"model\" वाली पंक्ति हटाएँ, या Claude Code में /model चलाकर Default चुनें।",
+      "env": "{{file}} अपने env ब्लॉक में {{key}} सेट करता है, जो Flint द्वारा एक्सपोर्ट किए गए वेरिएबल पर भारी पड़ता है। उस env ब्लॉक से {{key}} हटाएँ।",
+      "apiKeyHelper": "{{file}} एक apiKeyHelper सेट करता है, जो Flint द्वारा एक्सपोर्ट किए गए टोकन की जगह लेता है और Claude Code को दोबारा लॉग इन करने के लिए कहने पर मजबूर कर सकता है। उस फ़ाइल से \"apiKeyHelper\" वाली पंक्ति हटाएँ।"
+    }
   },
   "memory": {
     "automaticallySave": "लोकल मेमोरी अपने-आप सहेजें",
