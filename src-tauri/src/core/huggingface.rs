@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use url::Url;
 
-const HF_HOST: &str = "huggingface.co";
+use crate::core::hf_endpoint::{endpoint_url, hf_endpoint};
 const MAX_SEARCH_RESULTS: &str = "50";
 const MAX_README_BYTES: u64 = 512 * 1024;
 /// How much of a GGUF file's start is read to learn its architecture. The
@@ -196,16 +196,7 @@ fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
 }
 
 fn api_url(path: &[&str]) -> Result<Url, String> {
-    let mut url = Url::parse("https://huggingface.co").map_err(|e| e.to_string())?;
-    {
-        let mut segments = url
-            .path_segments_mut()
-            .map_err(|_| "Invalid Hugging Face base URL".to_string())?;
-        for part in path {
-            segments.push(part);
-        }
-    }
-    Ok(url)
+    endpoint_url(&hf_endpoint()?, path)
 }
 
 pub(crate) fn valid_repo_id(repo: &str) -> bool {
@@ -280,28 +271,23 @@ fn download_path<R: Runtime>(app: &tauri::AppHandle<R>, repo: &str, filename: &s
 }
 
 fn remote_file_url(repo: &str, filename: &str) -> Result<Url, String> {
+    remote_file_url_on(&hf_endpoint()?, repo, filename)
+}
+
+fn remote_file_url_on(base: &Url, repo: &str, filename: &str) -> Result<Url, String> {
     if !valid_repo_id(repo) {
         return Err("Invalid Hugging Face repository id".to_string());
     }
     if !valid_remote_path(filename) {
         return Err("Invalid Hugging Face file path".to_string());
     }
-    let mut url = Url::parse("https://huggingface.co").map_err(|e| e.to_string())?;
-    {
-        let mut segments = url
-            .path_segments_mut()
-            .map_err(|_| "Invalid Hugging Face base URL".to_string())?;
-        for part in repo.split('/') {
-            segments.push(part);
-        }
-        segments.push("resolve");
-        segments.push("main");
-        for part in filename.split('/') {
-            segments.push(part);
-        }
-    }
-    if url.host_str() != Some(HF_HOST) {
-        return Err("Refusing a non-Hugging Face download URL".to_string());
+    let mut parts: Vec<&str> = repo.split('/').collect();
+    parts.push("resolve");
+    parts.push("main");
+    parts.extend(filename.split('/'));
+    let url = endpoint_url(base, &parts)?;
+    if url.host_str() != base.host_str() || url.scheme() != base.scheme() {
+        return Err("Refusing a download URL outside the Hugging Face endpoint".to_string());
     }
     Ok(url)
 }
@@ -1008,8 +994,9 @@ mod tests {
 
     #[test]
     fn resolve_url_stays_on_hugging_face() {
-        let url = remote_file_url("bartowski/Qwen3-GGUF", "sub/model.gguf").unwrap();
-        assert_eq!(url.host_str(), Some(HF_HOST));
+        let base = crate::core::hf_endpoint::parse_endpoint(None).unwrap();
+        let url = remote_file_url_on(&base, "bartowski/Qwen3-GGUF", "sub/model.gguf").unwrap();
+        assert_eq!(url.host_str(), Some("huggingface.co"));
         assert!(url.path().contains("/resolve/main/sub/model.gguf"));
     }
 

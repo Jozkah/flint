@@ -31,6 +31,8 @@ pub mod cli;
 #[allow(dead_code)]
 #[path = "cli/secrets.rs"]
 pub(crate) mod log_redaction;
+// Which Hugging Face hub (HF_ENDPOINT) the downloads use; shared with the CLI.
+pub mod hf_endpoint;
 // Explicit, user-initiated Hugging Face model discovery/downloads. Kept
 // desktop-only so the CLI remains network-agnostic unless the user configures
 // a provider there.
