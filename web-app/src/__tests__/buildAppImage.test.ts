@@ -66,6 +66,7 @@ describe.skipIf(!hasBash)('buildAppImage.sh', () => {
     const appDir = join(dir, 'src-tauri/target/release/bundle/appimage/Flint.AppDir')
     mkdirSync(join(appDir, 'usr/bin'), { recursive: true })
     mkdirSync(join(appDir, 'usr/lib'), { recursive: true })
+    writeFileSync(join(appDir, '.DirIcon'), 'x')
     writeFileSync(join(appDir, 'usr/lib/libvulkan.so.1'), 'x')
     mkdirSync(join(dir, 'src-tauri/resources/bin'), { recursive: true })
     writeFileSync(join(dir, 'src-tauri/resources/bin/bun'), 'x')

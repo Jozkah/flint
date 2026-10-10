@@ -32,6 +32,18 @@ fi
 # bundle additional resources in the AppDir without pulling in their dependencies
 cp ./src-tauri/resources/bin/bun "$APP_DIR/usr/bin/bun" || { echo "Failed to copy the bun sidecar into $APP_DIR."; exit 1; }
 
+# tauri-cli before 2.11.4 (tauri-apps/tauri#15596) links .DirIcon to the icon's
+# absolute build-host path, which dangles inside the mounted AppImage and which
+# AppImage catalogs reject. Re-point it relative to the AppDir root.
+DIR_ICON="$APP_DIR/.DirIcon"
+if [[ "$(readlink "$DIR_ICON")" == /* ]]; then
+    ln -sfn "$(basename "$(readlink "$DIR_ICON")")" "$DIR_ICON"
+fi
+if [ ! -f "$DIR_ICON" ] || [[ "$(readlink "$DIR_ICON")" == /* ]]; then
+    echo ".DirIcon in $APP_DIR is missing or not relative to the AppDir."
+    exit 1
+fi
+
 # The host's Vulkan loader and NVIDIA driver have to be the ones that run; a copy
 # from the build host crashed every model load (janhq/jan#9173). shim-linuxdeploy.sh
 # excludes them, so finding one here means that exclusion stopped applying.
