@@ -24,6 +24,8 @@ thiserror = "2.0"
 tokio = { version = "1", features = ["full"] }
 log = "0.4"
 pdf-extract = "0.12"
+# Same lopdf pdf-extract already links; used directly as a lenient fallback.
+lopdf = { version = "0.42", default-features = false }
 zip = "0.6"
 # 0.41+: earlier versions check duplicate attributes in O(n^2) (RUSTSEC-2026-0194).
 quick-xml = { version = "0.41", features = ["serialize"] }

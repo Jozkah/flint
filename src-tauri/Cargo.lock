@@ -7989,6 +7989,7 @@ dependencies = [
  "html2text",
  "infer 0.15.0",
  "log",
+ "lopdf",
  "pdf-extract",
  "quick-xml 0.41.0",
  "serde",
