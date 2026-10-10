@@ -657,11 +657,11 @@ endobj
         pdf.extend_from_slice(format!("xref
 0 {}
 ", objects.len() + 1).as_bytes());
-        pdf.extend_from_slice(b"0000000000 65535 f 
-");
+        // The space before the newline is part of the 20-byte xref entry; it is
+        // written as an escape so the source carries no trailing whitespace.
+        pdf.extend_from_slice(b"0000000000 65535 f \n");
         for off in offsets {
-            pdf.extend_from_slice(format!("{:010} 00000 n 
-", off).as_bytes());
+            pdf.extend_from_slice(format!("{:010} 00000 n \n", off).as_bytes());
         }
         pdf.extend_from_slice(
             format!(
