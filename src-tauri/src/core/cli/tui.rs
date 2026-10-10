@@ -1825,6 +1825,9 @@ struct App {
     /// Token-spend ceiling for one message's run; `0` is unbounded. The only
     /// cap on run length -- there is no turn limit.
     max_session_tokens: u64,
+    /// `max_session_tokens` came from the flag or `[budget].max_tokens`; when
+    /// not, it follows the model's context window across a model switch.
+    max_session_tokens_pinned: bool,
     /// Repo top-level when the project is a git repo; enables workspace snapshots.
     /// Cleared if git setup fails, permanently disabling snapshots this session.
     repo_root: Option<PathBuf>,
@@ -2116,6 +2119,10 @@ struct App {
     compacting: Option<CompactKind>,
     /// When the in-flight compaction started, for the elapsed counter.
     compact_started: Option<Instant>,
+    /// The running turn is compacting itself (preflight, overflow or the
+    /// session budget), and since when. Display-only: unlike `compacting` it
+    /// gates nothing, because the run that compacts is the one already going.
+    run_compacting: Option<Instant>,
     /// The running turn's upstream request failed before anything streamed and
     /// the loop is waiting to resend it. Display-only; cleared by the next event
     /// of the parent run, and by the run ending or being cancelled.
@@ -2511,6 +2518,7 @@ impl App {
             compaction_keep_recent: limits.compaction.keep_recent,
             max_tokens: limits.max_tokens,
             max_session_tokens: limits.max_session_tokens,
+            max_session_tokens_pinned: limits.max_session_tokens_pinned,
             repo_root,
             git_branch: git::current_branch(&project_root),
             project_root,
@@ -2607,6 +2615,7 @@ impl App {
             compact_request: None,
             compacting: None,
             compact_started: None,
+            run_compacting: None,
             retrying: None,
             retry_after_compact: false,
             overflow_retries: 0,
@@ -4805,6 +4814,17 @@ impl App {
         let changed = resolved.tokens != self.context_window;
         self.context_window = resolved.tokens;
         self.context_window_source = resolved.source;
+        // A window-derived session budget follows the model; one the user set
+        // (flag or `[budget].max_tokens`) stays put. An unknown model's guess
+        // is not a window, so it falls back to the default.
+        if !self.max_session_tokens_pinned {
+            self.max_session_tokens = match resolved.source {
+                crate::core::cli::model_capabilities::ContextWindowSource::Fallback => {
+                    super::DEFAULT_MAX_SESSION_TOKENS
+                }
+                _ => resolved.tokens,
+            };
+        }
         changed
     }
     /// Header label for the current selection: `provider/model` when the bare
@@ -5537,6 +5557,43 @@ impl App {
             // AH-174: the run's resource figures are recorded with its end and
             // shown on the timeline; the TUI's transcript does not repeat them.
             StreamEvent::Done { .. } | StreamEvent::Error { .. } | StreamEvent::RunResources { .. } => {}
+            // The loop's own compaction: a summarizer round trip the run is
+            // blocked on, which nothing else on screen would explain. The
+            // header and input row carry the throbber while it runs; the
+            // outcome is one transcript line saying why.
+            StreamEvent::Compaction { phase, reason, messages } => {
+                use crate::core::agent::events::{CompactionPhase, CompactionReason};
+                match phase {
+                    CompactionPhase::Started => self.run_compacting = Some(Instant::now()),
+                    CompactionPhase::Finished => {
+                        self.run_compacting = None;
+                        let why = match reason {
+                            CompactionReason::Preflight => "the prompt neared the context window",
+                            CompactionReason::ContextOverflow => {
+                                "the provider rejected the prompt as too long"
+                            }
+                            CompactionReason::SessionBudget => {
+                                "the session token budget was used up"
+                            }
+                        };
+                        self.finalize_tool_group();
+                        self.flush_assistant();
+                        match messages {
+                            Some(n) => self.note(&format!(
+                                "compacted {n} messages into a summary: {why}"
+                            )),
+                            None => self.note(&format!("compacted the conversation: {why}")),
+                        }
+                        // The next `MessagesUpdated` carries the shorter
+                        // history; the gauge is re-estimated against it.
+                        self.tokens_estimated = true;
+                    }
+                    CompactionPhase::Failed => {
+                        self.run_compacting = None;
+                        self.note("compaction did not shrink the conversation");
+                    }
+                }
+            }
             // The live countdown carries every attempt; the transcript notes
             // only the first, so a flaky link leaves one line, not ten.
             StreamEvent::Retry {
@@ -5814,6 +5871,7 @@ impl App {
         self.tokens = usage.and_then(|u| u.total_tokens).unwrap_or(self.tokens);
         self.status = Status::Idle;
         self.run_started = None;
+        self.run_compacting = None;
         self.retrying = None;
         self.detail = format!("stop_reason={stop_reason}");
         self.scrollback = 0;
@@ -5923,6 +5981,7 @@ impl App {
         self.flush_assistant();
         self.status = Status::Idle;
         self.run_started = None;
+        self.run_compacting = None;
         self.retrying = None;
         self.detail = if message.contains("budget") {
             format!("budget exhausted: {message}")
@@ -6059,6 +6118,8 @@ impl App {
         }
         self.status = Status::Idle;
         self.run_started = None;
+        // A cancel sends no further event to close the compaction.
+        self.run_compacting = None;
         // A cancel sends no further event to clear it.
         self.retrying = None;
         // Drop any run queued but not yet spawned (still gated on model/MCP/
@@ -17950,6 +18011,8 @@ fn header(app: &App) -> Paragraph<'static> {
 fn header_spans(app: &App) -> Vec<Span<'static>> {
     let (status, style): (String, Style) = if let Some(kind) = app.compacting {
         (kind.label().to_string(), Style::new().magenta().bold())
+    } else if app.run_compacting.is_some() {
+        ("compacting".to_string(), Style::new().magenta().bold())
     } else if app.retrying.is_some() {
         ("retrying".to_string(), Style::new().yellow().bold())
     } else if app.mcp_auth.is_some() {
@@ -18379,6 +18442,17 @@ fn input_box(app: &App) -> Paragraph<'static> {
             ),
         ]))
         .block(block)
+    } else if let Some(started) = app.run_compacting.filter(|_| app.input.is_empty()) {
+        // The run is waiting on the summarizer; without this the row reads
+        // "working" through a round trip that can take a while.
+        Paragraph::new(Line::from(vec![
+            Span::styled(format!("{} ", app.spinner()), Style::new().magenta()),
+            Span::styled(
+                format!("compacting conversation… {}", format_elapsed(started.elapsed().as_secs())),
+                Style::new().dim().italic(),
+            ),
+        ]))
+        .block(block)
     } else if let Some(wait) = app.retrying.as_ref().filter(|_| app.input.is_empty()) {
         // Without this the row reads "working" through up to the whole retry
         // budget, indistinguishable from a slow model.
@@ -18767,6 +18841,7 @@ mod tests {
             compaction: Default::default(),
             max_tokens: None,
             max_session_tokens: 128_000,
+            max_session_tokens_pinned: true,
             max_turns: None,
             cost_ceiling: None,
         };
@@ -19098,6 +19173,7 @@ mod tests {
             compaction: Default::default(),
                     max_tokens: None,
                     max_session_tokens: 128_000,
+                    max_session_tokens_pinned: true,
                     max_turns: None,
                     cost_ceiling: None,
                 },
@@ -29715,6 +29791,73 @@ mod tests {
         start_subagent(&mut app, "r0", "alpha");
         let out = render_rows(&mut app, 100, 20).join("\n");
         assert!(out.contains("1 agent") && out.contains("alpha"), "{out}");
+    }
+
+    fn compaction_event(
+        phase: crate::core::agent::events::CompactionPhase,
+        messages: Option<usize>,
+    ) -> StreamEvent {
+        StreamEvent::Compaction {
+            phase,
+            reason: crate::core::agent::events::CompactionReason::SessionBudget,
+            messages,
+        }
+    }
+
+    /// A compaction the run does itself shows as `compacting` while it runs,
+    /// and leaves one line saying why when it lands.
+    #[test]
+    fn an_in_run_compaction_is_shown_and_then_explained() {
+        use crate::core::agent::events::CompactionPhase;
+        let mut app = test_app();
+        app.status = Status::Running;
+        app.apply(compaction_event(CompactionPhase::Started, None));
+        let header: String = header_spans(&app).iter().map(|s| s.content.to_string()).collect();
+        assert!(header.contains("compacting"), "{header}");
+        app.apply(compaction_event(CompactionPhase::Finished, Some(12)));
+        assert!(app.run_compacting.is_none());
+        let rows = render_rows(&mut app, 120, 30).join("\n");
+        assert!(
+            rows.contains("compacted 12 messages into a summary: the session token budget was used up"),
+            "{rows}"
+        );
+    }
+
+    #[test]
+    fn a_failed_or_cancelled_compaction_clears_the_throbber() {
+        use crate::core::agent::events::CompactionPhase;
+        let mut app = test_app();
+        app.status = Status::Running;
+        app.apply(compaction_event(CompactionPhase::Started, None));
+        app.apply(compaction_event(CompactionPhase::Failed, None));
+        assert!(app.run_compacting.is_none());
+        app.apply(compaction_event(CompactionPhase::Started, None));
+        app.cancel_run();
+        assert!(app.run_compacting.is_none());
+    }
+
+    /// A window-derived budget follows a model switch; a pinned one does not.
+    #[test]
+    fn a_window_derived_budget_follows_the_model_and_a_pinned_one_does_not() {
+        let mut t = test_app();
+        let app = &mut t.app;
+        app.max_session_tokens_pinned = false;
+        app.model = "claude-sonnet-4-6".into();
+        app.refresh_context_window();
+        if app.context_window_source
+            != crate::core::cli::model_capabilities::ContextWindowSource::Fallback
+        {
+            assert_eq!(app.max_session_tokens, app.context_window);
+        }
+        app.model = "no-such-model-anywhere".into();
+        app.refresh_context_window();
+        assert_eq!(app.max_session_tokens, crate::core::cli::DEFAULT_MAX_SESSION_TOKENS);
+
+        app.max_session_tokens_pinned = true;
+        app.max_session_tokens = 42_000;
+        app.model = "claude-sonnet-4-6".into();
+        app.refresh_context_window();
+        assert_eq!(app.max_session_tokens, 42_000, "a pinned budget stays put");
     }
 
     fn retry_event(attempt: u32, delay_ms: u64) -> StreamEvent {

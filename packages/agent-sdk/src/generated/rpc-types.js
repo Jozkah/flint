@@ -23,6 +23,7 @@ export const EVENT_TAGS = Object.freeze([
   "subagent_end",
   "subagent_finished",
   "subagent",
+  "compaction",
   "retry",
   "messages_updated",
   "ask_request",
