@@ -24,6 +24,7 @@ const COMMANDS: &[&str] = &[
     // Model lifecycle, served by the engine worker over loopback HTTP
     "load_llama_model",
     "unload_llama_model",
+    "cancel_model_load",
     "generate_api_key",
     "ensure_session_ready",
     "find_session_by_model",
