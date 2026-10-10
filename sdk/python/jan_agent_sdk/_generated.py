@@ -42,8 +42,11 @@ EVENT_TAGS: tuple[str, ...] = (
     "run_resources",
     "subagent_start",
     "subagent_queued",
+    "subagent_title",
     "subagent_end",
+    "subagent_finished",
     "subagent",
+    "compaction",
     "messages_updated",
     "ask_request",
     "ask_resolved",
@@ -89,8 +92,11 @@ EventTag = Literal[
     "run_resources",
     "subagent_start",
     "subagent_queued",
+    "subagent_title",
     "subagent_end",
+    "subagent_finished",
     "subagent",
+    "compaction",
     "messages_updated",
     "ask_request",
     "ask_resolved",
@@ -114,6 +120,12 @@ class AskRequest(TypedDict):
 class ClientInfo(TypedDict):
     name: str
     version: str
+
+# Where a [`StreamEvent::Compaction`] is in its round trip.
+CompactionPhase = Union[Literal["started", "finished"], Literal["failed"]]
+
+# Which path asked for a [`StreamEvent::Compaction`].
+CompactionReason = Union[Literal["preflight"], Literal["context_overflow"], Literal["session_budget"]]
 
 # What a host says a tool does, which decides how the loop treats it. Absent means opaque: prompted unless `auto_approve`, sequential, withheld in Plan mode -- the plugin/MCP default.
 HostCapability = Union[Literal["read"], Literal["actuator"]]
@@ -392,12 +404,30 @@ class SubagentQueuedEvent(TypedDict):
     waiting: int
     type: Literal["subagent_queued"]
 
+class SubagentTitleEvent(TypedDict):
+    """`item/subagent_title`"""
+
+    run_id: str
+    name: str
+    title: str
+    type: Literal["subagent_title"]
+
 class SubagentEndEvent(TypedDict):
     """`item/subagent_end`"""
 
     run_id: str
     name: str
     type: Literal["subagent_end"]
+
+class SubagentFinishedEvent(TypedDict):
+    """`item/subagent_finished`"""
+
+    run_id: str
+    name: str
+    status: str
+    usage: NotRequired[Any]
+    detail: NotRequired[Union[str, None]]
+    type: Literal["subagent_finished"]
 
 class SubagentEvent(TypedDict):
     """`item/subagent`"""
@@ -406,6 +436,14 @@ class SubagentEvent(TypedDict):
     name: str
     event: Any
     type: Literal["subagent"]
+
+class CompactionEvent(TypedDict):
+    """`item/compaction`"""
+
+    phase: CompactionPhase
+    reason: CompactionReason
+    messages: NotRequired[Union[int, None]]
+    type: Literal["compaction"]
 
 class MessagesUpdatedEvent(TypedDict):
     """`item/messages_updated`"""
@@ -514,8 +552,11 @@ StreamEvent = Union[
     RunResourcesEvent,
     SubagentStartEvent,
     SubagentQueuedEvent,
+    SubagentTitleEvent,
     SubagentEndEvent,
+    SubagentFinishedEvent,
     SubagentEvent,
+    CompactionEvent,
     MessagesUpdatedEvent,
     AskRequestEvent,
     AskResolvedEvent,

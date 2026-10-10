@@ -22,7 +22,7 @@ use tokio::sync::{mpsc, Mutex};
 /// failures crosses into it once, at `From<String>`.
 use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
 
-use crate::core::agent::events::{StreamEvent, Usage};
+use crate::core::agent::events::{CompactionPhase, CompactionReason, StreamEvent, Usage};
 use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
     arguments_are_executable, collect_mcp_openai_tools, copy_optional_chat_params,
@@ -6276,6 +6276,18 @@ fn build_completion_request(
     serde_json::Value::Object(completion_map)
 }
 
+/// Tell a consumer an in-run compaction is starting or has ended. The TUI runs
+/// with logging off, so without this a compaction -- a summarizer round trip and
+/// a cache break -- is indistinguishable from a stall.
+fn report_compaction(
+    events: &mpsc::UnboundedSender<StreamEvent>,
+    phase: CompactionPhase,
+    reason: CompactionReason,
+    messages: Option<usize>,
+) {
+    let _ = events.send(StreamEvent::Compaction { phase, reason, messages });
+}
+
 /// Manually compact `messages` for the given model, resolving the upstream from
 /// `args` and reusing the same summarization path as the reactive loop. Used by
 /// the TUI `/compact` command, which holds `OrchestrationArgs` + a model id but
@@ -6866,20 +6878,43 @@ async fn run_turn_cycle(
                         if cpol::should_compact(&projected, &thresholds) {
                             let opts =
                                 crate::core::agent::compaction::CompactOptions::from_body(json_body);
+                            report_compaction(
+                                events,
+                                CompactionPhase::Started,
+                                CompactionReason::Preflight,
+                                None,
+                            );
                             match crate::core::agent::compaction::compact_conversation_with(
                                 &projected, model_id, model, &opts,
                             )
                             .await
                             {
                                 Ok(full) if full.len() < projected.len() => {
+                                    report_compaction(
+                                        events,
+                                        CompactionPhase::Finished,
+                                        CompactionReason::Preflight,
+                                        Some(projected.len() - full.len()),
+                                    );
                                     projected = full;
                                     full_shrunk = true;
                                 }
                                 // A full pass that could not shrink, or errored,
                                 // is not fatal here: the reactive path is still
                                 // the safety net. Record the miss for the guard.
-                                Ok(_) => {}
+                                Ok(_) => report_compaction(
+                                    events,
+                                    CompactionPhase::Failed,
+                                    CompactionReason::Preflight,
+                                    None,
+                                ),
                                 Err(error) => {
+                                    report_compaction(
+                                        events,
+                                        CompactionPhase::Failed,
+                                        CompactionReason::Preflight,
+                                        None,
+                                    );
                                     if let Some(record) = record {
                                         record.note(
                                             "compaction.preflight_failed",
@@ -6977,6 +7012,12 @@ async fn run_turn_cycle(
                                 }),
                             );
                         }
+                        report_compaction(
+                            events,
+                            CompactionPhase::Started,
+                            CompactionReason::ContextOverflow,
+                            None,
+                        );
                         let compacted = match crate::core::agent::compaction::compact_conversation_with(
                             &conversation_messages,
                             model_id,
@@ -6990,6 +7031,12 @@ async fn run_turn_cycle(
                         {
                             Ok(compacted) => compacted,
                             Err(error) => {
+                                report_compaction(
+                                    events,
+                                    CompactionPhase::Failed,
+                                    CompactionReason::ContextOverflow,
+                                    None,
+                                );
                                 if let Some(record) = record {
                                     record.note(
                                         "compaction.failed",
@@ -7003,6 +7050,12 @@ async fn run_turn_cycle(
                             }
                         };
                         if compacted.len() >= conversation_messages.len() {
+                            report_compaction(
+                                events,
+                                CompactionPhase::Failed,
+                                CompactionReason::ContextOverflow,
+                                None,
+                            );
                             // Nothing left to drop: the request is too large
                             // for this model and saying so is the honest end.
                             if let Some(record) = record {
@@ -7028,6 +7081,12 @@ async fn run_turn_cycle(
                                 }),
                             );
                         }
+                        report_compaction(
+                            events,
+                            CompactionPhase::Finished,
+                            CompactionReason::ContextOverflow,
+                            Some(conversation_messages.len() - compacted.len()),
+                        );
                         log::info!(
                             "agent: context overflow, compacted {} -> {} messages (attempt {})",
                             conversation_messages.len(),
@@ -7231,6 +7290,12 @@ async fn run_turn_cycle(
                         }),
                     );
                 }
+                report_compaction(
+                    events,
+                    CompactionPhase::Started,
+                    CompactionReason::SessionBudget,
+                    None,
+                );
                 match crate::core::agent::compaction::compact_conversation_with(
                     &conversation_messages,
                     model_id,
@@ -7240,6 +7305,12 @@ async fn run_turn_cycle(
                 .await
                 {
                     Ok(compacted) if compacted.len() < conversation_messages.len() => {
+                        report_compaction(
+                            events,
+                            CompactionPhase::Finished,
+                            CompactionReason::SessionBudget,
+                            Some(conversation_messages.len() - compacted.len()),
+                        );
                         log::info!(
                             "agent: budget exhausted at end of run, compacted {} -> {} messages",
                             conversation_messages.len(),
@@ -7258,9 +7329,21 @@ async fn run_turn_cycle(
                         conversation_messages = compacted;
                     }
                     // Too little to drop: not a failure, and not a compaction
-                    // either, so the record says nothing happened.
-                    Ok(_) => {}
+                    // either, so the record says nothing happened. The event
+                    // still closes the `Started` a consumer is showing.
+                    Ok(_) => report_compaction(
+                        events,
+                        CompactionPhase::Failed,
+                        CompactionReason::SessionBudget,
+                        None,
+                    ),
                     Err(error) => {
+                        report_compaction(
+                            events,
+                            CompactionPhase::Failed,
+                            CompactionReason::SessionBudget,
+                            None,
+                        );
                         log::warn!("agent: budget exhausted but compaction failed: {error}");
                         if let Some(record) = record {
                             record.note(
@@ -8097,7 +8180,7 @@ mod tests {
     /// and the dispatched turn carrying a shorter, compacted conversation.
     #[tokio::test]
     async fn preflight_compaction_runs_when_the_threshold_is_crossed() {
-        let (events, _rx) = mpsc::unbounded_channel();
+        let (events, mut rx) = mpsc::unbounded_channel();
         // A long conversation whose estimate is well over the tiny threshold.
         let mut conversation = Vec::new();
         for i in 0..40 {
@@ -8159,6 +8242,22 @@ mod tests {
             "the conversation was compacted before dispatch: {} vs {original_len}",
             dispatched.len()
         );
+        // The cache break is announced, start and end, with what it removed.
+        let announced: Vec<(CompactionPhase, Option<usize>)> =
+            std::iter::from_fn(|| rx.try_recv().ok())
+                .filter_map(|ev| match ev {
+                    StreamEvent::Compaction {
+                        phase,
+                        reason: CompactionReason::Preflight,
+                        messages,
+                    } => Some((phase, messages)),
+                    _ => None,
+                })
+                .collect();
+        assert_eq!(announced.len(), 2, "{announced:?}");
+        assert_eq!(announced[0], (CompactionPhase::Started, None));
+        assert_eq!(announced[1].0, CompactionPhase::Finished);
+        assert!(announced[1].1.is_some_and(|n| n > 0), "{announced:?}");
     }
 
     /// The circuit breaker blocks proactive compaction once it has failed to
@@ -9795,14 +9894,34 @@ mod tests {
             "one turn, plus the summarizer call compaction makes"
         );
 
+        let events: Vec<StreamEvent> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        // The TUI runs with logging off, so without an event this compaction is
+        // invisible to the user.
+        let phases: Vec<CompactionPhase> = events
+            .iter()
+            .filter_map(|ev| match ev {
+                StreamEvent::Compaction {
+                    phase,
+                    reason: CompactionReason::SessionBudget,
+                    ..
+                } => Some(*phase),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            phases,
+            [CompactionPhase::Started, CompactionPhase::Finished],
+            "the budget compaction is announced, start and end"
+        );
         // The published history is the compacted one: shorter, and carrying the
         // summary in place of the dropped middle.
-        let published = std::iter::from_fn(|| rx.try_recv().ok())
-            .filter_map(|ev| match ev {
+        let published = events
+            .into_iter()
+            .rev()
+            .find_map(|ev| match ev {
                 StreamEvent::MessagesUpdated { messages } => Some(messages),
                 _ => None,
             })
-            .last()
             .expect("a MessagesUpdated is published");
         assert!(
             published.len() < original_len,
@@ -10359,7 +10478,7 @@ mod tests {
 
     #[tokio::test]
     async fn turn_cycle_compacts_and_retries_on_context_overflow() {
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::unbounded_channel();
         // 1) main request overflows, 2) summarizer succeeds, 3) retry succeeds.
         let overflow = Err(format!(
             "[{}] Upstream returned HTTP 400: context_length_exceeded",
@@ -10406,6 +10525,17 @@ mod tests {
 
         assert_eq!(result["choices"][0]["message"]["content"], "final");
         assert!(tool.calls.lock().unwrap().is_empty());
+        assert!(
+            std::iter::from_fn(|| rx.try_recv().ok()).any(|ev| matches!(
+                ev,
+                StreamEvent::Compaction {
+                    phase: CompactionPhase::Finished,
+                    reason: CompactionReason::ContextOverflow,
+                    messages: Some(_),
+                }
+            )),
+            "the overflow compaction is announced"
+        );
     }
 
     /// A strict endpoint rejects the DeepSeek `reasoning_content` extension

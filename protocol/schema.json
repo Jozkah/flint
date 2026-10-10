@@ -394,6 +394,31 @@
           ]
         },
         {
+          "description": "The short name the dispatch gave an errand, sent before its\n`SubagentQueued` or `SubagentStart`. Its own event so those keep their\nshape for the consumers that match them; a dispatch with no title sends\nnone.",
+          "type": "object",
+          "properties": {
+            "run_id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "subagent_title"
+            }
+          },
+          "required": [
+            "type",
+            "run_id",
+            "name",
+            "title"
+          ]
+        },
+        {
           "description": "A backgrounded subagent run finished (success or error). Pairs with the\n`SubagentStart` of the same `run_id`.",
           "type": "object",
           "properties": {
@@ -412,6 +437,38 @@
             "type",
             "run_id",
             "name"
+          ]
+        },
+        {
+          "description": "How a backgrounded subagent ended and what it cost, sent just before its\n`SubagentEnd`. A separate event so `SubagentEnd` keeps its shape for the\nconsumers that match it. `status` is `done`, `error` or `turn_limit`;\n`usage` is the child's own token usage when the provider reported any;\n`detail` is a bounded one-line reason for a non-`done` ending.",
+          "type": "object",
+          "properties": {
+            "run_id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "usage": true,
+            "detail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "subagent_finished"
+            }
+          },
+          "required": [
+            "type",
+            "run_id",
+            "name",
+            "status"
           ]
         },
         {
@@ -437,6 +494,35 @@
             "run_id",
             "name",
             "event"
+          ]
+        },
+        {
+          "description": "The loop is summarizing part of the conversation to make room. Sent as\n`Started` before the summarizer call and `Finished` or `Failed` after\nit, so a consumer can show progress for what is otherwise a silent\nround trip. `reason` says which path asked. `messages` is how many\nmessages the compaction removed from the history, `None` except on\n`Finished`. Display-only and never journaled; the compacted history\nitself arrives as `MessagesUpdated`.",
+          "type": "object",
+          "properties": {
+            "phase": {
+              "$ref": "#/$defs/CompactionPhase"
+            },
+            "reason": {
+              "$ref": "#/$defs/CompactionReason"
+            },
+            "messages": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "compaction"
+            }
+          },
+          "required": [
+            "type",
+            "phase",
+            "reason"
           ]
         },
         {
@@ -816,6 +902,43 @@
         "cpuMs",
         "peakMemoryBytes",
         "processes"
+      ]
+    },
+    "CompactionPhase": {
+      "description": "Where a [`StreamEvent::Compaction`] is in its round trip.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "started",
+            "finished"
+          ]
+        },
+        {
+          "description": "The summarizer call failed or had nothing to fold; the history is\nunchanged.",
+          "type": "string",
+          "const": "failed"
+        }
+      ]
+    },
+    "CompactionReason": {
+      "description": "Which path asked for a [`StreamEvent::Compaction`].",
+      "oneOf": [
+        {
+          "description": "The request about to be sent was over the window's trigger.",
+          "type": "string",
+          "const": "preflight"
+        },
+        {
+          "description": "The provider rejected a request as too long for its window.",
+          "type": "string",
+          "const": "context_overflow"
+        },
+        {
+          "description": "The run used up its session token budget.",
+          "type": "string",
+          "const": "session_budget"
+        }
       ]
     },
     "AskRequest": {

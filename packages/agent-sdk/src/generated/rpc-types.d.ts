@@ -37,8 +37,11 @@ export type EventTag =
   | "run_resources"
   | "subagent_start"
   | "subagent_queued"
+  | "subagent_title"
   | "subagent_end"
+  | "subagent_finished"
   | "subagent"
+  | "compaction"
   | "messages_updated"
   | "ask_request"
   | "ask_resolved"
@@ -65,6 +68,12 @@ export interface ClientInfo {
   "name": string
   "version": string
 }
+
+/** Where a [`StreamEvent::Compaction`] is in its round trip. */
+export type CompactionPhase = "started" | "finished" | "failed"
+
+/** Which path asked for a [`StreamEvent::Compaction`]. */
+export type CompactionReason = "preflight" | "context_overflow" | "session_budget"
 
 /** What a host says a tool does, which decides how the loop treats it. Absent means opaque: prompted unless `auto_approve`, sequential, withheld in Plan mode -- the plugin/MCP default. */
 export type HostCapability = "read" | "actuator"
@@ -366,11 +375,29 @@ export interface SubagentQueuedEvent {
   "type": "subagent_queued"
 }
 
+/** The short name the dispatch gave an errand, sent before its `SubagentQueued` or `SubagentStart`. Its own event so those keep their shape for the consumers that match them; a dispatch with no title sends none. */
+export interface SubagentTitleEvent {
+  "run_id": string
+  "name": string
+  "title": string
+  "type": "subagent_title"
+}
+
 /** A backgrounded subagent run finished (success or error). Pairs with the `SubagentStart` of the same `run_id`. */
 export interface SubagentEndEvent {
   "run_id": string
   "name": string
   "type": "subagent_end"
+}
+
+/** How a backgrounded subagent ended and what it cost, sent just before its `SubagentEnd`. A separate event so `SubagentEnd` keeps its shape for the consumers that match it. `status` is `done`, `error` or `turn_limit`; `usage` is the child's own token usage when the provider reported any; `detail` is a bounded one-line reason for a non-`done` ending. */
+export interface SubagentFinishedEvent {
+  "run_id": string
+  "name": string
+  "status": string
+  "usage"?: unknown
+  "detail"?: string | null
+  "type": "subagent_finished"
 }
 
 /** A backgrounded subagent's own internal event, tagged with its run so a consumer can attribute it to the right child even when several run concurrently. `event` is a non-terminal child event (Token/Step/ToolCall/ ToolResult/PermissionRequest); the child's terminal Done/Error is never wrapped (its result is delivered via `await_subagent`). Never a `ToolRequest`: a client answers a request by `request_id` on stdin, and it is told nothing about this wrapper, so a nested request would be unanswerable. A child's host tool call is routed to the root channel unwrapped instead, attributed by `ToolRequest.run_id`. */
@@ -379,6 +406,14 @@ export interface SubagentEvent {
   "name": string
   "event": unknown
   "type": "subagent"
+}
+
+/** The loop is summarizing part of the conversation to make room. Sent as `Started` before the summarizer call and `Finished` or `Failed` after it, so a consumer can show progress for what is otherwise a silent round trip. `reason` says which path asked. `messages` is how many messages the compaction removed from the history, `None` except on `Finished`. Display-only and never journaled; the compacted history itself arrives as `MessagesUpdated`. */
+export interface CompactionEvent {
+  "phase": CompactionPhase
+  "reason": CompactionReason
+  "messages"?: number | null
+  "type": "compaction"
 }
 
 /** The loop's compaction reduced the conversation while retrying a context overflow. The client should replace its session history with `messages` for subsequent turns. */
@@ -488,8 +523,11 @@ export type StreamEvent =
   | RunResourcesEvent
   | SubagentStartEvent
   | SubagentQueuedEvent
+  | SubagentTitleEvent
   | SubagentEndEvent
+  | SubagentFinishedEvent
   | SubagentEvent
+  | CompactionEvent
   | MessagesUpdatedEvent
   | AskRequestEvent
   | AskResolvedEvent
@@ -517,8 +555,11 @@ export interface EventByTag {
   "run_resources": RunResourcesEvent
   "subagent_start": SubagentStartEvent
   "subagent_queued": SubagentQueuedEvent
+  "subagent_title": SubagentTitleEvent
   "subagent_end": SubagentEndEvent
+  "subagent_finished": SubagentFinishedEvent
   "subagent": SubagentEvent
+  "compaction": CompactionEvent
   "messages_updated": MessagesUpdatedEvent
   "ask_request": AskRequestEvent
   "ask_resolved": AskResolvedEvent
