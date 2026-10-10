@@ -16,6 +16,10 @@ import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useCampaignSettings } from '@/hooks/useCampaignSettings'
 import { useMessageQueue } from '@/stores/message-queue-store'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { ModelFactory } from '@/lib/model-factory'
+import { runUtilityAgent } from '@/lib/utilityAgents'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { sessionMailbox } from '@/lib/sessionMailbox'
 import { pushNotice } from '@/lib/coworkRunNotices'
@@ -24,6 +28,7 @@ import { executeAgentTool } from '@/lib/agentTools'
 import { campaignApi } from '@/lib/campaignApi'
 import {
   createCampaignRunner,
+  parseModel,
   type CampaignRunner,
   type RunnerHost,
 } from '@/lib/campaignRunner'
@@ -122,6 +127,88 @@ export function createRunnerHost(): RunnerHost {
     },
     abortRun: (sid) => abortRun(sid, 'cancelled'),
     notifyCoordinator: (sid, text) => pushNotice(sid, text),
+    // An idle coordinator is woken by mail from the task that finished: the
+    // mailbox's auto-wake path brings it into a pane and releases the message.
+    wakeCoordinator: async (from, coordinator, text) => {
+      const session = useCoworkSessions
+        .getState()
+        .sessions.find((s) => s.id === coordinator)
+      if (!session) return false
+      try {
+        await sessionMailbox.register({
+          sessionId: coordinator,
+          displayName: session.title.slice(0, 120),
+          folder: session.folder ?? '',
+        })
+      } catch {
+        /* already registered, or the send below says why not */
+      }
+      const r = await executeAgentTool(
+        'send_message',
+        { to: coordinator, message: text },
+        from,
+        { scope: 'session' }
+      )
+      return !r.error
+    },
+    askVerifier: async (request, campaign) => {
+      const [system, user] = request.messages
+      const ref = parseModel(campaign.model)
+      const state = useModelProvider.getState()
+      const providerName = ref?.provider ?? state.selectedProvider
+      const modelId = ref?.id ?? state.selectedModel?.id
+      const provider = providerName
+        ? state.getProviderByName(providerName)
+        : undefined
+      if (!provider || !modelId) {
+        throw new Error('no model is selected to verify with')
+      }
+      const model = await ModelFactory.createModel(modelId, provider, {})
+      const text = await runUtilityAgent({
+        kind: 'classify',
+        session: campaign.coordinatorSession,
+        model,
+        modelId,
+        system: system?.content,
+        messages: [{ role: 'user', content: user?.content ?? '' }],
+        maxOutputTokens: 2000,
+        abortSignal: AbortSignal.timeout(180_000),
+        maxRetries: 1,
+      })
+      // The utility call records its own token counts in the audit log.
+      return { text, tokens: 0 }
+    },
+    runInfo: (sid) => {
+      const state = useCoworkRun.getState()
+      const run = state.runs[sid]
+      if (!run) return undefined
+      // Steps are counted from the tool calls the run has made so far.
+      const steps = (state.liveTurns[sid] ?? []).filter(
+        (t) => t.role === 'tool'
+      ).length
+      return {
+        startedAt: run.startedAt,
+        steps,
+        tokens: state.usage[sid]?.total_tokens ?? 0,
+      }
+    },
+    waitingOn: (sid) => {
+      const approvals = useToolApprovalRequests.getState()
+      const approval = [
+        ...Object.values(approvals.pending),
+        ...Object.values(approvals.queued).flat(),
+      ].some((p) => p.threadId === sid)
+      if (approval) return 'approval'
+      return (useCoworkRun.getState().pendingAsks[sid]?.length ?? 0) > 0
+        ? 'input'
+        : null
+    },
+    isShown: (sid) =>
+      useCoworkSessions.getState().currentId === sid ||
+      useSplitConversation
+        .getState()
+        .panes.some((p) => p.kind === 'cowork' && p.refId === sid),
+    hasEnded: (sid) => !!useCoworkRun.getState().outcomes[sid],
   }
 }
 
@@ -187,6 +274,17 @@ const kickAll = () => {
   }
 }
 
+/** Limits, waiting state and closed panes, for every tracked campaign. */
+const sweepAll = () => {
+  for (const id of tracked) {
+    void getCampaignRunner()
+      .sweep(id)
+      .catch((e) => console.warn('[campaign] sweep failed:', errorText(e)))
+  }
+}
+
+const SWEEP_EVERY_MS = 10_000
+
 /**
  * Start the loop: settle tasks whose runs end, re-kick when a pane frees or
  * the setting changes, and on startup resume what a restart interrupted and
@@ -211,6 +309,7 @@ export function startCampaignRunner(): () => void {
   const offPanes = useSplitConversation.subscribe((state, prev) => {
     if (state.panes !== prev.panes || state.maxPanes !== prev.maxPanes) kickAll()
   })
+  const timer = setInterval(sweepAll, SWEEP_EVERY_MS)
   void (async () => {
     try {
       for (const c of await campaignApi.list()) {
@@ -218,6 +317,10 @@ export function startCampaignRunner(): () => void {
           continue
         }
         trackCampaign(c.id)
+        if (c.status === 'merging') {
+          // Its proposal may have been applied or rejected while we were away.
+          await campaignApi.refresh(c.id).catch(() => undefined)
+        }
         if (c.status === 'running' || c.status === 'interrupted') {
           await r.resume(c.id).catch(() => undefined)
         }
@@ -228,6 +331,7 @@ export function startCampaignRunner(): () => void {
     }
   })()
   return () => {
+    clearInterval(timer)
     offRuns()
     offSettings()
     offPanes()

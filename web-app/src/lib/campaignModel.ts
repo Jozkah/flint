@@ -105,6 +105,22 @@ export type Campaign = {
   createdAt: string
   updatedAt: string
   tasks: CampaignTask[]
+  /** The last final build and test gate run. */
+  gate?: CampaignGate | null
+  /** The proposal handed to the user's checkout, once the gate passed. */
+  proposalId?: string | null
+}
+
+export type CampaignGate = {
+  /** `agent_toml`, `detected` or `none`. */
+  source: string
+  command: string
+  skipped: boolean
+  passed: boolean
+  timedOut: boolean
+  exitCode?: number | null
+  output: string
+  at: string
 }
 
 /** A task as the coordinator proposes it. */

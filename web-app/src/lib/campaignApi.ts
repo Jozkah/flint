@@ -58,6 +58,64 @@ export type CampaignContext = {
   handoffs: { taskId: string; text: string }[]
 }
 
+export type VerifyRequest = {
+  taskId: string
+  /** A chat-completions body: system prompt and fenced evidence. */
+  request: {
+    model?: string
+    messages: { role: string; content: string }[]
+  }
+  evidenceNote: string
+}
+
+export type VerifyNext = 'verified' | 'repair' | 'failed' | 'blocked'
+
+export type VerifyOutcome = {
+  taskId: string
+  verdict: string
+  next: VerifyNext
+  evidence: string
+  campaign: Campaign
+}
+
+export type MergeReport = {
+  taskId: string
+  merged: boolean
+  mergedSha?: string | null
+  alreadyMerged: boolean
+  conflicts: string[]
+  status: CampaignTaskStatus
+  campaignStatus: CampaignStatus
+}
+
+export type IntegrateReport = {
+  merged: string[]
+  conflicts: { taskId: string; files: string[] }[]
+  skipped: string[]
+  errors: string[]
+  campaign: Campaign
+}
+
+export type GateChoice = { source: string; command?: string | null }
+
+export type FinalizeReport = {
+  gate: NonNullable<Campaign['gate']>
+  proposalId?: string | null
+  files: number
+  warning?: string | null
+  campaign: Campaign
+}
+
+export type OrphanWorktree = {
+  campaignId: string
+  taskId?: string | null
+  path: string
+  branch: string
+  campaignStatus: CampaignStatus
+  pending: string[]
+  unmerged: string[]
+}
+
 export const campaignApi = {
   create: (input: CampaignCreateInput) =>
     invoke<Campaign>('agent_campaign_create', { input }),
@@ -80,6 +138,45 @@ export const campaignApi = {
     ),
   notified: (id: string, taskId: string) =>
     invoke<void>('agent_campaign_notified', { id, taskId }),
+  verifyPrepare: (
+    id: string,
+    taskId: string,
+    modelId: string,
+    runChecks = true
+  ) =>
+    invoke<VerifyRequest>('agent_campaign_verify_prepare', {
+      id,
+      taskId,
+      modelId,
+      runChecks,
+    }),
+  verifyFinish: (
+    id: string,
+    taskId: string,
+    reply: string | null,
+    error: string | null,
+    tokens: number
+  ) =>
+    invoke<VerifyOutcome>('agent_campaign_verify_finish', {
+      id,
+      taskId,
+      reply,
+      error,
+      tokens,
+    }),
+  mergeTask: (id: string, taskId: string) =>
+    invoke<MergeReport>('agent_campaign_merge_task', { id, taskId }),
+  integrate: (id: string) =>
+    invoke<IntegrateReport>('agent_campaign_integrate', { id }),
+  gatePlan: (id: string) =>
+    invoke<GateChoice>('agent_campaign_gate_plan', { id }),
+  finalize: (id: string, seconds?: number) =>
+    invoke<FinalizeReport>('agent_campaign_finalize', {
+      id,
+      seconds: seconds ?? null,
+    }),
+  refresh: (id: string) => invoke<Campaign>('agent_campaign_refresh', { id }),
+  orphans: () => invoke<OrphanWorktree[]>('agent_campaign_orphans'),
 }
 
 export type CampaignApi = typeof campaignApi
