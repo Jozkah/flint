@@ -1,6 +1,6 @@
 # Campaigns (multi-thread coordinator)
 
-Status: P0 to P3 implemented, P4 to P7 open; see "Status" below. The feature is called Campaigns in the UI and `campaign` in code, because "project" already means a folder in Flint.
+Status: P0 to P4 implemented, P5 to P7 open; see "Status" below. The feature is called Campaigns in the UI and `campaign` in code, because "project" already means a folder in Flint.
 
 ## Goal
 
@@ -94,17 +94,27 @@ Implemented (P0 to P3):
 - `campaign_plan` is always-ask, allow-once only (`ALWAYS_ASK_TOOLS`), asked in every mode including bypass. It records `planned`, asks, then `approved` and `running`; a denial leaves it `planned`. The plan card is the existing approval card (title, task titles and paths, summary of count, mode, budget, parallelism); the dedicated board components are P6.
 - Setting `campaigns.maxParallel` (store `useCampaignSettings`, default 4, clamped 1 to 6, Settings, Agent tools, Behaviour) and the optional `campaign?: {id, taskId, role}` on `CoworkSession` (persisted shape v5, additive migration).
 
+Implemented (P4: verify, merge, gate, propose):
+
+- Backend `campaign_integration.rs`, commands `agent_campaign_verify_prepare`, `_verify_finish`, `_merge_task`, `_integrate`, `_gate_plan`, `_finalize`, `_refresh`, `_orphans`.
+- **Verify.** `verify_prepare` re-derives the task worktree from Git, builds the verifier request with `verification::build_request` (task spec and acceptance, the committed diff, the output of the detected build or test command, and the handoff as a fenced worker claim; worker reasoning is not passed) and moves the task to `verifying`. The renderer runs that request with the campaign's model (`RunnerHost.askVerifier`, a utility-agent call with no tools, audited) and hands the reply to `verify_finish`, which uses `parse_report`. This is the answer to open question 12: the Rust `ModelInvoker` is not reachable from the renderer, so the renderer owns the model call and the backend owns the framing and the verdict. PASS makes the task `verified`. FAIL or PARTIAL gets one repair round (`RepairBudget`, 1): the task is queued again in its own session, its `detail` carries the findings and its seed turn fences them as data (done through the seed turn rather than mailbox mail, to stay out of mailbox rate limits and to reuse the pane and worktree it already has); a second FAIL or PARTIAL is `failed`. BLOCKED, an unreachable model, an empty reply or a reply with no VERDICT line stays `completed` with verdict BLOCKED and never merges. The runner verifies automatically when a task settles `completed`; `campaign_verify` retries.
+- **Merge.** `merge_task` and `integrate` merge `verified` tasks into the integration branch with `worktree::merge` in topological order. Before anything is read or merged the recorded worktree path, branch and base are matched against Git: the path must be a worktree of the source repository listed on that branch, under Flint's worktrees folder, on a `flint/` or `jan/cowork/` branch, in the state it was recorded in, and the base commit must be in the branch history. A task depends only on merged work. The merge is tested with `merge-tree` first, so a conflict moves no ref and aborts nothing half-done: the task becomes `conflict` with `detail` naming the files and `campaign_merge` returns them. A merged task records `mergedSha` and the runner starts the tasks that were waiting on it. Conflicts are parked for the coordinator (steer the task to rebase on the integration branch, or skip it with `campaign_merge skip=[...]`); spawning a resolver task is not built.
+- **Gate and proposal.** When every task is merged or cancelled (at least one merged) the campaign moves to `reviewing` and the coordinator is told. `campaign_merge finalize=true` asks the user (always-ask, shows the gate command), then `finalize` moves to `merging`, runs the gate command on the integration worktree and, when it passes, stores ONE proposal against the campaign's base commit through the ordinary proposal store (`proposal::create`); nothing is written to the user's checkout. A failing gate returns to `reviewing` with the output kept in `campaign.gate`. Gate command source: `[campaign] gate = "..."` in `.jan/agent/agent.toml` (there was no existing build or test key), else the repository's own `package.json` `test` then `build` script (run with yarn, pnpm or npm by lockfile), else `cargo check`, else `go build ./...`, else none. With none, the gate is skipped and the result carries a visible warning that the merged result was not built or tested. The proposal's apply is the user's approval; `refresh` (run at startup and by `finalize`) moves a `merging` campaign to `done` when its proposal was applied and back to `reviewing` when it was rejected.
+- Tools `campaign_verify`, `campaign_merge`, `campaign_orphans`, coordinator only. `campaign_merge` is not blanket always-ask: merging into the integration branch does not touch the user's checkout, so only the `finalize` step asks (always, with the command shown).
+- **Gaps closed.** An idle coordinator is woken by mail from the finished task through the mailbox auto-wake path (a running one still gets a step-boundary notice, and a failed send falls back to it). `awaiting_input` and `awaiting_approval` are mirrored from the pending ask and approval stores by a 10 s sweep. Per-task wall-clock, step and token limits are enforced by the same sweep: the run is aborted and the task is `failed` with the reason. The project token budget counts live runs, warns at 80 percent and stops starts at 100 percent. A task whose pane closed before its run began is detected (not shown, no run, past a 15 s grace) and re-queued through `interrupted`. `agent_campaign_orphans` and `campaign_orphans` list the worktrees finished campaigns left, with what removing each would destroy; nothing deletes them.
+
 Known gaps and limits:
 
-- No merge yet (P4). The scheduler starts a dependent task only when its dependencies are `merged`, so a task with `depends_on` does not start, and a campaign never reaches `reviewing`. Plans of independent tasks run fully. `campaign_plan` says so in its description.
-- No verification (P4). `completed` stays a worker claim.
-- A task is `running` in the record once its pane is opened and its seed queued; the run itself starts when that pane drains its queue. Closing the pane before that leaves the task `running` with no run. Pane-bound parallelism and this window are the P7 hardening items.
-- `awaiting_input` and `awaiting_approval` are never recorded; a task waiting on a person reads as `running`.
-- A notice reaches the coordinator at its next step boundary. An idle coordinator is not woken; it reads `campaign_status` or `campaign_collect`. Notices are re-pushed from the event log after a restart.
-- Per-task token, step and wall-clock limits are recorded but not enforced; only the campaign token budget gates new starts.
-- The integration worktree (`campaign-<id>` key) and task worktrees are kept until the user discards them; there is no orphan sweep.
+- Not smoke-tested in the live app: verification, merge and gate were exercised by Rust fixture-repo tests (clean merge, conflict, topological order, dependents unblocked, path and branch and base re-verification, gate selection, gate fail and pass, proposal creation without writing the checkout) and by vitest with mocked invoke; not smoke-tested in the running app.
+- A step is counted as one tool call in the live run's turns, not the Rust loop's step index.
+- The verifier's own token spend is recorded in the utility-agent audit, not on the task (`tokens` is 0 from the renderer call).
+- No resolver task for conflicts and no `add_task` to a running plan.
+- A campaign with a failed or conflicted task finishes only after the coordinator skips it (`campaign_merge skip`); `campaign_cancel` cancels everything.
+- Gate and task checks run the repository's own commands with the user's shell, bounded by a deadline (180 s for a task check, 600 s for the gate). A repository can set the gate command in its `agent.toml`; the finalize approval shows it first, but the per-task check that runs while verifying uses the detected or configured command without a prompt.
+- Pane-bound parallelism, the 12-worktree disk cost and pause and resume remain P7.
+- A notice reaches a running coordinator at its next step boundary and is in memory only; the event log re-pushes after a restart.
+- The integration worktree (`campaign-<id>` key) and task worktrees are kept until the user discards them.
 - Added locale keys are English in every locale file.
-- Not smoke-tested in the live app; covered by vitest with mocked invoke and stores, and Rust temp-dir tests.
 
 ## Open questions
 
@@ -119,4 +129,4 @@ Known gaps and limits:
 9. Uncommitted work in the source checkout is invisible to worktrees (existing behavior); the plan card must say so.
 10. Adding the `campaign` field to persisted sessions needs a migration bump in `useCoworkSessions.ts`.
 11. Backend and renderer state can disagree after a crash. Rule: the backend wins for status, the session store wins for transcript.
-12. `verification.rs` is a library with a `ModelInvoker`; confirm how the renderer invokes it, which may need a Tauri command wrapper.
+12. Decided in P4: the renderer runs the model call; the backend builds the fenced request and parses the verdict (`agent_campaign_verify_prepare` and `_verify_finish`).
