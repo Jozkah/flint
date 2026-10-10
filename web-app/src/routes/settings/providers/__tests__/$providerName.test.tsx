@@ -341,6 +341,7 @@ vi.mock('zustand/shallow', () => ({
 
 // Import AFTER mocks
 import { Route } from '../$providerName'
+import { markFirstModelFetch } from '@/lib/pendingFirstModelFetch'
 
 const renderComponent = () => {
   const Component = Route.component as React.ComponentType
@@ -612,6 +613,26 @@ describe('ProviderDetail route', () => {
   })
 
   describe('Refresh models', () => {
+    it('fetches the model list once, unasked, for a provider just created', async () => {
+      h.providersSvc.fetchModelsFromProvider = vi
+        .fn()
+        .mockResolvedValue(['gpt-4', 'gpt-5'])
+      markFirstModelFetch('openai')
+      renderComponent()
+      await waitFor(() => {
+        expect(h.providersSvc.fetchModelsFromProvider).toHaveBeenCalledTimes(1)
+      })
+      await waitFor(() => {
+        expect(h.updateProvider).toHaveBeenCalled()
+      })
+    })
+
+    it('does not fetch on a plain visit to a provider page', async () => {
+      renderComponent()
+      await act(async () => {})
+      expect(h.providersSvc.fetchModelsFromProvider).not.toHaveBeenCalled()
+    })
+
     it('refreshing adds newly fetched models and toasts success', async () => {
       h.providersSvc.fetch = vi.fn(() =>
         vi.fn().mockResolvedValue(

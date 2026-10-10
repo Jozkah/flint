@@ -16,6 +16,7 @@ import {
 import { Icon } from '@/components/ui/icon'
 import { formatBytes, getDefaultProviderTitle, getProviderTitle } from '@/lib/utils'
 import { AddProviderDialog } from '@/containers/dialogs'
+import { markFirstModelFetch } from '@/lib/pendingFirstModelFetch'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
 import { Switch } from '@/components/ui/switch'
 import { Chip } from '@/components/ui/chip'
@@ -220,6 +221,7 @@ function ModelProviders() {
         ...(apiType === 'anthropic' ? { api_type: 'anthropic' as const } : {}),
       }
       addProvider(newProvider)
+      markFirstModelFetch(name)
       setTimeout(() => {
         navigate({
           to: route.settings.providers,
