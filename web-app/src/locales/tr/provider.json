@@ -11,6 +11,7 @@
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "API anahtarı",
   "apiKeyPlaceholder": "API anahtarınızı yapıştırın",
+  "apiKeyOptionalPlaceholder": "API anahtarınızı yapıştırın (isteğe bağlı)",
   "invalidBaseUrl": "Temel URL geçerli bir http(s) URL'si olmalıdır",
   "globalSettings": "Genel ayarlar",
   "stripReasoning": "Bağlamdan muhakemeyi kaldır",

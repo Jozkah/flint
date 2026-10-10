@@ -62,5 +62,9 @@
     "approval": "Vyžaduje schválení",
     "done": "Hotovo",
     "idle": "Nezahájeno"
-  }
+  },
+  "resumeSub": "Začněte něco nového, nebo navažte tam, kde jste skončili.",
+  "startChat": "Na něco se zeptat",
+  "startFiles": "Cowork",
+  "usage": "Využití"
 }

@@ -60,5 +60,20 @@
   "reopenGuide": "Guía de primeros pasos",
   "reopenGuideDescription": "Repasa de nuevo cómo elegir un modelo, añadir material y completar una primera tarea.",
   "reopenGuideAction": "Abrir guía",
-  "resumeRecent": "Continuar tu última conversación: {{title}}"
+  "resumeRecent": "Continuar tu última conversación: {{title}}",
+  "modelSetup": {
+    "title": "¿Cómo quieres obtener un modelo?",
+    "local": {
+      "title": "Usar un modelo en este equipo",
+      "body": "Explora modelos y comprueba cuáles encajan con tu hardware."
+    },
+    "provider": {
+      "title": "Conectar un proveedor",
+      "body": "Usa un modelo alojado con tu propia cuenta."
+    },
+    "import": {
+      "title": "Importar un archivo",
+      "body": "Añade un archivo de modelo que ya tengas."
+    }
+  }
 }

@@ -15,6 +15,7 @@
   "enterServerName": "Sunucu adı girin",
   "command": "Komut",
   "enterCommand": "Komut girin (uvx veya npx)",
+  "commandHint": "Burada yalnızca npx veya uvx değil, bu bilgisayardaki herhangi bir program (python, docker, node, bir ikili dosya) kullanılabilir. Kullanıcı yetkilerinizle çalışır, bu yüzden yalnızca güvendiğiniz sunucuları ekleyin.",
   "arguments": "Bağımsız Değişkenler",
   "argument": "Bağımsız Değişken {{index}}",
   "envVars": "Ortam Değişkenleri",

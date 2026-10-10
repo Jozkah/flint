@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Установлено",
     "installedSub": "{{local}} локальных · {{remote}} удалённых",
+    "remoteAvailableSub": "Доступно удалённых моделей: {{count}}",
     "loaded": "Загружено сейчас",
     "loadedSub": "из {{count}} локальных моделей",
     "disk": "Занято на диске",
@@ -62,7 +63,8 @@
     "off": "Выкл.",
     "loaded": "Загружена",
     "ready": "Готова",
-    "noKey": "Нет API-ключа"
+    "noKey": "Нет API-ключа",
+    "keyless": "Ключ не нужен"
   },
   "installed": {
     "title": "Установленные модели",

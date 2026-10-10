@@ -60,5 +60,20 @@
   "reopenGuide": "入门指南",
   "reopenGuideDescription": "再次完整体验选择模型、添加材料和完成第一个任务的流程。",
   "reopenGuideAction": "打开引导",
-  "resumeRecent": "继续上一次对话：{{title}}"
+  "resumeRecent": "继续上一次对话：{{title}}",
+  "modelSetup": {
+    "title": "您想如何获取模型？",
+    "local": {
+      "title": "使用这台电脑上的模型",
+      "body": "浏览模型，了解哪些适合您的硬件。"
+    },
+    "provider": {
+      "title": "连接提供商",
+      "body": "使用您自己账户下的托管模型。"
+    },
+    "import": {
+      "title": "导入文件",
+      "body": "添加您已有的模型文件。"
+    }
+  }
 }

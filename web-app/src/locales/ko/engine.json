@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "설치됨",
     "installedSub": "로컬 {{local}}개 · 원격 {{remote}}개",
+    "remoteAvailableSub": "원격 모델 {{count}}개 사용 가능",
     "loaded": "현재 로드됨",
     "loadedSub": "로컬 모델 {{count}}개 중",
     "disk": "디스크 사용량",
@@ -60,7 +61,8 @@
     "off": "꺼짐",
     "loaded": "로드됨",
     "ready": "준비됨",
-    "noKey": "API 키 없음"
+    "noKey": "API 키 없음",
+    "keyless": "키 필요 없음"
   },
   "installed": {
     "title": "설치된 모델",

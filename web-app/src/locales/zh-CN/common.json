@@ -66,6 +66,9 @@
     "title": "网页预览",
     "openExternal": "在浏览器中打开",
     "popOut": "弹出到窗口",
+    "copyUrl": "复制 URL",
+    "urlCopied": "URL 已复制",
+    "copyFailed": "无法复制 URL",
     "dockSide": "停靠到侧边",
     "showAsPip": "显示为浮动窗口",
     "reload": "重新加载",
@@ -569,6 +572,13 @@
   "modelSettings": {
     "title": "模型设置 - {{modelId}}",
     "description": "配置模型设置以优化性能和行为。",
+    "visionProjector": {
+      "title": "视觉投影器 (mmproj)",
+      "paired": "已配对",
+      "none": "无",
+      "pairedHint": "此模型可以接收图像输入。投影器在导入模型时选定；如需使用其他投影器，请重新导入。",
+      "noneHint": "没有视觉投影器，此模型无法读取图像。请在启用多模态的情况下重新导入模型并选择其 mmproj 文件；与模型文件放在一起的投影器会被自动识别。"
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "默认采样参数",
@@ -583,7 +593,9 @@
       "nMin": "最小起草 token 数",
       "nMinDescription": "每步起草的最小 token 数。默认为 0。",
       "pMin": "最小起草概率",
-      "pMinDescription": "贪心起草的最小概率（0–1）。默认为 0.75。"
+      "pMinDescription": "贪心起草的最小概率（0–1）。默认为 0.75。",
+      "probabilistic": "对草稿采样",
+      "probabilisticDescription": "对草稿 token 进行采样，而不是选取概率最高的一个，并通过拒绝采样进行验证。这样在温度大于 0 时仍能保持加速效果。默认关闭；对需要贪婪验证的 DFlash 草稿会被忽略。"
     },
     "templateKwargs": {
       "section": "聊天模板选项",
@@ -690,6 +702,9 @@
       "assistant": "助手",
       "selectAssistant": "选择一个助手（可选）",
       "noAssistant": "无助手",
+      "model": "默认模型",
+      "selectModel": "使用模型选择器的选择",
+      "noModel": "无默认模型",
       "addAssistant": "添加助手",
       "createButton": "创建",
       "updateButton": "更新",
@@ -1048,6 +1063,7 @@
     "stopped": "已停止。",
     "failed": "运行提前中止。",
     "tryAgain": "重试",
+    "attachFolder": "附加文件夹",
     "deadline": "已停止 — 此次运行达到了时间限制。",
     "timeout": "已停止 — 模型停止了响应。",
     "loop": "已停止 — 运行在没有进展的情况下重复自身。",
@@ -1442,10 +1458,22 @@
       "needsMmproj": "此本地模型需要 mmproj 文件才能识图。请从模型设置中添加一个，然后重新附加图片。"
     }
   },
+  "pastedPath": {
+    "file": "将“{{name}}”附加到此消息？",
+    "folder": "将文件夹“{{name}}”附加到此会话？",
+    "attach": "附加",
+    "dismiss": "忽略",
+    "failed": "无法附加文件"
+  },
   "drop": {
     "openInCode": "拖放以打开 — 只读",
     "attachToMessage": "拖放以附加到你的消息",
     "releaseToAttach": "松开以附加"
+  },
+  "coworkRunSettings": {
+    "label": "运行设置",
+    "title": "本次运行的工作方式",
+    "effort": "投入程度：{{level}}"
   },
   "coworkMode": {
     "label": "Flint 可以做什么",
@@ -1963,6 +1991,7 @@
     "serverStopped": "本地 API 已关闭"
   },
   "shell": {
+    "discover": "发现",
     "openNavigation": "打开导航",
     "closeNavigation": "关闭导航",
     "showContent": "内容",
@@ -2026,6 +2055,9 @@
       "closed": "已关闭但未合并"
     },
     "overview": "概览",
+    "resume": "继续与用量",
+    "more": "更多",
+    "advanced": "高级",
     "usageOverview": "用量概览",
     "movedTo": "已移到 {{name}}",
     "notifications": "通知",

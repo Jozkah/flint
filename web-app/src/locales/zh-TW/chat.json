@@ -72,6 +72,8 @@
     "openHint": "在此對話旁開啟另一個獨立的對話",
     "openHintShortcut": "在此對話旁開啟另一個獨立的對話（{{shortcut}}）",
     "openInSplit": "在分割檢視中開啟",
+    "openIn": "開啟於",
+    "openInNewWindow": "新視窗",
     "close": "關閉分割",
     "closePane": "關閉此窗格",
     "addPane": "新增窗格",

@@ -72,6 +72,9 @@
     "back": "Zurück",
     "forward": "Vorwärts",
     "close": "Vorschau schließen",
+    "copyUrl": "URL kopieren",
+    "urlCopied": "URL kopiert",
+    "copyFailed": "URL konnte nicht kopiert werden",
     "blockedBanner": "Diese Website blockiert möglicherweise die Einbettung. Öffne sie in deinem Browser oder lagere sie in ein eigenes Fenster aus.",
     "interceptSetting": "Links in einer App-Vorschau öffnen",
     "interceptSettingDesc": "Wenn aktiviert, öffnet ein Klick auf einen Weblink diesen in einem Vorschaubereich statt in deinem Browser.",
@@ -569,6 +572,13 @@
   "modelSettings": {
     "title": "Modell Einstellungen - {{modelId}}",
     "description": "Modeleinstellungen konfigurieren, um die Leistung und das Verhalten zu optimieren.",
+    "visionProjector": {
+      "title": "Vision-Projektor (mmproj)",
+      "paired": "Zugeordnet",
+      "none": "Keiner",
+      "pairedHint": "Dieses Modell kann Bilder als Eingabe verarbeiten. Der Projektor wird beim Import des Modells gewählt; importiere es erneut, um einen anderen zu verwenden.",
+      "noneHint": "Ohne Vision-Projektor kann dieses Modell keine Bilder lesen. Importiere das Modell erneut mit aktiviertem Multimodal und wähle die zugehörige mmproj-Datei; ein Projektor neben der Modelldatei wird automatisch gefunden."
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "Standard-Sampling-Parameter",
@@ -583,7 +593,9 @@
       "nMin": "Min. Entwurfs-Tokens",
       "nMinDescription": "Minimale Anzahl an Tokens, die pro Schritt entworfen werden. Standard 0.",
       "pMin": "Min. Entwurfswahrscheinlichkeit",
-      "pMinDescription": "Minimale Wahrscheinlichkeit für gieriges Entwerfen (0–1). Standard 0,75."
+      "pMinDescription": "Minimale Wahrscheinlichkeit für gieriges Entwerfen (0–1). Standard 0,75.",
+      "probabilistic": "Entwurf samplen",
+      "probabilisticDescription": "Zieht Entwurfs-Tokens per Sampling, statt das wahrscheinlichste zu nehmen, und prüft sie per Rejection Sampling. So bleibt die Beschleunigung auch bei einer Temperatur über 0 erhalten. Standardmäßig aus; wird für DFlash-Entwürfe ignoriert, die eine gierige Prüfung benötigen."
     },
     "templateKwargs": {
       "section": "Chat-Template-Optionen",
@@ -691,6 +703,9 @@
       "assistant": "Assistent",
       "selectAssistant": "Assistenten auswählen (optional)",
       "noAssistant": "Kein Assistent",
+      "model": "Standardmodell",
+      "selectModel": "Auswahl der Modellauswahl verwenden",
+      "noModel": "Kein Standardmodell",
       "addAssistant": "Assistenten hinzufügen",
       "createButton": "Erstellen",
       "updateButton": "Aktualisieren",
@@ -1048,6 +1063,7 @@
     "stopped": "Gestoppt.",
     "failed": "Der Lauf wurde vorzeitig beendet.",
     "tryAgain": "Erneut versuchen",
+    "attachFolder": "Ordner anhängen",
     "deadline": "Gestoppt – dieser Lauf hat sein Zeitlimit erreicht.",
     "timeout": "Gestoppt – das Modell antwortet nicht mehr.",
     "loop": "Gestoppt – der Lauf wiederholte sich, ohne voranzukommen.",
@@ -1441,6 +1457,13 @@
       "enable": "Vision aktivieren",
       "needsMmproj": "Dieses lokale Modell braucht eine mmproj-Datei, bevor es sehen kann. Füge in den Einstellungen des Modells eine hinzu und hänge das Bild dann erneut an."
     }
+  },
+  "pastedPath": {
+    "file": "„{{name}}“ an diese Nachricht anhängen?",
+    "folder": "Ordner „{{name}}“ an diese Sitzung anhängen?",
+    "attach": "Anhängen",
+    "dismiss": "Verwerfen",
+    "failed": "Datei konnte nicht angehängt werden"
   },
   "drop": {
     "openInCode": "Zum Öffnen ablegen – schreibgeschützt",
@@ -1963,6 +1986,7 @@
     "serverStopped": "Lokale API aus"
   },
   "shell": {
+    "discover": "Entdecken",
     "openNavigation": "Navigation öffnen",
     "closeNavigation": "Navigation schließen",
     "showContent": "Inhalt",
@@ -2026,6 +2050,9 @@
       "closed": "Ohne Merge geschlossen"
     },
     "overview": "Übersicht",
+    "resume": "Fortsetzen & Nutzung",
+    "more": "Mehr",
+    "advanced": "Erweitert",
     "usageOverview": "Nutzungsübersicht",
     "movedTo": "Verschoben nach {{name}}",
     "notifications": "Benachrichtigungen",
@@ -2434,6 +2461,11 @@
   },
   "voicePill": {
     "cancel": "Abbrechen"
+  },
+  "coworkRunSettings": {
+    "label": "Ausführungseinstellungen",
+    "title": "So funktioniert dieser Lauf",
+    "effort": "Aufwand: {{level}}"
   },
   "motionMedia": {
     "queued": "In der Warteschlange",

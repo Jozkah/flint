@@ -330,7 +330,8 @@
     "continue": "Kontynuuj",
     "toShort": "Do",
     "placeholderTo": "Napisz do {{name}}…",
-    "mention": "Wspomnij uczestnika"
+    "mention": "Wspomnij uczestnika",
+    "dropSkipped": "Nie dodano (to nie tekst, jest to folder albo przekroczono limit wiadomości): {{files}}"
   },
   "kpi": {
     "running": "W toku",

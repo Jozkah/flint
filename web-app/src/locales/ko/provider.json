@@ -11,6 +11,7 @@
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "API 키",
   "apiKeyPlaceholder": "API 키를 붙여 넣으세요",
+  "apiKeyOptionalPlaceholder": "API 키를 붙여넣으세요(선택 사항)",
   "invalidBaseUrl": "기본 URL은 올바른 http(s) URL이어야 합니다",
   "globalSettings": "전역 설정",
   "stripReasoning": "컨텍스트에서 추론 제거",

@@ -11,6 +11,7 @@
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "Khóa API",
   "apiKeyPlaceholder": "Dán khóa API của bạn",
+  "apiKeyOptionalPlaceholder": "Dán khóa API của bạn (không bắt buộc)",
   "invalidBaseUrl": "URL gốc phải là một URL http(s) hợp lệ",
   "globalSettings": "Cài đặt chung",
   "stripReasoning": "Loại bỏ phần suy luận khỏi ngữ cảnh",

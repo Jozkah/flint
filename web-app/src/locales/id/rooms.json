@@ -330,7 +330,8 @@
     "continue": "Lanjutkan",
     "toShort": "Kepada",
     "placeholderTo": "Tulis kepada {{name}}…",
-    "mention": "Sebut peserta"
+    "mention": "Sebut peserta",
+    "dropSkipped": "Tidak ditambahkan (bukan teks, berupa folder, atau melebihi batas pesan): {{files}}"
   },
   "kpi": {
     "running": "Berjalan",

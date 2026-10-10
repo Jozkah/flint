@@ -15,6 +15,7 @@
   "enterServerName": "輸入伺服器名稱",
   "command": "指令",
   "enterCommand": "輸入指令 (uvx 或 npx)",
+  "commandHint": "這裡可以使用這部電腦上的任何程式，不限於 npx 或 uvx（python、docker、node、二進位檔）。它會以您的使用者權限執行，因此請只新增您信任的伺服器。",
   "arguments": "參數",
   "argument": "參數 {{index}}",
   "envVars": "環境變數",

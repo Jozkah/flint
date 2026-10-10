@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "インストール済み",
     "installedSub": "ローカル {{local}} · リモート {{remote}}",
+    "remoteAvailableSub": "{{count}} 件のリモートモデルが利用可能",
     "loaded": "現在読み込み済み",
     "loadedSub": "ローカルモデル {{count}} 個中",
     "disk": "ディスク使用量",
@@ -60,7 +61,8 @@
     "off": "オフ",
     "loaded": "読み込み済み",
     "ready": "準備完了",
-    "noKey": "API キーなし"
+    "noKey": "API キーなし",
+    "keyless": "キー不要"
   },
   "installed": {
     "title": "インストール済みモデル",

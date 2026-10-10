@@ -56,5 +56,9 @@
     "approval": "Cần phê duyệt",
     "done": "Xong",
     "idle": "Chưa bắt đầu"
-  }
+  },
+  "resumeSub": "Bắt đầu điều gì đó mới hoặc tiếp tục từ chỗ bạn đã dừng.",
+  "startChat": "Đặt câu hỏi",
+  "startFiles": "Cowork",
+  "usage": "Mức sử dụng"
 }

@@ -11,6 +11,9 @@
   "noNewModels": "Nie znaleziono nowych modeli. Wszystkie modele są już dodane.",
   "refreshModelsFailed": "Nie udało się pobrać modeli od dostawcy {{provider}}. Proszę sprawdzić poprawność klucza API i adresu URL.",
   "models": "Modele",
+  "filterModels": "Filtruj modele ({{count}})",
+  "modelsShown": "Wyświetlono {{shown}} z {{total}}",
+  "showMoreModels": "Pokaż więcej",
   "backendInstalled": "Zainstalowano",
   "backendHistoryShow": "Pokaż historię aktualizacji",
   "backendHistoryHide": "Ukryj historię aktualizacji",
@@ -73,6 +76,8 @@
     "modelExists": "Model już istnieje",
     "modelExistsDesc": "Wybierz inny identyfikator modelu."
   },
+  "revealModelFile": "Pokaż plik modelu w folderze",
+  "revealModelFileFailed": "Nie udało się otworzyć folderu modelu.",
   "deleteModel": {
     "title": "Usuń Model: {{modelId}}",
     "description": "Na pewno chcesz usunąć ten model? Tej operacji nie można cofnąć.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Usuń wszystkie",
+    "repoTitle": "Usunąć ten pobrany model?",
+    "clearButton": "Wyczyść listę",
+    "clearTitle": "Usunąć wszystkie modele tego dostawcy?",
+    "clearDescription": "To usuwa z listy modele ({{count}}). Po stronie dostawcy nic nie jest usuwane, a Odśwież może je przywrócić.",
     "title": "Usunąć wszystkie pobrane modele?",
     "description": "To trwale usunie z dysku modele: {{count}}.",
     "sizeLabel": "Miejsce na dysku do zwolnienia:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Wprowadź nazwę dostawcy",
   "baseUrl": {
     "title": "Bazowy adres URL",
+    "openaiDescription": "Użyj serwera proxy lub bramki obsługującej API OpenAI. Domyślnie jest to https://api.openai.com/v1.",
     "azureDescription": "Twój punkt końcowy Azure OpenAI. Zastąp YOUR-RESOURCE-NAME nazwą zasobu Azure.",
     "qwenDescription": "Twój punkt końcowy Model Studio. Klucz działa tylko w regionie, w którym został utworzony: użyj https://dashscope-intl.aliyuncs.com/compatible-mode/v1 dla Singapuru lub https://dashscope.aliyuncs.com/compatible-mode/v1 dla Chin kontynentalnych."
   },

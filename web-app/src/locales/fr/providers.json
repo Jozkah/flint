@@ -11,6 +11,9 @@
   "noNewModels": "Aucun nouveau modèle trouvé. Tous les modèles disponibles sont déjà ajoutés.",
   "refreshModelsFailed": "Échec de la récupération des modèles de {{provider}}. Veuillez vérifier votre clé API et votre URL de base.",
   "models": "Modèles",
+  "filterModels": "Filtrer {{count}} modèles",
+  "modelsShown": "{{shown}} sur {{total}} affichés",
+  "showMoreModels": "Afficher plus",
   "backendInstalled": "Installé",
   "backendHistoryShow": "Afficher l'historique des mises à jour",
   "backendHistoryHide": "Masquer l'historique des mises à jour",
@@ -73,6 +76,8 @@
     "modelExists": "Le modèle existe déjà",
     "modelExistsDesc": "Veuillez choisir un ID de modèle différent."
   },
+  "revealModelFile": "Afficher le fichier du modèle dans le dossier",
+  "revealModelFileFailed": "Impossible d'ouvrir le dossier du modèle.",
   "deleteModel": {
     "title": "Supprimer le modèle : {{modelId}}",
     "description": "Êtes-vous sûr de vouloir supprimer ce modèle ? Cette action ne peut pas être annulée.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Tout supprimer",
+    "repoTitle": "Supprimer ce modèle téléchargé ?",
+    "clearButton": "Vider la liste",
+    "clearTitle": "Retirer tous les modèles de ce fournisseur ?",
+    "clearDescription": "Cela retire {{count}} modèle(s) de la liste. Rien n'est supprimé chez le fournisseur, et Actualiser peut les rajouter.",
     "title": "Supprimer tous les modèles téléchargés ?",
     "description": "Cela supprimera définitivement {{count}} modèle(s) du disque.",
     "sizeLabel": "Espace disque libéré :",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Entrez le nom du fournisseur",
   "baseUrl": {
     "title": "URL de base",
+    "openaiDescription": "Utilisez un proxy ou une passerelle compatible avec l'API OpenAI. La valeur par défaut est https://api.openai.com/v1.",
     "azureDescription": "Votre point de terminaison Azure OpenAI. Remplacez YOUR-RESOURCE-NAME par le nom de votre ressource Azure.",
     "qwenDescription": "Votre point de terminaison Model Studio. Une clé ne fonctionne que dans la région où elle a été créée : utilisez https://dashscope-intl.aliyuncs.com/compatible-mode/v1 pour Singapour ou https://dashscope.aliyuncs.com/compatible-mode/v1 pour la Chine continentale."
   },

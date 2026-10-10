@@ -11,6 +11,9 @@
   "noNewModels": "कोई नए मॉडल नहीं मिले। उपलब्ध सभी मॉडल पहले से ही जोड़े जा चुके हैं।",
   "refreshModelsFailed": "{{provider}} से मॉडल प्राप्त करने में विफल रहा। कृपया API कुंजी और बेस URL जांचें।",
   "models": "मॉडल",
+  "filterModels": "{{count}} मॉडल फ़िल्टर करें",
+  "modelsShown": "{{total}} में से {{shown}} दिखाए जा रहे हैं",
+  "showMoreModels": "और दिखाएँ",
   "backendInstalled": "इंस्टॉल किया हुआ",
   "backendHistoryShow": "अपडेट इतिहास दिखाएँ",
   "backendHistoryHide": "अपडेट इतिहास छिपाएँ",
@@ -73,6 +76,8 @@
     "modelExists": "मॉडल पहले से मौजूद है",
     "modelExistsDesc": "कृपया कोई अन्य मॉडल आईडी चुनें।"
   },
+  "revealModelFile": "मॉडल फ़ाइल को फ़ोल्डर में दिखाएँ",
+  "revealModelFileFailed": "मॉडल फ़ोल्डर नहीं खोला जा सका।",
   "deleteModel": {
     "title": "मॉडल हटाएं: {{modelId}}",
     "description": "क्या आप वाकई इस मॉडल को हटाना चाहते हैं? यह क्रिया वापस नहीं की जा सकती।",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "सब हटाएँ",
+    "repoTitle": "क्या यह डाउनलोड किया गया मॉडल हटाएँ?",
+    "clearButton": "सूची साफ़ करें",
+    "clearTitle": "क्या इस प्रदाता के सभी मॉडल हटाएँ?",
+    "clearDescription": "इससे सूची से {{count}} मॉडल हट जाएँगे। प्रदाता की ओर कुछ नहीं हटाया जाता, और रीफ़्रेश करें उन्हें वापस जोड़ सकता है।",
     "title": "सभी डाउनलोड किए मॉडल हटाएँ?",
     "description": "इससे {{count}} मॉडल डिस्क से स्थायी रूप से हट जाएँगे।",
     "sizeLabel": "खाली होने वाली डिस्क जगह:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "कृपया प्रदाता का नाम दर्ज करें",
   "baseUrl": {
     "title": "बेस URL",
+    "openaiDescription": "OpenAI API के साथ काम करने वाला प्रॉक्सी या गेटवे इस्तेमाल करें। डिफ़ॉल्ट https://api.openai.com/v1 है।",
     "azureDescription": "आपका Azure OpenAI एंडपॉइंट। YOUR-RESOURCE-NAME की जगह अपने Azure रिसोर्स का नाम डालें।",
     "qwenDescription": "आपका Model Studio एंडपॉइंट। कुंजी केवल उसी क्षेत्र में काम करती है जहाँ बनाई गई थी: सिंगापुर के लिए https://dashscope-intl.aliyuncs.com/compatible-mode/v1 या मुख्य भूमि चीन के लिए https://dashscope.aliyuncs.com/compatible-mode/v1 उपयोग करें।"
   },

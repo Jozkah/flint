@@ -73,6 +73,9 @@
     "back": "Indietro",
     "forward": "Avanti",
     "close": "Chiudi anteprima",
+    "copyUrl": "Copia URL",
+    "urlCopied": "URL copiato",
+    "copyFailed": "Impossibile copiare l'URL",
     "blockedBanner": "Questo sito potrebbe bloccare l'incorporamento. Aprilo nel browser o sganciala in una finestra.",
     "interceptSetting": "Apri i link in un'anteprima nell'app",
     "interceptSettingDesc": "Se attivo, cliccando su un link web questo si apre in un pannello di anteprima invece che nel browser.",
@@ -574,6 +577,13 @@
   "modelSettings": {
     "title": "Impostazioni modello - {{modelId}}",
     "description": "Configura le impostazioni del modello per ottimizzarne le prestazioni e il comportamento.",
+    "visionProjector": {
+      "title": "Proiettore di visione (mmproj)",
+      "paired": "Associato",
+      "none": "Nessuno",
+      "pairedHint": "Questo modello accetta immagini in ingresso. Il proiettore viene scelto all'importazione del modello; importalo di nuovo per usarne uno diverso.",
+      "noneHint": "Senza un proiettore di visione questo modello non può leggere le immagini. Importa di nuovo il modello con Multimodale attivo e scegli il suo file mmproj; un proiettore accanto al file del modello viene trovato automaticamente."
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "Parametri di campionamento predefiniti",
@@ -588,7 +598,9 @@
       "nMin": "Numero minimo token bozza",
       "nMinDescription": "Numero minimo di token da abbozzare per passaggio. Predefinito: 0.",
       "pMin": "Probabilità minima bozza",
-      "pMinDescription": "Probabilità minima per l'elaborazione greedy (0–1). Predefinito: 0.75."
+      "pMinDescription": "Probabilità minima per l'elaborazione greedy (0–1). Predefinito: 0.75.",
+      "probabilistic": "Campiona la bozza",
+      "probabilisticDescription": "Campiona i token della bozza invece di prendere il più probabile e li verifica con il campionamento per rifiuto. Così l'accelerazione si mantiene quando la temperatura è superiore a 0. Disattivato per impostazione predefinita; ignorato per le bozze DFlash, che richiedono una verifica greedy."
     },
     "templateKwargs": {
       "section": "Opzioni del template di chat",
@@ -695,6 +707,9 @@
       "assistant": "Assistente",
       "selectAssistant": "Seleziona un assistente (opzionale)",
       "noAssistant": "Nessun assistente",
+      "model": "Modello predefinito",
+      "selectModel": "Usa la scelta del selettore dei modelli",
+      "noModel": "Nessun modello predefinito",
       "addAssistant": "Aggiungi assistente",
       "createButton": "Crea",
       "updateButton": "Aggiorna",
@@ -1056,6 +1071,7 @@
     "stopped": "Fermato.",
     "failed": "L'esecuzione si è fermata prima.",
     "tryAgain": "Riprova",
+    "attachFolder": "Allega una cartella",
     "deadline": "Fermato — questa esecuzione ha raggiunto il suo limite di tempo.",
     "timeout": "Fermato — il modello ha smesso di rispondere.",
     "loop": "Fermato — l'esecuzione si ripeteva senza fare progressi.",
@@ -1466,6 +1482,13 @@
       "enable": "Attiva la visione",
       "needsMmproj": "Questo modello locale ha bisogno di un file mmproj per poter vedere. Aggiungine uno dalle impostazioni del modello, poi allega di nuovo l'immagine."
     }
+  },
+  "pastedPath": {
+    "file": "Allegare «{{name}}» a questo messaggio?",
+    "folder": "Allegare la cartella «{{name}}» a questa sessione?",
+    "attach": "Allega",
+    "dismiss": "Ignora",
+    "failed": "Impossibile allegare il file"
   },
   "drop": {
     "openInCode": "Rilascia per aprire — sola lettura",
@@ -1997,6 +2020,7 @@
     "serverStopped": "API locale spenta"
   },
   "shell": {
+    "discover": "Scopri",
     "openNavigation": "Apri la navigazione",
     "closeNavigation": "Chiudi la navigazione",
     "showContent": "Contenuto",
@@ -2062,6 +2086,9 @@
       "closed": "Chiusa senza unione"
     },
     "overview": "Panoramica",
+    "resume": "Riprendi e utilizzo",
+    "more": "Altro",
+    "advanced": "Avanzate",
     "usageOverview": "Panoramica dell'utilizzo",
     "movedTo": "Spostato in {{name}}",
     "notifications": "Notifiche",
@@ -2479,6 +2506,11 @@
   "connectors": "Connettori",
   "voicePill": {
     "cancel": "Annulla"
+  },
+  "coworkRunSettings": {
+    "label": "Impostazioni dell'esecuzione",
+    "title": "Come funziona questa esecuzione",
+    "effort": "Impegno: {{level}}"
   },
   "motionMedia": {
     "queued": "In coda",

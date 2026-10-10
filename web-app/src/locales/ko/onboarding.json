@@ -60,5 +60,20 @@
   "reopenGuide": "시작 가이드",
   "reopenGuideDescription": "모델 선택, 자료 추가, 첫 작업 완료까지의 과정을 다시 살펴봅니다.",
   "reopenGuideAction": "가이드 열기",
-  "resumeRecent": "마지막 대화 이어가기: {{title}}"
+  "resumeRecent": "마지막 대화 이어가기: {{title}}",
+  "modelSetup": {
+    "title": "모델을 어떻게 가져오시겠어요?",
+    "local": {
+      "title": "이 컴퓨터의 모델 사용",
+      "body": "모델을 둘러보고 내 하드웨어에 맞는 모델을 확인하세요."
+    },
+    "provider": {
+      "title": "공급자 연결",
+      "body": "내 계정으로 호스팅된 모델을 사용합니다."
+    },
+    "import": {
+      "title": "파일 가져오기",
+      "body": "이미 가지고 있는 모델 파일을 추가합니다."
+    }
+  }
 }

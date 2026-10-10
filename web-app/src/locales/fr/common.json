@@ -73,6 +73,9 @@
     "back": "Retour",
     "forward": "Suivant",
     "close": "Fermer l'aperçu",
+    "copyUrl": "Copier l'URL",
+    "urlCopied": "URL copiée",
+    "copyFailed": "Impossible de copier l'URL",
     "blockedBanner": "Ce site peut bloquer l'intégration. Ouvrez-le dans votre navigateur ou détachez-le.",
     "interceptSetting": "Ouvrir les liens dans un aperçu intégré",
     "interceptSettingDesc": "Lorsque cette option est activée, un clic sur un lien web l'ouvre dans un panneau d'aperçu plutôt que dans votre navigateur.",
@@ -574,6 +577,13 @@
   "modelSettings": {
     "title": "Paramètres du modèle - {{modelId}}",
     "description": "Configurez les paramètres du modèle pour optimiser les performances et le comportement.",
+    "visionProjector": {
+      "title": "Projecteur de vision (mmproj)",
+      "paired": "Associé",
+      "none": "Aucun",
+      "pairedHint": "Ce modèle accepte les images en entrée. Le projecteur est choisi lors de l'importation du modèle ; importez-le à nouveau pour en utiliser un autre.",
+      "noneHint": "Sans projecteur de vision, ce modèle ne peut pas lire les images. Importez à nouveau le modèle avec Multimodal activé et choisissez son fichier mmproj ; un projecteur placé à côté du fichier du modèle est détecté automatiquement."
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "Paramètres d'échantillonnage par défaut",
@@ -588,7 +598,9 @@
       "nMin": "Jetons de brouillon min.",
       "nMinDescription": "Nombre minimal de jetons à rédiger par étape. 0 par défaut.",
       "pMin": "Probabilité de brouillon min.",
-      "pMinDescription": "Probabilité minimale pour la rédaction gloutonne (0–1). 0,75 par défaut."
+      "pMinDescription": "Probabilité minimale pour la rédaction gloutonne (0–1). 0,75 par défaut.",
+      "probabilistic": "Échantillonner le brouillon",
+      "probabilisticDescription": "Échantillonne les jetons du brouillon au lieu de prendre le plus probable, puis les vérifie par échantillonnage par rejet. L'accélération est ainsi conservée lorsque la température est supérieure à 0. Désactivé par défaut ; ignoré pour les brouillons DFlash, qui exigent une vérification gloutonne."
     },
     "templateKwargs": {
       "section": "Options du modèle de conversation",
@@ -695,6 +707,9 @@
       "assistant": "Assistant",
       "selectAssistant": "Sélectionner un assistant (facultatif)",
       "noAssistant": "Aucun assistant",
+      "model": "Modèle par défaut",
+      "selectModel": "Utiliser le choix du sélecteur de modèle",
+      "noModel": "Aucun modèle par défaut",
       "addAssistant": "Ajouter un assistant",
       "createButton": "Créer",
       "updateButton": "Mettre à jour",
@@ -1053,6 +1068,7 @@
     "stopped": "Arrêté.",
     "failed": "L'exécution s'est arrêtée prématurément.",
     "tryAgain": "Réessayer",
+    "attachFolder": "Joindre un dossier",
     "deadline": "Arrêté — cette exécution a atteint sa limite de temps.",
     "timeout": "Arrêté — le modèle a cessé de répondre.",
     "loop": "Arrêté — l'exécution se répétait sans progresser.",
@@ -1463,6 +1479,13 @@
       "description_many": "{{model}} n'a pas de capacité de vision, ces images ne peuvent donc pas être envoyées avec votre message.",
       "proceed_many": "Envoyer sans les images"
     }
+  },
+  "pastedPath": {
+    "file": "Joindre « {{name}} » à ce message ?",
+    "folder": "Joindre le dossier « {{name}} » à cette session ?",
+    "attach": "Joindre",
+    "dismiss": "Ignorer",
+    "failed": "Impossible de joindre le fichier"
   },
   "drop": {
     "openInCode": "Déposez pour ouvrir — lecture seule",
@@ -1994,6 +2017,7 @@
     "approvalsWaiting_many": "{{count}} d'approbations en attente"
   },
   "shell": {
+    "discover": "Découvrir",
     "openNavigation": "Ouvrir la navigation",
     "closeNavigation": "Fermer la navigation",
     "showContent": "Contenu",
@@ -2057,6 +2081,9 @@
       "closed": "Fermée sans fusion"
     },
     "overview": "Vue d'ensemble",
+    "resume": "Reprendre et utilisation",
+    "more": "Plus",
+    "advanced": "Avancé",
     "usageOverview": "Vue d'ensemble de l'utilisation",
     "movedTo": "Déplacé vers {{name}}",
     "notifications": "Notifications",
@@ -2479,6 +2506,11 @@
   "previewMessageCount_many": "{{count}} de messages",
   "voicePill": {
     "cancel": "Annuler"
+  },
+  "coworkRunSettings": {
+    "label": "Paramètres de l'exécution",
+    "title": "Fonctionnement de cette exécution",
+    "effort": "Effort : {{level}}"
   },
   "motionMedia": {
     "queued": "En file d'attente",

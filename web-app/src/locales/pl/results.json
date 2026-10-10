@@ -11,7 +11,8 @@
     "where": "Gdzie jest wynik",
     "checked": "Co sprawdzono",
     "unresolved": "Nierozwiązane",
-    "next": "Następne kroki"
+    "next": "Następne kroki",
+    "details": "Szczegóły"
   },
   "headline": {
     "running": "Uruchomienie nadal trwa.",

@@ -330,7 +330,8 @@
     "continue": "続ける",
     "toShort": "宛先",
     "placeholderTo": "{{name}} に書き込む…",
-    "mention": "参加者にメンション"
+    "mention": "参加者にメンション",
+    "dropSkipped": "追加されませんでした (テキストではない、フォルダー、またはメッセージの上限超過): {{files}}"
   },
   "kpi": {
     "running": "実行中",

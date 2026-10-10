@@ -72,6 +72,8 @@
     "openHint": "Eine weitere, unabhängige Unterhaltung neben dieser öffnen",
     "openHintShortcut": "Eine weitere, unabhängige Unterhaltung neben dieser öffnen ({{shortcut}})",
     "openInSplit": "In geteilter Ansicht öffnen",
+    "openIn": "Öffnen in",
+    "openInNewWindow": "Neues Fenster",
     "close": "Teilung schließen",
     "closePane": "Diesen Bereich schließen",
     "addPane": "Bereich hinzufügen",

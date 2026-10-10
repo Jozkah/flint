@@ -56,5 +56,9 @@
     "approval": "Onay gerekiyor",
     "done": "Bitti",
     "idle": "Başlamadı"
-  }
+  },
+  "resumeSub": "Yeni bir şeye başlayın veya kaldığınız yerden devam edin.",
+  "startChat": "Bir şey sor",
+  "startFiles": "Cowork",
+  "usage": "Kullanım"
 }

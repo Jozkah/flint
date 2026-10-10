@@ -11,6 +11,7 @@
   "baseUrlPlaceholderAnthropic": "https://api.anthropic.com/v1",
   "apiKeyLabel": "API कुंजी",
   "apiKeyPlaceholder": "अपनी API कुंजी पेस्ट करें",
+  "apiKeyOptionalPlaceholder": "अपनी API कुंजी पेस्ट करें (वैकल्पिक)",
   "invalidBaseUrl": "बेस URL एक मान्य http(s) URL होना चाहिए",
   "globalSettings": "वैश्विक सेटिंग",
   "stripReasoning": "कॉन्टेक्स्ट से तर्क हटाएँ",

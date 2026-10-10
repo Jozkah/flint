@@ -66,6 +66,9 @@
     "title": "Web önizlemesi",
     "openExternal": "Tarayıcıda aç",
     "popOut": "Pencereye çıkar",
+    "copyUrl": "URL'yi kopyala",
+    "urlCopied": "URL kopyalandı",
+    "copyFailed": "URL kopyalanamadı",
     "dockSide": "Yana yerleştir",
     "showAsPip": "Yüzen pencere olarak göster",
     "reload": "Yeniden yükle",
@@ -569,6 +572,13 @@
   "modelSettings": {
     "title": "Model Ayarları - {{modelId}}",
     "description": "Performansı ve davranışı iyileştirmek için model ayarlarını yapılandırın.",
+    "visionProjector": {
+      "title": "Görsel projektör (mmproj)",
+      "paired": "Eşleşti",
+      "none": "Yok",
+      "pairedHint": "Bu model görsel girdisi alabilir. Projektör, model içe aktarılırken seçilir; farklı bir projektör kullanmak için modeli yeniden içe aktarın.",
+      "noneHint": "Görsel projektör olmadan bu model görselleri okuyamaz. Modeli Çok modlu seçeneği açıkken yeniden içe aktarın ve mmproj dosyasını seçin; model dosyasının yanındaki bir projektör otomatik olarak bulunur."
+    },
     "nglDisabledByFit": "Otomatik uydurma GPU katmanlarını seçiyor. Bunu elle ayarlamak için Otomatik uydurmayı kapatın.",
     "samplingDefaults": {
       "title": "Varsayılan örnekleme parametreleri",
@@ -583,7 +593,9 @@
       "nMin": "Min. taslak jetonu",
       "nMinDescription": "Adım başına çizilecek minimum jeton sayısı. Varsayılan 0.",
       "pMin": "Min. taslak olasılığı",
-      "pMinDescription": "Açgözlü taslak için minimum olasılık (0–1). Varsayılan 0,75."
+      "pMinDescription": "Açgözlü taslak için minimum olasılık (0–1). Varsayılan 0,75.",
+      "probabilistic": "Taslağı örnekle",
+      "probabilisticDescription": "En olası belirteci almak yerine taslak belirteçlerini örnekler ve reddetmeli örnekleme ile doğrular. Bu, sıcaklık 0'ın üzerindeyken de hız kazancını korur. Varsayılan olarak kapalıdır; açgözlü doğrulama gerektiren DFlash taslakları için yok sayılır."
     },
     "templateKwargs": {
       "section": "Sohbet şablonu seçenekleri",
@@ -690,6 +702,9 @@
       "assistant": "Asistan",
       "selectAssistant": "Bir asistan seçin (isteğe bağlı)",
       "noAssistant": "Asistan yok",
+      "model": "Varsayılan model",
+      "selectModel": "Model seçicideki seçimi kullan",
+      "noModel": "Varsayılan model yok",
       "addAssistant": "Asistan Ekle",
       "createButton": "Oluştur",
       "updateButton": "Güncelle",
@@ -1046,6 +1061,7 @@
     "stopped": "Durduruldu.",
     "failed": "Çalıştırma erken sona erdi.",
     "tryAgain": "Tekrar dene",
+    "attachFolder": "Klasör ekle",
     "deadline": "Durduruldu — bu çalıştırma zaman sınırına ulaştı.",
     "timeout": "Durduruldu — model yanıt vermeyi bıraktı.",
     "loop": "Durduruldu — çalıştırma ilerleme kaydetmeden kendini tekrar ediyordu.",
@@ -1440,10 +1456,22 @@
       "needsMmproj": "Bu yerel modelin görebilmesi için bir mmproj dosyası gerekiyor. Model ayarlarından bir tane ekleyin, ardından görseli yeniden ekleyin."
     }
   },
+  "pastedPath": {
+    "file": "\"{{name}}\" bu mesaja eklensin mi?",
+    "folder": "\"{{name}}\" klasörü bu oturuma eklensin mi?",
+    "attach": "Ekle",
+    "dismiss": "Kapat",
+    "failed": "Dosya eklenemedi"
+  },
   "drop": {
     "openInCode": "Açmak için bırakın — salt okunur",
     "attachToMessage": "Mesajınıza eklemek için bırakın",
     "releaseToAttach": "Eklemek için bırakın"
+  },
+  "coworkRunSettings": {
+    "label": "Çalıştırma ayarları",
+    "title": "Bu çalıştırma nasıl işler",
+    "effort": "Efor: {{level}}"
   },
   "coworkMode": {
     "label": "Flint'in yapabilecekleri",
@@ -1961,6 +1989,7 @@
     "serverStopped": "Yerel API kapalı"
   },
   "shell": {
+    "discover": "Keşfet",
     "openNavigation": "Gezinmeyi aç",
     "closeNavigation": "Gezinmeyi kapat",
     "showContent": "İçerik",
@@ -2024,6 +2053,9 @@
       "closed": "Birleştirilmeden kapatıldı"
     },
     "overview": "Genel bakış",
+    "resume": "Devam et ve kullanım",
+    "more": "Daha fazla",
+    "advanced": "Gelişmiş",
     "usageOverview": "Kullanım genel bakışı",
     "movedTo": "{{name}} grubuna taşındı",
     "notifications": "Bildirimler",

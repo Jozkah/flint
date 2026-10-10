@@ -56,5 +56,9 @@
     "approval": "승인 필요",
     "done": "완료",
     "idle": "시작 안 됨"
-  }
+  },
+  "resumeSub": "새로 시작하거나 하던 작업을 이어서 진행하세요.",
+  "startChat": "질문하기",
+  "startFiles": "Cowork",
+  "usage": "사용량"
 }
