@@ -155,8 +155,9 @@ describe('Models page (/settings/providers)', () => {
   it('shows KPI tiles from the providers, the loaded list and the files on disk', async () => {
     await renderPage()
     const installed = screen.getByText('engine:kpi.installed').closest('section')!
-    // Only enabled providers count: two local models, three remote.
-    expect(within(installed).getByText('5')).toBeInTheDocument()
+    // Installed counts the models on this device; the remote ones listed by
+    // enabled providers are "available", not installed.
+    expect(within(installed).getByText('2')).toBeInTheDocument()
     const loaded = screen.getByText('engine:kpi.loaded').closest('section')!
     expect(within(loaded).getByText('1')).toBeInTheDocument()
     const disk = screen.getByText('engine:kpi.disk').closest('section')!

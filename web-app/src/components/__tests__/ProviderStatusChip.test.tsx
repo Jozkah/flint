@@ -70,7 +70,7 @@ describe('ProviderStatusChip', () => {
     rerender(<ProviderStatusChip status="keyed" />)
     expect(screen.getByText('engine:status.connected')).toBeTruthy()
     rerender(<ProviderStatusChip status="keyless" />)
-    expect(screen.getByText('engine:status.connected')).toBeTruthy()
+    expect(screen.getByText('engine:status.keyless')).toBeTruthy()
     rerender(<ProviderStatusChip status="local" />)
     expect(screen.getByText('engine:status.running')).toBeTruthy()
   })
