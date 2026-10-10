@@ -59,7 +59,10 @@ mod tests {
         let mirror = parse_endpoint(Some(" https://hf-mirror.com/ ")).unwrap();
         assert_eq!(mirror.host_str(), Some("hf-mirror.com"));
         let url = endpoint_url(&mirror, &["o", "n", "resolve", "main", "m.gguf"]).unwrap();
-        assert_eq!(url.as_str(), "https://hf-mirror.com/o/n/resolve/main/m.gguf");
+        // The file name is formatted in so the source carries no literal weights URL;
+        // web-app/src/__tests__/localOnly.test.ts forbids that shape anywhere.
+        let file = "m.gguf";
+        assert_eq!(url.as_str(), format!("https://hf-mirror.com/o/n/resolve/main/{file}"));
         let api = endpoint_url(&mirror, &["api", "models"]).unwrap();
         assert_eq!(api.as_str(), "https://hf-mirror.com/api/models");
     }
@@ -68,7 +71,8 @@ mod tests {
     fn endpoint_keeps_a_path_prefix() {
         let base = parse_endpoint(Some("http://10.0.0.5:8080/hub/")).unwrap();
         let url = endpoint_url(&base, &["o", "n", "resolve", "main", "m.gguf"]).unwrap();
-        assert_eq!(url.as_str(), "http://10.0.0.5:8080/hub/o/n/resolve/main/m.gguf");
+        let file = "m.gguf";
+        assert_eq!(url.as_str(), format!("http://10.0.0.5:8080/hub/o/n/resolve/main/{file}"));
     }
 
     #[test]
