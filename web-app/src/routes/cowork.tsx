@@ -351,6 +351,11 @@ import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
 import { CoworkAskedCard } from '@/containers/CoworkAskedCard'
 import { CoworkSubagentQuestions } from '@/containers/CoworkSubagentQuestions'
 import { renderNotices, takeNotices } from '@/lib/coworkRunNotices'
+import {
+  executeCampaignTool,
+  isCoordinatorEligible,
+} from '@/lib/campaignTools'
+import { createToolDeps, getCampaignRunner } from '@/lib/campaignHost'
 import { askedFromParts } from '@/lib/askedSessions'
 import { SessionStopNotice } from '@/containers/SessionStopNotice'
 import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
@@ -3335,6 +3340,10 @@ export function CoworkPage() {
       // an inline `system_prompt` is first-class, as it is in Rust.
       allowSubagents: true,
       webSearch,
+      // The campaign tools go to a top-level session that is not itself a
+      // campaign task, and only when there is a repository to branch from.
+      campaignCoordinator:
+        isCoordinatorEligible(current?.campaign) && !!current?.folder,
       // The session's own folder, which is what makes `stop_session` offerable
       // and what readiness is probed for. Not `runReadRoot`: a worktree run
       // reads somewhere else but is still this folder's session.
@@ -4043,6 +4052,52 @@ export function CoworkPage() {
                 tasks: backgroundTasks,
                 cancelChild: (callId) =>
                   abortSubagent(sid, taskIdFor(sid, runId, callId)),
+                // Campaign tools exist only here, on the main run of a session
+                // that may coordinate: a task's, a subagent's and chat's
+                // contexts have no handler, so a call to one is refused.
+                onCampaign:
+                  isCoordinatorEligible(current?.campaign) && current?.folder
+                    ? (call, campaignSignal) =>
+                        executeCampaignTool(
+                          call,
+                          {
+                            sessionId: sid,
+                            mode: runMode,
+                            sourceRoot: current?.folder ?? null,
+                            model: selectedModel
+                              ? {
+                                  provider: selectedProvider,
+                                  id: selectedModel.id,
+                                }
+                              : undefined,
+                            signal: campaignSignal,
+                            onApprove: (
+                              callId,
+                              toolName,
+                              input,
+                              _preview,
+                              approveSignal,
+                              forced
+                            ) =>
+                              useToolApprovalRequests
+                                .getState()
+                                .requestApproval(
+                                  callId,
+                                  toolName,
+                                  sid,
+                                  undefined,
+                                  {
+                                    input,
+                                    alwaysAsk: true,
+                                    taskContext: forced?.reason,
+                                    workspaceLabel: current?.folder ?? undefined,
+                                    signal: approveSignal,
+                                  }
+                                ),
+                          },
+                          createToolDeps(getCampaignRunner())
+                        )
+                    : undefined,
                 onTodo: async (input) => {
                   const result = applyTodoOp(
                     useCoworkSessions
