@@ -1,6 +1,6 @@
 # Campaigns (multi-thread coordinator)
 
-Status: P0 to P4 implemented, P5 to P7 open; see "Status" below. The feature is called Campaigns in the UI and `campaign` in code, because "project" already means a folder in Flint.
+Status: P0 to P6 implemented, P7 open; see "Status" below. The feature is called Campaigns in the UI and `campaign` in code, because "project" already means a folder in Flint.
 
 ## Goal
 
@@ -103,6 +103,14 @@ Implemented (P4: verify, merge, gate, propose):
 - Tools `campaign_verify`, `campaign_merge`, `campaign_orphans`, coordinator only. `campaign_merge` is not blanket always-ask: merging into the integration branch does not touch the user's checkout, so only the `finalize` step asks (always, with the command shown).
 - **Gaps closed.** An idle coordinator is woken by mail from the finished task through the mailbox auto-wake path (a running one still gets a step-boundary notice, and a failed send falls back to it). `awaiting_input` and `awaiting_approval` are mirrored from the pending ask and approval stores by a 10 s sweep. Per-task wall-clock, step and token limits are enforced by the same sweep: the run is aborted and the task is `failed` with the reason. The project token budget counts live runs, warns at 80 percent and stops starts at 100 percent. A task whose pane closed before its run began is detected (not shown, no run, past a 15 s grace) and re-queued through `interrupted`. `agent_campaign_orphans` and `campaign_orphans` list the worktrees finished campaigns left, with what removing each would destroy; nothing deletes them.
 
+Implemented (P5 sidebar, P6 board):
+
+- **Sidebar group (P5).** Derived, not persisted, so the user's own groups and the Home projects are untouched. `lib/campaignView.ts::deriveCampaignGroups` builds one group per backend campaign that still has a session in the store (coordinator row, then one row per task session in plan order, a session in at most one group, active campaigns first). `CoworkNav` lists these above its own groups and leaves the claimed sessions out of the ordinary tree. Task rows are the normal session rows with a status dot (queued, blocked, running, needs-you, verifying, verified, merged, failed, conflict, cancelled); the header reads "3/5 done · running" and opens the board. Sessions of a campaign the backend does not list keep their normal place.
+- **Board (P6).** Route `/campaign/$campaignId` (`routes/campaign/$campaignId.tsx`, kept on the Cowork sidebar by `isCoworkRoute`), components `components/campaign/{Board,TaskCard,BudgetBar,StatusDot}.tsx`. Columns: Blocked, Queued, Running, Needs you, Verifying, Done (verified or merged), Failed / Conflict (cancelled is shown here too). A pending task with unmerged dependencies sits in Blocked. Header: status, progress, parallel limit from `campaigns.maxParallel`, token budget bar (warns at 80 percent), Pause, Resume, Cancel, and Review & apply when the campaign is `reviewing`.
+- **Actions** (`lib/campaignBoardActions.ts`, all through existing paths): open session; send note (the `campaign_steer` mail path from the coordinator session to the task session, running tasks only); stop (aborts the live run, which the runner settles as cancelled; a not-yet-running task is cancelled by transition); retry (failed or conflict back to queued, cap 2, then the scheduler is kicked); skip (the `campaign_merge skip` set, a transition to cancelled); view handoff (`agent_campaign_context`); pause and resume (campaign transition, resume kicks the scheduler); cancel (runner `cancel`, with a confirm); Review & apply (shows the gate command from `agent_campaign_gate_plan` in a confirm dialog, then `agent_campaign_finalize`, which stores the one proposal; applying it is still the user's step in the proposal review).
+- **Data.** `hooks/useCampaigns.ts` polls `agent_campaign_list`: every 3 s while a campaign is approved, running, reviewing, merging or interrupted, every 15 s otherwise, only while a component uses it. No new Rust command.
+- Board keys are in `settings:campaigns.board.*`, English in every locale file.
+
 Known gaps and limits:
 
 - Not smoke-tested in the live app: verification, merge and gate were exercised by Rust fixture-repo tests (clean merge, conflict, topological order, dependents unblocked, path and branch and base re-verification, gate selection, gate fail and pass, proposal creation without writing the checkout) and by vitest with mocked invoke; not smoke-tested in the running app.
@@ -115,6 +123,7 @@ Known gaps and limits:
 - A notice reaches a running coordinator at its next step boundary and is in memory only; the event log re-pushes after a restart.
 - The integration worktree (`campaign-<id>` key) and task worktrees are kept until the user discards them.
 - Added locale keys are English in every locale file.
+- Board: "view diff" shows the files the task session changed (from its recorded file activity), not a rendered diff; there is no backend command for a task branch's diff yet. The files-changed count and last activity come from the renderer's session store, so they are blank for a session that was deleted. Not smoke-tested in the running app; covered by vitest on the mapping, group derivation, budget math and action dispatch with mocked invoke.
 
 ## Open questions
 
