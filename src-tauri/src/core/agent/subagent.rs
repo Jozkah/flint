@@ -1623,14 +1623,42 @@ pub(crate) fn choose_child_model(
     global_setting: Option<&str>,
     parent: &str,
 ) -> String {
-    pinned
-        .or(requested)
-        .or(rule)
-        .or(role_setting)
-        .or(definition)
-        .or(global_setting)
-        .unwrap_or(parent)
-        .to_string()
+    choose_child_model_with_source(
+        pinned,
+        requested,
+        rule,
+        role_setting,
+        definition,
+        global_setting,
+        parent,
+    )
+    .0
+}
+
+/// [`choose_child_model`], also naming which source won: `pinned`,
+/// `requested`, `rule`, `role`, `definition`, `global` or `parent`. Logged at
+/// dispatch so a run can prove a pin took effect.
+pub(crate) fn choose_child_model_with_source(
+    pinned: Option<&str>,
+    requested: Option<&str>,
+    rule: Option<&str>,
+    role_setting: Option<&str>,
+    definition: Option<&str>,
+    global_setting: Option<&str>,
+    parent: &str,
+) -> (String, &'static str) {
+    let ordered = [
+        (pinned, "pinned"),
+        (requested, "requested"),
+        (rule, "rule"),
+        (role_setting, "role"),
+        (definition, "definition"),
+        (global_setting, "global"),
+    ];
+    match ordered.into_iter().find_map(|(m, source)| m.map(|m| (m, source))) {
+        Some((model, source)) => (model.to_string(), source),
+        None => (parent.to_string(), "parent"),
+    }
 }
 
 /// Environment variable that pins every subagent to one model id.
@@ -1672,7 +1700,7 @@ pub(crate) fn child_body(
         },
     );
     let pinned = pinned_model_from(std::env::var(SUBAGENT_MODEL_ENV).ok().as_deref());
-    let model = choose_child_model(
+    let (model, model_source) = choose_child_model_with_source(
         pinned.as_deref(),
         None,
         rule.as_deref(),
@@ -1680,6 +1708,10 @@ pub(crate) fn child_body(
         resolved.definition.model.as_deref(),
         parent.model_settings.global.as_deref(),
         &parent.model,
+    );
+    log::info!(
+        "agent: subagent '{}' runs on model '{model}' (source: {model_source})",
+        resolved.definition.name
     );
     let mut body = serde_json::Map::new();
     body.insert("model".to_string(), serde_json::json!(model));
@@ -2721,6 +2753,23 @@ mod tests {
         assert_eq!(pick(None, None, None, Some("def"), Some("global")), "def");
         assert_eq!(pick(None, None, None, None, Some("global")), "global");
         assert_eq!(pick(None, None, None, None, None), "parent");
+    }
+
+    #[test]
+    fn the_chosen_model_names_the_source_that_won() {
+        let src = |p, r, rule, role, def, g| {
+            choose_child_model_with_source(p, r, rule, role, def, g, "parent").1
+        };
+        assert_eq!(src(Some("m"), Some("a"), Some("r"), Some("x"), Some("d"), Some("g")), "pinned");
+        assert_eq!(src(None, Some("a"), Some("r"), Some("x"), Some("d"), Some("g")), "requested");
+        assert_eq!(src(None, None, Some("r"), Some("x"), Some("d"), Some("g")), "rule");
+        assert_eq!(src(None, None, None, Some("x"), Some("d"), Some("g")), "role");
+        assert_eq!(src(None, None, None, None, Some("d"), Some("g")), "definition");
+        assert_eq!(src(None, None, None, None, None, Some("g")), "global");
+        assert_eq!(src(None, None, None, None, None, None), "parent");
+        let (model, source) =
+            choose_child_model_with_source(Some("pin"), None, None, None, None, None, "parent");
+        assert_eq!((model.as_str(), source), ("pin", "pinned"));
     }
 
     #[test]
