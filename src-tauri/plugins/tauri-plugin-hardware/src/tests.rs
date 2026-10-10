@@ -1,15 +1,16 @@
-use crate::commands::*;
 use crate::types::CpuStaticInfo;
 
+// The `commands` versions are async wrappers that move these onto a blocking
+// thread; the probes themselves are plain functions.
 #[test]
 fn test_system_info() {
-    let info = get_system_info();
+    let info = crate::get_system_info();
     println!("System Static Info: {:?}", info);
 }
 
 #[test]
 fn test_system_usage() {
-    let usage = get_system_usage();
+    let usage = crate::sample_system_usage();
     println!("System Usage Info: {:?}", usage);
 }
 

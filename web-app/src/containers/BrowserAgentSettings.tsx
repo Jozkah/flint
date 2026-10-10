@@ -16,6 +16,7 @@ import {
   type BrowserRule,
 } from '@/lib/browserAgentRules'
 import { errorText } from '@/lib/errorText'
+import { Select } from '@/components/ui/select'
 
 /**
  * Settings for the assistant's use of the built-in browser pane: the on/off
@@ -129,7 +130,7 @@ export function BrowserAgentSettings() {
           title={t('browser-agent:settings.reduceMotion')}
           description={t('browser-agent:settings.reduceMotionDesc')}
           actions={
-            <select
+            <Select
               aria-label={t('browser-agent:settings.reduceMotion')}
               data-testid="browser-agent-reduce-motion"
               className="h-9 rounded-md border border-input bg-background px-2 text-sm"
@@ -144,7 +145,7 @@ export function BrowserAgentSettings() {
               </option>
               <option value="on">{t('browser-agent:settings.reduceOn')}</option>
               <option value="off">{t('browser-agent:settings.reduceOff')}</option>
-            </select>
+            </Select>
           }
         />
         <CardItem
@@ -254,7 +255,7 @@ export function BrowserAgentSettings() {
                   value={pattern}
                   onChange={(e) => setPattern(e.target.value)}
                 />
-                <select
+                <Select
                   aria-label={t('browser-agent:settings.addVerdict')}
                   data-testid="browser-rule-verdict"
                   className="h-9 rounded-md border border-input bg-background px-2 text-sm"
@@ -265,7 +266,7 @@ export function BrowserAgentSettings() {
                 >
                   <option value="allow">{t('browser-agent:settings.allow')}</option>
                   <option value="deny">{t('browser-agent:settings.deny')}</option>
-                </select>
+                </Select>
                 <Button
                   type="submit"
                   size="sm"

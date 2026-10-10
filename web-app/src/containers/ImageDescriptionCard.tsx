@@ -6,6 +6,7 @@ import { useImageDescription } from '@/hooks/useImageDescription'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { getProviderTitle } from '@/lib/utils'
 import { visionModels } from '@/lib/imageDescription'
+import { Select } from '@/components/ui/select'
 
 const AUTO = ''
 
@@ -36,7 +37,7 @@ export function ImageDescriptionCard() {
             : t('settings:imageDescription.modelDesc')
         }
         actions={
-          <select
+          <Select
             aria-label={t('settings:imageDescription.model')}
             className="h-8 max-w-56 rounded-md border border-input bg-card px-2 text-sm"
             disabled={!enabled}
@@ -54,7 +55,7 @@ export function ImageDescriptionCard() {
                 {c.modelId} · {getProviderTitle(c.provider)}
               </option>
             ))}
-          </select>
+          </Select>
         }
       />
       <CardItem

@@ -74,6 +74,7 @@ import {
   type FitVerdict,
   type KvArchitecture,
 } from '@/lib/modelCompatibility'
+import { Select } from '@/components/ui/select'
 
 export const Route = createFileRoute(route.hub.index as any)({
   component: ModelDiscoverRoute,
@@ -523,7 +524,7 @@ function ModelDiscoverRoute() {
             ))}
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />
             {IS_MACOS && (
-              <select
+              <Select
                 value={format}
                 onChange={(event) =>
                   setFormat(event.target.value as HuggingFaceFormat)
@@ -534,9 +535,9 @@ function ModelDiscoverRoute() {
                 <option value="all">GGUF + MLX</option>
                 <option value="gguf">GGUF</option>
                 <option value="mlx">MLX</option>
-              </select>
+              </Select>
             )}
-            <select
+            <Select
               value={params}
               onChange={(event) => setParams(event.target.value as ParamFilter)}
               className={SELECT}
@@ -547,8 +548,8 @@ function ModelDiscoverRoute() {
               <option value="small">3B–8B</option>
               <option value="medium">8B–34B</option>
               <option value="large">34B+</option>
-            </select>
-            <select
+            </Select>
+            <Select
               value={architecture}
               onChange={(event) => setArchitecture(event.target.value)}
               className={SELECT}
@@ -560,7 +561,7 @@ function ModelDiscoverRoute() {
                   {value}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           )}
         </div>
@@ -611,7 +612,7 @@ function ModelDiscoverRoute() {
               </label>
             <label className="inline-flex items-center gap-2">
               Sort by
-              <select
+              <Select
                 value={sort}
                 onChange={(event) => setSort(event.target.value as SortMode)}
                 className={SELECT}
@@ -621,7 +622,7 @@ function ModelDiscoverRoute() {
                 <option value="likes">Most liked</option>
                 <option value="updated">Recently updated</option>
                 <option value="newest">Newest</option>
-              </select>
+              </Select>
             </label>
             </div>
           </div>
