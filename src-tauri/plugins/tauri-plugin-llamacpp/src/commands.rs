@@ -58,8 +58,11 @@ async fn engine_endpoint(state: &LlamacppState) -> Result<(u16, String, u32), St
 }
 
 async fn http_client() -> reqwest::Client {
+    // The engine is on loopback: a system or environment proxy (a VPN client,
+    // a corporate proxy) must never carry these requests.
     reqwest::Client::builder()
         .timeout(Duration::from_secs(600))
+        .no_proxy()
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
 }

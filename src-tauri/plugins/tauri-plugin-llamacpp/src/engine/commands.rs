@@ -259,16 +259,14 @@ const RELOAD_MODELS_TIMEOUT: std::time::Duration = std::time::Duration::from_sec
 ///
 /// Never falls back to `reqwest::Client::new()`: that client has no timeout,
 /// which is the hang this exists to prevent. If the builder fails (system
-/// proxy discovery is the usual cause), one retry skips proxies -- the worker
-/// is on loopback anyway -- and a second failure is an error.
+/// proxy discovery is the usual cause) it is an error. The worker is on
+/// loopback, so no proxy is ever used: a VPN or corporate proxy would otherwise
+/// carry the request away from the engine and every model load would fail.
 fn worker_client(timeout: std::time::Duration) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(timeout)
+        .no_proxy()
         .build()
-        .or_else(|e| {
-            log::warn!("could not build the engine worker client ({e}); retrying without proxies");
-            reqwest::Client::builder().timeout(timeout).no_proxy().build()
-        })
         .map_err(|e| {
             log::error!("could not build the engine worker client: {e}");
             format!("could not build an HTTP client for the engine worker: {e}")

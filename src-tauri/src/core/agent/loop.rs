@@ -5691,8 +5691,14 @@ async fn orchestrate_inner(
             // The llama.cpp router is a desktop-only listing call on the app's
             // reqwest 0.12 stack, not agent upstream traffic, so it does not use
             // the genai client threaded through `OrchestrationArgs`.
+            // The router is on loopback: no system or environment proxy.
             static ROUTER_CLIENT: std::sync::LazyLock<reqwest::Client> =
-                std::sync::LazyLock::new(reqwest::Client::new);
+                std::sync::LazyLock::new(|| {
+                    reqwest::Client::builder()
+                        .no_proxy()
+                        .build()
+                        .unwrap_or_default()
+                });
             if let Some(first) = router_first_model(llama_state, &ROUTER_CLIENT).await {
                 model_id = Some(first);
             }
