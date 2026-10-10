@@ -1107,6 +1107,13 @@ async fn proxy_request(
                 .status(StatusCode::TOO_MANY_REQUESTS)
                 .header("Content-Type", "application/json")
                 .header("Retry-After", refused.retry_after_secs.to_string());
+            if let Some(room) =
+                super::usage_meter::headroom(std::path::Path::new(&jan_data_folder))
+            {
+                for (name, value) in room.headers() {
+                    error_response = error_response.header(name, value);
+                }
+            }
             error_response = add_cors_headers_with_host_and_origin(
                 error_response,
                 &host_header,
@@ -2540,6 +2547,15 @@ async fn proxy_request(
                 for (name, value) in response.headers() {
                     if !is_cors_header(name.as_str()) && name != hyper::header::CONTENT_LENGTH {
                         builder = builder.header(name, value);
+                    }
+                }
+                if metered {
+                    if let Some(room) =
+                        super::usage_meter::headroom(std::path::Path::new(&jan_data_folder))
+                    {
+                        for (name, value) in room.headers() {
+                            builder = builder.header(name, value);
+                        }
                     }
                 }
 

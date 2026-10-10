@@ -117,6 +117,8 @@ macro_rules! invoke_commands_with_extras {
         core::server::commands::start_server,
         core::server::commands::stop_server,
         core::server::commands::get_server_status,
+        core::server::commands::get_usage_ceilings,
+        core::server::commands::set_usage_ceilings,
         core::server::commands::set_server_run_in_background,
         core::server::commands::set_close_to_tray,
         core::huggingface::set_download_speed_limit,

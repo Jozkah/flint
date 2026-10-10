@@ -109,25 +109,66 @@ pub(crate) struct Refusal {
     pub retry_after_secs: u64,
 }
 
-static JUDGED: Mutex<Option<(PathBuf, Instant, Option<Refusal>)>> = Mutex::new(None);
+/// The tightest token ceiling, as the rate-limit headers state it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Headroom {
+    pub limit: u64,
+    pub remaining: u64,
+    pub reset_secs: u64,
+}
+
+impl Headroom {
+    /// OpenAI-style and Anthropic-style headers, which the SDKs read to pace
+    /// themselves. The reset is when the oldest use ages out, so remaining
+    /// capacity starts growing then.
+    pub(crate) fn headers(&self) -> Vec<(&'static str, String)> {
+        let at = std::time::SystemTime::now() + Duration::from_secs(self.reset_secs);
+        let rfc = crate::core::agent::spend::rfc3339_of(at);
+        vec![
+            ("x-ratelimit-limit-tokens", self.limit.to_string()),
+            ("x-ratelimit-remaining-tokens", self.remaining.to_string()),
+            ("x-ratelimit-reset-tokens", format!("{}s", self.reset_secs)),
+            ("anthropic-ratelimit-tokens-limit", self.limit.to_string()),
+            ("anthropic-ratelimit-tokens-remaining", self.remaining.to_string()),
+            ("anthropic-ratelimit-tokens-reset", rfc),
+        ]
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Judgement {
+    refusal: Option<Refusal>,
+    headroom: Option<Headroom>,
+}
+
+static JUDGED: Mutex<Option<(PathBuf, Instant, Judgement)>> = Mutex::new(None);
+
+fn judgement(data_folder: &Path) -> Judgement {
+    if let Ok(guard) = JUDGED.lock() {
+        if let Some((folder, at, judged)) = guard.as_ref() {
+            if folder == data_folder && at.elapsed() < JUDGEMENT_TTL {
+                return judged.clone();
+            }
+        }
+    }
+    let judged = judge(data_folder);
+    if let Ok(mut guard) = JUDGED.lock() {
+        *guard = Some((data_folder.to_path_buf(), Instant::now(), judged.clone()));
+    }
+    judged
+}
 
 /// The ceiling that has been reached, if any. A `quotas.toml` that will not
 /// parse refuses nothing here and logs it: the agent refuses a run on it, but a
 /// server that goes dark over a typo is worse than one that is unmetered until
 /// it is fixed.
 pub(crate) fn refusal(data_folder: &Path) -> Option<Refusal> {
-    if let Ok(guard) = JUDGED.lock() {
-        if let Some((folder, at, verdict)) = guard.as_ref() {
-            if folder == data_folder && at.elapsed() < JUDGEMENT_TTL {
-                return verdict.clone();
-            }
-        }
-    }
-    let verdict = judge(data_folder);
-    if let Ok(mut guard) = JUDGED.lock() {
-        *guard = Some((data_folder.to_path_buf(), Instant::now(), verdict.clone()));
-    }
-    verdict
+    judgement(data_folder).refusal
+}
+
+/// How much token capacity is left under the tightest token ceiling.
+pub(crate) fn headroom(data_folder: &Path) -> Option<Headroom> {
+    judgement(data_folder).headroom
 }
 
 /// Forget the last judgement, so the next request reads the ledger again.
@@ -137,31 +178,42 @@ pub(crate) fn forget() {
     }
 }
 
-fn judge(data_folder: &Path) -> Option<Refusal> {
+fn judge(data_folder: &Path) -> Judgement {
     let declared = match quota::quotas(data_folder) {
         Ok(declared) => declared,
         Err(e) => {
             log::warn!("api server: quotas.toml not applied: {e}");
-            return None;
+            return Judgement::default();
         }
     };
     if !declared.any() {
-        return None;
+        return Judgement::default();
     }
-    match quota::exceeded(data_folder, &declared) {
-        Ok(Some(reached)) => Some(Refusal {
-            message: format!(
-                "usage ceiling reached -- {}. Raise it in quotas.toml, or wait for the window to roll.",
-                reached.describe()
-            ),
-            retry_after_secs: reached.frees_in_secs.unwrap_or(60).max(1),
-        }),
-        Ok(None) => None,
+    let standings = match quota::standing(data_folder, &declared) {
+        Ok(standings) => standings,
         Err(e) => {
             log::warn!("api server: ceilings not judged: {e}");
-            None
+            return Judgement::default();
         }
-    }
+    };
+    let refusal = standings.iter().find(|s| s.exceeded()).map(|reached| Refusal {
+        message: format!(
+            "usage ceiling reached -- {}. Raise it in quotas.toml, or wait for the window to roll.",
+            reached.describe()
+        ),
+        retry_after_secs: reached.frees_in_secs.unwrap_or(60).max(1),
+    });
+    // Standings come tightest first; the first token ceiling is the one a
+    // client should pace itself against.
+    let headroom = standings
+        .iter()
+        .find(|s| s.ceiling.starts_with("tokens"))
+        .map(|s| Headroom {
+            limit: s.limit as u64,
+            remaining: (s.limit - s.used).max(0.0) as u64,
+            reset_secs: s.frees_in_secs.unwrap_or(0),
+        });
+    Judgement { refusal, headroom }
 }
 
 #[cfg(test)]
@@ -213,9 +265,11 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(quota::quotas_path(&dir), "[tokens]\nper_5h = 1000\n").unwrap();
 
-        assert_eq!(judge(&dir), None);
+        assert_eq!(judge(&dir).refusal, None);
         record(&dir, "local/m", 600, 500);
-        let refused = judge(&dir).expect("1100 of 1000 is over");
+        let judged = judge(&dir);
+        assert_eq!(judged.headroom.as_ref().map(|h| h.remaining), Some(0));
+        let refused = judged.refusal.expect("1100 of 1000 is over");
         assert!(refused.message.contains("tokens per 5 hours"), "{}", refused.message);
         // The record is seconds old, so nearly the whole window remains.
         assert!(

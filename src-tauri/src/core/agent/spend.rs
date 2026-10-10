@@ -201,6 +201,11 @@ pub fn since(period: Option<&str>) -> Result<Option<String>, SpendError> {
     Ok(Some(rfc3339(seconds)))
 }
 
+/// An instant as `YYYY-MM-DDTHH:MM:SSZ`.
+pub(crate) fn rfc3339_of(at: std::time::SystemTime) -> String {
+    rfc3339(at.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
+}
+
 /// Seconds since the epoch as `YYYY-MM-DDTHH:MM:SSZ`, which is what the usage
 /// log writes and so what a string comparison can be made against.
 fn rfc3339(seconds: u64) -> String {

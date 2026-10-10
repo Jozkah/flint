@@ -177,6 +177,15 @@ pub fn quotas(data_folder: &Path) -> Result<Quotas, QuotaError> {
     Ok(parsed)
 }
 
+/// Write the declared ceilings back. Everything is written whole, so what the
+/// file says afterwards is what `quotas` reads.
+pub fn write_quotas(data_folder: &Path, quotas: &Quotas) -> Result<(), QuotaError> {
+    let text = toml::to_string_pretty(quotas)
+        .map_err(|e| QuotaError::new(QuotaErrorKind::Malformed, format!("quotas.toml: {e}")))?;
+    std::fs::write(quotas_path(data_folder), text)
+        .map_err(|e| QuotaError::new(QuotaErrorKind::Unreadable, format!("quotas.toml: {e}")))
+}
+
 impl Quotas {
     /// Whether anything is declared at all. Nothing declared means nothing to
     /// read, and nothing to read means no ledger work per turn.
@@ -545,6 +554,18 @@ mod tests {
         );
         assert_eq!(standing[1].ceiling, "tokens per week");
         assert!(!standing[1].exceeded());
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn written_ceilings_read_back_the_same() {
+        let data = temp_data("write");
+        let declared = Quotas {
+            tokens: TokenQuotas { per_5h: Some(250), per_week: Some(9000), ..Default::default() },
+            ..Default::default()
+        };
+        write_quotas(&data, &declared).expect("writes");
+        assert_eq!(quotas(&data).expect("reads"), declared);
         let _ = std::fs::remove_dir_all(&data);
     }
 
