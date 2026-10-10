@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { chooseOption } from '@/test/select'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { CompactionPolicySettings } from '../CompactionPolicySettings'
 import { DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
@@ -58,7 +59,7 @@ describe('CompactionPolicySettings (AH-076)', () => {
     setCompactionPolicy.mockResolvedValue({ ...DEFAULT_COMPACTION_POLICY, strategy: 'trim' })
     render(<CompactionPolicySettings />)
     const select = await screen.findByLabelText('settings:compaction.strategy')
-    fireEvent.change(select, { target: { value: 'trim' } })
+    chooseOption(select, 'trim')
     await waitFor(() => expect(setCompactionPolicy).toHaveBeenCalledWith({ strategy: 'trim' }))
     const keep = screen.getByLabelText('settings:compaction.keepRecent')
     fireEvent.change(keep, { target: { value: '12' } })

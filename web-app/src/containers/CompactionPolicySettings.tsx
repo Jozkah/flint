@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { OctagonAlert } from 'lucide-react'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
-import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -12,6 +11,7 @@ import {
   type CompactionLayer,
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
+import { Select } from '@/components/ui/select'
 
 /**
  * The shared compaction policy (AH-076), edited at user scope. What is shown is
@@ -98,24 +98,17 @@ export function CompactionPolicySettings() {
             title={t('settings:compaction.strategy')}
             description={t('settings:compaction.strategyDescription') + note('strategy')}
             actions={
-              <span className="relative inline-flex">
-              <select
+              <Select
                 aria-label={t('settings:compaction.strategy')}
-                className="h-8 min-w-[140px] cursor-pointer appearance-none rounded-lg border-[0.8px] border-border bg-card py-0 pr-8 pl-2.5 text-xs font-medium text-secondary-foreground transition-[background-color,border-color] hover:border-border-strong hover:bg-hover-btn focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none pointer-coarse:h-11"
+                className="min-w-[140px]"
                 value={policy.strategy}
                 onChange={(e) =>
-                  void save({ strategy: e.currentTarget.value as CompactionPolicy['strategy'] })
+                  void save({ strategy: e.target.value as CompactionPolicy['strategy'] })
                 }
               >
                 <option value="summarize">{t('settings:compaction.summarize')}</option>
                 <option value="trim">{t('settings:compaction.trim')}</option>
-              </select>
-              <Icon
-                name="arrow-down"
-                size={12}
-                className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 opacity-70"
-              />
-              </span>
+              </Select>
             }
           />
           <CardItem

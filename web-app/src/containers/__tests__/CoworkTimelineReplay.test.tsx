@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { chooseOption } from '@/test/select'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import type { EventEnvelope } from '@/lib/eventLog'
 import type { RunRecording } from '@/lib/runReplay'
@@ -116,7 +117,7 @@ describe('CoworkTimelinePanel replay', () => {
     fireEvent.click(screen.getByTestId('timeline-replay'))
     // The latest finished run is chosen first.
     await waitFor(() => expect(screen.getByTestId('timeline-replay-controls').dataset.run).toBe('r2'))
-    fireEvent.change(screen.getByTestId('timeline-replay-run'), { target: { value: 'r1' } })
+    chooseOption(screen.getByTestId('timeline-replay-run'), 'r1')
     await waitFor(() => expect(screen.getByTestId('timeline-replay-controls').dataset.run).toBe('r1'))
     expect(loadRunRecording).toHaveBeenLastCalledWith('s1', 'r1')
 
