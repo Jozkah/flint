@@ -10,6 +10,8 @@ import { useEffect, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { repoFromDeepLink } from '@/lib/huggingface'
+import { promptFromDeepLink } from '@/lib/deepLinkPrompt'
+import { usePrompt } from '@/hooks/usePrompt'
 import { useMCPServers, DEFAULT_MCP_SETTINGS } from '@/hooks/useMCPServers'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
@@ -587,6 +589,14 @@ export function DataProvider() {
    * owner/name model link is ignored.
    */
   const handleDeepLink = (urls: string[] | null) => {
+    // A prompt link fills a new chat's composer and stops there: nothing is
+    // sent until the user reads it and presses Send.
+    const prompt = urls?.length ? promptFromDeepLink(urls[0]) : null
+    if (prompt) {
+      usePrompt.getState().setPrompt(prompt)
+      navigate({ to: route.home })
+      return
+    }
     const repo = urls?.length ? repoFromDeepLink(urls[0]) : null
     if (!repo) return
     navigate({ to: route.hub.model, params: { modelId: repo }, search: { repo } })

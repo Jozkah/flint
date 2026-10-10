@@ -630,6 +630,21 @@ describe('DataProvider', () => {
     expect(h.navigate).not.toHaveBeenCalled()
   })
 
+  it('fills the composer from a prompt link without sending', async () => {
+    const { usePrompt } = await import('@/hooks/usePrompt')
+    usePrompt.getState().setPrompt('')
+    hubState.deeplinkGetCurrent.mockResolvedValue([
+      'flint://chat?prompt=Summarize%20this%20page',
+    ])
+    render(<DataProvider />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(usePrompt.getState().prompt).toBe('Summarize this page')
+    expect(h.navigate).toHaveBeenCalledTimes(1)
+    usePrompt.getState().setPrompt('')
+  })
+
   it('ignores null deep link payload', async () => {
     hubState.deeplinkGetCurrent.mockResolvedValue(null)
     render(<DataProvider />)
