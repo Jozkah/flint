@@ -695,6 +695,104 @@
   "campaigns": {
     "title": "Campaigns",
     "maxParallel": "Campaign parallel threads",
-    "maxParallelDesc": "How many campaign tasks may run at once, each in its own split pane. From 1 to 6. It applies to a running campaign at once; free panes still limit it."
+    "maxParallelDesc": "How many campaign tasks may run at once, each in its own split pane. From 1 to 6. It applies to a running campaign at once; free panes still limit it.",
+    "board": {
+      "dot": {
+        "queued": "Queued",
+        "blocked": "Blocked",
+        "running": "Running",
+        "needsYou": "Needs you",
+        "verifying": "Verifying",
+        "verified": "Verified",
+        "merged": "Merged",
+        "failed": "Failed",
+        "conflict": "Conflict",
+        "cancelled": "Cancelled"
+      },
+      "column": {
+        "blocked": "Blocked",
+        "queued": "Queued",
+        "running": "Running",
+        "needsYou": "Needs you",
+        "verifying": "Verifying",
+        "done": "Done",
+        "failed": "Failed / Conflict"
+      },
+      "status": {
+        "draft": "draft",
+        "planned": "planned",
+        "approved": "approved",
+        "running": "running",
+        "paused": "paused",
+        "reviewing": "reviewing",
+        "merging": "merging",
+        "done": "done",
+        "failed": "failed",
+        "cancelled": "cancelled",
+        "interrupted": "interrupted"
+      },
+      "progress": "{{done}}/{{total}} done · {{status}}",
+      "coordinator": "Coordinator",
+      "openBoard": "Open campaign board",
+      "notFound": "This campaign was not found.",
+      "loading": "Loading campaign…",
+      "emptyColumn": "No tasks",
+      "budget": {
+        "label": "Token budget",
+        "used": "{{used}} of {{budget}} tokens",
+        "none": "{{used}} tokens, no budget set"
+      },
+      "parallel": "Parallel limit {{n}}",
+      "card": {
+        "branch": "Branch",
+        "noBranch": "no branch yet",
+        "files": "{{n}} files changed",
+        "tokens": "{{n}} tokens",
+        "activity": "Last activity {{when}}",
+        "attempt": "Attempt {{n}}"
+      },
+      "action": {
+        "open": "Open session",
+        "note": "Send note",
+        "stop": "Stop",
+        "retry": "Retry",
+        "skip": "Skip",
+        "handoff": "View handoff",
+        "diff": "View changes",
+        "pause": "Pause",
+        "resume": "Resume",
+        "cancel": "Cancel campaign",
+        "review": "Review & apply",
+        "send": "Send",
+        "close": "Close",
+        "confirm": "Confirm"
+      },
+      "note": {
+        "title": "Note to {{task}}",
+        "placeholder": "Tell the task what to do differently",
+        "sent": "Note sent"
+      },
+      "handoff": {
+        "title": "Handoff: {{task}}",
+        "empty": "No handoff has been written yet."
+      },
+      "diff": {
+        "title": "Files changed by {{task}}",
+        "empty": "No file changes were recorded for this task."
+      },
+      "review": {
+        "title": "Review and apply",
+        "body": "This runs the gate on the merged result, then creates one proposal for your checkout. Nothing is applied until you approve that proposal.",
+        "command": "Gate command: {{command}}",
+        "noCommand": "No build or test command is configured or detected, so the merged result will not be built or tested.",
+        "proposal": "Proposal created. Review it from the coordinator session.",
+        "failed": "The gate failed; the campaign stays in review."
+      },
+      "cancelConfirm": {
+        "title": "Cancel this campaign?",
+        "body": "Every unfinished task is cancelled and running tasks are stopped. Worktrees are kept."
+      },
+      "error": "Action failed: {{reason}}"
+    }
   }
 }

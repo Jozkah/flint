@@ -97,6 +97,14 @@ import PluginsManagerDialog from '@/containers/dialogs/PluginsManagerDialog'
 import { GroupedTree, MoveToGroupSub } from '@/components/shell/nav/GroupedTree'
 import { coworkFolderAdapter } from '@/lib/groups/adapters'
 import { addNewItemToGroup } from '@/lib/groups/inherit'
+import { CampaignGroups } from '@/components/shell/nav/CampaignGroups'
+import { StatusDot } from '@/components/campaign/StatusDot'
+import { useCampaigns } from '@/hooks/useCampaigns'
+import {
+  claimedSessionIds,
+  deriveCampaignGroups,
+  type CampaignDot,
+} from '@/lib/campaignView'
 
 type CoworkNavItem = {
   title: string
@@ -113,12 +121,15 @@ const SessionItem = memo(function SessionItem({
   isMobile,
   onSelect,
   onRequestDelete,
+  campaignDot,
 }: {
   session: CoworkSession
   isCurrent: boolean
   isMobile: boolean
   onSelect: (id: string) => void
   onRequestDelete: (pending: { id: string; title: string }) => void
+  /** A campaign task's state, shown before the title. */
+  campaignDot?: CampaignDot
 }) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -175,6 +186,7 @@ const SessionItem = memo(function SessionItem({
             running={running}
             selected={isCurrent}
           />
+          {campaignDot && <StatusDot dot={campaignDot} />}
           <FadeText>{session.title}</FadeText>
           {running && (
             // A session running in the background shows here, without the
@@ -509,13 +521,31 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
     [goCowork]
   )
 
-  const sessionIds = useMemo(() => sessions.map((x) => x.id), [sessions])
+  // Campaigns are derived groups: coordinator plus task sessions, shown above
+  // the user's own groups. A session claimed by one is not listed twice.
+  const { campaigns } = useCampaigns()
+  const campaignGroups = useMemo(
+    () => deriveCampaignGroups(campaigns, allSessions),
+    [campaigns, allSessions]
+  )
+  const claimed = useMemo(
+    () => claimedSessionIds(campaignGroups),
+    [campaignGroups]
+  )
+  const sessionIds = useMemo(
+    () => sessions.filter((x) => !claimed.has(x.id)).map((x) => x.id),
+    [sessions, claimed]
+  )
   const byId = useMemo(
     () => new Map(sessions.map((x) => [x.id, x])),
     [sessions]
   )
-  const renderSession = (id: string) => {
-    const session = byId.get(id)
+  const everyById = useMemo(
+    () => new Map(allSessions.map((x) => [x.id, x])),
+    [allSessions]
+  )
+  const renderSession = (id: string, campaignDot?: CampaignDot) => {
+    const session = byId.get(id) ?? (claimed.has(id) ? everyById.get(id) : undefined)
     if (!session) return null
     return (
       <SessionItem
@@ -525,6 +555,7 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
         isMobile={isMobile}
         onSelect={selectSession}
         onRequestDelete={setPendingDelete}
+        campaignDot={campaignDot}
       />
     )
   }
@@ -721,6 +752,12 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
                 <span>{t('common:newSession')}</span>
               </NavButton>
             </NavItem>
+          )}
+          {expanded && (
+            <CampaignGroups
+              groups={campaignGroups}
+              renderRow={(row) => renderSession(row.sessionId, row.dot)}
+            />
           )}
           {expanded ? (
             <GroupedTree
