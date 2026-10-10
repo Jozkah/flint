@@ -1370,6 +1370,10 @@ struct CompositeToolInvoker {
     /// own agent runs write every call here, the same record the renderer
     /// writes for Cowork and Chat. `None` records nothing (tests, proxies).
     record_to: Option<std::path::PathBuf>,
+    /// Whether this run may use the session-messaging tools: a top-level run
+    /// of the CLI or headless server with a session and a data folder. Its
+    /// mailbox identity is the run's own session id (`cancel_scope.session`).
+    session_messaging: bool,
     /// The request this run's calls belong to (AH-004), shared with the model
     /// invoker that mints it.
     invocations: std::sync::Arc<Invocations>,
@@ -1739,6 +1743,91 @@ fn record_cancelled_call(
     );
 }
 
+/// Whether a run takes part in cross-session messaging: only a top-level run
+/// of the CLI or headless server (the desktop's Cowork runs in the renderer),
+/// with a session identity and a data folder to keep a mailbox in. A subagent
+/// child has no identity of its own and is never a participant.
+fn messaging_eligible(
+    session_id: Option<&str>,
+    data_folder: &str,
+    parent_run: Option<&str>,
+    child_run: Option<&str>,
+) -> bool {
+    cfg!(feature = "cli")
+        && session_id.is_some_and(|s| !s.trim().is_empty())
+        && !data_folder.is_empty()
+        && parent_run.is_none()
+        && child_run.is_none()
+}
+
+/// A run's presence in the session mailbox: registered, marked running, and
+/// kept fresh while the run lasts. The desktop renderer does the same for a
+/// Cowork session (`mailboxPresence.ts`); a headless run has no renderer, so
+/// the loop does it. Dropping it ends the run's status.
+struct MailboxPresence {
+    data: std::path::PathBuf,
+    session: String,
+    run: String,
+    beat: tokio::task::JoinHandle<()>,
+}
+
+impl MailboxPresence {
+    /// How often a running record is refreshed. Well inside the mailbox's
+    /// 90 s staleness window.
+    const BEAT: std::time::Duration = std::time::Duration::from_secs(30);
+
+    fn start(
+        data: &std::path::Path,
+        session: &str,
+        run: &str,
+        folder: &std::path::Path,
+    ) -> Option<Self> {
+        use tauri_plugin_agent_tools::session_mailbox::Mailbox;
+        let mailbox = Mailbox::open(data);
+        // A name another surface already gave this session is kept; a new one
+        // is named by its id.
+        let name = mailbox
+            .session(session)
+            .map(|r| r.display_name)
+            .unwrap_or_else(|| session.to_string());
+        let folder = folder.to_string_lossy();
+        if let Err(e) = mailbox.register(session, &name, Some(folder.as_ref())) {
+            log::warn!("agent: session messaging unavailable for {session}: {e:?}");
+            return None;
+        }
+        if let Err(e) = mailbox.set_status(session, true, Some(run)) {
+            log::warn!("agent: could not mark {session} running: {e:?}");
+            return None;
+        }
+        let beat = {
+            let (data, session, run) = (data.to_path_buf(), session.to_string(), run.to_string());
+            tokio::spawn(async move {
+                let mailbox = Mailbox::open(&data);
+                let mut tick = tokio::time::interval(Self::BEAT);
+                tick.tick().await;
+                loop {
+                    tick.tick().await;
+                    let _ = mailbox.heartbeat(&session, &run);
+                }
+            })
+        };
+        Some(Self {
+            data: data.to_path_buf(),
+            session: session.to_string(),
+            run: run.to_string(),
+            beat,
+        })
+    }
+}
+
+impl Drop for MailboxPresence {
+    fn drop(&mut self) {
+        self.beat.abort();
+        let _ = tauri_plugin_agent_tools::session_mailbox::Mailbox::open(&self.data)
+            .set_status(&self.session, false, Some(&self.run));
+    }
+}
+
 /// A run identifier for cancellation scoping.
 ///
 /// Runs are not otherwise identified here, and cancellation needs to name one
@@ -1854,7 +1943,14 @@ impl CompositeToolInvoker {
         match self.record_to.as_deref() {
             // Taken from the scope the loop is running under, never from
             // anything the model produced: this is the sender's identity.
-            Some(data) => ctx.with_run(&self.cancel_scope.run, data),
+            Some(data) => {
+                let ctx = ctx.with_run(&self.cancel_scope.run, data);
+                if self.session_messaging {
+                    ctx.with_mailbox_as(&self.cancel_scope.session, data)
+                } else {
+                    ctx
+                }
+            }
             None => ctx,
         }
     }
@@ -4632,6 +4728,10 @@ fn advertise_local_tools(
     // Whether any MCP server is connected to this run, which is what decides
     // whether its documents are worth offering (AH-137).
     mcp_connected: bool,
+    // Whether this run is a session-messaging participant (see
+    // `messaging_eligible`). `stop_session` is never offered here: it needs a
+    // per-call approval card, which this loop has no surface for.
+    session_messaging: bool,
     #[cfg(feature = "cli")] host_tools: &crate::core::agent::host_tools::HostToolSet,
 ) {
     let planning = run_mode == crate::core::agent::plan::RunMode::Plan;
@@ -4645,10 +4745,13 @@ fn advertise_local_tools(
             if permissions.is_denied(name, subject) {
                 continue;
             }
-            // Session messaging belongs to desktop Cowork sessions, which run
-            // their loop in the renderer. This loop -- the CLI, and every
-            // subagent child -- has no mailbox identity, so it never offers them.
-            if tauri_plugin_agent_tools::tools::is_mailbox_tool(name) {
+            // Desktop Cowork sessions run their loop in the renderer and get
+            // these from there. This loop offers them only to a top-level run
+            // that has a session identity (CLI, headless server); a subagent
+            // child never does, and nobody gets `stop_session` here.
+            if tauri_plugin_agent_tools::tools::is_mailbox_tool(name)
+                && !(session_messaging && name != "stop_session")
+            {
                 continue;
             }
             // The browser pane, image engine and external-browser tools only exist
@@ -5184,6 +5287,9 @@ pub(crate) async fn context_advertised_tools(
         ask_enabled,
         todo_enabled,
         !tool_to_server.is_empty(),
+        // /context has no session identity; the four small schemas are not
+        // counted.
+        false,
         host_tools,
     );
     // Sized as a run sends them: held back behind `mcp_tools` when too many.
@@ -5406,6 +5512,13 @@ async fn orchestrate_inner(
     }
     let json_body = &annotated_body;
 
+    let session_messaging = messaging_eligible(
+        session_id.as_deref(),
+        jan_data_folder,
+        args.parent_run.as_deref(),
+        child_run_id.as_deref(),
+    );
+
     // The local tools this run will be offered, worked out the same way the
     // tool list below is, so the prompt describes only tools the model can
     // call: a subagent has no `todo` or `ask`, plan mode has no write tools,
@@ -5428,6 +5541,7 @@ async fn orchestrate_inner(
             ask_requests.is_some(),
             todo_registry.is_some(),
             false,
+            session_messaging,
             #[cfg(feature = "cli")]
             host_tools,
         );
@@ -5671,6 +5785,7 @@ async fn orchestrate_inner(
         ask_requests.is_some(),
         todo_registry.is_some(),
         !tool_to_server.is_empty(),
+        session_messaging,
         #[cfg(feature = "cli")]
         host_tools,
     );
@@ -5853,6 +5968,19 @@ async fn orchestrate_inner(
         // the user; `0` turns the pause off.
         let auto_approve_limit_from_body =
             normalize_auto_approve_limit(json_body.get("auto_approve_limit"));
+        // Registered and marked running for as long as this run lasts, so other
+        // sessions see it in `list_sessions` and its sends are accepted. Ended
+        // (and the heartbeat stopped) when this block is left, however it is.
+        let _presence = session_messaging
+            .then(|| {
+                MailboxPresence::start(
+                    std::path::Path::new(jan_data_folder.as_str()),
+                    session_id.as_deref().unwrap_or_default(),
+                    &run_id,
+                    root.as_path(),
+                )
+            })
+            .flatten();
         let tools = CompositeToolInvoker {
             deferred_mcp,
             lsp: std::sync::Arc::new(crate::core::agent::lsp::LspPool::new(root.as_path())),
@@ -5867,6 +5995,7 @@ async fn orchestrate_inner(
             allowed_tools: allowed_names.clone(),
             record_to: (!jan_data_folder.is_empty())
                 .then(|| std::path::PathBuf::from(jan_data_folder.as_str())),
+            session_messaging,
             subject: subject.clone(),
             // One scope per run. A session-less run still gets a distinct run
             // id, so an application-wide stop reaches it while a stop aimed at
@@ -7717,40 +7846,85 @@ mod tests {
     use std::collections::VecDeque;
     use std::sync::Mutex as StdMutex;
 
-    /// Session messaging is a desktop Cowork capability. This loop drives the
-    /// CLI and every subagent child, neither of which has a mailbox identity,
-    /// so the mailbox tools are never offered here -- parent or child.
+    /// A run with no mailbox identity (a subagent child, a one-shot run with
+    /// no session) is offered no messaging tool; a run with one is offered
+    /// them all except `stop_session`, which needs a per-call approval card.
     #[test]
-    fn mailbox_tools_are_never_advertised_by_the_rust_loop() {
+    fn mailbox_tools_follow_the_runs_messaging_identity() {
         let perms = tauri_plugin_agent_tools::permissions::ToolPermissions::allow_all();
         let subject = tauri_plugin_agent_tools::subject::Subject::MainAgent;
         let root = std::env::temp_dir();
         for subagents_enabled in [true, false] {
-            let mut tools = Vec::new();
-            advertise_local_tools(
-                &mut tools,
-                None,
-                &perms,
-                &subject,
-                Some(&root),
-                crate::core::agent::plan::RunMode::Normal,
-                subagents_enabled,
-                1,
-                false,
-                false,
-                false,
-                #[cfg(feature = "cli")]
-                &crate::core::agent::host_tools::HostToolSet::new(),
-            );
-            let names: Vec<&str> = tools
-                .iter()
-                .filter_map(|t| t["function"]["name"].as_str())
-                .collect();
-            assert!(names.contains(&"read"), "builtins missing: {names:?}");
-            for mailbox in tauri_plugin_agent_tools::session_mailbox::TOOL_NAMES {
-                assert!(!names.contains(mailbox), "{mailbox} advertised: {names:?}");
+            for messaging in [false, true] {
+                let mut tools = Vec::new();
+                advertise_local_tools(
+                    &mut tools,
+                    None,
+                    &perms,
+                    &subject,
+                    Some(&root),
+                    crate::core::agent::plan::RunMode::Normal,
+                    subagents_enabled,
+                    1,
+                    false,
+                    false,
+                    false,
+                    messaging,
+                    #[cfg(feature = "cli")]
+                    &crate::core::agent::host_tools::HostToolSet::new(),
+                );
+                let names: Vec<&str> = tools
+                    .iter()
+                    .filter_map(|t| t["function"]["name"].as_str())
+                    .collect();
+                assert!(names.contains(&"read"), "builtins missing: {names:?}");
+                for mailbox in tauri_plugin_agent_tools::session_mailbox::TOOL_NAMES {
+                    let expected = messaging && *mailbox != "stop_session";
+                    assert_eq!(
+                        names.contains(mailbox),
+                        expected,
+                        "{mailbox} (messaging={messaging}): {names:?}"
+                    );
+                }
             }
         }
+    }
+
+    /// A headless run shows up in the registry as running for as long as its
+    /// presence lives, keeps a name another surface gave it, and ends idle.
+    #[tokio::test]
+    async fn a_runs_presence_is_registered_running_then_idle() {
+        use tauri_plugin_agent_tools::session_mailbox::{Mailbox, SessionStatus};
+        let data = std::env::temp_dir().join(format!("flint-presence-{}", millis_now()));
+        std::fs::create_dir_all(&data).unwrap();
+        let mailbox = Mailbox::open(&data);
+        mailbox.register("S1", "Memorizing a code word", None).unwrap();
+
+        let presence = MailboxPresence::start(&data, "S1", "S1#run-a", &data).expect("presence");
+        let record = mailbox.session("S1").expect("registered");
+        assert_eq!(record.status, SessionStatus::Running);
+        assert_eq!(record.display_name, "Memorizing a code word");
+
+        drop(presence);
+        let record = mailbox.session("S1").expect("still registered");
+        assert_eq!(record.status, SessionStatus::Idle);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn only_a_top_level_run_with_a_session_and_data_folder_may_message() {
+        let eligible = |s: Option<&str>, d: &str, p: Option<&str>, c: Option<&str>| {
+            messaging_eligible(s, d, p, c)
+        };
+        // The headless server and CLI are the `cli` feature; a desktop build
+        // never offers these tools from this loop.
+        let cli = cfg!(feature = "cli");
+        assert_eq!(eligible(Some("s1"), "/data", None, None), cli);
+        assert!(!eligible(None, "/data", None, None));
+        assert!(!eligible(Some("  "), "/data", None, None));
+        assert!(!eligible(Some("s1"), "", None, None));
+        assert!(!eligible(Some("s1"), "/data", Some("run-1"), None));
+        assert!(!eligible(Some("s1"), "/data", None, Some("child-1")));
     }
 
     struct MockModel {
@@ -10836,6 +11010,7 @@ mod tests {
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             allowed_tools: None,
             record_to: None,
+            session_messaging: false,
             invocations: std::sync::Arc::new(Invocations::default()),
             // Tests run one dispatch at a time; a fixed scope is enough to
             // exercise the token without colliding with another run.
@@ -11460,6 +11635,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Plan,
             false,
             1,
+            false,
             false,
             false,
             false,

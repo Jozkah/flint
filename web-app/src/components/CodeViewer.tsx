@@ -135,7 +135,8 @@ export function CodeViewer({
   const { t } = useTranslation()
   const language = useMemo(() => detectLanguage(relPath), [relPath])
   const isDark = useTheme((s) => s.isDark)
-  const [html, setHtml] = useState<string | null>(null)
+  const [highlighted, setHtml] = useState<{ relPath: string; markup: string } | null>(null)
+  const html = highlighted?.relPath === relPath ? highlighted.markup : null
   const [copied, setCopied] = useState<'code' | 'path' | null>(null)
   const [selection, setSelection] = useState<CodeRef | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -155,13 +156,15 @@ export function CodeViewer({
     const cacheKey = `${highlightKey(content, language.lang, theme)}:${markers}`
     const cached = readHighlight(cacheKey)
     if (cached) {
-      setHtml(cached)
+      setHtml({ relPath, markup: cached })
       return
     }
     // Only the theme actually on screen is tokenised. Highlighting both and
     // hiding one with CSS doubled the work on every open for output nobody
-    // ever saw.
-    setHtml(null)
+    // ever saw. The previous markup stays on screen until the new one lands
+    // (a file growing while the agent writes it would otherwise flash the
+    // unstyled fallback on every update); a different file drops it.
+    setHtml((prev) => (prev && prev.relPath === relPath ? prev : null))
     void codeToHtml(content, {
       lang: language.lang,
       theme,
@@ -169,7 +172,7 @@ export function CodeViewer({
     })
       .then((markup) => {
         rememberHighlight(cacheKey, markup)
-        if (alive) setHtml(markup)
+        if (alive) setHtml({ relPath, markup })
       })
       .catch(() => {
         // A grammar failure falls back to the plaintext <pre> below; the file
@@ -373,16 +376,31 @@ export function CodeViewer({
         ) : (
           // Highlighting is async; the raw source shows immediately so a big
           // file never presents an empty pane.
-          <pre
-            className={cn(
-              'm-0 px-3 py-3 font-mono text-xs leading-[1.6]',
-              wordWrap
-                ? 'whitespace-pre-wrap break-words'
-                : 'w-max min-w-full whitespace-pre'
-            )}
-          >
-            {content}
-          </pre>
+          <div className="flex min-w-full">
+            {/* Gutter mirrors the highlighted layout so the swap to Shiki does
+                not shift the text. Beside the <pre>, not inside it, so the
+                source text node stays verbatim. */}
+            <div
+              aria-hidden
+              className="shrink-0 select-none py-3 pl-2 pr-4 text-right font-mono text-xs leading-[1.6] text-subtle-foreground"
+            >
+              {content.split('\n').map((_, i) => (
+                <div key={i} className="min-w-8">
+                  {i + 1}
+                </div>
+              ))}
+            </div>
+            <pre
+              className={cn(
+                'm-0 min-w-0 flex-1 py-3 pr-2 font-mono text-xs leading-[1.6]',
+                wordWrap
+                  ? 'whitespace-pre-wrap break-words'
+                  : 'w-max min-w-full whitespace-pre'
+              )}
+            >
+              {content}
+            </pre>
+          </div>
         )}
 
         {selection && onAddToChat && (
