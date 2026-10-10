@@ -291,7 +291,17 @@ export async function getAgentToolSchemas(
     }),
     getSandboxStatus(),
   ])
-  if (!advertised) return schemaCache ?? []
+  if (!advertised) {
+    // Keep the last list only for the same surface: a thread's list handed to
+    // a Cowork run would silently drop the session-messaging tools.
+    try {
+      const [, , cachedScope] = JSON.parse(schemaCacheKey) as [string, unknown, string]
+      if (cachedScope === (scope ?? 'thread')) return schemaCache ?? []
+    } catch {
+      // No usable key: fall through to an empty list.
+    }
+    return []
+  }
   const shellOn = useAgentToolsConfig.getState().shellEnabled
   const builtin = advertised.schemas.filter(
     (s) =>

@@ -1560,7 +1560,9 @@ pub async fn run_tool(
     args: &serde_json::Value,
     ctx: &crate::tools::ToolContext<'_>,
 ) -> String {
-    let (Some(session_id), Some(data_folder)) = (ctx.session_id, ctx.mailbox_root) else {
+    let (Some(session_id), Some(data_folder)) =
+        (ctx.mailbox_session.or(ctx.session_id), ctx.mailbox_root)
+    else {
         return tool_error(&MailboxError::new(
             code::NOT_AVAILABLE,
             "session messaging is only available to Cowork sessions",
