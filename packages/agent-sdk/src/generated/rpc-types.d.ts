@@ -37,8 +37,11 @@ export type EventTag =
   | "run_resources"
   | "subagent_start"
   | "subagent_queued"
+  | "subagent_title"
   | "subagent_end"
+  | "subagent_finished"
   | "subagent"
+  | "retry"
   | "messages_updated"
   | "ask_request"
   | "ask_resolved"
@@ -366,11 +369,29 @@ export interface SubagentQueuedEvent {
   "type": "subagent_queued"
 }
 
+/** The short name the dispatch gave an errand, sent before its `SubagentQueued` or `SubagentStart`. Its own event so those keep their shape for the consumers that match them; a dispatch with no title sends none. */
+export interface SubagentTitleEvent {
+  "run_id": string
+  "name": string
+  "title": string
+  "type": "subagent_title"
+}
+
 /** A backgrounded subagent run finished (success or error). Pairs with the `SubagentStart` of the same `run_id`. */
 export interface SubagentEndEvent {
   "run_id": string
   "name": string
   "type": "subagent_end"
+}
+
+/** How a backgrounded subagent ended and what it cost, sent just before its `SubagentEnd`. A separate event so `SubagentEnd` keeps its shape for the consumers that match it. `status` is `done`, `error` or `turn_limit`; `usage` is the child's own token usage when the provider reported any; `detail` is a bounded one-line reason for a non-`done` ending. */
+export interface SubagentFinishedEvent {
+  "run_id": string
+  "name": string
+  "status": string
+  "usage"?: unknown
+  "detail"?: string | null
+  "type": "subagent_finished"
 }
 
 /** A backgrounded subagent's own internal event, tagged with its run so a consumer can attribute it to the right child even when several run concurrently. `event` is a non-terminal child event (Token/Step/ToolCall/ ToolResult/PermissionRequest); the child's terminal Done/Error is never wrapped (its result is delivered via `await_subagent`). Never a `ToolRequest`: a client answers a request by `request_id` on stdin, and it is told nothing about this wrapper, so a nested request would be unanswerable. A child's host tool call is routed to the root channel unwrapped instead, attributed by `ToolRequest.run_id`. */
@@ -379,6 +400,15 @@ export interface SubagentEvent {
   "name": string
   "event": unknown
   "type": "subagent"
+}
+
+/** The upstream request failed before anything streamed and is about to be sent again after `delay_ms`. `attempt` is the 1-based attempt that follows the wait, out of `max_attempts`; `reason` is the failure that prompted it. Sent once per retry so a consumer can say "retrying" rather than show a spinner that looks like a slow model. Display-only and never journaled; the turn continues with the next event or ends in `Error`. */
+export interface RetryEvent {
+  "attempt": number
+  "max_attempts": number
+  "delay_ms": number
+  "reason": string
+  "type": "retry"
 }
 
 /** The loop's compaction reduced the conversation while retrying a context overflow. The client should replace its session history with `messages` for subsequent turns. */
@@ -488,8 +518,11 @@ export type StreamEvent =
   | RunResourcesEvent
   | SubagentStartEvent
   | SubagentQueuedEvent
+  | SubagentTitleEvent
   | SubagentEndEvent
+  | SubagentFinishedEvent
   | SubagentEvent
+  | RetryEvent
   | MessagesUpdatedEvent
   | AskRequestEvent
   | AskResolvedEvent
@@ -517,8 +550,11 @@ export interface EventByTag {
   "run_resources": RunResourcesEvent
   "subagent_start": SubagentStartEvent
   "subagent_queued": SubagentQueuedEvent
+  "subagent_title": SubagentTitleEvent
   "subagent_end": SubagentEndEvent
+  "subagent_finished": SubagentFinishedEvent
   "subagent": SubagentEvent
+  "retry": RetryEvent
   "messages_updated": MessagesUpdatedEvent
   "ask_request": AskRequestEvent
   "ask_resolved": AskResolvedEvent

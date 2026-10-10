@@ -5,11 +5,16 @@ import { cn } from '@/lib/utils'
 
 interface FavoriteModelActionProps {
   model: Model
+  /** The provider the model is listed under. */
+  provider?: string
 }
 
-export function FavoriteModelAction({ model }: FavoriteModelActionProps) {
+export function FavoriteModelAction({
+  model,
+  provider,
+}: FavoriteModelActionProps) {
   const { isFavorite, toggleFavorite } = useFavoriteModel()
-  const isModelFavorite = isFavorite(model.id)
+  const isModelFavorite = isFavorite(model.id, provider)
 
   return (
     <Button
@@ -18,7 +23,7 @@ export function FavoriteModelAction({ model }: FavoriteModelActionProps) {
       variant="ghost"
       size="icon-sm"
       className="pointer-coarse:size-11"
-      onClick={() => toggleFavorite(model)}
+      onClick={() => toggleFavorite(model, provider)}
     >
       <Star
         aria-hidden

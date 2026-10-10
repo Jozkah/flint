@@ -29,7 +29,11 @@ import { BrandMark } from '@/containers/engine/BrandMark'
 import { modelLogo } from '@/lib/brandLogos'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import Capabilities from '@/containers/Capabilities'
-import { getModelDisplayName, isLocalProvider } from '@/lib/utils'
+import {
+  getModelDisplayName,
+  guardServerStart,
+  isLocalProvider,
+} from '@/lib/utils'
 import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
 import { ModelFilterButton } from '@/containers/ModelFilterButton'
 
@@ -144,18 +148,20 @@ function ClaudeCodeIntegration() {
 
       let actualPort: number | undefined
       try {
-        actualPort = await window.core?.api?.startServer({
-          host: serverHost,
-          port: serverPort,
-          prefix: apiPrefix,
-          apiKey,
-          trustedHosts,
-          isCorsEnabled: corsEnabled,
-          isVerboseEnabled: verboseLogs,
-          proxyTimeout: proxyTimeout,
-          // Omitted, the backend reads it as false (#156).
-          enableServerToolExecution,
-        })
+        actualPort = await guardServerStart(
+          window.core?.api?.startServer({
+            host: serverHost,
+            port: serverPort,
+            prefix: apiPrefix,
+            apiKey,
+            trustedHosts,
+            isCorsEnabled: corsEnabled,
+            isVerboseEnabled: verboseLogs,
+            proxyTimeout: proxyTimeout,
+            // Omitted, the backend reads it as false (#156).
+            enableServerToolExecution,
+          })
+        )
       } catch (startErr) {
         const msg =
           startErr instanceof Error ? startErr.message : String(startErr)

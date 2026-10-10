@@ -13,6 +13,19 @@ const SCHEMA_PRIMITIVE_TYPES: &[&str] = &[
 // which GBNF rejects; the failed grammar silently disables tool-call JSON.
 const LLAMACPP_BROKEN_STRING_FORMATS: &[&str] = &["date", "time", "date-time"];
 
+// Bounded repetition keywords expand into huge GBNF rules and can make the
+// whole grammar fail to compile.
+const LLAMACPP_BOUNDED_KEYWORDS: &[&str] = &[
+    "minLength",
+    "maxLength",
+    "minItems",
+    "maxItems",
+    "minProperties",
+    "maxProperties",
+    "minContains",
+    "maxContains",
+];
+
 /// True when llama.cpp's regex-to-grammar converter cannot express `pattern`.
 /// A failed conversion makes the whole tool schema fail ("Unable to generate
 /// parser"), so such patterns are dropped. It accepts literals, `.`, classes,
@@ -135,6 +148,12 @@ pub(crate) fn normalize_openai_tool_parameters_schema(schema: &mut serde_json::V
                 map.remove("pattern");
             }
 
+            // Bounded repetition (`char{0,10000}`, 100-item arrays) explodes
+            // llama.cpp's grammar compiler; the model keeps `type` and `description`.
+            for keyword in LLAMACPP_BOUNDED_KEYWORDS {
+                map.remove(*keyword);
+            }
+
             // Recurse, with shorthand expansion for keys whose direct children
             // are schema nodes.
             for (key, v) in map.iter_mut() {
@@ -165,6 +184,8 @@ pub(crate) fn normalize_openai_tool_parameters_schema(schema: &mut serde_json::V
                         }
                         _ => coerce_schema_node(v),
                     },
+                    // Literal data, not sub-schemas: leave untouched.
+                    "examples" | "example" | "default" | "enum" | "const" => {}
                     _ => normalize_openai_tool_parameters_schema(v),
                 }
             }

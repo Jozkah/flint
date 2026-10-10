@@ -42,8 +42,11 @@ EVENT_TAGS: tuple[str, ...] = (
     "run_resources",
     "subagent_start",
     "subagent_queued",
+    "subagent_title",
     "subagent_end",
+    "subagent_finished",
     "subagent",
+    "retry",
     "messages_updated",
     "ask_request",
     "ask_resolved",
@@ -89,8 +92,11 @@ EventTag = Literal[
     "run_resources",
     "subagent_start",
     "subagent_queued",
+    "subagent_title",
     "subagent_end",
+    "subagent_finished",
     "subagent",
+    "retry",
     "messages_updated",
     "ask_request",
     "ask_resolved",
@@ -392,12 +398,30 @@ class SubagentQueuedEvent(TypedDict):
     waiting: int
     type: Literal["subagent_queued"]
 
+class SubagentTitleEvent(TypedDict):
+    """`item/subagent_title`"""
+
+    run_id: str
+    name: str
+    title: str
+    type: Literal["subagent_title"]
+
 class SubagentEndEvent(TypedDict):
     """`item/subagent_end`"""
 
     run_id: str
     name: str
     type: Literal["subagent_end"]
+
+class SubagentFinishedEvent(TypedDict):
+    """`item/subagent_finished`"""
+
+    run_id: str
+    name: str
+    status: str
+    usage: NotRequired[Any]
+    detail: NotRequired[Union[str, None]]
+    type: Literal["subagent_finished"]
 
 class SubagentEvent(TypedDict):
     """`item/subagent`"""
@@ -406,6 +430,15 @@ class SubagentEvent(TypedDict):
     name: str
     event: Any
     type: Literal["subagent"]
+
+class RetryEvent(TypedDict):
+    """`item/retry`"""
+
+    attempt: int
+    max_attempts: int
+    delay_ms: int
+    reason: str
+    type: Literal["retry"]
 
 class MessagesUpdatedEvent(TypedDict):
     """`item/messages_updated`"""
@@ -514,8 +547,11 @@ StreamEvent = Union[
     RunResourcesEvent,
     SubagentStartEvent,
     SubagentQueuedEvent,
+    SubagentTitleEvent,
     SubagentEndEvent,
+    SubagentFinishedEvent,
     SubagentEvent,
+    RetryEvent,
     MessagesUpdatedEvent,
     AskRequestEvent,
     AskResolvedEvent,

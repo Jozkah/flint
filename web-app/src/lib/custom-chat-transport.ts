@@ -457,6 +457,8 @@ function normalizeToolInputSchemaValue(value: unknown): unknown {
         if (Array.isArray(childValue)) return [key, childValue.map(coerceSchemaNode)]
         return [key, coerceSchemaNode(childValue)]
       }
+      // Literal data, not sub-schemas: leave untouched.
+      if (SCHEMA_LITERAL_KEYS.has(key)) return [key, childValue]
       return [key, normalizeToolInputSchemaValue(childValue)]
     })
   )
@@ -478,6 +480,10 @@ function normalizeToolInputSchemaValue(value: unknown): unknown {
   if (hasDescription && !hasType && !hasNestedSchemaKeywords) {
     normalized.type = 'string'
   }
+
+  // Bounded repetition (`char{0,10000}`, 100-item arrays) explodes llama.cpp's
+  // grammar compiler; the model keeps `type` and `description`.
+  for (const keyword of LLAMACPP_BOUNDED_KEYWORDS) delete normalized[keyword]
 
   // llama.cpp's json-schema-to-grammar emits PCRE `\d` for these formats,
   // which GBNF rejects; the failed grammar silently disables tool-call JSON.
@@ -502,6 +508,17 @@ function normalizeToolInputSchemaValue(value: unknown): unknown {
 }
 
 const LLAMACPP_BROKEN_STRING_FORMATS = new Set(['date', 'time', 'date-time'])
+const LLAMACPP_BOUNDED_KEYWORDS = [
+  'minLength',
+  'maxLength',
+  'minItems',
+  'maxItems',
+  'minProperties',
+  'maxProperties',
+  'minContains',
+  'maxContains',
+]
+const SCHEMA_LITERAL_KEYS = new Set(['examples', 'example', 'default', 'enum', 'const'])
 const PCRE_SHORTHAND = /\\[dDwWsS]/
 
 /**

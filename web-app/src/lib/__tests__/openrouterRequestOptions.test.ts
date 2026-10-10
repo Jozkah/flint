@@ -18,6 +18,30 @@ describe('parseProviderRouting', () => {
       )
     ).toEqual({ order: ['openai'], allow_fallbacks: false })
   })
+  it('passes sort, require_parameters, data_collection and quantizations', () => {
+    expect(
+      parseProviderRouting(
+        JSON.stringify({
+          sort: 'throughput',
+          require_parameters: true,
+          data_collection: 'deny',
+          quantizations: ['fp8', 3, 'bf16'],
+        })
+      )
+    ).toEqual({
+      sort: 'throughput',
+      require_parameters: true,
+      data_collection: 'deny',
+      quantizations: ['fp8', 'bf16'],
+    })
+  })
+  it('drops out-of-range sort and data_collection values', () => {
+    expect(
+      parseProviderRouting(
+        '{"sort":"fastest","data_collection":"maybe","require_parameters":"yes"}'
+      )
+    ).toBeUndefined()
+  })
   it('ignores empty or invalid input', () => {
     expect(parseProviderRouting('')).toBeUndefined()
     expect(parseProviderRouting('{bad')).toBeUndefined()

@@ -394,6 +394,31 @@
           ]
         },
         {
+          "description": "The short name the dispatch gave an errand, sent before its\n`SubagentQueued` or `SubagentStart`. Its own event so those keep their\nshape for the consumers that match them; a dispatch with no title sends\nnone.",
+          "type": "object",
+          "properties": {
+            "run_id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "subagent_title"
+            }
+          },
+          "required": [
+            "type",
+            "run_id",
+            "name",
+            "title"
+          ]
+        },
+        {
           "description": "A backgrounded subagent run finished (success or error). Pairs with the\n`SubagentStart` of the same `run_id`.",
           "type": "object",
           "properties": {
@@ -412,6 +437,38 @@
             "type",
             "run_id",
             "name"
+          ]
+        },
+        {
+          "description": "How a backgrounded subagent ended and what it cost, sent just before its\n`SubagentEnd`. A separate event so `SubagentEnd` keeps its shape for the\nconsumers that match it. `status` is `done`, `error` or `turn_limit`;\n`usage` is the child's own token usage when the provider reported any;\n`detail` is a bounded one-line reason for a non-`done` ending.",
+          "type": "object",
+          "properties": {
+            "run_id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "usage": true,
+            "detail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "subagent_finished"
+            }
+          },
+          "required": [
+            "type",
+            "run_id",
+            "name",
+            "status"
           ]
         },
         {
@@ -437,6 +494,41 @@
             "run_id",
             "name",
             "event"
+          ]
+        },
+        {
+          "description": "The upstream request failed before anything streamed and is about to be\nsent again after `delay_ms`. `attempt` is the 1-based attempt that\nfollows the wait, out of `max_attempts`; `reason` is the failure that\nprompted it. Sent once per retry so a consumer can say \"retrying\" rather\nthan show a spinner that looks like a slow model. Display-only and never\njournaled; the turn continues with the next event or ends in `Error`.",
+          "type": "object",
+          "properties": {
+            "attempt": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "max_attempts": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "delay_ms": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "reason": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "retry"
+            }
+          },
+          "required": [
+            "type",
+            "attempt",
+            "max_attempts",
+            "delay_ms",
+            "reason"
           ]
         },
         {
