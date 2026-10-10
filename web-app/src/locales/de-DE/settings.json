@@ -689,5 +689,10 @@
     "noVisionModel": "Es ist kein Modell mit Bildverständnis verfügbar. Fügen Sie eines hinzu oder markieren Sie ein Modell als bildfähig.",
     "embed": "Angehängte Bilder durchsuchbar machen",
     "embedDesc": "Speichert die Beschreibung jedes Bildes zusätzlich bei den Dokumenten des Chats, damit sie später durchsucht werden kann. Dabei wird jedes angehängte Bild an das Beschreibungsmodell gesendet."
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "maxParallel": "Campaign parallel threads",
+    "maxParallelDesc": "How many campaign tasks may run at once, each in its own split pane. From 1 to 6. It applies to a running campaign at once; free panes still limit it."
   }
 }

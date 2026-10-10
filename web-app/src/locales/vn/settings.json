@@ -689,5 +689,10 @@
     "noVisionModel": "Không có mô hình nào nhìn được. Hãy thêm một mô hình hoặc đánh dấu một mô hình có khả năng nhìn.",
     "embed": "Cho phép tìm kiếm hình ảnh đính kèm",
     "embedDesc": "Lưu thêm bản mô tả của mỗi hình ảnh cùng tài liệu của cuộc trò chuyện để tìm kiếm sau. Việc này gửi mọi hình ảnh đính kèm tới mô hình mô tả."
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "maxParallel": "Campaign parallel threads",
+    "maxParallelDesc": "How many campaign tasks may run at once, each in its own split pane. From 1 to 6. It applies to a running campaign at once; free panes still limit it."
   }
 }

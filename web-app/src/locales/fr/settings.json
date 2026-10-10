@@ -691,5 +691,10 @@
     "noVisionModel": "Aucun modèle capable de voir n'est disponible. Ajoutez-en un ou marquez un modèle comme capable de voir.",
     "embed": "Rendre les images jointes recherchables",
     "embedDesc": "Stocke aussi la description de chaque image avec les documents du chat pour pouvoir la rechercher. Cela envoie chaque image jointe au modèle de description."
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "maxParallel": "Campaign parallel threads",
+    "maxParallelDesc": "How many campaign tasks may run at once, each in its own split pane. From 1 to 6. It applies to a running campaign at once; free panes still limit it."
   }
 }

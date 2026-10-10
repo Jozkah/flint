@@ -689,5 +689,10 @@
     "noVisionModel": "No model that can see is available. Add one, or mark a model as vision-capable, to use this.",
     "embed": "Make attached images searchable",
     "embedDesc": "Also store each image's description with the chat's documents so it can be searched later. This sends every attached image to the description model."
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "maxParallel": "Campaign parallel threads",
+    "maxParallelDesc": "How many campaign tasks may run at once, each in its own split pane. From 1 to 6. It applies to a running campaign at once; free panes still limit it."
   }
 }

@@ -862,5 +862,10 @@
       "startSetup": "설정 시작",
       "connecting": "연결 중..."
     }
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "maxParallel": "Campaign parallel threads",
+    "maxParallelDesc": "How many campaign tasks may run at once, each in its own split pane. From 1 to 6. It applies to a running campaign at once; free panes still limit it."
   }
 }

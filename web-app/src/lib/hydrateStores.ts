@@ -46,6 +46,7 @@ import { useSkillActivation } from '@/hooks/useSkillActivation'
 import { useImageDescription } from '@/hooks/useImageDescription'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
+import { useCampaignSettings } from '@/hooks/useCampaignSettings'
 import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
 // Side effect only in builds with VITE_JAN_E2E_HOOKS=1 (the rooms smoke lane).
 import '@/lib/rooms/e2eHooks'
@@ -106,6 +107,7 @@ const secondaryStores = [
   useImageDescription,
   useOnboardingGuide,
   useSessionMessaging,
+  useCampaignSettings,
   useSplitConversation,
   useGlobalExtensions,
 ] as const

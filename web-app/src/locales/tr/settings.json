@@ -689,5 +689,10 @@
     "noVisionModel": "Görebilen bir model yok. Bir tane ekleyin veya bir modeli görme destekli olarak işaretleyin.",
     "embed": "Eklenen görselleri aranabilir yap",
     "embedDesc": "Her görselin betimlemesini sohbetin belgeleriyle birlikte de saklar, böylece sonra aranabilir. Eklenen her görsel betimleme modeline gönderilir."
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "maxParallel": "Campaign parallel threads",
+    "maxParallelDesc": "How many campaign tasks may run at once, each in its own split pane. From 1 to 6. It applies to a running campaign at once; free panes still limit it."
   }
 }

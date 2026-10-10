@@ -693,5 +693,10 @@
     "noVisionModel": "Brak modelu, który widzi. Dodaj go lub oznacz model jako obsługujący obraz.",
     "embed": "Umożliwij wyszukiwanie w załączonych obrazach",
     "embedDesc": "Zapisuje też opis każdego obrazu wraz z dokumentami czatu, aby można go było później wyszukać. Każdy załączony obraz jest wysyłany do modelu opisującego."
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "maxParallel": "Campaign parallel threads",
+    "maxParallelDesc": "How many campaign tasks may run at once, each in its own split pane. From 1 to 6. It applies to a running campaign at once; free panes still limit it."
   }
 }

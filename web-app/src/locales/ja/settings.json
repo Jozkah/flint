@@ -689,5 +689,10 @@
     "noVisionModel": "画像を認識できるモデルがありません。追加するか、モデルを画像対応として設定してください。",
     "embed": "添付画像を検索できるようにする",
     "embedDesc": "各画像の説明をチャットのドキュメントとしても保存し、後で検索できるようにします。添付画像はすべて説明用モデルに送信されます。"
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "maxParallel": "Campaign parallel threads",
+    "maxParallelDesc": "How many campaign tasks may run at once, each in its own split pane. From 1 to 6. It applies to a running campaign at once; free panes still limit it."
   }
 }
