@@ -31,6 +31,9 @@ const NAMES = [
   'campaign_cancel',
   'campaign_steer',
   'campaign_decide',
+  'campaign_verify',
+  'campaign_merge',
+  'campaign_orphans',
 ]
 
 const baseTask = (over: Partial<CampaignTask> = {}): CampaignTask => ({
@@ -138,7 +141,7 @@ const PLAN = {
 }
 
 describe('campaign tool declarations', () => {
-  it('declares the six tools with object schemas and required fields', () => {
+  it('declares the nine tools with object schemas and required fields', () => {
     const schemas = campaignToolSchemas()
     expect(schemas.map((s) => s.name).sort()).toEqual([...NAMES].sort())
     for (const s of schemas) {
@@ -437,5 +440,178 @@ describe('the rest of the tools', () => {
     )
     expect(out.isError).toBeFalsy()
     expect(raw.api.decide).toHaveBeenCalledWith('c1', 'Use camelCase in the API')
+  })
+})
+
+describe('P4 tools: verify, merge, orphans', () => {
+  const withIntegration = (over: Partial<CampaignToolDeps> = {}) => {
+    const x = deps(over)
+    const api = x.raw.api as Record<string, unknown>
+    api.get = vi.fn(async (id: string) => {
+      const c = x.records.find((r) => r.id === id)
+      if (!c) throw new Error('missing')
+      return c
+    })
+    api.refresh = vi.fn(async () => x.records[0])
+    api.gatePlan = vi.fn(async () => ({ source: 'detected', command: 'npm run test' }))
+    api.finalize = vi.fn(async () => ({
+      gate: {
+        source: 'detected',
+        command: 'npm run test',
+        skipped: false,
+        passed: true,
+        timedOut: false,
+        exitCode: 0,
+        output: 'ok',
+        at: '',
+      },
+      proposalId: 'p1',
+      files: 3,
+      warning: null,
+      campaign: campaign({ status: 'merging' }),
+    }))
+    api.orphans = vi.fn(async () => [
+      { campaignId: 'c0', taskId: 'a', path: '/w/a', branch: 'flint/a', campaignStatus: 'done', pending: [], unmerged: [] },
+    ])
+    const runner = x.raw.runner as Record<string, unknown>
+    runner.verify = vi.fn(async () => [
+      {
+        taskId: 'a',
+        result: { taskId: 'a', verdict: 'PASS', next: 'verified', evidence: 'all met', campaign: campaign() },
+      },
+    ])
+    runner.integrate = vi.fn(async () => ({
+      merged: ['a'],
+      conflicts: [],
+      skipped: [],
+      errors: [],
+      campaign: campaign({ status: 'reviewing', tasks: [baseTask({ status: 'merged' })] }),
+    }))
+    runner.mergeOne = vi.fn(async () => ({
+      taskId: 'a',
+      merged: false,
+      alreadyMerged: false,
+      conflicts: ['src/a.rs'],
+      status: 'conflict',
+      campaignStatus: 'running',
+    }))
+    return x
+  }
+
+  it('are declared, coordinator-only, and finalize is the only always-ask step', () => {
+    expect([...CAMPAIGN_TOOLS]).toEqual(
+      expect.arrayContaining(['campaign_verify', 'campaign_merge', 'campaign_orphans'])
+    )
+    // Asked per call by campaign_merge itself (finalize), not for every merge.
+    expect(ALWAYS_ASK_TOOLS.has('campaign_merge')).toBe(false)
+    expect(ALWAYS_ASK_TOOLS.has('campaign_verify')).toBe(false)
+    const schema = campaignToolSchemas().find((s) => s.name === 'campaign_merge')!
+    expect(Object.keys(schema.parameters.properties as object)).toEqual(
+      expect.arrayContaining(['task_id', 'skip', 'finalize'])
+    )
+  })
+
+  it('verify runs the verifier and fences its evidence as untrusted', async () => {
+    const { d, raw } = withIntegration()
+    const out = await executeCampaignTool(call('campaign_verify', {}), ctx(), d)
+    expect(out.isError).toBeFalsy()
+    expect(raw.runner.verify).toHaveBeenCalledWith('c1', [])
+    const body = JSON.parse(out.output)
+    expect(body.untrusted).toBe(true)
+    expect(body.results[0]).toMatchObject({ task_id: 'a', verdict: 'PASS', next: 'verified' })
+  })
+
+  it('merge integrates in order and reports what merged', async () => {
+    const { d, raw } = withIntegration()
+    const out = await executeCampaignTool(call('campaign_merge', {}), ctx(), d)
+    expect(out.isError).toBeFalsy()
+    expect(raw.runner.integrate).toHaveBeenCalledWith('c1')
+    const body = JSON.parse(out.output)
+    expect(body.merged).toEqual(['a'])
+    expect(body.status).toBe('reviewing')
+  })
+
+  it('a conflict returns the files and changes nothing else', async () => {
+    const { d, raw } = withIntegration()
+    const out = await executeCampaignTool(
+      call('campaign_merge', { task_id: 'a' }),
+      ctx(),
+      d
+    )
+    expect(raw.runner.mergeOne).toHaveBeenCalledWith('c1', 'a')
+    const body = JSON.parse(out.output)
+    expect(body.merged).toBe(false)
+    expect(body.conflicts).toEqual(['src/a.rs'])
+  })
+
+  it('skip cancels a task that cannot finish, and refuses a live one', async () => {
+    const { d, raw, records } = withIntegration()
+    records[0] = campaign({
+      tasks: [baseTask({ id: 'a', status: 'failed' }), baseTask({ id: 'b', status: 'running' })],
+    })
+    const ok = await executeCampaignTool(call('campaign_merge', { skip: ['a'] }), ctx(), d)
+    expect(ok.isError).toBeFalsy()
+    expect(raw.api.transition).toHaveBeenCalledWith('c1', { task: { id: 'a', to: 'cancelled' } })
+    const live = await executeCampaignTool(call('campaign_merge', { skip: ['b'] }), ctx(), d)
+    expect(live.isError).toBe(true)
+  })
+
+  it('finalize asks the user first, naming the gate command, then runs it', async () => {
+    const { d, raw, records } = withIntegration()
+    records[0] = campaign({ status: 'reviewing', tasks: [baseTask({ status: 'merged' })] })
+    const c = ctx()
+    const out = await executeCampaignTool(call('campaign_merge', { finalize: true }), c, d)
+    expect(out.isError).toBeFalsy()
+    const asked = (c.onApprove as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(asked[1]).toBe('campaign_merge')
+    expect(asked[5]).toMatchObject({ alwaysAsk: true })
+    expect(asked[5].reason).toContain('npm run test')
+    expect(raw.api.finalize).toHaveBeenCalledWith('c1')
+    const body = JSON.parse(out.output)
+    expect(body.proposal_id).toBe('p1')
+    expect(body.gate.passed).toBe(true)
+  })
+
+  it('finalize is refused when denied, when nothing can ask, and before every task is merged', async () => {
+    const { d, raw, records } = withIntegration()
+    records[0] = campaign({ status: 'reviewing', tasks: [baseTask({ status: 'merged' })] })
+    const denied = await executeCampaignTool(
+      call('campaign_merge', { finalize: true }),
+      ctx({ onApprove: vi.fn(async () => false) }),
+      d
+    )
+    expect(denied.isError).toBe(true)
+    const mute = await executeCampaignTool(
+      call('campaign_merge', { finalize: true }),
+      ctx({ onApprove: undefined, mode: 'bypass' }),
+      d
+    )
+    expect(mute.isError).toBe(true)
+    expect(raw.api.finalize).not.toHaveBeenCalled()
+
+    records[0] = campaign({ status: 'running', tasks: [baseTask({ status: 'running' })] })
+    ;(raw.runner.integrate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      merged: [],
+      conflicts: [],
+      skipped: [],
+      errors: [],
+      campaign: records[0],
+    })
+    const early = await executeCampaignTool(
+      call('campaign_merge', { finalize: true }),
+      ctx({ onApprove: vi.fn(async () => true) }),
+      d
+    )
+    expect(early.isError).toBe(true)
+    expect(raw.api.finalize).not.toHaveBeenCalled()
+  })
+
+  it('orphans lists and removes nothing', async () => {
+    const { d, raw } = withIntegration()
+    const out = await executeCampaignTool(call('campaign_orphans', {}), ctx(), d)
+    const body = JSON.parse(out.output)
+    expect(body.orphans).toHaveLength(1)
+    expect(body.note).toContain('Nothing was removed')
+    expect(raw.api.transition).not.toHaveBeenCalled()
   })
 })

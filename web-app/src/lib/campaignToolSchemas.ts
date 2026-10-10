@@ -7,9 +7,12 @@ import {
   CAMPAIGN_CANCEL_TOOL_NAME,
   CAMPAIGN_COLLECT_TOOL_NAME,
   CAMPAIGN_DECIDE_TOOL_NAME,
+  CAMPAIGN_MERGE_TOOL_NAME,
+  CAMPAIGN_ORPHANS_TOOL_NAME,
   CAMPAIGN_PLAN_TOOL_NAME,
   CAMPAIGN_STATUS_TOOL_NAME,
   CAMPAIGN_STEER_TOOL_NAME,
+  CAMPAIGN_VERIFY_TOOL_NAME,
 } from '@/lib/campaignToolNames'
 
 export type CampaignToolSchema = {
@@ -35,8 +38,9 @@ export function campaignToolSchemas(): CampaignToolSchema[] {
         'into independent parts; ordinary work belongs in this session. ' +
         'Tasks that can run at the same time must not declare overlapping ' +
         'paths. Every call is put to the user. Nothing starts until they ' +
-        'approve. Tasks that depend on others start only after those are ' +
-        'merged, which this version does not do automatically.',
+        'approve. A finished task is verified by an independent reviewer ' +
+        'and merged into the campaign\'s integration branch; tasks that ' +
+        'depend on it start after that merge.',
       parameters: {
         type: 'object',
         properties: {
@@ -157,6 +161,67 @@ export function campaignToolSchemas(): CampaignToolSchema[] {
         },
         required: ['decision'],
       },
+    },
+    {
+      name: CAMPAIGN_VERIFY_TOOL_NAME,
+      description:
+        'Run the independent verifier on finished tasks. It sees the task ' +
+        'spec, the diff and build output, never the worker\'s reasoning. ' +
+        'PASS merges the task; FAIL or PARTIAL gives the worker one repair ' +
+        'round; BLOCKED or no verdict never merges. Tasks are verified ' +
+        'automatically when they finish: use this to retry a blocked one.',
+      parameters: {
+        type: 'object',
+        properties: {
+          campaign_id: campaignIdProp,
+          task_ids: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Limit to these completed tasks. Omit for all.',
+          },
+        },
+      },
+    },
+    {
+      name: CAMPAIGN_MERGE_TOOL_NAME,
+      description:
+        'Merge verified tasks into the integration branch in dependency ' +
+        'order (this also starts tasks that were waiting on them), skip ' +
+        'tasks that cannot finish, or finish the campaign. A conflict ' +
+        'changes nothing and returns the conflicting files; the task waits ' +
+        'for you to steer it or skip it. With finalize=true the build and ' +
+        'test gate runs on the integration branch and one proposal for the ' +
+        'user\'s checkout is created, after the user approves. Nothing is ' +
+        'written to the user\'s checkout until they apply the proposal.',
+      parameters: {
+        type: 'object',
+        properties: {
+          campaign_id: campaignIdProp,
+          task_id: {
+            type: 'string',
+            description: 'Merge only this verified task. Omit to merge all that can.',
+          },
+          skip: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Cancel these failed, conflicted or blocked tasks so the campaign can finish without them.',
+          },
+          finalize: {
+            type: 'boolean',
+            description:
+              'Run the gate and propose the result. Allowed only when every task is merged or cancelled.',
+          },
+        },
+      },
+    },
+    {
+      name: CAMPAIGN_ORPHANS_TOOL_NAME,
+      description:
+        'List worktrees that finished campaigns left behind, with the ' +
+        'uncommitted files and unmerged commits removing each would ' +
+        'destroy. Lists only; the user removes worktrees.',
+      parameters: { type: 'object', properties: {} },
     },
   ]
 }
