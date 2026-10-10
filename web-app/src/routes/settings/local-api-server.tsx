@@ -20,6 +20,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { cn } from '@/lib/utils'
 import { ApiKeyInput } from '@/containers/ApiKeyInput'
+import { UsageCeilingsCard } from '@/containers/UsageCeilingsCard'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { LogViewer } from '@/components/LogViewer'
@@ -579,6 +580,8 @@ function LocalAPIServerContent() {
                   }
                 />
               </Card>
+
+              <UsageCeilingsCard />
 
               <Card
                 title="Server Log"

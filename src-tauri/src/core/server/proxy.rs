@@ -1092,6 +1092,44 @@ async fn proxy_request(
     let original_path = parts.uri.path();
     let destination_path = get_destination_path(original_path, &config.prefix);
 
+    // Answers on these routes spend tokens, so they count toward the rolling
+    // ceilings in quotas.toml and are refused with a 429 once one is reached.
+    let metered = method == hyper::Method::POST
+        && matches!(
+            destination_path.as_str(),
+            "/chat/completions" | "/completions" | "/messages" | "/orchestrations"
+        );
+    if metered {
+        if let Some(refused) =
+            super::usage_meter::refusal(std::path::Path::new(&jan_data_folder))
+        {
+            let mut error_response = Response::builder()
+                .status(StatusCode::TOO_MANY_REQUESTS)
+                .header("Content-Type", "application/json")
+                .header("Retry-After", refused.retry_after_secs.to_string());
+            if let Some(room) =
+                super::usage_meter::headroom(std::path::Path::new(&jan_data_folder))
+            {
+                for (name, value) in room.headers() {
+                    error_response = error_response.header(name, value);
+                }
+            }
+            error_response = add_cors_headers_with_host_and_origin(
+                error_response,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            return Ok(error_response
+                .body(full(error_json(
+                    &refused.message,
+                    "rate_limit_error",
+                    "rate_limit_exceeded",
+                )))
+                .unwrap());
+        }
+    }
+
     // Initialize variables that will be set in the match
     let mut session_api_keys: Vec<String> = Vec::new();
     #[allow(unused_assignments)]
@@ -2511,6 +2549,15 @@ async fn proxy_request(
                         builder = builder.header(name, value);
                     }
                 }
+                if metered {
+                    if let Some(room) =
+                        super::usage_meter::headroom(std::path::Path::new(&jan_data_folder))
+                    {
+                        for (name, value) in room.headers() {
+                            builder = builder.header(name, value);
+                        }
+                    }
+                }
 
                 builder = add_cors_headers_with_host_and_origin(
                     builder,
@@ -2547,13 +2594,25 @@ async fn proxy_request(
 
                 let mut stream = response.bytes_stream();
                 let (mut sender, body) = body_channel();
+                let meter_model = metered
+                    .then(|| {
+                        serde_json::from_slice::<serde_json::Value>(&body_bytes_for_proxy)
+                            .ok()
+                            .and_then(|v| v.get("model").and_then(|m| m.as_str().map(String::from)))
+                    })
+                    .flatten();
+                let meter_folder = jan_data_folder.clone();
 
                 tokio::spawn(async move {
+                    let mut tap = super::usage_meter::UsageTap::default();
                     // Regular passthrough - when /messages succeeds directly,
                     // the response is already in the correct format
                     while let Some(chunk_result) = stream.next().await {
                         match chunk_result {
                             Ok(chunk) => {
+                                if meter_model.is_some() {
+                                    tap.push(&chunk);
+                                }
                                 if sender.send_data(chunk).await.is_err() {
                                     log::debug!("Client disconnected during streaming");
                                     break;
@@ -2566,6 +2625,15 @@ async fn proxy_request(
                         }
                     }
                     log::debug!("Streaming complete to client");
+                    if let (Some(model), Some((input, output))) = (meter_model, tap.counts()) {
+                        super::usage_meter::record(
+                            std::path::Path::new(&meter_folder),
+                            &model,
+                            input,
+                            output,
+                        );
+                        super::usage_meter::forget();
+                    }
                 });
 
                 return Ok(builder.body(body).unwrap());

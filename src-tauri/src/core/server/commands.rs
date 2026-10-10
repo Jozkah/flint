@@ -137,3 +137,46 @@ pub async fn get_server_status(state: State<'_, AppState>) -> Result<bool, Strin
 
     Ok(proxy::is_server_running(server_handle).await)
 }
+
+/// The rolling token ceilings and where use stands against them.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageCeilings {
+    pub tokens_per_5h: Option<u64>,
+    pub tokens_per_week: Option<u64>,
+    pub standings: Vec<crate::core::agent::quota::Standing>,
+}
+
+fn usage_ceilings_at(data: &std::path::Path) -> Result<UsageCeilings, String> {
+    use crate::core::agent::quota;
+    let declared = quota::quotas(data).map_err(|e| e.to_string())?;
+    let standings = quota::standing(data, &declared).map_err(|e| e.to_string())?;
+    Ok(UsageCeilings {
+        tokens_per_5h: declared.tokens.per_5h,
+        tokens_per_week: declared.tokens.per_week,
+        standings,
+    })
+}
+
+#[tauri::command]
+pub fn get_usage_ceilings<R: Runtime>(app_handle: AppHandle<R>) -> Result<UsageCeilings, String> {
+    usage_ceilings_at(&get_jan_data_folder_path(app_handle))
+}
+
+/// Set the 5 hour and weekly token ceilings. `None` removes a ceiling; other
+/// declared ceilings in quotas.toml are left as they are.
+#[tauri::command]
+pub fn set_usage_ceilings<R: Runtime>(
+    app_handle: AppHandle<R>,
+    tokens_per_5h: Option<u64>,
+    tokens_per_week: Option<u64>,
+) -> Result<UsageCeilings, String> {
+    use crate::core::agent::quota;
+    let data = get_jan_data_folder_path(app_handle);
+    let mut declared = quota::quotas(&data).map_err(|e| e.to_string())?;
+    declared.tokens.per_5h = tokens_per_5h.filter(|n| *n > 0);
+    declared.tokens.per_week = tokens_per_week.filter(|n| *n > 0);
+    quota::write_quotas(&data, &declared).map_err(|e| e.to_string())?;
+    super::usage_meter::forget();
+    usage_ceilings_at(&data)
+}
