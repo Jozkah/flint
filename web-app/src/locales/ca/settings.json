@@ -579,6 +579,12 @@
       "model": "{{file}} fixa el model a «{{value}}», així que Claude Code el continua utilitzant sigui quin sigui el que s'hagi definit aquí. Elimineu la línia \"model\" d'aquest fitxer o executeu /model a Claude Code i trieu Default.",
       "env": "{{file}} defineix {{key}} al seu bloc env, que preval sobre la variable que exporta Flint. Elimineu {{key}} d'aquest bloc env.",
       "apiKeyHelper": "{{file}} defineix un apiKeyHelper, que substitueix el testimoni que exporta Flint i pot fer que Claude Code us demani iniciar sessió de nou. Elimineu la línia \"apiKeyHelper\" d'aquest fitxer."
+    },
+    "contextRaised": "S'ha augmentat el context de {{model}} a {{context}} tokens perquè Claude Code hi pugui funcionar.",
+    "contextShortfall": {
+      "memory": "{{model}} s'executarà amb un context de {{context}} tokens, el màxim que cap a la memòria d'aquest dispositiu. Claude Code en necessita uns {{needed}}, així que les peticions llargues poden fallar. Trieu un model més petit o més comprimit.",
+      "trained": "{{model}} només es va entrenar amb {{context}} tokens de context. Claude Code en necessita uns {{needed}}, així que les peticions llargues fallaran. Trieu un model amb un context més gran.",
+      "user-setting": "{{model}} té un context de {{context}} tokens a la configuració del model, que preval sobre l'elecció automàtica. Claude Code en necessita uns {{needed}}, així que les peticions llargues poden fallar. Augmenteu la mida del context a la configuració del model."
     }
   },
   "memory": {

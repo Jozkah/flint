@@ -579,6 +579,12 @@
       "model": "{{file}} przypina model do „{{value}}”, więc Claude Code nadal go używa niezależnie od tego, co ustawiono tutaj. Usuń wiersz \"model\" z tego pliku albo uruchom w Claude Code /model i wybierz Default.",
       "env": "{{file}} ustawia {{key}} w swoim bloku env, który ma pierwszeństwo przed zmienną eksportowaną przez Flint. Usuń {{key}} z tego bloku env.",
       "apiKeyHelper": "{{file}} ustawia apiKeyHelper, który zastępuje token eksportowany przez Flint i może sprawić, że Claude Code poprosi o ponowne zalogowanie. Usuń wiersz \"apiKeyHelper\" z tego pliku."
+    },
+    "contextRaised": "Zwiększono kontekst modelu {{model}} do {{context}} tokenów, aby Claude Code mógł z niego korzystać.",
+    "contextShortfall": {
+      "memory": "{{model}} będzie działać z kontekstem {{context}} tokenów, czyli maksimum mieszczącym się w pamięci tego urządzenia. Claude Code potrzebuje około {{needed}}, więc długie żądania mogą się nie powieść. Wybierz mniejszy lub bardziej skompresowany model.",
+      "trained": "{{model}} był trenowany tylko na {{context}} tokenach kontekstu. Claude Code potrzebuje około {{needed}}, więc długie żądania się nie powiodą. Wybierz model z większym kontekstem.",
+      "user-setting": "{{model}} ma w ustawieniach modelu kontekst {{context}} tokenów, który ma pierwszeństwo przed wyborem automatycznym. Claude Code potrzebuje około {{needed}}, więc długie żądania mogą się nie powieść. Zwiększ rozmiar kontekstu w ustawieniach modelu."
     }
   },
   "memory": {

@@ -575,6 +575,12 @@
       "model": "{{file}} pins the model to \"{{value}}\", so Claude Code keeps using it whatever is set here. Delete the \"model\" line from that file, or run /model in Claude Code and pick Default.",
       "env": "{{file}} sets {{key}} in its env block, which wins over the variable Flint exports. Remove {{key}} from that env block.",
       "apiKeyHelper": "{{file}} sets an apiKeyHelper, which replaces the token Flint exports and can make Claude Code ask you to log in again. Remove the \"apiKeyHelper\" line from that file."
+    },
+    "contextRaised": "Raised the context of {{model}} to {{context}} tokens so Claude Code can run on it.",
+    "contextShortfall": {
+      "memory": "{{model}} will run with a {{context}}-token context, the most that fits in this device's memory. Claude Code needs about {{needed}}, so long requests may fail. Choose a smaller or more compressed model.",
+      "trained": "{{model}} was trained for only {{context}} tokens of context. Claude Code needs about {{needed}}, so long requests will fail. Choose a model with a larger context.",
+      "user-setting": "{{model}} is set to a {{context}}-token context in its model settings, which wins over the automatic choice. Claude Code needs about {{needed}}, so long requests may fail. Raise Context Size in the model's settings."
     }
   },
   "memory": {

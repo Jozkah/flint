@@ -575,6 +575,12 @@
       "model": "{{file}} modeli \"{{value}}\" olarak sabitliyor, bu yüzden Claude Code burada ne ayarlanırsa ayarlansın onu kullanmaya devam eder. O dosyadan \"model\" satırını silin veya Claude Code'da /model çalıştırıp Default seçin.",
       "env": "{{file}} env bloğunda {{key}} değerini ayarlıyor ve bu, Flint'in dışa aktardığı değişkenden önceliklidir. {{key}} değerini o env bloğundan kaldırın.",
       "apiKeyHelper": "{{file}} bir apiKeyHelper ayarlıyor; bu, Flint'in dışa aktardığı belirteci değiştirir ve Claude Code'un yeniden oturum açmanızı istemesine yol açabilir. O dosyadan \"apiKeyHelper\" satırını kaldırın."
+    },
+    "contextRaised": "Claude Code çalışabilsin diye {{model}} bağlamı {{context}} token'a yükseltildi.",
+    "contextShortfall": {
+      "memory": "{{model}}, bu cihazın belleğine sığan en yüksek değer olan {{context}} token'lık bağlamla çalışacak. Claude Code yaklaşık {{needed}} gerektirir, bu yüzden uzun istekler başarısız olabilir. Daha küçük veya daha çok sıkıştırılmış bir model seçin.",
+      "trained": "{{model}} yalnızca {{context}} token'lık bağlam için eğitildi. Claude Code yaklaşık {{needed}} gerektirir, bu yüzden uzun istekler başarısız olur. Daha büyük bağlamlı bir model seçin.",
+      "user-setting": "{{model}} için model ayarlarında {{context}} token'lık bağlam belirlenmiş ve bu, otomatik seçimden önceliklidir. Claude Code yaklaşık {{needed}} gerektirir, bu yüzden uzun istekler başarısız olabilir. Model ayarlarında bağlam boyutunu artırın."
     }
   },
   "memory": {
