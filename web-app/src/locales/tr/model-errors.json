@@ -31,7 +31,7 @@
   "serverPortOccupied": "Bağlantı noktası kullanımda",
   "serverPortOccupiedDescription": "{{port}} bağlantı noktası zaten kullanılıyor. Lütfen farklı bir bağlantı noktası deneyin.",
   "serverPortFallback": "Sunucu farklı bir bağlantı noktasında başlatıldı",
-  "serverPortFallbackDescription": "{{requested}} numaralı bağlantı noktası kullanılamıyor, bu yüzden Yerel API Sunucusu {{actual}} numaralı bağlantı noktasını dinliyor. Bağlantı noktası ayarı buna uyacak şekilde güncellendi.",
+  "serverPortFallbackDescription": "{{requested}} numaralı bağlantı noktası kullanılamıyor, bu yüzden Yerel API Sunucusu {{actual}} numaralı bağlantı noktasını dinliyor. Kayıtlı bağlantı noktası ayarı değiştirilmedi.",
   "serverInvalidModelPath": "Model yolu geçersiz veya erişilemiyor",
   "serverStartModelFailed": "Model başlatılamadı",
   "serverStartFailed": "Sunucu başlatılamadı"

@@ -572,6 +572,12 @@
     "mediumModelDesc": "Sonnet",
     "smallModel": "Modello piccolo",
     "smallModelDesc": "Haiku",
+    "overridesTitle": "Impostazioni di Claude Code che sovrascrivono questi modelli",
+    "overrides": {
+      "model": "{{file}} fissa il modello su «{{value}}», quindi Claude Code continua a usarlo qualunque cosa sia impostata qui. Elimina la riga \"model\" da quel file oppure esegui /model in Claude Code e scegli Default.",
+      "env": "{{file}} imposta {{key}} nel suo blocco env, che prevale sulla variabile esportata da Flint. Rimuovi {{key}} da quel blocco env.",
+      "apiKeyHelper": "{{file}} imposta un apiKeyHelper, che sostituisce il token esportato da Flint e può far chiedere a Claude Code di accedere di nuovo. Rimuovi la riga \"apiKeyHelper\" da quel file."
+    },
     "contextRaised": "Il contesto di {{model}} è stato portato a {{context}} token perché Claude Code possa usarlo.",
     "contextShortfall": {
       "memory": "{{model}} verrà eseguito con un contesto di {{context}} token, il massimo che entra nella memoria di questo dispositivo. Claude Code ne richiede circa {{needed}}, quindi le richieste lunghe possono fallire. Scegli un modello più piccolo o più compresso.",

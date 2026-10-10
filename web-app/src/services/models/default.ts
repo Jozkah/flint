@@ -26,6 +26,7 @@ import {
   extractToolContextFromMetadata,
 } from './tokenCountToolContext'
 import { releaseImageModelForChat } from '@/lib/studio/arbiter'
+import { useAppState } from '@/hooks/useAppState'
 
 // TODO: Replace this with the actual provider later
 const defaultProvider = 'llamacpp'
@@ -148,6 +149,10 @@ export class DefaultModelsService implements ModelsService {
 
     return engine
       .load(model, settings, false, bypassAutoUnload)
+      .then(async (session) => {
+        await this.syncLoadedModels(engine, provider, model)
+        return session
+      })
       .catch((error) => {
         console.error(
           `Failed to start model ${model} for provider ${provider.provider}:`,
@@ -155,6 +160,41 @@ export class DefaultModelsService implements ModelsService {
         )
         throw error
       })
+      .finally(() => {
+        // The engine's progress events set an app-wide marker, and only a chat
+        // turn clears it. A start from a settings page, the API server or a
+        // room leaves it behind, and the model's status chip then reads
+        // "Loading" for good. The load is over here, whichever way it ended.
+        const app = useAppState.getState()
+        if (app.modelLoadProgress?.modelId === model) {
+          app.updateModelLoadProgress(undefined)
+        }
+      })
+  }
+
+  /**
+   * Only settings pages wrote the app-wide loaded list, so a model loaded by a
+   * chat or the API server left the sidebar count behind until a page change.
+   * Record what the engine now has loaded for this provider: its new model in,
+   * and any of its models it unloaded to make room out. Other providers' ids
+   * are left as they are.
+   */
+  private async syncLoadedModels(
+    engine: AIEngine,
+    provider: ProviderObject,
+    model: string
+  ): Promise<void> {
+    try {
+      const loaded = await engine.getLoadedModels()
+      if (!Array.isArray(loaded)) return
+      const ours = new Set(provider.models.map((m) => m.id))
+      const app = useAppState.getState()
+      const kept = app.activeModels.filter((id) => !ours.has(id))
+      const next = Array.from(new Set([...kept, ...loaded, model]))
+      app.setActiveModels(next)
+    } catch {
+      // The list is a display aid; a failed read must not fail the load.
+    }
   }
 
   private reloadingModels = new Map<

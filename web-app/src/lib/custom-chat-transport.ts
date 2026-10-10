@@ -16,7 +16,7 @@ import {
   userMessageText,
   withPromptContext,
 } from '@/lib/ccContextHooks'
-import { fetchServerWindow } from '@/lib/serverWindow'
+import { fetchServerWindow, serverWindowHeaders } from '@/lib/serverWindow'
 import { knownContextWindowDetail } from '@/lib/knownContextWindow'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -3000,7 +3000,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         threadId,
         modelId
       ),
-      fetchServer: () => fetchServerWindow(provider?.base_url, modelId),
+      fetchServer: () =>
+        fetchServerWindow(
+          provider?.base_url,
+          modelId,
+          serverWindowHeaders(provider)
+        ),
     })
     const knownContextTokens = resolvedWindow.tokens
     // The resend after a length refusal plans against what the refusal named

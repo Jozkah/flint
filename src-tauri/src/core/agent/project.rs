@@ -21,6 +21,10 @@ pub(crate) struct AgentToml {
     pub provider: Option<ProviderSection>,
     #[serde(default)]
     pub tools: ToolsSection,
+    /// `[prompt]` -- which contributors to the system prompt may sit above the
+    /// cache line.
+    #[serde(default)]
+    pub prompt: crate::core::agent::prompt::PromptSection,
     #[serde(default)]
     pub skills: SkillsSection,
     #[serde(default)]
@@ -458,6 +462,22 @@ enabled = []
 # always | relevance
 inject = "always"
 
+# Who may write above the cache line, deny-wins like [tools]. A provider reuses
+# only the leading bytes of a request, so what sits first should be what does not
+# change. Unset keeps every contributor where the code puts it; setting
+# prefix_allow narrows the leading part of the system prompt to exactly the ids
+# listed and moves the rest behind it (nothing is dropped). `flint cli agent
+# status` prints where each contributor lands.
+# Ids: assistant_instructions, guidelines, subagent_guide, skill_guide,
+# web_tools_guide, memory_precedence, project_context, skills, project_tooling,
+# memory_catalog, runtime_environment, remembered_memories, date, session_hooks,
+# plan_addendum, eager_todo_addendum. tool_schemas is a request field and always
+# stays above the line; prompt_submit_hooks and todo_upkeep change while a run
+# works and are always below it (listing them is an error).
+# [prompt]
+# prefix_allow = ["assistant_instructions", "guidelines", "skills"]
+# prefix_deny = ["project_context"]
+
 # Who to tell when a run ends, or stops to wait for you. Nothing is sent but
 # which run, what happened and when -- never the prompt, the answer or any tool
 # output.
@@ -536,6 +556,9 @@ pub(crate) struct RunSettings {
     pub allow_domains: Vec<String>,
     /// `[tools].deny_domains` plus the machine policy's.
     pub deny_domains: Vec<String>,
+    /// `[prompt]`: which system-prompt contributors may sit above the cache
+    /// line. Resolved here so composition and `agent status` read one parse.
+    pub prompt: crate::core::agent::prompt::PromptPolicy,
     /// `[agent].worktree`: give each session its own git checkout. Merged with
     /// the global setting and the `--worktree` flag by the caller. CLI-only,
     /// like the `[agent]` section it comes from.
@@ -572,9 +595,18 @@ pub(crate) fn run_settings_for(project_root: &Path, profile: Option<&str>) -> Ru
         sandbox: cfg.tools.sandbox,
         format_on_edit: cfg.tools.format_on_edit.unwrap_or(false),
         nul_programs: cfg.tools.nul_programs,
+        prompt: crate::core::agent::prompt::PromptPolicy::new(cfg.prompt),
         #[cfg(feature = "cli")]
         worktree: cfg.agent.worktree,
     }
+}
+
+/// The `[prompt]` placement policy for `project_root`, or the defaults when the
+/// project has no agent.toml. A thin read of [`run_settings`] for the callers
+/// that need only this: `agent status` and the `/context` sizing.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+pub(crate) fn prompt_policy(project_root: &Path) -> crate::core::agent::prompt::PromptPolicy {
+    run_settings(project_root).prompt
 }
 
 /// The licences this project allows its dependencies to carry (AH-158). A
@@ -1042,6 +1074,48 @@ skills = ["two", "three"]
         ensure_project(&root).expect("scaffold");
         let cfg = load_agent_config(&root).expect("load");
         assert_eq!(cfg.tools.default.as_deref(), Some("read-only"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The scaffolded `[prompt]` section is all comments: a fresh project keeps
+    /// every contributor where the code puts it.
+    #[test]
+    fn scaffolded_prompt_section_changes_nothing() {
+        let root = unique_root("prompt_scaffold");
+        ensure_project(&root).expect("scaffold");
+        let cfg = load_agent_config(&root).expect("load");
+        assert_eq!(cfg.prompt, crate::core::agent::prompt::PromptSection::default());
+        assert!(AGENT_TOML_TEMPLATE.contains("# [prompt]"));
+        assert!(AGENT_TOML_TEMPLATE.contains("prefix_allow"));
+        let policy = prompt_policy(&root);
+        assert_eq!(policy.prefix_allow(), None);
+        assert!(policy.prefix_deny().is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn prompt_section_reads_allow_and_deny() {
+        use crate::core::agent::prompt::{Composer, Placement};
+        let root = unique_root("prompt_lists");
+        write_agent_toml(
+            &root,
+            "[prompt]\nprefix_allow = [\"assistant_instructions\", \"skills\"]\nprefix_deny = [\"skills\"]\n",
+        );
+        let policy = prompt_policy(&root);
+        assert_eq!(
+            policy.prefix_allow(),
+            Some(&["assistant_instructions".to_string(), "skills".to_string()][..])
+        );
+        assert_eq!(policy.prefix_deny(), ["skills".to_string()]);
+        assert_eq!(
+            policy.placement_of(Composer::AssistantInstructions).unwrap(),
+            Placement::Prefix
+        );
+        assert_eq!(
+            policy.placement_of(Composer::Skills).unwrap(),
+            Placement::Tail,
+            "deny wins over allow"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

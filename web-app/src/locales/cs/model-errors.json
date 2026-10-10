@@ -31,7 +31,7 @@
   "serverPortOccupied": "Port je používán",
   "serverPortOccupiedDescription": "Port {{port}} je již používán. Zkuste jiný port.",
   "serverPortFallback": "Server se spustil na jiném portu",
-  "serverPortFallbackDescription": "Port {{requested}} není dostupný, proto místní API server naslouchá na portu {{actual}}. Nastavení portu bylo upraveno tak, aby odpovídalo.",
+  "serverPortFallbackDescription": "Port {{requested}} není dostupný, proto místní API server naslouchá na portu {{actual}}. Uložené nastavení portu zůstává beze změny.",
   "serverInvalidModelPath": "Neplatná nebo nedostupná cesta k modelu",
   "serverStartModelFailed": "Model se nepodařilo spustit",
   "serverStartFailed": "Server se nepodařilo spustit"

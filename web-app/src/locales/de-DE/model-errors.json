@@ -31,7 +31,7 @@
   "serverPortOccupied": "Port belegt",
   "serverPortOccupiedDescription": "Port {{port}} wird bereits verwendet. Bitte versuche einen anderen Port.",
   "serverPortFallback": "Server auf anderem Port gestartet",
-  "serverPortFallbackDescription": "Port {{requested}} ist nicht verfügbar, daher lauscht der lokale API-Server auf Port {{actual}}. Die Port-Einstellung wurde entsprechend angepasst.",
+  "serverPortFallbackDescription": "Port {{requested}} ist nicht verfügbar, daher lauscht der lokale API-Server auf Port {{actual}}. Die gespeicherte Port-Einstellung bleibt unverändert.",
   "serverInvalidModelPath": "Ungültiger oder nicht zugänglicher Modellpfad",
   "serverStartModelFailed": "Modell konnte nicht gestartet werden",
   "serverStartFailed": "Server konnte nicht gestartet werden"

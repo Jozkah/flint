@@ -71,6 +71,7 @@ pub mod plugin_commands;
 pub mod plugins;
 pub mod project;
 pub(crate) mod projects_registry;
+pub(crate) mod prompt;
 pub mod proposals;
 pub mod provenance;
 pub mod pull_request;

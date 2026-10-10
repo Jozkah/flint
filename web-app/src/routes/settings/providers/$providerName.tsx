@@ -50,6 +50,7 @@ import { Icon } from '@/components/ui/icon'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { toast } from 'sonner'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { takeFirstModelFetch } from '@/lib/pendingFirstModelFetch'
 import { predefinedProviders } from '@/constants/providers'
 import { useModelLoad } from '@/hooks/useModelLoad'
 import { useAppState } from '@/hooks/useAppState'
@@ -66,6 +67,7 @@ import {
   isLocalEndpoint,
 } from '@/lib/endpointDiagnostics'
 import { errorText } from '@/lib/errorText'
+import { describeEngineError, parseEngineError } from '@/lib/engineError'
 import {
   deriveModelStatus,
   modelStatusLabelKey,
@@ -794,6 +796,15 @@ function ProviderDetail() {
     }
   }
 
+  // A provider the user has just added lists its models without a manual
+  // click: one refresh, through the same action as the button, no polling.
+  useEffect(() => {
+    if (!provider?.base_url) return
+    if (takeFirstModelFetch(providerName)) void handleRefreshModels()
+    // Runs for the provider on screen, not for every later store change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerName, provider?.base_url])
+
   const handleStartModel = async (modelId: string) => {
     // Add model to loading state
     setLoadingModels((prev) => [...prev, modelId])
@@ -812,7 +823,11 @@ function ProviderDetail() {
         setFailedModels((prev) =>
           prev.includes(modelId) ? prev : [...prev, modelId]
         )
-        const message = errorText(error, 'Model could not start')
+        // An engine failure carries a code and the engine's own words; the
+        // plain text of it is only "The model could not be loaded."
+        const message = parseEngineError(error)
+          ? describeEngineError(error)
+          : errorText(error, 'Model could not start')
         setModelLoadError(message)
         toast.error(`Could not start ${modelId}`, { description: message })
       } finally {

@@ -18,6 +18,30 @@
 import { providerFetch } from '@/lib/providerFetch'
 import { endpointScope } from '@/lib/endpointDiagnostics'
 import { usableContextValue } from '@/lib/modelCapabilities'
+import { applyProviderAuthHeader } from '@/lib/anthropicHeaders'
+import { applyCustomHeaders } from '@/lib/customHeaders'
+import { providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
+
+type ProbeProvider = Parameters<typeof applyProviderAuthHeader>[0] &
+  Parameters<typeof providerRemoteApiKeyChain>[0] &
+  Parameters<typeof applyCustomHeaders>[1]
+
+/**
+ * The headers a provider's own requests carry, for the probe: its key and its
+ * custom headers, built the way the model list builds them. A gateway or a
+ * vLLM started with `--api-key` answers 401 to an anonymous `/props` or
+ * `/models`, and the context card then has no size to show for a model whose
+ * server states it. Undefined for a keyless provider.
+ */
+export function serverWindowHeaders(
+  provider: ProbeProvider | null | undefined
+): Record<string, string> | undefined {
+  if (!provider) return undefined
+  const headers: Record<string, string> = {}
+  applyProviderAuthHeader(provider, headers, providerRemoteApiKeyChain(provider)[0])
+  applyCustomHeaders(headers, provider)
+  return Object.keys(headers).length > 0 ? headers : undefined
+}
 
 /** `http://host:port/props`, from a base URL that may end in `/v1`. */
 export function propsUrl(baseUrl: string | null | undefined): string | null {
@@ -97,12 +121,16 @@ export function resetServerWindowCache(): void {
   inFlight.clear()
 }
 
-async function getJson(url: string): Promise<unknown | null> {
+async function getJson(
+  url: string,
+  headers?: Record<string, string>
+): Promise<unknown | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
     const response = await providerFetch(url, {
       method: 'GET',
+      ...(headers ? { headers } : {}),
       signal: controller.signal,
     })
     return response.ok ? await response.json() : null
@@ -121,7 +149,8 @@ async function getJson(url: string): Promise<unknown | null> {
  */
 export async function fetchServerWindow(
   baseUrl: string | null | undefined,
-  modelId?: string | null
+  modelId?: string | null,
+  headers?: Record<string, string>
 ): Promise<number | null> {
   const props = propsUrl(baseUrl)
   const models = modelsUrl(baseUrl)
@@ -134,9 +163,9 @@ export async function fetchServerWindow(
   if (pending) return pending
 
   const request = (async () => {
-    const fromProps = parseServerWindow(await getJson(props))
+    const fromProps = parseServerWindow(await getJson(props, headers))
     if (fromProps != null) return fromProps
-    return parseModelsWindow(await getJson(models), modelId)
+    return parseModelsWindow(await getJson(models, headers), modelId)
   })()
   inFlight.set(key, request)
   try {

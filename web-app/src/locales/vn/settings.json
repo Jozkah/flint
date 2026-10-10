@@ -570,6 +570,12 @@
     "mediumModelDesc": "Sonnet",
     "smallModel": "Mô hình nhỏ",
     "smallModelDesc": "Haiku",
+    "overridesTitle": "Cài đặt Claude Code ghi đè các mô hình này",
+    "overrides": {
+      "model": "{{file}} ghim mô hình là \"{{value}}\", nên Claude Code vẫn dùng mô hình đó bất kể thiết lập ở đây. Hãy xóa dòng \"model\" khỏi tệp đó, hoặc chạy /model trong Claude Code và chọn Default.",
+      "env": "{{file}} đặt {{key}} trong khối env, và giá trị này được ưu tiên hơn biến mà Flint xuất ra. Hãy xóa {{key}} khỏi khối env đó.",
+      "apiKeyHelper": "{{file}} đặt một apiKeyHelper, thay thế token mà Flint xuất ra và có thể khiến Claude Code yêu cầu bạn đăng nhập lại. Hãy xóa dòng \"apiKeyHelper\" khỏi tệp đó."
+    },
     "contextRaised": "Đã tăng ngữ cảnh của {{model}} lên {{context}} token để Claude Code có thể chạy trên đó.",
     "contextShortfall": {
       "memory": "{{model}} sẽ chạy với ngữ cảnh {{context}} token, mức tối đa vừa với bộ nhớ của thiết bị này. Claude Code cần khoảng {{needed}}, nên các yêu cầu dài có thể thất bại. Hãy chọn mô hình nhỏ hơn hoặc nén nhiều hơn.",

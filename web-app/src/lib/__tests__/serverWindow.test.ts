@@ -10,6 +10,7 @@ import {
   parseServerWindow,
   propsUrl,
   resetServerWindowCache,
+  serverWindowHeaders,
 } from '@/lib/serverWindow'
 
 const answer = (body: unknown, ok = true) =>
@@ -59,6 +60,58 @@ describe('reading a server window', () => {
   it('probes one on the local network too', async () => {
     h.fetch.mockReturnValue(answer({ n_ctx: 32768 }))
     expect(await fetchServerWindow('http://192.168.1.20:8080/v1')).toBe(32768)
+  })
+
+  describe('a server that wants the provider key', () => {
+    const gateway = {
+      provider: 'gateway',
+      base_url: 'http://192.168.1.20:8000/v1',
+      api_key: 'sk-lan',
+      custom_header: [{ header: 'X-Tenant', value: 'blue', enabled: true }],
+    }
+
+    it('sends the key and the custom headers the model list sends', () => {
+      expect(serverWindowHeaders(gateway as never)).toEqual({
+        Authorization: 'Bearer sk-lan',
+        'X-Tenant': 'blue',
+      })
+    })
+
+    it('uses x-api-key for an Anthropic-compatible provider', () => {
+      expect(
+        serverWindowHeaders({
+          provider: 'claude-gw',
+          base_url: 'http://192.168.1.20:8000',
+          api_type: 'anthropic',
+          api_key: 'sk-ant',
+        } as never)
+      ).toEqual({ 'x-api-key': 'sk-ant' })
+    })
+
+    it('sends nothing for a keyless provider', () => {
+      expect(
+        serverWindowHeaders({ provider: 'ollama', base_url: 'http://localhost:11434/v1' } as never)
+      ).toBeUndefined()
+      expect(serverWindowHeaders(undefined)).toBeUndefined()
+    })
+
+    it('puts them on the /props probe and on the model list fallback', async () => {
+      h.fetch.mockReturnValueOnce(answer({}, false)).mockReturnValueOnce(
+        answer({ data: [{ id: 'm', max_model_len: 65536 }] })
+      )
+      const headers = serverWindowHeaders(gateway as never)
+      expect(await fetchServerWindow(gateway.base_url, 'm', headers)).toBe(65536)
+      expect(h.fetch).toHaveBeenNthCalledWith(
+        1,
+        'http://192.168.1.20:8000/props',
+        expect.objectContaining({ headers })
+      )
+      expect(h.fetch).toHaveBeenNthCalledWith(
+        2,
+        'http://192.168.1.20:8000/v1/models',
+        expect.objectContaining({ headers })
+      )
+    })
   })
 
   it('never calls a hosted provider', async () => {

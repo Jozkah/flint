@@ -31,7 +31,7 @@
   "serverPortOccupied": "Порт занят",
   "serverPortOccupiedDescription": "Порт {{port}} уже используется. Попробуйте другой порт.",
   "serverPortFallback": "Сервер запущен на другом порту",
-  "serverPortFallbackDescription": "Порт {{requested}} недоступен, поэтому локальный API-сервер слушает порт {{actual}}. Настройка порта обновлена соответствующим образом.",
+  "serverPortFallbackDescription": "Порт {{requested}} недоступен, поэтому локальный API-сервер слушает порт {{actual}}. Сохранённая настройка порта не изменена.",
   "serverInvalidModelPath": "Недопустимый или недоступный путь к модели",
   "serverStartModelFailed": "Не удалось запустить модель",
   "serverStartFailed": "Не удалось запустить сервер"

@@ -31,7 +31,7 @@
   "serverPortOccupied": "Port in use",
   "serverPortOccupiedDescription": "Port {{port}} is already in use. Please try a different port.",
   "serverPortFallback": "Server started on a different port",
-  "serverPortFallbackDescription": "Port {{requested}} is not available, so the Local API Server is listening on port {{actual}}. The port setting was updated to match.",
+  "serverPortFallbackDescription": "Port {{requested}} is not available, so the Local API Server is listening on port {{actual}}. Your saved port setting is unchanged.",
   "serverInvalidModelPath": "Invalid or inaccessible model path",
   "serverStartModelFailed": "Failed to start model",
   "serverStartFailed": "Failed to start server"

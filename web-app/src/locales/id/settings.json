@@ -568,6 +568,12 @@
     "mediumModelDesc": "Sonnet",
     "smallModel": "Model Kecil",
     "smallModelDesc": "Haiku",
+    "overridesTitle": "Pengaturan Claude Code yang menimpa model ini",
+    "overrides": {
+      "model": "{{file}} menyematkan model ke \"{{value}}\", sehingga Claude Code tetap memakainya apa pun yang diatur di sini. Hapus baris \"model\" dari berkas itu, atau jalankan /model di Claude Code lalu pilih Default.",
+      "env": "{{file}} mengatur {{key}} di blok env-nya, yang mengungguli variabel yang diekspor Flint. Hapus {{key}} dari blok env itu.",
+      "apiKeyHelper": "{{file}} mengatur apiKeyHelper, yang menggantikan token yang diekspor Flint dan dapat membuat Claude Code meminta Anda masuk lagi. Hapus baris \"apiKeyHelper\" dari berkas itu."
+    },
     "contextRaised": "Konteks {{model}} dinaikkan menjadi {{context}} token agar Claude Code dapat berjalan dengannya.",
     "contextShortfall": {
       "memory": "{{model}} akan berjalan dengan konteks {{context}} token, batas terbesar yang muat di memori perangkat ini. Claude Code membutuhkan sekitar {{needed}}, sehingga permintaan panjang bisa gagal. Pilih model yang lebih kecil atau lebih terkompresi.",

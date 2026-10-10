@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { DefaultModelsService } from '../default'
 import { EngineManager, events, DownloadEvent, ContentType } from '@janhq/core'
+import { useAppState } from '@/hooks/useAppState'
 
 const { mockEvents, mockDownloadEvent, mockExtractContent, mockExtractMetadata } = vi.hoisted(() => ({
   mockEvents: { emit: vi.fn() },
@@ -346,6 +347,87 @@ describe('DefaultModelsService - additional coverage', () => {
       mockEngine.load.mockResolvedValue({ id: 'session' })
       await svc.startModel({ provider: 'llamacpp', models: [{ id: 'm1', ...(settings ? { settings } : {}) }] } as any, 'm1', bypass)
       expect(mockEngine.load).toHaveBeenCalledWith('m1', undefined, false, bypass)
+    })
+
+    describe('the load progress marker', () => {
+      const provider = { provider: 'llamacpp', models: [{ id: 'm1' }] } as any
+
+      beforeEach(() => {
+        mockEngine.getLoadedModels.mockResolvedValue([])
+        useAppState.setState({ modelLoadProgress: undefined })
+      })
+
+      it('is cleared for the model once its load finishes', async () => {
+        // The engine's progress events set it and nothing in the chat path is
+        // there to clear it after a start from a settings page or the server.
+        useAppState.setState({
+          modelLoadProgress: { modelId: 'm1', stages: ['text_model'], value: 1 },
+        })
+        mockEngine.load.mockResolvedValue({ id: 'session' })
+        await svc.startModel(provider, 'm1')
+        expect(useAppState.getState().modelLoadProgress).toBeUndefined()
+      })
+
+      it('is cleared when the load fails', async () => {
+        useAppState.setState({
+          modelLoadProgress: { modelId: 'm1', stages: ['text_model'], value: 0.4 },
+        })
+        mockEngine.load.mockRejectedValue(new Error('boom'))
+        await expect(svc.startModel(provider, 'm1')).rejects.toThrow('boom')
+        expect(useAppState.getState().modelLoadProgress).toBeUndefined()
+      })
+
+      it('is left alone when it belongs to another model', async () => {
+        useAppState.setState({
+          modelLoadProgress: { modelId: 'other', stages: ['text_model'], value: 0.4 },
+        })
+        mockEngine.load.mockResolvedValue({ id: 'session' })
+        await svc.startModel(provider, 'm1')
+        expect(useAppState.getState().modelLoadProgress?.modelId).toBe('other')
+      })
+    })
+
+    describe('the app-wide loaded-model list', () => {
+      const provider = {
+        provider: 'llamacpp',
+        models: [{ id: 'm1' }, { id: 'm2' }],
+      } as any
+
+      beforeEach(() => {
+        useAppState.setState({ activeModels: [] })
+      })
+
+      it('gains a model loaded from chat or the API server', async () => {
+        // Only settings pages used to write this list, so the sidebar kept
+        // reading 0 while a model loaded elsewhere was answering.
+        mockEngine.getLoadedModels
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce(['m1'])
+        mockEngine.load.mockResolvedValue({ id: 'session' })
+        await svc.startModel(provider, 'm1')
+        expect(useAppState.getState().activeModels).toEqual(['m1'])
+      })
+
+      it('drops a model of the same provider the engine unloaded to make room', async () => {
+        useAppState.setState({ activeModels: ['m2', 'remote-only'] })
+        mockEngine.getLoadedModels
+          .mockResolvedValueOnce(['m2'])
+          .mockResolvedValueOnce(['m1'])
+        mockEngine.load.mockResolvedValue({ id: 'session' })
+        await svc.startModel(provider, 'm1')
+        expect(useAppState.getState().activeModels.sort()).toEqual([
+          'm1',
+          'remote-only',
+        ])
+      })
+
+      it('is left alone when the load fails', async () => {
+        useAppState.setState({ activeModels: ['m2'] })
+        mockEngine.getLoadedModels.mockResolvedValue([])
+        mockEngine.load.mockRejectedValue(new Error('boom'))
+        await expect(svc.startModel(provider, 'm1')).rejects.toThrow('boom')
+        expect(useAppState.getState().activeModels).toEqual(['m2'])
+      })
     })
 
     it('handles model not found in provider models list', async () => {

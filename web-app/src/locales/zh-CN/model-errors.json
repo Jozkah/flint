@@ -31,7 +31,7 @@
   "serverPortOccupied": "端口已被占用",
   "serverPortOccupiedDescription": "端口 {{port}} 已被占用。请尝试其他端口。",
   "serverPortFallback": "服务器已在其他端口启动",
-  "serverPortFallbackDescription": "端口 {{requested}} 不可用，因此本地 API 服务器正在监听端口 {{actual}}。端口设置已同步更新。",
+  "serverPortFallbackDescription": "端口 {{requested}} 不可用，因此本地 API 服务器正在监听端口 {{actual}}。已保存的端口设置保持不变。",
   "serverInvalidModelPath": "模型路径无效或无法访问",
   "serverStartModelFailed": "启动模型失败",
   "serverStartFailed": "启动服务器失败"

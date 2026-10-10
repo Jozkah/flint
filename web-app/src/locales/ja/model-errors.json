@@ -31,7 +31,7 @@
   "serverPortOccupied": "ポートは使用中です",
   "serverPortOccupiedDescription": "ポート {{port}} はすでに使用されています。別のポートをお試しください。",
   "serverPortFallback": "サーバーは別のポートで起動しました",
-  "serverPortFallbackDescription": "ポート {{requested}} は使用できないため、ローカル API サーバーはポート {{actual}} で待ち受けています。ポート設定もそれに合わせて更新されました。",
+  "serverPortFallbackDescription": "ポート {{requested}} は使用できないため、ローカル API サーバーはポート {{actual}} で待ち受けています。保存されているポート設定は変更されていません。",
   "serverInvalidModelPath": "モデルのパスが無効、またはアクセスできません",
   "serverStartModelFailed": "モデルを起動できませんでした",
   "serverStartFailed": "サーバーを起動できませんでした"

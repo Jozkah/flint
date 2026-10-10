@@ -570,6 +570,12 @@
     "mediumModelDesc": "Sonnet",
     "smallModel": "小型模型",
     "smallModelDesc": "Haiku",
+    "overridesTitle": "覆寫這些模型的 Claude Code 設定",
+    "overrides": {
+      "model": "{{file}} 將模型固定為「{{value}}」，因此無論這裡如何設定，Claude Code 都會繼續使用它。請刪除該檔案中的 \"model\" 行，或在 Claude Code 中執行 /model 並選擇 Default。",
+      "env": "{{file}} 在其 env 區塊中設定了 {{key}}，它優先於 Flint 匯出的變數。請從該 env 區塊中刪除 {{key}}。",
+      "apiKeyHelper": "{{file}} 設定了 apiKeyHelper，它會取代 Flint 匯出的權杖，並可能讓 Claude Code 再次要求你登入。請刪除該檔案中的 \"apiKeyHelper\" 行。"
+    },
     "contextRaised": "已將 {{model}} 的上下文提高到 {{context}} 個 token，以便 Claude Code 使用。",
     "contextShortfall": {
       "memory": "{{model}} 將以 {{context}} 個 token 的上下文執行，這是此裝置記憶體能容納的最大值。Claude Code 需要約 {{needed}}，較長的請求可能失敗。請選擇更小或壓縮程度更高的模型。",

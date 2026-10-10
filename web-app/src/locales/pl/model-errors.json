@@ -31,7 +31,7 @@
   "serverPortOccupied": "Port jest zajęty",
   "serverPortOccupiedDescription": "Port {{port}} jest już zajęty. Spróbuj użyć innego portu.",
   "serverPortFallback": "Serwer uruchomiono na innym porcie",
-  "serverPortFallbackDescription": "Port {{requested}} jest niedostępny, więc lokalny serwer API nasłuchuje na porcie {{actual}}. Ustawienie portu zostało zaktualizowane.",
+  "serverPortFallbackDescription": "Port {{requested}} jest niedostępny, więc lokalny serwer API nasłuchuje na porcie {{actual}}. Zapisane ustawienie portu pozostało bez zmian.",
   "serverInvalidModelPath": "Nieprawidłowa lub niedostępna ścieżka modelu",
   "serverStartModelFailed": "Nie udało się uruchomić modelu",
   "serverStartFailed": "Nie udało się uruchomić serwera"

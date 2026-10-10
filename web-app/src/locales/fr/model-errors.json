@@ -31,7 +31,7 @@
   "serverPortOccupied": "Port utilisé",
   "serverPortOccupiedDescription": "Le port {{port}} est déjà utilisé. Veuillez essayer un autre port.",
   "serverPortFallback": "Le serveur a démarré sur un autre port",
-  "serverPortFallbackDescription": "Le port {{requested}} n'est pas disponible ; le serveur d'API local écoute donc sur le port {{actual}}. Le paramètre du port a été mis à jour en conséquence.",
+  "serverPortFallbackDescription": "Le port {{requested}} n'est pas disponible ; le serveur d'API local écoute donc sur le port {{actual}}. Le paramètre de port enregistré reste inchangé.",
   "serverInvalidModelPath": "Chemin du modèle invalide ou inaccessible",
   "serverStartModelFailed": "Échec du démarrage du modèle",
   "serverStartFailed": "Échec du démarrage du serveur"
