@@ -66,6 +66,9 @@
     "title": "網頁預覽",
     "openExternal": "在瀏覽器中開啟",
     "popOut": "彈出到視窗",
+    "copyUrl": "複製 URL",
+    "urlCopied": "已複製 URL",
+    "copyFailed": "無法複製 URL",
     "dockSide": "停靠到側邊",
     "showAsPip": "顯示為浮動視窗",
     "reload": "重新載入",
@@ -569,6 +572,13 @@
   "modelSettings": {
     "title": "模型設定 - {{modelId}}",
     "description": "設定模型設定以最佳化效能和行為。",
+    "visionProjector": {
+      "title": "視覺投影器 (mmproj)",
+      "paired": "已配對",
+      "none": "無",
+      "pairedHint": "此模型可接受影像輸入。投影器會在匯入模型時選定；若要使用其他投影器，請重新匯入。",
+      "noneHint": "沒有視覺投影器，此模型無法讀取影像。請在啟用多模態的情況下重新匯入模型並選擇其 mmproj 檔案；與模型檔案放在一起的投影器會被自動找到。"
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "預設取樣參數",
@@ -583,7 +593,9 @@
       "nMin": "草稿 token 數下限",
       "nMinDescription": "每一步草擬的 token 數下限。預設為 0。",
       "pMin": "草稿最低機率",
-      "pMinDescription": "貪婪式草擬的最低機率 (0–1)。預設為 0.75。"
+      "pMinDescription": "貪婪式草擬的最低機率 (0–1)。預設為 0.75。",
+      "probabilistic": "對草稿取樣",
+      "probabilisticDescription": "對草稿 token 進行取樣，而不是選取機率最高的一個，並透過拒絕取樣進行驗證。這樣在溫度大於 0 時仍能維持加速效果。預設為關閉；對需要貪婪驗證的 DFlash 草稿會被忽略。"
     },
     "templateKwargs": {
       "section": "聊天範本選項",
@@ -690,6 +702,9 @@
       "assistant": "助理",
       "selectAssistant": "選擇助理（選填）",
       "noAssistant": "沒有助理",
+      "model": "預設模型",
+      "selectModel": "使用模型選擇器的選擇",
+      "noModel": "無預設模型",
       "addAssistant": "新增助理",
       "createButton": "建立",
       "updateButton": "更新",
@@ -1048,6 +1063,7 @@
     "stopped": "已停止。",
     "failed": "執行提早停止。",
     "tryAgain": "重試",
+    "attachFolder": "附加資料夾",
     "deadline": "已停止 — 此次執行達到了時間限制。",
     "timeout": "已停止 — 模型停止了回應。",
     "loop": "已停止 — 執行在沒有進展的情況下重複自身。",
@@ -1442,10 +1458,22 @@
       "needsMmproj": "此本機模型需要 mmproj 檔案才能辨識圖片。請從模型設定中新增一個，然後重新附加圖片。"
     }
   },
+  "pastedPath": {
+    "file": "要將「{{name}}」附加到此訊息嗎？",
+    "folder": "要將資料夾「{{name}}」附加到此工作階段嗎？",
+    "attach": "附加",
+    "dismiss": "略過",
+    "failed": "無法附加檔案"
+  },
   "drop": {
     "openInCode": "拖放以開啟 — 唯讀",
     "attachToMessage": "拖放以附加到你的訊息",
     "releaseToAttach": "放開以附加"
+  },
+  "coworkRunSettings": {
+    "label": "執行設定",
+    "title": "此次執行的運作方式",
+    "effort": "投入程度：{{level}}"
   },
   "coworkMode": {
     "label": "Flint 可以做什麼",
@@ -1963,6 +1991,7 @@
     "serverStopped": "本機 API 已關閉"
   },
   "shell": {
+    "discover": "探索",
     "openNavigation": "開啟導覽",
     "closeNavigation": "關閉導覽",
     "showContent": "內容",
@@ -2026,6 +2055,9 @@
       "closed": "已關閉但未合併"
     },
     "overview": "總覽",
+    "resume": "繼續與用量",
+    "more": "更多",
+    "advanced": "進階",
     "usageOverview": "用量總覽",
     "movedTo": "已移到 {{name}}",
     "notifications": "通知",

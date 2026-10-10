@@ -15,6 +15,7 @@
   "enterServerName": "サーバー名を入力",
   "command": "コマンド",
   "enterCommand": "コマンドを入力 (uvx または npx)",
+  "commandHint": "npx や uvx だけでなく、このコンピューター上の任意のプログラム (python、docker、node、バイナリ) を指定できます。ユーザー権限で実行されるため、信頼できるサーバーのみ追加してください。",
   "arguments": "引数",
   "argument": "引数 {{index}}",
   "envVars": "環境変数",

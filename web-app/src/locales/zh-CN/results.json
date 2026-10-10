@@ -11,7 +11,8 @@
     "where": "结果在哪里",
     "checked": "检查了什么",
     "unresolved": "未解决",
-    "next": "后续步骤"
+    "next": "后续步骤",
+    "details": "详情"
   },
   "headline": {
     "running": "运行仍在进行。",

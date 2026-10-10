@@ -66,6 +66,9 @@
     "title": "웹 미리 보기",
     "openExternal": "브라우저에서 열기",
     "popOut": "별도 창으로 분리",
+    "copyUrl": "URL 복사",
+    "urlCopied": "URL을 복사했습니다",
+    "copyFailed": "URL을 복사하지 못했습니다",
     "dockSide": "옆에 고정",
     "showAsPip": "플로팅 창으로 보기",
     "reload": "새로 고침",
@@ -569,6 +572,13 @@
   "modelSettings": {
     "title": "모델 설정 - {{modelId}}",
     "description": "모델 설정을 구성하여 성능과 동작을 최적화합니다.",
+    "visionProjector": {
+      "title": "비전 프로젝터 (mmproj)",
+      "paired": "연결됨",
+      "none": "없음",
+      "pairedHint": "이 모델은 이미지 입력을 받을 수 있습니다. 프로젝터는 모델을 가져올 때 선택되며, 다른 프로젝터를 사용하려면 모델을 다시 가져오세요.",
+      "noneHint": "비전 프로젝터가 없으면 이 모델은 이미지를 읽을 수 없습니다. 멀티모달을 켠 상태로 모델을 다시 가져오고 mmproj 파일을 선택하세요. 모델 파일 옆에 있는 프로젝터는 자동으로 찾습니다."
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "기본 샘플링 매개변수",
@@ -583,7 +593,9 @@
       "nMin": "최소 초안 토큰 수",
       "nMinDescription": "단계마다 초안으로 만들 최소 토큰 수입니다. 기본값은 0입니다.",
       "pMin": "최소 초안 확률",
-      "pMinDescription": "탐욕적 초안 작성의 최소 확률입니다(0–1). 기본값은 0.75입니다."
+      "pMinDescription": "탐욕적 초안 작성의 최소 확률입니다(0–1). 기본값은 0.75입니다.",
+      "probabilistic": "드래프트 샘플링",
+      "probabilisticDescription": "가장 가능성이 높은 토큰을 고르는 대신 드래프트 토큰을 샘플링하고, 거부 샘플링으로 검증합니다. 온도가 0보다 커도 속도 향상이 유지됩니다. 기본적으로 꺼져 있으며, 탐욕적 검증이 필요한 DFlash 드래프트에서는 무시됩니다."
     },
     "templateKwargs": {
       "section": "채팅 템플릿 옵션",
@@ -690,6 +702,9 @@
       "assistant": "어시스턴트",
       "selectAssistant": "어시스턴트 선택 (선택 사항)",
       "noAssistant": "어시스턴트 없음",
+      "model": "기본 모델",
+      "selectModel": "모델 선택기의 선택 사용",
+      "noModel": "기본 모델 없음",
       "addAssistant": "어시스턴트 추가",
       "createButton": "만들기",
       "updateButton": "업데이트",
@@ -1046,6 +1061,7 @@
     "stopped": "중지되었습니다.",
     "failed": "실행이 일찍 중지되었습니다.",
     "tryAgain": "다시 시도",
+    "attachFolder": "폴더 첨부",
     "deadline": "중지됨 — 이 실행이 제한 시간에 도달했습니다.",
     "timeout": "중지됨 — 모델이 응답하지 않습니다.",
     "loop": "중지됨 — 실행이 진전 없이 같은 동작을 반복했습니다.",
@@ -1440,10 +1456,22 @@
       "needsMmproj": "이 로컬 모델이 이미지를 보려면 mmproj 파일이 필요합니다. 모델 설정에서 추가한 뒤 이미지를 다시 첨부하세요."
     }
   },
+  "pastedPath": {
+    "file": "\"{{name}}\"을(를) 이 메시지에 첨부할까요?",
+    "folder": "\"{{name}}\" 폴더를 이 세션에 첨부할까요?",
+    "attach": "첨부",
+    "dismiss": "닫기",
+    "failed": "파일을 첨부하지 못했습니다"
+  },
   "drop": {
     "openInCode": "놓아서 열기 — 읽기 전용",
     "attachToMessage": "놓아서 메시지에 첨부",
     "releaseToAttach": "놓아서 첨부"
+  },
+  "coworkRunSettings": {
+    "label": "실행 설정",
+    "title": "이 실행의 작동 방식",
+    "effort": "노력 수준: {{level}}"
   },
   "coworkMode": {
     "label": "Flint가 할 수 있는 작업",
@@ -1961,6 +1989,7 @@
     "serverStopped": "로컬 API 꺼짐"
   },
   "shell": {
+    "discover": "탐색",
     "openNavigation": "탐색 열기",
     "closeNavigation": "탐색 닫기",
     "showContent": "콘텐츠",
@@ -2024,6 +2053,9 @@
       "closed": "병합 없이 닫힘"
     },
     "overview": "개요",
+    "resume": "이어하기 및 사용량",
+    "more": "더 보기",
+    "advanced": "고급",
     "usageOverview": "사용량 개요",
     "movedTo": "{{name}}(으)로 이동했습니다",
     "notifications": "알림",

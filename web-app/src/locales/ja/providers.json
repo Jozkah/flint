@@ -11,6 +11,9 @@
   "noNewModels": "新しいモデルは見つかりませんでした。利用可能なすべてのモデルは既に追加されています。",
   "refreshModelsFailed": "{{provider}}からのモデルの取得に失敗しました。APIキーとベースURLを確認してください。",
   "models": "モデル",
+  "filterModels": "{{count}} 件のモデルを絞り込む",
+  "modelsShown": "{{total}} 件中 {{shown}} 件を表示",
+  "showMoreModels": "さらに表示",
   "backendInstalled": "インストール済み",
   "backendHistoryShow": "更新履歴を表示",
   "backendHistoryHide": "更新履歴を非表示",
@@ -73,6 +76,8 @@
     "modelExists": "モデルは既に存在します",
     "modelExistsDesc": "別のモデルIDを選択してください。"
   },
+  "revealModelFile": "モデルファイルをフォルダーで表示",
+  "revealModelFileFailed": "モデルのフォルダーを開けませんでした。",
   "deleteModel": {
     "title": "モデルを削除: {{modelId}}",
     "description": "本当にこのモデルを削除しますか？この操作は元に戻せません。",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "すべて削除",
+    "repoTitle": "ダウンロード済みのこのモデルを削除しますか?",
+    "clearButton": "リストをクリア",
+    "clearTitle": "このプロバイダーのすべてのモデルを削除しますか?",
+    "clearDescription": "リストから {{count}} 件のモデルを削除します。プロバイダー側では何も削除されず、更新すると再び追加できます。",
     "title": "ダウンロードしたすべてのモデルを削除しますか？",
     "description": "{{count}}個のモデルをディスクから完全に削除します。",
     "sizeLabel": "解放されるディスク容量:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "プロバイダーの名前を入力してください",
   "baseUrl": {
     "title": "ベースURL",
+    "openaiDescription": "OpenAI API 互換のプロキシまたはゲートウェイを使用します。デフォルトは https://api.openai.com/v1 です。",
     "azureDescription": "あなたのAzure OpenAIエンドポイント。YOUR-RESOURCE-NAMEをAzureリソース名に置き換えてください。",
     "qwenDescription": "Model Studio のエンドポイントです。キーは、作成されたリージョンでのみ機能します。シンガポールの場合は https://dashscope-intl.aliyuncs.com/compatible-mode/v1、中国本土の場合は https://dashscope.aliyuncs.com/compatible-mode/v1 を使用してください。"
   },

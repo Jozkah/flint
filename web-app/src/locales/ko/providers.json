@@ -11,6 +11,9 @@
   "noNewModels": "새로운 모델이 없습니다. 사용 가능한 모든 모델이 이미 추가되었습니다.",
   "refreshModelsFailed": "{{provider}}에서 모델을 가져오지 못했습니다. API 키와 베이스 URL을 확인해 주세요.",
   "models": "모델",
+  "filterModels": "모델 {{count}}개 필터링",
+  "modelsShown": "{{total}}개 중 {{shown}}개 표시 중",
+  "showMoreModels": "더 보기",
   "backendInstalled": "설치됨",
   "backendHistoryShow": "업데이트 기록 보기",
   "backendHistoryHide": "업데이트 기록 숨기기",
@@ -73,6 +76,8 @@
     "modelExists": "이미 존재하는 모델입니다",
     "modelExistsDesc": "다른 모델 ID를 선택해 주세요."
   },
+  "revealModelFile": "폴더에서 모델 파일 보기",
+  "revealModelFileFailed": "모델 폴더를 열 수 없습니다.",
   "deleteModel": {
     "title": "모델 삭제: {{modelId}}",
     "description": "이 모델을 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "모두 삭제",
+    "repoTitle": "다운로드한 이 모델을 삭제할까요?",
+    "clearButton": "목록 비우기",
+    "clearTitle": "이 공급자의 모든 모델을 제거할까요?",
+    "clearDescription": "목록에서 모델 {{count}}개를 제거합니다. 공급자 쪽에서는 아무것도 삭제되지 않으며, 새로 고침으로 다시 추가할 수 있습니다.",
     "title": "다운로드한 모델을 모두 삭제할까요?",
     "description": "디스크에서 모델 {{count}}개가 영구 삭제됩니다.",
     "sizeLabel": "확보되는 디스크 공간:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "공급자 이름 입력",
   "baseUrl": {
     "title": "기본 URL",
+    "openaiDescription": "OpenAI API와 호환되는 프록시나 게이트웨이를 사용합니다. 기본값은 https://api.openai.com/v1입니다.",
     "azureDescription": "Azure OpenAI 엔드포인트입니다. YOUR-RESOURCE-NAME을 Azure 리소스 이름으로 바꾸세요.",
     "qwenDescription": "Model Studio 엔드포인트입니다. 키는 생성된 리전에서만 동작합니다. 싱가포르는 https://dashscope-intl.aliyuncs.com/compatible-mode/v1, 중국 본토는 https://dashscope.aliyuncs.com/compatible-mode/v1을 사용하세요."
   },

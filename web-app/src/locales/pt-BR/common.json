@@ -67,6 +67,9 @@
     "title": "Pré-visualização da web",
     "openExternal": "Abrir no navegador",
     "popOut": "Destacar em janela",
+    "copyUrl": "Copiar URL",
+    "urlCopied": "URL copiada",
+    "copyFailed": "Não foi possível copiar a URL",
     "dockSide": "Acoplar ao lado",
     "showAsPip": "Mostrar como janela flutuante",
     "reload": "Recarregar",
@@ -573,6 +576,13 @@
   "modelSettings": {
     "title": "Configurações do Modelo - {{modelId}}",
     "description": "Configure as configurações do modelo para otimizar desempenho e comportamento.",
+    "visionProjector": {
+      "title": "Projetor de visão (mmproj)",
+      "paired": "Pareado",
+      "none": "Nenhum",
+      "pairedHint": "Este modelo aceita imagens como entrada. O projetor é escolhido na importação do modelo; importe-o novamente para usar outro.",
+      "noneHint": "Sem um projetor de visão, este modelo não consegue ler imagens. Importe o modelo novamente com Multimodal ativado e escolha o arquivo mmproj; um projetor ao lado do arquivo do modelo é encontrado automaticamente."
+    },
     "nglDisabledByFit": "Auto-fit is choosing GPU layers. Turn off Auto-fit to set this manually.",
     "samplingDefaults": {
       "title": "Parâmetros de amostragem padrão",
@@ -587,7 +597,9 @@
       "nMin": "Mín. de tokens de rascunho",
       "nMinDescription": "Número mínimo de tokens a rascunhar por etapa. Padrão 0.",
       "pMin": "Probabilidade mín. de rascunho",
-      "pMinDescription": "Probabilidade mínima para rascunho guloso (0–1). Padrão 0,75."
+      "pMinDescription": "Probabilidade mínima para rascunho guloso (0–1). Padrão 0,75.",
+      "probabilistic": "Amostrar o rascunho",
+      "probabilisticDescription": "Amostra os tokens do rascunho em vez de escolher o mais provável e os verifica por amostragem de rejeição. Isso mantém o ganho de velocidade quando a temperatura é maior que 0. Desativado por padrão; ignorado em rascunhos DFlash, que exigem verificação gananciosa."
     },
     "templateKwargs": {
       "section": "Opções do template de chat",
@@ -694,6 +706,9 @@
       "assistant": "Assistente",
       "selectAssistant": "Selecione um assistente (opcional)",
       "noAssistant": "Nenhum assistente",
+      "model": "Modelo padrão",
+      "selectModel": "Usar a escolha do seletor de modelos",
+      "noModel": "Sem modelo padrão",
       "addAssistant": "Adicionar assistente",
       "createButton": "Criar",
       "updateButton": "Atualizar",
@@ -1056,6 +1071,7 @@
     "stopped": "Interrompido.",
     "failed": "A execução parou antes do fim.",
     "tryAgain": "Tentar novamente",
+    "attachFolder": "Anexar uma pasta",
     "deadline": "Interrompido — esta execução atingiu o limite de tempo.",
     "timeout": "Interrompido — o modelo parou de responder.",
     "loop": "Interrompido — a execução estava se repetindo sem progredir.",
@@ -1466,10 +1482,22 @@
       "needsMmproj": "Este modelo local precisa de um arquivo mmproj para enxergar. Adicione um nas configurações do modelo e anexe a imagem novamente."
     }
   },
+  "pastedPath": {
+    "file": "Anexar \"{{name}}\" a esta mensagem?",
+    "folder": "Anexar a pasta \"{{name}}\" a esta sessão?",
+    "attach": "Anexar",
+    "dismiss": "Dispensar",
+    "failed": "Não foi possível anexar o arquivo"
+  },
   "drop": {
     "openInCode": "Solte para abrir — somente leitura",
     "attachToMessage": "Solte para anexar à sua mensagem",
     "releaseToAttach": "Solte para anexar"
+  },
+  "coworkRunSettings": {
+    "label": "Configurações da execução",
+    "title": "Como esta execução funciona",
+    "effort": "Esforço: {{level}}"
   },
   "coworkMode": {
     "label": "O que o Flint pode fazer",
@@ -1996,6 +2024,7 @@
     "serverStopped": "API local desativada"
   },
   "shell": {
+    "discover": "Descobrir",
     "openNavigation": "Abrir navegação",
     "closeNavigation": "Fechar navegação",
     "showContent": "Conteúdo",
@@ -2061,6 +2090,9 @@
       "closed": "Fechado sem mesclar"
     },
     "overview": "Visão geral",
+    "resume": "Retomar e uso",
+    "more": "Mais",
+    "advanced": "Avançado",
     "usageOverview": "Visão geral de uso",
     "movedTo": "Movido para {{name}}",
     "notifications": "Notificações",

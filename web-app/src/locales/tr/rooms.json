@@ -330,7 +330,8 @@
     "continue": "Devam et",
     "toShort": "Alıcı",
     "placeholderTo": "{{name}} kişisine yazın…",
-    "mention": "Bir katılımcıdan bahset"
+    "mention": "Bir katılımcıdan bahset",
+    "dropSkipped": "Eklenmedi (metin değil, klasör veya mesaj sınırı aşıldı): {{files}}"
   },
   "kpi": {
     "running": "Çalışıyor",

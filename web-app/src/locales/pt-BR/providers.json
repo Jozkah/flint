@@ -11,6 +11,9 @@
   "noNewModels": "Nenhum modelo novo encontrado. Todos os modelos disponíveis já foram adicionados.",
   "refreshModelsFailed": "Falha ao buscar modelos de {{provider}}. Verifique sua chave de API e URL base.",
   "models": "Modelos",
+  "filterModels": "Filtrar {{count}} modelos",
+  "modelsShown": "Mostrando {{shown}} de {{total}}",
+  "showMoreModels": "Mostrar mais",
   "backendInstalled": "Instalado",
   "backendHistoryShow": "Mostrar histórico de atualizações",
   "backendHistoryHide": "Ocultar histórico de atualizações",
@@ -73,6 +76,8 @@
     "modelExists": "Modelo já existe",
     "modelExistsDesc": "Por favor, escolha um ID de modelo diferente."
   },
+  "revealModelFile": "Mostrar arquivo do modelo na pasta",
+  "revealModelFileFailed": "Não foi possível abrir a pasta do modelo.",
   "deleteModel": {
     "title": "Remover Modelo: {{modelId}}",
     "description": "Tem certeza de que deseja remover este modelo? Esta ação não pode ser desfeita.",
@@ -84,6 +89,10 @@
   },
   "deleteAllModels": {
     "button": "Excluir todos",
+    "repoTitle": "Excluir este modelo baixado?",
+    "clearButton": "Limpar lista",
+    "clearTitle": "Remover todos os modelos deste provedor?",
+    "clearDescription": "Isso remove {{count}} modelo(s) da lista. Nada é excluído no lado do provedor, e Atualizar pode adicioná-los de volta.",
     "title": "Excluir todos os modelos baixados?",
     "description": "Isto removerá permanentemente {{count}} modelo(s) do disco.",
     "sizeLabel": "Espaço em disco a ser liberado:",
@@ -135,6 +144,7 @@
   "enterNameForProvider": "Digite o nome para o provedor",
   "baseUrl": {
     "title": "URL base",
+    "openaiDescription": "Use um proxy ou gateway compatível com a API da OpenAI. O padrão é https://api.openai.com/v1.",
     "azureDescription": "Seu endpoint do Azure OpenAI. Substitua YOUR-RESOURCE-NAME pelo nome do seu recurso do Azure.",
     "qwenDescription": "Seu endpoint do Model Studio. Uma chave só funciona na região em que foi criada: use https://dashscope-intl.aliyuncs.com/compatible-mode/v1 para Singapura ou https://dashscope.aliyuncs.com/compatible-mode/v1 para a China continental."
   },

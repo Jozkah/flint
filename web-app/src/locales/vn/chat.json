@@ -72,6 +72,8 @@
     "openHint": "Mở một cuộc trò chuyện độc lập khác bên cạnh cuộc này",
     "openHintShortcut": "Mở một cuộc trò chuyện độc lập khác bên cạnh cuộc này ({{shortcut}})",
     "openInSplit": "Mở trong chế độ chia màn hình",
+    "openIn": "Mở trong",
+    "openInNewWindow": "Cửa sổ mới",
     "close": "Đóng chia màn hình",
     "closePane": "Đóng khung này",
     "addPane": "Thêm khung",

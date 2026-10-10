@@ -14,6 +14,7 @@
   "kpi": {
     "installed": "Zainstalowane",
     "installedSub": "lokalne: {{local}} · zdalne: {{remote}}",
+    "remoteAvailableSub": "Dostępne modele zdalne: {{count}}",
     "loaded": "Wczytane teraz",
     "loadedSub": "z {{count}} modeli lokalnych",
     "disk": "Zajęty dysk",
@@ -62,7 +63,8 @@
     "off": "Wyłączone",
     "loaded": "Wczytany",
     "ready": "Gotowy",
-    "noKey": "Brak klucza API"
+    "noKey": "Brak klucza API",
+    "keyless": "Klucz niepotrzebny"
   },
   "installed": {
     "title": "Zainstalowane modele",

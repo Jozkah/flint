@@ -330,7 +330,8 @@
     "continue": "繼續",
     "toShort": "發給",
     "placeholderTo": "給 {{name}} 傳訊息…",
-    "mention": "提及參與者"
+    "mention": "提及參與者",
+    "dropSkipped": "未加入（不是文字、是資料夾，或超出訊息限制）：{{files}}"
   },
   "kpi": {
     "running": "進行中",

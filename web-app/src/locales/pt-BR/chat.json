@@ -72,6 +72,8 @@
     "openHint": "Abrir outra conversa independente ao lado desta",
     "openHintShortcut": "Abrir outra conversa independente ao lado desta ({{shortcut}})",
     "openInSplit": "Abrir em visualização dividida",
+    "openIn": "Abrir em",
+    "openInNewWindow": "Nova janela",
     "close": "Fechar divisão",
     "closePane": "Fechar este painel",
     "addPane": "Adicionar painel",

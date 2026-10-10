@@ -72,6 +72,8 @@
     "openHint": "Bunun yanında başka, bağımsız bir konuşma aç",
     "openHintShortcut": "Bunun yanında başka, bağımsız bir konuşma aç ({{shortcut}})",
     "openInSplit": "Bölünmüş görünümde aç",
+    "openIn": "Şurada aç",
+    "openInNewWindow": "Yeni pencere",
     "close": "Bölmeyi kapat",
     "closePane": "Bu bölmeyi kapat",
     "addPane": "Bölme ekle",

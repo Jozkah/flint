@@ -11,7 +11,8 @@
     "where": "Sonuç nerede",
     "checked": "Neler kontrol edildi",
     "unresolved": "Çözülmemiş",
-    "next": "Sonraki adımlar"
+    "next": "Sonraki adımlar",
+    "details": "Ayrıntılar"
   },
   "headline": {
     "running": "Çalıştırma hâlâ sürüyor.",

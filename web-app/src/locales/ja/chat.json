@@ -72,6 +72,8 @@
     "openHint": "この会話の横に独立した別の会話を開く",
     "openHintShortcut": "この会話の横に独立した別の会話を開く（{{shortcut}}）",
     "openInSplit": "分割ビューで開く",
+    "openIn": "開く先",
+    "openInNewWindow": "新しいウィンドウ",
     "close": "分割を閉じる",
     "closePane": "このペインを閉じる",
     "addPane": "ペインを追加",
