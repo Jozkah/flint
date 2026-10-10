@@ -22,6 +22,7 @@ import { useHardware } from '@/hooks/useHardware'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useAppState } from '@/hooks/useAppState'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
+import { offloadFor, useGpuOffload } from '@/hooks/useGpuOffload'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { providerFetch } from '@/lib/providerFetch'
 import {
@@ -95,6 +96,11 @@ export const ModelSupportStatus = ({
   )
   const activeModels = useAppState((s) => s.activeModels)
   const setActiveModels = useAppState((s) => s.setActiveModels)
+  const offload = useGpuOffload((s) =>
+    modelId && activeModels.includes(modelId)
+      ? offloadFor(s, modelId, activeModels)
+      : undefined
+  )
   const results = useModelEvidence((s) =>
     provider && modelId ? s.results[resultKey(provider, modelId)] : undefined
   )
@@ -336,7 +342,11 @@ export const ModelSupportStatus = ({
   )
 
   if (!modelId || !provider || !isLocalEngine) return null
-  if (assessment.verdict === 'unknown' && evidence.state === 'not-tested') {
+  if (
+    assessment.verdict === 'unknown' &&
+    evidence.state === 'not-tested' &&
+    !offload
+  ) {
     return null
   }
 
@@ -421,6 +431,42 @@ export const ModelSupportStatus = ({
               {t('model-fit:testScope')}
             </p>
           </section>
+
+          {offload && (
+            <section
+              aria-labelledby="model-fit-offload"
+              className="space-y-1 rounded-md border border-border bg-card p-2.5"
+            >
+              <h4
+                id="model-fit-offload"
+                className="text-[13px] font-semibold text-foreground"
+              >
+                {t('model-fit:offload.heading')}
+              </h4>
+              <p>
+                {offload.totalLayers === 0
+                  ? t('model-fit:offload.unknown')
+                  : offload.gpuLayers === 0
+                    ? t('model-fit:offload.none')
+                    : offload.gpuLayers >= offload.totalLayers
+                      ? t('model-fit:offload.all', {
+                          layers: offload.totalLayers,
+                        })
+                      : t('model-fit:offload.partial', {
+                          gpu: offload.gpuLayers,
+                          total: offload.totalLayers,
+                        })}
+              </p>
+              {(offload.gpuMib > 0 || offload.cpuMib > 0) && (
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  {t('model-fit:offload.memory', {
+                    gpu: bytes(offload.gpuMib * 1024 * 1024),
+                    cpu: bytes(offload.cpuMib * 1024 * 1024),
+                  })}
+                </p>
+              )}
+            </section>
+          )}
 
           <section
             aria-labelledby="model-fit-estimate"

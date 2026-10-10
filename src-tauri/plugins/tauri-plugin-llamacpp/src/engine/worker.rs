@@ -135,6 +135,103 @@ pub type FaultCallback = std::sync::Arc<dyn Fn(RuntimeFault, String) + Send + Sy
 /// first one, not all of them.
 const FAULT_DEBOUNCE: Duration = Duration::from_secs(3);
 
+/// Where a load put the model, read from the engine's own log. The engine does
+/// not report this over HTTP, so the stderr drain is the only place it shows.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct OffloadReport {
+    /// The model the line was tagged with, when the router tagged it.
+    pub model: Option<String>,
+    pub gpu_layers: u32,
+    pub total_layers: u32,
+    /// Weights placed in device memory, MiB.
+    pub gpu_mib: f64,
+    /// Weights left in host memory, MiB.
+    pub cpu_mib: f64,
+}
+
+/// Called with the report each time a log line changes it.
+pub type OffloadCallback = std::sync::Arc<dyn Fn(OffloadReport) + Send + Sync + 'static>;
+
+/// Folds log lines into an [`OffloadReport`].
+///
+/// llama.cpp prints `offloaded N/M layers to GPU` and, after it, one
+/// `<device> model buffer size = X MiB` per buffer. A new `offloaded` line is a
+/// new load, so it starts a fresh report and the buffer lines that follow add
+/// to it.
+#[derive(Default)]
+pub struct OffloadTracker {
+    current: Option<OffloadReport>,
+}
+
+impl OffloadTracker {
+    pub fn feed(&mut self, line: &str) -> Option<OffloadReport> {
+        let (model, body) = split_model_tag(line);
+        if let Some((gpu, total)) = parse_offloaded(body) {
+            let report = OffloadReport {
+                model,
+                gpu_layers: gpu,
+                total_layers: total,
+                gpu_mib: 0.0,
+                cpu_mib: 0.0,
+            };
+            self.current = Some(report.clone());
+            return Some(report);
+        }
+        let (device, mib) = parse_buffer_size(body)?;
+        let report = self.current.as_mut()?;
+        if is_host_buffer(device) {
+            report.cpu_mib += mib;
+        } else {
+            report.gpu_mib += mib;
+        }
+        Some(report.clone())
+    }
+}
+
+/// `[name] rest` -> (`Some(name)`, `rest`). Anything else is untagged.
+fn split_model_tag(line: &str) -> (Option<String>, &str) {
+    let trimmed = line.trim_start();
+    if let Some(rest) = trimmed.strip_prefix('[') {
+        if let Some(end) = rest.find(']') {
+            let name = &rest[..end];
+            // A model id, not a timestamp or a thread number.
+            if !name.is_empty() && end <= 128 && name.chars().any(|c| c.is_alphabetic()) {
+                return (Some(name.to_string()), rest[end + 1..].trim_start());
+            }
+        }
+    }
+    (None, trimmed)
+}
+
+fn parse_offloaded(line: &str) -> Option<(u32, u32)> {
+    let after = &line[line.find("offloaded ")? + "offloaded ".len()..];
+    let (counts, tail) = after.split_once(' ')?;
+    if !tail.starts_with("layers to GPU") {
+        return None;
+    }
+    let (gpu, total) = counts.split_once('/')?;
+    Some((gpu.parse().ok()?, total.parse().ok()?))
+}
+
+fn parse_buffer_size(line: &str) -> Option<(&str, f64)> {
+    let at = line.find(" model buffer size")?;
+    let device = line[..at].split_whitespace().last()?;
+    let after = &line[at..];
+    let value = after[after.find('=')? + 1..].trim_start();
+    let (number, unit) = value.split_once(' ')?;
+    if !unit.trim_start().starts_with("MiB") {
+        return None;
+    }
+    Some((device, number.parse().ok()?))
+}
+
+/// `CPU`, `CPU_Mapped`, `CUDA_Host`, `Vulkan_Host` are host memory; `CUDA0`,
+/// `Vulkan0`, `Metal` are the device.
+fn is_host_buffer(device: &str) -> bool {
+    let d = device.to_ascii_lowercase();
+    d.starts_with("cpu") || d.ends_with("_host")
+}
+
 /// Env var the worker reads its bearer token from. Never an argv flag: argv is
 /// world-readable via `ps` / `/proc/<pid>/cmdline`, and the supervisor logs it.
 pub const API_KEY_ENV: &str = "JAN_LLAMA_API_KEY";
@@ -347,6 +444,33 @@ pub async fn spawn(
     envs: HashMap<String, String>,
     on_fault: Option<FaultCallback>,
 ) -> Result<WorkerHandle, WorkerError> {
+    spawn_with_offload(
+        exe,
+        preset_path,
+        port,
+        api_key,
+        models_max,
+        slot_cache_mib,
+        envs,
+        on_fault,
+        None,
+    )
+    .await
+}
+
+/// [`spawn`], also reporting where each load placed its model.
+#[allow(clippy::too_many_arguments)]
+pub async fn spawn_with_offload(
+    exe: &Path,
+    preset_path: &Path,
+    port: u16,
+    api_key: &str,
+    models_max: u32,
+    slot_cache_mib: u64,
+    envs: HashMap<String, String>,
+    on_fault: Option<FaultCallback>,
+    on_offload: Option<OffloadCallback>,
+) -> Result<WorkerHandle, WorkerError> {
     let args = worker_args(preset_path, port, models_max, slot_cache_mib);
     log::info!("starting {} {}", exe.display(), args.join(" "));
 
@@ -398,8 +522,14 @@ pub async fn spawn(
         tokio::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
             let mut last_fault_at: Option<tokio::time::Instant> = None;
+            let mut offload = OffloadTracker::default();
             while let Ok(Some(line)) = lines.next_line().await {
                 log::debug!("flint-llama-worker: {line}");
+                if let Some(report_to) = on_offload.as_ref() {
+                    if let Some(report) = offload.feed(&line) {
+                        report_to(report);
+                    }
+                }
                 let Some(cb) = on_fault.as_ref() else {
                     continue;
                 };
@@ -687,5 +817,42 @@ mod tests {
         .await
         .expect_err("a silent exit must fail");
         assert!(matches!(err, WorkerError::Handshake(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn offload_tracker_reads_layers_and_buffers() {
+        let mut t = OffloadTracker::default();
+        assert_eq!(t.feed("load_tensors: loading model tensors"), None);
+        let r = t
+            .feed("load_tensors: offloaded 33/33 layers to GPU")
+            .unwrap();
+        assert_eq!((r.gpu_layers, r.total_layers), (33, 33));
+        t.feed("load_tensors:   CPU_Mapped model buffer size =   300.00 MiB");
+        let r = t
+            .feed("load_tensors:      Vulkan0 model buffer size =  4000.50 MiB")
+            .unwrap();
+        assert_eq!(r.gpu_mib, 4000.5);
+        assert_eq!(r.cpu_mib, 300.0);
+    }
+
+    #[test]
+    fn offload_tracker_starts_over_on_a_new_load() {
+        let mut t = OffloadTracker::default();
+        t.feed("offloaded 20/40 layers to GPU");
+        t.feed("CUDA0 model buffer size = 1000.00 MiB");
+        let r = t.feed("offloaded 40/40 layers to GPU").unwrap();
+        assert_eq!((r.gpu_layers, r.gpu_mib), (40, 0.0));
+    }
+
+    #[test]
+    fn offload_tracker_keeps_the_router_tag_and_ignores_buffers_before_a_load() {
+        let mut t = OffloadTracker::default();
+        assert_eq!(t.feed("CUDA0 model buffer size = 1000.00 MiB"), None);
+        let r = t
+            .feed("[qwen3-8b] load_tensors: offloaded 0/37 layers to GPU")
+            .unwrap();
+        assert_eq!(r.model.as_deref(), Some("qwen3-8b"));
+        assert_eq!(r.gpu_layers, 0);
+        assert_eq!(t.feed("[12345] something unrelated"), None);
     }
 }
