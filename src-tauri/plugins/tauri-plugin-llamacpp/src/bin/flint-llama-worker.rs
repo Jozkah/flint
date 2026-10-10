@@ -120,6 +120,14 @@ async fn main() {
     }
 
     let mut registry = Registry::new(args.models_max);
+    // Env rather than argv: the supervisor already forwards an env map, and a
+    // later change arrives through `/models/reload`. Unset or 0 is off.
+    if let Some(minutes) = std::env::var("LLAMA_FLINT_IDLE_UNLOAD_MINUTES")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+    {
+        registry.set_idle_unload_minutes(minutes);
+    }
     let mut models = Vec::new();
     let mut slot_store = None;
 

@@ -399,6 +399,7 @@ pub async fn reload_models(
     preset_path: String,
     models_max: Option<u32>,
     slot_cache_mib: Option<u64>,
+    idle_unload_minutes: Option<u32>,
 ) -> Result<ReloadReport, String> {
     let (port, api_key) = {
         let guard = state.engine.lock().await;
@@ -414,6 +415,9 @@ pub async fn reload_models(
     }
     if let Some(m) = slot_cache_mib {
         body["slot_cache_mib"] = serde_json::json!(m);
+    }
+    if let Some(m) = idle_unload_minutes {
+        body["idle_unload_minutes"] = serde_json::json!(m);
     }
 
     let resp = worker_client(RELOAD_MODELS_TIMEOUT)?
@@ -626,8 +630,9 @@ pub async fn reload_engine_models(
     preset_path: String,
     models_max: Option<u32>,
     slot_cache_mib: Option<u64>,
+    idle_unload_minutes: Option<u32>,
 ) -> Result<ReloadReport, String> {
-    reload_models(&**state, preset_path, models_max, slot_cache_mib).await
+    reload_models(&**state, preset_path, models_max, slot_cache_mib, idle_unload_minutes).await
 }
 
 #[cfg(feature = "tauri")]

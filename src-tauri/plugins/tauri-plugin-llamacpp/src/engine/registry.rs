@@ -11,8 +11,10 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use super::events::{EventBus, Transition};
+use super::idle::{self, Candidate, Clock};
 use super::{Engine, EngineError};
 
 /// Monotonic tick for LRU ordering. A counter rather than a clock so ordering
@@ -29,6 +31,9 @@ pub struct LoadedModel {
     /// with a non-zero count, or it would cancel a live generation.
     inflight: usize,
     last_used: u64,
+    /// Clock reading of the last acquire or release, for idle auto-unload.
+    /// Separate from `last_used`: that is an ordering tick, this is time.
+    last_active_ms: u64,
 }
 
 impl LoadedModel {
@@ -116,12 +121,20 @@ pub struct Registry {
     dropped: Vec<String>,
     /// 0 means unlimited, matching llama.cpp's `--models-max`.
     models_max: usize,
+    /// How long a resident model may sit unused before the sweeper unloads it.
+    /// `None` keeps models until `models_max` or the user evicts them.
+    idle_timeout: Option<Duration>,
+    clock: Clock,
     /// Where every transition below is published for `/models/sse`.
     events: EventBus,
 }
 
 impl Registry {
     pub fn new(models_max: usize) -> Self {
+        Self::with_clock(models_max, idle::system_clock())
+    }
+
+    pub fn with_clock(models_max: usize, clock: Clock) -> Self {
         Self {
             loaded: HashMap::new(),
             specs: HashMap::new(),
@@ -129,6 +142,8 @@ impl Registry {
             failures: HashMap::new(),
             dropped: Vec::new(),
             models_max,
+            idle_timeout: None,
+            clock,
             events: EventBus::new(),
         }
     }
@@ -171,6 +186,7 @@ impl Registry {
                 engine: Arc::new(Engine::stub()),
                 inflight,
                 last_used: next_tick(),
+                last_active_ms: (self.clock)(),
             },
         );
     }
@@ -250,6 +266,7 @@ impl Registry {
         if let Some(m) = self.loaded.get_mut(model_id) {
             m.inflight += 1;
             m.last_used = next_tick();
+            m.last_active_ms = (self.clock)();
             return Ok(m.engine());
         }
 
@@ -313,6 +330,7 @@ impl Registry {
                 engine: Arc::clone(&engine),
                 inflight: 1,
                 last_used: next_tick(),
+                last_active_ms: (self.clock)(),
             },
         );
         self.events.emit(model_id, Transition::Loaded);
@@ -324,11 +342,32 @@ impl Registry {
     /// A model a reload superseded is dropped here rather than at reload time,
     /// which is the only point where doing so cannot cancel a generation.
     pub fn release(&mut self, model_id: &str) {
+        self.release_inner(model_id, true);
+    }
+
+    /// Holds a resident model for the KV-state save without counting as use:
+    /// the save runs on the idle sweep's own initiative, and if it restarted
+    /// the idle timer the model it was saving could never be unloaded. Still
+    /// counts as in flight, so nothing evicts the engine mid-save.
+    pub fn pin_for_save(&mut self, model_id: &str) -> Option<Arc<Engine>> {
+        let m = self.loaded.get_mut(model_id)?;
+        m.inflight += 1;
+        Some(m.engine())
+    }
+
+    pub fn unpin_after_save(&mut self, model_id: &str) {
+        self.release_inner(model_id, false);
+    }
+
+    fn release_inner(&mut self, model_id: &str, touch: bool) {
         let Some(m) = self.loaded.get_mut(model_id) else {
             return;
         };
         m.inflight = m.inflight.saturating_sub(1);
-        m.last_used = next_tick();
+        if touch {
+            m.last_used = next_tick();
+            m.last_active_ms = (self.clock)();
+        }
         if m.inflight == 0 && self.stale.remove(model_id) {
             self.loaded.remove(model_id);
             self.dropped.push(model_id.to_string());
@@ -399,6 +438,41 @@ impl Registry {
             }
             None => {}
         }
+    }
+
+    /// Sets the idle auto-unload timeout in minutes; 0 turns it off.
+    pub fn set_idle_unload_minutes(&mut self, minutes: u64) {
+        self.idle_timeout = idle::timeout_from_minutes(minutes);
+    }
+
+    pub fn idle_unload_enabled(&self) -> bool {
+        self.idle_timeout.is_some()
+    }
+
+    /// Resident models that have been idle past the timeout. Embedding models
+    /// are skipped (see `idle::Candidate::pinned`).
+    pub fn idle_expired(&self) -> Vec<String> {
+        idle::expired(
+            self.loaded.iter().map(|(id, m)| Candidate {
+                id: id.as_str(),
+                inflight: m.inflight,
+                last_active_ms: m.last_active_ms,
+                pinned: self.specs.get(id).is_some_and(spec_is_embedding),
+            }),
+            (self.clock)(),
+            self.idle_timeout,
+        )
+    }
+
+    /// Unloads `model_id` only if it is still idle past the timeout. The sweep
+    /// lists candidates, then saves their KV state without holding this lock;
+    /// a request may arrive in that gap, and this re-check is what keeps it
+    /// from losing its model.
+    pub fn unload_if_idle(&mut self, model_id: &str) -> bool {
+        if !self.idle_expired().iter().any(|id| id == model_id) {
+            return false;
+        }
+        self.unload(model_id)
     }
 
     /// Unloads a model. Refuses while requests are in flight rather than
@@ -509,6 +583,26 @@ fn spec_model_path(body: &[String]) -> Option<String> {
         }
     }
     None
+}
+
+/// True when the spec starts the model as an embedder: the preset section's
+/// `embeddings = true` that `preset.ts` writes, or the llama-server flag.
+fn spec_is_embedding(spec: &LoadSpec) -> bool {
+    let body = match spec {
+        LoadSpec::Preset { body, .. } => body,
+        LoadSpec::Args(args) => args,
+    };
+    body.iter().any(|line| {
+        if matches!(line.as_str(), "--embedding" | "--embeddings") {
+            return true;
+        }
+        match line.split_once('=') {
+            Some((k, v)) => {
+                matches!(k.trim(), "embeddings" | "embedding") && !is_falsey(v)
+            }
+            None => false,
+        }
+    })
 }
 
 /// Text a failed load carries when the vision projector, not the language
@@ -698,9 +792,114 @@ mod tests {
                     engine: Arc::new(Engine::stub()),
                     inflight: 0,
                     last_used: next_tick(),
+                    last_active_ms: (r.clock)(),
                 },
             );
         }
+    }
+
+    fn timed(max: usize) -> (Registry, std::sync::Arc<std::sync::atomic::AtomicU64>) {
+        let (clock, now) = crate::engine::idle::manual_clock();
+        (Registry::with_clock(max, clock), now)
+    }
+
+    fn advance(now: &std::sync::atomic::AtomicU64, ms: u64) {
+        now.fetch_add(ms, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[cfg(not(feature = "engine"))]
+    #[test]
+    fn idle_unload_is_off_by_default() {
+        let (mut r, now) = timed(2);
+        resident(&mut r, &["a"]);
+        advance(&now, 24 * 3_600_000);
+        assert!(!r.idle_unload_enabled());
+        assert!(r.idle_expired().is_empty());
+        assert!(!r.unload_if_idle("a"));
+        assert!(r.is_loaded("a"));
+    }
+
+    #[cfg(not(feature = "engine"))]
+    #[test]
+    fn an_idle_model_is_unloaded_and_recorded() {
+        let (mut r, now) = timed(2);
+        r.set_idle_unload_minutes(5);
+        resident(&mut r, &["a"]);
+        advance(&now, 299_000);
+        assert!(!r.unload_if_idle("a"), "not idle long enough yet");
+        advance(&now, 1_000);
+        assert!(r.unload_if_idle("a"));
+        assert!(!r.is_loaded("a"));
+        assert_eq!(r.take_dropped(), vec!["a".to_string()]);
+    }
+
+    #[cfg(not(feature = "engine"))]
+    #[test]
+    fn a_release_restarts_the_idle_timer() {
+        let (mut r, now) = timed(2);
+        r.set_idle_unload_minutes(5);
+        resident(&mut r, &["a"]);
+        advance(&now, 240_000);
+        r.loaded.get_mut("a").unwrap().inflight = 1;
+        advance(&now, 240_000);
+        assert!(r.idle_expired().is_empty(), "busy for the whole time");
+        r.release("a");
+        advance(&now, 240_000);
+        assert!(r.idle_expired().is_empty(), "timer restarted at release");
+        advance(&now, 60_000);
+        assert_eq!(r.idle_expired(), vec!["a".to_string()]);
+    }
+
+    #[cfg(not(feature = "engine"))]
+    #[test]
+    fn a_busy_model_is_not_unloaded_however_old() {
+        let (mut r, now) = timed(2);
+        r.set_idle_unload_minutes(1);
+        resident(&mut r, &["a"]);
+        r.loaded.get_mut("a").unwrap().inflight = 1;
+        advance(&now, 3_600_000);
+        assert!(!r.unload_if_idle("a"));
+        assert!(r.is_loaded("a"));
+    }
+
+    #[cfg(not(feature = "engine"))]
+    #[test]
+    fn an_embedding_model_is_never_idle_unloaded() {
+        let (mut r, now) = timed(3);
+        r.set_idle_unload_minutes(1);
+        resident(&mut r, &["chat"]);
+        r.register(
+            "embed",
+            LoadSpec::Preset {
+                ini_path: "p.ini".into(),
+                section: "embed".into(),
+                body: vec!["model = e.gguf".into(), "embeddings = true".into()],
+            },
+        );
+        r.loaded.insert(
+            "embed".to_string(),
+            LoadedModel {
+                engine: Arc::new(Engine::stub()),
+                inflight: 0,
+                last_used: next_tick(),
+                last_active_ms: 0,
+            },
+        );
+        advance(&now, 3_600_000);
+        assert_eq!(r.idle_expired(), vec!["chat".to_string()]);
+    }
+
+    #[test]
+    fn embedding_specs_are_recognised() {
+        let preset = |b: &[&str]| LoadSpec::Preset {
+            ini_path: "p".into(),
+            section: "s".into(),
+            body: b.iter().map(|s| s.to_string()).collect(),
+        };
+        assert!(spec_is_embedding(&preset(&["embeddings = true"])));
+        assert!(!spec_is_embedding(&preset(&["embeddings = false"])));
+        assert!(!spec_is_embedding(&preset(&["model = m.gguf"])));
+        assert!(spec_is_embedding(&LoadSpec::Args(vec!["--embedding".into()])));
     }
 
     /// Every path that stops hosting a model has to say so: the slot occupancy
