@@ -1,5 +1,6 @@
 import { getModelToStart } from './getModelToStart'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { isLocalProvider } from '@/lib/utils'
 
 export type EnsureModelResult =
   | { status: 'already_loaded'; modelId: string; providerName: string }
@@ -31,6 +32,18 @@ function findProviderForModel(modelId: string): ModelProvider | undefined {
     )
 }
 
+/** The first model of the first local-engine provider that has one. */
+function firstLocalModel(
+  providers: ModelProvider[] | undefined
+): { model: string; provider: ModelProvider } | null {
+  for (const provider of providers ?? []) {
+    if (!isLocalProvider(provider.provider)) continue
+    const first = provider.models?.[0]
+    if (first) return { model: first.id, provider }
+  }
+  return null
+}
+
 /**
  * Ensure a model is loaded for the local API server.
  *
@@ -53,7 +66,7 @@ export async function ensureModelForServer(
   }
 
   // No model loaded — pick one (prefer user-configured default, then auto-pick)
-  const { selectedModel, selectedProvider, getProviderByName } =
+  const { selectedModel, selectedProvider, getProviderByName, providers } =
     useModelProvider.getState()
 
   let modelToStart: { model: string; provider: ModelProvider } | null = null
@@ -66,11 +79,19 @@ export async function ensureModelForServer(
   }
 
   if (!modelToStart) {
-    modelToStart = getModelToStart({
+    const picked = getModelToStart({
       selectedModel,
       selectedProvider,
       getProviderByName,
     })
+    // The server serves local models. The last used or selected model is often
+    // a remote one (a cloud API, a LAN server), and a remote provider has no
+    // engine to load it into, so the start would fail with "engine is not
+    // available". Use the first local model instead.
+    modelToStart =
+      picked && isLocalProvider(picked.provider.provider)
+        ? picked
+        : firstLocalModel(providers)
   }
 
   if (!modelToStart) {
