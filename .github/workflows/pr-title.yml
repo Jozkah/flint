@@ -14,7 +14,7 @@ permissions:
 jobs:
   title:
     name: Conventional Commit title
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check the PR title
         env:

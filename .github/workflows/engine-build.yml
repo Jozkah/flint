@@ -17,7 +17,7 @@ jobs:
   # a manual run, where the wall clock of a CUDA plus HIP build is affordable.
   variants:
     name: Select variants
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       include: ${{ steps.select.outputs.include }}
     steps:

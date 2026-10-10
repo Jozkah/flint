@@ -48,7 +48,7 @@ env:
 jobs:
   prepare:
     name: Prepare release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     outputs:
@@ -338,7 +338,7 @@ jobs:
     name: Upload the bundles to the release
     if: github.event_name != 'push' && needs.prepare.outputs.skip != 'true'
     needs: [prepare, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
@@ -368,7 +368,7 @@ jobs:
     name: Prune old nightly prereleases
     if: github.event_name == 'schedule'
     needs: [prepare]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
@@ -387,7 +387,7 @@ jobs:
     name: Publish nightly prerelease
     if: github.event_name == 'schedule' && needs.prepare.outputs.skip != 'true'
     needs: [prepare, build, upload-release]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
