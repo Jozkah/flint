@@ -462,9 +462,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
     this.config = loadedConfig as LlamacppConfig
 
-    // Auto-fit is disabled by default on all platforms; ctx-size owns context
-    // sizing. Force off for users a prior build left with fit enabled.
-    await this.migrateFitOff()
+    // Auto-fit is on by default: it places as many layers on the GPU as VRAM
+    // allows, and leaves a context size the user or model set alone. Turn it
+    // back on for users the old force-off migration left with it disabled.
+    await this.migrateFitOn()
 
     await this.migrateAutoUnloadToModelsMax()
 
@@ -1062,22 +1063,22 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     await setBackendSetting(MIGRATION_KEY, '1')
   }
 
-  private async migrateFitOff(): Promise<void> {
-    const MIGRATION_KEY = 'llamacpp_fit_off_v1'
+  private async migrateFitOn(): Promise<void> {
+    const MIGRATION_KEY = 'llamacpp_fit_on_v1'
     if (await getBackendSetting(MIGRATION_KEY)) return
 
-    if (this.config.fit === true) {
+    if (this.config.fit === false) {
       const settings = await this.getSettings()
       await this.updateSettings(
         settings.map((item) => {
           if (item.key === 'fit') {
-            item.controllerProps.value = false
+            item.controllerProps.value = true
           }
           return item
         })
       )
-      this.config.fit = false
-      logger.info('Migrated fit setting: disabled')
+      this.config.fit = true
+      logger.info('Migrated fit setting: enabled')
     }
 
     await setBackendSetting(MIGRATION_KEY, '1')

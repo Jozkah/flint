@@ -148,6 +148,18 @@ fn fault_emitter<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) -> worker::
     })
 }
 
+/// Forwards where a load placed its model to the frontend, which shows it in
+/// the model's status.
+#[cfg(feature = "tauri")]
+fn offload_emitter<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) -> worker::OffloadCallback {
+    use tauri::Emitter;
+    Arc::new(move |report: worker::OffloadReport| {
+        if let Err(e) = app_handle.emit("llamacpp-offload", report) {
+            log::warn!("emit llamacpp-offload failed: {e}");
+        }
+    })
+}
+
 /// Starts the worker. `slot_cache_mib` is the ceiling on the per-thread KV
 /// cache directory; 0 turns cross-session KV persistence off, which is a
 /// user-facing setting because a single saved conversation is hundreds of MiB.
@@ -169,7 +181,7 @@ pub async fn start_engine<R: tauri::Runtime>(
 
     let exe = resolve_worker_exe(&app_handle)?;
     let api_key = generate_worker_key();
-    let handle = worker::spawn(
+    let handle = worker::spawn_with_offload(
         &exe,
         &PathBuf::from(preset_path),
         0, // OS-assigned; the handshake reports it back
@@ -178,6 +190,7 @@ pub async fn start_engine<R: tauri::Runtime>(
         slot_cache_mib,
         envs,
         Some(fault_emitter(app_handle.clone())),
+        Some(offload_emitter(app_handle.clone())),
     )
     .await
     .map_err(|e| e.to_string())?;
