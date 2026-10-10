@@ -34,6 +34,7 @@ import { Fzf } from 'fzf'
 import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
+import { isFavoriteEntry } from '@/lib/favoriteModel'
 import { useProviderReachability } from '@/hooks/useProviderReachability'
 import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
 import { ModelFilterButton } from '@/containers/ModelFilterButton'
@@ -569,7 +570,9 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   // Get favorite models that are currently available
   const favoriteItems = useMemo(() => {
     return searchableItems.filter((item) =>
-      favoriteModels.some((fav) => fav.id === item.model.id)
+      favoriteModels.some((fav) =>
+        isFavoriteEntry(fav, item.model.id, item.provider.provider)
+      )
     )
   }, [searchableItems, favoriteModels])
 
@@ -619,7 +622,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     if (!wantsFlatList) return []
     // Models from a provider that did not answer go last.
     return sortModels(filteredItems, sort, lastUsed, modelIsOffline).filter(
-      (item) => !favoriteModels.some((fav) => fav.id === item.model.id)
+      (item) =>
+        !favoriteModels.some((fav) =>
+          isFavoriteEntry(fav, item.model.id, item.provider.provider)
+        )
     )
   }, [filteredItems, wantsFlatList, sort, lastUsed, favoriteModels, modelIsOffline])
 
@@ -677,7 +683,9 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       }
 
       // When not searching, exclude favorite models from regular provider sections
-      const isFavorite = favoriteModels.some((fav) => fav.id === item.model.id)
+      const isFavorite = favoriteModels.some((fav) =>
+        isFavoriteEntry(fav, item.model.id, item.provider.provider)
+      )
       if (!searchValue && isFavorite) return // Skip adding this item to regular provider section
 
       groups[providerKey].push(item)
