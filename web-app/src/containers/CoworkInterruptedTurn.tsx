@@ -3,11 +3,18 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useCampaignStore } from '@/hooks/useCampaigns'
 import {
   isInterrupted,
   unfinishedReply,
   type InterruptedChoice,
 } from '@/lib/coworkInflight'
+
+/**
+ * A campaign task whose work is already accepted or dropped has nothing left
+ * to continue: a checkpoint left behind by the last restart is stale there.
+ */
+const SETTLED_TASK = new Set(['merged', 'verified', 'cancelled', 'skipped'])
 
 /**
  * A turn the app stopped under (AH-026).
@@ -31,6 +38,17 @@ export function CoworkInterruptedTurn({
     (s) => s.sessions.find((x) => x.id === sessionId)?.inFlight
   )
   const liveRunId = useCoworkRun((s) => s.runs[sessionId]?.runId)
+  const link = useCoworkSessions(
+    (s) => s.sessions.find((x) => x.id === sessionId)?.campaign
+  )
+  const taskStatus = useCampaignStore((s) =>
+    link?.taskId
+      ? s.campaigns
+          .find((c) => c.id === link.id)
+          ?.tasks.find((x) => x.id === link.taskId)?.status
+      : undefined
+  )
+  if (taskStatus && SETTLED_TASK.has(taskStatus)) return null
   if (!isInterrupted(record, liveRunId)) return null
   const calls = record.turns.filter((turn) => turn.role === 'tool').length
   const partial = unfinishedReply(record)
