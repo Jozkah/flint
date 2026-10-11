@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import {
   Activity,
   ChevronRight,
-  MessageSquarePlus,
+  Pencil,
   MoreHorizontal,
   Server,
   Settings,
@@ -35,9 +35,7 @@ import { RoomsNav } from '@/components/shell/nav/RoomsNav'
 import { ChatsNav } from '@/components/shell/nav/ChatsNav'
 import { FlintMark } from '@/components/shell/FlintMark'
 import { Icon, type IconName } from '@/components/ui/icon'
-import { ShortcutHint } from '@/containers/ShortcutHint'
 import { PlatformMetaKey } from '@/containers/PlatformMetaKey'
-import { ShortcutAction } from '@/lib/shortcuts'
 import { route } from '@/constants/routes'
 import { tabForPath, type SidebarTab } from '@/lib/sidebarTab'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
@@ -538,11 +536,8 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                       onClick={newChat}
                       data-testid="nav-new-chat"
                     >
-                      <MessageSquarePlus aria-hidden />
+                      <Pencil aria-hidden />
                       <span className="flex-1 truncate">{t('common:newChat')}</span>
-                      <span className="text-[10.5px] text-subtle-foreground [&_kbd]:shadow-none [&_kbd]:text-subtle-foreground">
-                        <ShortcutHint action={ShortcutAction.NEW_CHAT} />
-                      </span>
                     </NavButton>
                   </NavItem>
                   <LinkRows rows={library} onNavigate={onNavigate} />

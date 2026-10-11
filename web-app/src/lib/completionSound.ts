@@ -29,6 +29,7 @@ export function shouldPlayCompletionSound(
 ): boolean {
   if (mode === 'always') return true
   if (mode === 'background') return inBackground
+  // 'approval' is silent on finish: it sounds when a run asks for approval.
   return false
 }
 
@@ -62,6 +63,17 @@ export function playCompletionSound(
 export function notifyAnswerFinished(): void {
   const { completionSound, completionSoundVolume } = useInterfaceSettings.getState()
   if (!shouldPlayCompletionSound(completionSound, appInBackground())) return
+  playCompletionSound(completionSoundVolume)
+}
+
+/**
+ * A run stopped to ask for approval: play the sound when the user chose
+ * "only when approval is needed". Played in the foreground too, since the
+ * prompt may be in another chat.
+ */
+export function notifyApprovalNeeded(): void {
+  const { completionSound, completionSoundVolume } = useInterfaceSettings.getState()
+  if (completionSound !== 'approval') return
   playCompletionSound(completionSoundVolume)
 }
 
