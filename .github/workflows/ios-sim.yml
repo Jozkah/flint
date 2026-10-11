@@ -1,0 +1,121 @@
+name: iOS Simulator
+on:
+  workflow_dispatch:
+  # A workflow_dispatch-only file cannot be run until it is on main. Drop this
+  # trigger once the workflow has landed there.
+  push:
+    branches: [feat/ios-thin-client]
+    paths: ['.github/workflows/ios-sim.yml']
+
+concurrency:
+  group: ios-sim-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  # Launches the app in the iOS Simulator and keeps a screenshot, which is the
+  # only look at the real app available without a phone: it proves the Rust
+  # shell starts, the bundled page loads and the connect screen renders.
+  simulator:
+    name: launch in simulator
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios-sim
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          key: ios-sim
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+
+      - name: Install dependencies and render icons
+        run: |
+          corepack enable
+          corepack prepare yarn@4.10.3 --activate
+          yarn config set -H enableImmutableInstalls false
+          yarn install
+          yarn build:icon
+
+      - name: Stage bundle resources
+        run: |
+          mkdir -p src-tauri/resources
+          cp LICENSE src-tauri/resources/LICENSE
+
+      - name: Tooling
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodebuild -version
+
+      - name: Generate the Xcode project
+        env:
+          APPLE_DEVELOPMENT_TEAM: 0000000000
+        run: |
+          yarn tauri ios init --ci
+          python3 scripts/unsign-ios-project.py src-tauri/gen/apple
+
+      - name: Build for the simulator
+        env:
+          APPLE_DEVELOPMENT_TEAM: 0000000000
+        run: yarn tauri ios build --ci --target aarch64-sim -- --no-default-features --features mobile || echo "tauri ios build exited $? (checking for an .app)"
+
+      - name: Boot a simulator, install and launch
+        run: |
+          set -e
+          app=$(find src-tauri/gen/apple -type d -name '*.app' -path '*Products*' | head -n1)
+          if [ -z "$app" ]; then
+            echo "no .app found"
+            find src-tauri/gen/apple -maxdepth 4 | head -60
+            exit 1
+          fi
+          echo "app: $app"
+          bundle=$(plutil -extract CFBundleIdentifier raw "$app/Info.plist")
+          udid=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = json.load(sys.stdin)['devices']
+          for runtime, items in devices.items():
+              if 'iOS' not in runtime:
+                  continue
+              for d in items:
+                  if 'iPhone' in d['name']:
+                      print(d['udid']); sys.exit(0)
+          sys.exit('no iPhone simulator')
+          ")
+          echo "simulator: $udid bundle: $bundle"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$app"
+          xcrun simctl launch "$udid" "$bundle"
+          sleep 20
+          mkdir -p shots
+          xcrun simctl io "$udid" screenshot shots/connect.png
+          xcrun simctl spawn "$udid" launchctl list | grep -i "$bundle" || true
+          echo "udid=$udid" >> "$GITHUB_ENV"
+          echo "bundle=$bundle" >> "$GITHUB_ENV"
+
+      - name: Appearance and orientation variants
+        run: |
+          xcrun simctl ui "$udid" appearance dark
+          sleep 3
+          xcrun simctl io "$udid" screenshot shots/connect-dark.png
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: simulator-shots
+          path: shots
+          if-no-files-found: warn
