@@ -1,36 +1,26 @@
-/* iOS look (HIG) for the phone app. Loaded last and scoped to html.ios, so the
+/* iOS adaptation of the phone app. Loaded last and scoped to html.ios, so the
    browser, PWA and Android appearance is untouched. `html.ios` is added early
-   by main.tsx (platform.ts). Colours are the iOS system colours; the tint is
-   systemBlue unless the computer sent its accent (--ios-accent, theme.ts). */
+   by main.tsx (platform.ts).
+
+   The look stays Flint's: the same palette, accent, typeface and radii as the
+   desktop app (mobile.css tokens, the computer's accent from theme.ts). What
+   changes is how it is laid out and touched on an iPhone: a tab bar and back
+   navigation, 44pt hit targets, safe areas, sheets with a grabber, a larger
+   switch, and no hover states. The --ios-* names below only alias Flint tokens. */
 
 html.ios {
-  --ios-tint: var(--ios-accent, #007aff);
-  --ios-green: #34c759;
-  --ios-red: #ff3b30;
-  --ios-label: #000;
-  --ios-label2: rgba(60, 60, 67, 0.6);
-  --ios-label3: rgba(60, 60, 67, 0.3);
-  --ios-sep: rgba(60, 60, 67, 0.29);
-  --ios-fill: rgba(120, 120, 128, 0.12);
-  --ios-bg: #f2f2f7;
-  --ios-cell: #fff;
-  --ios-bar: rgba(249, 249, 249, 0.82);
+  --ios-tint: var(--ios-accent, var(--info));
+  --ios-green: var(--success);
+  --ios-red: var(--destructive);
+  --ios-label: var(--foreground);
+  --ios-label2: var(--muted-foreground);
+  --ios-label3: var(--subtle-foreground);
+  --ios-sep: var(--border);
+  --ios-fill: var(--accent);
+  --ios-bg: var(--background);
+  --ios-cell: var(--card);
+  --ios-bar: color-mix(in srgb, var(--background) 84%, transparent);
   --ios-spring: cubic-bezier(0.32, 0.72, 0, 1);
-
-  /* Remap the app's tokens so every screen picks the iOS palette up. */
-  --background: var(--ios-bg);
-  --card: var(--ios-cell);
-  --popover: var(--ios-cell);
-  --foreground: var(--ios-label);
-  --muted-foreground: var(--ios-label2);
-  --subtle-foreground: var(--ios-label3);
-  --border: var(--ios-sep);
-  --accent: var(--ios-fill);
-  --info: var(--ios-tint);
-  --destructive: var(--ios-red);
-  --success: var(--ios-green);
-  --sans: -apple-system, 'SF Pro Text', 'SF Pro Display', system-ui, 'Helvetica Neue', sans-serif;
-  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
 
   -webkit-text-size-adjust: none;
   text-size-adjust: none;
@@ -38,23 +28,8 @@ html.ios {
   -webkit-touch-callout: none;
   overscroll-behavior: none;
 }
-html.ios.dark {
-  --ios-label: #fff;
-  --ios-label2: rgba(235, 235, 245, 0.6);
-  --ios-label3: rgba(235, 235, 245, 0.3);
-  --ios-sep: rgba(84, 84, 88, 0.65);
-  --ios-fill: rgba(120, 120, 128, 0.24);
-  --ios-bg: #000;
-  --ios-cell: #1c1c1e;
-  --ios-bar: rgba(29, 29, 31, 0.8);
-  --ios-tint: var(--ios-accent, #0a84ff);
-  --ios-green: #30d158;
-  --ios-red: #ff453a;
-}
 
 html.ios body {
-  font: 17px/1.3 var(--sans);
-  letter-spacing: -0.022em;
   overscroll-behavior: none;
   -webkit-user-select: none;
   user-select: none;
@@ -92,21 +67,12 @@ html.ios .sheet {
 html.ios .ib {
   width: 44px;
   height: 44px;
-  border-radius: 22px;
-  color: var(--ios-tint);
 }
 html.ios .btn {
   min-height: 44px;
-  border-radius: 12px;
-  font-size: 17px;
 }
 html.ios .btn.sm {
   min-height: 36px;
-  font-size: 15px;
-}
-html.ios .btn.pri {
-  background: var(--ios-tint);
-  color: #fff;
 }
 html.ios .row,
 html.ios .opt {
@@ -114,7 +80,6 @@ html.ios .opt {
 }
 html.ios .chip {
   min-height: 28px;
-  border-radius: 14px;
 }
 
 /* Navigation bar: translucent, blurred, centred inline title. */
@@ -136,7 +101,6 @@ html.ios .crumb small {
   display: none;
 }
 html.ios .crumb b {
-  font-size: 17px;
   font-weight: 600;
 }
 /* A screen with a large title shows it in the page and fades the bar title in
@@ -168,15 +132,13 @@ html.ios .ios-back {
 }
 html.ios .navback {
   min-height: 44px;
-  font-size: 17px;
   color: var(--ios-tint);
 }
 
 /* Large titles and grouped inset lists. */
 html.ios .iset h1 {
-  font-size: 34px;
+  font-size: 26px;
   font-weight: 700;
-  letter-spacing: 0.012em;
   margin: 0 4px;
 }
 html.ios .iset {
@@ -184,23 +146,14 @@ html.ios .iset {
   padding-right: 16px;
 }
 html.ios .igrp > .cap {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: -0.003em;
   color: var(--ios-label2);
   padding: 0 16px;
 }
 html.ios .igrp > .foot2 {
-  font-size: 13px;
   padding: 0 16px;
-}
-html.ios .ilist {
-  border: 0;
-  border-radius: 10px;
 }
 html.ios .irow {
   min-height: 44px;
-  font-size: 17px;
   padding: 0 16px;
 }
 html.ios .irow + .irow::before {
@@ -221,7 +174,6 @@ html.ios .irow .tile {
   border-radius: 7px;
 }
 html.ios .irow .val {
-  font-size: 17px;
   color: var(--ios-label2);
 }
 html.ios .irow > svg.i:last-child {
@@ -229,13 +181,7 @@ html.ios .irow > svg.i:last-child {
   color: var(--ios-label3);
 }
 html.ios .isrch {
-  height: 36px;
-  border-radius: 10px;
-  background: var(--ios-fill);
-}
-html.ios .profile {
-  border: 0;
-  border-radius: 10px;
+  height: 40px;
 }
 
 /* Switch: 51x31, white knob, green when on. */
@@ -243,7 +189,6 @@ html.ios .sw {
   width: 51px;
   height: 31px;
   border-radius: 31px;
-  background: var(--ios-fill);
   transition: background 0.25s var(--ios-spring);
 }
 html.ios .sw::after {
@@ -254,11 +199,6 @@ html.ios .sw::after {
   background: #fff;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.16);
   transition: left 0.3s var(--ios-spring), width 0.2s;
-}
-html.ios .on > .sw,
-html.ios .sw.on,
-html.ios .irow.on .sw {
-  background: var(--ios-green);
 }
 html.ios .on > .sw::after,
 html.ios .sw.on::after,
@@ -275,8 +215,6 @@ html.ios .sw.on:active::after {
 
 /* Bottom sheets: grabber, 14px radius, spring. */
 html.ios .sheet {
-  border-radius: 14px 14px 0 0;
-  background: var(--ios-cell);
   transition: transform 0.45s var(--ios-spring);
 }
 html.ios .grab {
@@ -285,11 +223,7 @@ html.ios .grab {
   background: var(--ios-label3);
 }
 html.ios .sheet h3 {
-  font-size: 17px;
   text-align: center;
-}
-html.ios .opt {
-  border-radius: 10px;
 }
 html.ios .drawer {
   transition: transform 0.45s var(--ios-spring);
@@ -333,6 +267,9 @@ html.ios .ios-tab span:last-child {
   white-space: nowrap;
 }
 html.ios .ios-tab.on {
+  color: var(--foreground);
+}
+html.ios .ios-tab.on svg {
   color: var(--ios-tint);
 }
 html.ios .ios-tab:active {
