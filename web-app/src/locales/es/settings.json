@@ -926,7 +926,8 @@
         "close": "Close",
         "confirm": "Confirm",
         "reviewChanges": "Review changes",
-        "openCoordinator": "Open coordinator"
+        "openCoordinator": "Open coordinator",
+        "openCowork": "Open Cowork to continue"
       },
       "note": {
         "title": "Note to {{task}}",
@@ -959,6 +960,7 @@
         "missing": "The proposal could not be found. Run Review & apply again."
       },
       "resumed": "Resumed {{n}} task(s) that were interrupted when the app stopped.",
+      "stalled": "{{n}} task(s) show as running but nothing is running them in this window. Open Cowork to continue them.",
       "noteState": {
         "sent": "Note sent",
         "delivered": "Note delivered to the task"

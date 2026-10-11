@@ -34,6 +34,7 @@ import { TaskRow, type TaskRowAction } from '@/components/campaign/TaskRow'
 import { TaskChanges } from '@/components/campaign/TaskChanges'
 import { useCampaign, useCampaignStore } from '@/hooks/useCampaigns'
 import { useCampaignResumed } from '@/hooks/useCampaignResumed'
+import { useStalledTasks } from '@/hooks/useStalledTasks'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { route } from '@/constants/routes'
@@ -126,6 +127,10 @@ export function CampaignBoard({
     const timer = setInterval(() => void checkNoteDelivery(), 2_000)
     return () => clearInterval(timer)
   }, [waitingNotes])
+  const stalled = useStalledTasks(
+    campaign?.tasks ?? [],
+    !!campaign && !isServerDriven(campaign)
+  )
   const [panel, setPanel] = useState<Panel>(null)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -479,6 +484,30 @@ export function CampaignBoard({
           allowBypass={remote.state === 'ready' && remote.info.allowBypass}
         />
       )}
+
+      {stalled.length > 0 ? (
+        <div
+          className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2 text-xs"
+          role="status"
+          data-testid="campaign-stalled"
+        >
+          <span>
+            {t('settings:campaigns.board.stalled', { n: stalled.length })}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const sid = campaign.tasks.find((x) => x.id === stalled[0])
+                ?.sessionId
+              if (sid) useCoworkSessions.getState().selectSession(sid)
+              void navigate({ to: route.cowork })
+            }}
+          >
+            {t('settings:campaigns.board.action.openCowork')}
+          </Button>
+        </div>
+      ) : null}
 
       {resumed && resumed.length > 0 ? (
         <div
