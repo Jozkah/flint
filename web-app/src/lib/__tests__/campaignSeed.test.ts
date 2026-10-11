@@ -85,3 +85,27 @@ describe('retry hint', () => {
     expect(forged).not.toContain('<campaign-decisions')
   })
 })
+
+describe('seed hints', () => {
+  const seed = (t: Partial<CampaignTask>, decisions = '') =>
+    buildTaskSeed({
+      campaign: { title: 'C', integrationBranch: 'i' },
+      task: { ...task, ...t } as CampaignTask,
+      branch: null,
+      context: { decisions, handoffs: [] },
+    })
+
+  it('says which dependencies a person skipped', () => {
+    const text = seed({ skippedDeps: ['a1'] })
+    expect(text).toContain('Skipped dependencies')
+    expect(text).toContain('a1')
+    expect(seed({})).not.toContain('Skipped dependencies')
+  })
+
+  it('adds the node --test hint only when node:test is in play', () => {
+    expect(seed({ brief: 'write tests with node:test' })).toContain(
+      'node --test'
+    )
+    expect(seed({ brief: 'add a button' })).not.toContain('node --test')
+  })
+})

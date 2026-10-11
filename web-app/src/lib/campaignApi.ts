@@ -181,6 +181,13 @@ export type FinalizeReport = {
   campaign: Campaign
 }
 
+/** What skipping a task did to the tasks that waited on it. */
+export type SkipReport = {
+  campaign: Campaign
+  cancelled: string[]
+  released: string[]
+}
+
 export type OrphanWorktree = {
   campaignId: string
   taskId?: string | null
@@ -250,6 +257,34 @@ export const campaignApi = {
       seconds: seconds ?? null,
     }),
   refresh: (id: string) => invoke<Campaign>('agent_campaign_refresh', { id }),
+  /** Create the one repair task a failed final gate asks for (D5). */
+  repairGate: (id: string) =>
+    invoke<Campaign>('agent_campaign_gate_repair', { id }),
+  /** Run the final gate again after a repair merged. */
+  retryGate: (id: string, seconds?: number) =>
+    invoke<FinalizeReport>('agent_campaign_retry_gate', {
+      id,
+      seconds: seconds ?? null,
+    }),
+  /** Skip a task, and with `cascade` cancel what waits on it. */
+  skipTask: (
+    id: string,
+    taskId: string,
+    dependants: 'leave' | 'cascade' | 'release' = 'leave'
+  ) =>
+    invoke<SkipReport>('agent_campaign_skip_task', { id, taskId, dependants }),
+  skipCascade: (id: string, taskId: string) =>
+    invoke<SkipReport>('agent_campaign_skip_task', {
+      id,
+      taskId,
+      dependants: 'cascade',
+    }),
+  releaseDependants: (id: string, taskId: string) =>
+    invoke<SkipReport>('agent_campaign_skip_task', {
+      id,
+      taskId,
+      dependants: 'release',
+    }),
   orphans: () => invoke<OrphanWorktree[]>('agent_campaign_orphans'),
   /** `patches: false` counts only; the board's rows poll that. */
   taskDiff: (id: string, taskId: string, patches = true) =>

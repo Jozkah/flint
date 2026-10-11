@@ -87,6 +87,10 @@ export type CampaignTask = {
    * empty diff, conflict markers left by a resolver.
    */
   evidence?: TaskEvidence | null
+  /** `gate_repair` for the task a failed final gate asked for. */
+  kind?: string
+  /** Dependencies a person skipped and released this task from. */
+  skippedDeps?: string[]
   /** Set once a resolver was started for this task's conflict (one attempt). */
   resolver?: TaskResolver | null
   /**

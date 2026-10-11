@@ -212,7 +212,17 @@ pub struct CampaignTask {
     /// Set once a resolver session was started for this task's conflict.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolver: Option<ResolverRecord>,
+    /// `gate_repair` for the one task a failed final gate asks for; empty for
+    /// every planned task.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
+    /// Dependencies a person skipped and released this task from. It runs
+    /// without their work, and its seed says so.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skipped_deps: Vec<String>,
 }
+
+pub const KIND_GATE_REPAIR: &str = "gate_repair";
 
 impl CampaignTask {
     pub(crate) fn from_plan(t: PlanTask) -> Self {
@@ -239,6 +249,8 @@ impl CampaignTask {
             verify_tokens: 0,
             evidence: None,
             resolver: None,
+            kind: String::new(),
+            skipped_deps: Vec::new(),
         }
     }
 
@@ -1703,6 +1715,176 @@ pub fn plan_update(data_folder: &Path, id: &str, edit: PlanEdit) -> Result<Campa
     Ok(c)
 }
 
+// ---------------------------------------------------------------------------
+// Skipping a task, and what happens to what waits on it
+// ---------------------------------------------------------------------------
+
+/// What skipping a task does to the tasks that depend on it.
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipDependants {
+    /// Only the task: its dependants stay blocked until a person decides.
+    #[default]
+    Leave,
+    /// Its dependants, and theirs, are cancelled with "dependency skipped".
+    Cascade,
+    /// Its dependants run without it; their seed says what was skipped.
+    Release,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SkipReport {
+    pub campaign: Campaign,
+    /// Dependants cancelled by a cascade (the skipped task itself excluded).
+    pub cancelled: Vec<String>,
+    /// Dependants released to run without the skipped task.
+    pub released: Vec<String>,
+}
+
+/// Tasks that wait on `task_id`, directly or through other tasks, and are not
+/// finished.
+pub fn open_dependants(c: &Campaign, task_id: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut todo = vec![task_id.to_string()];
+    while let Some(cur) = todo.pop() {
+        for t in &c.tasks {
+            if t.depends_on.contains(&cur) && !t.status.is_terminal() && !out.contains(&t.id) {
+                out.push(t.id.clone());
+                todo.push(t.id.clone());
+            }
+        }
+    }
+    out
+}
+
+/// Skip a task (cancel it) and settle its dependants as the person chose. The
+/// campaign then moves to review when nothing is left to do. The backend does
+/// not stop a live run: the caller aborts the sessions of what was cancelled.
+pub fn skip_task(
+    data_folder: &Path,
+    id: &str,
+    task_id: &str,
+    dependants: SkipDependants,
+) -> Result<SkipReport, CampaignError> {
+    check_id("task", task_id)?;
+    let _held = lock();
+    let mut c = load_reconciled(data_folder, id)?;
+    if c.status.is_terminal() {
+        return Err(illegal("a task of a finished campaign", c.status, "a skip"));
+    }
+    c.task(task_id)
+        .ok_or_else(|| CampaignError::new(CampaignErrorKind::NotFound, format!("no task {task_id} in this campaign")))?;
+    let waiting = open_dependants(&c, task_id);
+    transition_task(c.task_mut(task_id)?, TaskStatus::Cancelled, None)?;
+    {
+        let t = c.task_mut(task_id)?;
+        t.detail = "skipped".to_string();
+    }
+    let mut cancelled = Vec::new();
+    let mut released = Vec::new();
+    match dependants {
+        SkipDependants::Leave => {}
+        SkipDependants::Cascade => {
+            for dep in &waiting {
+                let t = c.task_mut(dep)?;
+                if transition_task(t, TaskStatus::Cancelled, None).is_ok() {
+                    t.detail = format!("dependency skipped: {task_id}");
+                    cancelled.push(dep.clone());
+                }
+            }
+        }
+        SkipDependants::Release => {
+            let direct: Vec<String> = c
+                .tasks
+                .iter()
+                .filter(|t| t.depends_on.iter().any(|d| d == task_id) && !t.status.is_terminal())
+                .map(|t| t.id.clone())
+                .collect();
+            for dep in direct {
+                let t = c.task_mut(&dep)?;
+                // Only work that has not started can run without it.
+                if !matches!(t.status, TaskStatus::Pending | TaskStatus::Blocked | TaskStatus::Queued) {
+                    continue;
+                }
+                t.depends_on.retain(|d| d != task_id);
+                if !t.skipped_deps.iter().any(|d| d == task_id) {
+                    t.skipped_deps.push(task_id.to_string());
+                }
+                if t.status == TaskStatus::Blocked {
+                    transition_task(t, TaskStatus::Pending, None)?;
+                }
+                t.detail = format!("released: {task_id} was skipped");
+                released.push(dep);
+            }
+        }
+    }
+    let reviewing = advance_to_review(&mut c);
+    c.updated_at = now();
+    save(data_folder, &c)?;
+    let how = match dependants {
+        SkipDependants::Leave => "dependants left waiting",
+        SkipDependants::Cascade => "dependants cancelled",
+        SkipDependants::Release => "dependants released",
+    };
+    append_event(
+        data_folder,
+        id,
+        "task-skipped",
+        Some(task_id),
+        &format!("{how}: cancelled [{}], released [{}]", cancelled.join(", "), released.join(", ")),
+    );
+    if reviewing {
+        append_event(data_folder, id, "campaign-status", None, "Running -> Reviewing");
+    }
+    Ok(SkipReport { campaign: c, cancelled, released })
+}
+
+/// Tasks a campaign may add after approval, once its final gate failed.
+const MAX_GATE_REPAIRS: usize = 3;
+
+/// Add the one repair task a failed gate asks for, and send the campaign back
+/// to `running` so it runs like any task on the integration branch. Nothing
+/// else may be added to a campaign that is under review: this is not a plan
+/// edit. `brief` is built by the caller from the gate output and changed files.
+pub fn add_gate_repair(data_folder: &Path, id: &str, brief: String) -> Result<(Campaign, String), CampaignError> {
+    let _held = lock();
+    let mut c = load_reconciled(data_folder, id)?;
+    if c.status != CampaignStatus::Reviewing {
+        return Err(illegal("a gate repair (it is added while the campaign is reviewing)", c.status, "a repair task"));
+    }
+    let Some(gate) = c.gate.clone().filter(|g| !g.passed && !g.skipped) else {
+        return Err(CampaignError::new(
+            CampaignErrorKind::IllegalTransition,
+            "the gate has not failed, so there is nothing to repair",
+        ));
+    };
+    let made = c.tasks.iter().filter(|t| t.kind == KIND_GATE_REPAIR).count();
+    if made >= MAX_GATE_REPAIRS {
+        return Err(CampaignError::new(
+            CampaignErrorKind::InvalidPlan,
+            format!("the gate has already been repaired {MAX_GATE_REPAIRS} times; fix it by hand"),
+        ));
+    }
+    let task_id = if made == 0 { "gate-repair".to_string() } else { format!("gate-repair-{}", made + 1) };
+    let mut task = CampaignTask::from_plan(PlanTask {
+        id: task_id.clone(),
+        title: "Repair the failing final gate".to_string(),
+        brief,
+        acceptance: vec![format!("`{}` exits 0 in your worktree", gate.command)],
+        paths: Vec::new(),
+        depends_on: Vec::new(),
+    });
+    task.kind = KIND_GATE_REPAIR.to_string();
+    c.tasks.push(task);
+    transition_campaign(&mut c, CampaignStatus::Running)?;
+    c.updated_at = now();
+    save(data_folder, &c)?;
+    append_event(data_folder, id, "gate-repair-added", Some(&task_id), &clip_text(&gate.command, 200));
+    append_event(data_folder, id, "campaign-status", None, "Reviewing -> Running");
+    Ok((c, task_id))
+}
+
 /// Record that the coordinator was told how a task ended, so a restart does
 /// not tell it twice and does not forget to.
 pub fn note_notified(data_folder: &Path, id: &str, task_id: &str) -> Result<(), CampaignError> {
@@ -1777,6 +1959,8 @@ pub(crate) mod tests {
                     verify_tokens: 0,
                     evidence: None,
                     resolver: None,
+                    kind: String::new(),
+                    skipped_deps: Vec::new(),
                 })
                 .collect(),
             gate: None,
@@ -2063,6 +2247,116 @@ pub(crate) mod tests {
         assert!(transition_campaign(&mut c, CampaignStatus::Running).is_err());
         assert!(transition_campaign(&mut c, CampaignStatus::Done).is_err());
         transition_campaign(&mut c, CampaignStatus::Cancelled).unwrap();
+    }
+
+    // --- skipping and the gate repair ------------------------------------
+
+    fn dag() -> Campaign {
+        // a <- b <- c, a <- d, e alone
+        let mut c = campaign(vec![
+            plan("a", &[], &["pa"]),
+            plan("b", &["a"], &["pb"]),
+            plan("c", &["b"], &["pc"]),
+            plan("d", &["a"], &["pd"]),
+            plan("e", &[], &["pe"]),
+        ]);
+        c.process_epoch = epoch();
+        c
+    }
+
+    fn stored(name: &str, c: &Campaign) -> (PathBuf, String) {
+        let d = data_dir(name);
+        save(&d, c).unwrap();
+        (d, c.id.clone())
+    }
+
+    #[test]
+    fn skipping_with_cascade_cancels_what_waits_on_it() {
+        let mut c = dag();
+        c.tasks[0].status = TaskStatus::Failed;
+        c.tasks[1].status = TaskStatus::Blocked;
+        c.tasks[2].status = TaskStatus::Blocked;
+        c.tasks[3].status = TaskStatus::Blocked;
+        let (d, id) = stored("skip-cascade", &c);
+        let r = skip_task(&d, &id, "a", SkipDependants::Cascade).unwrap();
+        let mut got = r.cancelled.clone();
+        got.sort();
+        assert_eq!(got, ["b", "c", "d"]);
+        let t = |n: &str| r.campaign.task(n).unwrap().clone();
+        assert_eq!(t("a").status, TaskStatus::Cancelled);
+        assert_eq!(t("c").detail, "dependency skipped: a");
+        assert_eq!(t("e").status, TaskStatus::Pending, "an unrelated task is untouched");
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn skipping_with_release_lets_dependants_run_without_it() {
+        let mut c = dag();
+        c.tasks[0].status = TaskStatus::Failed;
+        c.tasks[1].status = TaskStatus::Blocked;
+        let (d, id) = stored("skip-release", &c);
+        let r = skip_task(&d, &id, "a", SkipDependants::Release).unwrap();
+        assert_eq!(r.released.len(), 2);
+        let b = r.campaign.task("b").unwrap();
+        assert!(b.depends_on.is_empty());
+        assert_eq!(b.skipped_deps, vec!["a".to_string()]);
+        assert_eq!(b.status, TaskStatus::Pending, "a blocked dependant is pending again");
+        // The scheduler now starts it: every dependency is merged (none left).
+        let acts = crate::core::agent::campaign_scheduler::next_actions(&r.campaign, &Default::default(), 4);
+        assert!(acts.iter().any(|a| matches!(a,
+            crate::core::agent::campaign_scheduler::Action::Start { task_id } if task_id == "b")));
+        // c still waits on b.
+        assert_eq!(r.campaign.task("c").unwrap().depends_on, vec!["b".to_string()]);
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn skipping_the_last_open_task_moves_the_campaign_to_review() {
+        let mut c = campaign(vec![plan("a", &[], &["pa"]), plan("b", &["a"], &["pb"]), plan("m", &[], &["pm"])]);
+        c.process_epoch = epoch();
+        c.tasks[2].status = TaskStatus::Merged;
+        c.tasks[2].verdict = Some(TaskVerdict::Pass);
+        c.tasks[0].status = TaskStatus::Failed;
+        c.tasks[1].status = TaskStatus::Blocked;
+        let (d, id) = stored("skip-review", &c);
+        let r = skip_task(&d, &id, "a", SkipDependants::Cascade).unwrap();
+        assert_eq!(r.campaign.status, CampaignStatus::Reviewing);
+        std::fs::remove_dir_all(d).ok();
+    }
+
+    #[test]
+    fn a_failed_gate_adds_one_repair_task_and_nothing_else_is_added() {
+        let mut c = campaign(vec![plan("a", &[], &["pa"])]);
+        c.process_epoch = epoch();
+        c.tasks[0].status = TaskStatus::Merged;
+        c.tasks[0].verdict = Some(TaskVerdict::Pass);
+        c.status = CampaignStatus::Reviewing;
+        let (d, id) = stored("gate-repair", &c);
+        // Gate did not fail yet: refused.
+        assert!(add_gate_repair(&d, &id, "fix".into()).is_err());
+        let mut c = get(&d, &id).unwrap();
+        c.gate = Some(GateReport {
+            source: "detected".into(),
+            command: "npm run test".into(),
+            skipped: false,
+            passed: false,
+            timed_out: false,
+            exit_code: Some(1),
+            output: "boom".into(),
+            at: "0".into(),
+        });
+        save(&d, &c).unwrap();
+        let (c, task) = add_gate_repair(&d, &id, "gate output".into()).unwrap();
+        assert_eq!(task, "gate-repair");
+        assert_eq!(c.status, CampaignStatus::Running);
+        let t = c.task("gate-repair").unwrap();
+        assert_eq!(t.kind, KIND_GATE_REPAIR);
+        assert!(t.acceptance[0].contains("npm run test"));
+        // Not under review any more, so a second one is refused.
+        assert!(add_gate_repair(&d, &id, "again".into()).is_err());
+        // Plan edits stay closed for an approved campaign.
+        assert!(plan_update(&d, &id, PlanEdit::default()).is_err());
+        std::fs::remove_dir_all(d).ok();
     }
 
     #[test]

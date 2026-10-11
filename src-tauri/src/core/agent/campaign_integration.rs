@@ -1573,6 +1573,52 @@ pub fn finalize(data_folder: &Path, roots: &Path, id: &str, seconds: u64) -> Res
     Ok(FinalizeReport { gate: report, proposal_id: Some(proposal_id), files, warning, campaign: c })
 }
 
+/// The one task a failed gate asks for. Its brief carries the gate command,
+/// how it failed, the tail of its output and the files the campaign changed, so
+/// the repair session starts from what the person would otherwise copy out of
+/// the board. It runs like any task on the integration branch; when it merges
+/// the campaign is back in review and the gate runs again
+/// ([`retry_gate`]).
+pub fn gate_repair(data_folder: &Path, roots: &Path, id: &str) -> Result<(Campaign, String), CampaignError> {
+    let c = campaign::get(data_folder, id)?;
+    let gate = c
+        .gate
+        .clone()
+        .filter(|g| !g.passed && !g.skipped)
+        .ok_or_else(|| invalid("the final gate has not failed, so there is nothing to repair"))?;
+    let files: Vec<String> = campaign_diff(data_folder, roots, id, false)
+        .map(|d| d.files.into_iter().map(|f| f.path).take(40).collect())
+        .unwrap_or_default();
+    let how = if gate.timed_out {
+        "timed out".to_string()
+    } else {
+        format!("exited with {}", gate.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "no code".into()))
+    };
+    let brief = format!(
+        "The campaign's final build and test gate failed on the merged result. Make it pass.\n\n\
+Gate command: `{command}`\n\
+It {how}. The end of its output:\n```\n{output}\n```\n\n\
+Files the campaign changed ({n}): {files}\n\n\
+Run the gate command yourself in this worktree, find the cause, fix it with the smallest change \
+that makes it pass, and do not weaken or delete tests to get there.",
+        command = gate.command,
+        output = tail(&gate.output, 3000),
+        n = files.len(),
+        files = if files.is_empty() { "(unknown)".to_string() } else { files.join(", ") },
+    );
+    campaign::add_gate_repair(data_folder, id, brief)
+}
+
+/// Run the gate again after a repair merged. Same step as [`finalize`], with
+/// the extra rule that there is a failed gate on record to retry.
+pub fn retry_gate(data_folder: &Path, roots: &Path, id: &str, seconds: u64) -> Result<FinalizeReport, CampaignError> {
+    let c = campaign::get(data_folder, id)?;
+    if !c.gate.as_ref().is_some_and(|g| !g.passed && !g.skipped) {
+        return Err(invalid("the final gate did not fail, so there is nothing to retry; finalize the campaign"));
+    }
+    finalize(data_folder, roots, id, seconds)
+}
+
 fn propose_integration(
     data_folder: &Path,
     roots: &Path,
@@ -2282,6 +2328,53 @@ mod tests {
         assert_eq!(p.scope.agent, format!("campaign:{}", f.id));
         let still = refresh(&f.data, &f.id).unwrap();
         assert_eq!(still.status, CampaignStatus::Merging);
+    }
+
+    #[test]
+    fn a_failed_gate_is_repaired_by_one_task_and_the_gate_runs_again() {
+        let f = fixture("repair", vec![plan("a", &[])]);
+        start(&f);
+        work(&f, "a", "a.txt", "from a
+");
+        assert!(merge_task(&f.data, &f.roots, &f.id, "a").unwrap().merged);
+        // Nothing failed yet: nothing to repair or retry.
+        assert!(gate_repair(&f.data, &f.roots, &f.id).is_err());
+        assert!(retry_gate(&f.data, &f.roots, &f.id, 60).is_err());
+        let toml = Path::new(&f.integration.path).join(".jan/agent/agent.toml");
+        std::fs::create_dir_all(toml.parent().unwrap()).unwrap();
+        std::fs::write(&toml, "[campaign]
+gate = \"exit 3\"
+").unwrap();
+        let failed = finalize(&f.data, &f.roots, &f.id, 60).unwrap();
+        assert!(!failed.gate.passed);
+        // The failure is on the record, with its command and output tail.
+        let stored = campaign::get(&f.data, &f.id).unwrap();
+        let gate = stored.gate.unwrap();
+        assert!(!gate.passed && gate.command == "exit 3" && gate.exit_code == Some(3));
+
+        let (c, task_id) = gate_repair(&f.data, &f.roots, &f.id).unwrap();
+        assert_eq!(c.status, CampaignStatus::Running);
+        let t = c.task(&task_id).unwrap();
+        assert_eq!(t.kind, campaign::KIND_GATE_REPAIR);
+        assert!(t.brief.contains("exit 3") && t.brief.contains("a.txt"), "{}", t.brief);
+        // A second repair while one is open is refused.
+        assert!(gate_repair(&f.data, &f.roots, &f.id).is_err());
+
+        // The repair task merges (the fix), the campaign is back in review.
+        std::fs::write(&toml, "[campaign]
+gate = \"exit 0\"
+").unwrap();
+        campaign::update(&f.data, &f.id, |c| {
+            let t = c.task_mut(&task_id)?;
+            t.status = TaskStatus::Merged;
+            t.verdict = Some(TaskVerdict::Pass);
+            assert!(campaign::advance_to_review(c));
+            Ok(((), vec![]))
+        })
+        .unwrap();
+        let ok = retry_gate(&f.data, &f.roots, &f.id, 60).unwrap();
+        assert!(ok.gate.passed);
+        assert!(ok.proposal_id.is_some());
     }
 
     #[test]
