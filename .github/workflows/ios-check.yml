@@ -43,6 +43,8 @@ jobs:
       - name: Stage bundle resources
         run: |
           mkdir -p src-tauri/resources
+          # generate_context! needs frontendDist to exist; contents are irrelevant to a compile check.
+          mkdir -p web-app/dist
           cp LICENSE src-tauri/resources/LICENSE
 
       - name: cargo check (device)

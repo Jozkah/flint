@@ -354,14 +354,23 @@ macro_rules! invoke_commands_with_extras {
         core::preview::preview_register,
         core::preview::preview_release,
         // Native web preview (child webview)
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         core::web_preview::web_preview_create,
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         core::web_preview::web_preview_navigate,
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         core::web_preview::web_preview_back,
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         core::web_preview::web_preview_forward,
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         core::web_preview::web_preview_reload,
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         core::web_preview::web_preview_set_bounds,
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         core::web_preview::web_preview_show,
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         core::web_preview::web_preview_hide,
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         core::web_preview::web_preview_close,
         // App lifecycle
         confirm_exit,
