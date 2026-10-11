@@ -7,6 +7,7 @@ import { appSources } from '@/lib/remote/sources'
 import { appActions } from '@/lib/remote/appActions'
 import { appExtras } from '@/lib/remote/appExtras'
 import { appArchive } from '@/lib/remote/appArchive'
+import { appCampaigns } from '@/lib/remote/appCampaigns'
 import { appStudio, appVoice, startStudioForwarding } from '@/lib/remote/appStudio'
 import { startRemoteEventForwarding } from '@/lib/remote/events'
 import { startPushForwarding } from '@/lib/remote/push'
@@ -37,7 +38,8 @@ export function useRemoteBridge() {
       appExtras,
       appStudio,
       appVoice,
-      appArchive
+      appArchive,
+      appCampaigns
     )
     let cancelled = false
     const offs: (() => void)[] = []

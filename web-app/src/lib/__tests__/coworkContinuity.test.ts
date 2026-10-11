@@ -117,6 +117,25 @@ describe('what to do with an opening turn', () => {
     ).toBe('follow-the-request')
   })
 
+  it('starts a campaign task executing from its first turn', () => {
+    expect(
+      decideOpening({
+        folder: '/repo',
+        priorTurns: 0,
+        text: 'Task brief: add the parser',
+        campaignTask: true,
+      })
+    ).toBe('follow-the-request')
+    // A normal session is unchanged.
+    expect(
+      decideOpening({
+        folder: '/repo',
+        priorTurns: 0,
+        text: 'Task brief: add the parser',
+      })
+    ).toBe('inspect-and-propose')
+  })
+
   it('leaves sessions with no repository alone', () => {
     // Nothing to protect, and gating here would make the ordinary case worse.
     expect(

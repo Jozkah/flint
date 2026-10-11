@@ -81,4 +81,5 @@ pub mod web_server;
 // Native child-webview web preview; desktop-only like preview.
 #[cfg(not(feature = "cli"))]
 pub mod web_preview;
+pub mod solo_window;
 pub mod window_state;

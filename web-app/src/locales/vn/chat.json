@@ -98,7 +98,11 @@
     "noModel": "Hãy chọn mô hình trước khi bắt đầu cuộc trò chuyện mới.",
     "newChatFailed": "Không thể bắt đầu cuộc trò chuyện mới",
     "room": "Phòng",
-    "recentRooms": "Phòng"
+    "recentRooms": "Phòng",
+    "needsApproval": "Needs approval",
+    "needsApprovalShort": "Needs approval",
+    "done": "Done",
+    "failed": "Failed"
   },
   "transcriptView": {
     "steps_one": "{{count}} bước",

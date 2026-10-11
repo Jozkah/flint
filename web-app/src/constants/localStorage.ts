@@ -32,6 +32,7 @@ export const localStorageKey = {
   agentMode: 'agent-mode',
   coworkDisplay: 'cowork-display',
   sessionMessaging: 'session-messaging',
+  campaignSettings: 'campaign-settings',
   defaultEmbeddingModel: 'default-embedding-model',
   modelOverrides: 'model-overrides',
   contextBreakdown: 'context-breakdown',

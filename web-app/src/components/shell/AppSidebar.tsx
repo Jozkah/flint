@@ -1,11 +1,15 @@
-import { useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useSidebarGlide } from '@/components/shell/useSidebarGlide'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import {
   Activity,
   ChevronRight,
+  MessageSquarePlus,
+  MoreHorizontal,
   Server,
   Settings,
+  Workflow,
+  type LucideIcon,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -25,6 +29,7 @@ import {
   NavList,
   useShellNav,
 } from '@/components/shell/nav-kit'
+import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { CoworkNav } from '@/components/shell/nav/CoworkNav'
 import { RoomsNav } from '@/components/shell/nav/RoomsNav'
 import { ChatsNav } from '@/components/shell/nav/ChatsNav'
@@ -34,8 +39,8 @@ import { ShortcutHint } from '@/containers/ShortcutHint'
 import { PlatformMetaKey } from '@/containers/PlatformMetaKey'
 import { ShortcutAction } from '@/lib/shortcuts'
 import { route } from '@/constants/routes'
+import { tabForPath, type SidebarTab } from '@/lib/sidebarTab'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
-import { areaForPath } from '@/lib/shellNavigation'
 import { detectMacOverlay, resolveSidebarTitlebar } from '@/lib/titlebar'
 import { useTitlebarLayout } from '@/stores/titlebar-layout-store'
 import { useSearchDialog } from '@/hooks/useSearchDialog'
@@ -53,10 +58,30 @@ import {
   useInterfaceSettings,
 } from '@/hooks/useInterfaceSettings'
 
+const TAB_KEY = 'flint:sidebar-tab'
+
+function readTab(): SidebarTab {
+  try {
+    return localStorage.getItem(TAB_KEY) === 'cowork' ? 'cowork' : 'chat'
+  } catch {
+    return 'chat'
+  }
+}
+
+function writeTab(tab: SidebarTab) {
+  try {
+    localStorage.setItem(TAB_KEY, tab)
+  } catch {
+    /* storage unavailable: the tab is simply not remembered */
+  }
+}
+
 type LinkRow = {
   to: string
   label: string
   icon: IconName
+  /** A lucide glyph instead of the duotone set (campaigns). */
+  lucide?: LucideIcon
   active: boolean
   count?: number
   testId?: string
@@ -75,7 +100,11 @@ function LinkRows({ rows, onNavigate }: { rows: LinkRow[]; onNavigate?: () => vo
                 aria-current={row.active ? 'page' : undefined}
                 onClick={onNavigate}
               >
-                <Icon name={row.icon} />
+                {row.lucide ? (
+                  <row.lucide aria-hidden />
+                ) : (
+                  <Icon name={row.icon} />
+                )}
                 <span className="flex-1 truncate">{row.label}</span>
                 {row.count !== undefined && row.count > 0 && (
                   <span className="mr-1.5 text-[11px] text-muted-foreground tabular-nums">
@@ -111,60 +140,116 @@ function writeDisclosure(id: string, open: boolean) {
 }
 
 /**
- * A sidebar group that starts closed so the first screen is only what most
- * people came for. It opens itself when the current page lives inside it, and
- * remembers a manual open or close.
+ * The Cowork tab's one folded "More" row: the advanced leftovers (logs,
+ * archive, local API, system monitor) one click away, closed until wanted. It
+ * opens itself when the current page lives inside it and remembers a manual
+ * open or close.
  */
-function DisclosureGroup({
-  id,
-  label,
-  containsActive,
-  badge,
-  testId,
-  pinned,
-  children,
+function FoldedMore({
+  rows,
+  onNavigate,
 }: {
-  id: string
-  label: string
-  containsActive: boolean
-  badge?: number
-  testId: string
-  /** Extended layout: always open, so there is nothing to toggle. */
-  pinned?: boolean
-  children: React.ReactNode
+  rows: LinkRow[]
+  onNavigate?: () => void
 }) {
-  const [manual, setManual] = useState(() => readDisclosure(id))
-  const open = pinned || manual || containsActive
+  const { t } = useTranslation()
+  const containsActive = rows.some((row) => row.active)
+  const [manual, setManual] = useState<boolean | null>(() =>
+    readDisclosure('more') ? true : null
+  )
+  const open = manual ?? containsActive
   return (
-    <NavGroup>
-      {pinned ? (
-        <NavGroupLabel>{label}</NavGroupLabel>
-      ) : (
-      <button
-        type="button"
-        data-testid={testId}
-        aria-expanded={open}
-        onClick={() => {
-          const next = !open
-          setManual(next)
-          writeDisclosure(id, next)
-        }}
-        className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] font-medium tracking-wide text-subtle-foreground uppercase outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
-      >
-        <ChevronRight
-          aria-hidden
-          className={cn('size-3 transition-transform duration-200', open && 'rotate-90')}
-        />
-        <span className="flex-1 truncate">{label}</span>
-        {!open && badge !== undefined && badge > 0 && (
-          <span className="text-[11px] tabular-nums">{badge}</span>
-        )}
-      </button>
-      )}
-      <NavCollapse open={open}>
-        <NavList>{children}</NavList>
+    <>
+      <NavItem>
+        <NavButton
+          data-testid="nav-more"
+          aria-expanded={open}
+          onClick={() => {
+            setManual(!open)
+            writeDisclosure('more', !open)
+          }}
+        >
+          <MoreHorizontal aria-hidden />
+          <span className="flex-1 truncate">{t('common:shell.more')}</span>
+          <ChevronRight
+            aria-hidden
+            className={cn(
+              '!size-3 transition-transform duration-200',
+              open && 'rotate-90'
+            )}
+          />
+        </NavButton>
+      </NavItem>
+      <NavCollapse as="li" open={open}>
+        <NavList className="pl-3">
+          <LinkRows rows={rows} onNavigate={onNavigate} />
+        </NavList>
       </NavCollapse>
-    </NavGroup>
+    </>
+  )
+}
+
+/** Chat | Cowork: two views of the one sidebar, remembered. */
+function SidebarTabs({
+  tab,
+  onChange,
+}: {
+  tab: SidebarTab
+  onChange: (tab: SidebarTab) => void
+}) {
+  const { t } = useTranslation()
+  const running = useCoworkRun((s) => Object.keys(s.runs ?? {}).length)
+  const tabs: { id: SidebarTab; label: string }[] = [
+    { id: 'chat', label: t('common:shell.tabChat') },
+    { id: 'cowork', label: t('common:shell.tabCowork') },
+  ]
+  return (
+    <div
+      role="tablist"
+      aria-label={t('common:shell.tabs')}
+      data-testid="sidebar-tabs"
+      onKeyDown={(e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+        e.preventDefault()
+        const next: SidebarTab = tab === 'chat' ? 'cowork' : 'chat'
+        onChange(next)
+        e.currentTarget
+          .querySelector<HTMLElement>(`[data-testid="sidebar-tab-${next}"]`)
+          ?.focus()
+      }}
+      className="grid h-8 shrink-0 grid-cols-2 gap-0.5 rounded-lg bg-muted p-0.5 shadow-[inset_0_0_0_0.8px_var(--border)]"
+    >
+      {tabs.map(({ id, label }) => {
+        const selected = tab === id
+        return (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            tabIndex={selected ? 0 : -1}
+            data-testid={`sidebar-tab-${id}`}
+            onClick={() => onChange(id)}
+            className={cn(
+              'flex cursor-pointer items-center justify-center gap-1.5 rounded-md text-[0.8125rem] font-medium transition-[background-color,color,box-shadow] duration-150 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40',
+              selected
+                ? 'bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <span>{label}</span>
+            {id === 'cowork' && running > 0 && (
+              <span
+                data-testid="sidebar-tab-running"
+                className="text-[11px] font-normal tabular-nums"
+              >
+                {running}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -199,7 +284,6 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { toggle, isMobile } = useShellNav()
-  const area = areaForPath(pathname)
   const navRef = useRef<HTMLElement>(null)
   useSidebarGlide(navRef)
   const leftButtons = useTitlebarLayout((s) => s.layout.left.length)
@@ -228,7 +312,20 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const inDiscover =
     pathname === route.hub.index.replace(/\/$/, '') || pathname.startsWith('/hub/')
 
-  const extended = useInterfaceSettings((s) => s.sidebarLayout) === 'extended'
+  // The tab follows the page: a Cowork page opens the Cowork tab. Pages both
+  // tabs share keep whichever tab is showing, so peeking at the other one is
+  // not undone until the person goes somewhere that belongs to a tab.
+  const [tab, setTab] = useState<SidebarTab>(
+    () => tabForPath(pathname) ?? readTab()
+  )
+  useEffect(() => {
+    const next = tabForPath(pathname)
+    if (next) setTab((current) => (current === next ? current : next))
+  }, [pathname])
+  const chooseTab = (next: SidebarTab) => {
+    setTab(next)
+    writeTab(next)
+  }
 
   const newChat = () => {
     useAgentMode.getState().removeThread(TEMPORARY_CHAT_ID)
@@ -236,7 +333,17 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     onNavigate?.()
   }
 
-  const engine: LinkRow[] = [
+  const resume: LinkRow[] = [
+    {
+      to: route.overview,
+      label: t('common:shell.resume'),
+      icon: 'sb-dashboard',
+      active: pathname === route.overview,
+      testId: 'nav-overview',
+    },
+  ]
+  // Both tabs.
+  const shared: LinkRow[] = [
     {
       to: route.settings.model_providers,
       label: t('common:appRail.models'),
@@ -246,51 +353,70 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       testId: 'rail-models',
     },
     {
+      to: route.hub.index,
+      label: t('common:shell.discover'),
+      icon: 'search',
+      active: inDiscover,
+      count: activeDownloads,
+      testId: 'rail-discover',
+    },
+  ]
+  // Chat tab only.
+  const library: LinkRow[] = [
+    {
+      to: route.artifacts,
+      label: t('common:appRail.library'),
+      icon: 'x-library',
+      active: within(route.artifacts),
+      testId: 'rail-library',
+    },
+  ]
+  // Cowork tab only.
+  const destinations: LinkRow[] = [
+    {
+      to: route.campaigns,
+      label: t('settings:campaigns.nav'),
+      icon: 'x-cowork',
+      lucide: Workflow,
+      active: within(route.campaigns) || within('/campaign'),
+      testId: 'nav-campaigns',
+    },
+    {
+      to: route.studio,
+      label: t('common:shell.studio'),
+      icon: 'x-palette',
+      active: pathname === route.studio,
+      testId: 'nav-studio',
+    },
+    {
       to: route.settings.mcp_servers,
       label: t('common:shell.toolsAndMcp'),
       icon: 'flow',
-      active: area === 'tools',
+      active: within(route.settings.mcp_servers),
       testId: 'rail-tools',
     },
     {
       to: route.extensions,
       label: t('common:appRail.extensions'),
       icon: 'x-puzzle',
-      active: area === 'extensions',
+      active: within(route.extensions),
       testId: 'rail-extensions',
     },
     {
-      to: route.systemMonitor,
-      label: t('common:shell.systemMonitor'),
-      icon: 'x-monitor',
-      active: within(route.systemMonitor) || within(route.localApiServerlogs),
-      testId: 'rail-system',
+      to: route.settings.schedules,
+      label: t('common:shell.schedules'),
+      icon: 'x-refresh',
+      active: within(route.settings.schedules),
+      testId: 'rail-schedules',
     },
   ]
-  const more: LinkRow[] = [
-    {
-      to: route.artifacts,
-      label: t('common:appRail.library'),
-      icon: 'x-library',
-      active: area === 'library',
-      testId: 'rail-library',
-    },
-    {
-      to: route.studio,
-      label: 'Studio',
-      icon: 'x-palette',
-      active: pathname === route.studio,
-      testId: 'nav-studio',
-    },
-  ]
-  const moreActive = more.some((row) => row.active) || area === 'rooms'
-  const advanced: LinkRow[] = [
-    ...engine,
+  const leftovers: LinkRow[] = [
     {
       to: route.appLogs,
       label: t('common:shell.logs'),
       icon: 'x-terminal',
       active: within(route.appLogs),
+      testId: 'nav-logs',
     },
     {
       to: route.archive,
@@ -299,13 +425,29 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       active: pathname === route.archive,
       testId: 'nav-archive',
     },
+    {
+      to: route.settings.local_api_server,
+      label: t('common:shell.localApi'),
+      icon: 'x-server',
+      active:
+        within(route.settings.local_api_server) ||
+        within(route.localApiServerlogs),
+      testId: 'rail-local-api',
+    },
+    {
+      to: route.systemMonitor,
+      label: t('common:shell.systemMonitor'),
+      icon: 'x-monitor',
+      active: within(route.systemMonitor),
+      testId: 'rail-system',
+    },
   ]
   const support: LinkRow[] = [
     {
       to: route.settings.general,
       label: t('common:appRail.settings'),
       icon: 'sb-settings',
-      active: area === 'settings',
+      active: within(route.settings.index),
       testId: 'cowork-settings',
     },
   ]
@@ -360,76 +502,62 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           </span>
         </button>
 
+        {/* Half the column gap (-mt-2 of gap-4): it belongs to the search. */}
+        <NavList className="-mt-2 shrink-0">
+          <LinkRows rows={resume} onNavigate={onNavigate} />
+        </NavList>
+
+        <SidebarTabs tab={tab} onChange={chooseTab} />
+
         <nav
           ref={navRef}
           aria-label={t('common:appRail.label')}
           data-testid="app-sidebar"
+          data-tab={tab}
           onKeyDown={moveFocusWithArrows}
           className="relative -mx-3 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-3 pb-2 [scrollbar-color:transparent_transparent] [scrollbar-width:thin] hover:[scrollbar-color:var(--border-strong)_transparent] [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-border-strong"
         >
-          <NavGroup>
-            <NavGroupLabel>{t('common:appRail.workspace')}</NavGroupLabel>
-            <NavList>
-              <NavItem>
-                <NavButton
-                  isActive={pathname === route.home}
-                  onClick={newChat}
-                  data-testid="nav-new-chat"
-                >
-                  <Icon name="x-edit" />
-                  <span className="flex-1 truncate">{t('common:newChat')}</span>
-                  <span className="text-[10.5px] text-subtle-foreground [&_kbd]:shadow-none [&_kbd]:text-subtle-foreground">
-                    <ShortcutHint action={ShortcutAction.NEW_CHAT} />
-                  </span>
-                </NavButton>
-              </NavItem>
-              <CoworkNav icon={<Icon name="x-cowork" />} />
-              <LinkRows
-                onNavigate={onNavigate}
-                rows={[
-                  {
-                    to: route.hub.index,
-                    label: 'Discover',
-                    icon: 'search',
-                    active: inDiscover,
-                    count: activeDownloads,
-                    testId: 'rail-discover',
-                  },
-                  {
-                    to: route.overview,
-                    label: t('common:shell.resume'),
-                    icon: 'sb-dashboard',
-                    active: pathname === route.overview,
-                    testId: 'nav-overview',
-                  },
-                ]}
-              />
-            </NavList>
-          </NavGroup>
-
-          <DisclosureGroup
-            id="more"
-            label={t('common:shell.more')}
-            testId="nav-more"
-            pinned={extended}
-            containsActive={moreActive}
-          >
-            <RoomsNav icon={<Icon name="x-rooms" />} />
-            <LinkRows onNavigate={onNavigate} rows={more} />
-          </DisclosureGroup>
-
-          <DisclosureGroup
-            id="advanced"
-            label={t('common:shell.advanced')}
-            testId="nav-advanced"
-            pinned={extended}
-            containsActive={advanced.some((row) => row.active)}
-            badge={activeDownloads}
-          >
-            <LinkRows rows={advanced} onNavigate={onNavigate} />
-          </DisclosureGroup>
-
-          <ChatsNav />
+          {tab === 'chat' ? (
+            <>
+              <NavGroup>
+                <NavGroupLabel>{t('common:appRail.workspace')}</NavGroupLabel>
+                <NavList>
+                  <NavItem>
+                    <NavButton
+                      isActive={pathname === route.home}
+                      onClick={newChat}
+                      data-testid="nav-new-chat"
+                    >
+                      <MessageSquarePlus aria-hidden />
+                      <span className="flex-1 truncate">{t('common:newChat')}</span>
+                      <span className="text-[10.5px] text-subtle-foreground [&_kbd]:shadow-none [&_kbd]:text-subtle-foreground">
+                        <ShortcutHint action={ShortcutAction.NEW_CHAT} />
+                      </span>
+                    </NavButton>
+                  </NavItem>
+                  <LinkRows rows={library} onNavigate={onNavigate} />
+                  <LinkRows rows={shared} onNavigate={onNavigate} />
+                </NavList>
+              </NavGroup>
+              <ChatsNav />
+            </>
+          ) : (
+            <NavGroup>
+              <NavGroupLabel>{t('common:appRail.workspace')}</NavGroupLabel>
+              <NavList>
+                <CoworkNav
+                  after={
+                    <>
+                      <RoomsNav icon={<Icon name="x-rooms" />} />
+                      <LinkRows rows={destinations} onNavigate={onNavigate} />
+                      <LinkRows rows={shared} onNavigate={onNavigate} />
+                      <FoldedMore rows={leftovers} onNavigate={onNavigate} />
+                    </>
+                  }
+                />
+              </NavList>
+            </NavGroup>
+          )}
         </nav>
 
         <NavList>

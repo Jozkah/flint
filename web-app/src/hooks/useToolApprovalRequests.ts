@@ -19,6 +19,19 @@ import { rememberCommand, repeatCommandKey } from '@/lib/repeatedCommand'
 import { similarToolCall } from '@/lib/similarToolCall'
 
 /**
+ * One structured choice a request asks for next to the allow/deny answer: the
+ * campaign plan card asks how tasks work (on their own inside their folder, or
+ * asking for every action). The recommended option is selected until the
+ * person picks another, and the decision reports which one was in force.
+ */
+export type ApprovalChoice = {
+  question: string
+  options: { id: string; label: string; description?: string }[]
+  /** Selected until the person chooses; the recommended option. */
+  defaultId: string
+}
+
+/**
  * What the prompt can say about a call beyond its name. All optional, so a
  * caller that only knows the name still gets a working prompt.
  */
@@ -32,8 +45,13 @@ export type ApprovalRequestContext = {
   alwaysAsk?: boolean
   /** See `PermissionRequestInput.conversationProgram`. */
   conversationProgram?: string
-  /** Told which answer the user gave, before the request resolves. */
-  onDecision?: (decision: ApprovalDecision) => void
+  /**
+   * Told which answer the user gave, before the request resolves, and which
+   * option of `choice` was selected when there is one.
+   */
+  onDecision?: (decision: ApprovalDecision, chosenId?: string) => void
+  /** A structured choice to put to the person with the decision. */
+  choice?: ApprovalChoice
   /** Why the call is being made, only when the caller actually knows. */
   taskContext?: string
   /** Folder or project the call works in. */
@@ -118,7 +136,11 @@ export type PendingApproval = {
    */
   alwaysAsk?: boolean
   conversationProgram?: string
-  onDecision?: (decision: ApprovalDecision) => void
+  onDecision?: (decision: ApprovalDecision, chosenId?: string) => void
+  /** The structured choice put with this request, if any. */
+  choice?: ApprovalChoice
+  /** The option the person selected so far; the default until they pick. */
+  chosenId?: string
   /** When the prompt was raised (ms since epoch), to tell a long wait. */
   requestedAt?: number
   resolve: (approved: boolean) => void
@@ -165,6 +187,8 @@ type ToolApprovalRequestsState = {
     decision: ApprovalDecision,
     requestId?: string
   ) => void
+  /** Select an option of the request's `choice`. A no-op for a stale request. */
+  chooseOption: (toolCallId: string, requestId: string, optionId: string) => void
   clearPendingForThread: (
     threadId: string,
     options?: { notify?: boolean }
@@ -498,6 +522,9 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             ? { conversationProgram: context.conversationProgram }
             : {}),
           ...(context?.onDecision ? { onDecision: context.onDecision } : {}),
+          ...(context?.choice
+            ? { choice: context.choice, chosenId: context.choice.defaultId }
+            : {}),
           requestedAt: Date.now(),
           // Drop the abort listener once answered, so a long-lived signal
           // does not keep every settled request's closure alive.
@@ -543,6 +570,24 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       entry.resolve(false)
     },
 
+    chooseOption: (toolCallId, requestId, optionId) => {
+      const apply = (e: PendingApproval): PendingApproval =>
+        e.requestId === requestId &&
+        e.choice?.options.some((o) => o.id === optionId)
+          ? { ...e, chosenId: optionId }
+          : e
+      set((s) => {
+        const head = s.pending[toolCallId]
+        const waiting = s.queued[toolCallId]
+        return {
+          ...(head ? { pending: { ...s.pending, [toolCallId]: apply(head) } } : {}),
+          ...(waiting
+            ? { queued: { ...s.queued, [toolCallId]: waiting.map(apply) } }
+            : {}),
+        }
+      })
+    },
+
     resolveApproval: (toolCallId, decision, requestId) => {
       const head = get().pending[toolCallId]
       const entry =
@@ -552,7 +597,10 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               (e) => e?.requestId === requestId
             )
       if (!entry) return
-      entry.onDecision?.(decision)
+      entry.onDecision?.(
+        decision,
+        entry.choice ? (entry.chosenId ?? entry.choice.defaultId) : undefined
+      )
       const approval = useToolApproval.getState()
       const { serverName, serverFingerprint } = entry
       const temporaryGit =

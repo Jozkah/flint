@@ -171,13 +171,26 @@ export const NavButton = React.forwardRef<
   const own = React.useRef<HTMLButtonElement>(null)
   React.useImperativeHandle(ref, () => own.current as HTMLButtonElement)
   useTextOverflow(own, lastSpan)
+  // A row that is a real link would otherwise start the browser's own link
+  // drag, with the URL as a ghost label. Navigation rows are not draggable.
+  const linkProps = asChild
+    ? {
+        draggable: false,
+        onDragStart: (e: React.DragEvent<HTMLElement>) => e.preventDefault(),
+      }
+    : {}
   return (
     <Comp
       ref={own}
       data-slot="nav-button"
       data-active={isActive}
       data-size={size ?? 'default'}
-      className={cn(navButtonVariants({ size }), className)}
+      className={cn(
+        navButtonVariants({ size }),
+        asChild && 'select-none',
+        className
+      )}
+      {...linkProps}
       {...props}
     />
   )

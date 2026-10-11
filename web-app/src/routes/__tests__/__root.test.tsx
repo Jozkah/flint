@@ -150,10 +150,10 @@ vi.mock('@/constants/routes', () => ({
 }))
 
 import { Route } from '../__root'
+import MainRoot from '@/shell/MainRoot'
 
 const renderComponent = () => {
-  const Component = Route.component as React.ComponentType
-  return render(<Component />)
+  return render(<MainRoot />)
 }
 
 describe('__root route', () => {

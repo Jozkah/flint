@@ -371,8 +371,31 @@ pub fn load(data_folder: &Path, id: &str) -> Result<ProposalRecord, ProposalErro
     serde_json::from_str(&text).map_err(|_| ProposalError::NotFound)
 }
 
-/// Every proposal for `project`, newest first.
+/// A project path with the Windows verbatim prefix, slash style, trailing
+/// separators and (on Windows) case removed, so the canonical form a proposal
+/// was stored under and the plain form a caller holds compare equal.
+pub fn project_key(path: &str) -> String {
+    let p = path.trim();
+    let p = if let Some(unc) = p.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{unc}")
+    } else if let Some(rest) = p.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        p.to_string()
+    };
+    let p = p.replace('/', r"\");
+    let p = p.trim_end_matches('\\');
+    if cfg!(windows) {
+        p.to_ascii_lowercase()
+    } else {
+        p.to_string()
+    }
+}
+
+/// Every proposal for `project`, newest first. `project` may be spelled with or
+/// without the verbatim prefix the backend stores it under.
 pub fn list(data_folder: &Path, project: &str) -> Vec<ProposalRecord> {
+    let key = project_key(project);
     let Ok(entries) = std::fs::read_dir(proposals_root(data_folder)) else {
         return Vec::new();
     };
@@ -381,7 +404,7 @@ pub fn list(data_folder: &Path, project: &str) -> Vec<ProposalRecord> {
         .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
         .filter_map(|e| std::fs::read_to_string(e.path()).ok())
         .filter_map(|t| serde_json::from_str::<ProposalRecord>(&t).ok())
-        .filter(|r| r.scope.project == project)
+        .filter(|r| project_key(&r.scope.project) == key)
         .collect();
     out.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
     out
@@ -1314,6 +1337,33 @@ mod tests {
 
     const BASE: &str = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n";
     const PROPOSED: &str = "ONE\ntwo\nthree\nfour\nfive\nsix\nseven\nEIGHT\n";
+
+    #[test]
+    fn project_key_ignores_the_verbatim_prefix_and_slash_style() {
+        let want = project_key(r"C:\tmp\flint-qa\repo");
+        assert_eq!(project_key(r"\\?\C:\tmp\flint-qa\repo"), want);
+        assert_eq!(project_key("C:/tmp/flint-qa/repo/"), want);
+        assert_eq!(project_key(r"\\?\UNC\srv\share\p"), project_key(r"\\srv\share\p"));
+        assert_ne!(project_key(r"C:\tmp\other"), want);
+    }
+
+    #[test]
+    fn a_proposal_stored_under_the_verbatim_form_is_listed_for_the_plain_one() {
+        let (data, dest) = dirs("verbatim");
+        let plain = dest.to_string_lossy().to_string();
+        let mut s = scope(&dest);
+        s.project = format!(r"\\?\{plain}");
+        std::fs::write(dest.join("a.txt"), "x\n").unwrap();
+        create(
+            &data,
+            s,
+            "base",
+            vec![FileInput { path: "a.txt".into(), base: Some(b"x\n".to_vec()), proposed: Some(b"y\n".to_vec()) }],
+        )
+        .unwrap();
+        assert_eq!(list(&data, &plain).len(), 1);
+        assert_eq!(list(&data, &format!(r"\\?\{plain}")).len(), 1);
+    }
 
     fn two_hunks(data: &Path, dest: &Path) -> ProposalRecord {
         std::fs::write(dest.join("a.txt"), BASE).unwrap();

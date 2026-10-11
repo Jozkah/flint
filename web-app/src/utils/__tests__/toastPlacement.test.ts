@@ -17,12 +17,12 @@ describe('toastPlacement', () => {
   })
 
   describe('getToastOffset', () => {
-    it('uses base margin for top-right when not Tauri', () => {
-      expect(getToastOffset('top-right')).toEqual({ top: 8, right: 8 })
+    it('clears the 52px top header for top-right', () => {
+      expect(getToastOffset('top-right')).toEqual({ top: 60, right: 8 })
     })
 
-    it('uses base margin for corners when not Tauri', () => {
-      expect(getToastOffset('top-left')).toEqual({ top: 8, left: 8 })
+    it('clears the header for top-left and uses the base margin at the bottom', () => {
+      expect(getToastOffset('top-left')).toEqual({ top: 60, left: 8 })
       expect(getToastOffset('bottom-right')).toEqual({ bottom: 8, right: 8 })
       expect(getToastOffset('bottom-left')).toEqual({ bottom: 8, left: 8 })
     })
@@ -43,7 +43,7 @@ describe('toastPlacement', () => {
 
     it('moves right positions left of the docked pane plus a gap', () => {
       expect(getToastOffsetAvoidingPane('top-right', side, vp)).toEqual({
-        top: 8,
+        top: 60,
         right: 416,
       })
       expect(getToastOffsetAvoidingPane('bottom-right', side, vp)).toEqual({
@@ -54,7 +54,7 @@ describe('toastPlacement', () => {
 
     it('leaves left positions alone', () => {
       expect(getToastOffsetAvoidingPane('top-left', side, vp)).toEqual({
-        top: 8,
+        top: 60,
         left: 8,
       })
     })
@@ -65,7 +65,7 @@ describe('toastPlacement', () => {
         rect: { left: 700, top: 440, right: 1184, bottom: 784 },
       }
       expect(getToastOffsetAvoidingPane('top-right', pip, vp)).toEqual({
-        top: 8,
+        top: 60,
         right: 8,
       })
       expect(getToastOffsetAvoidingPane('bottom-right', pip, vp)).toEqual({

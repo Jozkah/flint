@@ -299,3 +299,16 @@ export type AskAnswer = {
   selected: string[]
   custom_input?: string
 }
+
+/**
+ * Which campaign a session belongs to, and as what (docs/CAMPAIGNS.md).
+ *
+ * A pointer only: the backend campaign record is the source of truth for
+ * status. It grants nothing. A `task` session never gets the campaign tools.
+ */
+export type CampaignLink = {
+  id: string
+  /** Absent for the coordinator. */
+  taskId?: string
+  role: 'coordinator' | 'task'
+}

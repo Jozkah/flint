@@ -86,6 +86,7 @@ export type StableFailureClass =
   | 'pull request has conflicts'
   | 'tool is unavailable'
   | 'toolchain unavailable in sandbox'
+  | 'test runner cannot start in the sandbox'
   | 'network disabled for this run'
   | 'bash timeout exceeds limit'
   | 'subagent exhausted its run'
@@ -178,6 +179,15 @@ export function classifyStableFailure(
       ))
   ) {
     return 'toolchain unavailable in sandbox'
+  }
+  // The note the bash tool appends when a Node test run hit its deadline
+  // inside the Windows sandbox: the runner's children cannot start there, so
+  // the same command will hang again however the timeout is changed.
+  if (
+    tool === SHELL_TOOL &&
+    /Node's test runner starts one child process per test file/i.test(error)
+  ) {
+    return 'test runner cannot start in the sandbox'
   }
   if (
     /model tried to call unavailable tool|tool ['`][^'`]+['`] is not available to this run|tool ['`][^'`]+['`] is disabled/i.test(
@@ -351,11 +361,32 @@ function stableFailureRepeat(calls: ObservedCall[]): LoopVerdict | null {
       return {
         tripped: true,
         reason: call.tool === SHELL_TOOL ? 'failing-shell' : 'failing-tool',
-        detail: `${call.tool} hit the same non-transient blocker twice (${stable})`,
+        detail:
+          `${call.tool} hit the same non-transient blocker twice (${stable})` +
+          stableFailureAdvice(stable, call.error),
       }
     }
   }
   return null
+}
+
+/**
+ * What to do about a stable failure, appended to the stop notice: which shell
+ * it was, and the one remedy that can work. Empty for classes whose own text
+ * already says it.
+ */
+export function stableFailureAdvice(
+  stable: StableFailureClass,
+  error: string | undefined
+): string {
+  if (stable !== 'test runner cannot start in the sandbox') return ''
+  const shell = error?.match(/This shell is ([^()\n]+?) \(([^)]+)\)/)
+  const where = shell ? ` (shell: ${shell[1]}, ${shell[2]})` : ''
+  return (
+    `${where}. Run the test files in this process with ` +
+    '`node --test --test-isolation=none <files>`, or one file directly with ' +
+    '`node <file>`, or ask the user to run the suite outside the sandbox'
+  )
 }
 
 type ReadWindow = { path: string; offset: number; limit: number }

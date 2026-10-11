@@ -89,6 +89,30 @@ it('stops the second failure after the toolchain note said the program cannot ru
   expect(verdict.tripped && verdict.reason).toBe('failing-shell')
 })
 
+it('stops a repeated Node test-runner hang after two tries and names shell and remedy', () => {
+  const hung = (timeout: number) =>
+    call({
+      tool: 'bash',
+      input: { command: 'node --test', timeout },
+      failed: true,
+      error:
+        `ERROR: command timed out after ${timeout}s and was terminated.\n` +
+        "[cause: Node's test runner starts one child process per test file, and inside this " +
+        'Windows sandbox that spawn never returns. do not run the same command again.\n' +
+        'remedy: run `node --test --test-isolation=none <files>`. This shell is powershell ' +
+        '(PowerShell syntax).]',
+    })
+  expect(detectLoop([hung(20)])).toEqual({ tripped: false })
+  // A longer timeout is not a different attempt.
+  const verdict = detectLoop([hung(20), hung(60)])
+  expect(verdict.tripped).toBe(true)
+  if (!verdict.tripped) return
+  expect(verdict.reason).toBe('failing-shell')
+  expect(verdict.detail).toContain('test runner cannot start in the sandbox')
+  expect(verdict.detail).toContain('powershell')
+  expect(verdict.detail).toContain('--test-isolation=none')
+})
+
 it('does not count a NUL refusal, which is offered as an unsandboxed retry', () => {
   const refused = (n: number) =>
     call({

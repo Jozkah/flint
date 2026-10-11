@@ -114,6 +114,7 @@
   "keyboardShortcuts": "Raccourcis Clavier",
   "home": "Accueil",
   "cowork": "Cowork",
+  "campaign": "Campaign",
   "newSession": "Nouvelle session",
   "artifacts": "Artefacts",
   "customize": "Personnaliser",
@@ -2094,7 +2095,12 @@
     "notifications": "Notifications",
     "approvalWaiting": "Approbation en attente",
     "approvals_many": "{{count}} d'approbations",
-    "runs_many": "{{count}} d'exécutions"
+    "runs_many": "{{count}} d'exécutions",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "Diagnostics",

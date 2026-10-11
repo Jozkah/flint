@@ -127,6 +127,15 @@ export function LeftNav() {
               <I n="plus" size={13} />
               {t('nav.newSession')}
             </button>
+            <button
+              type="button"
+              className={`row${route.name === 'campaigns' || route.name === 'campaign' ? ' act' : ''}`}
+              onClick={() => go({ name: 'campaigns' })}
+              data-testid="nav-campaigns"
+            >
+              <I n="flow" size={13} />
+              {t('nav.campaigns')}
+            </button>
             {cw.groups.map(([g, list]) => (
               <div key={g} style={{ display: 'contents' }}>
                 <div className="gh">

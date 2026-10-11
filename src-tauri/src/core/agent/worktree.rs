@@ -36,7 +36,7 @@ use std::process::Command;
 /// refuses operations that might need one. Supplying it here means the feature
 /// works on a fresh machine rather than failing with a message about
 /// configuring an identity the user has no reason to care about.
-fn run(repo: &Path, args: &[&str]) -> Result<String, String> {
+pub(crate) fn run(repo: &Path, args: &[&str]) -> Result<String, String> {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
         .arg(repo)
@@ -733,7 +733,7 @@ pub(crate) fn current_branch(repo: &Path) -> Option<String> {
 /// Run `git` in `repo` and hand back the exit status with stdout, for the
 /// commands whose non-zero exit carries an answer (`merge-tree`,
 /// `merge-base --is-ancestor`).
-fn run_status(repo: &Path, args: &[&str]) -> Result<(bool, String), String> {
+pub(crate) fn run_status(repo: &Path, args: &[&str]) -> Result<(bool, String), String> {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
         .arg(repo)
@@ -808,12 +808,70 @@ pub fn unmerged_commits(record: &WorktreeRecord, base: Option<&str>) -> Vec<Stri
     .unwrap_or_default()
 }
 
+/// Files a tool writes as a side effect of running, never as work product.
+///
+/// Windows PowerShell leaves its module-analysis cache
+/// (`Microsoft/Windows/PowerShell/ModuleAnalysisCache`, 84 KB, binary) in the
+/// folder it started in when its profile folders do not resolve, and a task
+/// commit then carried it into the proposal. Matched on the whole path,
+/// case-insensitively, `/` or `\`.
+pub fn is_tool_cache_path(path: &str) -> bool {
+    let norm = path.replace('\\', "/").to_lowercase();
+    let norm = norm.trim_start_matches("./");
+    if norm.starts_with("microsoft/windows/powershell/") {
+        return true;
+    }
+    let parts: Vec<&str> = norm.split('/').filter(|p| !p.is_empty()).collect();
+    let Some(name) = parts.last() else {
+        return false;
+    };
+    if matches!(*name, ".ds_store" | "thumbs.db") || name.ends_with(".pyc") {
+        return true;
+    }
+    let dirs = &parts[..parts.len() - 1];
+    dirs.iter().any(|d| matches!(*d, "__pycache__" | ".cache"))
+        || dirs.windows(2).any(|w| w[0] == "node_modules" && w[1] == ".cache")
+}
+
+/// Whether `path` is under (or is) one of the paths a plan declared. A bare
+/// `.` or an empty entry means "the whole tree", which says nothing about a
+/// particular file, so it never rescues a cache file.
+fn is_declared(path: &str, declared: &[String]) -> bool {
+    let p = path.replace('\\', "/").to_lowercase();
+    let p = p.trim_start_matches("./");
+    declared.iter().any(|d| {
+        let d = d.replace('\\', "/").to_lowercase();
+        let d = d.trim_matches('/').trim_start_matches("./");
+        !d.is_empty() && d != "." && (p == d || p.starts_with(&format!("{d}/")))
+    })
+}
+
+/// A tool-cache file that nobody asked for: not declared by the plan.
+pub fn is_unwanted_cache(path: &str, declared: &[String]) -> bool {
+    is_tool_cache_path(path) && !is_declared(path, declared)
+}
+
 /// Commit everything the session left uncommitted in its worktree.
 ///
 /// Returns `false` when there was nothing to commit.
 pub fn commit_pending(record: &WorktreeRecord, message: &str) -> Result<bool, String> {
+    commit_pending_declared(record, message, &[])
+}
+
+/// [`commit_pending`], leaving tool-cache files out (see
+/// [`is_tool_cache_path`]) unless one is under a path in `declared`. A file
+/// left out stays on disk, untracked.
+pub fn commit_pending_declared(
+    record: &WorktreeRecord,
+    message: &str,
+    declared: &[String],
+) -> Result<bool, String> {
     let path = Path::new(&record.path);
-    if pending(record).is_empty() {
+    let wanted: Vec<String> = pending(record)
+        .into_iter()
+        .filter(|p| !is_unwanted_cache(p, declared))
+        .collect();
+    if wanted.is_empty() {
         return Ok(false);
     }
     let message = if message.trim().is_empty() {
@@ -822,6 +880,22 @@ pub fn commit_pending(record: &WorktreeRecord, message: &str) -> Result<bool, St
         message.trim()
     };
     run(path, &["add", "-A"])?;
+    // `add -A` takes the cache files too; take them back out of the index.
+    // Only those that would be committed anyway, in batches for long lists.
+    let unwanted: Vec<String> = pending(record)
+        .into_iter()
+        .filter(|p| is_unwanted_cache(p, declared))
+        .collect();
+    for chunk in unwanted.chunks(100) {
+        let mut args: Vec<&str> = vec!["reset", "-q", "--"];
+        args.extend(chunk.iter().map(String::as_str));
+        // A path that was never in the index is not an error worth stopping for.
+        let _ = run(path, &args);
+    }
+    let (staged_nothing, _) = run_status(path, &["diff", "--cached", "--quiet"])?;
+    if staged_nothing {
+        return Ok(false);
+    }
     run_as_user(path, &["commit", "-q", "--no-verify", "-m", message])?;
     Ok(true)
 }
@@ -2054,6 +2128,78 @@ mod tests {
         assert!(f.repo.join("b.txt").exists() && f.repo.join("c.txt").exists());
         let parents = run(&f.repo, &["rev-list", "--parents", "-n", "1", "HEAD"]).unwrap();
         assert_eq!(parents.split_whitespace().count(), 3, "{parents}");
+    }
+
+    #[test]
+    fn commit_pending_commits_dirty_work_once_and_is_a_no_op_when_clean() {
+        let f = fixture();
+        let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
+        assert!(!commit_pending(&r, "nothing").unwrap());
+        std::fs::write(PathBuf::from(&r.path).join("n.txt"), "n").unwrap();
+        assert!(commit_pending(&r, "Add n").unwrap());
+        assert!(pending(&r).is_empty());
+        assert_eq!(unmerged_commits(&r, None).len(), 1);
+        assert!(!commit_pending(&r, "again").unwrap());
+    }
+
+    #[test]
+    fn tool_cache_paths_are_recognised_and_work_is_not() {
+        for p in [
+            "Microsoft/Windows/PowerShell/ModuleAnalysisCache",
+            "microsoft\\windows\\powershell\\ModuleAnalysisCache",
+            ".cache/x",
+            "web/node_modules/.cache/babel/a.json",
+            "src/__pycache__/m.cpython-311.pyc",
+            "m.pyc",
+            "docs/.DS_Store",
+            "Thumbs.db",
+        ] {
+            assert!(is_tool_cache_path(p), "{p}");
+        }
+        for p in ["src/cache.js", "node_modules/left-pad/index.js", "cache/data.json", "src/app.py", "Microsoft/readme.md"] {
+            assert!(!is_tool_cache_path(p), "{p}");
+        }
+    }
+
+    #[test]
+    fn a_declared_path_keeps_its_cache_file() {
+        let declared = vec![".cache".to_string()];
+        assert!(!is_unwanted_cache(".cache/keep.txt", &declared));
+        assert!(is_unwanted_cache("other/.cache/x", &declared));
+        // The whole tree is not a declaration about a file.
+        assert!(is_unwanted_cache(".cache/x", &[".".to_string(), String::new()]));
+    }
+
+    #[test]
+    fn commit_pending_leaves_tool_cache_files_out_of_the_commit() {
+        let f = fixture();
+        let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
+        let wt = PathBuf::from(&r.path);
+        std::fs::write(wt.join("work.txt"), "w").unwrap();
+        let cache = wt.join("Microsoft").join("Windows").join("PowerShell");
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::write(cache.join("ModuleAnalysisCache"), [0u8, 1, 2]).unwrap();
+        std::fs::write(wt.join(".DS_Store"), "x").unwrap();
+        assert!(commit_pending(&r, "work").unwrap());
+        let tree = run(&wt, &["ls-tree", "-r", "--name-only", "HEAD"]).unwrap();
+        assert!(tree.contains("work.txt"), "{tree}");
+        assert!(!tree.contains("ModuleAnalysisCache") && !tree.contains(".DS_Store"), "{tree}");
+        // Still on disk, and a second pass with only cache left commits nothing.
+        assert!(cache.join("ModuleAnalysisCache").exists());
+        assert!(!commit_pending(&r, "again").unwrap());
+        assert_eq!(unmerged_commits(&r, None).len(), 1);
+    }
+
+    #[test]
+    fn commit_pending_keeps_a_cache_file_the_plan_declared() {
+        let f = fixture();
+        let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
+        let wt = PathBuf::from(&r.path);
+        std::fs::create_dir_all(wt.join(".cache")).unwrap();
+        std::fs::write(wt.join(".cache").join("seed.json"), "{}").unwrap();
+        assert!(commit_pending_declared(&r, "seed", &[".cache".to_string()]).unwrap());
+        let tree = run(&wt, &["ls-tree", "-r", "--name-only", "HEAD"]).unwrap();
+        assert!(tree.contains(".cache/seed.json"), "{tree}");
     }
 
     #[test]

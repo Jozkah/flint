@@ -8,6 +8,7 @@ import { createActionHandlers, type RemoteActions } from './actions'
 import { handleMobileMutation } from './mobileMutations'
 import { createExtraHandlers, type RemoteExtras } from './extras'
 import { createArchiveHandlers, type RemoteArchive } from './archive'
+import { createCampaignHandlers, type RemoteCampaigns } from './campaigns'
 import { createStudioHandlers, type RemoteStudio, type RemoteVoice } from './studio'
 import type {
   AppearanceResult,
@@ -151,7 +152,8 @@ export function createRemoteHandlers(
   extras?: RemoteExtras,
   studio?: RemoteStudio,
   voice?: RemoteVoice,
-  archive?: RemoteArchive
+  archive?: RemoteArchive,
+  campaigns?: RemoteCampaigns
 ): RemoteHandlers {
   const actionHandlers = actions ? createActionHandlers(actions) : undefined
   return {
@@ -159,6 +161,7 @@ export function createRemoteHandlers(
     ...createExtraHandlers(extras),
     ...createStudioHandlers(studio, voice),
     ...createArchiveHandlers(archive),
+    ...createCampaignHandlers(campaigns),
     ...(actionHandlers ?? {}),
 
     // First-class Room mutations. These deliberately reuse the exact Room

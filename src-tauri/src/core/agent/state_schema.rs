@@ -207,6 +207,14 @@ pub fn stores() -> Vec<Store> {
             migration: RefusedAndKept,
         },
         Store {
+            module: "core/agent/campaign.rs",
+            holds: "a campaign's plan, task states, events and decisions",
+            version: crate::core::agent::campaign::SCHEMA_VERSION,
+            owner: DataFolder,
+            location: "campaigns/<id>/campaign.json",
+            migration: RefusedAndKept,
+        },
+        Store {
             module: "core/agent/session_bundle.rs",
             holds: "a session exported to be opened somewhere else",
             version: crate::core::agent::session_bundle::SCHEMA_VERSION as u32,
@@ -331,7 +339,7 @@ mod tests {
         // And the count is asserted, so a store added to the tree without an
         // entry here is a failing test rather than a silent omission -- the
         // number is meant to be updated deliberately.
-        assert_eq!(stores().len(), 20, "a store was added or removed");
+        assert_eq!(stores().len(), 21, "a store was added or removed");
     }
 
     /// What the catalogue promises about older files is what the code does.

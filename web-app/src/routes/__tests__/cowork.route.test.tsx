@@ -1470,7 +1470,7 @@ describe('two sessions side by side in split view', () => {
     expect(useCoworkSessions.getState().currentId).toBe(SESSION)
   })
 
-  it('sends each pane with its own session model, from its own header picker', async () => {
+  it('sends each pane with its own session model, from its own picker under the composer', async () => {
     const mp = useModelProvider.getState() as any
     const other = { ...mp.selectedModel, id: 'local/other' }
     mp.providers[0].models.push(other)
@@ -1484,8 +1484,9 @@ describe('two sessions side by side in split view', () => {
           .getState()
           .setModel(OTHER, { provider: 'llamacpp', id: 'local/other' })
       })
-      // The pane's header carries its own model picker.
-      expect(inPane('right', 'cowork-pane-model-right')).not.toBeNull()
+      // The model picker is under the composer in a pane too, not in the
+      // pane's header.
+      expect(inPane('right', 'cowork-pane-model-right')).toBeNull()
 
       h.text = 'right words'
       await userEvent.click(inPane('right', 'submit'))

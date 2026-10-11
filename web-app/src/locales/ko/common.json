@@ -113,6 +113,7 @@
   "keyboardShortcuts": "단축키",
   "home": "홈",
   "cowork": "Cowork",
+  "campaign": "Campaign",
   "newSession": "새 세션",
   "artifacts": "아티팩트",
   "customize": "사용자 지정",
@@ -2064,7 +2065,12 @@
     "usageOverview": "사용량 개요",
     "movedTo": "{{name}}(으)로 이동했습니다",
     "notifications": "알림",
-    "approvalWaiting": "승인 대기 중"
+    "approvalWaiting": "승인 대기 중",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "진단",

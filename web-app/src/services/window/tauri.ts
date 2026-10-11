@@ -71,6 +71,7 @@ export class TauriWindowService extends DefaultWindowService {
         maximizable: config.maximizable,
         closable: config.closable,
         fullscreen: config.fullscreen,
+        visible: config.visible,
         theme: theme,
         incognito: config.incognito,
       })

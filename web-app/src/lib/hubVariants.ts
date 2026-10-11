@@ -1,0 +1,68 @@
+import type { HuggingFaceFileGroup } from '@/lib/huggingface'
+
+/** Quants worth showing first, in order, after the one that fits this device. */
+const COMMON_QUANTS = ['Q4_K_M', 'Q5_K_M', 'Q8_0', 'Q6_K', 'Q4_K_S']
+
+export const SHORT_LIST_SIZE = 4
+/** Past this many variants the full list gets family headings. */
+export const GROUP_THRESHOLD = 12
+/** Rows rendered at once inside the scroll area; the rest load on request. */
+export const WINDOW_SIZE = 50
+
+/**
+ * The few variants to show before "Show all": the recommended one first, then
+ * the most common quantizations, then the smallest remaining, up to `limit`.
+ */
+export function selectShortList(
+  variants: HuggingFaceFileGroup[],
+  recommendedId: string | null | undefined,
+  limit = SHORT_LIST_SIZE
+): HuggingFaceFileGroup[] {
+  const out: HuggingFaceFileGroup[] = []
+  const add = (group?: HuggingFaceFileGroup) => {
+    if (group && !out.includes(group) && out.length < limit) out.push(group)
+  }
+  add(variants.find((group) => group.id === recommendedId))
+  for (const quant of COMMON_QUANTS) {
+    add(
+      variants.find((group) => group.quantization?.toUpperCase() === quant)
+    )
+  }
+  const bySize = [...variants].sort(
+    (a, b) => (a.totalSize ?? Infinity) - (b.totalSize ?? Infinity)
+  )
+  for (const group of bySize) add(group)
+  return out
+}
+
+export function quantFamily(quantization: string | null): string {
+  if (!quantization) return 'Other'
+  const q = quantization.toUpperCase()
+  if (/^(BF16|F16|F32|FP16)/.test(q)) return 'Full precision'
+  if (/^IQ/.test(q)) return 'Compact (IQ)'
+  const match = q.match(/^Q(\d)/)
+  if (match) return `${match[1]}-bit`
+  return 'Other'
+}
+
+export type VariantSection = {
+  title: string | null
+  items: HuggingFaceFileGroup[]
+}
+
+/** Headings only when there are more than GROUP_THRESHOLD variants. */
+export function groupVariants(
+  variants: HuggingFaceFileGroup[]
+): VariantSection[] {
+  if (variants.length <= GROUP_THRESHOLD) {
+    return [{ title: null, items: variants }]
+  }
+  const map = new Map<string, HuggingFaceFileGroup[]>()
+  for (const group of variants) {
+    const key = quantFamily(group.quantization)
+    map.set(key, [...(map.get(key) ?? []), group])
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(([title, items]) => ({ title, items }))
+}

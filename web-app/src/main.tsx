@@ -7,6 +7,7 @@ import {
   type WebdataResetFlags,
 } from '@/services/app/reset-localstorage'
 import { installConsoleLogForwarding } from '@/services/app/console-logger'
+import { bootMark } from '@/lib/bootMarks'
 
 // Inter is bundled under public/fonts (styles/font.css), so nothing is fetched at runtime.
 import './index.css'
@@ -91,6 +92,7 @@ const consumePendingWebdataReset = async () => {
 }
 
 const boot = async () => {
+  bootMark('boot:start')
   installConsoleLogForwarding()
   setupMobileViewport()
   preventDefaultFileDrop()
@@ -99,8 +101,11 @@ const boot = async () => {
   await consumePendingWebdataReset()
 
   // Dynamic imports keep store hydration AFTER the localStorage prune above.
+  bootMark('boot:reset-consumed')
   const { routeTree } = await import('./routeTree.gen')
+  bootMark('boot:routetree')
   await import('./i18n')
+  bootMark('boot:i18n')
 
   const router = createRouter({ routeTree })
   // The app opens on the Overview once the first-run setup is done; until
@@ -131,6 +136,7 @@ const boot = async () => {
   const rootElement = document.getElementById('root')!
   if (!rootElement.innerHTML) {
     const root = ReactDOM.createRoot(rootElement)
+    bootMark('boot:render')
     root.render(
       <StrictMode>
         <RouterProvider router={router} />

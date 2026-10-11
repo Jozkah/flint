@@ -113,6 +113,7 @@
   "keyboardShortcuts": "ショートカット",
   "home": "ホーム",
   "cowork": "Cowork",
+  "campaign": "Campaign",
   "newSession": "新しいセッション",
   "artifacts": "アーティファクト",
   "customize": "カスタマイズ",
@@ -2064,7 +2065,12 @@
     "usageOverview": "使用状況の概要",
     "movedTo": "{{name}} に移動しました",
     "notifications": "通知",
-    "approvalWaiting": "承認待ち"
+    "approvalWaiting": "承認待ち",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "診断",

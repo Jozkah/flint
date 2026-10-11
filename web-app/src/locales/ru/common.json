@@ -115,6 +115,7 @@
   "keyboardShortcuts": "Сочетания клавиш",
   "home": "Главная",
   "cowork": "Cowork",
+  "campaign": "Campaign",
   "newSession": "Новая сессия",
   "artifacts": "Артефакты",
   "customize": "Настроить",
@@ -2137,7 +2138,12 @@
     "usageOverview": "Обзор использования",
     "movedTo": "Перемещено в {{name}}",
     "notifications": "Уведомления",
-    "approvalWaiting": "Ожидает одобрения"
+    "approvalWaiting": "Ожидает одобрения",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "Диагностика",

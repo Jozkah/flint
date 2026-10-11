@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
+import { isChatWindow } from '@/lib/soloFlag'
 
 /**
  * Split view: more conversations shown beside the one the route names.
@@ -314,7 +315,17 @@ export const useSplitConversation = create<SplitConversationState>()(
     }),
     {
       name: localStorageKey.splitConversation,
-      storage: createJSONStorage(() => backendStorage),
+      // A "New window" shows one conversation: it neither inherits the main
+      // window's panes nor writes its own back over them.
+      storage: createJSONStorage(() =>
+        isChatWindow()
+          ? {
+              getItem: () => null,
+              setItem: () => undefined,
+              removeItem: () => undefined,
+            }
+          : backendStorage
+      ),
       skipHydration: true,
       version: 1,
       migrate: (persisted, version) =>

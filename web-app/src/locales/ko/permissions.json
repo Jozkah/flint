@@ -38,7 +38,8 @@
     "gitLocal": "Flint가 {{command}}을(를) 실행하려고 합니다",
     "gitLocalIn": "Flint가 {{workspace}}에서 {{command}}을(를) 실행하려고 합니다",
     "gitRemote": "Flint가 {{target}}을(를) 변경하는 {{command}}을(를) 실행하려고 합니다",
-    "gitDestructive": "Flint가 작업 내용을 잃을 수 있는 {{command}}을(를) 실행하려고 합니다"
+    "gitDestructive": "Flint가 작업 내용을 잃을 수 있는 {{command}}을(를) 실행하려고 합니다",
+    "approveCampaign": "Flint wants to start the campaign \"{{title}}\" ({{count}} tasks)"
   },
   "consequence": {
     "fileChange": "파일을 만들거나, 덮어쓰거나, 내용을 변경할 수 있습니다.",
@@ -55,7 +56,8 @@
     "writeClipboard": "현재 클립보드에 있는 내용을 대체합니다.",
     "gitLocal": "이 컴퓨터에서 이 저장소의 파일, 브랜치 또는 기록을 변경합니다.",
     "gitRemote": "다른 사람이 볼 수 있는 원격 저장소로 변경 사항을 보냅니다. 이 대화에서 일반적인 원격 Git 작업을 일시적으로 허용하지 않는 한 Flint는 매번 묻습니다.",
-    "gitDestructive": "제거되거나 덮어써진 내용은 복구할 수 없을 수 있습니다."
+    "gitDestructive": "제거되거나 덮어써진 내용은 복구할 수 없을 수 있습니다.",
+    "campaignPlan": "It starts separate sessions, each on its own worktree branch, that read and change files and use your model quota in parallel. Approving the plan does not approve any call a task makes. Flint asks every time."
   },
   "repeat": {
     "allowedOnceBefore": "이 대화에서 이 명령을 이미 한 번 허용했습니다."

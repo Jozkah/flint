@@ -36,6 +36,7 @@ import type {
   Usage,
   CoworkGoal,
   TodoList,
+  CampaignLink,
 } from '@/types/coworkSession'
 
 // The transcript/todo/subagent shapes live in a store-free module so panels and
@@ -217,6 +218,16 @@ export type CoworkSession = {
    * the user, like any other.
    */
   handoff?: HandoffRecord
+  /**
+   * The campaign this session coordinates or runs a task of. Provenance only;
+   * absent on every ordinary session and on sessions saved before campaigns.
+   */
+  campaign?: CampaignLink
+  /**
+   * The server runs this session (`flint serve --agent-run`): its id is the
+   * server's, and its transcript is read from there, never saved here.
+   */
+  remote?: boolean
   updated: number
   /**
    * When the session was created (epoch millis). Absent on sessions saved
@@ -348,6 +359,7 @@ type CoworkSessionsState = {
   /** Replace the session's code-panel state (tabs, expansion, word wrap). */
   setCodePanel: (id: string, codePanel: CodePanelState) => void
   setTitle: (id: string, title: string) => void
+  setCampaign: (id: string, campaign: CampaignLink | null) => void
   setMessages: (id: string, messages: UIMessage[]) => void
   setGoal: (id: string, goal: CoworkGoal | null) => void
   setTodos: (id: string, todos: TodoList, anchorId?: string) => void
@@ -875,6 +887,16 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           sessions: s.sessions.map((x) => (x.id === id ? { ...x, title } : x)),
         })),
 
+      setCampaign: (id, campaign) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) => {
+            if (x.id !== id) return x
+            const { campaign: _drop, ...rest } = x
+            void _drop
+            return campaign ? { ...rest, campaign } : rest
+          }),
+        })),
+
       commitLegacyTurns: (id, turns, history) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
@@ -973,6 +995,10 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         ...state,
         sessions: state.sessions.map((session) => {
           const saved = stripSessionToolImages(session)
+          // A server session is a pointer: its transcript lives on the server.
+          if (saved.remote) {
+            return { ...saved, turns: [], messages: [], inFlight: undefined, pendingInput: undefined }
+          }
           return saved.mode === 'bypass' ? { ...saved, mode: 'ask' as const } : saved
         }),
       }),
@@ -988,7 +1014,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           sessions: pruneEmptySessions(merged.sessions ?? [], merged.currentId ?? null),
         }
       },
-      version: 4,
+      version: 5,
       // v0 persisted an OpenAI-shaped `history` that could not represent tool
       // calls, so replaying it dropped every tool turn. Rebuild the message
       // list from `turns`, which did record them, and leave `history` in place
@@ -1131,6 +1157,9 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
             }
           })
         }
+        // v4 → v5: sessions gained an optional `campaign` pointer. Absent
+        // means "not part of a campaign", which is every session saved
+        // before it, so there is nothing to rewrite.
         return { ...state, sessions }
       },
     }

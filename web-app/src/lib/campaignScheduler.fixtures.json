@@ -1,0 +1,781 @@
+[
+ {
+  "name": "independent tasks start in plan order up to the cap",
+  "status": "running",
+  "tokenBudget": null,
+  "maxParallel": 3,
+  "live": {
+   "liveTasks": [],
+   "freePanes": null,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "t0",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t1",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t2",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t3",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t4",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": [
+   {
+    "action": "start",
+    "taskId": "t0"
+   },
+   {
+    "action": "start",
+    "taskId": "t1"
+   },
+   {
+    "action": "start",
+    "taskId": "t2"
+   }
+  ]
+ },
+ {
+  "name": "running tasks use up slots",
+  "status": "running",
+  "tokenBudget": null,
+  "maxParallel": 3,
+  "live": {
+   "liveTasks": [],
+   "freePanes": null,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "t0",
+    "status": "running",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t1",
+    "status": "awaiting_input",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t2",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t3",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t4",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": [
+   {
+    "action": "start",
+    "taskId": "t2"
+   }
+  ]
+ },
+ {
+  "name": "a live run the record does not know counts once",
+  "status": "running",
+  "tokenBudget": null,
+  "maxParallel": 3,
+  "live": {
+   "liveTasks": [
+    "t0",
+    "t1"
+   ],
+   "freePanes": null,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "t0",
+    "status": "running",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t1",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t2",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t3",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t4",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": [
+   {
+    "action": "start",
+    "taskId": "t2"
+   }
+  ]
+ },
+ {
+  "name": "a dependency that is only verified does not unblock",
+  "status": "running",
+  "tokenBudget": null,
+  "maxParallel": 4,
+  "live": {
+   "liveTasks": [],
+   "freePanes": null,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "a",
+    "status": "verified",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "b",
+    "status": "pending",
+    "dependsOn": [
+     "a"
+    ],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": []
+ },
+ {
+  "name": "a merged dependency unblocks",
+  "status": "running",
+  "tokenBudget": null,
+  "maxParallel": 4,
+  "live": {
+   "liveTasks": [],
+   "freePanes": null,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "a",
+    "status": "merged",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "b",
+    "status": "pending",
+    "dependsOn": [
+     "a"
+    ],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": [
+   {
+    "action": "start",
+    "taskId": "b"
+   }
+  ]
+ },
+ {
+  "name": "a cancelled dependency blocks its dependents",
+  "status": "running",
+  "tokenBudget": null,
+  "maxParallel": 4,
+  "live": {
+   "liveTasks": [],
+   "freePanes": null,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "a",
+    "status": "cancelled",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "b",
+    "status": "pending",
+    "dependsOn": [
+     "a"
+    ],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "z",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": [
+   {
+    "action": "block",
+    "taskId": "b",
+    "because": "dependency a was cancelled"
+   },
+   {
+    "action": "start",
+    "taskId": "z"
+   }
+  ]
+ },
+ {
+  "name": "verifier tokens count against the budget",
+  "status": "running",
+  "tokenBudget": 1000,
+  "maxParallel": 4,
+  "live": {
+   "liveTasks": [],
+   "freePanes": null,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "t0",
+    "status": "completed",
+    "dependsOn": [],
+    "tokensUsed": 900,
+    "verifyTokens": 100
+   },
+   {
+    "id": "t1",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t2",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t3",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t4",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": []
+ },
+ {
+  "name": "a live run's tokens count against the budget",
+  "status": "running",
+  "tokenBudget": 1000,
+  "maxParallel": 4,
+  "live": {
+   "liveTasks": [],
+   "freePanes": null,
+   "liveTokens": {
+    "t0": 1000
+   }
+  },
+  "tasks": [
+   {
+    "id": "t0",
+    "status": "running",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t1",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t2",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t3",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t4",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": []
+ },
+ {
+  "name": "free panes tighten the cap",
+  "status": "running",
+  "tokenBudget": null,
+  "maxParallel": 6,
+  "live": {
+   "liveTasks": [],
+   "freePanes": 2,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "t0",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t1",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t2",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t3",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t4",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t5",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t6",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t7",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": [
+   {
+    "action": "start",
+    "taskId": "t0"
+   },
+   {
+    "action": "start",
+    "taskId": "t1"
+   }
+  ]
+ },
+ {
+  "name": "no free panes starts nothing",
+  "status": "running",
+  "tokenBudget": null,
+  "maxParallel": 6,
+  "live": {
+   "liveTasks": [],
+   "freePanes": 0,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "t0",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t1",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t2",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t3",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t4",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t5",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t6",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t7",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": []
+ },
+ {
+  "name": "the setting is clamped to six",
+  "status": "running",
+  "tokenBudget": null,
+  "maxParallel": 50,
+  "live": {
+   "liveTasks": [],
+   "freePanes": null,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "t0",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t1",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t2",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t3",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t4",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t5",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t6",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t7",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": [
+   {
+    "action": "start",
+    "taskId": "t0"
+   },
+   {
+    "action": "start",
+    "taskId": "t1"
+   },
+   {
+    "action": "start",
+    "taskId": "t2"
+   },
+   {
+    "action": "start",
+    "taskId": "t3"
+   },
+   {
+    "action": "start",
+    "taskId": "t4"
+   },
+   {
+    "action": "start",
+    "taskId": "t5"
+   }
+  ]
+ },
+ {
+  "name": "the setting is clamped to one",
+  "status": "running",
+  "tokenBudget": null,
+  "maxParallel": 0,
+  "live": {
+   "liveTasks": [],
+   "freePanes": null,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "t0",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t1",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t2",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t3",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t4",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t5",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t6",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t7",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": [
+   {
+    "action": "start",
+    "taskId": "t0"
+   }
+  ]
+ },
+ {
+  "name": "a paused campaign schedules nothing",
+  "status": "paused",
+  "tokenBudget": null,
+  "maxParallel": 4,
+  "live": {
+   "liveTasks": [],
+   "freePanes": null,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "t0",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t1",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t2",
+    "status": "pending",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": []
+ },
+ {
+  "name": "queued starts, failed and resolving do not",
+  "status": "running",
+  "tokenBudget": null,
+  "maxParallel": 4,
+  "live": {
+   "liveTasks": [],
+   "freePanes": null,
+   "liveTokens": {}
+  },
+  "tasks": [
+   {
+    "id": "t0",
+    "status": "queued",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t1",
+    "status": "failed",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   },
+   {
+    "id": "t2",
+    "status": "resolving",
+    "dependsOn": [],
+    "tokensUsed": 0,
+    "verifyTokens": 0
+   }
+  ],
+  "expect": [
+   {
+    "action": "start",
+    "taskId": "t0"
+   }
+  ]
+ }
+]

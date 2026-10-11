@@ -3,9 +3,7 @@ import { RowPreview, lastUserText } from '@/components/shell/nav/RowPreview'
 import {
   NavAction,
   NavButton,
-  NavCollapse,
   NavItem,
-  NavList,
   useShellNav,
 } from '@/components/shell/nav-kit'
 import {
@@ -32,7 +30,6 @@ import { useLocation, useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
   Box,
-  Plus,
   SlidersHorizontal,
   Copy,
   FileClock,
@@ -45,12 +42,12 @@ import {
   Trash2,
   Loader2,
   FolderPlus,
+  Workflow,
+  SquareTerminal,
   type LucideIcon,
 } from 'lucide-react'
 import { coworkTranscript, regenerateCoworkTitle } from '@/lib/regenerateSessionTitle'
 import { regenerateWithToast } from '@/lib/regenerateToast'
-import { cn } from '@/lib/utils'
-import { Icon } from '@/components/ui/icon'
 import {
   ThreadStatusMark,
   useThreadStatus,
@@ -65,7 +62,7 @@ import {
 } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
-import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { useNeedsApproval } from '@/hooks/useNeedsApproval'
 import { usePrompt } from '@/hooks/usePrompt'
 import { OpenInSubmenu } from '@/components/shell/nav/OpenInSubmenu'
 import { CursorAnchor, useCursorAnchor } from '@/components/shell/nav/CursorAnchor'
@@ -97,11 +94,24 @@ import PluginsManagerDialog from '@/containers/dialogs/PluginsManagerDialog'
 import { GroupedTree, MoveToGroupSub } from '@/components/shell/nav/GroupedTree'
 import { coworkFolderAdapter } from '@/lib/groups/adapters'
 import { addNewItemToGroup } from '@/lib/groups/inherit'
+import { CampaignGroups } from '@/components/shell/nav/CampaignGroups'
+import { StatusDot } from '@/components/campaign/StatusDot'
+import { useCampaigns } from '@/hooks/useCampaigns'
+import { useCampaignFolderState } from '@/hooks/useCampaignFolder'
+import { StartCampaignDialog } from '@/components/campaign/StartCampaignDialog'
+import {
+  claimedSessionIds,
+  deriveCampaignGroups,
+  type CampaignDot,
+} from '@/lib/campaignView'
 
 type CoworkNavItem = {
   title: string
   icon: LucideIcon
   onClick: () => void
+  disabled?: boolean
+  hint?: string
+  testId?: string
 }
 
 // Own component (not inlined in a .map()) so it can be memoized: a change to
@@ -113,12 +123,15 @@ const SessionItem = memo(function SessionItem({
   isMobile,
   onSelect,
   onRequestDelete,
+  campaignDot,
 }: {
   session: CoworkSession
   isCurrent: boolean
   isMobile: boolean
   onSelect: (id: string) => void
   onRequestDelete: (pending: { id: string; title: string }) => void
+  /** A campaign task's state, shown before the title. */
+  campaignDot?: CampaignDot
 }) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -170,11 +183,17 @@ const SessionItem = memo(function SessionItem({
           data-session-id={session.id}
           data-current={isCurrent ? 'true' : 'false'}
         >
-          <SessionMark
-            session={session}
-            running={running}
-            selected={isCurrent}
-          />
+          {/* One mark per row: a campaign row shows the campaign's own state
+              and the session's running or unread mark only when there is none. */}
+          {campaignDot ? (
+            <StatusDot dot={campaignDot} />
+          ) : (
+            <SessionMark
+              session={session}
+              running={running}
+              selected={isCurrent}
+            />
+          )}
           <FadeText>{session.title}</FadeText>
           {running && (
             // A session running in the background shows here, without the
@@ -398,13 +417,7 @@ function SessionMark({
   const worktreePath = useCoworkWorktrees((s) => s.bySession[session.id]?.path)
   const pr = usePrStatus(worktreePath ?? session.folder, session.id)
   // Waiting on the user: a tool approval or a question the run asked.
-  const awaitingApproval = useToolApprovalRequests((s) =>
-    Object.values(s.pending ?? {}).some((p) => p.threadId === session.id)
-  )
-  const awaitingAnswer = useCoworkRun(
-    (s) => (s.pendingAsks[session.id]?.length ?? 0) > 0
-  )
-  const waiting = awaitingApproval || awaitingAnswer
+  const waiting = useNeedsApproval(session.id)
   const recency = useThreadStatus(
     { updated: session.updated },
     running,
@@ -432,16 +445,14 @@ function SessionMark({
 }
 
 /**
- * The Cowork row of the sidebar with its session tree: the row opens Cowork,
- * the chevron shows or hides the sessions, and the row menu holds the less
- * frequent actions (artifacts, customize, import, plugins).
+ * The Cowork tab's session area: New session (its menu holds the less frequent
+ * actions: new group, artifacts, customize, import, plugins), New campaign,
+ * whatever the sidebar puts between them and the list (`after`), then the
+ * campaign groups and the sessions. Rendered inside a NavList.
  */
-export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
+export function CoworkNav({ after }: { after?: React.ReactNode }) {
   const { pathname } = useLocation()
   const onCowork = isCoworkRoute(pathname)
-  const [treeOpen, setTreeOpen] = useState<boolean | null>(null)
-  const expanded = treeOpen ?? onCowork
-  const runningCount = useCoworkRun((s) => Object.keys(s.runs ?? {}).length)
   const runs = useCoworkRun((s) => s.runs)
   const [moreOpen, setMoreOpen] = useState(false)
   const { t } = useTranslation()
@@ -463,9 +474,12 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
       ),
     [allSessions, onCowork, currentId, runs]
   )
-  const visibleSessions = expanded
-    ? sessions
-    : sessions.filter((session) => Boolean(runs?.[session.id]))
+  const [startOpen, setStartOpen] = useState(false)
+  // Never waits on the git check: a cached answer is read at once, and the
+  // folder is offered while the answer is unknown.
+  const { folder: campaignCandidate, isRepo } = useCampaignFolderState()
+  const notRepo = isRepo === false
+  const campaignFolder = notRepo ? null : campaignCandidate
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [pluginsOpen, setPluginsOpen] = useState(false)
   // Session pending deletion; drives the confirm dialog (null = closed).
@@ -509,13 +523,31 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
     [goCowork]
   )
 
-  const sessionIds = useMemo(() => sessions.map((x) => x.id), [sessions])
+  // Campaigns are derived groups: coordinator plus task sessions, shown above
+  // the user's own groups. A session claimed by one is not listed twice.
+  const { campaigns } = useCampaigns()
+  const campaignGroups = useMemo(
+    () => deriveCampaignGroups(campaigns, allSessions),
+    [campaigns, allSessions]
+  )
+  const claimed = useMemo(
+    () => claimedSessionIds(campaignGroups),
+    [campaignGroups]
+  )
+  const sessionIds = useMemo(
+    () => sessions.filter((x) => !claimed.has(x.id)).map((x) => x.id),
+    [sessions, claimed]
+  )
   const byId = useMemo(
     () => new Map(sessions.map((x) => [x.id, x])),
     [sessions]
   )
-  const renderSession = (id: string) => {
-    const session = byId.get(id)
+  const everyById = useMemo(
+    () => new Map(allSessions.map((x) => [x.id, x])),
+    [allSessions]
+  )
+  const renderSession = (id: string, campaignDot?: CampaignDot) => {
+    const session = byId.get(id) ?? (claimed.has(id) ? everyById.get(id) : undefined)
     if (!session) return null
     return (
       <SessionItem
@@ -525,21 +557,27 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
         isMobile={isMobile}
         onSelect={selectSession}
         onRequestDelete={setPendingDelete}
+        campaignDot={campaignDot}
       />
     )
   }
 
   // New group lives in this menu (and on right-click), not as a row of its own.
-  // The tree is opened first so the group has somewhere to appear.
   const [newGroupRequest, setNewGroupRequest] = useState(0)
   const items: CoworkNavItem[] = [
     {
+      title: t('settings:campaigns.start.menu'),
+      icon: Workflow,
+      onClick: () => setStartOpen(true),
+      // Known not to be a repository: said here, not hidden.
+      disabled: notRepo,
+      hint: notRepo ? t('settings:campaigns.start.noFolder') : undefined,
+      testId: 'nav-new-campaign',
+    },
+    {
       title: t('common:groups.newGroup'),
       icon: FolderPlus,
-      onClick: () => {
-        setTreeOpen(true)
-        setNewGroupRequest((n) => n + 1)
-      },
+      onClick: () => setNewGroupRequest((n) => n + 1),
     },
     {
       title: t('common:artifacts'),
@@ -648,101 +686,86 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
     <>
       <NavItem>
         <NavButton
-          isActive={pathname === route.cowork}
-          onClick={goCowork}
-          // Right-click opens the row's menu (New group, Artifacts…).
+          onClick={() => newSession()}
+          // Right-click opens the row's menu (New group, Artifacts...).
           onContextMenu={(e) => {
             e.preventDefault()
             setMoreOpen(true)
           }}
-          data-testid="nav-cowork"
+          data-testid="nav-new-session"
         >
-          {icon}
-          <span className="flex-1 truncate">{t('common:cowork')}</span>
+          <SquareTerminal aria-hidden />
+          <span className="flex-1 truncate">{t('common:newSession')}</span>
         </NavButton>
-        <span className="absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-1">
-          {runningCount > 0 && (
-            <span className="text-[11px] text-muted-foreground tabular-nums">
-              {runningCount}
-            </span>
-          )}
-          <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label={t('common:more')}
-                className="grid size-5 cursor-pointer place-items-center rounded-md text-muted-foreground opacity-0 transition-opacity group-hover/nav-item:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100 [&>svg]:size-3.5"
-              >
-                <MoreHorizontal />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              className="w-52"
-              side={isMobile ? 'bottom' : 'right'}
-              align="start"
-            >
-              {items.map((item) => {
-                const ItemIcon = item.icon
-                return (
-                  <DropdownMenuItem key={item.title} onSelect={item.onClick}>
-                    <ItemIcon />
-                    <span>{item.title}</span>
-                  </DropdownMenuItem>
-                )
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <button
-            type="button"
-            aria-label={t('common:sessions')}
-            aria-expanded={expanded}
-            onClick={() => setTreeOpen(!expanded)}
-            className="grid size-5 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground [&>svg]:size-3"
+        <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
+          <DropdownMenuTrigger asChild>
+            <NavAction showOnHover aria-label={t('common:more')}>
+              <MoreHorizontal />
+            </NavAction>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-52"
+            side={isMobile ? 'bottom' : 'right'}
+            align="start"
           >
-            <span
-              className={cn(
-                'inline-flex transition-transform duration-300 ease-expo',
-                !expanded && 'rotate-180'
-              )}
-            >
-              <Icon name="arrow-up" size={12} />
-            </span>
-          </button>
-        </span>
+            {items.map((item) => {
+              const ItemIcon = item.icon
+              return (
+                <DropdownMenuItem
+                    key={item.title}
+                    onSelect={item.onClick}
+                    disabled={item.disabled}
+                    data-testid={item.testId}
+                    title={item.hint}
+                  >
+                    <ItemIcon />
+                    <span className="flex min-w-0 flex-col">
+                      <span>{item.title}</span>
+                      {item.hint ? (
+                        <span className="text-[11px] font-normal text-muted-foreground">
+                          {item.hint}
+                        </span>
+                      ) : null}
+                    </span>
+                  </DropdownMenuItem>
+              )
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </NavItem>
-      {/* Collapsed, the tree still lists the sessions that are running,
-          until their run ends. */}
-      <NavCollapse as="li" open={expanded || visibleSessions.length > 0}>
-        <NavList className="relative pt-0.5 pb-1 pl-5 before:absolute before:inset-y-1 before:left-[17px] before:w-px before:bg-border">
-          {expanded && (
-            <NavItem>
-              <NavButton size="sub" onClick={() => newSession()}>
-                <Plus aria-hidden className="size-3.5" />
-                <span>{t('common:newSession')}</span>
-              </NavButton>
-            </NavItem>
-          )}
-          {expanded ? (
-            <GroupedTree
-              surface="cowork"
-              ids={sessionIds}
-              renderItem={renderSession}
-              keepVisible={(id) =>
-                (onCowork && id === currentId) || Boolean(runs?.[id])
-              }
-              adapter={coworkFolderAdapter}
-              onNewInGroup={newSession}
-              newInLabelKey="common:groups.newSessionIn"
-              showNewGroup={false}
-              newGroupRequest={newGroupRequest}
-              onNewGroupRequestHandled={() => setNewGroupRequest(0)}
-            />
-          ) : (
-            visibleSessions.map((session) => renderSession(session.id))
-          )}
-        </NavList>
-      </NavCollapse>
+      {after}
+      {(campaignGroups.length > 0 || sessions.length > 0) && (
+        <li
+          aria-hidden
+          className="mt-2 flex h-5 list-none items-center px-2.5 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase"
+        >
+          {t('common:sessions')}
+        </li>
+      )}
+      <CampaignGroups
+        groups={campaignGroups}
+        renderRow={(row) => renderSession(row.sessionId, row.dot)}
+      />
+      <GroupedTree
+        surface="cowork"
+        ids={sessionIds}
+        renderItem={renderSession}
+        keepVisible={(id) =>
+          (onCowork && id === currentId) || Boolean(runs?.[id])
+        }
+        adapter={coworkFolderAdapter}
+        onNewInGroup={newSession}
+        newInLabelKey="common:groups.newSessionIn"
+        showNewGroup={false}
+        newGroupRequest={newGroupRequest}
+        onNewGroupRequestHandled={() => setNewGroupRequest(0)}
+      />
 
+      <StartCampaignDialog
+        open={startOpen}
+        onOpenChange={setStartOpen}
+        folder={campaignFolder}
+      />
       <SkillsManagerDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
       <PluginsManagerDialog open={pluginsOpen} onOpenChange={setPluginsOpen} />
 

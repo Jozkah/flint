@@ -113,6 +113,7 @@
   "keyboardShortcuts": "Klavye Kısayolları",
   "home": "Ana Sayfa",
   "cowork": "Birlikte Çalış",
+  "campaign": "Campaign",
   "newSession": "Yeni Oturum",
   "artifacts": "Üretimler",
   "customize": "Özelleştir",
@@ -2064,7 +2065,12 @@
     "usageOverview": "Kullanım genel bakışı",
     "movedTo": "{{name}} grubuna taşındı",
     "notifications": "Bildirimler",
-    "approvalWaiting": "Onay bekliyor"
+    "approvalWaiting": "Onay bekliyor",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "Tanılama",

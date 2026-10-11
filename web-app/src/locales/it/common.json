@@ -114,6 +114,7 @@
   "keyboardShortcuts": "Scorciatoie",
   "home": "Home",
   "cowork": "Cowork",
+  "campaign": "Campaign",
   "newSession": "Nuova sessione",
   "artifacts": "Artefatti",
   "customize": "Personalizza",
@@ -2097,7 +2098,12 @@
     "usageOverview": "Panoramica dell'utilizzo",
     "movedTo": "Spostato in {{name}}",
     "notifications": "Notifiche",
-    "approvalWaiting": "Approvazione in attesa"
+    "approvalWaiting": "Approvazione in attesa",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "Diagnostica",

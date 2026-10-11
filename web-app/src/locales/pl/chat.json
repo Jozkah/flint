@@ -98,7 +98,11 @@
     "noModel": "Wybierz model przed rozpoczęciem nowego czatu.",
     "newChatFailed": "Nie udało się rozpocząć nowego czatu",
     "room": "Pokój",
-    "recentRooms": "Pokoje"
+    "recentRooms": "Pokoje",
+    "needsApproval": "Needs approval",
+    "needsApprovalShort": "Needs approval",
+    "done": "Done",
+    "failed": "Failed"
   },
   "transcriptView": {
     "steps_one": "{{count}} krok",

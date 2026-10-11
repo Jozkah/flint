@@ -689,5 +689,424 @@
     "noVisionModel": "没有可用的能看图的模型。请添加一个，或将某个模型标记为支持视觉。",
     "embed": "让附加的图片可被搜索",
     "embedDesc": "同时把每张图片的描述与聊天文档一起保存，以便日后搜索。这会把每张附加图片发送给描述模型。"
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "maxParallel": "Campaign parallel threads",
+    "maxParallelDesc": "How many campaign tasks may run at once, each in its own split pane. From 1 to 6. It applies to a running campaign at once; free panes still limit it.",
+    "board": {
+      "dot": {
+        "queued": "Queued",
+        "blocked": "Blocked",
+        "running": "Running",
+        "needsYou": "Needs you",
+        "verifying": "Verifying",
+        "verified": "Verified",
+        "merged": "Merged",
+        "failed": "Failed",
+        "conflict": "Conflict",
+        "cancelled": "Cancelled",
+        "planning": "Planning",
+        "review": "Ready for review"
+      },
+      "status": {
+        "draft": "draft",
+        "planned": "planned",
+        "approved": "approved",
+        "running": "running",
+        "paused": "paused",
+        "reviewing": "reviewing",
+        "merging": "merging",
+        "done": "done",
+        "failed": "failed",
+        "cancelled": "cancelled",
+        "interrupted": "interrupted"
+      },
+      "openBoard": "Open campaign board",
+      "notFound": "This campaign was not found.",
+      "loading": "Loading campaign…",
+      "budget": {
+        "label": "Token budget",
+        "used": "{{used}} of {{budget}} tokens",
+        "none": "{{used}} tokens, no budget set"
+      },
+      "parallel": "Parallel limit {{n}}",
+      "card": {
+        "branch": "Branch",
+        "noBranch": "no branch yet"
+      },
+      "action": {
+        "open": "Open session",
+        "note": "Send note",
+        "stop": "Stop",
+        "retry": "Retry",
+        "skip": "Skip",
+        "handoff": "View handoff",
+        "diff": "View changes",
+        "pause": "Pause",
+        "resume": "Resume",
+        "cancel": "Cancel campaign",
+        "review": "Review & apply",
+        "send": "Send",
+        "close": "Close",
+        "confirm": "Confirm",
+        "reviewChanges": "Review changes",
+        "openCoordinator": "Open coordinator",
+        "openCowork": "Open Cowork to continue"
+      },
+      "note": {
+        "title": "Note to {{task}}",
+        "placeholder": "Tell the task what to do differently",
+        "sent": "Note sent"
+      },
+      "handoff": {
+        "title": "Handoff: {{task}}",
+        "empty": "No handoff has been written yet."
+      },
+      "diff": {
+        "title": "Files changed by {{task}}",
+        "empty": "No file changes were recorded for this task."
+      },
+      "review": {
+        "title": "Review and apply",
+        "body": "This runs the gate on the merged result, then creates one proposal for your checkout. Nothing is applied until you approve that proposal.",
+        "command": "Gate command: {{command}}",
+        "noCommand": "No build or test command is configured or detected, so the merged result will not be built or tested.",
+        "proposal": "Proposal created. Review and apply it on this board.",
+        "failed": "The gate failed; the campaign stays in review."
+      },
+      "cancelConfirm": {
+        "title": "Cancel this campaign?",
+        "body": "Every unfinished task is cancelled and running tasks are stopped. Worktrees are kept."
+      },
+      "proposal": {
+        "title": "Campaign changes",
+        "loading": "Loading the proposal…",
+        "missing": "The proposal could not be found. Run Review & apply again."
+      },
+      "resumed": "Resumed {{n}} task(s) that were interrupted when the app stopped.",
+      "stalled": "{{n}} task(s) show as running but nothing is running them in this window. Open Cowork to continue them.",
+      "noteState": {
+        "sent": "Note sent",
+        "delivered": "Note delivered to the task"
+      },
+      "error": "Action failed: {{reason}}",
+      "headline": {
+        "planning": "Planning the work",
+        "working": "Working: {{done}} of {{total}} tasks done",
+        "attention_one": "Needs your attention: {{count}} task is waiting for you",
+        "attention_other": "Needs your attention: {{count}} tasks are waiting for you",
+        "review": "Ready for your review",
+        "merging": "Putting the results together",
+        "paused": "Paused: {{done}} of {{total}} tasks done",
+        "interrupted": "Stopped when the app closed: {{done}} of {{total}} tasks done",
+        "done": "All done",
+        "failed": "This campaign could not finish",
+        "cancelled": "Cancelled",
+        "gateFailed": "Final checks failed: the work is merged but not verified"
+      },
+      "progressLabel": "{{done}} of {{total}} tasks done",
+      "planning": "Planning… waiting for the coordinator's plan.",
+      "group": {
+        "needsYou": "Needs you",
+        "working": "Working",
+        "upNext": "Up next",
+        "done": "Done",
+        "skipped": "Skipped"
+      },
+      "word": {
+        "writing": "Writing code",
+        "checking": "Checking the result",
+        "ready": "Checked, ready to merge",
+        "needsInput": "Waiting for your answer",
+        "needsApproval": "Waiting for your approval",
+        "failed": "Did not work out",
+        "conflict": "Clashes with other changes",
+        "waiting": "Waiting for {{tasks}}",
+        "queued": "Starts soon",
+        "merged": "Merged",
+        "skipped": "Skipped",
+        "resolving": "Resolving a clash",
+        "verifyBlocked": "Finished, but the check could not decide",
+        "waitingSkipped": "Waiting for {{tasks}}, which was skipped"
+      },
+      "row": {
+        "open": "Open",
+        "details": "Details",
+        "attempts": "Attempts",
+        "tokens": "Tokens used",
+        "lastActivity": "Last activity",
+        "seeChanges": "See what {{task}} changed"
+      },
+      "details": "Details",
+      "detailBranch": "Results are collected on {{branch}}",
+      "statusWord": {
+        "draft": "Starting",
+        "planned": "Starting",
+        "approved": "Starting",
+        "running": "Working",
+        "paused": "Paused",
+        "reviewing": "Ready to review",
+        "merging": "Merging",
+        "done": "Done",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+        "interrupted": "Stopped"
+      },
+      "groupProgress": "{{done}} of {{total}} done · {{status}}",
+      "fold": "Hide the sessions of {{title}}",
+      "unfold": "Show the sessions of {{title}}",
+      "story": {
+        "wrote_one": "Wrote {{count}} file, +{{added}} −{{removed}} lines",
+        "wrote_other": "Wrote {{count}} files, +{{added}} −{{removed}} lines",
+        "wroteUncounted_one": "Wrote {{count}} file",
+        "wroteUncounted_other": "Wrote {{count}} files",
+        "stop": {
+          "none": "It stopped before finishing.",
+          "one": "It stopped after a command failed.",
+          "many": "It stopped after commands failed {{count}} times."
+        },
+        "headline": {
+          "noOutput": "Nothing was written.",
+          "stoppedPlain": "Stopped without finishing.",
+          "finishedNoFiles": "Finished without changing any files.",
+          "working_one": "Working on it: {{count}} step so far.",
+          "working_other": "Working on it: {{count}} steps so far.",
+          "starting": "Just getting started.",
+          "conflict": "Finished, but its changes clash with what other tasks wrote.",
+          "waiting": "Waiting for {{tasks}} to finish first.",
+          "queued": "Starts as soon as there is room.",
+          "needsInput": "Paused: it asked you a question.",
+          "needsApproval": "Paused: it needs your approval to go on.",
+          "skipped": "Skipped.",
+          "verifyBlocked": "Finished, but the check could not tell whether it is right."
+        },
+        "took": "Worked for {{time}}",
+        "running": "Running for {{time}}",
+        "toggle": "What happened",
+        "asked": "What it was asked",
+        "did": "What it did",
+        "stoppedAt": "Where it stopped",
+        "noRecord": "No step by step record is available for this task.",
+        "more_one": "and {{count}} more step",
+        "more_other": "and {{count}} more steps",
+        "step": {
+          "read": "Read {{label}}",
+          "readMany_one": "Read {{count}} file",
+          "readMany_other": "Read {{count}} files",
+          "search_one": "Searched the project",
+          "search_other": "Searched the project {{count}} times",
+          "write": "Wrote {{label}}",
+          "writeMany_one": "Wrote {{count}} file",
+          "writeMany_other": "Wrote {{count}} files",
+          "ran": "Ran {{label}}",
+          "ranFailed": "Ran {{label}} and it failed"
+        },
+        "next": {
+          "retry": "Try again, and say what it should do differently.",
+          "conflict": "Open the conversation and ask it to rebuild on the latest results, or skip it.",
+          "open": "It has used its retries. Open the conversation to see where it got stuck, or skip it.",
+          "answer": "Open the conversation and answer its question.",
+          "approve": "Open the conversation and approve or deny the request.",
+          "verify": "Check it again, or accept it yourself if you can see it is fine.",
+          "help": "This needs a different approach. The suggested hint is filled in; change it if you like and retry."
+        },
+        "hintLabel": "Tell it what to do differently",
+        "openConversation": "Open conversation"
+      },
+      "summary": {
+        "title": "The whole picture",
+        "goal": "What you asked for",
+        "plan": "How it was split up",
+        "sideBySide_one": "{{count}} task ran on its own",
+        "sideBySide_other": "These {{count}} tasks ran side by side",
+        "waitsFor": "{{task}} waits for {{tasks}}",
+        "time": "Time",
+        "timeSoFar": "{{time}} so far",
+        "timeTotal": "{{time}} in total",
+        "result": "Result",
+        "cost": "Cost",
+        "costTokens": "About {{tokens}} tokens",
+        "costBudget": "About {{tokens}} tokens of your {{budget}} budget",
+        "branch": "Where the results are",
+        "branchBody": "Everything is collected on a separate branch, {{branch}}. Your own files stay untouched until you review and apply it.",
+        "copy": "Copy branch name",
+        "copied": "Copied",
+        "wrapUp": {
+          "doneTitle": "All done",
+          "reviewTitle": "Ready for your review",
+          "built": "What got built",
+          "tasks": "Tasks finished",
+          "files": "Files changed",
+          "lines": "Lines changed",
+          "skipped": "{{count}} skipped"
+        }
+      },
+      "effort": "About {{percent}}% of the work is done",
+      "recovery": {
+        "checkAgain": "Check again",
+        "accept": "Accept anyway",
+        "acceptWhy": "Why is it fine to accept? One line, kept with the task.",
+        "acceptConfirm": "Accept it",
+        "accepted": "Accepted by you",
+        "acceptedWhy": "Accepted by you: {{reason}}",
+        "blocks": "Waiting on this: {{tasks}}."
+      },
+      "changes": {
+        "title": "Everything this campaign changed",
+        "body": "All finished tasks together, file by file. Nothing is applied to your folder from here.",
+        "continue": "Build and test, then review"
+      },
+      "conflict": {
+        "explain": "This task and another one changed the same lines, so Flint could not combine them on its own.",
+        "files": "Files in conflict",
+        "resolve": "Try to resolve automatically",
+        "skip": "Skip task",
+        "resolving": "Resolving the conflict...",
+        "resolvingFiles": "Resolving the conflict in {{count}} files..."
+      },
+      "verify": {
+        "verdict": "Checked by the verifier",
+        "verdicts": {
+          "PASS": "Passed",
+          "PARTIAL": "Partly done",
+          "FAIL": "Did not pass",
+          "BLOCKED": "Could not decide"
+        },
+        "testsPassed": "Tests passed",
+        "testsFailed": "Tests failed",
+        "testsFailedTail": "Tests failed: {{tail}}",
+        "tokens": "Tokens spent on checking"
+      },
+      "progressLabelSkipped": "{{done}} done · {{skipped}} skipped · {{total}} tasks",
+      "groupProgressSkipped": "{{done}} done · {{skipped}} skipped · {{status}}",
+      "effortGateFailed": "The final checks failed, so the work is not finished",
+      "stranded": {
+        "explain": "This task waits for {{tasks}}, which was skipped, so it cannot start on its own.",
+        "skipToo": "Skip this too",
+        "runWithout": "Run without it"
+      },
+      "skipConfirm": {
+        "title": "Skip \"{{task}}\"?",
+        "body_one": "{{count}} other task waits for it. Skip it as well, or let it run without this one?",
+        "body_other": "{{count}} other tasks wait for it. Skip them as well, or let them run without this one?",
+        "cascade_one": "Skip it and the task that waits for it",
+        "cascade_other": "Skip it and the {{count}} tasks that wait for it",
+        "release": "Skip it, run the others without it"
+      },
+      "gate": {
+        "title": "Checks failed",
+        "body": "The work was merged, but the final build and test check did not pass, so it is not ready to apply.",
+        "command": "Command",
+        "result": "Result",
+        "exit": "Exit code {{code}}",
+        "noExit": "Did not finish normally",
+        "timedOut": "Timed out",
+        "output": "Last lines of output",
+        "copy": "Copy",
+        "copied": "Copied",
+        "fix": "Fix it automatically",
+        "retry": "Run checks again",
+        "reviewAnyway": "Review anyway",
+        "reviewWarning": "The final checks failed. Review the changes with that in mind."
+      },
+      "recheck": {
+        "again": "Checking again…",
+        "stalled": "The check is taking longer than expected."
+      }
+    },
+    "changes": {
+      "loading": "Looking at the changes…",
+      "unavailable": "The changes could not be read. Open the session to see them.",
+      "none": "This task has not changed any files.",
+      "files_one": "{{count}} file",
+      "files_other": "{{count}} files",
+      "namesOnly": "Only the file names are known for this task.",
+      "uncommitted": "Some of this work is not saved to the task's branch yet.",
+      "cut": "A long list was shortened.",
+      "kind": {
+        "new": "New",
+        "edited": "Edited",
+        "deleted": "Deleted",
+        "renamed": "Renamed"
+      },
+      "binary": "binary",
+      "binaryNote": "This is not a text file, so there is nothing to show.",
+      "renamedFrom": "Renamed from {{from}}",
+      "showMore_one": "Show {{count}} more line",
+      "showMore_other": "Show {{count}} more lines",
+      "fileCut": "This change is long, so only the start is shown.",
+      "noPatch": "There is no line-by-line view for this file."
+    },
+    "start": {
+      "title": "New campaign",
+      "menu": "New campaign",
+      "prompt": "Describe the big task. Flint will plan how to split it.",
+      "goalLabel": "What should the campaign do?",
+      "placeholder": "For example: add dark mode across the app, with tests",
+      "hint": "Up to {{n}} threads work at the same time. You can change this in Settings.",
+      "folder": "In {{folder}}",
+      "go": "Start",
+      "noFolder": "Open a git folder to start a campaign",
+      "error": {
+        "no-model": "Choose a model that can use tools first (Models in the sidebar, or the model picker), then start again.",
+        "failed": "Flint could not open the campaign session. Nothing was started; try again."
+      }
+    },
+    "nav": "Campaigns",
+    "list": {
+      "subtitle": "Big tasks split into parts that several agents work on side by side.",
+      "start": "Start a campaign",
+      "empty": "No campaigns yet",
+      "emptyHint": "A campaign takes one big task, splits it into smaller ones, and has several agents work on them at the same time on their own branches.",
+      "doneOf": "{{done}} of {{total}} done",
+      "planning": "Planning",
+      "updated": "Updated {{when}}",
+      "loading": "Loading campaigns",
+      "loadFailed": "Couldn't load campaigns.",
+      "retry": "Retry"
+    },
+    "plan": {
+      "edit": "Edit plan",
+      "save": "Save changes",
+      "discard": "Discard changes",
+      "saved": "Plan saved.",
+      "saveFailed": "Could not save the plan: {{reason}}",
+      "unsaved": "Not saved yet",
+      "saveFirst": "Save or discard your plan changes before allowing.",
+      "addTask": "Add task",
+      "count": "{{count}} of {{max}} tasks",
+      "after": "After: {{tasks}}",
+      "moveUp": "Move {{task}} up",
+      "moveDown": "Move {{task}} down",
+      "remove": "Remove {{task}}",
+      "addAfter": "Add a task to wait for",
+      "removeAfter": "Remove this dependency",
+      "field": {
+        "title": "Task name",
+        "brief": "What to do",
+        "acceptance": "How we know it is done (one per line)",
+        "paths": "Files and folders it may change (one per line)",
+        "pathsHint": "src/feature",
+        "after": "Starts after"
+      },
+      "estimate": {
+        "one": "About {{tokens}} tokens",
+        "range": "About {{low}} to {{high}} tokens",
+        "basis": "Depends on: {{basis}}",
+        "generic": "Depends on how many files the tasks read and how often a check has to be repeated."
+      },
+      "issue": {
+        "noTasks": "Add at least one task.",
+        "tooMany": "{{count}} tasks is too many; the limit is {{max}}.",
+        "emptyTitle": "A task has no name.",
+        "emptyBrief": "{{task}} needs a description of what to do.",
+        "badPath": "{{task}}: \"{{path}}\" is not a folder or file inside the project.",
+        "selfDependency": "{{task}} cannot wait for itself.",
+        "unknownDependency": "{{task}} waits for a task that no longer exists.",
+        "cycle": "These tasks wait for each other: {{tasks}}.",
+        "overlap": "{{a}} and {{b}} would run at the same time but both change {{path}}. Make one wait for the other."
+      }
+    }
   }
 }

@@ -351,6 +351,12 @@ import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
 import { CoworkAskedCard } from '@/containers/CoworkAskedCard'
 import { CoworkSubagentQuestions } from '@/containers/CoworkSubagentQuestions'
 import { renderNotices, takeNotices } from '@/lib/coworkRunNotices'
+import {
+  executeCampaignTool,
+  isCoordinatorEligible,
+} from '@/lib/campaignTools'
+import { createToolDeps, getCampaignRunner } from '@/lib/campaignHost'
+import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
 import { askedFromParts } from '@/lib/askedSessions'
 import { SessionStopNotice } from '@/containers/SessionStopNotice'
 import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
@@ -508,6 +514,8 @@ import {
   type ToolOutcome,
 } from '@/lib/coworkRunner'
 import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
+import { isRemoteSession, sendRemoteTurn, useRemoteCowork } from '@/lib/remoteCowork'
+import { RemoteWorktreePanel } from '@/components/server/RemoteWorktreePanel'
 import { notifyAnswerFinished } from '@/lib/completionSound'
 import {
   listSubagents,
@@ -538,6 +546,7 @@ import { useJevSettings } from '@/hooks/useJevSettings'
 import { workProfileAsker } from '@/lib/jev'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
+import { SMALL_WINDOW_TOKENS } from '@/lib/coworkTools'
 
 
 export const Route = createFileRoute(route.cowork as any)({
@@ -766,6 +775,8 @@ export function CoworkPage() {
   // drawn under the session in view.
   const viewedId = session?.id ?? null
   const running = useCoworkRun((s) => !!(viewedId && s.runs[viewedId]))
+  // Server sessions: the list, the opened transcript, a turn still running.
+  useRemoteCowork()
   const liveTurns = useCoworkRun(
     (s) => (viewedId ? s.liveTurns[viewedId] : undefined) ?? NO_LIVE_TURNS
   )
@@ -2693,6 +2704,22 @@ export function CoworkPage() {
     const sid = ensureCurrentSession(paneSessionIdRef.current)
     // This session's run only: another session running is no reason to wait.
     if (useCoworkRun.getState().runs[sid]) return
+    // A session the server runs is driven there: this page only sends the
+    // message and mirrors the events (lib/remoteCowork.ts).
+    if (isRemoteSession(sid)) {
+      const refused = (message: string) => {
+        toast.error(message)
+        onRefused?.()
+      }
+      if (text === null) return refused('A server session cannot resume from here. Send a message instead.')
+      if (attachmentInput && (attachmentInput.docs.length > 0 || (attachmentInput.files?.length ?? 0) > 0)) {
+        return refused('Attachments are not sent to server sessions yet.')
+      }
+      void sendRemoteTurn(sid, text).catch((e) =>
+        refused(e instanceof Error ? e.message : String(e))
+      )
+      return
+    }
     // The mail this run takes in (the message that woke it, and anything that
     // reaches it at a step boundary), so the run's final answer can go back to
     // the sender when the agent did not reply itself.
@@ -3246,6 +3273,7 @@ export function CoworkPage() {
       priorTurns: current?.turns.length ?? 0,
       text: text ?? '',
       record: recordFor(current?.continuity ?? null, current?.folder ?? null),
+      campaignTask: current?.campaign?.role === 'task',
     })
     const inspecting = opening === 'inspect-and-propose'
     /**
@@ -3325,6 +3353,17 @@ export function CoworkPage() {
       if (loaded === STOPPED) return
       runTooling = loaded.prompt
     }
+    // A campaign coordinator or task on a window of 32K or less gets the
+    // slim tool set: the full one alone would fill most of it.
+    const campaignWindow = configuredContextTokens(modelCapabilities)
+    const campaignSlim: 'coordinator' | 'task' | undefined =
+      current?.campaign &&
+      campaignWindow != null &&
+      campaignWindow <= SMALL_WINDOW_TOKENS
+        ? current.campaign.role === 'coordinator'
+          ? 'coordinator'
+          : 'task'
+        : undefined
     const transport = new CoworkChatTransport(sid, {
       // Captured now: every step of this run uses it, whatever the picker
       // says by then (janhq/jan#8905).
@@ -3333,8 +3372,18 @@ export function CoworkPage() {
       subagentNames: runAgents.map((d) => d.name),
       // Always on at depth 0, even with nothing saved: a one-off subagent with
       // an inline `system_prompt` is first-class, as it is in Rust.
-      allowSubagents: true,
+      allowSubagents: !campaignSlim,
+      slim: campaignSlim,
       webSearch,
+      // The campaign tools go to a top-level session that is not itself a
+      // campaign task, and only when there is a repository to branch from.
+      // Judged on the session's own mode, not the opening's forced review:
+      // a read-only opening still sees `campaign_plan` (it asks first and
+      // writes nothing to the checkout); a review-mode session does not.
+      campaignCoordinator:
+        isCoordinatorEligible(current?.campaign) &&
+        !!current?.folder &&
+        !isReadOnly(storedMode),
       // The session's own folder, which is what makes `stop_session` offerable
       // and what readiness is probed for. Not `runReadRoot`: a worktree run
       // reads somewhere else but is still this folder's session.
@@ -4043,6 +4092,61 @@ export function CoworkPage() {
                 tasks: backgroundTasks,
                 cancelChild: (callId) =>
                   abortSubagent(sid, taskIdFor(sid, runId, callId)),
+                // Campaign tools exist only here, on the main run of a session
+                // that may coordinate: a task's, a subagent's and chat's
+                // contexts have no handler, so a call to one is refused.
+                onCampaign:
+                  isCoordinatorEligible(current?.campaign) && current?.folder
+                    ? (call, campaignSignal) =>
+                        executeCampaignTool(
+                          call,
+                          {
+                            sessionId: sid,
+                            // The session's own mode: an opening turn's
+                            // forced review must not cap the tasks at review.
+                            mode: storedMode,
+                            sourceRoot: current?.folder ?? null,
+                            model: selectedModel
+                              ? {
+                                  provider: selectedProvider,
+                                  id: selectedModel.id,
+                                }
+                              : undefined,
+                            signal: campaignSignal,
+                            onApprove: (
+                              callId,
+                              toolName,
+                              input,
+                              _preview,
+                              approveSignal,
+                              forced
+                            ) =>
+                              useToolApprovalRequests
+                                .getState()
+                                .requestApproval(
+                                  callId,
+                                  toolName,
+                                  sid,
+                                  undefined,
+                                  {
+                                    input,
+                                    alwaysAsk: true,
+                                    taskContext: forced?.reason,
+                                    workspaceLabel: current?.folder ?? undefined,
+                                    signal: approveSignal,
+                                    // The plan card's "how should tasks work".
+                                    choice: forced?.choice,
+                                    onDecision: (decision, chosenId) => {
+                                      if (decision !== 'deny' && chosenId) {
+                                        forced?.onChoice?.(chosenId)
+                                      }
+                                    },
+                                  }
+                                ),
+                          },
+                          createToolDeps(getCampaignRunner())
+                        )
+                    : undefined,
                 onTodo: async (input) => {
                   const result = applyTodoOp(
                     useCoworkSessions
@@ -4871,6 +4975,15 @@ export function CoworkPage() {
     }),
     []
   )
+  // The opening message of a campaign started from "New campaign" is sent
+  // through the same path as the Send button once the session is idle.
+  useCampaignLaunchSend({
+    sessionId: session?.id,
+    running,
+    draftScope: coworkPane?.draftScope,
+    submit: (text, onRefused) =>
+      widgetSubmitRef.current(text, undefined, onRefused),
+  })
   // Cowork's own `/` built-ins; `/help` is added by the composer.
   /**
    * Compact this session now: fold its older messages into a summary written
@@ -5363,24 +5476,6 @@ export function CoworkPage() {
 
   // The session's own model (janhq/jan#8905): keyed by session so switching
   // re-reads it, and a choice is written to the session in view only.
-  const modelSelector = (
-    <DropdownModelProvider
-      key={session?.id ?? 'none'}
-      model={session?.model}
-      useLastUsedModel={!session?.model}
-      onModelChange={(model) =>
-        useCoworkSessions
-          .getState()
-          .setModel(ensureCurrentSession(paneSessionIdRef.current), {
-          provider: model.provider,
-          id: model.id,
-        })
-      }
-    />
-  )
-
-  // The session's own model (janhq/jan#8905): keyed by session so switching
-  // re-reads it, and a choice is written to the session in view only.
   const quietModelSelector = (
     <DropdownModelProvider
       variant="quiet"
@@ -5710,14 +5805,6 @@ export function CoworkPage() {
           {progressButton}
           {headerStop}
           {!phone && !showComposerRailButtons && outputToggle}
-          {/* No context bar in a pane: each pane picks its own session's
-              model here, never the global one. */}
-          <div
-            className="flex min-w-20 max-w-48 shrink"
-            data-testid={`cowork-pane-model-${paneChrome.paneId}`}
-          >
-            {modelSelector}
-          </div>
           {phone ? (
             viewSwitch(compactViews)
           ) : (
@@ -6419,7 +6506,9 @@ export function CoworkPage() {
                         })
                     : undefined
                 }
-                modelControl={!paneChrome ? quietModelSelector : undefined}
+                // Below the input in every layout, a split pane included: each
+                // pane picks its own session's model there, never the global one.
+                modelControl={quietModelSelector}
                 surfaceControls={
                   <>
                     {paneChrome ? sessionControls : phone ? workspacePill : null}
@@ -6488,6 +6577,10 @@ export function CoworkPage() {
                   session={session.id}
                   onApplied={() => git.refresh()}
                 />
+              ) : null}
+              {/* A server session's own checkout: merge, discard, review. */}
+              {session?.id && session.remote ? (
+                <RemoteWorktreePanel sessionId={session.id} />
               ) : null}
               {/* AH-109: each isolated team child's worktree, for review. */}
               {folder && session?.id ? (
