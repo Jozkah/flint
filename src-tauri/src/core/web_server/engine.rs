@@ -149,8 +149,11 @@ pub async fn start(
         bus.publish(kind.event_name(), &line);
         *fault.lock().unwrap() = Some(line);
     });
+    let offload_bus = supervisor.bus.clone();
+    let on_offload: worker::OffloadCallback =
+        Arc::new(move |report| offload_bus.publish("llamacpp-offload", &report));
     let key = worker_key();
-    let handle = worker::spawn(
+    let handle = worker::spawn_with_offload(
         &exe,
         &preset,
         0,
@@ -159,6 +162,7 @@ pub async fn start(
         request.slot_cache_mib,
         envs,
         Some(on_fault),
+        Some(on_offload),
     )
     .await
     .map_err(|e| e.to_string())?;

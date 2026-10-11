@@ -516,60 +516,60 @@ describe('llamacpp_extension', () => {
     })
   })
 
-  describe('migrateFitOff', () => {
+  describe('migrateFitOn', () => {
     beforeEach(() => {
       vi.mocked(getBackendSetting).mockResolvedValue(null)
     })
 
     it('should skip migration if already migrated', async () => {
       vi.mocked(getBackendSetting).mockResolvedValue('1')
-      extension['config'] = { fit: true } as any
+      extension['config'] = { fit: false } as any
       extension['getSettings'] = vi.fn()
 
-      await extension['migrateFitOff']()
+      await extension['migrateFitOn']()
 
       expect(extension['getSettings']).not.toHaveBeenCalled()
     })
 
-    it('should set migration key without calling updateSettings when fit is already false', async () => {
-      extension['config'] = { fit: false } as any
+    it('should set migration key without calling updateSettings when fit is already true', async () => {
+      extension['config'] = { fit: true } as any
       extension['getSettings'] = vi.fn()
       extension['updateSettings'] = vi.fn()
 
-      await extension['migrateFitOff']()
+      await extension['migrateFitOn']()
 
       expect(extension['getSettings']).not.toHaveBeenCalled()
       expect(extension['updateSettings']).not.toHaveBeenCalled()
-      expect(setBackendSetting).toHaveBeenCalledWith('llamacpp_fit_off_v1', '1')
+      expect(setBackendSetting).toHaveBeenCalledWith('llamacpp_fit_on_v1', '1')
     })
 
-    it('should disable fit when it is true', async () => {
-      extension['config'] = { fit: true } as any
+    it('should enable fit when it is false', async () => {
+      extension['config'] = { fit: false } as any
       extension['getSettings'] = vi.fn().mockResolvedValue([
-        { key: 'fit', controllerProps: { value: true } },
+        { key: 'fit', controllerProps: { value: false } },
         { key: 'ctx_size', controllerProps: { value: 2048 } },
       ])
       extension['updateSettings'] = vi.fn().mockResolvedValue(undefined)
 
-      await extension['migrateFitOff']()
+      await extension['migrateFitOn']()
 
       const updatedSettings = vi.mocked(extension['updateSettings']).mock.calls[0][0]
-      expect(updatedSettings.find((s: any) => s.key === 'fit').controllerProps.value).toBe(false)
+      expect(updatedSettings.find((s: any) => s.key === 'fit').controllerProps.value).toBe(true)
       expect(updatedSettings.find((s: any) => s.key === 'ctx_size').controllerProps.value).toBe(2048)
-      expect(extension['config'].fit).toBe(false)
-      expect(setBackendSetting).toHaveBeenCalledWith('llamacpp_fit_off_v1', '1')
+      expect(extension['config'].fit).toBe(true)
+      expect(setBackendSetting).toHaveBeenCalledWith('llamacpp_fit_on_v1', '1')
     })
 
     it('should not modify other settings during fit migration', async () => {
-      extension['config'] = { fit: true } as any
+      extension['config'] = { fit: false } as any
       extension['getSettings'] = vi.fn().mockResolvedValue([
-        { key: 'fit', controllerProps: { value: true } },
+        { key: 'fit', controllerProps: { value: false } },
         { key: 'fit_target', controllerProps: { value: '1024' } },
         { key: 'fit_ctx', controllerProps: { value: '' } },
       ])
       extension['updateSettings'] = vi.fn().mockResolvedValue(undefined)
 
-      await extension['migrateFitOff']()
+      await extension['migrateFitOn']()
 
       const updatedSettings = vi.mocked(extension['updateSettings']).mock.calls[0][0]
       expect(updatedSettings.find((s: any) => s.key === 'fit_target').controllerProps.value).toBe('1024')

@@ -4,6 +4,14 @@
   "subtitle": "What has been measured here, and what is only estimated.",
   "measuredHeading": "Measured on this device",
   "estimateHeading": "Estimate",
+  "offload": {
+    "heading": "GPU offload (this load)",
+    "all": "All {{layers}} layers run on the GPU.",
+    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
+    "none": "No layers run on the GPU: the model is running on the CPU.",
+    "unknown": "The engine did not say how many layers it offloaded.",
+    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
+  },
   "evidence": {
     "ran-successfully": "Ran successfully on this device with these settings.",
     "failed-with-settings": "Failed on this device with these settings. Other settings may work.",

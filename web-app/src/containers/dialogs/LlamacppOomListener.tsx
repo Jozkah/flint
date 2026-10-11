@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { listen } from '@tauri-apps/api/event'
 
 import { useAppState } from '@/hooks/useAppState'
+import { useGpuOffload, type GpuOffloadEvent } from '@/hooks/useGpuOffload'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import {
   clearActiveWork,
@@ -71,12 +72,24 @@ export default function LlamacppOomListener() {
       'llamacpp-model-unloaded',
       (event) => {
         useAppState.getState().removeActiveModel(event.payload.model)
+        useGpuOffload.getState().forget(event.payload.model)
       }
     ).catch((e) => {
       console.warn('listen llamacpp-model-unloaded failed:', e)
       return () => {}
     })
+    // Where each load put its model; shown in the model's status.
+    const unlistenOffload = listen<GpuOffloadEvent>(
+      'llamacpp-offload',
+      (event) => {
+        useGpuOffload.getState().record(event.payload)
+      }
+    ).catch((e) => {
+      console.warn('listen llamacpp-offload failed:', e)
+      return () => {}
+    })
     return () => {
+      void unlistenOffload.then((fn) => fn?.())
       void unlistenOom.then((fn) => fn?.())
       void unlistenBackend.then((fn) => fn?.())
       void unlistenLoadProgress.then((fn) => fn?.())
