@@ -6,6 +6,7 @@ import type { RemoteAttachment, RemoteMessage, RemoteNote, RemoteToolStep } from
 import { FlintMark } from './bits'
 import { clock, toolLabel } from './format'
 import { I } from './icons'
+import { displayNameOf } from '@/lib/displayName'
 import { ASSISTANT_ICON } from './assistants'
 import { ReplyRow } from './reply'
 import { t } from '../i18n'
@@ -102,7 +103,7 @@ export function AttachmentChips({ items }: { items?: RemoteAttachment[] }) {
       {items.map((a, i) => (
         <span key={i} className="att">
           <I n={ATTACH_ICON[a.kind]} size={12} />
-          {a.name}
+          <span title={a.name}>{displayNameOf(a.name)}</span>
         </span>
       ))}
     </span>

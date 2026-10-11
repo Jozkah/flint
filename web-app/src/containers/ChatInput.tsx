@@ -74,6 +74,7 @@ import { fitImageFileToLimit } from '@/lib/imageResize'
 import { VoiceInputButton } from '@/containers/VoiceInputButton'
 import { DropRim } from '@/components/ui/drop-rim'
 import { ComposerAttachmentChips } from '@/containers/ComposerAttachmentChips'
+import { displayNameOf } from '@/lib/displayName'
 import { dragFileCount } from '@/lib/attachmentChip'
 import {
   useConversationModel,
@@ -3084,9 +3085,7 @@ const ChatInput = memo(function ChatInput({
                       ? 'common:pastedPath.folder'
                       : 'common:pastedPath.file',
                     {
-                      name:
-                        pathOffer.path.split(/[\\/]/).filter(Boolean).pop() ??
-                        pathOffer.path,
+                      name: displayNameOf(pathOffer.path),
                     }
                   )}
                 </span>
