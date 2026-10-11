@@ -98,7 +98,10 @@
     "noModel": "Choose a model before starting a new chat.",
     "newChatFailed": "Couldn't start a new chat",
     "room": "Room",
-    "recentRooms": "Rooms"
+    "recentRooms": "Rooms",
+    "needsApproval": "Needs approval",
+    "needsApprovalShort": "Needs approval",
+    "done": "Done"
   },
   "transcriptView": {
     "steps_one": "{{count}} step",

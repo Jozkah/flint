@@ -98,7 +98,10 @@
     "noModel": "Yeni bir sohbet başlatmadan önce bir model seçin.",
     "newChatFailed": "Yeni sohbet başlatılamadı",
     "room": "Oda",
-    "recentRooms": "Odalar"
+    "recentRooms": "Odalar",
+    "needsApproval": "Needs approval",
+    "needsApprovalShort": "Needs approval",
+    "done": "Done"
   },
   "transcriptView": {
     "steps_one": "{{count}} adım",

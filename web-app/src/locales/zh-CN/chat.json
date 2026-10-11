@@ -98,7 +98,10 @@
     "noModel": "开始新聊天前请先选择模型。",
     "newChatFailed": "无法开始新聊天",
     "room": "房间",
-    "recentRooms": "房间"
+    "recentRooms": "房间",
+    "needsApproval": "Needs approval",
+    "needsApprovalShort": "Needs approval",
+    "done": "Done"
   },
   "transcriptView": {
     "steps_one": "{{count}} 步",

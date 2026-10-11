@@ -1,4 +1,3 @@
-import { FadeText } from '@/components/ui/fade-text'
 import {
   Fragment,
   Suspense,
@@ -11,6 +10,7 @@ import {
 } from 'react'
 import type { KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react'
 import {
+  Check,
   Columns2,
   List,
   Loader2,
@@ -48,6 +48,7 @@ import {
 import { plainTitle, usePaneTitle } from '@/hooks/useSplitPaneTitle'
 import { useRoomsStore } from '@/lib/rooms/store'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useNeedsApproval } from '@/hooks/useNeedsApproval'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useElementWidth } from '@/hooks/useElementWidth'
 import { useKeybindings } from '@/hooks/useKeybindings'
@@ -306,42 +307,112 @@ function PaneTab({
   const { t } = useTranslation()
   const title = usePaneTitle(pane.kind, pane.refId)
   const streaming = usePaneStreaming(pane.kind, pane.refId)
+  const needsApproval = useNeedsApproval(pane.refId)
   const label =
     pane.id === PRIMARY_PANE
       ? t('chat:split.primary')
       : t('chat:split.paneNumber', { index: index + 1 })
+  const close = () =>
+    pane.id === PRIMARY_PANE
+      ? closePrimaryPane()
+      : useSplitConversation.getState().closePane(pane.id)
+  // One indicator: a question waiting for the person outranks activity.
+  const state: 'approval' | 'running' | 'done' | 'none' = needsApproval
+    ? 'approval'
+    : streaming
+      ? 'running'
+      : pane.refId
+        ? 'done'
+        : 'none'
   return (
-    <button
-      type="button"
-      role="tab"
-      id={`conversation-pane-tab-${pane.id}`}
-      aria-selected={selected}
-      aria-controls={`conversation-pane-${pane.id}`}
-      tabIndex={selected ? 0 : -1}
-      data-testid={`split-pane-tab-${pane.id}`}
-      data-streaming={streaming}
-      title={title}
-      onClick={onSelect}
+    <div
+      role="presentation"
+      data-testid={`split-pane-tab-wrap-${pane.id}`}
+      data-state={state}
       className={cn(
-        'relative flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-sm px-3 text-[13px] font-medium transition-colors outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11',
+        'group/tab relative flex h-8 min-w-36 max-w-64 flex-1 items-center border-r border-border last:border-r-0 pointer-coarse:h-11',
         selected
-          ? 'bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]'
-          : 'text-muted-foreground hover:text-foreground'
+          ? 'z-10 bg-card text-foreground shadow-[0_2px_6px_rgba(0,0,0,.08)]'
+          : 'bg-muted/60 text-muted-foreground hover:bg-accent hover:text-foreground',
+        needsApproval &&
+          'bg-warning/10 motion-safe:animate-pulse motion-reduce:ring-1 motion-reduce:ring-warning/60 motion-reduce:ring-inset'
       )}
     >
-      <span className="sr-only">{label}: </span>
-      <FadeText>{title}</FadeText>
-      {streaming && (
-        <>
-          {/* Replying is activity, not selection: an icon, never the accent. */}
-          <Loader2
+      <button
+        type="button"
+        role="tab"
+        id={`conversation-pane-tab-${pane.id}`}
+        aria-selected={selected}
+        aria-controls={`conversation-pane-${pane.id}`}
+        tabIndex={selected ? 0 : -1}
+        data-testid={`split-pane-tab-${pane.id}`}
+        data-streaming={streaming}
+        data-needs-approval={needsApproval}
+        title={title}
+        onClick={onSelect}
+        className={cn(
+          'flex h-full min-w-0 flex-1 items-center gap-1.5 pr-1 pl-2.5 text-left text-[13px] outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring',
+          selected ? 'font-semibold' : 'font-medium'
+        )}
+      >
+        <span className="sr-only">{label}: </span>
+        {state === 'approval' && (
+          <>
+            <span
+              aria-hidden
+              className="size-2 shrink-0 rounded-full bg-warning"
+            />
+            <span className="sr-only">{t('chat:split.needsApproval')}</span>
+          </>
+        )}
+        {state === 'running' && (
+          <>
+            <Loader2
+              aria-hidden
+              className="size-3.5 shrink-0 text-muted-foreground motion-safe:animate-spin"
+            />
+            <span className="sr-only">{t('chat:split.streaming')}</span>
+          </>
+        )}
+        {state === 'done' && (
+          <>
+            <Check aria-hidden className="size-3.5 shrink-0 text-success" />
+            <span className="sr-only">{t('chat:split.done')}</span>
+          </>
+        )}
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        {state === 'approval' && (
+          <span
             aria-hidden
-            className="size-3.5 shrink-0 text-muted-foreground motion-safe:animate-spin"
-          />
-          <span className="sr-only">{t('chat:split.streaming')}</span>
-        </>
+            className="shrink-0 text-[11px] font-medium text-warning"
+          >
+            {t('chat:split.needsApprovalShort')}
+          </span>
+        )}
+      </button>
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={close}
+        aria-label={t('chat:split.closePane')}
+        title={t('chat:split.closePane')}
+        data-testid={`split-pane-tab-close-${pane.id}`}
+        className={cn(
+          'mr-1 grid size-5 shrink-0 cursor-pointer place-items-center rounded-sm text-muted-foreground transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 pointer-coarse:size-8 pointer-coarse:opacity-100',
+          selected
+            ? 'opacity-100'
+            : 'opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100'
+        )}
+      >
+        <X aria-hidden className="size-3" />
+      </button>
+      {selected && (
+        <span
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-0.5 bg-primary"
+        />
       )}
-    </button>
+    </div>
   )
 }
 
@@ -380,7 +451,7 @@ function PaneTabs({
       aria-label={t('chat:split.panes')}
       onKeyDown={onKeyDown}
       data-testid="split-pane-switch"
-      className="flex w-full min-w-0 max-w-2xl gap-0.5 rounded-md bg-muted p-0.5"
+      className="flex w-full min-w-0 max-w-2xl overflow-hidden rounded-md border border-border bg-muted"
     >
       {panes.map((pane, index) => (
         <PaneTab

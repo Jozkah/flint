@@ -98,7 +98,10 @@
     "noModel": "Choisissez un modèle avant de commencer une nouvelle discussion.",
     "newChatFailed": "Impossible de commencer une nouvelle discussion",
     "room": "Salon",
-    "recentRooms": "Salons"
+    "recentRooms": "Salons",
+    "needsApproval": "Needs approval",
+    "needsApprovalShort": "Needs approval",
+    "done": "Done"
   },
   "transcriptView": {
     "steps_one": "{{count}} étape",

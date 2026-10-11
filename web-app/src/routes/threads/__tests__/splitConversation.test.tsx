@@ -558,6 +558,25 @@ describe('split view', () => {
     }
   })
 
+  it('marks a pane tab that waits on an approval', () => {
+    const before = h.toolApprovalState.pending
+    h.toolApprovalState.pending = { call1: { threadId: 'thread-b' } }
+    try {
+      renderRoute()
+      const tab = screen.getByTestId('split-pane-tab-secondary')
+      expect(tab).toHaveAttribute('data-needs-approval', 'true')
+      expect(
+        within(tab).getByText('chat:split.needsApproval')
+      ).toBeInTheDocument()
+      expect(screen.getByTestId('split-pane-tab-primary')).toHaveAttribute(
+        'data-needs-approval',
+        'false'
+      )
+    } finally {
+      h.toolApprovalState.pending = before
+    }
+  })
+
   it('turns extra panes into tabs below the minimum width per pane', () => {
     act(() => {
       split().addPane({ kind: 'chat', refId: 'thread-c' })

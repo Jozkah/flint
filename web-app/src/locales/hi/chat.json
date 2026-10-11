@@ -98,7 +98,10 @@
     "noModel": "नई चैट शुरू करने से पहले एक मॉडल चुनें।",
     "newChatFailed": "नई चैट शुरू नहीं हो सकी",
     "room": "रूम",
-    "recentRooms": "रूम"
+    "recentRooms": "रूम",
+    "needsApproval": "Needs approval",
+    "needsApprovalShort": "Needs approval",
+    "done": "Done"
   },
   "transcriptView": {
     "steps_one": "{{count}} चरण",

@@ -62,7 +62,7 @@ import {
 } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
-import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { useNeedsApproval } from '@/hooks/useNeedsApproval'
 import { usePrompt } from '@/hooks/usePrompt'
 import { OpenInSubmenu } from '@/components/shell/nav/OpenInSubmenu'
 import { CursorAnchor, useCursorAnchor } from '@/components/shell/nav/CursorAnchor'
@@ -414,13 +414,7 @@ function SessionMark({
   const worktreePath = useCoworkWorktrees((s) => s.bySession[session.id]?.path)
   const pr = usePrStatus(worktreePath ?? session.folder, session.id)
   // Waiting on the user: a tool approval or a question the run asked.
-  const awaitingApproval = useToolApprovalRequests((s) =>
-    Object.values(s.pending ?? {}).some((p) => p.threadId === session.id)
-  )
-  const awaitingAnswer = useCoworkRun(
-    (s) => (s.pendingAsks[session.id]?.length ?? 0) > 0
-  )
-  const waiting = awaitingApproval || awaitingAnswer
+  const waiting = useNeedsApproval(session.id)
   const recency = useThreadStatus(
     { updated: session.updated },
     running,
