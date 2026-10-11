@@ -265,6 +265,22 @@ pub fn build_task_seed(
                 .into(),
         );
     }
+    if !task.skipped_deps.is_empty() {
+        parts.push("## Skipped dependencies".into());
+        parts.push(format!(
+            "A person skipped {} and released this task to run without it. Do not expect that work to exist; do only what you can without it and say in your handoff what is missing.",
+            task.skipped_deps.join(", ")
+        ));
+    }
+    {
+        let said = format!("{}
+{}
+{decisions}", task.brief, task.acceptance.join("
+")).to_ascii_lowercase();
+        if said.contains("node:test") || said.contains("node --test") || said.contains("node's test runner") || said.contains("node's built-in test runner") {
+            parts.push("When running Node's built-in test runner use `node --test` (no directory argument).".into());
+        }
+    }
     parts.push("## How to finish".into());
     parts.push(
         "Do not merge, push or touch other branches. When the work is done, end with a short handoff: what you did, which files changed, how you checked it, and any open questions. Your final message is recorded as your handoff and read by the coordinator and by tasks that depend on you."
@@ -973,11 +989,30 @@ impl<H: Host> Driver<H> {
             // The backend recorded why it could not be trusted; it stays completed.
             Err(_) => return,
         };
+        let request = prepared.request.clone();
         let asked = tokio::time::timeout(
             MODEL_DEADLINE,
             self.host.ask_model(&folder, model_of(&c).as_deref(), "campaign-verifier", prepared.request),
         )
         .await;
+        // A reply with no verdict gets one more try with a reminder appended.
+        let asked = match asked {
+            Ok(Ok((text, spent))) if crate::core::agent::verification::find_verdict(&text).is_none() => {
+                let again = crate::core::agent::verification::retry_request(&request, &text);
+                match tokio::time::timeout(
+                    MODEL_DEADLINE,
+                    self.host.ask_model(&folder, model_of(&c).as_deref(), "campaign-verifier", again),
+                )
+                .await
+                {
+                    Ok(Ok((second, more))) if crate::core::agent::verification::find_verdict(&second).is_some() => {
+                        Ok(Ok((second, spent.saturating_add(more))))
+                    }
+                    _ => Ok(Ok((text, spent))),
+                }
+            }
+            other => other,
+        };
         let (reply, error, tokens) = match asked {
             Ok(Ok((text, tokens))) => (Some(text), None, tokens),
             Ok(Err(message)) => (None, Some(if message.is_empty() { "the verifier could not run".to_string() } else { message }), 0),
