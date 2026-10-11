@@ -13,16 +13,40 @@ with a free Apple ID.
 
 ## Install
 
-1. Download `Flint-unsigned.ipa` from the latest **iOS IPA** workflow run
-   (Actions → iOS IPA → the run's *Flint-unsigned-ipa* artifact).
-2. Open it in AltStore, SideStore or Sideloadly and sign in with your Apple ID.
-   The tool re-signs the app for your phone.
-3. On the phone: Settings → General → VPN & Device Management → trust your
-   Apple ID.
+Download `Flint-unsigned.ipa` from the latest **iOS IPA** workflow run
+(Actions → iOS IPA → the run's *Flint-unsigned-ipa* artifact). Then pick one
+of the tools below. Each signs the app for your phone with your own Apple ID,
+which is why the file in the artifact is unsigned.
 
-A free Apple ID signs an app for **7 days**. AltStore and SideStore refresh it
-in the background while your phone can reach them; otherwise, install it again.
-A free account can have three sideloaded apps at once.
+### AltStore, SideStore or Sideloadly
+
+Open the `.ipa` in the tool and sign in with your Apple ID. AltStore and
+SideStore refresh the app in the background while your phone can reach them.
+
+### xtool (Windows via WSL, Linux, macOS)
+
+[xtool](https://github.com/xtool-org/xtool) installs an existing `.ipa` from
+the command line, with no Mac and no iTunes-based sideloader:
+
+```bash
+xtool auth login                  # Apple ID (or an App Store Connect API key)
+xtool install Flint-unsigned.ipa  # signs and installs over USB
+xtool launch                      # optional: start it from the terminal
+xtool uninstall                   # remove it again
+```
+
+On Windows run it inside WSL with USB passthrough set up as described in
+xtool's installation guide. `xtool install` only needs the login; the
+`xtool sdk` step (which wants an `Xcode.xip`) is for building Swift apps, not
+for installing this one. xtool cannot *build* Flint's iPhone app, which is a
+Rust and Tauri project; the IPA comes from CI.
+
+### Trust and expiry
+
+On the phone: Settings → General → VPN & Device Management → trust your Apple
+ID. A free Apple ID signs an app for **7 days**; install it again (or let
+AltStore/SideStore refresh it) before then. A free account can have three
+sideloaded apps at once.
 
 ## Connect
 
