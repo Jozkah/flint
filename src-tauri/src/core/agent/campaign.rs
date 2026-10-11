@@ -1106,7 +1106,7 @@ fn apply_patch(t: &mut CampaignTask, p: TaskPatch) {
         // The commit the task began from is recorded once. A retry in the same
         // worktree reports the branch's current tip, which would make the diff
         // of everything already committed empty.
-        if t.base_sha.as_deref().map_or(true, str::is_empty) {
+        if t.base_sha.as_deref().is_none_or(str::is_empty) {
             t.base_sha = Some(cap(v, 64));
         }
     }

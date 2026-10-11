@@ -806,7 +806,7 @@ fn diff_tree(
     }
 
     // Files the task made but has not added to git yet.
-    let mut uncommitted = !worktree::pending(&record).is_empty();
+    let mut uncommitted = !worktree::pending(record).is_empty();
     let untracked = git(&["ls-files", "-z", "--others", "--exclude-standard"]).unwrap_or_default();
     let canon_dir = dir.canonicalize().ok();
     for rel in untracked.split('\0').filter(|p| !p.is_empty()) {
