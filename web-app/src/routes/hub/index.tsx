@@ -2,8 +2,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
-  AudioLines,
-  Boxes,
   Check,
   ChevronDown,
   ChevronUp,
@@ -20,7 +18,6 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
-  Type,
   Wrench,
   X,
 } from 'lucide-react'
@@ -33,6 +30,10 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { HuggingFaceAvatar } from '@/containers/HuggingFaceAvatar'
 import { Segmented } from '@/components/ui/segmented'
+import { HuggingFaceLogo } from '@/components/icons/HuggingFaceLogo'
+import { HubTaskChips } from '@/containers/HubTaskChips'
+import { matchesTask, type HubTaskId } from '@/lib/hubTasks'
+import { useServiceHub } from '@/hooks/useServiceHub'
 import { StudioDiscover } from '@/containers/studio/StudioDiscover'
 import { cn } from '@/lib/utils'
 import { useSpotlight } from '@/hooks/useSpotlight'
@@ -82,7 +83,6 @@ export const Route = createFileRoute(route.hub.index as any)({
 
 type SortMode = 'downloads' | 'likes' | 'updated' | 'newest'
 type ParamFilter = 'all' | 'tiny' | 'small' | 'medium' | 'large'
-type ModalityFilter = 'all' | 'text' | 'vision' | 'audio' | 'embedding'
 
 function inParameterBucket(value: number | null, bucket: ParamFilter): boolean {
   if (bucket === 'all') return true
@@ -127,20 +127,9 @@ function formatUpdated(value?: string | null): string | null {
 const SELECT =
   'h-8 cursor-pointer rounded-lg border-[0.8px] border-border bg-card px-2 text-foreground transition-colors hover:border-border-strong'
 
-const MODALITY_PILLS: Array<{
-  value: ModalityFilter
-  label: string
-  Icon: typeof Type
-}> = [
-  { value: 'all', label: 'All', Icon: Boxes },
-  { value: 'text', label: 'Text', Icon: Type },
-  { value: 'vision', label: 'Vision', Icon: Eye },
-  { value: 'audio', label: 'Audio', Icon: AudioLines },
-  { value: 'embedding', label: 'Embedding', Icon: Layers },
-]
-
 function ModelDiscoverRoute() {
   const spotlight = useSpotlight()
+  const serviceHub = useServiceHub()
   const navigate = useNavigate()
   const token = useGeneralSetting((state) => state.huggingfaceToken)
   const { hardware, devices } = useFitContext()
@@ -155,7 +144,7 @@ function ModelDiscoverRoute() {
   const [sort, setSort] = useState<SortMode>('downloads')
   const [params, setParams] = useState<ParamFilter>('all')
   const [architecture, setArchitecture] = useState('all')
-  const [modality, setModality] = useState<ModalityFilter>('all')
+  const [task, setTask] = useState<HubTaskId>('all')
   const [format, setFormat] = useState<HuggingFaceFormat>(
     IS_MACOS ? 'all' : 'gguf'
   )
@@ -308,11 +297,10 @@ function ModelDiscoverRoute() {
       const parameterCount = inferParameterCount(model)
       const arch = inferArchitecture(model)
       const files = filesByRepo[model.id] ?? model.files ?? []
-      const modalities = inferModalities(model, files)
       return (
         inParameterBucket(parameterCount, params) &&
         (architecture === 'all' || arch === architecture) &&
-        (modality === 'all' || modalities.includes(modality)) &&
+        matchesTask(model, files, task) &&
         (includeGated || !model.gated) &&
         (!downloadedOnly || repoInstalled(model)) &&
         (!fitsOnly ||
@@ -344,7 +332,7 @@ function ModelDiscoverRoute() {
     models,
     params,
     architecture,
-    modality,
+    task,
     includeGated,
     downloadedOnly,
     fitsOnly,
@@ -413,14 +401,14 @@ function ModelDiscoverRoute() {
   const filtersActive =
     params !== 'all' ||
     architecture !== 'all' ||
-    modality !== 'all' ||
+    task !== 'all' ||
     downloadedOnly ||
     fitsOnly ||
     !includeGated
   const clearFilters = () => {
     setParams('all')
     setArchitecture('all')
-    setModality('all')
+    setTask('all')
     setDownloadedOnly(false)
     setFitsOnly(false)
     setIncludeGated(true)
@@ -432,11 +420,8 @@ function ModelDiscoverRoute() {
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex min-w-0 items-start gap-3.5">
-              <span
-                aria-hidden
-                className="grid size-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-amber-300 to-orange-500 text-white shadow-lift"
-              >
-                <Boxes className="size-5" />
+              <span className="grid size-11 shrink-0 place-items-center rounded-2xl border-[0.8px] border-border bg-card shadow-lift">
+                <HuggingFaceLogo size={28} />
               </span>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
@@ -455,7 +440,19 @@ function ModelDiscoverRoute() {
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() =>
+                void serviceHub.opener().openUrl('https://huggingface.co/models')
+              }
+            >
+              Open Hugging Face <ExternalLink className="size-3.5" />
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
             <Segmented<'models' | 'studio'>
               aria-label="What to look for"
               className="min-w-[260px]"
@@ -466,19 +463,7 @@ function ModelDiscoverRoute() {
               value={source}
               onValueChange={setSource}
             />
-            <Button variant="outline" size="sm" asChild>
-              <a
-                href="https://huggingface.co/models"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open Hugging Face <ExternalLink className="size-3.5" />
-              </a>
-            </Button>
-            </div>
-          </div>
-
-          <div className="relative">
+          <div className="relative min-w-[240px] flex-1">
             {loading ? (
               <LoaderCircle className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
             ) : (
@@ -503,25 +488,11 @@ function ModelDiscoverRoute() {
             )}
           </div>
 
+          </div>
+
           {source === 'models' && (
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            {MODALITY_PILLS.map(({ value, label, Icon: PillIcon }) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={modality === value}
-                onClick={() => setModality(value)}
-                className={cn(
-                  'inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border-[0.8px] px-3 font-medium transition-colors',
-                  modality === value
-                    ? 'border-transparent bg-foreground text-background'
-                    : 'border-border bg-card text-secondary-foreground hover:border-border-strong hover:text-foreground'
-                )}
-              >
-                <PillIcon className="size-3.5" />
-                {label}
-              </button>
-            ))}
+            <HubTaskChips value={task} onChange={setTask} />
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />
             {IS_MACOS && (
               <Select
