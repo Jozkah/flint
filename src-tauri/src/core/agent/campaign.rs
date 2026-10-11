@@ -2306,6 +2306,11 @@ pub(crate) mod tests {
         let t = |n: &str| r.campaign.task(n).unwrap().clone();
         assert_eq!(t("a").status, TaskStatus::Cancelled);
         assert_eq!(t("c").detail, "dependency skipped: a");
+        assert_eq!(t("d").detail, "dependency skipped: a", "a transitive dependant carries the same reason");
+        for n in ["a", "b", "c", "d"] {
+            assert_eq!(t(n).status, TaskStatus::Cancelled, "{n} is skipped, not failed");
+        }
+        assert!(r.campaign.tasks.iter().all(|x| x.status != TaskStatus::Failed));
         assert_eq!(t("e").status, TaskStatus::Pending, "an unrelated task is untouched");
         std::fs::remove_dir_all(d).ok();
     }

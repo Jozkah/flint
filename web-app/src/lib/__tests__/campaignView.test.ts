@@ -18,6 +18,7 @@ import {
   primaryActionOf,
   recoveryOf,
   taskActionsOf,
+  taskCounts,
   wordOf,
   TASK_GROUPS,
 } from '../campaignView'
@@ -396,5 +397,24 @@ describe('a finished task whose check was blocked', () => {
     expect(recoveryOf(task('c', 'completed', { sessionId: 's' }))).toBeNull()
     expect(recoveryOf(task('d', 'merged', { verdict: 'BLOCKED' }))).toBeNull()
     expect(taskActionsOf(task('d', 'running', { sessionId: 's' })).accept).toBe(false)
+  })
+})
+
+describe('tasks cancelled by "skip it and what waits on it"', () => {
+  const cascaded = [
+    task('a', 'cancelled', { detail: 'skipped' }),
+    task('b', 'cancelled', { dependsOn: ['a'], detail: 'dependency skipped: a' }),
+    task('c', 'cancelled', { dependsOn: ['b'], detail: 'dependency skipped: a' }),
+    task('m', 'merged'),
+  ]
+  it('shows them as skipped, never as failed, and groups them as done', () => {
+    for (const t of cascaded.slice(0, 3)) {
+      expect(dotOf(t, cascaded)).toBe('cancelled')
+      expect(wordOf(t, cascaded).word).toBe('skipped')
+      expect(groupOf(t, cascaded)).toBe('done')
+    }
+  })
+  it('counts them apart from merged and failed', () => {
+    expect(taskCounts(cascaded)).toEqual({ merged: 1, skipped: 3, total: 4 })
   })
 })
