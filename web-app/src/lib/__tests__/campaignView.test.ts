@@ -9,6 +9,7 @@ import {
   canCancel,
   changedFilesOf,
   claimedSessionIds,
+  coordinatorDotOf,
   deriveCampaignGroups,
   dotOf,
   groupOf,
@@ -164,6 +165,24 @@ describe('headline and primary action', () => {
   })
 })
 
+describe('coordinatorDotOf', () => {
+  it('names the campaign state in one mark', () => {
+    const dot = (status: Campaign['status'], tasks: CampaignTask[] = [task('a', 'running')]) =>
+      coordinatorDotOf({ status, tasks })
+    expect(dot('planned')).toBe('planning')
+    expect(dot('running', [])).toBe('planning')
+    expect(dot('running')).toBe('running')
+    expect(dot('running', [task('a', 'awaiting_approval')])).toBe('needs-you')
+    expect(dot('running', [task('a', 'failed')])).toBe('needs-you')
+    expect(dot('reviewing')).toBe('review')
+    expect(dot('merging')).toBe('verifying')
+    expect(dot('paused')).toBe('queued')
+    expect(dot('done')).toBe('merged')
+    expect(dot('failed')).toBe('failed')
+    expect(dot('cancelled')).toBe('cancelled')
+  })
+})
+
 describe('deriveCampaignGroups', () => {
   const c = campaign(
     [
@@ -180,7 +199,7 @@ describe('deriveCampaignGroups', () => {
       [{ id: 'coord' }, { id: 's-a' }, { id: 's-b' }, { id: 'other' }]
     )
     expect(g.rows.map((r) => [r.sessionId, r.role, r.dot])).toEqual([
-      ['coord', 'coordinator', undefined],
+      ['coord', 'coordinator', 'running'],
       ['s-a', 'task', 'merged'],
       ['s-b', 'task', 'running'],
     ])

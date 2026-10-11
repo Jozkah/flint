@@ -6,13 +6,15 @@ const COLOR: Record<CampaignDot, string> = {
   queued: 'bg-muted-foreground/50',
   blocked: 'border border-muted-foreground bg-transparent',
   running: 'bg-blue-500 animate-pulse',
-  'needs-you': 'bg-yellow-500',
+  'needs-you': 'bg-yellow-500 motion-safe:animate-pulse',
   verifying: 'bg-violet-500',
   verified: 'bg-emerald-500',
   merged: 'bg-emerald-700',
   failed: 'bg-red-500',
   conflict: 'bg-orange-500',
   cancelled: 'bg-muted-foreground/30',
+  planning: 'border border-blue-500 bg-transparent',
+  review: 'bg-violet-500',
 }
 
 const KEY: Record<CampaignDot, string> = {
@@ -26,6 +28,8 @@ const KEY: Record<CampaignDot, string> = {
   failed: 'failed',
   conflict: 'conflict',
   cancelled: 'cancelled',
+  planning: 'planning',
+  review: 'review',
 }
 
 /**

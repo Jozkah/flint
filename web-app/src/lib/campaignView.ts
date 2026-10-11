@@ -26,6 +26,10 @@ export type CampaignDot =
   | 'failed'
   | 'conflict'
   | 'cancelled'
+  /** Coordinator only: the plan is being drawn up. */
+  | 'planning'
+  /** Coordinator only: every task is in and the result waits for review. */
+  | 'review'
 
 /** A pending task whose dependencies are not all merged is waiting, not queued. */
 export function isWaitingOnDeps(
@@ -70,6 +74,41 @@ export function dotOf(
     case 'cancelled':
       return 'cancelled'
   }
+}
+
+/**
+ * The coordinator's own dot: the campaign's state in one mark (planning,
+ * working, needs you, ready for review, done), so the coordinator row is not
+ * the one row of the group without a signal.
+ */
+export function coordinatorDotOf(
+  c: Pick<Campaign, 'status' | 'tasks'>
+): CampaignDot {
+  switch (c.status) {
+    case 'done':
+      return 'merged'
+    case 'failed':
+      return 'failed'
+    case 'cancelled':
+      return 'cancelled'
+    case 'reviewing':
+      return 'review'
+    case 'merging':
+      return 'verifying'
+    case 'paused':
+    case 'interrupted':
+      return 'queued'
+    default:
+      break
+  }
+  if (c.status === 'draft' || c.status === 'planned' || c.tasks.length === 0) {
+    return 'planning'
+  }
+  const needs = c.tasks.some((t) => {
+    const d = dotOf(t, c.tasks)
+    return d === 'needs-you' || d === 'failed' || d === 'conflict'
+  })
+  return needs ? 'needs-you' : 'running'
 }
 
 /**
@@ -301,7 +340,7 @@ export type CampaignGroupRow = {
   sessionId: string
   role: 'coordinator' | 'task'
   taskId?: string
-  /** Absent for the coordinator. */
+  /** The task's state, or for the coordinator the campaign's own state. */
   dot?: CampaignDot
 }
 
@@ -363,7 +402,11 @@ export function deriveCampaignGroups(
       claimed.add(row.sessionId)
       rows.push(row)
     }
-    take({ sessionId: c.coordinatorSession, role: 'coordinator' })
+    take({
+      sessionId: c.coordinatorSession,
+      role: 'coordinator',
+      dot: coordinatorDotOf(c),
+    })
     for (const t of c.tasks) {
       if (!t.sessionId) continue
       take({
@@ -390,7 +433,7 @@ export function deriveCampaignGroups(
                 ? dotOf(owner, c.tasks)
                 : ('cancelled' as CampaignDot),
             }
-          : {}),
+          : { dot: coordinatorDotOf(c) }),
       })
     }
     if (rows.length === 0) continue

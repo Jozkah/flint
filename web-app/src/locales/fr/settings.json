@@ -707,7 +707,9 @@
         "merged": "Merged",
         "failed": "Failed",
         "conflict": "Conflict",
-        "cancelled": "Cancelled"
+        "cancelled": "Cancelled",
+        "planning": "Planning",
+        "review": "Ready for review"
       },
       "status": {
         "draft": "draft",

@@ -184,12 +184,17 @@ const SessionItem = memo(function SessionItem({
           data-session-id={session.id}
           data-current={isCurrent ? 'true' : 'false'}
         >
-          <SessionMark
-            session={session}
-            running={running}
-            selected={isCurrent}
-          />
-          {campaignDot && <StatusDot dot={campaignDot} />}
+          {/* One mark per row: a campaign row shows the campaign's own state
+              and the session's running or unread mark only when there is none. */}
+          {campaignDot ? (
+            <StatusDot dot={campaignDot} />
+          ) : (
+            <SessionMark
+              session={session}
+              running={running}
+              selected={isCurrent}
+            />
+          )}
           <FadeText>{session.title}</FadeText>
           {running && (
             // A session running in the background shows here, without the
