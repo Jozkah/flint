@@ -114,7 +114,7 @@
   "keyboardShortcuts": "Dreceres",
   "home": "Inici",
   "cowork": "Cowork",
-  "campaign": "Campaign",
+  "campaign": "Campanya",
   "newSession": "Sessió nova",
   "artifacts": "Artefactes",
   "customize": "Personalitza",
@@ -1501,7 +1501,7 @@
     "openInCode": "Deixa anar per obrir: només lectura",
     "attachToMessage": "Deixa anar per adjuntar al missatge",
     "releaseToAttach": "Deixa anar per adjuntar",
-    "releaseToAttachCount": "Release to attach {{count}} files"
+    "releaseToAttachCount": "Deixa anar per adjuntar {{count}} fitxers"
   },
   "coworkMode": {
     "label": "Què pot fer Flint",
@@ -2101,11 +2101,11 @@
     "movedTo": "S'ha mogut a {{name}}",
     "notifications": "Notificacions",
     "approvalWaiting": "Aprovació en espera",
-    "tabs": "Sidebar view",
-    "tabChat": "Chat",
+    "tabs": "Vista de la barra lateral",
+    "tabChat": "Xat",
     "tabCowork": "Cowork",
     "studio": "Studio",
-    "schedules": "Schedules"
+    "schedules": "Planificacions"
   },
   "systemNav": {
     "label": "Diagnòstics",
@@ -2535,12 +2535,12 @@
     "downloading": "Baixant…"
   },
   "composerChip": {
-    "list": "Attached files",
-    "pastedImage": "Pasted image {{n}}",
-    "open": "Preview {{name}}",
-    "noVision": "This model can't read images",
-    "details": "Details for {{name}}",
-    "previewLoading": "Loading preview…",
-    "previewNone": "No preview available"
+    "list": "Fitxers adjunts",
+    "pastedImage": "Imatge enganxada {{n}}",
+    "open": "Previsualitza {{name}}",
+    "noVision": "Aquest model no pot llegir imatges",
+    "details": "Detalls de {{name}}",
+    "previewLoading": "Carregant la previsualització…",
+    "previewNone": "No hi ha cap previsualització disponible"
   }
 }

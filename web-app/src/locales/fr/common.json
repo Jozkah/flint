@@ -114,7 +114,7 @@
   "keyboardShortcuts": "Raccourcis Clavier",
   "home": "Accueil",
   "cowork": "Cowork",
-  "campaign": "Campaign",
+  "campaign": "Campagne",
   "newSession": "Nouvelle session",
   "artifacts": "Artefacts",
   "customize": "Personnaliser",
@@ -1497,7 +1497,7 @@
     "openInCode": "Déposez pour ouvrir — lecture seule",
     "attachToMessage": "Déposez pour joindre à votre message",
     "releaseToAttach": "Relâchez pour joindre",
-    "releaseToAttachCount": "Release to attach {{count}} files"
+    "releaseToAttachCount": "Relâchez pour joindre {{count}} fichiers"
   },
   "coworkMode": {
     "label": "Ce que Flint peut faire",
@@ -2097,11 +2097,11 @@
     "approvalWaiting": "Approbation en attente",
     "approvals_many": "{{count}} d'approbations",
     "runs_many": "{{count}} d'exécutions",
-    "tabs": "Sidebar view",
+    "tabs": "Vue de la barre latérale",
     "tabChat": "Chat",
     "tabCowork": "Cowork",
     "studio": "Studio",
-    "schedules": "Schedules"
+    "schedules": "Planifications"
   },
   "systemNav": {
     "label": "Diagnostics",
@@ -2535,12 +2535,12 @@
     "downloading": "Téléchargement…"
   },
   "composerChip": {
-    "list": "Attached files",
-    "pastedImage": "Pasted image {{n}}",
-    "open": "Preview {{name}}",
-    "noVision": "This model can't read images",
-    "details": "Details for {{name}}",
-    "previewLoading": "Loading preview…",
-    "previewNone": "No preview available"
+    "list": "Fichiers joints",
+    "pastedImage": "Image collée {{n}}",
+    "open": "Aperçu de {{name}}",
+    "noVision": "Ce modèle ne peut pas lire les images",
+    "details": "Détails de {{name}}",
+    "previewLoading": "Chargement de l'aperçu…",
+    "previewNone": "Aucun aperçu disponible"
   }
 }

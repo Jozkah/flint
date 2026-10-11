@@ -115,7 +115,7 @@
   "keyboardShortcuts": "Klávesové zkratky",
   "home": "Domů",
   "cowork": "Cowork",
-  "campaign": "Campaign",
+  "campaign": "Kampaň",
   "newSession": "Nová relace",
   "artifacts": "Artefakty",
   "customize": "Přizpůsobit",
@@ -1528,7 +1528,7 @@
     "openInCode": "Pusťte pro otevření — jen pro čtení",
     "attachToMessage": "Pusťte pro přiložení ke zprávě",
     "releaseToAttach": "Pusťte pro připojení",
-    "releaseToAttachCount": "Release to attach {{count}} files"
+    "releaseToAttachCount": "Pusťte pro připojení {{count}} souborů"
   },
   "coworkMode": {
     "label": "Co smí Flint dělat",
@@ -2139,11 +2139,11 @@
     "movedTo": "Přesunuto do {{name}}",
     "notifications": "Oznámení",
     "approvalWaiting": "Čeká na schválení",
-    "tabs": "Sidebar view",
+    "tabs": "Zobrazení postranního panelu",
     "tabChat": "Chat",
     "tabCowork": "Cowork",
     "studio": "Studio",
-    "schedules": "Schedules"
+    "schedules": "Plány"
   },
   "systemNav": {
     "label": "Diagnostika",
@@ -2581,12 +2581,12 @@
     "downloading": "Stahuje se…"
   },
   "composerChip": {
-    "list": "Attached files",
-    "pastedImage": "Pasted image {{n}}",
-    "open": "Preview {{name}}",
-    "noVision": "This model can't read images",
-    "details": "Details for {{name}}",
-    "previewLoading": "Loading preview…",
-    "previewNone": "No preview available"
+    "list": "Připojené soubory",
+    "pastedImage": "Vložený obrázek {{n}}",
+    "open": "Náhled souboru {{name}}",
+    "noVision": "Tento model neumí číst obrázky",
+    "details": "Podrobnosti o {{name}}",
+    "previewLoading": "Načítání náhledu…",
+    "previewNone": "Náhled není k dispozici"
   }
 }
