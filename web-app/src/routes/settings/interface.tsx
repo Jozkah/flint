@@ -285,8 +285,8 @@ function InterfaceSettings() {
         title={t('common:appearance')}
         description={t('settings:pageDesc.appearance')}
         // Two columns of about equal height, so neither ends in a long empty
-        // stretch: the everyday settings on the left with Reset last, the
-        // tall pickers (accent, transcript view) and Sounds on the right.
+        // stretch: the everyday settings and Sounds on the left, the tall
+        // pickers (accent, transcript view) and Reset on the right.
         layout={[0, 1, 0, 1, 1, 0, 1, 0, 0]}
       >
         {theme}
@@ -295,9 +295,9 @@ function InterfaceSettings() {
         {transcript}
         {sidebar}
         {chatDisplay}
-        <CompletionSoundSettings />
-        {motion}
         {reset}
+        {motion}
+        <CompletionSoundSettings />
       </SettingsPageBody>
     </div>
   )
@@ -401,6 +401,7 @@ const LABEL: Record<CompletionSound, string> = {
   off: 'settings:appearance.completionSoundOff',
   background: 'settings:appearance.completionSoundBackground',
   always: 'settings:appearance.completionSoundAlways',
+  approval: 'settings:appearance.completionSoundApproval',
 }
 
 /** Settings › Appearance › Sounds: when a finished answer plays a sound. */

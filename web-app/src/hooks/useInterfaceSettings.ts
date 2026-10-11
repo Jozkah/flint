@@ -40,8 +40,13 @@ export const sanitizeSidebarWidth = (width: unknown): number =>
  * When a finished answer plays a sound: never, only while Flint is in the
  * background (the window hidden or not focused), or every time.
  */
-export type CompletionSound = 'off' | 'background' | 'always'
-export const COMPLETION_SOUNDS: readonly CompletionSound[] = ['off', 'background', 'always']
+export type CompletionSound = 'off' | 'background' | 'always' | 'approval'
+export const COMPLETION_SOUNDS: readonly CompletionSound[] = [
+  'off',
+  'background',
+  'always',
+  'approval',
+]
 const defaultCompletionSoundVolume = 0.6
 
 export const sanitizeCompletionSound = (mode: unknown): CompletionSound =>

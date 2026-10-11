@@ -259,16 +259,23 @@ export function GroupedTree({
                     <span className="text-[10.5px] font-normal text-subtle-foreground tabular-nums">
                       {children.length}
                     </span>
+                  </button>
+                  {/* The chevron rests at the far right; the row's actions
+                      take its place on hover and push it left. */}
+                  <NavGroupAction
+                    tabIndex={-1}
+                    aria-hidden
+                    onClick={() => toggle(group)}
+                  >
                     <ChevronDown
-                      aria-hidden
                       className={cn(
-                        'ml-auto size-3 shrink-0 transition-transform duration-300 ease-expo',
+                        'transition-transform duration-300 ease-expo',
                         !open && '-rotate-90'
                       )}
                     />
-                  </button>
+                  </NavGroupAction>
                   <NavGroupAction
-                    className="opacity-0 group-hover/cg:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+                    className="hidden group-focus-within/cg:grid group-hover/cg:grid pointer-coarse:grid"
                     aria-label={t(newInLabelKey, { name: group.name })}
                     title={t(newInLabelKey, { name: group.name })}
                     onClick={() => onNewInGroup(group.id)}
@@ -279,7 +286,7 @@ export function GroupedTree({
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <NavGroupAction
-                        className="opacity-0 group-hover/cg:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100"
+                        className="hidden group-focus-within/cg:grid group-hover/cg:grid data-[state=open]:grid pointer-coarse:grid"
                         aria-label={t('common:groups.options')}
                       >
                         <MoreHorizontal />

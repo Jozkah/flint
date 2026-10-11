@@ -10,6 +10,7 @@ import {
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useRoomsStore } from '@/lib/rooms/store'
 import { emitRemoteNotification } from '@/lib/remote/events'
+import { notifyApprovalNeeded } from '@/lib/completionSound'
 import {
   allApprovalRequests,
   useToolApprovalRequests,
@@ -110,9 +111,20 @@ export function useApprovalWaitNotifier(navigate?: ApprovalNavigate): void {
   navigateRef.current = navigate
   useEffect(() => {
     const reminded = new Set<string>()
+    const announced = new Set<string>()
     const check = () => {
       const entries = allApprovalRequests(useToolApprovalRequests.getState())
       const live = new Set(entries.map((e) => e.requestId))
+      // One sound per new prompt (when the user chose it in Sounds).
+      for (const id of announced) if (!live.has(id)) announced.delete(id)
+      let fresh = false
+      for (const id of live) {
+        if (!announced.has(id)) {
+          announced.add(id)
+          fresh = true
+        }
+      }
+      if (fresh) notifyApprovalNeeded()
       // At once, not after the reminder delay: the taskbar icon flashes as
       // soon as a run stops to ask while Flint is in the background.
       syncTaskbarAttention(entries.map((e) => e.requestId))
