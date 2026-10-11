@@ -662,6 +662,13 @@ fn free_space_on(path: &std::path::Path, mounts: &[(PathBuf, u64)]) -> Option<u6
         .map(|(_, free)| *free)
 }
 
+// `sysinfo` is not linked on phones, which skip the free-space check.
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn free_space_for_path(_path: &std::path::Path) -> Option<u64> {
+    None
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn free_space_for_path(path: &std::path::Path) -> Option<u64> {
     let disks = sysinfo::Disks::new_with_refreshed_list();
     let mounts: Vec<(PathBuf, u64)> = disks

@@ -81,4 +81,7 @@ pub mod web_server;
 // Native child-webview web preview; desktop-only like preview.
 #[cfg(not(feature = "cli"))]
 pub mod web_preview;
+// The phone app's pinned-TLS proxy to a desktop; phone builds only.
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub mod thin_client;
 pub mod window_state;

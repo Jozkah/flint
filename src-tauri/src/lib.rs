@@ -752,8 +752,9 @@ pub fn build_app() -> tauri::App {
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![
-        // Mobile-specific remote provider commands
-        core::server::remote_provider_commands::abort_remote_stream,
+        // The phone app reaches a desktop through a pinned-TLS loopback proxy.
+        core::thin_client::thin_client_connect,
+        core::thin_client::thin_client_forget,
     ]);
 
     app_builder
