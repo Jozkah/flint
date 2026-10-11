@@ -1952,6 +1952,7 @@
     }
   },
   "appRail": {
+    "navWorkspace": "Espai de treball",
     "label": "Navegació global",
     "resize": "Canvia la mida de la barra lateral",
     "resizeHint": "Arrossega per canviar la mida. Doble clic per a l'amplada per defecte.",

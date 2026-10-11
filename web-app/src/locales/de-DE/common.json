@@ -1920,6 +1920,7 @@
     }
   },
   "appRail": {
+    "navWorkspace": "Arbeitsbereich",
     "label": "Globale Navigation",
     "resize": "Seitenleiste in der Größe ändern",
     "resizeHint": "Zum Ändern der Größe ziehen. Doppelklicken für die Standardbreite.",

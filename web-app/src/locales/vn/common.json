@@ -1925,6 +1925,7 @@
     }
   },
   "appRail": {
+    "navWorkspace": "Không gian làm việc",
     "label": "Điều hướng toàn cục",
     "resize": "Đổi kích thước thanh bên",
     "resizeHint": "Kéo để đổi kích thước. Nhấp đúp để về độ rộng mặc định.",

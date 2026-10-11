@@ -1985,6 +1985,7 @@
     }
   },
   "appRail": {
+    "navWorkspace": "Pracovní prostor",
     "label": "Globální navigace",
     "resize": "Změnit velikost postranního panelu",
     "resizeHint": "Přetažením změníte velikost. Dvojitým kliknutím obnovíte výchozí šířku.",

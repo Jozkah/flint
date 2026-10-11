@@ -1923,6 +1923,7 @@
     }
   },
   "appRail": {
+    "navWorkspace": "Çalışma alanı",
     "label": "Genel gezinme",
     "resize": "Kenar çubuğunu yeniden boyutlandır",
     "resizeHint": "Yeniden boyutlandırmak için sürükleyin. Varsayılan genişlik için çift tıklayın.",
