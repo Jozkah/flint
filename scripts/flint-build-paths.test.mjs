@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-const makefile = readFileSync(new URL('../makefile', import.meta.url), 'utf8')
+const makefile = readFileSync(new URL('../Makefile', import.meta.url), 'utf8')
 const appImage = readFileSync(new URL('../src-tauri/build-utils/buildAppImage.sh', import.meta.url), 'utf8')
 const nsis = readFileSync(new URL('../src-tauri/tauri.bundle.windows.nsis.template', import.meta.url), 'utf8')
 

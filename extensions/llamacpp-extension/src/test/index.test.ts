@@ -646,8 +646,12 @@ describe('llamacpp_extension', () => {
     })
 
     it('keeps the save pending until the engine has applied fit', async () => {
-      const reload = Promise.withResolvers<ReloadReport>()
-      vi.mocked(reloadEngineModels).mockReturnValueOnce(reload.promise)
+      // Promise.withResolvers needs Node 22; the lint-and-test job runs Node 20.
+      let resolveReload!: (report: ReloadReport) => void
+      const reloadPromise = new Promise<ReloadReport>((resolve) => {
+        resolveReload = resolve
+      })
+      vi.mocked(reloadEngineModels).mockReturnValueOnce(reloadPromise)
       let completed = false
       const save = extension.updateSettings([{
         ...fitSetting,
@@ -656,7 +660,7 @@ describe('llamacpp_extension', () => {
 
       await vi.waitFor(() => expect(reloadEngineModels).toHaveBeenCalled())
       expect(completed).toBe(false)
-      reload.resolve({ added: [], changed: ['model'], removed: [], kept: [], models_max: 1 })
+      resolveReload({ added: [], changed: ['model'], removed: [], kept: [], models_max: 1 })
       await save
       expect((await extension.getSettings())[0].controllerProps.value).toBe(true)
     })
