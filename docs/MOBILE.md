@@ -84,6 +84,8 @@ Off by default. When on, a signed-in client may call these commands over `/api/v
 | --- | --- |
 | `agent_server_info`, `agent_server_folders` | Capability, and a browse of the allowed folders (names only, no file reads) |
 | `agent_campaign_list`, `_get`, `_context`, `_events` | Read campaign records, decisions, handoffs and the event log |
+| `agent_run_list`, `agent_run_get` | The sessions an agent wrote in the server's data folder (only those whose folder is under a root), and one transcript. Read-only |
+| `GET /api/v1/agent/sessions/<id>/events?after=<seq>` | Event replay of one session as server-sent events, resumable with `after=` or `Last-Event-ID` |
 | `agent_campaign_transition` | Pause, resume (from paused only) and cancel a campaign. Task moves, plan approval and an integration worktree from a client are refused |
 | `agent_campaign_cancel` | Cancel |
 | `agent_proposal_list`, `_apply`, `_reject` | The stored, hash-approved proposal path. The destination is the stored proposal's project, which must be under a root |
@@ -98,9 +100,83 @@ Every path is canonicalized and must sit inside a root. Nothing here spawns a pr
 
 The way through, and the real work, is a server-side runner. The Rust loop (`core::agent::loop`, `core::cli::rpc` sessions) already runs turns headless, `campaign_scheduler::next_actions` is a pure function, and P7 in `docs/CAMPAIGNS.md` names the durable worker. It needs HTTP endpoints for start, steer, stop, approvals and an event stream, and a UI mode in which Cowork drives that instead of the renderer loop.
 
+### The server runner: phases and security model
+
+Decision: the Rust loop on the server (`core::agent::loop`, the `core::cli::rpc` session machinery) is the accepted Cowork runtime for a headless server. The desktop keeps its TS loop; a phone or .apk WebView at the server's address drives the server's loop through a client adapter. Parity gaps are labelled in the capability probe (`parityGaps`) and not hidden: plan-review UX, goal evaluation, TS-side compaction, agent teams, and the browser and computer panes.
+
+| Phase | What | State |
+| --- | --- | --- |
+| P0 | `--agent-run` flag, capability probe, read-only session list, transcript and event replay, client probe and banner | Landed |
+| P1 | Session runner: create, start, steer, interrupt, approvals and questions over HTTP with a live per-session event stream; the Cowork adapter for one session (`remoteCowork.ts`) and a "Run on server" entry | Landed (single Cowork-style session) |
+| P2 | Worktree RPCs and proposals for server sessions (isolated checkouts, review and apply), model and mode pickers | Not built |
+| P3 | Campaign tasks and verification on the server | Not built |
+
+`flint serve --agent-run --agent-root <folder>`: the flag needs at least one root, or the server refuses to start. `agent_server_info` reports `runRequested`, `sandbox`, `enforces`, `roots`, `maxSessions`, `allowBypass`, `allowAlways`, `approvalTimeoutSecs`, `liveSessions` and a `missing` list in words (for example "install bubblewrap"). `runsSessions` is true only when the flag is on, the runner is built, and the command sandbox (`tools::jail` backend) enforces; `--agent-require-sandbox=false` is the operator's explicit way to run unsandboxed anyway.
+
+Operator switches (all off or conservative by default):
+
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `--agent-max-sessions <n>` | 4 | Live sessions at once; a create past it is refused with 429. A session nobody touched for 30 minutes leaves memory (its thread is on disk and the next start resumes it). |
+| `--agent-allow-bypass` | off | Without it a session is `read` (plan mode) or `ask` (writes, shell and MCP prompt); `auto` and `bypass` are refused with 403. |
+| `--agent-allow-always` | off | Without it an approval covers one call, and the server tells the client not to offer "allow always". |
+| `--agent-approval-timeout <secs>` | 1800 | An unanswered prompt is denied, audited as `by: timeout`, and the turn goes on. |
+| `--agent-require-sandbox[=false]` | true | Sessions run only under an enforcing command sandbox. |
+
+### What P1 does
+
+Commands, over `POST /api/v1/rpc/<command>` behind the same sign-in, same-origin and host checks as everything else, and refused unless `--agent-run` is on and the probe is ready:
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `agent_run_create` | `folder` (inside a root), `access` (`read`, `ask`; `auto`/`bypass` need the flag), `mode` (a label, default `cowork`), `model`, `title` | `{ id, folder, model, access, status }` |
+| `agent_run_start` | `id`, `input` (text or content parts, within the stdio protocol's caps) | `{ turnId, after }`. One active turn per session (409); 20 turns a minute (429). A stored session that is not live is resumed first. |
+| `agent_run_steer` | `id`, `text` | Delivered at the loop's next safe point. |
+| `agent_run_interrupt` | `id` | Aborts the turn, denies pending prompts, persists what the turn had, emits `done{stop_reason: "cancelled"}` then `turn.completed{stopReason: "interrupted"}`. |
+| `agent_run_approve` | `id`, `requestId`, `decision` (`allow_once`, `deny`, `allow_always` if enabled) | The request id must belong to that session and still be pending (404 otherwise). Audited in the session's event log (`permission.decided`: request, tool, decision, a digest of the client and of its address). |
+| `agent_run_answer_ask` | `id`, `requestId`, `results` | Validated against the question before it is delivered. |
+| `agent_run_set_model`, `agent_run_set_mode` | `id`, `model` / `access` | Refused while a turn is active (409). |
+| `agent_run_delete` | `id` | Only sessions this runner started. |
+
+`agent_run_list` and `agent_run_get` (P0) lay the live state over the stored row: `live`, `status` (`idle`, `running`, `awaiting_approval`, `awaiting_answer`), `access`, `pendingApprovals`, `pendingAsks`, `lastSeq`, `turnAfter`.
+
+The event stream, `GET /api/v1/agent/sessions/<id>/events?after=<seq>` (and `Last-Event-ID`): for a live session the response is replay from a 4096-event ring, then the live tail, with a `: keepalive` comment every 15 seconds and no end until the client leaves or the session closes. Each record is `id: <seq>` and an envelope `{ seq, source: "live", kind, at, payload }`:
+
+- `kind: "stream"`: the Rust loop's `StreamEvent` unchanged (`token`, `tool_call_started`, `tool_call_args_delta`, `tool_call`, `tool_result`, `permission_request`, `ask_request`, `todo_update`, `subagent*`, `done`, `error`, ...), except that the full-history `messages_updated` is never sent.
+- `kind: "turn.started"` (with the message the turn answers), `turn.completed` (`stopReason`: `completed`, `interrupted` or `error`), `approval.resolved` (with `by`, so a prompt answered on another device or by timeout disappears), `ask.answered`, `steer.queued`, `session.model`, `session.access`, `session.closed`.
+- Named events before the data: `hello` (status, seq, waiting prompts), `gap` (the ring no longer holds what the cursor needs: refetch the transcript with `agent_run_get`), `reset` (the cursor is from an earlier life of the session, after a server restart: events start over).
+
+A session that is not live falls back to the P0 finite replay. Every payload passes the shared secret redaction on its way out. Coarse pings go on `/api/v1/events`: `agent-session-changed` and `agent-approval-pending`.
+
+Where the data lives: the thread (`<data>/threads/<id>`) is written at create and after every turn with `source: "runner"`, `folder`, `access` and `mode` in its metadata, so a restarted server lists it and can resume it. The agent loop's own event log (`<data>/events`) holds the durable record. These threads also appear in the web app's ordinary thread list.
+
+On the page: `lib/remoteRunner.ts` is the wire client (including `subscribeRun`, which reconnects with the last seq and treats a silent connection as dead). `lib/remoteCowork.ts` maps the stream into the stores Cowork reads (`useCoworkRun`, `useCoworkSessions` rows with `remote: true`, `useToolApprovalRequests`, the subagent feed), so the transcript, Stop, question cards and steering from the composer work unchanged; the server's prompts are raised directly and answered over the wire, never by this window's standing grants or permission mode. The sessions list is read through from the server and a remote row is saved without its transcript. The entry is the "Server agents" card in Settings, General.
+
+Security model, which P1 must keep:
+
+- Confinement: every session's folder must resolve inside an `--agent-root`; the data folder is never a root. A session that records no folder is not listed.
+- Sandbox required: commands run only under an enforcing backend (bubblewrap, seatbelt, AppContainer). With none, `bash` is withheld rather than run unconfined, and `runsSessions` is false.
+- Approvals: the server never auto-approves a prompt in `read`/`ask`; an unanswered one is denied at the timeout, with the decision recorded.
+- Same auth as the rest of the server: bearer token or session cookie, same-origin and host checks.
+- A remote session gets the built-in tools only: no MCP server is connected for it, no worktree is created, and no host tool is declared.
+
+What the P0 transcript does not carry yet: reasoning, tool images, subagent runs, goal state, plan snapshots, compaction dividers, per-turn usage (the response lists them in `notMapped`).
+
+### Parity gaps after P1 (said by `parityGaps`, not hidden)
+
+- Plan-review UX, goal evaluation, TS-side compaction (the Rust loop compacts by its own policy), agent teams, the browser and computer panes.
+- Attachments are not sent to a server session; "resume" (regenerate) is refused.
+- Worktrees and proposals for server sessions, campaign tasks and verification: P2 and P3.
+- The transcript's `notMapped` list still applies to a reopened session (reasoning, tool images, plan snapshots, per-turn usage).
+- Model and mode changes are server commands but have no picker on the page yet.
+- Server sessions are listed beside local ones; deleting one from the Cowork list removes only the local row (the server's list restores it); `agent_run_delete` is the way, and the card has no button for it yet.
+- Image tool results, content-part inputs above the 1 MB JSON body limit, and a client that dozes for longer than the 4096-event ring are covered by refetching the transcript, not by replay.
+
 ### Not verified
 
 - No device or emulator was available: opening an external HTTPS origin inside the Tauri Android WebView, the cookie persisting across app restarts, and the back button returning to the bundled app were not exercised. Unit tests cover the address handling, the stored shape, the reachability probe and the countdown.
 - The Android build itself (`yarn build:android`) was not run.
-- `cargo test` was not run for the new server module; `cargo check --tests` passes for the `cli` feature. The desktop feature set was not compiled; the module uses only code that is compiled in both.
+- The runner is covered by `tests/web_agent_run.rs`, which drives the real `flint serve` binary against a stub model: sign-in gate, confinement, the session cap, a turn, `after=` resume, a prompt denied and allowed, the approval timeout, an interrupt, a restart and resume. The sandbox was off in those tests (`--agent-require-sandbox=false`): enforcement of bash by the Windows AppContainer backend was not exercised here, and the `bwrap` and seatbelt backends not at all. The desktop feature set was not compiled for this change.
+- The page side is covered by vitest with a mocked fetch and a hand-written event stream. It was not exercised in a real browser, the Android WebView, or over a flaky mobile network, so the reconnect timing (45 seconds of silence before a reconnect) is a design choice, not a measurement.
+- A real provider and a real tool-heavy turn were not run through the server runner.
 - Cowork and Campaigns pages on a phone-sized viewport were not reworked. The mobile shell (`src/mobile`) is the touch UI; the desktop pages are not made usable at 390 px by this change.

@@ -190,6 +190,9 @@ struct Feed {
     model: String,
     access: &'static str,
     turns: u32,
+    /// The seq a client subscribes after to see the turn in flight from its
+    /// first event (what `agent_run_start` returned as `after`).
+    turn_after: u64,
 }
 
 struct Shared {
@@ -209,6 +212,7 @@ impl Shared {
                 model: model.to_owned(),
                 access,
                 turns: 0,
+                turn_after: 0,
             }),
             tail: broadcast::channel(512).0,
         }
@@ -328,6 +332,7 @@ impl Runner {
             row["pendingApprovals"] = json!(feed.pending);
             row["pendingAsks"] = json!(feed.asks);
             row["lastSeq"] = json!(feed.seq);
+            row["turnAfter"] = json!(feed.turn_after);
             row["model"] = json!(feed.model);
         });
     }
@@ -842,11 +847,23 @@ async fn actor(
                             let body = begin_turn(&session.agent, &mut session.history, input, true);
                             let task = spawn_turn(session.agent.args.clone(), body);
                             let turn_id = uuid::Uuid::new_v4().to_string();
-                            shared.publish("turn.started", json!({ "turnId": turn_id }));
+                            // What a client subscribes after to see this turn
+                            // from its first event.
+                            let before = shared.with(|f| {
+                                f.turn_after = f.seq;
+                                f.seq
+                            });
+                            // The words, so a page that comes back mid-turn can
+                            // draw the message the turn is answering.
+                            let preview = match &session.history.last().map(|m| &m["content"]) {
+                                Some(Value::String(text)) => text.chars().take(8000).collect::<String>(),
+                                _ => "[message with attachments]".to_owned(),
+                            };
+                            shared.publish("turn.started", json!({ "turnId": turn_id, "input": preview }));
                             shared.with(|f| f.status = "running");
                             active = Some(Active { turn_id: turn_id.clone(), task, updated_history: None, started: now });
                             ping("running");
-                            Ok(json!({ "turnId": turn_id }))
+                            Ok(json!({ "turnId": turn_id, "after": before }))
                         };
                         let _ = reply.send(answer);
                     }
