@@ -486,7 +486,8 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           </span>
         </button>
 
-        <NavList>
+        {/* Half the column gap (-mt-2 of gap-4): it belongs to the search. */}
+        <NavList className="-mt-2 shrink-0">
           <LinkRows rows={resume} onNavigate={onNavigate} />
         </NavList>
 
