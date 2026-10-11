@@ -97,7 +97,7 @@ import { addNewItemToGroup } from '@/lib/groups/inherit'
 import { CampaignGroups } from '@/components/shell/nav/CampaignGroups'
 import { StatusDot } from '@/components/campaign/StatusDot'
 import { useCampaigns } from '@/hooks/useCampaigns'
-import { useCampaignFolder } from '@/hooks/useCampaignFolder'
+import { useCampaignFolderState } from '@/hooks/useCampaignFolder'
 import { StartCampaignDialog } from '@/components/campaign/StartCampaignDialog'
 import {
   claimedSessionIds,
@@ -109,6 +109,9 @@ type CoworkNavItem = {
   title: string
   icon: LucideIcon
   onClick: () => void
+  disabled?: boolean
+  hint?: string
+  testId?: string
 }
 
 // Own component (not inlined in a .map()) so it can be memoized: a change to
@@ -472,7 +475,11 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
     [allSessions, onCowork, currentId, runs]
   )
   const [startOpen, setStartOpen] = useState(false)
-  const campaignFolder = useCampaignFolder()
+  // Never waits on the git check: a cached answer is read at once, and the
+  // folder is offered while the answer is unknown.
+  const { folder: campaignCandidate, isRepo } = useCampaignFolderState()
+  const notRepo = isRepo === false
+  const campaignFolder = notRepo ? null : campaignCandidate
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [pluginsOpen, setPluginsOpen] = useState(false)
   // Session pending deletion; drives the confirm dialog (null = closed).
@@ -558,6 +565,15 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
   // New group lives in this menu (and on right-click), not as a row of its own.
   const [newGroupRequest, setNewGroupRequest] = useState(0)
   const items: CoworkNavItem[] = [
+    {
+      title: t('settings:campaigns.start.menu'),
+      icon: Workflow,
+      onClick: () => setStartOpen(true),
+      // Known not to be a repository: said here, not hidden.
+      disabled: notRepo,
+      hint: notRepo ? t('settings:campaigns.start.noFolder') : undefined,
+      testId: 'nav-new-campaign',
+    },
     {
       title: t('common:groups.newGroup'),
       icon: FolderPlus,
@@ -695,28 +711,28 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
             {items.map((item) => {
               const ItemIcon = item.icon
               return (
-                <DropdownMenuItem key={item.title} onSelect={item.onClick}>
-                  <ItemIcon />
-                  <span>{item.title}</span>
-                </DropdownMenuItem>
+                <DropdownMenuItem
+                    key={item.title}
+                    onSelect={item.onClick}
+                    disabled={item.disabled}
+                    data-testid={item.testId}
+                    title={item.hint}
+                  >
+                    <ItemIcon />
+                    <span className="flex min-w-0 flex-col">
+                      <span>{item.title}</span>
+                      {item.hint ? (
+                        <span className="text-[11px] font-normal text-muted-foreground">
+                          {item.hint}
+                        </span>
+                      ) : null}
+                    </span>
+                  </DropdownMenuItem>
               )
             })}
           </DropdownMenuContent>
         </DropdownMenu>
       </NavItem>
-      {campaignFolder && (
-        <NavItem>
-          <NavButton
-            onClick={() => setStartOpen(true)}
-            data-testid="nav-new-campaign"
-          >
-            <Workflow aria-hidden className="size-4" />
-            <span className="flex-1 truncate">
-              {t('settings:campaigns.start.menu')}
-            </span>
-          </NavButton>
-        </NavItem>
-      )}
       {after}
       {(campaignGroups.length > 0 || sessions.length > 0) && (
         <li

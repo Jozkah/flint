@@ -883,7 +883,18 @@
       "placeholder": "For example: add dark mode across the app, with tests",
       "hint": "Up to {{n}} threads work at the same time. You can change this in Settings.",
       "folder": "In {{folder}}",
-      "go": "Start"
+      "go": "Start",
+      "noFolder": "Open a git folder to start a campaign"
+    },
+    "nav": "Campaigns",
+    "list": {
+      "subtitle": "Big tasks split into parts that several agents work on side by side.",
+      "start": "Start a campaign",
+      "empty": "No campaigns yet",
+      "emptyHint": "A campaign takes one big task, splits it into smaller ones, and has several agents work on them at the same time on their own branches.",
+      "doneOf": "{{done}} of {{total}} done",
+      "planning": "Planning",
+      "updated": "Updated {{when}}"
     }
   }
 }

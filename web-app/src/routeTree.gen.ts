@@ -20,6 +20,7 @@ import { Route as ArchiveRouteImport } from './routes/archive'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RoomsIndexRouteImport } from './routes/rooms/index'
 import { Route as HubIndexRouteImport } from './routes/hub/index'
+import { Route as CampaignsIndexRouteImport } from './routes/campaigns/index'
 import { Route as ThreadsThreadIdRouteImport } from './routes/threads/$threadId'
 import { Route as SettingsWebSearchRouteImport } from './routes/settings/web-search'
 import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
@@ -99,6 +100,11 @@ const RoomsIndexRoute = RoomsIndexRouteImport.update({
 const HubIndexRoute = HubIndexRouteImport.update({
   id: '/hub/',
   path: '/hub/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CampaignsIndexRoute = CampaignsIndexRouteImport.update({
+  id: '/campaigns/',
+  path: '/campaigns/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ThreadsThreadIdRoute = ThreadsThreadIdRouteImport.update({
@@ -261,6 +267,7 @@ export interface FileRoutesByFullPath {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/campaigns/': typeof CampaignsIndexRoute
   '/hub/': typeof HubIndexRoute
   '/rooms/': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
@@ -299,6 +306,7 @@ export interface FileRoutesByTo {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/campaigns': typeof CampaignsIndexRoute
   '/hub': typeof HubIndexRoute
   '/rooms': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
@@ -338,6 +346,7 @@ export interface FileRoutesById {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/campaigns/': typeof CampaignsIndexRoute
   '/hub/': typeof HubIndexRoute
   '/rooms/': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
@@ -378,6 +387,7 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/campaigns/'
     | '/hub/'
     | '/rooms/'
     | '/settings/providers/$providerName'
@@ -416,6 +426,7 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/campaigns'
     | '/hub'
     | '/rooms'
     | '/settings/providers/$providerName'
@@ -454,6 +465,7 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/campaigns/'
     | '/hub/'
     | '/rooms/'
     | '/settings/providers/$providerName'
@@ -493,6 +505,7 @@ export interface RootRouteChildren {
   SettingsShortcutsRoute: typeof SettingsShortcutsRoute
   SettingsWebSearchRoute: typeof SettingsWebSearchRoute
   ThreadsThreadIdRoute: typeof ThreadsThreadIdRoute
+  CampaignsIndexRoute: typeof CampaignsIndexRoute
   HubIndexRoute: typeof HubIndexRoute
   RoomsIndexRoute: typeof RoomsIndexRoute
   SettingsProvidersProviderNameRoute: typeof SettingsProvidersProviderNameRoute
@@ -576,6 +589,13 @@ declare module '@tanstack/react-router' {
       path: '/hub'
       fullPath: '/hub/'
       preLoaderRoute: typeof HubIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/campaigns/': {
+      id: '/campaigns/'
+      path: '/campaigns'
+      fullPath: '/campaigns/'
+      preLoaderRoute: typeof CampaignsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/threads/$threadId': {
@@ -789,6 +809,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsShortcutsRoute: SettingsShortcutsRoute,
   SettingsWebSearchRoute: SettingsWebSearchRoute,
   ThreadsThreadIdRoute: ThreadsThreadIdRoute,
+  CampaignsIndexRoute: CampaignsIndexRoute,
   HubIndexRoute: HubIndexRoute,
   RoomsIndexRoute: RoomsIndexRoute,
   SettingsProvidersProviderNameRoute: SettingsProvidersProviderNameRoute,

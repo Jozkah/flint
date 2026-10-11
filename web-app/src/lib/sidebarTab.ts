@@ -20,6 +20,7 @@ export function tabForPath(pathname: string): SidebarTab | null {
   const cowork = [
     route.cowork,
     '/campaign',
+    route.campaigns,
     route.rooms,
     route.studio,
     route.extensions,

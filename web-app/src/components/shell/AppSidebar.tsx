@@ -8,6 +8,8 @@ import {
   MoreHorizontal,
   Server,
   Settings,
+  Workflow,
+  type LucideIcon,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -78,6 +80,8 @@ type LinkRow = {
   to: string
   label: string
   icon: IconName
+  /** A lucide glyph instead of the duotone set (campaigns). */
+  lucide?: LucideIcon
   active: boolean
   count?: number
   testId?: string
@@ -96,7 +100,11 @@ function LinkRows({ rows, onNavigate }: { rows: LinkRow[]; onNavigate?: () => vo
                 aria-current={row.active ? 'page' : undefined}
                 onClick={onNavigate}
               >
-                <Icon name={row.icon} />
+                {row.lucide ? (
+                  <row.lucide aria-hidden />
+                ) : (
+                  <Icon name={row.icon} />
+                )}
                 <span className="flex-1 truncate">{row.label}</span>
                 {row.count !== undefined && row.count > 0 && (
                   <span className="mr-1.5 text-[11px] text-muted-foreground tabular-nums">
@@ -365,6 +373,14 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   ]
   // Cowork tab only.
   const destinations: LinkRow[] = [
+    {
+      to: route.campaigns,
+      label: t('settings:campaigns.nav'),
+      icon: 'x-cowork',
+      lucide: Workflow,
+      active: within(route.campaigns) || within('/campaign'),
+      testId: 'nav-campaigns',
+    },
     {
       to: route.studio,
       label: t('common:shell.studio'),

@@ -84,6 +84,7 @@ describe('AppSidebar tabs', () => {
     expect(screen.getByTestId('nav-rooms')).toBeInTheDocument()
     expect(links()).toEqual(
       expect.arrayContaining([
+        '/campaigns',
         '/studio',
         '/settings/mcp-servers',
         '/extensions',
