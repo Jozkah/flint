@@ -239,9 +239,11 @@ export type CampaignEvent = {
 }
 
 /**
- * How long a task worked: from the first time it was running to the last
- * status change after that (or `now` while it still runs). Null when the log
- * never saw it run.
+ * How long a task worked: the wall time of its run segments, each from a move
+ * into running to the next event of the task (settled, interrupted, waiting
+ * for a person). Verification and merge time are not counted, and a task that
+ * ran again (a repair) adds its second run. Null when the log never saw it
+ * run; a run still open counts up to `now` only while `running`.
  */
 export function taskDurationMs(
   events: readonly CampaignEvent[] | undefined,
@@ -250,17 +252,31 @@ export function taskDurationMs(
   now: number
 ): number | null {
   const own = (events ?? []).filter(
-    (e) => e.kind === 'task-status' && e.task === taskId
+    (e) =>
+      e.task === taskId &&
+      (e.kind === 'task-status' ||
+        e.kind === 'task-settled' ||
+        e.kind === 'task-interrupted')
   )
-  const startedAt = own.find((e) => /->\s*Running\b/i.test(e.detail))
-  if (!startedAt) return null
-  const start = Date.parse(startedAt.ts)
-  if (Number.isNaN(start)) return null
-  if (running) return Math.max(0, now - start)
-  const last = own[own.length - 1]
-  const end = Date.parse(last.ts)
-  if (Number.isNaN(end) || end < start) return null
-  return end - start
+  let total = 0
+  let open: number | null = null
+  let seen = false
+  for (const e of own) {
+    const at = Date.parse(e.ts)
+    if (Number.isNaN(at)) continue
+    const intoRunning = /->\s*Running\b/i.test(e.detail)
+    if (open !== null) {
+      total += Math.max(0, at - open)
+      open = null
+    }
+    if (intoRunning) {
+      open = at
+      seen = true
+    }
+  }
+  if (!seen) return null
+  if (open !== null && running) total += Math.max(0, now - open)
+  return total
 }
 
 /** "45 s", "3 min", "1 h 05 min": short and plain. */

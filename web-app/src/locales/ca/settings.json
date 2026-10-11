@@ -883,7 +883,7 @@
           "skipped": "Skipped.",
           "verifyBlocked": "Finished, but the check could not tell whether it is right."
         },
-        "took": "Took {{time}}",
+        "took": "Worked for {{time}}",
         "running": "Running for {{time}}",
         "toggle": "What happened",
         "asked": "What it was asked",

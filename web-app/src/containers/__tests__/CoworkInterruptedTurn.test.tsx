@@ -6,12 +6,13 @@ import type { InFlightRecord } from '@/lib/coworkInflight'
 const h = vi.hoisted(() => ({
   inFlight: undefined as InFlightRecord | undefined,
   liveRunId: undefined as string | undefined,
+  link: undefined as { id: string; taskId?: string; role: string } | undefined,
   recover: vi.fn((_id: string, _choice: string) => true),
 }))
 
 vi.mock('@/hooks/useCoworkSessions', () => {
   const state = () => ({
-    sessions: [{ id: 's1', inFlight: h.inFlight }],
+    sessions: [{ id: 's1', inFlight: h.inFlight, campaign: h.link }],
     recoverInFlight: h.recover,
   })
   const useCoworkSessions = ((selector: (s: any) => unknown) => selector(state())) as any
@@ -28,6 +29,7 @@ vi.mock('@/i18n/react-i18next-compat', async () => {
 })
 
 import { CoworkInterruptedTurn } from '@/containers/CoworkInterruptedTurn'
+import { useCampaignStore } from '@/hooks/useCampaigns'
 
 const turns = (withPartial: boolean): CoworkTurn[] => [
   { role: 'user', content: 'fix it' },
@@ -46,8 +48,17 @@ const record = (withPartial = true): InFlightRecord => ({
 beforeEach(() => {
   h.inFlight = undefined
   h.liveRunId = undefined
+  h.link = undefined
   h.recover.mockClear()
+  useCampaignStore.setState({ campaigns: [] })
 })
+
+const withTask = (status: string) => {
+  h.link = { id: 'c1', taskId: 't1', role: 'task' }
+  useCampaignStore.setState({
+    campaigns: [{ id: 'c1', tasks: [{ id: 't1', status }] }] as never,
+  })
+}
 
 describe('CoworkInterruptedTurn (AH-026)', () => {
   it('shows nothing when no turn was left in flight', () => {
@@ -60,6 +71,23 @@ describe('CoworkInterruptedTurn (AH-026)', () => {
     h.liveRunId = 'run-dead'
     render(<CoworkInterruptedTurn sessionId="s1" running onContinue={() => {}} />)
     expect(screen.queryByTestId('cowork-interrupted-turn')).toBeNull()
+  })
+
+  it.each(['merged', 'verified', 'cancelled'])(
+    'stays quiet for a campaign task that is already %s',
+    (status) => {
+      h.inFlight = record()
+      withTask(status)
+      render(<CoworkInterruptedTurn sessionId="s1" running={false} onContinue={() => {}} />)
+      expect(screen.queryByTestId('cowork-interrupted-turn')).toBeNull()
+    }
+  )
+
+  it('still offers to continue a campaign task that is not settled', () => {
+    h.inFlight = record()
+    withTask('interrupted')
+    render(<CoworkInterruptedTurn sessionId="s1" running={false} onContinue={() => {}} />)
+    expect(screen.getByTestId('cowork-interrupted-turn')).toBeTruthy()
   })
 
   it('offers both choices for an unfinished reply, and continues only when asked', () => {

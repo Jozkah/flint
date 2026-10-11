@@ -14,6 +14,7 @@ import {
   useToolApprovalRequests,
 } from '@/hooks/useToolApprovalRequests'
 import { openWaitingApproval } from '@/hooks/useApprovalWaitNotifier'
+import { useStaleApprovalSweep } from '@/hooks/useStaleApprovalSweep'
 import { useRoomsState } from '@/containers/rooms/roomsBindings'
 import { openApprovalDestination } from '@/lib/approvalDestination'
 import {
@@ -83,6 +84,7 @@ function useNow(active: boolean): number {
 export function HeaderLiveChips() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  useStaleApprovalSweep()
   const runs = useCoworkRun((s) => s.runs ?? {})
   const liveTurns = useCoworkRun((s) => s.liveTurns ?? {})
   const approvalState = useToolApprovalRequests((s) => s)
