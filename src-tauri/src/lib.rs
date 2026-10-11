@@ -1059,6 +1059,18 @@ pub fn run() {
 pub fn run_app(app: tauri::App) {
     app.run(|app, event| {
         use std::sync::atomic::Ordering;
+        // A hidden spare "Open in new window" webview must not outlive the
+        // main window and keep the process running with nothing to see.
+        if let RunEvent::WindowEvent {
+            event: tauri::WindowEvent::Destroyed,
+            label,
+            ..
+        } = &event
+        {
+            if label == "main" {
+                core::solo_window::close_idle_spares(app);
+            }
+        }
         if let RunEvent::WindowEvent {
             event: tauri::WindowEvent::CloseRequested { api, .. },
             label,

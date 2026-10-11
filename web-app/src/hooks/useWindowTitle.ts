@@ -6,6 +6,7 @@ import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { composeWindowTitle, type WindowTitleInput } from '@/lib/windowTitle'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { isChatWindow } from '@/lib/soloFlag'
 
 /**
  * Keep the main window's native title naming what it shows.
@@ -49,7 +50,9 @@ export function useWindowTitle(): string {
       .then(({ getCurrentWebviewWindow }) => {
         if (cancelled) return
         const win = getCurrentWebviewWindow()
-        if (win.label !== 'main') return
+        // The main window and a "New window" name what they show; the logs
+        // and monitor windows keep the title they were opened with.
+        if (win.label !== 'main' && !isChatWindow()) return
         return win.setTitle(title)
       })
       .catch((e) => console.warn('Could not set the window title:', e))

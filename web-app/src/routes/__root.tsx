@@ -5,7 +5,7 @@ import { ModelReplaceDialog } from '@/containers/ModelReplaceDialog'
 import { UnknownWindowDialog } from '@/containers/rooms/UnknownWindowDialog'
 import { Fragment } from 'react/jsx-runtime'
 import { MotionConfig } from 'motion/react'
-import { useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { useShellMotion } from '@/components/shell/useShellMotion'
 import { ThemeProvider } from '@/providers/ThemeProvider'
 import { InterfaceProvider } from '@/providers/InterfaceProvider'
@@ -31,7 +31,7 @@ import { WebPreviewHost } from '@/containers/WebPreviewHost'
 import { BrowserDomainDialog } from '@/containers/BrowserDomainDialog'
 import { WindowControls } from '@/components/WindowControls'
 import { AppSidebar } from '@/components/shell/AppSidebar'
-import { applyChatWindowSession, isChatWindow } from '@/lib/chatWindow'
+import { isChatWindow, prewarmSoloWindow } from '@/lib/chatWindow'
 import { TopHeader } from '@/components/shell/TopHeader'
 import { ShellNavProvider } from '@/components/shell/nav-kit'
 import { HeaderSlotProvider } from '@/components/shell/HeaderSlot'
@@ -72,8 +72,13 @@ const AppLayout = () => {
   useRemoteBridge()
   useBuildUpdateCheck()
   const appDrawsChrome = detectWindowChrome() === 'custom'
-  const chatOnly = isChatWindow()
-  useEffect(() => applyChatWindowSession(), [])
+  // Keep a hidden, booted window ready for "Open in new window" once the app
+  // has settled, so that action shows a conversation without a cold start.
+  useEffect(() => {
+    if (!IS_TAURI) return
+    const timer = setTimeout(() => void prewarmSoloWindow(), 4000)
+    return () => clearTimeout(timer)
+  }, [])
   const pageRef = useRef<HTMLDivElement>(null)
   const { booting } = useShellMotion(pageRef)
 
@@ -94,7 +99,7 @@ const AppLayout = () => {
               over the page pretending to be one (see lib/titlebar). */}
           {appDrawsChrome && <WindowControls />}
           {appDrawsChrome && <WindowResizeGrips />}
-          {!chatOnly && <AppSidebar />}
+          <AppSidebar />
           <main
             data-testid="app-main"
             className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-card px-3 shadow-[inset_0_0_0_0.8px_var(--border)]"
@@ -129,7 +134,22 @@ const LogsLayout = () => {
   )
 }
 
+// A "New window" mounts none of the shell above: it has a root of its own,
+// loaded on demand, that shows one conversation (components/solo).
+const SoloRoot = lazy(() => import('@/components/solo/SoloRoot'))
+
 function RootLayout() {
+  if (isChatWindow()) {
+    return (
+      <Suspense fallback={null}>
+        <SoloRoot />
+      </Suspense>
+    )
+  }
+  return <MainRootLayout />
+}
+
+function MainRootLayout() {
   const searchOpen = useSearchDialog((s) => s.open)
   const setSearchOpen = useSearchDialog((s) => s.setOpen)
   // Motion components follow Flint's Reduce motion setting, not the OS.

@@ -6,6 +6,17 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { emit } from '@tauri-apps/api/event'
 import { PropsWithChildren, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { isChatWindow } from '@/lib/soloFlag'
+
+// A "New window" shows one conversation. It needs the stored conversation and
+// its attachments, not the inference engines (the main window owns those: a
+// second router would double-spawn the llama-server) nor their settings work.
+const SOLO_EXTENSIONS = [
+  '@janhq/conversational-extension',
+  '@janhq/assistant-extension',
+  '@janhq/rag-extension',
+  '@janhq/vector-db-extension',
+] as const
 
 // Secondary windows (logs, system monitor) reuse the same React bundle but
 // their Tauri capabilities do not grant hardware:*/llamacpp:*/etc. Loading
@@ -36,19 +47,22 @@ export function ExtensionProvider({ children }: PropsWithChildren) {
     window.core.engineManager = new EngineManager()
     window.core.modelManager = new ModelManager()
 
-    if (!isMainWindow()) {
+    if (!isMainWindow() && !isChatWindow()) {
       setFinishedSetup(true)
       return
     }
+    const only = isMainWindow() ? undefined : SOLO_EXTENSIONS
 
     // Register extensions - same pattern for both platforms.
     // Always finish setup even if registration/load throws so a single
     // faulty extension can't gate the entire UI.
     try {
       setStatus({ key: 'registeringExtensions' })
-      await ExtensionManager.getInstance().registerActive()
-      await ExtensionManager.getInstance().load((done, total) =>
-        setStatus({ key: 'loadingExtensions', vars: { done, total } })
+      await ExtensionManager.getInstance().registerActive(only)
+      await ExtensionManager.getInstance().load(
+        (done, total) =>
+          setStatus({ key: 'loadingExtensions', vars: { done, total } }),
+        only
       )
     } catch (e) {
       console.error('Extension setup failed:', e)
