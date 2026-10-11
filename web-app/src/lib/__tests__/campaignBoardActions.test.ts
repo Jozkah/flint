@@ -114,6 +114,14 @@ describe('board actions', () => {
     expect(runner.kick).toHaveBeenCalledWith('c1')
   })
 
+  it('sends a retry hint with the retry, trimmed and capped', async () => {
+    const { actions, api } = setup([task('a', 'failed')])
+    await actions.retryTask('c1', 'a', '  use the sync fs api  ')
+    expect(api.transition).toHaveBeenCalledWith('c1', {
+      task: { id: 'a', to: 'queued', patch: { detail: 'hint: use the sync fs api' } },
+    })
+  })
+
   it('does not retry past the cap or retry a running task', async () => {
     const { actions, api } = setup([
       task('a', 'failed', { attempt: 2 }),

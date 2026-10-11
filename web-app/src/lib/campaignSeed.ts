@@ -42,6 +42,33 @@ ${text.slice(text.length - max)}`
 
 const bullet = (items: string[]) => items.map((i) => `- ${i}`).join('\n')
 
+/**
+ * A retry's hint travels in the task's `detail`, behind this prefix, so the
+ * runner can put it at the head of the seed turn the retry is given.
+ */
+export const RETRY_HINT_PREFIX = 'hint: '
+export const RETRY_HINT_MAX = 1000
+
+/** The detail to store for a retry hint, or null when the hint is empty. */
+export function retryHintDetail(hint: string | undefined): string | null {
+  const text = (hint ?? '').trim().slice(0, RETRY_HINT_MAX)
+  return text ? `${RETRY_HINT_PREFIX}${text}` : null
+}
+
+/** The lead of a retry's seed turn: the person's direction, fenced as theirs. */
+export function retryHintLead(detail: string): string | null {
+  if (!detail.startsWith(RETRY_HINT_PREFIX)) return null
+  const hint = defang(detail.slice(RETRY_HINT_PREFIX.length)).trim()
+  if (!hint) return null
+  return (
+    'Your previous attempt at this task did not work out. The person ' +
+    'running the campaign asks you to do it differently:\n\n' +
+    `<<<direction\n${hint}\ndirection>>>\n\n` +
+    'Look at your worktree (git status, git log), keep what was fine, and ' +
+    'follow that direction. Finish with a short handoff.\n\n'
+  )
+}
+
 export function buildTaskSeed(input: {
   campaign: Pick<Campaign, 'title' | 'integrationBranch'>
   task: CampaignTask

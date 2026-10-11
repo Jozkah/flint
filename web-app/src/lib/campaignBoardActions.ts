@@ -11,6 +11,7 @@ import type { CampaignApi } from '@/lib/campaignApi'
 import type { Campaign } from '@/lib/campaignModel'
 import { taskActionsOf } from '@/lib/campaignView'
 import { messageIdOf } from '@/lib/campaignNotes'
+import { retryHintDetail } from '@/lib/campaignSeed'
 
 export type BoardDeps = {
   api: Pick<
@@ -96,13 +97,25 @@ export function createBoardActions(deps: BoardDeps) {
     return { ok: true }
   }
 
-  const retryTask = async (id: string, taskId: string): Promise<ActionResult> => {
+  const retryTask = async (
+    id: string,
+    taskId: string,
+    hint?: string
+  ): Promise<ActionResult> => {
     const { task } = await taskOf(id, taskId)
     if (!task) return fail(`no task ${taskId}`)
     if (!taskActionsOf(task).retry) {
       return fail(`task ${taskId} is ${task.status} and cannot be retried`)
     }
-    await deps.api.transition(id, { task: { id: taskId, to: 'queued' } })
+    // Without a hint the old failure text is left alone, as before.
+    const detail = retryHintDetail(hint)
+    await deps.api.transition(id, {
+      task: {
+        id: taskId,
+        to: 'queued',
+        ...(detail ? { patch: { detail } } : {}),
+      },
+    })
     await deps.runner.kick(id)
     return { ok: true }
   }
