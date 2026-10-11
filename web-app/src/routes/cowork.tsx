@@ -356,6 +356,7 @@ import {
   isCoordinatorEligible,
 } from '@/lib/campaignTools'
 import { createToolDeps, getCampaignRunner } from '@/lib/campaignHost'
+import { useRegisterHostedSession } from '@/lib/coworkHosting'
 import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
 import { askedFromParts } from '@/lib/askedSessions'
 import { SessionStopNotice } from '@/containers/SessionStopNotice'
@@ -618,6 +619,8 @@ export function CoworkPage() {
   const { t } = useTranslation()
   // In a split-view pane: that pane's session, not the current one.
   const coworkPane = useCoworkPane()
+  // The campaign run host leaves a session this page shows to this page.
+  useRegisterHostedSession(coworkPane?.sessionId)
   const serviceHub = useServiceHub()
   // The session's own model when it has one (#215): the picker no longer
   // mirrors a session's choice into the global store, so the readiness card

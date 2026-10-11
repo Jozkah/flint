@@ -814,7 +814,7 @@ function usePaneChromeValue(
 }
 
 /** A Cowork session in a pane beside the main one. */
-function CoworkPane({
+export function CoworkPane({
   paneId,
   sessionId,
   isActive,
