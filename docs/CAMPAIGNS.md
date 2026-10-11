@@ -151,11 +151,12 @@ Known gaps and limits:
 
 ## Using campaigns
 
-1. Open a Cowork session on a git repository (or pick a folder that is one). The sidebar then shows "New campaign" under Cowork.
+1. Open the Cowork tab of the sidebar. **Campaigns** (beside Rooms) opens the overview of your campaigns, with a "Start a campaign" button; the same action is in the menu of the New session row. The row is always there; the start action says "Open a git folder to start a campaign" when the folder is known not to be a git repository.
 2. Describe the big task in the box and press Start. Flint opens a coordinator session, looks at the repository and proposes a plan of up to 12 tasks. Nothing starts until you approve the plan.
-3. Approved tasks run in parallel (as many as Settings, Agent tools, "Campaign parallel threads" allows), each in its own worktree. The coordinator and all of its tasks stay together in one sidebar group; click the group's title to open the board.
-4. On the board, rows under "Needs you" are waiting for an answer, an approval, or a retry. Use the files summary on a row for the files and their diffs, and Open to jump into that task's session.
-5. When every task is done the board says "Ready for your review". Review changes runs the final build and test check and creates one proposal for your checkout; applying it is your decision.
+3. Approved tasks run in parallel (as many as Settings, Agent tools, "Campaign parallel threads" allows), each in its own worktree. The coordinator and all of its tasks stay together in one sidebar group, each row with one status dot; click the group's title to open the board.
+4. The board tells the story. Each task has a sentence of what happened ("Wrote 4 files, +176 -0 lines"), how long it took and a "What happened" fold with what it was asked, the files read and written and the commands run, in order. A task that is stuck shows the real error, one recommended action, and Retry with an optional "Tell it what to do differently" box whose text leads the retried task's first turn. Skip and Open conversation sit beside it. Branch, attempts and token counts stay under each task's Details.
+5. Under the tasks the summary gives the goal, a map of what ran side by side and what waited, the time taken, one cost figure and the branch the results are collected on, with a copy button.
+6. When every task is done the board says "Ready for your review" with a wrap-up of what got built. Review changes runs the final build and test check and creates one proposal for your checkout; applying it is your decision.
 
 You can also just ask for a campaign in a Cowork chat on a git folder ("split this into parallel tasks and plan it as a campaign"); the model has the same `campaign_plan` tool.
 
