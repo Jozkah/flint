@@ -81,6 +81,31 @@ jobs:
           APPLE_DEVELOPMENT_TEAM: 0000000000
         run: yarn tauri ios init --ci
 
+      # The generated project asks for automatic signing with a team, which
+      # needs an Apple account. Strip every signing setting and switch signing
+      # off in each build configuration.
+      - name: Make the project unsigned
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          p = next(pathlib.Path('src-tauri/gen/apple').glob('*.xcodeproj')) / 'project.pbxproj'
+          s = p.read_text()
+          before = [l.strip() for l in s.splitlines() if re.search(r'CODE_SIGN|DEVELOPMENT_TEAM|PROVISIONING', l)]
+          print('before:', sorted(set(before)))
+          s = re.sub(r'^\s*(CODE_SIGN_STYLE|CODE_SIGN_IDENTITY(\[[^\]]*\])?|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER|CODE_SIGN_ENTITLEMENTS_DISABLED)\s*=.*
+', '', s, flags=re.M)
+          inject = 'buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "";
+				CODE_SIGN_STYLE = Manual;
+'
+          s = s.replace('buildSettings = {
+', inject)
+          p.write_text(s)
+          print('patched', p, s.count('CODE_SIGNING_ALLOWED = NO;'), 'configurations')
+          PY
+
       - name: Build
         env:
           APPLE_DEVELOPMENT_TEAM: 0000000000
