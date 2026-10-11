@@ -1,5 +1,6 @@
 //! Headless HTTP server for the production browser application.
 
+pub mod agent;
 pub mod auth;
 pub mod control;
 pub mod data;

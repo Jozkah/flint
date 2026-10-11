@@ -19,6 +19,7 @@ use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
 
+use super::agent;
 use super::auth::AuthStore;
 use super::data;
 use super::control;
@@ -54,6 +55,9 @@ pub struct Options {
     /// Allow browser sessions to add and start stdio MCP servers (runs programs
     /// on this machine).
     pub allow_mcp_stdio: bool,
+    /// Folders the agent review plane may touch (`--agent-root`). Empty keeps
+    /// it off.
+    pub agent_roots: Vec<PathBuf>,
     /// Extra exact `host[:port]` values accepted in the Host header; required
     /// when binding beyond loopback.
     pub allowed_hosts: Vec<String>,
@@ -75,6 +79,7 @@ struct State {
     public_host: Option<String>,
     limiter: LoginLimiter,
     mcp: mcp::Host,
+    agent: Option<agent::Agent>,
     allowed_origins: HashSet<String>,
     engine: engine::Supervisor,
     settings: settings::Store,
@@ -766,6 +771,40 @@ async fn rpc_route(state: &State, command: &str, args: serde_json::Value) -> Res
             Err(message) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
         };
     }
+    if agent::handles(command) {
+        let Some(agent) = &state.agent else {
+            // Said once, plainly, so a client can show it rather than guess.
+            if command == "agent_server_info" {
+                return json(&serde_json::json!({ "agent": false, "folders": [] }));
+            }
+            return text(
+                StatusCode::FORBIDDEN,
+                "The agent review plane is off on this server. Start it with --agent-root <folder>.",
+            );
+        };
+        let (agent, command) = (agent.clone(), command.to_owned());
+        // Reads and writes files for a proposal, so not on the async threads.
+        let outcome = match tokio::task::spawn_blocking(move || agent.call(&command, &args)).await {
+            Ok(outcome) => outcome,
+            Err(_) => return text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
+        };
+        return match outcome {
+            Ok(value) => json(&value),
+            Err(failure) => {
+                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
+                match failure.body {
+                    serde_json::Value::String(message) => {
+                        reply(status, "text/plain; charset=utf-8", message)
+                    }
+                    other => reply(
+                        status,
+                        "application/json",
+                        serde_json::to_vec(&other).unwrap_or_default(),
+                    ),
+                }
+            }
+        };
+    }
     match command {
         // The skills and slash-command catalogue are the desktop agent's. A
         // browser session has none, which is an answer the pages handle (an
@@ -1439,6 +1478,8 @@ pub async fn serve(options: Options) -> io::Result<()> {
     // background starter use to reach it. A name an attacker controls can never
     // be this, so it does not weaken the check against DNS rebinding.
     hosts.insert(listener.local_addr()?.to_string());
+    let agent = agent::Agent::open(&options.data_folder, &options.agent_roots)
+        .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
     let (auth, bootstrap) = AuthStore::open(options.auth_file)?;
     let settings_store = settings::Store::new(&options.data_folder);
     let bus = events::Bus::new();
@@ -1453,6 +1494,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
         public_host: options.public_host.map(|host| host.to_ascii_lowercase()),
         limiter: LoginLimiter::new(),
         mcp: mcp::Host::new(options.allow_mcp_stdio),
+        agent,
         allowed_origins: options.allowed_origins.iter().map(|o| o.to_ascii_lowercase()).collect(),
         engine: engine::Supervisor::new(options.llama_worker.clone(), bus.clone()),
         events: bus,
@@ -1575,6 +1617,7 @@ mod tests {
             public_host: None,
             limiter: LoginLimiter::new(),
             mcp: mcp::Host::new(false),
+            agent: None,
             allowed_origins: HashSet::new(),
             engine: engine::Supervisor::new(None, events::Bus::new()),
             settings: settings::Store::new(dir.path()),
@@ -1606,6 +1649,7 @@ mod tests {
             auth_file: dir.path().join("auth.json"),
             public_host: None,
             allow_mcp_stdio: false,
+            agent_roots: Vec::new(),
             allowed_hosts: Vec::new(),
             allowed_origins: Vec::new(),
             llama_worker: None,
@@ -1656,6 +1700,7 @@ mod tests {
             auth_file: dir.path().join("auth.json"),
             public_host: None,
             allow_mcp_stdio: false,
+            agent_roots: Vec::new(),
             allowed_hosts: hosts.into_iter().map(String::from).collect(),
             allowed_origins: origins.into_iter().map(String::from).collect(),
             llama_worker: None,
@@ -1681,6 +1726,7 @@ mod tests {
             public_host: None,
             limiter: LoginLimiter::new(),
             mcp: mcp::Host::new(false),
+            agent: None,
             allowed_origins: HashSet::from(["http://tauri.localhost".to_string()]),
             engine: engine::Supervisor::new(None, events::Bus::new()),
             settings: settings::Store::new(dir.path()),
@@ -1715,6 +1761,7 @@ mod tests {
             public_host: Some("box.ts.net".to_string()),
             limiter: LoginLimiter::new(),
             mcp: mcp::Host::new(false),
+            agent: None,
             allowed_origins: HashSet::new(),
             engine: engine::Supervisor::new(None, events::Bus::new()),
             settings: settings::Store::new(dir.path()),

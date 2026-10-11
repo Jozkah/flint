@@ -240,6 +240,12 @@ enum Commands {
         /// on this machine); http and sse servers are always allowed
         #[arg(long)]
         allow_mcp_stdio: bool,
+        /// A folder the agent review plane may use: a signed-in client can then
+        /// list campaigns and review, apply or reject proposals for projects
+        /// under it. Repeatable. Off when none is given. It never runs a
+        /// session, a build or a test, and may not contain the data folder
+        #[arg(long = "agent-root")]
+        agent_roots: Vec<std::path::PathBuf>,
         /// Exact host[:port] clients use to reach this server; repeatable.
         /// Required when --listen/--bind is beyond loopback
         #[arg(long = "allowed-host")]
@@ -2027,7 +2033,7 @@ async fn run() {
     };
 
     match command {
-        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, allowed_hosts, allowed_origins, llama_worker, background, credential_file } => {
+        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, allowed_hosts, allowed_origins, llama_worker, background, credential_file } => {
             if let Some(data_dir) = data_dir {
                 std::env::set_var("JAN_DATA_FOLDER", data_dir);
             }
@@ -2076,6 +2082,7 @@ async fn run() {
                     auth_file,
                     public_host,
                     allow_mcp_stdio,
+                    agent_roots,
                     allowed_hosts,
                     allowed_origins,
                     llama_worker,
