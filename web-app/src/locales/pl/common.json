@@ -2139,7 +2139,12 @@
     "usageOverview": "Przegląd użycia",
     "movedTo": "Przeniesiono do {{name}}",
     "notifications": "Powiadomienia",
-    "approvalWaiting": "Zatwierdzenie oczekuje"
+    "approvalWaiting": "Zatwierdzenie oczekuje",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "Diagnostyka",

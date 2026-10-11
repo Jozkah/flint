@@ -136,6 +136,8 @@ export function groupOf(
     case 'running':
     case 'verifying':
     case 'verified':
+    case 'planning':
+    case 'review':
       return 'working'
     case 'queued':
     case 'blocked':

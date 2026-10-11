@@ -2098,7 +2098,12 @@
     "usageOverview": "Resumen de uso",
     "movedTo": "Movido a {{name}}",
     "notifications": "Notificaciones",
-    "approvalWaiting": "Aprobación en espera"
+    "approvalWaiting": "Aprobación en espera",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "Diagnóstico",

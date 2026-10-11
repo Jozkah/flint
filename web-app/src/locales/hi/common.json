@@ -2060,7 +2060,12 @@
     "usageOverview": "उपयोग अवलोकन",
     "movedTo": "{{name}} में ले जाया गया",
     "notifications": "सूचनाएँ",
-    "approvalWaiting": "अनुमोदन प्रतीक्षा में"
+    "approvalWaiting": "अनुमोदन प्रतीक्षा में",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "डायग्नोस्टिक्स",

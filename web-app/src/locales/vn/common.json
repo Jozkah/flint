@@ -2067,7 +2067,12 @@
     "usageOverview": "Tổng quan sử dụng",
     "movedTo": "Đã chuyển vào {{name}}",
     "notifications": "Thông báo",
-    "approvalWaiting": "Phê duyệt đang chờ"
+    "approvalWaiting": "Phê duyệt đang chờ",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "Chẩn đoán",

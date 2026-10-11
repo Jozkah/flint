@@ -2137,7 +2137,12 @@
     "usageOverview": "Přehled využití",
     "movedTo": "Přesunuto do {{name}}",
     "notifications": "Oznámení",
-    "approvalWaiting": "Čeká na schválení"
+    "approvalWaiting": "Čeká na schválení",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "Diagnostika",

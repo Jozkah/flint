@@ -2099,7 +2099,12 @@
     "usageOverview": "Resum d'ús",
     "movedTo": "S'ha mogut a {{name}}",
     "notifications": "Notificacions",
-    "approvalWaiting": "Aprovació en espera"
+    "approvalWaiting": "Aprovació en espera",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "Diagnòstics",

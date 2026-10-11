@@ -3,9 +3,7 @@ import { RowPreview, lastUserText } from '@/components/shell/nav/RowPreview'
 import {
   NavAction,
   NavButton,
-  NavCollapse,
   NavItem,
-  NavList,
   useShellNav,
 } from '@/components/shell/nav-kit'
 import {
@@ -32,7 +30,6 @@ import { useLocation, useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
   Box,
-  Plus,
   SlidersHorizontal,
   Copy,
   FileClock,
@@ -46,12 +43,11 @@ import {
   Loader2,
   FolderPlus,
   Workflow,
+  SquareTerminal,
   type LucideIcon,
 } from 'lucide-react'
 import { coworkTranscript, regenerateCoworkTitle } from '@/lib/regenerateSessionTitle'
 import { regenerateWithToast } from '@/lib/regenerateToast'
-import { cn } from '@/lib/utils'
-import { Icon } from '@/components/ui/icon'
 import {
   ThreadStatusMark,
   useThreadStatus,
@@ -452,16 +448,14 @@ function SessionMark({
 }
 
 /**
- * The Cowork row of the sidebar with its session tree: the row opens Cowork,
- * the chevron shows or hides the sessions, and the row menu holds the less
- * frequent actions (artifacts, customize, import, plugins).
+ * The Cowork tab's session area: New session (its menu holds the less frequent
+ * actions: new group, artifacts, customize, import, plugins), New campaign,
+ * whatever the sidebar puts between them and the list (`after`), then the
+ * campaign groups and the sessions. Rendered inside a NavList.
  */
-export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
+export function CoworkNav({ after }: { after?: React.ReactNode }) {
   const { pathname } = useLocation()
   const onCowork = isCoworkRoute(pathname)
-  const [treeOpen, setTreeOpen] = useState<boolean | null>(null)
-  const expanded = treeOpen ?? onCowork
-  const runningCount = useCoworkRun((s) => Object.keys(s.runs ?? {}).length)
   const runs = useCoworkRun((s) => s.runs)
   const [moreOpen, setMoreOpen] = useState(false)
   const { t } = useTranslation()
@@ -543,23 +537,6 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
     () => sessions.filter((x) => !claimed.has(x.id)).map((x) => x.id),
     [sessions, claimed]
   )
-  // Collapsed, the tree still lists what is running: a campaign's running
-  // sessions stay inside their group, never loose beside it.
-  const visibleSessions = expanded
-    ? sessions
-    : sessions.filter(
-        (session) => Boolean(runs?.[session.id]) && !claimed.has(session.id)
-      )
-  const runningGroups = useMemo(
-    () =>
-      campaignGroups
-        .map((g) => ({
-          ...g,
-          rows: g.rows.filter((r) => Boolean(runs?.[r.sessionId])),
-        }))
-        .filter((g) => g.rows.length > 0),
-    [campaignGroups, runs]
-  )
   const byId = useMemo(
     () => new Map(sessions.map((x) => [x.id, x])),
     [sessions]
@@ -585,25 +562,12 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
   }
 
   // New group lives in this menu (and on right-click), not as a row of its own.
-  // The tree is opened first so the group has somewhere to appear.
   const [newGroupRequest, setNewGroupRequest] = useState(0)
   const items: CoworkNavItem[] = [
-    ...(campaignFolder
-      ? [
-          {
-            title: t('settings:campaigns.start.menu'),
-            icon: Workflow,
-            onClick: () => setStartOpen(true),
-          },
-        ]
-      : []),
     {
       title: t('common:groups.newGroup'),
       icon: FolderPlus,
-      onClick: () => {
-        setTreeOpen(true)
-        setNewGroupRequest((n) => n + 1)
-      },
+      onClick: () => setNewGroupRequest((n) => n + 1),
     },
     {
       title: t('common:artifacts'),
@@ -712,119 +676,80 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
     <>
       <NavItem>
         <NavButton
-          isActive={pathname === route.cowork}
-          onClick={goCowork}
-          // Right-click opens the row's menu (New group, Artifacts…).
+          onClick={() => newSession()}
+          // Right-click opens the row's menu (New group, Artifacts...).
           onContextMenu={(e) => {
             e.preventDefault()
             setMoreOpen(true)
           }}
-          data-testid="nav-cowork"
+          data-testid="nav-new-session"
         >
-          {icon}
-          <span className="flex-1 truncate">{t('common:cowork')}</span>
+          <SquareTerminal aria-hidden />
+          <span className="flex-1 truncate">{t('common:newSession')}</span>
         </NavButton>
-        <span className="absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-1">
-          {runningCount > 0 && (
-            <span className="text-[11px] text-muted-foreground tabular-nums">
-              {runningCount}
-            </span>
-          )}
-          <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label={t('common:more')}
-                className="grid size-5 cursor-pointer place-items-center rounded-md text-muted-foreground opacity-0 transition-opacity group-hover/nav-item:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100 [&>svg]:size-3.5"
-              >
-                <MoreHorizontal />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              className="w-52"
-              side={isMobile ? 'bottom' : 'right'}
-              align="start"
-            >
-              {items.map((item) => {
-                const ItemIcon = item.icon
-                return (
-                  <DropdownMenuItem key={item.title} onSelect={item.onClick}>
-                    <ItemIcon />
-                    <span>{item.title}</span>
-                  </DropdownMenuItem>
-                )
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <button
-            type="button"
-            aria-label={t('common:sessions')}
-            aria-expanded={expanded}
-            onClick={() => setTreeOpen(!expanded)}
-            className="grid size-5 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground [&>svg]:size-3"
+        <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
+          <DropdownMenuTrigger asChild>
+            <NavAction showOnHover aria-label={t('common:more')}>
+              <MoreHorizontal />
+            </NavAction>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-52"
+            side={isMobile ? 'bottom' : 'right'}
+            align="start"
           >
-            <span
-              className={cn(
-                'inline-flex transition-transform duration-300 ease-expo',
-                !expanded && 'rotate-180'
-              )}
-            >
-              <Icon name="arrow-up" size={12} />
-            </span>
-          </button>
-        </span>
+            {items.map((item) => {
+              const ItemIcon = item.icon
+              return (
+                <DropdownMenuItem key={item.title} onSelect={item.onClick}>
+                  <ItemIcon />
+                  <span>{item.title}</span>
+                </DropdownMenuItem>
+              )
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </NavItem>
-      {/* Collapsed, the tree still lists the sessions that are running,
-          until their run ends. */}
-      <NavCollapse
-        as="li"
-        open={expanded || visibleSessions.length > 0 || runningGroups.length > 0}
-      >
-        <NavList className="relative pt-0.5 pb-1 pl-5 before:absolute before:inset-y-1 before:left-[17px] before:w-px before:bg-border">
-          {expanded && (
-            <NavItem>
-              <NavButton size="sub" onClick={() => newSession()}>
-                <Plus aria-hidden className="size-3.5" />
-                <span>{t('common:newSession')}</span>
-              </NavButton>
-            </NavItem>
-          )}
-          {expanded && campaignFolder && (
-            <NavItem>
-              <NavButton
-                size="sub"
-                onClick={() => setStartOpen(true)}
-                data-testid="nav-new-campaign"
-              >
-                <Workflow aria-hidden className="size-3.5" />
-                <span>{t('settings:campaigns.start.menu')}</span>
-              </NavButton>
-            </NavItem>
-          )}
-          <CampaignGroups
-            groups={expanded ? campaignGroups : runningGroups}
-            renderRow={(row) => renderSession(row.sessionId, row.dot)}
-          />
-          {expanded ? (
-            <GroupedTree
-              surface="cowork"
-              ids={sessionIds}
-              renderItem={renderSession}
-              keepVisible={(id) =>
-                (onCowork && id === currentId) || Boolean(runs?.[id])
-              }
-              adapter={coworkFolderAdapter}
-              onNewInGroup={newSession}
-              newInLabelKey="common:groups.newSessionIn"
-              showNewGroup={false}
-              newGroupRequest={newGroupRequest}
-              onNewGroupRequestHandled={() => setNewGroupRequest(0)}
-            />
-          ) : (
-            visibleSessions.map((session) => renderSession(session.id))
-          )}
-        </NavList>
-      </NavCollapse>
+      {campaignFolder && (
+        <NavItem>
+          <NavButton
+            onClick={() => setStartOpen(true)}
+            data-testid="nav-new-campaign"
+          >
+            <Workflow aria-hidden className="size-4" />
+            <span className="flex-1 truncate">
+              {t('settings:campaigns.start.menu')}
+            </span>
+          </NavButton>
+        </NavItem>
+      )}
+      {after}
+      {(campaignGroups.length > 0 || sessions.length > 0) && (
+        <li
+          aria-hidden
+          className="mt-2 flex h-5 list-none items-center px-2.5 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase"
+        >
+          {t('common:sessions')}
+        </li>
+      )}
+      <CampaignGroups
+        groups={campaignGroups}
+        renderRow={(row) => renderSession(row.sessionId, row.dot)}
+      />
+      <GroupedTree
+        surface="cowork"
+        ids={sessionIds}
+        renderItem={renderSession}
+        keepVisible={(id) =>
+          (onCowork && id === currentId) || Boolean(runs?.[id])
+        }
+        adapter={coworkFolderAdapter}
+        onNewInGroup={newSession}
+        newInLabelKey="common:groups.newSessionIn"
+        showNewGroup={false}
+        newGroupRequest={newGroupRequest}
+        onNewGroupRequestHandled={() => setNewGroupRequest(0)}
+      />
 
       <StartCampaignDialog
         open={startOpen}

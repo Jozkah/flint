@@ -2027,7 +2027,12 @@
     "usageOverview": "Ringkasan penggunaan",
     "movedTo": "Dipindahkan ke {{name}}",
     "notifications": "Notifikasi",
-    "approvalWaiting": "Persetujuan menunggu"
+    "approvalWaiting": "Persetujuan menunggu",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "Diagnostik",
