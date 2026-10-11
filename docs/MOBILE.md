@@ -28,7 +28,7 @@ The phone app has: Chat, Cowork sessions, Rooms, approvals, questions and prompt
 | Single status dot per campaign row | Done in the Campaigns list (one dot: attention, moving, quiet) | N/A |
 | Approval attention mark on a session | Had it: a waiting dot and shield on the session row, an approvals pill in the top bar | N/A |
 | Context ring toggle card | Had it: the ring opens the Context window sheet (a sheet, not a hover card; hover is N/A on touch) | N/A |
-| Chat / Cowork sidebar tabs, Resume and usage, folded More | N/A: the phone's drawer already groups Cowork, Rooms and chats; no sidebar to split | N/A |
+| Chat / Cowork sidebar tabs, Resume and usage, folded More | PORTED: the drawer has a Chat / Cowork switch under search (remembered, follows the route), Resume & usage, Models and Discover on both tabs, a campaign group with one dot per row and "N of M done", and one folded More (Archive, System Monitor, Local API) on Cowork (`shell/LeftNav.tsx`, `shell/navTabs.ts`) | N/A |
 | Discover: Hugging Face mark, quiet link, plain task chips | Chips ported (`lib/hubTasks.ts` reused); the mark and header link are desktop chrome | N/A |
 | New window, pane tabs, desktop sidebar | N/A | N/A |
 | Stale-edit guard, destructive-command prompts, secret redaction, hook and verification changes | Apply automatically: same Rust loop and approvals; prompts reach the phone as approval cards | N/A |

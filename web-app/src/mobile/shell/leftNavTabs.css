@@ -1,0 +1,9 @@
+/* Drawer tabs and touch-sized rows (LeftNav). */
+.ntabs{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin:0 12px 8px;padding:3px;border-radius:10px;background:color-mix(in srgb,var(--foreground) 6%,transparent);border:.8px solid var(--border);box-sizing:border-box}
+.ntabs button{all:unset;cursor:pointer;box-sizing:border-box;min-height:44px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted-foreground);min-width:0}
+.ntabs button[aria-selected="true"]{background:var(--card);color:var(--foreground);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.ntabs button:focus-visible{outline:2px solid var(--info);outline-offset:1px}
+.ntabs .cnt{font-size:11px;color:var(--muted-foreground)}
+.navs.lnav{overflow-x:hidden}
+.navs.lnav .row,.navs.lnav .sub .row{min-height:44px}
+.navs.lnav .row .tx b{overflow-wrap:anywhere}
