@@ -83,7 +83,36 @@ fn answer_for(request: &Value) -> String {
         return out;
     }
     let last_text = text_of(&last);
-    if last["role"] == "user" && last_text.contains("WRITE_FILE ") {
+    if last["role"] == "user" && last_text.contains("LIST_TOOLS") {
+        let names: Vec<String> = request["tools"]
+            .as_array()
+            .map(|tools| {
+                tools.iter().filter_map(|t| t["function"]["name"].as_str().map(str::to_owned)).collect()
+            })
+            .unwrap_or_default();
+        out.push_str(&chunk(
+            json!({"role":"assistant","content":format!("TOOLS: {}", names.join(","))}),
+            Value::Null,
+            None,
+        ));
+        out.push_str(&chunk(json!({}), json!("stop"), Some(usage)));
+    } else if last["role"] == "user" && last_text.contains("COORDINATE_PLAN") {
+        let args = json!({
+            "title": "Two files",
+            "tasks": [
+                {"id": "a", "title": "write a", "brief": "WRITE_FILE a.txt", "paths": ["a.txt"]},
+                {"id": "b", "title": "write b", "brief": "WRITE_FILE b.txt", "paths": ["b.txt"], "depends_on": ["a"]}
+            ]
+        })
+        .to_string();
+        out.push_str(&chunk(
+            json!({"role":"assistant","tool_calls":[{"index":0,"id":"call_plan","type":"function",
+                "function":{"name":"host__campaign_plan","arguments": args}}]}),
+            Value::Null,
+            None,
+        ));
+        out.push_str(&chunk(json!({}), json!("tool_calls"), Some(usage)));
+    } else if last["role"] == "user" && last_text.contains("WRITE_FILE ") {
         let name = last_text
             .split("WRITE_FILE ")
             .nth(1)
@@ -1225,4 +1254,95 @@ fn model_and_mode_pickers_rename_and_delete_use_only_what_the_server_has() {
     assert_eq!(status, 200);
     let (status, _) = server.rpc("agent_run_get", json!({ "id": id }));
     assert_eq!(status, 404);
+}
+
+#[test]
+fn a_coordinator_plans_in_process_and_only_a_coordinator_has_the_campaign_tools() {
+    let (dir, app) = git_scratch("coordinator");
+    let server = start(&dir, &["--agent-allow-bypass"]);
+    let folder = app.to_string_lossy().into_owned();
+
+    // The role is validated, and a coordinator cannot be read-only.
+    let (status, _) = server.rpc("agent_run_create", json!({ "folder": folder, "role": "boss" }));
+    assert_eq!(status, 400);
+    let (status, _) = server.rpc("agent_run_create", json!({ "folder": folder, "role": "coordinator", "access": "read" }));
+    assert_eq!(status, 400);
+
+    // An ordinary session is never offered the campaign tools.
+    let (_, plain) = server.rpc("agent_run_create", json!({ "folder": folder, "access": "ask" }));
+    let plain_id = plain["id"].as_str().unwrap().to_owned();
+    let (status, _) = server.rpc("agent_run_start", json!({ "id": plain_id, "input": "LIST_TOOLS" }));
+    assert_eq!(status, 200);
+    let seen = server.events(&plain_id, 0, Duration::from_secs(60), is_completed);
+    let said = seen.iter().map(|e| e["payload"].to_string()).collect::<Vec<_>>().join("\n");
+    assert!(said.contains("TOOLS:"), "{said}");
+    assert!(!said.contains("campaign_"), "an ordinary session has no campaign tool: {said}");
+
+    // The coordinator: a session whose model calls campaign_plan, answered
+    // here with no client attached.
+    let (status, started) = server.rpc(
+        "agent_campaign_start_server",
+        json!({ "goal": "COORDINATE_PLAN two files", "folder": folder, "coordinator": true }),
+    );
+    assert_eq!(status, 200, "{started}");
+    let coordinator = started["coordinator"]["id"].as_str().unwrap_or_else(|| panic!("{started}")).to_owned();
+    let mut found = Value::Null;
+    wait_for("the coordinator's plan to be recorded", Duration::from_secs(90), || {
+        let (_, all) = server.rpc("agent_campaign_list", json!({}));
+        found = all
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["coordinatorSession"] == coordinator.as_str())
+            .cloned()
+            .unwrap_or(Value::Null);
+        !found.is_null()
+    });
+    let id = found["id"].as_str().unwrap().to_owned();
+    assert_eq!(found["status"], "planned", "approval stays a person's: {found}");
+    assert_eq!(found["driver"], "server");
+    assert_eq!(found["tasks"].as_array().unwrap().len(), 2);
+    let (_, approvals) = server.rpc("agent_campaign_approvals", json!({}));
+    assert!(
+        approvals["approvals"].as_array().unwrap().iter().any(|a| a["campaignId"] == id.as_str() && a["kind"] == "plan"),
+        "{approvals}"
+    );
+    // The turn closed on the tool's answer, not on a client's.
+    let turn = server.events(&coordinator, 0, Duration::from_secs(60), is_completed);
+    assert!(turn.iter().any(|e| e["payload"].to_string().contains("tool finished")), "{turn:?}");
+    assert!(
+        !turn.iter().any(|e| e["payload"]["type"] == "tool_request"),
+        "the request is answered in process and never offered to a client"
+    );
+    std::thread::sleep(Duration::from_secs(4));
+    assert_eq!(campaign_of(&server, &id)["status"], "planned", "nothing runs before an approval");
+
+    // The coordinator is offered the tools, and only it.
+    let after = turn.last().unwrap()["seq"].as_u64().unwrap();
+    let (status, _) = server.rpc("agent_run_start", json!({ "id": coordinator, "input": "LIST_TOOLS" }));
+    assert_eq!(status, 200);
+    let listed = server.events(&coordinator, after, Duration::from_secs(60), is_completed);
+    let said = listed.iter().map(|e| e["payload"].to_string()).collect::<Vec<_>>().join("\n");
+    for tool in ["campaign_plan", "campaign_status", "campaign_collect", "campaign_cancel", "campaign_steer", "campaign_decide", "campaign_merge"] {
+        assert!(said.contains(&format!("host__{tool}")), "{tool}: {said}");
+    }
+
+    // A person approves; the driver runs it to review.
+    let (status, approved) = server.rpc("agent_campaign_approve", json!({ "id": id, "access": "worktree" }));
+    assert_eq!(status, 200, "{approved}");
+    wait_for("the campaign to reach reviewing", Duration::from_secs(240), || {
+        let c = campaign_of(&server, &id);
+        assert_ne!(c["status"], "failed", "{c}");
+        c["status"] == "reviewing"
+    });
+    assert_eq!(statuses(&campaign_of(&server, &id)), vec!["merged", "merged"]);
+
+    // The one-shot planner remains when no coordinator is asked for.
+    let (status, planned) = server.rpc(
+        "agent_campaign_start_server",
+        json!({ "goal": "write three files", "folder": folder }),
+    );
+    assert_eq!(status, 200, "{planned}");
+    assert_eq!(planned["status"], "planned");
+    assert_eq!(planned["coordinatorSession"], "server");
 }

@@ -177,6 +177,12 @@ function commitTurns(
 // Creating a session on the server
 // ---------------------------------------------------------------------------
 
+/** Show a session the server holds (a coordinator it just made) as the current one. */
+export async function openRemoteSession(id: string, fetchImpl?: FetchLike): Promise<void> {
+  await syncRemoteSessions(fetchImpl)
+  useCoworkSessions.setState({ currentId: id })
+}
+
 /** Start a session in `folder` on the server and open it as the current one. */
 export async function startRemoteSession(
   input: {

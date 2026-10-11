@@ -337,6 +337,9 @@ struct Session {
     worktree: Option<WorktreeRecord>,
     /// Digest of the content of the last proposal made from it.
     proposed: Option<String>,
+    /// A coordinator conversation: the campaign tools are declared to it and
+    /// answered in this process (`coordinator.rs`). No other session has them.
+    coordinator: bool,
 }
 
 struct Active {
@@ -346,12 +349,33 @@ struct Active {
     started: Instant,
 }
 
+/// Where a coordinator session's campaign tool calls are answered. Set once
+/// by the agent plane after the driver exists; the runner never talks to the
+/// driver any other way.
+#[async_trait::async_trait]
+pub trait CoordinatorBackend: Send + Sync {
+    async fn call(&self, ctx: CoordinatorCall, name: &str, args: Value) -> Result<String, String>;
+}
+
+/// Who is calling a campaign tool: only the session itself, never a field the
+/// model supplied.
+#[derive(Debug, Clone)]
+pub struct CoordinatorCall {
+    pub session_id: String,
+    /// The repository folder the session was created for (inside the roots).
+    pub source_root: PathBuf,
+    pub model: Option<String>,
+    /// The session is read-only (plan mode): campaign tools change things.
+    pub read_only: bool,
+}
+
 pub struct Runner {
     data_folder: PathBuf,
     roots: Vec<PathBuf>,
     options: RunnerOptions,
     bus: Bus,
     live: Mutex<HashMap<String, Arc<Live>>>,
+    coordinator_backend: std::sync::OnceLock<Arc<dyn CoordinatorBackend>>,
 }
 
 impl Runner {
@@ -362,7 +386,17 @@ impl Runner {
             options,
             bus,
             live: Mutex::new(HashMap::new()),
+            coordinator_backend: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Let sessions created with `role: "coordinator"` call the campaign tools.
+    pub fn set_coordinator_backend(&self, backend: Arc<dyn CoordinatorBackend>) {
+        let _ = self.coordinator_backend.set(backend);
+    }
+
+    pub fn coordinator_ready(&self) -> bool {
+        self.coordinator_backend.get().is_some()
     }
 
     pub fn options(&self) -> &RunnerOptions {
@@ -740,6 +774,22 @@ impl Runner {
             .and_then(Value::as_str)
             .map(|t| t.chars().filter(|c| !c.is_control()).take(MAX_TITLE).collect::<String>())
             .unwrap_or_default();
+        let coordinator = match args.get("role").and_then(Value::as_str).map(str::trim) {
+            None | Some("") | Some("normal") => false,
+            Some("coordinator") => true,
+            Some(_) => return Err(fail(400, "role is coordinator, or leave it out")),
+        };
+        if coordinator {
+            if !self.coordinator_ready() {
+                return Err(fail(403, "this server does not run campaigns, so it has no coordinator"));
+            }
+            if mode == PermissionMode::Review {
+                return Err(fail(
+                    400,
+                    "a coordinator makes and steers campaigns, so it needs access ask or higher, not read",
+                ));
+            }
+        }
         if self.live_count() >= self.options.max_sessions as usize {
             return Err(fail(
                 429,
@@ -756,6 +806,9 @@ impl Runner {
             "client": caller.client,
             "createdFrom": caller.ip_hash,
         });
+        if coordinator {
+            metadata["role"] = json!("coordinator");
+        }
         // An isolated checkout by default when the session may write and the
         // folder is a repository; `worktree: false` opts out, `true` insists.
         let in_git = {
@@ -769,7 +822,8 @@ impl Runner {
                 return Err(fail(422, "that folder is not inside a git repository, so it cannot be isolated"))
             }
             Some(true) => true,
-            None => in_git && mode != PermissionMode::Review,
+            // A coordinator plans and steers; its tasks have their own checkouts.
+            None => in_git && mode != PermissionMode::Review && !coordinator,
         };
         let worktree = if isolate {
             let (data, roots, folder, id2, title2) =
@@ -786,7 +840,7 @@ impl Runner {
             None
         };
         let session = match self
-            .build_session(folder, model, mode, &id, Vec::new(), metadata, title, worktree.clone())
+            .build_session(folder, model, mode, &id, Vec::new(), metadata, title, worktree.clone(), coordinator)
             .await
         {
             Ok(session) => session,
@@ -821,6 +875,7 @@ impl Runner {
         metadata: Value,
         title: String,
         worktree: Option<WorktreeRecord>,
+        coordinator: bool,
     ) -> Result<Session, Fail> {
         let flags = SessionFlags {
             auto_approve: mode.auto_approve(),
@@ -844,7 +899,7 @@ impl Runner {
         .map_err(|m| fail(422, m))?;
         let asks: crate::core::agent::interaction::AskRegistry =
             Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-        configure(&mut agent, id, &asks);
+        configure(&mut agent, id, &asks, coordinator);
         Ok(Session {
             agent,
             history,
@@ -858,6 +913,7 @@ impl Runner {
             turns: 0,
             worktree,
             proposed: None,
+            coordinator,
         })
     }
 
@@ -923,6 +979,7 @@ impl Runner {
             "model": session.agent.model,
             "access": access_name(session.mode),
             "mode": session.metadata.get("mode"),
+            "role": if session.coordinator { "coordinator" } else { "session" },
             "status": "idle",
             "lastSeq": 0,
             "worktree": session.worktree.as_ref().map(wt::record_json),
@@ -984,7 +1041,10 @@ impl Runner {
             .map_err(|_| fail(500, "the worktree check did not finish"))?;
             checked?;
         }
-        let session = self.build_session(&folder, model, mode, id, history, meta, title, record).await?;
+        let coordinator = meta.get("role").and_then(Value::as_str) == Some("coordinator") && self.coordinator_ready();
+        let session = self
+            .build_session(&folder, model, mode, id, history, meta, title, record, coordinator)
+            .await?;
         self.admit(session)?;
         self.get(id).ok_or_else(|| fail(410, "that session has ended"))
     }
@@ -1096,7 +1156,7 @@ impl Runner {
         });
         metadata[wt::KEY] = wt::record_json(&record);
         let built = self
-            .build_session(&spec.folder, spec.model, spec.mode, &id, Vec::new(), metadata, title, Some(record.clone()))
+            .build_session(&spec.folder, spec.model, spec.mode, &id, Vec::new(), metadata, title, Some(record.clone()), false)
             .await;
         let session = match built {
             Ok(session) => session,
@@ -1123,6 +1183,15 @@ impl Runner {
         let caller = Caller { client: "campaign-driver".to_owned(), ip_hash: String::new() };
         let started = self.send(&live, |reply| Cmd::Start { input, caller, reply }).await?;
         Ok(started.get("turnId").and_then(Value::as_str).unwrap_or_default().to_owned())
+    }
+
+    /// A message into the turn in flight (a coordinator steering a task).
+    pub async fn steer_text(&self, id: &str, text: String) -> Result<(), Fail> {
+        if text.len() > MAX_LINE_BYTES {
+            return Err(fail(413, "message is too large"));
+        }
+        let live = self.require(id)?;
+        self.send(&live, |reply| Cmd::Steer { text, reply }).await.map(|_| ())
     }
 
     /// Abort the active turn, if any. Never an error.
@@ -1253,9 +1322,26 @@ fn check_input(input: &Value) -> Result<Value, Fail> {
 
 /// What a session's agent needs that `prepare_agent_session` does not give a
 /// remote session: its client-facing id, the ask registry, no MCP.
-fn configure(agent: &mut AgentSession, id: &str, asks: &crate::core::agent::interaction::AskRegistry) {
+fn configure(
+    agent: &mut AgentSession,
+    id: &str,
+    asks: &crate::core::agent::interaction::AskRegistry,
+    coordinator: bool,
+) {
     agent.args.session_id = Some(id.to_owned());
     agent.args.ask_requests = Some(asks.clone());
+    if coordinator {
+        // The campaign tools are host tools whose "host" is this process: the
+        // actor answers every request itself (`coordinator.rs`), so no client
+        // is ever asked, and the call is not a permission prompt.
+        match super::coordinator::declared_tools() {
+            Ok(set) => {
+                agent.args.host_tools = set;
+                agent.args.host_owns_gate = true;
+            }
+            Err(message) => log::warn!("coordinator tools were not declared: {message}"),
+        }
+    }
     // Built-in tools only (see `build_session`).
     if let Some(task) = agent.mcp_task.take() {
         task.abort();
@@ -1486,7 +1572,7 @@ async fn actor(
                                 ) {
                                     Err(message) => Err(fail(422, message)),
                                     Ok(mut agent) => {
-                                        configure(&mut agent, &session.id, &session.asks);
+                                        configure(&mut agent, &session.id, &session.asks, session.coordinator);
                                         session.agent = agent;
                                         let name = session.agent.model.clone();
                                         shared.with(|f| f.model = name.clone());
@@ -1609,6 +1695,44 @@ async fn actor(
                             StreamEvent::MessagesUpdated { messages } => {
                                 turn.updated_history = Some(messages.clone());
                                 // The whole history is not a client event.
+                                continue;
+                            }
+                            StreamEvent::ToolRequest { request_id, tool_name, args, run_id } => {
+                                // A campaign tool of a coordinator session: the
+                                // answer is made in this process and never
+                                // offered to a client. Anyone else's request
+                                // is refused the same way, so a turn is never
+                                // parked on a reply nobody can give.
+                                let registry = session.agent.args.host_tool_requests.clone();
+                                let backend = runner.coordinator_backend.get().cloned();
+                                let allowed = session.coordinator && run_id.is_none();
+                                let ctx = CoordinatorCall {
+                                    session_id: session.id.clone(),
+                                    source_root: session.folder.clone(),
+                                    model: Some(session.agent.model.clone()).filter(|m| !m.is_empty()),
+                                    read_only: session.mode.plan(),
+                                };
+                                let (rid, name, input) = (request_id.clone(), tool_name.clone(), args.clone());
+                                tokio::spawn(async move {
+                                    let outcome = match (allowed, backend) {
+                                        (false, _) => Err(
+                                            "campaign tools belong to the coordinator session only".to_owned(),
+                                        ),
+                                        (true, None) => Err("this server does not run campaigns".to_owned()),
+                                        (true, Some(backend)) => backend.call(ctx, &name, input).await,
+                                    };
+                                    let (content, is_error) = match outcome {
+                                        Ok(text) => (text, false),
+                                        Err(message) => (message, true),
+                                    };
+                                    let result = crate::core::agent::host_tools::HostToolResult {
+                                        content,
+                                        parts: None,
+                                        details: None,
+                                        is_error,
+                                    };
+                                    let _ = crate::core::agent::host_tools::respond(&registry, &rid, Ok(result)).await;
+                                });
                                 continue;
                             }
                             StreamEvent::PermissionRequest { request_id, tool_name, .. } => {

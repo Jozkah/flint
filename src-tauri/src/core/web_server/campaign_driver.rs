@@ -190,6 +190,11 @@ pub trait Host: Send + Sync + 'static {
     async fn integrate(&self, id: &str) -> Result<IntegrateReport, String>;
     async fn resolve_prepare(&self, id: &str, task: &str, session: &str) -> Result<ResolvePlan, String>;
     fn ping(&self, kind: &str, payload: Value);
+    /// A message into a live task session's running turn (a coordinator's
+    /// steer). A host without sessions of its own refuses.
+    async fn steer(&self, _session: &str, _text: String) -> Result<(), HostError> {
+        Err(HostError::new("this host cannot steer a session"))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1534,12 +1539,8 @@ fn repo_facts(folder: &Path) -> Result<RepoFacts, String> {
 /// Create a campaign for a goal: the plan comes from the server's model (or
 /// the caller's own), is validated, and is stored `planned`, waiting for a
 /// person's approval. Nothing runs and no worktree exists until then.
-pub async fn start_server<H: Host>(
-    host: &H,
-    folder: &Path,
-    goal: &str,
-    options: StartOptions,
-) -> Result<Campaign, Fail> {
+/// The goal of a campaign, trimmed and bounded.
+pub fn checked_goal(goal: &str) -> Result<&str, Fail> {
     let goal = goal.trim();
     if goal.is_empty() {
         return Err(fail(400, "goal is required"));
@@ -1547,6 +1548,12 @@ pub async fn start_server<H: Host>(
     if goal.chars().count() > MAX_GOAL_CHARS {
         return Err(fail(400, format!("goal is at most {MAX_GOAL_CHARS} characters")));
     }
+    Ok(goal)
+}
+
+/// The repository `folder` is in, which must be inside a root as a session's
+/// own folder is.
+async fn facts_in_roots<H: Host>(host: &H, folder: &Path) -> Result<RepoFacts, Fail> {
     let facts = {
         let folder = folder.to_path_buf();
         tokio::task::spawn_blocking(move || repo_facts(&folder))
@@ -1554,7 +1561,6 @@ pub async fn start_server<H: Host>(
             .map_err(|_| fail(500, "the repository could not be read"))?
             .map_err(|m| fail(422, m))?
     };
-    // The repository's top level must be inside a root, as a session's is.
     let top = Path::new(&facts.root).canonicalize().map_err(|_| fail(422, "the repository could not be resolved"))?;
     if !host.roots().iter().any(|r| top.starts_with(r)) {
         return Err(fail(
@@ -1562,6 +1568,97 @@ pub async fn start_server<H: Host>(
             "that folder's repository reaches outside the folders this server allows; start at the repository root",
         ));
     }
+    Ok(facts)
+}
+
+/// Whether a campaign can be made on `folder` (a repository inside a root).
+pub async fn check_repository<H: Host>(host: &H, folder: &Path) -> Result<(), Fail> {
+    facts_in_roots(host, folder).await.map(|_| ())
+}
+
+/// Store a plan as a `planned` server campaign. Nothing runs and no worktree
+/// exists until a person approves it.
+#[allow(clippy::too_many_arguments)]
+fn record_campaign<H: Host>(
+    host: &H,
+    facts: &RepoFacts,
+    title: &str,
+    tasks: Vec<PlanTask>,
+    model: Option<String>,
+    limits: campaign::CampaignLimits,
+    coordinator_session: &str,
+    note: &str,
+) -> Result<Campaign, Fail> {
+    let id = format!("c-{}", uuid::Uuid::new_v4().simple());
+    let short = &id[2..10];
+    let created = campaign::create(
+        &host.data(),
+        campaign::CreateInput {
+            id: Some(id.clone()),
+            title: title.chars().take(120).collect(),
+            coordinator_session: coordinator_session.to_string(),
+            source_root: facts.root.clone(),
+            base_branch: facts.branch.clone(),
+            base_sha: facts.sha.clone(),
+            integration_branch: String::new(),
+            integration_worktree: String::new(),
+            mode_ceiling: "ask".to_string(),
+            model: model.unwrap_or_default(),
+            limits: Some(limits),
+            tasks,
+            driver: Some(DRIVER_SERVER.to_string()),
+        },
+    )
+    .map_err(|e| fail(422, e.message))?;
+    let note = format!("{note}; branch {short}");
+    campaign::append_event(&host.data(), &created.id, "server-plan", None, &note);
+    host.ping(
+        "agent-approval-pending",
+        json!({ "campaignId": created.id, "kind": "plan", "title": created.title }),
+    );
+    Ok(created)
+}
+
+/// A plan a coordinator session made with `campaign_plan`: recorded against
+/// that session, with the server's default limits.
+pub async fn record_coordinator_plan<H: Host>(
+    host: &H,
+    folder: &Path,
+    title: &str,
+    tasks: Vec<PlanTask>,
+    model: Option<&str>,
+    token_budget: Option<u64>,
+    session: &str,
+) -> Result<Campaign, Fail> {
+    campaign::validate_plan(&tasks).map_err(|issues| fail(422, issues.join("; ")))?;
+    let facts = facts_in_roots(host, folder).await?;
+    let limits = campaign::CampaignLimits {
+        max_parallel: campaign::DEFAULT_MAX_PARALLEL
+            .min(host.config().max_sessions)
+            .clamp(1, campaign::MAX_PARALLEL_CAP),
+        token_budget,
+        ..Default::default()
+    };
+    record_campaign(
+        host,
+        &facts,
+        title,
+        tasks,
+        model.map(str::to_owned).filter(|m| !m.is_empty()),
+        limits,
+        session,
+        &format!("coordinator session {}", session.chars().take(8).collect::<String>()),
+    )
+}
+
+pub async fn start_server<H: Host>(
+    host: &H,
+    folder: &Path,
+    goal: &str,
+    options: StartOptions,
+) -> Result<Campaign, Fail> {
+    let goal = checked_goal(goal)?;
+    let facts = facts_in_roots(host, folder).await?;
     let model = Some(options.model.trim().to_string()).filter(|m| !m.is_empty());
     let (title, tasks, tokens) = match options.plan.clone() {
         Some(tasks) => {
@@ -1576,8 +1673,6 @@ pub async fn start_server<H: Host>(
         }
     };
     let title: String = if title.trim().is_empty() { goal.lines().next().unwrap_or(goal).to_string() } else { title };
-    let id = format!("c-{}", uuid::Uuid::new_v4().simple());
-    let short = &id[2..10];
     let limits = campaign::CampaignLimits {
         max_parallel: options.max_parallel.unwrap_or(campaign::DEFAULT_MAX_PARALLEL).clamp(1, campaign::MAX_PARALLEL_CAP),
         token_budget: options.token_budget.filter(|b| *b > 0),
@@ -1586,32 +1681,8 @@ pub async fn start_server<H: Host>(
         wall_clock_secs: options.wall_clock_secs.filter(|b| *b > 0),
         ..Default::default()
     };
-    let created = campaign::create(
-        &host.data(),
-        campaign::CreateInput {
-            id: Some(id.clone()),
-            title: title.chars().take(120).collect(),
-            coordinator_session: "server".to_string(),
-            source_root: facts.root.clone(),
-            base_branch: facts.branch.clone(),
-            base_sha: facts.sha.clone(),
-            integration_branch: String::new(),
-            integration_worktree: String::new(),
-            mode_ceiling: "ask".to_string(),
-            model: model.unwrap_or_default(),
-            limits: Some(limits),
-            tasks,
-            driver: Some(DRIVER_SERVER.to_string()),
-        },
-    )
-    .map_err(|e| fail(422, e.message))?;
-    let note = format!("goal: {}; branch {short}; planner tokens {tokens}", clip(goal, 300));
-    campaign::append_event(&host.data(), &created.id, "server-plan", None, &note);
-    host.ping(
-        "agent-approval-pending",
-        json!({ "campaignId": created.id, "kind": "plan", "title": created.title }),
-    );
-    Ok(created)
+    let note = format!("goal: {}; planner tokens {tokens}", clip(goal, 300));
+    record_campaign(host, &facts, &title, tasks, model, limits, "server", &note)
 }
 
 /// A person approved the plan: make the integration branch and worktree
@@ -1871,6 +1942,10 @@ impl Host for RunnerHost {
 
     fn ping(&self, kind: &str, payload: Value) {
         self.runner.ping(kind, &payload);
+    }
+
+    async fn steer(&self, session: &str, text: String) -> Result<(), HostError> {
+        Ok(self.runner.steer_text(session, text).await?)
     }
 }
 

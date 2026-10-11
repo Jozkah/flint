@@ -5,6 +5,7 @@ pub mod agent_runs;
 pub mod auth;
 pub mod campaign_driver;
 pub mod control;
+pub mod coordinator;
 pub mod data;
 pub mod engine;
 pub mod events;

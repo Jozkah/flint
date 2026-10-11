@@ -103,6 +103,25 @@ describe('campaigns over the server transport', () => {
     ])
   })
 
+  it('starts a coordinator conversation with the flag, and reads the commands list', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(okJson({ coordinator: { id: 's-1', folder: '/srv/app', model: 'm' }, campaign: null }))
+    vi.stubGlobal('fetch', fetch)
+    const out = await campaignApi.startServerCoordinator('add search', '/srv/app')
+    expect('coordinator' in out && out.coordinator.id).toBe('s-1')
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      goal: 'add search',
+      folder: '/srv/app',
+      options: {},
+      coordinator: true,
+    })
+    expect(
+      parseRunnerInfo({ agent: true, campaignCommands: ['agent_campaign_skip_task', 7] }).campaignCommands
+    ).toEqual(['agent_campaign_skip_task'])
+    expect(parseRunnerInfo({ agent: true }).campaignCommands).toEqual([])
+  })
+
   it('reads the capability and the driver field, tolerating an older server', () => {
     expect(parseRunnerInfo({ agent: true, runsCampaigns: true }).runsCampaigns).toBe(true)
     expect(parseRunnerInfo({ agent: true }).runsCampaigns).toBe(false)

@@ -21,7 +21,7 @@ import {
   type RunnerInfo,
   type ServerFolder,
 } from '@/lib/remoteRunner'
-import { startRemoteSession } from '@/lib/remoteCowork'
+import { openRemoteSession, startRemoteSession } from '@/lib/remoteCowork'
 import { campaignApi } from '@/lib/campaignApi'
 
 /**
@@ -44,6 +44,9 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
   // A campaign the server plans and runs itself (P3).
   const [goal, setGoal] = useState('')
   const [planning, setPlanning] = useState(false)
+  // Plan with a conversation (a coordinator session with the campaign tools)
+  // instead of the server's one-shot planner.
+  const [coordinator, setCoordinator] = useState(false)
 
   useEffect(() => {
     let live = true
@@ -80,6 +83,28 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
     if (!path || !goal.trim()) return
     setPlanning(true)
     try {
+      if (coordinator) {
+        const started = await campaignApi.startServerCoordinator(goal.trim(), path)
+        if ('coordinator' in started && started.coordinator) {
+          // The conversation is a server session: open it in Cowork. The plan
+          // appears under Campaigns once the coordinator has made it, and
+          // waits there for approval.
+          await openRemoteSession(started.coordinator.id)
+          void navigate({ to: route.cowork })
+          return
+        }
+        // The server fell back to its one-shot planner.
+        if ('id' in started) {
+          if (started.coordinatorError) {
+            toast.info(`Planned without a coordinator: ${started.coordinatorError}`)
+          }
+          void navigate({
+            to: route.campaignDetail,
+            params: { campaignId: started.id },
+          })
+        }
+        return
+      }
       const made = await campaignApi.startServer(goal.trim(), path)
       void navigate({
         to: route.campaignDetail,
@@ -170,6 +195,15 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
             onChange={(e) => setGoal(e.target.value)}
             data-testid="campaign-on-server-goal"
           />
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={coordinator}
+              onChange={(e) => setCoordinator(e.target.checked)}
+              data-testid="campaign-on-server-coordinator"
+            />
+            Plan in a conversation (a coordinator session you can talk to)
+          </label>
           <Button
             size="sm"
             variant="outline"

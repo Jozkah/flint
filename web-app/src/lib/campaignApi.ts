@@ -386,6 +386,26 @@ export const campaignApi = {
   /** What waits on a person across the server's campaigns. */
   approvals: () =>
     invoke<{ approvals: ServerApproval[] }>('agent_campaign_approvals'),
+  /**
+   * Start a coordinator conversation on the server instead of the one-shot
+   * planner: a session that has the campaign tools. The campaign exists once
+   * it calls `campaign_plan`, and still waits for `approve`. The server falls
+   * back to the planner (a `Campaign` comes back) when it cannot start one.
+   */
+  startServerCoordinator: (
+    goal: string,
+    folder: string,
+    options?: ServerCampaignOptions
+  ) =>
+    invoke<
+      | { coordinator: { id: string; folder: string; model: string }; campaign: null }
+      | (Campaign & { coordinatorError?: string })
+    >('agent_campaign_start_server', {
+      goal,
+      folder,
+      options: options ?? {},
+      coordinator: true,
+    }),
 }
 
 export type ServerCampaignOptions = {
