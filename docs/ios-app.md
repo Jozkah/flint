@@ -9,7 +9,7 @@ with a free Apple ID.
 
 - Flint on a computer (or the headless server) with **Remote access** turned on.
 - An iPhone that can reach that computer: same Wi-Fi, or a VPN such as Tailscale.
-- One of AltStore, SideStore or Sideloadly on your own computer or phone.
+- A way to install it: AltStore, SideStore or Sideloadly, or xtool on the command line.
 
 ## Install
 
