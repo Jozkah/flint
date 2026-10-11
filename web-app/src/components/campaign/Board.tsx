@@ -27,6 +27,8 @@ import {
   type ChangeTotals,
 } from '@/components/campaign/CampaignSummary'
 import { CampaignProposalPanel } from '@/components/campaign/ProposalPanel'
+import { ServerPlanApproval } from '@/components/campaign/ServerPlanApproval'
+import { useRemoteRunner } from '@/lib/remoteRunner'
 import { TaskRow, type TaskRowAction } from '@/components/campaign/TaskRow'
 import { TaskChanges } from '@/components/campaign/TaskChanges'
 import { useCampaign, useCampaignStore } from '@/hooks/useCampaigns'
@@ -42,7 +44,7 @@ import { hasWork } from '@/hooks/useCampaignTaskDiff'
 import { mergeTaskDiffs } from '@/lib/campaignDiff'
 import type { ToolActivityItem } from '@/lib/toolActivity'
 import type { BoardActions } from '@/lib/campaignBoardActions'
-import type { CampaignTask } from '@/lib/campaignModel'
+import { isServerDriven, type CampaignTask } from '@/lib/campaignModel'
 import {
   canCancel,
   changedFilesOf,
@@ -102,6 +104,7 @@ export function CampaignBoard({
   const { t } = useTranslation()
   const navigate = useNavigate()
   const campaign = useCampaign(campaignId)
+  const remote = useRemoteRunner()
   const loaded = useCampaignStore((s) => s.loaded)
   const loadError = useCampaignStore((s) => s.error)
   const sessions = useCoworkSessions((s) => s.sessions)
@@ -323,7 +326,9 @@ export function CampaignBoard({
     }
   })()
   const menuHasPause = status === 'running' && primary !== 'pause'
-  const menuHasCoordinator = primary !== 'coordinator'
+  // A server-driven campaign has no coordinator session to open.
+  const serverDriven = isServerDriven(campaign)
+  const menuHasCoordinator = primary !== 'coordinator' && !serverDriven
   const menuHasCancel = canCancel(status)
   const changesTask = panel?.kind === 'diff' ? panel.task : null
 
@@ -349,15 +354,17 @@ export function CampaignBoard({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant={primaryButton.variant}
-              size="sm"
-              disabled={busy}
-              data-testid="campaign-primary"
-              onClick={primaryButton.run}
-            >
-              {primaryButton.label}
-            </Button>
+            {!(serverDriven && primary === 'coordinator') && (
+              <Button
+                variant={primaryButton.variant}
+                size="sm"
+                disabled={busy}
+                data-testid="campaign-primary"
+                onClick={primaryButton.run}
+              >
+                {primaryButton.label}
+              </Button>
+            )}
             {(menuHasPause || menuHasCoordinator || menuHasCancel) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -421,6 +428,13 @@ export function CampaignBoard({
           </div>
         )}
       </header>
+
+      {serverDriven && campaign.status === 'planned' && (
+        <ServerPlanApproval
+          campaign={campaign}
+          allowBypass={remote.state === 'ready' && remote.info.allowBypass}
+        />
+      )}
 
       {resumed && resumed.length > 0 ? (
         <div

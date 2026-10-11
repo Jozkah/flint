@@ -183,7 +183,17 @@ export type Campaign = {
   proposalId?: string | null
   /** A rough cost range of the plan, set when it is recorded or edited. */
   estimate?: CostEstimate | null
+  /**
+   * Who runs it: the desktop app's scheduler (`renderer`, also what a record
+   * without the field means) or a `flint serve --agent-run` server (`server`).
+   * The renderer's campaign host leaves a server campaign alone.
+   */
+  driver?: 'renderer' | 'server'
 }
+
+/** A campaign the server's driver runs; this app only shows and steers it. */
+export const isServerDriven = (c: Pick<Campaign, 'driver'>): boolean =>
+  c.driver === 'server'
 
 /** The tasks of a plan can be edited only before it is approved. */
 export const isPlanEditable = (c: Pick<Campaign, 'status'>): boolean =>

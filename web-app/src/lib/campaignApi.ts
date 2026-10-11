@@ -273,6 +273,48 @@ export const campaignApi = {
   /** True the first time per key; recorded in the event log. */
   claimNotice: (id: string, key: string) =>
     invoke<boolean>('agent_campaign_claim_notice', { id, key }),
+  // -- A server-driven campaign (`flint serve --agent-run`, P3) -------------
+  /**
+   * Plan a campaign on the server for a goal: the server's model proposes the
+   * tasks (or `options.plan` is used as given) and the campaign is stored
+   * `planned`, waiting for `approve`. Nothing runs before that.
+   */
+  startServer: (goal: string, folder: string, options?: ServerCampaignOptions) =>
+    invoke<Campaign>('agent_campaign_start_server', {
+      goal,
+      folder,
+      options: options ?? {},
+    }),
+  /**
+   * Approve a planned server campaign. `worktree` lets tasks work unattended
+   * inside their own folder (needs the operator's `--agent-allow-bypass`);
+   * `ask` makes every action ask.
+   */
+  approve: (id: string, access: 'worktree' | 'ask') =>
+    invoke<Campaign>('agent_campaign_approve', { id, access }),
+  /** What waits on a person across the server's campaigns. */
+  approvals: () =>
+    invoke<{ approvals: ServerApproval[] }>('agent_campaign_approvals'),
+}
+
+export type ServerCampaignOptions = {
+  model?: string
+  title?: string
+  maxParallel?: number
+  tokenBudget?: number
+  taskTokens?: number
+  taskSteps?: number
+  wallClockSecs?: number
+  /** A plan to use instead of asking the model. */
+  plan?: PlanTask[]
+}
+
+export type ServerApproval = {
+  campaignId: string
+  kind: 'plan' | 'finalize' | 'task'
+  title?: string
+  taskId?: string
+  sessionId?: string | null
 }
 
 export type CampaignApi = typeof campaignApi

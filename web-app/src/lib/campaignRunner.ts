@@ -30,6 +30,7 @@ import {
 } from '@/lib/campaignApi'
 import {
   isLiveTask,
+  isServerDriven,
   nextActions,
   taskModeFor,
   type Campaign,
@@ -430,6 +431,8 @@ export function createCampaignRunner(
     const result: RunnerResult = { started: [], blocked: [] }
     let c = await api.get(id)
     if (c.status !== 'running') return result
+    // The server's driver runs this one; this app only shows it.
+    if (isServerDriven(c)) return result
     const live = host.liveSessions()
     const liveTasks = c.tasks
       .filter((t) => t.sessionId && live.has(t.sessionId))
@@ -821,6 +824,7 @@ export function createCampaignRunner(
     verifying.add(key)
     try {
       const c = await api.get(id)
+      if (isServerDriven(c)) return { skipped: 'the server verifies this campaign' }
       const task = c.tasks.find((t) => t.id === taskId)
       if (!task) return { skipped: 'no such task' }
       if (task.status !== 'completed') {
@@ -952,6 +956,7 @@ export function createCampaignRunner(
   const sweep = (id: string): Promise<void> =>
     serialize(id, async () => {
       const c = await api.get(id)
+      if (isServerDriven(c)) return
       if (c.status !== 'running') {
         await announce(c).catch(() => undefined)
         return
@@ -1035,6 +1040,7 @@ export function createCampaignRunner(
   const resume = (id: string): Promise<RunnerResult> =>
     serialize(id, async () => {
       const c = await api.get(id)
+      if (isServerDriven(c)) return { started: [], blocked: [] }
       if (c.status === 'interrupted') {
         await api.transition(id, { campaign: 'running' })
       } else if (c.status !== 'running') {

@@ -373,6 +373,8 @@ export function startCampaignRunner(): () => void {
         ) {
           continue
         }
+        // A server-driven campaign is the server's to run and resume.
+        if (c.driver === 'server') continue
         trackCampaign(c.id)
         if (c.status === 'merging') {
           // Its proposal may have been applied or rejected while we were away.

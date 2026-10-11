@@ -23,6 +23,8 @@ export type RunnerInfo = {
   runsChecks: boolean
   /** Sessions that may write get an isolated checkout the server owns (P2). */
   runsWorktrees: boolean
+  /** Campaigns can be run by the server itself, with no client attached (P3). */
+  runsCampaigns: boolean
   runRequested: boolean
   runnerPlanned: boolean
   sandbox: string
@@ -97,6 +99,7 @@ export function parseRunnerInfo(raw: unknown): RunnerInfo {
     runsSessions: v.runsSessions === true,
     runsChecks: v.runsChecks === true,
     runsWorktrees: v.runsWorktrees === true,
+    runsCampaigns: v.runsCampaigns === true,
     runRequested: v.runRequested === true,
     runnerPlanned: v.runnerPlanned === true,
     sandbox: typeof v.sandbox === 'string' ? v.sandbox : 'unknown',

@@ -15,6 +15,7 @@ import {
   type ServerFolder,
 } from '@/lib/remoteRunner'
 import { startRemoteSession } from '@/lib/remoteCowork'
+import { campaignApi } from '@/lib/campaignApi'
 
 /**
  * The smallest way to start a session on the server: pick one of its folders
@@ -33,6 +34,9 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
   // that can write; "off" is the explicit opt-out).
   const [isGit, setIsGit] = useState(false)
   const [isolate, setIsolate] = useState(true)
+  // A campaign the server plans and runs itself (P3).
+  const [goal, setGoal] = useState('')
+  const [planning, setPlanning] = useState(false)
 
   useEffect(() => {
     let live = true
@@ -62,6 +66,22 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
       toast.error(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const planCampaign = async () => {
+    if (!path || !goal.trim()) return
+    setPlanning(true)
+    try {
+      const made = await campaignApi.startServer(goal.trim(), path)
+      void navigate({
+        to: route.campaignDetail,
+        params: { campaignId: made.id },
+      })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    } finally {
+      setPlanning(false)
     }
   }
 
@@ -126,6 +146,33 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
           />
           Work in its own checkout (changes reach the folder only when you apply or merge them)
         </label>
+      )}
+      {info.runsCampaigns && isGit && (
+        <div className="space-y-2 border-t pt-3" data-testid="campaign-on-server">
+          <p className="text-xs text-muted-foreground">
+            New campaign on server: the server plans the work with its model,
+            you approve the plan, and it then runs the tasks with no client
+            attached.
+          </p>
+          <textarea
+            aria-label="Campaign goal"
+            className="w-full rounded border bg-transparent px-2 py-1 text-xs"
+            rows={3}
+            placeholder="Describe the big task"
+            value={goal}
+            onChange={(e) => setGoal(e.target.value)}
+            data-testid="campaign-on-server-goal"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!path || !goal.trim() || planning}
+            onClick={() => void planCampaign()}
+            data-testid="campaign-on-server-plan"
+          >
+            {planning ? 'Planning...' : 'Plan campaign on server'}
+          </Button>
+        </div>
       )}
     </div>
   )

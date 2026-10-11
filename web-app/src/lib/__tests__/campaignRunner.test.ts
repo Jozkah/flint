@@ -1042,3 +1042,24 @@ describe('campaign runner: desktop notifications', () => {
     expect(shown).toHaveLength(1)
   })
 })
+
+describe('campaign runner: a campaign the server drives', () => {
+  it('is left alone: nothing starts, sweeps, resumes or verifies here', async () => {
+    const f = fixture([task('a'), task('b', 'running', [], { sessionId: 'x' })], {
+      driver: 'server',
+    })
+    expect((await f.runner.kick('c1')).started).toEqual([])
+    await f.runner.sweep('c1')
+    expect((await f.runner.resume('c1')).started).toEqual([])
+    const verified = await f.runner.verifyTask('c1', 'b')
+    expect(verified).toEqual({ skipped: expect.stringContaining('server') })
+    expect(f.sessions.size).toBe(0)
+    expect(f.api.transition).not.toHaveBeenCalled()
+    expect(f.api.settle).not.toHaveBeenCalled()
+  })
+
+  it('still drives a record with no driver field, as before', async () => {
+    const f = fixture([task('a')])
+    expect((await f.runner.kick('c1')).started).toEqual(['a'])
+  })
+})
