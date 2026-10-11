@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { TRANSCRIPT_VIEWS } from '@/lib/transcriptView'
 import { toast } from 'sonner'
+import { switchTheme } from '@/lib/themeTransition'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.interface as any)({
@@ -70,7 +71,9 @@ function ThemeSegmented() {
             aria-pressed={pressed}
             data-state={pressed ? 'on' : 'off'}
             data-testid={`theme-option-${value}`}
-            onClick={() => setTheme(value)}
+            onClick={(e) => {
+              if (!pressed) switchTheme(e.currentTarget, value, setTheme)
+            }}
             className={cn(
               'relative z-10 inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border-[0.8px] px-2 text-xs font-medium transition-[color,background-color,border-color,transform] duration-200 ease-expo outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.97] pointer-coarse:h-11',
               pressed
