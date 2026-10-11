@@ -1919,6 +1919,45 @@ fn anchored(path: &Path) -> PathBuf {
     }
 }
 
+/// Run the pieces of a read-only command in order and join what they say.
+/// Shell steps run in the sandbox as the same `bash` call; git steps run by
+/// the host's git, confined to the folders the run may use.
+fn run_split_read_only<'a>(
+    args: &'a serde_json::Value,
+    ctx: &'a ToolContext<'_>,
+    pieces: Vec<super::nul_programs::Piece>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>> {
+    Box::pin(async move {
+        use super::nul_programs::Piece;
+        let roots = crate::tools::git_tool::Roots::from_ctx(ctx);
+        let mut out: Vec<String> = Vec::new();
+        for piece in pieces {
+            let text = match piece {
+                Piece::Shell(step) => {
+                    let mut a = args.clone();
+                    if let Some(obj) = a.as_object_mut() {
+                        obj.insert("command".into(), serde_json::Value::String(step));
+                    }
+                    bash(&a, ctx).await
+                }
+                Piece::Git(argv) => {
+                    let plan = match crate::tools::git_tool::plan("git", &argv) {
+                        Ok(p) => p,
+                        Err(e) => return format!("ERROR: git: {e}"),
+                    };
+                    let cwd = match crate::tools::git_tool::resolve_cwd(None, &plan, &roots) {
+                        Ok(c) => c,
+                        Err(e) => return format!("ERROR: git: {e}"),
+                    };
+                    crate::tools::git_tool::execute(&plan, &cwd).await
+                }
+            };
+            out.push(text);
+        }
+        out.join("\n")
+    })
+}
+
 async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let owner = ctx.job_owner;
     let Some(command) = arg_str(args, "command").filter(|command| !command.trim().is_empty())
@@ -2098,6 +2137,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             if let Some(program) =
                 super::nul_programs::opens_null_device(command, ctx.nul_programs)
             {
+                // Pure reading (`git status`, `git log`) needs no outside run:
+                // the git steps go to the host's git, the rest stays here.
+                if let Some(pieces) =
+                    super::nul_programs::split_for_host_git(command, ctx.nul_programs)
+                {
+                    return run_split_read_only(args, ctx, pieces).await;
+                }
                 return super::nul_programs::not_run_refusal(&program);
             }
         }
