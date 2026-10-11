@@ -161,16 +161,12 @@ test('the build jobs hold a read-only token; only the release jobs may write', (
   const writers = jobs
     .filter((job) => /\n    permissions:\n      contents: write/.test(job))
     .map((job) => job.split(':')[0].trim())
-  assert.deepEqual(writers.sort(), ['prepare', 'prune-nightly', 'publish-nightly', 'upload-release'])
+  assert.deepEqual(writers.sort(), ['prepare', 'publish-nightly', 'upload-release'])
   const build = jobs.find((job) => job.trim().startsWith('build:'))
   assert.doesNotMatch(build, /gh release upload/)
   assert.match(workflow, /upload-release:[\s\S]*gh release upload/)
 })
 
-test('old nightly prereleases are pruned, keeping the newest three', () => {
-  const prune = workflow.split('\n  prune-nightly:')[1].split('\n  publish-nightly:')[0]
-  assert.match(prune, /if: github.event_name == 'schedule'/)
-  assert.match(prune, /\.\[3:\]/)
-  assert.match(prune, /14 days ago/)
-  assert.match(prune, /--cleanup-tag/)
+test('published nightly prereleases are never pruned', () => {
+  assert.doesNotMatch(workflow, /prune-nightly|--cleanup-tag/)
 })

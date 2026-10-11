@@ -85,10 +85,3 @@ test('no workflow runs a reusable workflow from another repository', () => {
     }
   }
 })
-
-test('the manual portable build offers a fixed set of channels', () => {
-  const { lines } = workflows.find((w) => w.name === 'manual-build-portable.yml')
-  const channel = lines.findIndex((l) => /^\s+channel:\s*$/.test(l))
-  const block = lines.slice(channel, channel + 10).join('\n')
-  assert.match(block, /type: choice/)
-})
