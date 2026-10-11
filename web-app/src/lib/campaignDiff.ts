@@ -87,3 +87,36 @@ export function splitPath(path: string): { dir: string; name: string } {
     ? { dir: '', name: path }
     : { dir: path.slice(0, at + 1), name: path.slice(at + 1) }
 }
+
+/**
+ * Several tasks' diffs as the campaign's one: a file two tasks touched is
+ * listed once (the later task's patch, the lines of both counted), and the
+ * totals are over that list.
+ */
+export function mergeTaskDiffs(diffs: readonly TaskDiff[]): TaskDiff {
+  const byPath = new Map<string, TaskDiffFile>()
+  for (const d of diffs) {
+    for (const f of d.files) {
+      const before = byPath.get(f.path)
+      byPath.set(
+        f.path,
+        before
+          ? {
+              ...f,
+              added: before.added + f.added,
+              removed: before.removed + f.removed,
+              truncated: before.truncated || f.truncated,
+            }
+          : f
+      )
+    }
+  }
+  const files = [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path))
+  return {
+    files,
+    added: files.reduce((n, f) => n + f.added, 0),
+    removed: files.reduce((n, f) => n + f.removed, 0),
+    truncated: diffs.some((d) => d.truncated),
+    uncommitted: diffs.some((d) => d.uncommitted),
+  }
+}

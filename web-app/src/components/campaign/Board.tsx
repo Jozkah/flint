@@ -6,6 +6,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +39,7 @@ import { noteKey, useCampaignNotes } from '@/lib/campaignNotes'
 import { campaignApi, type TaskDiff } from '@/lib/campaignApi'
 import { effortPercent, type CampaignEvent } from '@/lib/campaignStory'
 import { hasWork } from '@/hooks/useCampaignTaskDiff'
+import { mergeTaskDiffs } from '@/lib/campaignDiff'
 import type { ToolActivityItem } from '@/lib/toolActivity'
 import type { BoardActions } from '@/lib/campaignBoardActions'
 import type { CampaignTask } from '@/lib/campaignModel'
@@ -62,6 +64,7 @@ type Panel =
   | { kind: 'note'; task: CampaignTask }
   | { kind: 'handoff'; task: CampaignTask; text: string }
   | { kind: 'diff'; task: CampaignTask }
+  | { kind: 'changes' }
   | { kind: 'review'; command: string | null }
   | { kind: 'cancel' }
   | null
@@ -77,6 +80,7 @@ export function CampaignBoard({
   campaignId,
   actions: injected,
   loadDiff,
+  loadCampaignDiff,
   loadSummary,
   loadEvents,
   loadActivity,
@@ -86,6 +90,8 @@ export function CampaignBoard({
   actions?: BoardActions
   /** What a task changed, with patches (the changes panel). */
   loadDiff?: (id: string, taskId: string) => Promise<TaskDiff>
+  /** What the whole campaign changed, with patches (the review panel). */
+  loadCampaignDiff?: (id: string) => Promise<TaskDiff>
   /** What a task changed, counts only (a row's summary). */
   loadSummary?: (id: string, taskId: string) => Promise<TaskDiff>
   /** The campaign's event log (when each task ran). */
@@ -97,6 +103,7 @@ export function CampaignBoard({
   const navigate = useNavigate()
   const campaign = useCampaign(campaignId)
   const loaded = useCampaignStore((s) => s.loaded)
+  const loadError = useCampaignStore((s) => s.error)
   const sessions = useCoworkSessions((s) => s.sessions)
   const activity = useFileActivity((s) => s.byConversation)
   const resumed = useCampaignResumed((s) => s.byCampaign[campaignId])
@@ -168,7 +175,6 @@ export function CampaignBoard({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign?.id, over, updatedAt])
-  const [reviewAll, setReviewAll] = useState(false)
   const updatedOf = (sid?: string | null) =>
     sid ? sessions.find((s) => s.id === sid)?.updated : undefined
 
@@ -195,11 +201,42 @@ export function CampaignBoard({
   }
 
   if (!campaign) {
+    if (!loaded) {
+      return (
+        <div
+          role="status"
+          aria-busy="true"
+          aria-label={t('settings:campaigns.board.loading')}
+          data-testid="campaign-loading"
+          className="flex flex-col gap-4 p-6"
+        >
+          <Skeleton className="h-6 w-1/3" />
+          <Skeleton className="h-2 w-full" />
+          <Skeleton className="h-20 w-full rounded-xl" />
+          <Skeleton className="h-20 w-full rounded-xl" />
+        </div>
+      )
+    }
     return (
-      <div className="p-6 text-sm text-muted-foreground">
-        {loaded
-          ? t('settings:campaigns.board.notFound')
-          : t('settings:campaigns.board.loading')}
+      <div
+        role={loadError ? 'alert' : undefined}
+        className="flex flex-col items-start gap-2 p-6 text-sm text-muted-foreground"
+      >
+        <p>
+          {loadError
+            ? t('settings:campaigns.list.loadFailed')
+            : t('settings:campaigns.board.notFound')}
+        </p>
+        {loadError && (
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="campaign-retry"
+            onClick={() => void useCampaignStore.getState().refresh()}
+          >
+            {t('settings:campaigns.list.retry')}
+          </Button>
+        )}
       </div>
     )
   }
@@ -238,6 +275,9 @@ export function CampaignBoard({
         return
       case 'verify':
         void run(() => actions.verifyAgain(campaign.id, task.id))
+        return
+      case 'resolve':
+        void run(() => actions.resolveConflict(campaign.id, task.id))
         return
       case 'accept':
         void run(() =>
@@ -415,9 +455,7 @@ export function CampaignBoard({
               size="sm"
               disabled={busy}
               data-testid="campaign-wrapup-review"
-              onClick={() =>
-                primary === 'review' ? primaryButton.run() : setReviewAll(true)
-              }
+              onClick={() => setPanel({ kind: 'changes' })}
             >
               {t('settings:campaigns.board.action.reviewChanges')}
             </Button>
@@ -461,7 +499,6 @@ export function CampaignBoard({
                   busy={busy}
                   note={notes[noteKey(campaign.id, task.id)]?.state}
                   events={events}
-                  defaultOpen={reviewAll}
                   onAction={onAction}
                   loadSummary={loadSummary}
                   loadActivity={loadActivity}
@@ -562,6 +599,46 @@ export function CampaignBoard({
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={panel?.kind === 'changes'}
+        onOpenChange={(o) => !o && setPanel(null)}
+      >
+        <DialogContent className="max-w-3xl" data-testid="campaign-changes-panel">
+          <DialogHeader>
+            <DialogTitle>
+              {t('settings:campaigns.board.changes.title')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('settings:campaigns.board.changes.body')}
+            </DialogDescription>
+          </DialogHeader>
+          {panel?.kind === 'changes' && (
+            <CampaignChangesBody
+              campaignId={campaign.id}
+              tasks={campaign.tasks}
+              activity={activity}
+              loadDiff={loadDiff}
+              loadWhole={loadCampaignDiff}
+            />
+          )}
+          {primary === 'review' && (
+            <DialogFooter>
+              <Button
+                size="sm"
+                disabled={busy}
+                data-testid="campaign-changes-continue"
+                onClick={() => {
+                  setPanel(null)
+                  primaryButton.run()
+                }}
+              >
+                {t('settings:campaigns.board.changes.continue')}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={panel?.kind === 'review'} onOpenChange={(o) => !o && setPanel(null)}>
         <DialogContent>
           <DialogHeader>
@@ -640,5 +717,57 @@ function ChangesBody({
       ),
     [loadDiff, campaignId, taskId]
   )
+  return <TaskChanges load={load} recordedFiles={recorded} />
+}
+
+/**
+ * Everything the campaign changed, in one list: each finished task's diff
+ * merged by file, shown with the same totals and expandable diffs as a single
+ * task's changes. The apply itself stays in the proposal panel.
+ */
+function CampaignChangesBody({
+  campaignId,
+  tasks,
+  activity,
+  loadDiff,
+  loadWhole,
+}: {
+  campaignId: string
+  tasks: readonly CampaignTask[]
+  /** The whole campaign's diff (the integration branch against the base). */
+  loadWhole?: (id: string) => Promise<TaskDiff>
+  activity: Record<string, Parameters<typeof changedFilesOf>[0]>
+  loadDiff?: (id: string, taskId: string) => Promise<TaskDiff>
+}) {
+  const included = tasks.filter(
+    (x) => hasWork(x) && ['merged', 'verified', 'completed'].includes(x.status)
+  )
+  const key = included.map((x) => x.id).join(',')
+  const recorded = [
+    ...new Set(
+      included.flatMap((x) => changedFilesOf(activity[x.sessionId ?? '']))
+    ),
+  ]
+  const load = useCallback(async () => {
+    // The integration branch's own diff is the truth; a task by task merge
+    // is the fallback when it cannot be asked.
+    try {
+      return await (loadWhole ?? ((id: string) => campaignApi.campaignDiff(id, true)))(
+        campaignId
+      )
+    } catch {
+      /* fall through to the per-task diffs */
+    }
+    const read =
+      loadDiff ?? ((id: string, tid: string) => campaignApi.taskDiff(id, tid, true))
+    const rows = await Promise.all(
+      included.map((x) => read(campaignId, x.id).catch(() => null))
+    )
+    const known = rows.filter((d): d is TaskDiff => d !== null)
+    if (known.length === 0 && included.length > 0) throw new Error('no diff')
+    return mergeTaskDiffs(known)
+    // `key` stands for the included task ids.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignId, key, loadDiff, loadWhole])
   return <TaskChanges load={load} recordedFiles={recorded} />
 }

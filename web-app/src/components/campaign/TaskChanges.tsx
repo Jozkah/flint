@@ -150,7 +150,7 @@ function FileRow({ file, counted }: { file: TaskDiffFile; counted: boolean }) {
           <ChevronRight
             aria-hidden
             className={cn(
-              'size-3.5 shrink-0 text-muted-foreground transition-transform',
+              'size-3.5 shrink-0 text-muted-foreground motion-safe:transition-transform',
               open && 'rotate-90'
             )}
           />

@@ -32,6 +32,9 @@ import {
   type StepGroup,
 } from '@/lib/campaignStory'
 import {
+  conflictFilesOf,
+  isResolving,
+  taskCheckOf,
   dotOf,
   groupOf,
   recoveryOf,
@@ -52,6 +55,7 @@ export type TaskRowAction =
   | 'diff'
   | 'verify'
   | 'accept'
+  | 'resolve'
 
 const MAX_GROUPS_SHOWN = 12
 
@@ -151,6 +155,9 @@ export function TaskRow({
     .map((id) => all.find((x) => x.id === id)?.title)
     .filter((x): x is string => !!x)
   const can = taskActionsOf(task)
+  const conflictFiles = conflictFilesOf(task)
+  const resolving = isResolving(task)
+  const check = taskCheckOf(task)
   const { word, waitingFor } = wordOf(task, all)
   const summary = useTaskDiffSummary(campaignId, task, loadSummary)
   const steps = useCampaignTaskSteps(task, loadActivity)
@@ -276,6 +283,29 @@ export function TaskRow({
       <p className="text-xs text-foreground">
         {t(`settings:campaigns.board.story.next.${next}`)}
       </p>
+      {next === 'conflict' && (
+        <div
+          data-testid={`campaign-conflict-${task.id}`}
+          className="flex flex-col gap-1.5"
+        >
+          <p className="text-xs text-muted-foreground">
+            {t('settings:campaigns.board.conflict.explain')}
+          </p>
+          {conflictFiles.length > 0 && (
+            <ul
+              aria-label={t('settings:campaigns.board.conflict.files')}
+              className="flex max-h-28 flex-col gap-0.5 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px]"
+              data-testid={`campaign-conflict-files-${task.id}`}
+            >
+              {conflictFiles.map((f) => (
+                <li key={f} className="break-all">
+                  {f}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {blockedTitles.length > 0 && (
         <p
           className="text-xs text-muted-foreground"
@@ -338,6 +368,16 @@ export function TaskRow({
         </div>
       )}
       <div className="flex flex-wrap items-center gap-1">
+        {can.resolve && next === 'conflict' && (
+          <Button
+            size="sm"
+            disabled={busy}
+            data-testid={`campaign-resolve-${task.id}`}
+            onClick={() => onAction('resolve', task)}
+          >
+            {t('settings:campaigns.board.conflict.resolve')}
+          </Button>
+        )}
         {can.verify && recovery && (
           <Button
             size="sm"
@@ -374,9 +414,12 @@ export function TaskRow({
             variant="ghost"
             size="sm"
             disabled={busy}
+            data-testid={`campaign-skip-${task.id}`}
             onClick={() => onAction('skip', task)}
           >
-            {t('settings:campaigns.board.action.skip')}
+            {next === 'conflict'
+              ? t('settings:campaigns.board.conflict.skip')
+              : t('settings:campaigns.board.action.skip')}
           </Button>
         )}
         {can.open && (
@@ -473,6 +516,23 @@ export function TaskRow({
             {t(`settings:campaigns.board.noteState.${note}`)}
           </p>
         ) : null}
+        {resolving ? (
+          <p
+            role="status"
+            data-testid={`campaign-resolving-${task.id}`}
+            className="flex items-center gap-2 pl-8 text-xs text-muted-foreground"
+          >
+            <Loader2
+              aria-hidden
+              className="size-3.5 motion-safe:animate-spin"
+            />
+            {conflictFiles.length > 0
+              ? t('settings:campaigns.board.conflict.resolvingFiles', {
+                  count: conflictFiles.length,
+                })
+              : t('settings:campaigns.board.conflict.resolving')}
+          </p>
+        ) : null}
         <div className="pl-8">{stuckBox}</div>
         <div className="flex flex-wrap items-center gap-1 pl-6">
           {!stuck && can.open && (
@@ -496,7 +556,7 @@ export function TaskRow({
             >
               <ChevronRight
                 aria-hidden
-                className={cn('size-3.5 transition-transform', story && 'rotate-90')}
+                className={cn('size-3.5 motion-safe:transition-transform', story && 'rotate-90')}
               />
               {t('settings:campaigns.board.story.toggle')}
             </Button>
@@ -510,7 +570,7 @@ export function TaskRow({
           >
             <ChevronRight
               aria-hidden
-              className={cn('size-3.5 transition-transform', open && 'rotate-90')}
+              className={cn('size-3.5 motion-safe:transition-transform', open && 'rotate-90')}
             />
             {t('settings:campaigns.board.row.details')}
           </Button>
@@ -598,6 +658,33 @@ export function TaskRow({
               {t('settings:campaigns.board.row.tokens')}
             </dt>
             <dd className="tabular-nums">{task.tokensUsed.toLocaleString()}</dd>
+            {task.verdict ? (
+              <>
+                <dt className="text-muted-foreground">
+                  {t('settings:campaigns.board.verify.verdict')}
+                </dt>
+                <dd data-testid={`campaign-verdict-${task.id}`}>
+                  {t(`settings:campaigns.board.verify.verdicts.${task.verdict}`)}
+                  {check && check.passed !== null
+                    ? ` · ${
+                        check.passed
+                          ? t('settings:campaigns.board.verify.testsPassed')
+                          : t('settings:campaigns.board.verify.testsFailed')
+                      }`
+                    : ''}
+                </dd>
+              </>
+            ) : null}
+            {check && check.tokens !== null ? (
+              <>
+                <dt className="text-muted-foreground">
+                  {t('settings:campaigns.board.verify.tokens')}
+                </dt>
+                <dd className="tabular-nums" data-testid={`campaign-verify-tokens-${task.id}`}>
+                  {check.tokens.toLocaleString()}
+                </dd>
+              </>
+            ) : null}
             {lastActivity ? (
               <>
                 <dt className="text-muted-foreground">
@@ -607,6 +694,16 @@ export function TaskRow({
               </>
             ) : null}
           </dl>
+          {check && check.passed === false && check.tail ? (
+            <pre
+              data-testid={`campaign-check-tail-${task.id}`}
+              className="max-h-32 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap"
+            >
+              {t('settings:campaigns.board.verify.testsFailedTail', {
+                tail: check.tail,
+              })}
+            </pre>
+          ) : null}
           {task.detail && !failed && !stuck ? (
             <p className="text-muted-foreground">{task.detail}</p>
           ) : null}

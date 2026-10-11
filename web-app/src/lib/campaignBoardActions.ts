@@ -21,6 +21,11 @@ export type BoardDeps = {
   runner: {
     kick: (id: string) => Promise<unknown>
     cancel: (id: string, detail?: string) => Promise<Campaign>
+    /** Start the conflict resolver for the named conflicted tasks. */
+    resolve?: (
+      id: string,
+      taskIds?: string[]
+    ) => Promise<{ taskId: string; started: boolean; reason?: string }[]>
     integrate: (id: string) => Promise<{ campaign: Campaign }>
     /** Ask the verifier again about a finished task. */
     verifyTask: (
@@ -173,6 +178,25 @@ export function createBoardActions(deps: BoardDeps) {
     return { ok: true }
   }
 
+  /**
+   * "Try to resolve automatically": starts the conflict resolver for a task in
+   * conflict. The backend moves it conflict -> resolving -> merged (or back to
+   * conflict with the files it could not settle); the board shows the states.
+   */
+  const resolveConflict = async (id: string, taskId: string): Promise<ActionResult> => {
+    const { task } = await taskOf(id, taskId)
+    if (!task) return fail(`no task ${taskId}`)
+    if (!taskActionsOf(task).resolve) {
+      return fail(`task ${taskId} is ${task.status}, not in conflict`)
+    }
+    if (!deps.runner.resolve) return fail('the resolver is not available here')
+    const [out] = await deps.runner.resolve(id, [taskId])
+    if (out && !out.started) {
+      return fail(out.reason ?? 'the resolver could not start')
+    }
+    return { ok: true }
+  }
+
   const handoff = async (id: string, taskId: string): Promise<string> => {
     const ctx = await deps.api.context(id, [taskId])
     return ctx.handoffs.find((h) => h.taskId === taskId)?.text ?? ''
@@ -220,6 +244,7 @@ export function createBoardActions(deps: BoardDeps) {
     retryTask,
     verifyAgain,
     acceptAnyway,
+    resolveConflict,
     handoff,
     pause,
     resume,

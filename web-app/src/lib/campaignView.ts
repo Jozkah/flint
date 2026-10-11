@@ -42,6 +42,109 @@ export function isWaitingOnDeps(
   )
 }
 
+/** The automatic conflict resolver is working on the task. */
+export function isResolving(task: { status: string }): boolean {
+  return task.status === 'resolving'
+}
+
+/**
+ * The files a task is in conflict on: the backend's list when the record
+ * carries one (`conflictFiles`), otherwise the paths named in the detail text.
+ */
+export function conflictFilesOf(task: {
+  detail?: string
+  conflictFiles?: unknown
+  resolver?: { files?: unknown } | null
+}): string[] {
+  const listed = task.conflictFiles ?? task.resolver?.files
+  if (Array.isArray(listed)) {
+    return listed.filter((f): f is string => typeof f === 'string' && f !== '')
+  }
+  const detail = task.detail ?? ''
+  const at = detail.indexOf(':')
+  if (!/conflict/i.test(detail) || at < 0) return []
+  return [
+    ...new Set(
+      detail
+        .slice(at + 1)
+        .split(/[\n,;]+/)
+        .map((x) => x.trim().replace(/^[-*]\s*/, ''))
+        .filter((x) => x !== '' && !/\s/.test(x) && /[./]/.test(x))
+    ),
+  ]
+}
+
+/** The objective check (tests) a task's verification ran, when recorded. */
+export type TaskCheck = {
+  passed: boolean | null
+  /** The last lines of the output, for a failed check. */
+  tail: string
+  /** Tokens the verifier spent, when recorded. */
+  tokens: number | null
+}
+
+/**
+ * Reads the check result off a task record: `check` ({passed, tail|output,
+ * tokens}) and `verifyTokens`, whichever the backend wrote. Null when the
+ * task carries neither.
+ */
+export function taskCheckOf(task: object): TaskCheck | null {
+  const o = task as Record<string, unknown>
+  const evidence = o.evidence as { check?: Record<string, unknown> } | null | undefined
+  const raw = (evidence?.check ?? o.check) as Record<string, unknown> | undefined
+  const num = (v: unknown) =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null
+  const spent = num(o.verifyTokens ?? o.verificationTokens ?? raw?.tokens)
+  const tokens = spent !== null && spent > 0 ? spent : null
+  if (!raw || typeof raw !== 'object') {
+    return tokens === null ? null : { passed: null, tail: '', tokens }
+  }
+  const text = String(raw.tail ?? raw.output ?? '')
+  const lines = text.trim().split(/\r?\n/)
+  return {
+    passed: typeof raw.passed === 'boolean' ? raw.passed : null,
+    tail: lines.slice(-12).join('\n').slice(-1200),
+    tokens,
+  }
+}
+
+/** What a split-pane tab shows, one mark only. */
+export type PaneMark = 'approval' | 'running' | 'done' | 'error' | 'none'
+
+/**
+ * One mark per pane tab. A question for the person outranks activity; a
+ * finished mark is only for a campaign task that verified or merged, or a
+ * Cowork run that ended normally; an error mark is for a task that failed or
+ * conflicted and a run that ended in an error. An idle conversation that
+ * merely has content shows nothing.
+ */
+export function paneMarkOf(input: {
+  needsApproval: boolean
+  streaming: boolean
+  task?: Pick<CampaignTask, 'status'> & Partial<Pick<CampaignTask, 'verdict'>>
+  /** How the session's last Cowork run ended, when it is one. */
+  ending?: { stoppedBy?: string | null } | null
+}): PaneMark {
+  if (input.needsApproval) return 'approval'
+  if (input.streaming) return 'running'
+  const task = input.task
+  if (task) {
+    if (task.status === 'merged' || task.status === 'verified') return 'done'
+    if (task.status === 'completed' && task.verdict === 'PASS') return 'done'
+    if (
+      task.status === 'failed' ||
+      task.status === 'conflict' ||
+      (task.status === 'completed' && task.verdict === 'FAIL')
+    ) {
+      return 'error'
+    }
+    return 'none'
+  }
+  if (input.ending?.stoppedBy === 'done') return 'done'
+  if (input.ending?.stoppedBy === 'error') return 'error'
+  return 'none'
+}
+
 /**
  * A finished task whose verification could not decide: the verifier said
  * BLOCKED (or could not run), so it will not merge and nothing that depends
@@ -59,6 +162,8 @@ export function dotOf(
   all: readonly Pick<CampaignTask, 'id' | 'status'>[] = []
 ): CampaignDot {
   const s: CampaignTaskStatus = task.status
+  // The conflict resolver is working on it (backend status `resolving`).
+  if (isResolving(task)) return 'verifying'
   switch (s) {
     case 'pending':
       return isWaitingOnDeps(task, all) ? 'blocked' : 'queued'
@@ -84,6 +189,8 @@ export function dotOf(
       return 'failed'
     case 'conflict':
       return 'conflict'
+    case 'resolving':
+      return 'verifying'
     case 'cancelled':
       return 'cancelled'
   }
@@ -188,6 +295,7 @@ export type TaskWord =
   | 'needsApproval'
   | 'failed'
   | 'conflict'
+  | 'resolving'
   | 'waiting'
   | 'queued'
   | 'merged'
@@ -203,6 +311,7 @@ export function wordOf(
     .filter((t) => t && t.status !== 'merged')
     .map((t) => t!.title)
   const only = (word: TaskWord) => ({ word, waitingFor: [] as string[] })
+  if (isResolving(task)) return only('resolving')
   switch (task.status) {
     case 'pending':
     case 'blocked':
@@ -230,6 +339,8 @@ export function wordOf(
       return only('failed')
     case 'conflict':
       return only('conflict')
+    case 'resolving':
+      return only('resolving')
     case 'cancelled':
       return only('skipped')
   }
@@ -372,6 +483,10 @@ export type CampaignGroup = {
   total: number
   /** Over for good: the sidebar folds it to one line. */
   finished: boolean
+  /** The group's one header mark: the campaign's own state. */
+  dot: CampaignDot
+  /** Something waits on the person: a task needs them, or review is open. */
+  attention: boolean
   rows: CampaignGroupRow[]
 }
 
@@ -464,6 +579,10 @@ export function deriveCampaignGroups(
       done: c.tasks.filter((t) => t.status === 'merged').length,
       total: c.tasks.length,
       finished: FINISHED.has(c.status),
+      dot: coordinatorDotOf(c),
+      attention: ['needs-you', 'failed', 'conflict', 'review'].includes(
+        coordinatorDotOf(c)
+      ),
       rows,
     })
   }
@@ -507,6 +626,8 @@ export function taskActionsOf(
   retry: boolean
   /** Run the verification again (a finished task that is not verified yet). */
   verify: boolean
+  /** Start the automatic conflict resolver (a task in conflict). */
+  resolve: boolean
   /** "Accept anyway": a person accepts a task whose check was blocked. */
   accept: boolean
   skip: boolean
@@ -521,6 +642,7 @@ export function taskActionsOf(
     retry:
       (s === 'failed' || s === 'conflict') && task.attempt < CAMPAIGN_MAX_RETRIES,
     verify: s === 'completed',
+    resolve: s === 'conflict',
     accept: isVerificationBlocked(task),
     // The same set campaign_merge skip accepts.
     skip: ['failed', 'conflict', 'completed', 'blocked', 'interrupted'].includes(s),
