@@ -27,7 +27,8 @@ export function getDefaultNotificationPosition(): NotificationPosition {
   return 'top-right'
 }
 
-const TAURI_DRAG_REGION_PX = 48
+/** The app's top header is 52px tall (TopHeader): a top toast starts below it. */
+const TOP_HEADER_PX = 52
 const BASE_MARGIN = 8
 
 export type PreviewPane = {
@@ -70,14 +71,14 @@ export function getToastOffsetAvoidingPane(
 export function getToastOffset(
   position: NotificationPosition
 ): NonNullable<ToasterProps['offset']> {
-  const tauriTopSafe = IS_TAURI ? TAURI_DRAG_REGION_PX : 0
+  const topSafe = TOP_HEADER_PX
 
   switch (position) {
     case 'top-left':
-      return { top: BASE_MARGIN + tauriTopSafe, left: BASE_MARGIN }
+      return { top: BASE_MARGIN + topSafe, left: BASE_MARGIN }
     case 'top-right':
       return {
-        top: BASE_MARGIN + tauriTopSafe,
+        top: BASE_MARGIN + topSafe,
         right: BASE_MARGIN,
       }
     case 'bottom-left':

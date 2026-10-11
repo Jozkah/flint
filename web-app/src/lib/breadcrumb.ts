@@ -53,6 +53,14 @@ export function crumbForPath(pathname: string): Crumb {
       currentKey: null,
       dynamic: 'session',
     }
+  // The campaign board belongs to Cowork; without this it fell through to
+  // "Workspace / Workspace".
+  if (path.startsWith('/campaign/'))
+    return {
+      parentKey: 'common:cowork',
+      parentTo: route.cowork,
+      currentKey: 'common:campaign',
+    }
   if (path === route.artifacts) return { ...ws, currentKey: 'common:appRail.library' }
   if (path === route.archive) return { ...ws, currentKey: 'archive:nav' }
   if (path === '/hub' || path.startsWith('/hub/'))
