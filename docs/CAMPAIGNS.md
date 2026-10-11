@@ -86,6 +86,16 @@ Each phase is independently committable and testable.
 
 ## Status
 
+Live QA with a 32K model (kewaii/qwen3.8) fixes, in the order of the QA findings:
+
+- **Verdict parsing (D2).** `verification::find_verdict` strips `<think>` blocks and reads `VERDICT: X` anywhere, in markdown bold or backticks, or a JSON `{"verdict":...}` (last occurrence wins). A reply with none gets ONE automatic retry with a stricter reminder (Rust `verify_counted`, the server driver, and `campaignRunner.verifyTask`); if still none the task is BLOCKED and the reason carries a 300-character excerpt of what the model said. Transport errors were never swallowed: they already say "the verifier could not run: ...".
+- **Small windows (D3).** Measured: the built-in tool schemas are about 60 000 characters (about 15 to 17K tokens), the base Cowork prompt about 9 000 characters (2.2K tokens), the nine campaign tools about 6 000 characters (1.5K tokens). On a window of 32K or less a campaign coordinator or task gets the slim tool set (`coworkTools.slimDenies`: no host_*, docker, computer, clipboard, generate_image, legacy browser_* tools; a coordinator also loses bash, git, write, edit, browser), no subagent tools or guide, and no widgets. The overflow error now reads "This model's window is 32K; Flint needs about N. Pick a larger-context model or raise Max Context Tokens in Assistant settings." and is the task's failure detail.
+- **Skipping (D4).** `agent_campaign_skip_task(id, taskId, dependants)` with `leave` (the old behaviour), `cascade` (dependants cancelled with "dependency skipped: <id>") or `release` (dependants lose that dependency, `skippedDeps` records it and their seed says so). A campaign whose remaining tasks are all merged or skipped, with one merged, moves to reviewing.
+- **Failed final gate (D5).** The gate result is stored on the campaign (`gate`: passed, command, exitCode, output tail, at). `agent_campaign_gate_repair` creates ONE `gate_repair` task (the only task that may be added after approval; at most 3) seeded with the command, output tail and changed files, and sets the campaign running; once it merges the campaign is reviewing again and `agent_campaign_retry_gate` runs the gate.
+- **Restart during verification (D6).** `resume` re-verifies completed tasks without a verdict (twice at most per process); the server driver already did on every pass.
+- **Read-only git (D8).** `git status`/`git log`... steps of a sequenced (`;`, newline) sandboxed command run through the host git (the `git` tool's read-only path) and the rest in the sandbox, instead of asking to leave the sandbox when this machine's NUL device refuses it. Writes, remotes, pipes and redirections still ask.
+- Node's test runner: the task seed adds `When running Node's built-in test runner use `node --test` (no directory argument).` only when the brief, acceptance or decisions mention node:test or `node --test`.
+
 Implemented (P0 to P3):
 
 - Rust model, scheduler, persistence and commands (`campaign.rs`, `campaign_scheduler.rs`, `agent_campaign_*`), plus `agent_campaign_context` (decisions tail and handoffs), `agent_campaign_events`, `agent_campaign_notified` and `agent_worktree_commit_pending`. A campaign move may carry the integration branch and worktree (`TransitionInput.integration`), recorded on approval so a denied plan creates nothing.
