@@ -2,11 +2,18 @@
   "identifier": "jan.ai.app.ios",
   "build": {
     "devUrl": null,
-    "frontendDist": "../web-app/dist",
-    "beforeDevCommand": "cross-env IS_DEV=true IS_IOS=true yarn build:web",
-    "beforeBuildCommand": "cross-env IS_IOS=true yarn build:web"
+    "frontendDist": "../web-app/dist-ios",
+    "beforeDevCommand": "yarn build:ios:shell",
+    "beforeBuildCommand": "yarn build:ios:shell"
   },
   "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Flint",
+        "dragDropEnabled": false
+      }
+    ],
     "security": {
       "capabilities": ["mobile"]
     }

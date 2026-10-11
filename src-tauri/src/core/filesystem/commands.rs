@@ -2,7 +2,7 @@
 // It's added to ensure the legacy implementation from frontend still functions before removal.
 use super::helpers::{resolve_app_path_within_jan_data_folder, resolve_path};
 use super::models::{DialogOpenOptions, FileStat};
-use rfd::AsyncFileDialog;
+use super::picker::AsyncFileDialog;
 use std::fs;
 use tauri::Runtime;
 

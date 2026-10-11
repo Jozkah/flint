@@ -2922,7 +2922,7 @@ async fn pick_bundle_path(save: bool) -> Option<std::path::PathBuf> {
     if let Some(scripted) = crate::core::filesystem::smoke_dialog::scripted_response() {
         return scripted.and_then(|v| v.as_str().map(std::path::PathBuf::from));
     }
-    let dialog = rfd::AsyncFileDialog::new().add_filter("Jan session", &["json"]);
+    let dialog = crate::core::filesystem::picker::AsyncFileDialog::new().add_filter("Jan session", &["json"]);
     if save {
         dialog
             .set_file_name("session.jan-session.json")

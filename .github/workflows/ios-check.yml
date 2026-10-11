@@ -1,0 +1,91 @@
+name: iOS Check
+on:
+  workflow_dispatch:
+  # A workflow_dispatch-only file cannot be run until it is on main. Drop this
+  # trigger once the workflow has landed there.
+  push:
+    branches: [feat/ios-thin-client]
+    paths: ['.github/workflows/ios-check.yml', 'src-tauri/**', 'web-app/src/mobile/**']
+
+concurrency:
+  group: ios-check-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  # Answers one question: does the crate compile for iOS with the `mobile`
+  # feature set, and does the phone-client frontend build. No Xcode project, no
+  # signing. macOS is the only runner that has the iOS SDK.
+  rust:
+    name: cargo check (aarch64-apple-ios)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          key: ios
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # generate_context! reads the window icons, which `build:icon` renders.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+
+      - name: Render icons
+        run: |
+          corepack enable
+          corepack prepare yarn@4.10.3 --activate
+          yarn config set -H enableImmutableInstalls false
+          yarn install
+          yarn build:icon
+
+      # tauri-build validates `bundle.resources` at build time; the iOS config
+      # lists resources/LICENSE, the same file `copy:assets:mobile` stages.
+      - name: Stage bundle resources
+        run: |
+          mkdir -p src-tauri/resources
+          # generate_context! needs frontendDist to exist; contents are irrelevant to a compile check.
+          mkdir -p web-app/dist-ios
+          cp LICENSE src-tauri/resources/LICENSE
+
+      - name: cargo check (device)
+        working-directory: src-tauri
+        run: cargo check --lib --target aarch64-apple-ios --no-default-features --features mobile -j 4
+
+      - name: cargo check (simulator)
+        working-directory: src-tauri
+        run: cargo check --lib --target aarch64-apple-ios-sim --no-default-features --features mobile -j 4
+
+  frontend:
+    name: mobile frontend build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+
+      - name: Config Yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@4.10.3 --activate
+          yarn config set -H enableImmutableInstalls false
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Build mobile client
+        run: yarn build:mobile

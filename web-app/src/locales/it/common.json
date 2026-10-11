@@ -1951,6 +1951,7 @@
     }
   },
   "appRail": {
+    "navWorkspace": "Area di lavoro",
     "label": "Navigazione globale",
     "resize": "Ridimensiona barra laterale",
     "resizeHint": "Trascina per ridimensionare. Doppio clic per la larghezza predefinita.",

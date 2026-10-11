@@ -1925,6 +1925,7 @@
     }
   },
   "appRail": {
+    "navWorkspace": "工作区",
     "label": "全局导航",
     "resize": "调整侧边栏大小",
     "resizeHint": "拖动以调整大小。双击恢复默认宽度。",

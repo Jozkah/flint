@@ -1987,6 +1987,7 @@
     }
   },
   "appRail": {
+    "navWorkspace": "Obszar roboczy",
     "label": "Nawigacja globalna",
     "resize": "Zmień rozmiar panelu bocznego",
     "resizeHint": "Przeciągnij, aby zmienić rozmiar. Kliknij dwukrotnie, aby przywrócić domyślną szerokość.",

@@ -1925,6 +1925,7 @@
     }
   },
   "appRail": {
+    "navWorkspace": "工作區",
     "label": "全域導覽",
     "resize": "調整側邊欄大小",
     "resizeHint": "拖曳以調整大小。按兩下恢復預設寬度。",

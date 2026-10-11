@@ -7,7 +7,9 @@ import { app, client } from './state/app'
 let accent: AppearanceResult['vars'] | null = null
 let applied: string[] = []
 
-function apply() {
+/** Light or dark from the phone (or the saved choice). Exported so the first
+ * screen of the iOS shell, which shows before the app starts, is themed too. */
+export function apply() {
   const root = document.documentElement
   const pref = app.get().theme
   const dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
@@ -20,6 +22,12 @@ function apply() {
     if (!/^--[a-z0-9-]+$/.test(k)) continue
     root.style.setProperty(k, v)
     applied.push(k)
+  }
+  // iOS tint: the computer's accent when it sent one, else systemBlue (ios.css).
+  const tint = vars['--acc-text']
+  if (tint) {
+    root.style.setProperty('--ios-accent', tint)
+    applied.push('--ios-accent')
   }
   document
     .querySelectorAll('meta[name="theme-color"]')

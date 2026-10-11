@@ -1890,6 +1890,7 @@
     }
   },
   "appRail": {
+    "navWorkspace": "Ruang kerja",
     "label": "Navigasi global",
     "resize": "Ubah ukuran bilah samping",
     "resizeHint": "Seret untuk mengubah ukuran. Klik dua kali untuk lebar default.",

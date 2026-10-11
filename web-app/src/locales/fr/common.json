@@ -1948,6 +1948,7 @@
     "hunks_many": "{{count}} de hunks"
   },
   "appRail": {
+    "navWorkspace": "Espace de travail",
     "label": "Navigation globale",
     "resize": "Redimensionner la barre latérale",
     "resizeHint": "Faites glisser pour redimensionner. Double-cliquez pour revenir à la largeur par défaut.",

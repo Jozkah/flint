@@ -110,3 +110,6 @@ docs/SESSION_MESSAGING_UI_HUNKS.md
 
 # The website keeps its own lockfile (CI installs with npm ci)
 !website/package-lock.json
+
+# iOS shell frontend (scripts/build-ios-shell.mjs)
+web-app/dist-ios

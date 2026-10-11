@@ -28,7 +28,19 @@ fn main() {
                 }
             }
         }
-        tauri_build::build();
+        // tauri-build validates every file in `capabilities/`, not just the
+        // ones the config enables, so on a phone build the desktop files fail
+        // on permissions of plugins that are not linked there (deep-link:default).
+        // Read only the mobile capability on those targets.
+        let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+        if target_os == "ios" || target_os == "android" {
+            tauri_build::try_build(
+                tauri_build::Attributes::new().capabilities_path_pattern("capabilities/mobile.json"),
+            )
+            .expect("tauri build failed");
+        } else {
+            tauri_build::build();
+        }
     }
 
     // The commit that built this binary, for the crash report: an offset in a

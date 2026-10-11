@@ -90,7 +90,7 @@ async fn pick_path(ext: &str, file_name: &str) -> Option<PathBuf> {
     if let Some(scripted) = super::smoke_dialog::scripted_save_response() {
         return scripted.map(PathBuf::from);
     }
-    rfd::AsyncFileDialog::new()
+    super::picker::AsyncFileDialog::new()
         .add_filter(ext.to_ascii_uppercase(), &[ext])
         .set_file_name(file_name)
         .save_file()
