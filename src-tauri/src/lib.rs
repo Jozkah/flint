@@ -761,6 +761,7 @@ pub fn build_app() -> tauri::App {
         core::thin_client::thin_client_connect,
         core::thin_client::thin_client_forget,
         core::thin_client::thin_client_log,
+        core::thin_client::thin_client_default,
     ]);
 
     app_builder

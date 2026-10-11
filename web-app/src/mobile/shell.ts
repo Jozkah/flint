@@ -81,3 +81,13 @@ export function shellLog(level: 'info' | 'warn' | 'error', message: string) {
     // The log is best effort.
   }
 }
+
+/** An address handed to the app by its launcher (test harness), if any. */
+export async function defaultDesktop(invoke: Invoke): Promise<string | null> {
+  try {
+    const value = (await invoke('thin_client_default')) as string | null
+    return value ? value : null
+  } catch {
+    return null
+  }
+}

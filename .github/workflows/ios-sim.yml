@@ -100,15 +100,23 @@ jobs:
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
           xcrun simctl install "$udid" "$app"
-          xcrun simctl launch "$udid" "$bundle"
-          sleep 20
           mkdir -p shots
+          python3 scripts/ios-stub-desktop.py 8443 shots/stub-desktop.log &
+          sleep 3
+          SIMCTL_CHILD_FLINT_DESKTOP=https://127.0.0.1:8443 xcrun simctl launch "$udid" "$bundle"
+          sleep 20
           xcrun simctl io "$udid" screenshot shots/connect.png
           xcrun simctl spawn "$udid" launchctl list | grep -i "$bundle" || true
           xcrun simctl spawn "$udid" log show --style compact --last 3m --predicate 'process == "Flint" OR process CONTAINS "WebContent" OR eventMessage CONTAINS "[page]"' > shots/app.log 2>&1 || true
           wc -l shots/app.log; grep -E '\[page\]|WebContent|WebKit|sqlx::query' shots/app.log | grep -v 'sqlx::query' | tail -60 | cut -c1-300
           echo "udid=$udid" >> "$GITHUB_ENV"
           echo "bundle=$bundle" >> "$GITHUB_ENV"
+
+      - name: What the stub desktop saw
+        run: |
+          echo '--- stub desktop log'
+          cat shots/stub-desktop.log || true
+          grep -q 'tls connection' shots/stub-desktop.log
 
       - name: Appearance and orientation variants
         run: |

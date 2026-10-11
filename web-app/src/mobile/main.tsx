@@ -25,6 +25,7 @@ import { ConnectDesktop } from './screens/ConnectDesktop'
 import {
   clearDesktop,
   connectDesktop,
+  defaultDesktop,
   forgetPin,
   savedDesktop,
   saveDesktop,
@@ -62,7 +63,7 @@ async function resolveBase(): Promise<string> {
   if (!invoke) return ''
   let error: string | null = null
   let pinChanged = false
-  let attempt: string | null = savedDesktop()
+  let attempt: string | null = savedDesktop() ?? (await defaultDesktop(invoke))
   let lastAddress = attempt ?? ''
   let fragment = ''
   for (;;) {

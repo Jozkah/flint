@@ -416,6 +416,13 @@ pub async fn thin_client_forget(app: tauri::AppHandle, url: String) -> Result<()
     forget(dir, &url)
 }
 
+/// A desktop address to try when none was saved, from `FLINT_DESKTOP`. Lets a
+/// test harness (the simulator job passes it with `SIMCTL_CHILD_`) skip typing.
+#[tauri::command]
+pub fn thin_client_default() -> Option<String> {
+    std::env::var("FLINT_DESKTOP").ok().filter(|s| !s.trim().is_empty())
+}
+
 /// The page has no console on a phone; it reports through here so a startup
 /// failure reaches the app log.
 #[tauri::command]
