@@ -9,6 +9,8 @@ import { ImageViewer } from '@/components/ImageViewer'
 import { needsWeb } from '@/lib/needsWeb'
 import { RichComposerEditor, type RichComposerHandle } from '@/containers/RichComposerEditor'
 import { cn, formatBytes, getModelDisplayName } from '@/lib/utils'
+import { useElementWidth } from '@/hooks/useElementWidth'
+import { ComposerDensityProvider } from '@/containers/ComposerDensity'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useThreads } from '@/hooks/useThreads'
 import {
@@ -433,6 +435,10 @@ const ChatInput = memo(function ChatInput({
   // row wraps when it runs out of width, so the reserve cannot be a constant:
   // 40px is one row, and a wrapped row silently covered the textarea.
   const footerRef = useRef<HTMLDivElement | null>(null)
+  // The control row's own width decides which labels show: a split pane is
+  // narrower than the window, so a viewport query would be wrong.
+  const controlsRowRef = useRef<HTMLDivElement | null>(null)
+  const controlsWidth = useElementWidth(controlsRowRef)
   const [footerHeight, setFooterHeight] = useState(40)
   useEffect(() => {
     const el = footerRef.current
@@ -3443,8 +3449,15 @@ const ChatInput = memo(function ChatInput({
           ref={footerRef}
           className="absolute z-20 bg-transparent bottom-0 w-full p-2"
         >
-          <div className="flex justify-between items-center w-full">
-            <div className="flex flex-wrap items-center gap-x-1 gap-y-1 flex-1 min-w-0">
+          <div
+            ref={controlsRowRef}
+            data-testid="composer-controls-row"
+            className="flex justify-between items-center w-full"
+          >
+            {/* One row, never two: when the pane is narrow the controls give
+                up their text labels (ComposerDensity) and, past that, clip
+                here, so the send button at the right is never pushed out. */}
+            <div className="flex flex-nowrap items-center gap-x-1 flex-1 min-w-0 overflow-hidden">
               {/* Assistant, sampling, tools, web search and reasoning stay
                   live while a reply streams: they configure the *next*
                   message (each request reads them when it is sent), so
@@ -3909,12 +3922,14 @@ const ChatInput = memo(function ChatInput({
                 })()}
               </div>
               {surfaceControls && (
-                <div className="flex min-w-0 flex-wrap items-center gap-1">
+                <div className="flex min-w-0 flex-nowrap items-center gap-1">
                   <Separator
                     orientation="vertical"
                     className="mx-1 h-4 shrink-0"
                   />
-                  {surfaceControls}
+                  <ComposerDensityProvider width={controlsWidth}>
+                    {surfaceControls}
+                  </ComposerDensityProvider>
                 </div>
               )}
             </div>

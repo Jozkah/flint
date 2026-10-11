@@ -25,6 +25,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { basenameOf } from '@/lib/coworkPreview'
 import { truncateMiddle } from '@/lib/utils'
+import { useComposerCollapsed } from '@/containers/ComposerDensity'
 
 type AccessMode = 'review-only' | 'managed-worktree' | 'edit-folder'
 
@@ -115,6 +116,8 @@ export function CoworkWorkspacePill({
   describeProject,
 }: Props) {
   const { t } = useTranslation()
+  const shortName = useComposerCollapsed('folderName')
+  const chipText = useComposerCollapsed('chipText')
   const [open, setOpen] = useState(false)
   const serviceHub = useServiceHub()
   const folderName = folder ? basenameOf(folder) : null
@@ -147,6 +150,8 @@ export function CoworkWorkspacePill({
               ? 'h-[30px] min-w-0 shrink gap-1.5 px-2.5 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
               : 'size-[30px] shrink-0 text-muted-foreground pointer-coarse:size-11'
           }
+          title={folderName && (shortName || chipText) ? folderName : undefined}
+          data-collapsed={folderName && (shortName || chipText) ? 'true' : undefined}
           aria-label={
             folderName
               ? t('common:workspace.a11yWithFolder', { folder: folderName })
@@ -160,15 +165,20 @@ export function CoworkWorkspacePill({
               ) : (
                 <Folder className="size-3.5 shrink-0" aria-hidden />
               )}
-              <span className="min-w-0 max-w-[120px] truncate text-secondary-foreground">
-                {folderName}
-              </span>
-              {gitBranch ? (
+              {/* Narrow row: with a branch, the branch stands in for the
+                  folder's name; with none the name stays until the chip is
+                  an icon. */}
+              {!chipText && !(shortName && gitBranch) && (
+                <span className="min-w-0 max-w-[120px] truncate text-secondary-foreground">
+                  {folderName}
+                </span>
+              )}
+              {gitBranch && !chipText ? (
                 <span
                   aria-hidden
-                  className="hidden max-w-[96px] truncate font-normal text-muted-foreground xl:inline"
+                  className="max-w-[96px] truncate font-normal text-muted-foreground"
                 >
-                  · {gitBranch}
+                  {shortName ? gitBranch : `· ${gitBranch}`}
                 </span>
               ) : null}
               {extraFolders.length > 0 ? (

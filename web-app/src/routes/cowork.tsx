@@ -5426,24 +5426,6 @@ export function CoworkPage() {
 
   // The session's own model (janhq/jan#8905): keyed by session so switching
   // re-reads it, and a choice is written to the session in view only.
-  const modelSelector = (
-    <DropdownModelProvider
-      key={session?.id ?? 'none'}
-      model={session?.model}
-      useLastUsedModel={!session?.model}
-      onModelChange={(model) =>
-        useCoworkSessions
-          .getState()
-          .setModel(ensureCurrentSession(paneSessionIdRef.current), {
-          provider: model.provider,
-          id: model.id,
-        })
-      }
-    />
-  )
-
-  // The session's own model (janhq/jan#8905): keyed by session so switching
-  // re-reads it, and a choice is written to the session in view only.
   const quietModelSelector = (
     <DropdownModelProvider
       variant="quiet"
@@ -5773,14 +5755,6 @@ export function CoworkPage() {
           {progressButton}
           {headerStop}
           {!phone && !showComposerRailButtons && outputToggle}
-          {/* No context bar in a pane: each pane picks its own session's
-              model here, never the global one. */}
-          <div
-            className="flex min-w-20 max-w-48 shrink"
-            data-testid={`cowork-pane-model-${paneChrome.paneId}`}
-          >
-            {modelSelector}
-          </div>
           {phone ? (
             viewSwitch(compactViews)
           ) : (
@@ -6482,7 +6456,9 @@ export function CoworkPage() {
                         })
                     : undefined
                 }
-                modelControl={!paneChrome ? quietModelSelector : undefined}
+                // Below the input in every layout, a split pane included: each
+                // pane picks its own session's model there, never the global one.
+                modelControl={quietModelSelector}
                 surfaceControls={
                   <>
                     {paneChrome ? sessionControls : phone ? workspacePill : null}

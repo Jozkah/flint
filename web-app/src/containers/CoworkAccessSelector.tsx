@@ -26,6 +26,7 @@ import {
   type EffectiveAccess,
 } from '@/lib/coworkAccess'
 import type { CapabilityState } from '@/hooks/useDirectEditGrants'
+import { useComposerCollapsed } from '@/containers/ComposerDensity'
 import type { WorkKind } from '@/hooks/useCoworkActiveWork'
 
 /**
@@ -100,6 +101,7 @@ function blockedReason(
 
 export function CoworkAccessSelector(props: AccessSelectorProps) {
   const { t } = useTranslation()
+  const iconOnly = useComposerCollapsed('accessLabel')
   const [open, setOpen] = useState(false)
   const quiet = props.variant === 'quiet'
   const active = props.effective.access
@@ -128,6 +130,7 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
                 : t(accessLabelKey(active))
             }
             data-testid="cowork-access-selector"
+            data-collapsed={iconOnly ? 'true' : undefined}
             className={cn(
               quiet
                 ? 'h-7 shrink-0 gap-1.5 px-2 text-xs font-medium pointer-coarse:h-11'
@@ -144,8 +147,8 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
             )}
           >
             <Icon aria-hidden className="size-3.5 shrink-0" />
-            <span>{t(accessShortLabelKey(active))}</span>
-            {!quiet && (
+            {!iconOnly && <span>{t(accessShortLabelKey(active))}</span>}
+            {!quiet && !iconOnly && (
               <ChevronDown
                 aria-hidden
                 className="size-3 shrink-0 text-muted-foreground"
