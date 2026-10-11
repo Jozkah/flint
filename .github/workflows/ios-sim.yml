@@ -5,7 +5,7 @@ on:
   # trigger once the workflow has landed there.
   push:
     branches: [feat/ios-thin-client]
-    paths: ['.github/workflows/ios-sim.yml', 'src-tauri/tauri.ios.conf.json', 'src-tauri/src/**', 'web-app/src/mobile/**', 'scripts/build-ios-shell.mjs']
+    paths: ['.github/workflows/ios-sim.yml', 'src-tauri/tauri.ios.conf.json', 'src-tauri/src/**', 'src-tauri/Cargo.toml', 'web-app/src/mobile/**', 'scripts/build-ios-shell.mjs']
 
 concurrency:
   group: ios-sim-${{ github.ref }}
