@@ -1,11 +1,13 @@
 /**
  * Client for the agent runner of a `flint serve --agent-run` server.
  *
- * Phase P0 is read-only: a capability probe (`agent_server_info`), the list and
- * transcript of the sessions the server holds, and the replay of one session's
- * events with resume. Starting a turn is phase P1 and is not here. Local
- * desktop sessions never touch this module; it is for a page served by the
- * server (`isServerTransport()`).
+ * P0: a capability probe (`agent_server_info`), the list and transcript of the
+ * sessions the server holds, and the replay of one session's events with
+ * resume. P1 (the second half of this file): create, start, steer, interrupt,
+ * approve, answer a question, and the live event stream with resume. Mapping
+ * those events into the Cowork stores is `remoteCowork.ts`. Local desktop
+ * sessions never touch this module; it is for a page served by the server
+ * (`isServerTransport()`).
  */
 
 import { useEffect, useState } from 'react'
@@ -25,6 +27,12 @@ export type RunnerInfo = {
   enforces: boolean
   roots: string[]
   maxSessions: number
+  /** Modes `auto` and `bypass` are allowed (`--agent-allow-bypass`). */
+  allowBypass: boolean
+  /** A client may grant a standing approval (`--agent-allow-always`). */
+  allowAlways: boolean
+  approvalTimeoutSecs: number
+  liveSessions: number
   /** What to do before sessions can run, in words. */
   missing: string[]
   /** Where the server's loop differs from the desktop's. */
@@ -38,8 +46,15 @@ export type RemoteSession = {
   mode: string | null
   model: string | null
   updated: number | null
-  status: 'running' | 'idle'
+  status: 'running' | 'idle' | 'awaiting_approval' | 'awaiting_answer'
   campaign: { id: string; title: string } | null
+  /** The runner holds it in memory now (P1). */
+  live?: boolean
+  access?: string
+  /** Permission prompts waiting, as the server's `permission_request` events. */
+  pendingApprovals?: Array<Record<string, unknown>>
+  pendingAsks?: Array<Record<string, unknown>>
+  lastSeq?: number
 }
 
 export type RemoteTranscript = RemoteSession & {
@@ -73,6 +88,10 @@ export function parseRunnerInfo(raw: unknown): RunnerInfo {
     enforces: v.enforces === true,
     roots: folders,
     maxSessions: typeof v.maxSessions === 'number' ? v.maxSessions : 0,
+    allowBypass: v.allowBypass === true,
+    allowAlways: v.allowAlways === true,
+    approvalTimeoutSecs: typeof v.approvalTimeoutSecs === 'number' ? v.approvalTimeoutSecs : 0,
+    liveSessions: typeof v.liveSessions === 'number' ? v.liveSessions : 0,
     missing: strings(v.missing),
     parityGaps: strings(v.parityGaps),
   }
@@ -214,4 +233,257 @@ export function runnerBanner(info: RunnerInfo): { ok: boolean; text: string } {
   }
   const why = info.missing.length ? ` Missing: ${info.missing.join('; ')}.` : ''
   return { ok: false, text: `This server does not run agents yet.${why}` }
+}
+
+// ---------------------------------------------------------------------------
+// P1: run a session on the server
+// ---------------------------------------------------------------------------
+
+export type RunAccess = 'read' | 'ask' | 'auto' | 'bypass'
+
+export type CreatedRun = {
+  id: string
+  folder: string
+  model: string
+  access: string
+  mode?: string
+  status: string
+  lastSeq: number
+}
+
+export function createRun(
+  input: { folder: string; access?: RunAccess; mode?: string; model?: string; title?: string },
+  fetchImpl: FetchLike = defaultFetch()
+): Promise<CreatedRun> {
+  return rpc<CreatedRun>('agent_run_create', input, fetchImpl)
+}
+
+/** A message is text, or the content parts the stdio protocol takes. */
+export type RunInput = string | Array<Record<string, unknown>>
+
+/** `after` is the seq to subscribe past to see this turn from its first event. */
+export function startRun(
+  id: string,
+  input: RunInput,
+  fetchImpl: FetchLike = defaultFetch()
+): Promise<{ turnId: string; after: number }> {
+  return rpc('agent_run_start', { id, input }, fetchImpl)
+}
+
+export function steerRun(id: string, text: string, fetchImpl: FetchLike = defaultFetch()) {
+  return rpc<Record<string, never>>('agent_run_steer', { id, text }, fetchImpl)
+}
+
+export function interruptRun(id: string, fetchImpl: FetchLike = defaultFetch()) {
+  return rpc<Record<string, never>>('agent_run_interrupt', { id }, fetchImpl)
+}
+
+export type ApprovalAnswer = 'allow_once' | 'allow_always' | 'deny'
+
+export function approveRun(
+  id: string,
+  requestId: string,
+  decision: ApprovalAnswer,
+  fetchImpl: FetchLike = defaultFetch()
+) {
+  return rpc<Record<string, never>>('agent_run_approve', { id, requestId, decision }, fetchImpl)
+}
+
+export type AskResult = { id: string; selected: string[]; custom_input?: string }
+
+export function answerRunAsk(
+  id: string,
+  requestId: string,
+  results: AskResult[],
+  fetchImpl: FetchLike = defaultFetch()
+) {
+  return rpc<Record<string, never>>('agent_run_answer_ask', { id, requestId, results }, fetchImpl)
+}
+
+export function deleteRun(id: string, fetchImpl: FetchLike = defaultFetch()) {
+  return rpc<{ deleted: boolean }>('agent_run_delete', { id }, fetchImpl)
+}
+
+export function setRunModel(id: string, model: string, fetchImpl: FetchLike = defaultFetch()) {
+  return rpc<{ model: string }>('agent_run_set_model', { id, model }, fetchImpl)
+}
+
+export function setRunAccess(id: string, access: RunAccess, fetchImpl: FetchLike = defaultFetch()) {
+  return rpc<{ access: string }>('agent_run_set_mode', { id, access }, fetchImpl)
+}
+
+export type ServerFolder = { name: string; path: string; git: boolean }
+
+/** The folders under `path` the server allows, or its roots when omitted. */
+export function listServerFolders(
+  path?: string,
+  fetchImpl: FetchLike = defaultFetch()
+): Promise<{ path: string | null; parent: string | null; entries: ServerFolder[] }> {
+  return rpc('agent_server_folders', path ? { path } : {}, fetchImpl)
+}
+
+/** One server-sent record: its `event:` name, its `id:` and its data text. */
+export type SseRecord = { event: string; id: string | null; data: string }
+
+/**
+ * Incremental reader for an event stream: feed it text as it arrives, take the
+ * complete records. A record split across two chunks is held until its blank
+ * line; comments (heartbeats) produce nothing.
+ */
+export class SseDecoder {
+  private buffer = ''
+
+  feed(chunk: string): SseRecord[] {
+    this.buffer += chunk
+    const out: SseRecord[] = []
+    for (;;) {
+      const match = /\r?\n\r?\n/.exec(this.buffer)
+      if (!match) break
+      const block = this.buffer.slice(0, match.index)
+      this.buffer = this.buffer.slice(match.index + match[0].length)
+      let event = 'message'
+      let id: string | null = null
+      const data: string[] = []
+      for (const line of block.split(/\r?\n/)) {
+        if (!line || line.startsWith(':')) continue
+        if (line.startsWith('event:')) event = line.slice(6).trim()
+        else if (line.startsWith('id:')) id = line.slice(3).trim()
+        else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''))
+      }
+      if (data.length) out.push({ event, id, data: data.join('\n') })
+    }
+    return out
+  }
+}
+
+export type LiveEnvelope = {
+  seq: number
+  source: 'live' | 'log' | 'transcript'
+  kind: string
+  at?: unknown
+  payload?: Record<string, unknown> & { type?: string }
+}
+
+export type SubscribeOptions = {
+  /** Resume point: only events after this seq are delivered. */
+  after?: number
+  /** Called with each chunk's worth of events, in order. */
+  onEvents: (events: LiveEnvelope[]) => void
+  /** The ring no longer holds what was missed: refetch the transcript. */
+  onGap?: (info: { from: number; after: number }) => void
+  /** The cursor was from an earlier life of the session: events restart. */
+  onReset?: () => void
+  /** A connection attempt failed or ended; the stream will retry. */
+  onReconnect?: (attempt: number) => void
+  signal?: AbortSignal
+  fetchImpl?: FetchLike
+  /** Milliseconds of silence (heartbeats come every 15s) before reconnecting. */
+  silenceMs?: number
+  /** Backoff between reconnects, in order; the last repeats. */
+  backoffMs?: number[]
+}
+
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        resolve()
+      },
+      { once: true }
+    )
+  })
+
+/** A refusal that retrying cannot change. */
+class Fatal extends Error {}
+
+/**
+ * Follow a live session's events until `signal` aborts, resuming from the last
+ * seq seen on every reconnect. A dropped connection, a silent one and a server
+ * restart are all just a reconnect; a session the server no longer holds ends
+ * the stream with a rejection.
+ */
+export async function subscribeRun(id: string, options: SubscribeOptions): Promise<void> {
+  const fetchImpl = options.fetchImpl ?? defaultFetch()
+  const silenceMs = options.silenceMs ?? 45_000
+  const backoff = options.backoffMs ?? [500, 1000, 2000, 5000]
+  const signal = options.signal
+  let last = options.after ?? 0
+  let attempt = 0
+  while (!signal?.aborted) {
+    const controller = new AbortController()
+    const stop = () => controller.abort()
+    signal?.addEventListener('abort', stop, { once: true })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const arm = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => controller.abort(), silenceMs)
+    }
+    try {
+      arm()
+      const response = await fetchImpl(
+        `/api/v1/agent/sessions/${encodeURIComponent(id)}/events?after=${last}`,
+        {
+          credentials: 'same-origin',
+          headers: { Accept: 'text/event-stream', 'Last-Event-ID': String(last) },
+          signal: controller.signal,
+        }
+      )
+      if (!response.ok) {
+        const text = await response.text()
+        if ([401, 403, 404].includes(response.status)) {
+          throw new Fatal(text || `events failed (${response.status})`)
+        }
+        throw new Error(text || `events failed (${response.status})`)
+      }
+      if (!response.body) throw new Fatal('this browser cannot stream events')
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      const sse = new SseDecoder()
+      attempt = 0
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        arm()
+        const batch: LiveEnvelope[] = []
+        for (const record of sse.feed(decoder.decode(value, { stream: true }))) {
+          let data: unknown
+          try {
+            data = JSON.parse(record.data)
+          } catch {
+            continue
+          }
+          if (record.event === 'gap') {
+            const g = data as { from?: number; after?: number }
+            options.onGap?.({ from: Number(g.from) || 0, after: Number(g.after) || 0 })
+          } else if (record.event === 'reset') {
+            last = 0
+            options.onReset?.()
+          } else if (record.event === 'end') {
+            if (batch.length) options.onEvents(batch)
+            return
+          } else if (record.event === 'message') {
+            const env = data as LiveEnvelope
+            if (typeof env.seq === 'number' && env.seq > last) {
+              last = env.seq
+              batch.push(env)
+            }
+          }
+        }
+        if (batch.length) options.onEvents(batch)
+      }
+    } catch (e) {
+      if (signal?.aborted) return
+      if (e instanceof Fatal) throw e
+    } finally {
+      if (timer) clearTimeout(timer)
+      signal?.removeEventListener('abort', stop)
+    }
+    if (signal?.aborted) return
+    attempt += 1
+    options.onReconnect?.(attempt)
+    await sleep(backoff[Math.min(attempt - 1, backoff.length - 1)], signal)
+  }
 }

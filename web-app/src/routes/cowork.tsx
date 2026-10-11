@@ -514,6 +514,7 @@ import {
   type ToolOutcome,
 } from '@/lib/coworkRunner'
 import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
+import { isRemoteSession, sendRemoteTurn, useRemoteCowork } from '@/lib/remoteCowork'
 import { notifyAnswerFinished } from '@/lib/completionSound'
 import {
   listSubagents,
@@ -772,6 +773,8 @@ export function CoworkPage() {
   // drawn under the session in view.
   const viewedId = session?.id ?? null
   const running = useCoworkRun((s) => !!(viewedId && s.runs[viewedId]))
+  // Server sessions: the list, the opened transcript, a turn still running.
+  useRemoteCowork()
   const liveTurns = useCoworkRun(
     (s) => (viewedId ? s.liveTurns[viewedId] : undefined) ?? NO_LIVE_TURNS
   )
@@ -2699,6 +2702,22 @@ export function CoworkPage() {
     const sid = ensureCurrentSession(paneSessionIdRef.current)
     // This session's run only: another session running is no reason to wait.
     if (useCoworkRun.getState().runs[sid]) return
+    // A session the server runs is driven there: this page only sends the
+    // message and mirrors the events (lib/remoteCowork.ts).
+    if (isRemoteSession(sid)) {
+      const refused = (message: string) => {
+        toast.error(message)
+        onRefused?.()
+      }
+      if (text === null) return refused('A server session cannot resume from here. Send a message instead.')
+      if (attachmentInput && (attachmentInput.docs.length > 0 || (attachmentInput.files?.length ?? 0) > 0)) {
+        return refused('Attachments are not sent to server sessions yet.')
+      }
+      void sendRemoteTurn(sid, text).catch((e) =>
+        refused(e instanceof Error ? e.message : String(e))
+      )
+      return
+    }
     // The mail this run takes in (the message that woke it, and anything that
     // reaches it at a step boundary), so the run's final answer can go back to
     // the sender when the agent did not reply itself.
