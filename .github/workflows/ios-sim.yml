@@ -24,7 +24,7 @@ jobs:
   simulator:
     name: launch in simulator
     runs-on: macos-15
-    timeout-minutes: 75
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -37,7 +37,8 @@ jobs:
         with:
           workspaces: src-tauri
           key: ios-sim
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # Debug profile, one cache entry: keeps reruns from rebuilding every crate.
+          save-if: true
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -71,7 +72,7 @@ jobs:
       - name: Build for the simulator
         env:
           APPLE_DEVELOPMENT_TEAM: 0000000000
-        run: yarn tauri ios build --ci --target aarch64-sim -- --no-default-features --features mobile || echo "tauri ios build exited $? (checking for an .app)"
+        run: yarn tauri ios build --ci --debug --target aarch64-sim -- --no-default-features --features mobile || echo "tauri ios build exited $? (checking for an .app)"
 
       - name: Boot a simulator, install and launch
         run: |
