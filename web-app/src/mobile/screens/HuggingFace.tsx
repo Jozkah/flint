@@ -2,6 +2,7 @@
 // computer, and starting a download there. Downloads stay on the computer.
 import { useState } from 'react'
 import type { HfModelCard, HfSearchParams } from '@/lib/remote/protocol'
+import { matchesTask, MORE_TASKS, PRIMARY_TASKS, type HubTaskId } from '@/lib/hubTasks'
 import { TopBack } from '../shell/TopBar'
 import { Avatar, Empty, Loading, Pills } from '../ui/bits'
 import { compact } from '../ui/format'
@@ -12,14 +13,27 @@ import { DownloadCard } from './Models'
 import { t } from '../i18n'
 
 type Modality = NonNullable<HfSearchParams['modality']>
-const MODALITIES: { id: Modality; label: string }[] = [
-  { id: 'all', label: t('huggingface.modalities.all') },
-  { id: 'text', label: t('huggingface.modalities.text') },
-  { id: 'vision', label: t('huggingface.modalities.vision') },
-  { id: 'audio', label: t('huggingface.modalities.audio') },
-  { id: 'code', label: t('huggingface.modalities.code') },
-  { id: 'embeddings', label: t('huggingface.modalities.embeddings') },
-]
+
+/** Plain-language ways to browse, the same set as the desktop's Discover
+ * (lib/hubTasks.ts). Each is matched on the card's own tags and name; the
+ * ones the computer can narrow the search for are sent along as a modality. */
+const TASKS: { id: HubTaskId; label: string }[] = [...PRIMARY_TASKS, ...MORE_TASKS].map((x) => ({
+  id: x.id,
+  label: t(`huggingface.tasks.${x.id}`),
+}))
+const TASK_MODALITY: Partial<Record<HubTaskId, Modality>> = {
+  vision: 'vision',
+  coding: 'code',
+  speech: 'audio',
+  embeddings: 'embeddings',
+}
+
+const fitsTask = (m: HfModelCard, task: HubTaskId) =>
+  matchesTask(
+    { id: m.repo, author: m.author, downloads: m.downloads, likes: m.likes, gated: false, tags: m.tags, pipelineTag: m.pipelineTag, files: [] },
+    [],
+    task
+  )
 
 const gb = (n: number | null) => (n ? `${(n / 1e9).toFixed(1)} GB` : t('huggingface.sizeUnknown'))
 
@@ -63,10 +77,11 @@ export default function HuggingFace() {
   const computer = useApp((s) => s.computerName) ?? t('common.theComputer')
   const [q, setQ] = useState('')
   const [query, setQuery] = useState('')
-  const [modality, setModality] = useState<Modality>('all')
+  const [task, setTask] = useState<HubTaskId>('all')
+  const modality = TASK_MODALITY[task] ?? 'all'
   const { data, loading, error } = useRpc('hf.search', { query, modality })
   const downloads = useRpc('models.downloads', {})
-  const models = data?.models ?? []
+  const models = (data?.models ?? []).filter((m) => fitsTask(m, task))
   const fitting = models.filter((m) => m.variants.some((v) => v.fits))
   return (
     <>
@@ -90,7 +105,7 @@ export default function HuggingFace() {
             <input placeholder={t('huggingface.search')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('huggingface.search')} enterKeyHint="search" />
           </form>
         </div>
-        <Pills items={MODALITIES} value={modality} onChange={setModality} />
+        <Pills items={TASKS} value={task} onChange={setTask} />
         {(downloads.data?.tasks ?? []).filter((task) => !['complete', 'cancelled'].includes(task.status)).map((task) => <DownloadCard key={task.id} task={task} />)}
         {loading && !data && <Loading />}
         {error && !data && <Empty>{error.message}</Empty>}
