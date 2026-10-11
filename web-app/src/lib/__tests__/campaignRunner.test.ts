@@ -342,6 +342,40 @@ describe('campaign runner: run end', () => {
     expect(f.current().tasks[1].detail).toContain('model fell over')
   })
 
+  it('passes the declared paths so a tool cache is left out unless the plan named it', async () => {
+    const f = fixture([task('a', 'pending', [], { paths: ['src/a', '.cache'] })])
+    await f.runner.kick('c1')
+    f.endings.set('sess-1', { stoppedBy: 'done', lastReply: 'ok', tokens: 1 })
+    await f.runner.onRunEnded('sess-1')
+    expect(f.host.commitPending).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.any(String),
+      ['src/a', '.cache']
+    )
+  })
+
+  it('marks a task stopped on a blocker retrying cannot clear as needing help, with the hint', async () => {
+    const f = fixture([task('a')])
+    await f.runner.kick('c1')
+    f.endings.set('sess-1', {
+      stoppedBy: 'loop',
+      errorText:
+        'Bash hit the same non-transient blocker twice (test runner cannot start in the sandbox) ' +
+        '(shell: powershell, PowerShell syntax). Run the test files in this process with ' +
+        '`node --test --test-isolation=none <files>`, so Flint stopped the run.',
+      lastReply: 'blocked',
+      tokens: 0,
+    })
+    await f.runner.onRunEnded('sess-1')
+    const t = f.current().tasks[0]
+    expect(t.status).toBe('failed')
+    expect(t.detail).toMatch(/^needs help:/)
+    expect(t.detail).toContain('powershell')
+    expect(f.notices[0].text).toContain('needs help')
+    expect(f.notices[0].text).toContain('--test-isolation=none')
+  })
+
   it('frees the slot: the next queued task starts when one ends', async () => {
     const f = fixture(['a', 'b', 'c'].map((id) => task(id)))
     f.state.maxParallel = 2

@@ -34,6 +34,7 @@ import {
   type Campaign,
   type CampaignTask,
 } from '@/lib/campaignModel'
+import { needsHelpFrom } from '@/lib/campaignHelp'
 import { buildTaskSeed, defang, retryHintLead } from '@/lib/campaignSeed'
 import type { CoworkMode } from '@/lib/coworkMode'
 import type { CampaignLink } from '@/types/coworkSession'
@@ -462,11 +463,17 @@ export function createCampaignRunner(
         ...(note ? ['', note] : []),
       ].join('\n')
 
+      // A run stopped on a blocker retrying cannot clear is help wanted, with
+      // the cause and a hint to retry with, not a generic failure.
+      const help =
+        outcome === 'failed' && !limit ? needsHelpFrom(end.errorText) : null
       const detail = limit
         ? clip(`stopped by a limit: ${limit}`, 500)
         : outcome === 'completed'
           ? 'run finished'
-          : clip(end.errorText ?? `run ended: ${end.stoppedBy}`, 500)
+          : help
+            ? clip(help.detail, 500)
+            : clip(end.errorText ?? `run ended: ${end.stoppedBy}`, 500)
       try {
         await api.settle(id, taskId, {
           outcome,
@@ -483,6 +490,7 @@ export function createCampaignRunner(
         c,
         `Campaign "${c.title}" task '${task.id}' (${task.title}) ${outcome}` +
           (limit ? ` (${limit})` : '') +
+          (help ? `. It needs help: ${help.hint}` : '') +
           (commits.length > 0 ? ` with ${commits.length} commit(s)` : '') +
           (outcome === 'completed'
             ? '. It is being verified; read it with campaign_collect.'
