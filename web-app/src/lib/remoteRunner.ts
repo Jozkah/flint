@@ -344,6 +344,39 @@ export function setRunAccess(id: string, access: RunAccess, fetchImpl: FetchLike
   return rpc<{ access: string }>('agent_run_set_mode', { id, access }, fetchImpl)
 }
 
+export function renameRun(id: string, title: string, fetchImpl: FetchLike = defaultFetch()) {
+  return rpc<{ title: string }>('agent_run_rename', { id, title }, fetchImpl)
+}
+
+/** A model the server can run, from the providers configured on it. */
+export type RunModel = {
+  id: string
+  provider: string
+  label: string
+  contextWindow: number
+  /** `null` when the server does not know. */
+  supportsTools: boolean | null
+}
+
+export async function listRunModels(
+  fetchImpl: FetchLike = defaultFetch()
+): Promise<{ models: RunModel[]; default: string | null }> {
+  const out = await rpc<{ models?: RunModel[]; default?: string | null }>(
+    'agent_run_models',
+    {},
+    fetchImpl
+  )
+  return {
+    models: Array.isArray(out?.models) ? out.models : [],
+    default: typeof out?.default === 'string' ? out.default : null,
+  }
+}
+
+/** The access levels a session may be moved to on this server. */
+export function allowedAccess(info: Pick<RunnerInfo, 'allowBypass'>): RunAccess[] {
+  return info.allowBypass ? ['read', 'ask', 'auto'] : ['read', 'ask']
+}
+
 // ---------------------------------------------------------------------------
 // P2: a session's worktree. Every command names the session, never a path.
 // ---------------------------------------------------------------------------

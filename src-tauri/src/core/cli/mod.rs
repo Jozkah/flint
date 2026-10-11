@@ -24,7 +24,7 @@ pub mod memory_cmd;
 pub mod migrate_cmd;
 /// `jan mcp serve`: the other direction, Jan's toolset served over MCP.
 pub mod mcp_serve;
-mod model_capabilities;
+pub(crate) mod model_capabilities;
 mod path_refs;
 /// `jan cli agent schema`: the protocol's JSON Schema, generated from the types.
 pub mod protocol_schema;

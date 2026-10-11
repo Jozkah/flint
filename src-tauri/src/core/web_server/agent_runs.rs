@@ -124,6 +124,10 @@ fn summarize(
         "title": title,
         "folder": folder,
         "mode": thread.pointer("/metadata/mode").and_then(Value::as_str),
+        // How freely it was last set to act, so a session at rest can be
+        // shown and changed without being brought back first.
+        "access": thread.pointer("/metadata/access").and_then(Value::as_str),
+        "role": thread.pointer("/metadata/role").and_then(Value::as_str),
         "model": thread.pointer("/model/id").and_then(Value::as_str),
         "updated": thread.get("updated").and_then(Value::as_f64),
         // P0 starts nothing, so only a campaign task a desktop is running can

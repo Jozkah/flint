@@ -11,7 +11,7 @@
 //! What a client sees:
 //!
 //! - commands `agent_run_{create,start,steer,interrupt,approve,answer_ask,
-//!   set_model,set_mode,delete}` over `/api/v1/rpc/<command>`;
+//!   set_model,set_mode,delete,rename,models}` over `/api/v1/rpc/<command>`;
 //! - a live event stream `GET /api/v1/agent/sessions/<id>/events` (replay from
 //!   a per-session ring, then the live tail, heartbeats while idle);
 //! - coarse pings `agent-session-changed` and `agent-approval-pending` on
@@ -86,6 +86,8 @@ pub fn handles(command: &str) -> bool {
             | "agent_run_delete"
             | "agent_run_set_model"
             | "agent_run_set_mode"
+            | "agent_run_models"
+            | "agent_run_rename"
     ) || super::session_worktree::handles(command)
 }
 
@@ -307,6 +309,7 @@ enum Cmd {
     AnswerAsk { request_id: String, results: Vec<crate::core::agent::interaction::QuestionResult>, reply: Reply },
     SetModel { model: String, reply: Reply },
     SetAccess { mode: PermissionMode, reply: Reply },
+    Rename { title: String, reply: Reply },
     Worktree { op: super::session_worktree::Op, caller: Caller, reply: Reply },
     Delete { reply: Reply },
     /// Leave memory (the thread stays); refused while a turn is active.
@@ -560,14 +563,33 @@ impl Runner {
                 self.send(&live, |reply| Cmd::AnswerAsk { request_id, results, reply }).await
             }
             "agent_run_set_model" => {
-                let live = self.require(text(args, "id")?)?;
+                let id = text(args, "id")?;
                 let model = text(args, "model")?.trim().to_owned();
-                self.send(&live, |reply| Cmd::SetModel { model, reply }).await
+                match self.get(id) {
+                    Some(live) => self.send(&live, |reply| Cmd::SetModel { model, reply }).await,
+                    None => self.set_model_stored(id, model).await,
+                }
             }
             "agent_run_set_mode" => {
-                let live = self.require(text(args, "id")?)?;
+                let id = text(args, "id")?;
                 let mode = parse_access(args.get("access").and_then(Value::as_str), self.options.allow_bypass)?;
-                self.send(&live, |reply| Cmd::SetAccess { mode, reply }).await
+                match self.get(id) {
+                    Some(live) => self.send(&live, |reply| Cmd::SetAccess { mode, reply }).await,
+                    None => self.set_mode_stored(id, mode),
+                }
+            }
+            "agent_run_rename" => {
+                let id = text(args, "id")?;
+                let title = clean_title(text(args, "title")?)?;
+                match self.get(id) {
+                    Some(live) => self.send(&live, |reply| Cmd::Rename { title, reply }).await,
+                    None => self.rename_stored(id, title),
+                }
+            }
+            "agent_run_models" => {
+                tokio::task::spawn_blocking(models_listing)
+                    .await
+                    .map_err(|_| fail(500, "the model list did not finish"))
             }
             "agent_run_delete" => {
                 let id = text(args, "id")?;
@@ -607,6 +629,61 @@ impl Runner {
         tokio::task::spawn_blocking(move || wt::execute(&data, &roots, &id, op, &by, &ip))
             .await
             .map_err(|_| fail(500, "the worktree operation did not finish"))?
+    }
+
+    /// The stored thread of a session this server started, as JSON.
+    fn stored_thread(&self, id: &str) -> Result<Value, Fail> {
+        let (_, thread) = agent_runs::open(&self.data_folder, &self.roots, id)?;
+        if thread.pointer("/metadata/source").and_then(Value::as_str) != Some("runner") {
+            return Err(fail(403, "only sessions started on this server can be changed here"));
+        }
+        Ok(thread)
+    }
+
+    fn save_stored_thread(&self, id: &str, thread: &Value) -> Result<(), Fail> {
+        crate::core::threads::helpers::update_thread_metadata(&self.data_folder, id, thread)
+            .map_err(|m| fail(500, m))?;
+        self.bus.publish("agent-session-changed", &json!({ "id": id, "status": "idle" }));
+        Ok(())
+    }
+
+    async fn set_model_stored(&self, id: &str, model: String) -> Result<Value, Fail> {
+        let mut thread = self.stored_thread(id)?;
+        let configs = tokio::task::spawn_blocking(|| {
+            crate::core::cli::providers::load_provider_configs(
+                None,
+                &ProviderOverrides::default().with_env(),
+            )
+        })
+        .await
+        .map_err(|_| fail(500, "the provider list did not finish"))?
+        .map_err(|m| fail(422, m))?;
+        crate::core::agent::upstream::resolve_upstream_for_model(
+            &model,
+            Arc::new(tokio::sync::Mutex::new(configs)),
+        )
+        .await
+            .map_err(|m| fail(422, m))?;
+        thread["model"] = json!({ "id": model, "provider": "" });
+        self.save_stored_thread(id, &thread)?;
+        Ok(json!({ "model": model }))
+    }
+
+    fn set_mode_stored(&self, id: &str, mode: PermissionMode) -> Result<Value, Fail> {
+        let mut thread = self.stored_thread(id)?;
+        if !thread.get("metadata").is_some_and(Value::is_object) {
+            thread["metadata"] = json!({});
+        }
+        thread["metadata"]["access"] = json!(access_name(mode));
+        self.save_stored_thread(id, &thread)?;
+        Ok(json!({ "access": access_name(mode) }))
+    }
+
+    fn rename_stored(&self, id: &str, title: String) -> Result<Value, Fail> {
+        let mut thread = self.stored_thread(id)?;
+        thread["title"] = json!(title);
+        self.save_stored_thread(id, &thread)?;
+        Ok(json!({ "title": title }))
     }
 
     fn require(&self, id: &str) -> Result<Arc<Live>, Fail> {
@@ -1108,6 +1185,44 @@ impl Runner {
     }
 }
 
+/// A title a client set: no control characters, bounded, not empty.
+fn clean_title(raw: &str) -> Result<String, Fail> {
+    let title: String = raw.chars().filter(|c| !c.is_control()).take(MAX_TITLE).collect();
+    let title = title.trim().to_owned();
+    if title.is_empty() {
+        return Err(fail(400, "title must not be empty"));
+    }
+    Ok(title)
+}
+
+/// The models this server can run, from the providers configured on it. Ids,
+/// provider names and sizes only: no key, no endpoint, no header.
+fn models_listing() -> Value {
+    use crate::core::cli::model_capabilities::resolve_context_window;
+    use crate::core::cli::providers;
+    let configs = providers::load_provider_configs(None, &ProviderOverrides::default().with_env())
+        .unwrap_or_default();
+    let models: Vec<Value> = providers::reachable_models(&configs)
+        .into_iter()
+        .map(|(provider, model)| {
+            let window = resolve_context_window(&model, None);
+            json!({
+                "id": model,
+                "provider": provider,
+                "label": format!("{provider} / {model}"),
+                "contextWindow": window.tokens,
+                "contextSource": window.source.label(),
+                // The server does not know a model's tool support; the agent
+                // loop needs it, so a model that lacks it fails at its first
+                // tool call, not here.
+                "supportsTools": Value::Null,
+            })
+        })
+        .collect();
+    let default = crate::core::agent::global_config::default_model().ok().flatten();
+    json!({ "models": models, "default": default })
+}
+
 fn text<'a>(args: &'a Value, key: &str) -> Result<&'a str, Fail> {
     args.get(key)
         .and_then(Value::as_str)
@@ -1404,6 +1519,15 @@ async fn actor(
                             Ok(json!({ "access": access_name(mode) }))
                         };
                         let _ = reply.send(answer);
+                    }
+                    Cmd::Rename { title, reply } => {
+                        session.title = title.clone();
+                        session.metadata["titled"] = json!(true);
+                        let _ = runner.write_thread(&session);
+                        shared.publish("session.title", json!({ "title": title }));
+                        let status = shared.with(|f| f.status);
+                        ping(status);
+                        let _ = reply.send(Ok(json!({ "title": title })));
                     }
                     Cmd::Worktree { op, caller, reply } => {
                         if active.is_some() && op.mutates() {

@@ -1167,3 +1167,62 @@ fn a_client_moves_tasks_of_a_server_campaign_through_the_driver_and_is_audited()
     }
     assert!(log.iter().all(|l| !l.contains(&server.token)), "{log:?}");
 }
+
+#[test]
+fn model_and_mode_pickers_rename_and_delete_use_only_what_the_server_has() {
+    let dir = scratch("pickers");
+    let server = start(&dir, &[]);
+    let folder = dir.join("work").join("app").canonicalize().unwrap().to_string_lossy().into_owned();
+
+    // The models are the providers configured on the server: ids and sizes,
+    // never a key or an address.
+    let (status, listed) = server.rpc("agent_run_models", json!({}));
+    assert_eq!(status, 200, "{listed}");
+    let models = listed["models"].as_array().unwrap();
+    let stub = models.iter().find(|m| m["id"] == "stub-model").unwrap_or_else(|| panic!("{listed}"));
+    assert_eq!(stub["provider"], "stub");
+    assert!(stub["contextWindow"].as_u64().unwrap() >= 1000, "{stub}");
+    let raw = listed.to_string();
+    assert!(!raw.contains("test-key") && !raw.contains("127.0.0.1"), "no secret or endpoint: {raw}");
+
+    let (_, created) = server.rpc("agent_run_create", json!({ "folder": folder, "access": "ask" }));
+    let id = created["id"].as_str().unwrap().to_owned();
+    // A model the server cannot reach is refused; the session keeps its own.
+    let (status, _) = server.rpc("agent_run_set_model", json!({ "id": id, "model": "other/zzz-unknown" }));
+    assert_eq!(status, 422);
+    let (status, set) = server.rpc("agent_run_set_model", json!({ "id": id, "model": "stub-model" }));
+    assert_eq!(status, 200, "{set}");
+
+    // The mode is held to the operator's flags.
+    let (status, _) = server.rpc("agent_run_set_mode", json!({ "id": id, "access": "auto" }));
+    assert_eq!(status, 403);
+    let (status, _) = server.rpc("agent_run_set_mode", json!({ "id": id, "access": "read" }));
+    assert_eq!(status, 200);
+    let (_, row) = server.rpc("agent_run_get", json!({ "id": id }));
+    assert_eq!(row["access"], "read", "{row}");
+
+    // Rename: bounded, and not empty.
+    let (status, _) = server.rpc("agent_run_rename", json!({ "id": id, "title": "   " }));
+    assert_eq!(status, 400);
+    let (status, _) = server.rpc("agent_run_rename", json!({ "id": id, "title": "Weekly report" }));
+    assert_eq!(status, 200);
+    let (_, row) = server.rpc("agent_run_get", json!({ "id": id }));
+    assert_eq!(row["title"], "Weekly report", "{row}");
+
+    // A stored session that is not live is changed in its record too.
+    drop(server);
+    let server = start(&dir, &[]);
+    let (status, _) = server.rpc("agent_run_set_mode", json!({ "id": id, "access": "ask" }));
+    assert_eq!(status, 200);
+    let (status, _) = server.rpc("agent_run_rename", json!({ "id": id, "title": "Weekly report v2" }));
+    assert_eq!(status, 200);
+    let (status, _) = server.rpc("agent_run_set_model", json!({ "id": id, "model": "stub-model" }));
+    assert_eq!(status, 200);
+    let (_, row) = server.rpc("agent_run_get", json!({ "id": id }));
+    assert_eq!((row["access"].as_str(), row["title"].as_str()), (Some("ask"), Some("Weekly report v2")), "{row}");
+    // Delete ends it for good.
+    let (status, _) = server.rpc("agent_run_delete", json!({ "id": id }));
+    assert_eq!(status, 200);
+    let (status, _) = server.rpc("agent_run_get", json!({ "id": id }));
+    assert_eq!(status, 404);
+}
