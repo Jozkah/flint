@@ -14,7 +14,9 @@
 //! the tool executor, which sits behind the agent plugin's `tauri` feature and
 //! is absent from this headless build by design, and the loop itself is driven
 //! by a renderer. Also not here: anything that spawns a process (verification
-//! checks, the final build and test gate), merging, and discarding worktrees.
+//! checks, the final build and test gate). A server session's own worktree
+//! (state, commit, merge, discard) is the runner's, by session id, in
+//! `session_worktree.rs`.
 //!
 //! Every path a request names must resolve inside one of the roots the
 //! operator listed. The data folder is never a root, and a root may not
@@ -114,6 +116,7 @@ const RUNNER_READY: bool = true;
 /// What the Rust loop on the server does not match yet, said to the client
 /// instead of left to be discovered.
 const PARITY_GAPS: &[&str] = &[
+    "worktree dependency links, sparse checkout and tool-cache optimisations",
     "plan-review UX",
     "goal evaluation",
     "TS-side compaction",
@@ -243,10 +246,11 @@ impl Agent {
             return Err(fail(404, "Unknown agent command"));
         }
         let runner = self.ready_runner()?.clone();
-        let confined = if command == "agent_run_create" {
-            Some(self.confine(text(args, "folder")?)?)
-        } else {
-            None
+        let confined = match command {
+            "agent_run_create" => Some(self.confine(text(args, "folder")?)?),
+            // The repository a worktree listing is about.
+            "agent_worktree_list" => Some(self.confine(text(args, "project")?)?),
+            _ => None,
         };
         runner.call(command, args, caller, confined).await
     }
@@ -389,7 +393,10 @@ impl Agent {
             // What this server will not do, so a client can say so rather
             // than offer a button that fails.
             "runsSessions": ready,
-            "runsChecks": false,
+            // Whether this server may run a project's own commands. P2 has no
+            // such runner; the operator's switch is reported as it stands.
+            "runsChecks": self.options.allow_checks,
+            "runsWorktrees": ready,
             "runRequested": self.run,
             "runnerPlanned": true,
             "sandbox": backend.as_str(),

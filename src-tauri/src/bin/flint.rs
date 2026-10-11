@@ -266,6 +266,12 @@ enum Commands {
         /// Seconds an unanswered approval waits before it is denied
         #[arg(long = "agent-approval-timeout", default_value_t = 1800)]
         agent_approval_timeout: u64,
+        /// Allow this server to run a project's own commands for a session
+        /// (verification checks, a build or test gate). Off by default and
+        /// reported to clients as `runsChecks`; worktree commit, merge and
+        /// discard are plain git and do not need it
+        #[arg(long = "agent-allow-checks")]
+        agent_allow_checks: bool,
         /// Refuse to run sessions when commands cannot be sandboxed. Pass
         /// `--agent-require-sandbox=false` to run them unsandboxed anyway
         #[arg(long = "agent-require-sandbox", default_value_t = true, action = clap::ArgAction::Set)]
@@ -2057,7 +2063,7 @@ async fn run() {
     };
 
     match command {
-        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file } => {
+        Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file } => {
             if let Some(data_dir) = data_dir {
                 std::env::set_var("JAN_DATA_FOLDER", data_dir);
             }
@@ -2114,6 +2120,7 @@ async fn run() {
                         allow_always: agent_allow_always,
                         approval_timeout: std::time::Duration::from_secs(agent_approval_timeout.max(1)),
                         require_sandbox: agent_require_sandbox,
+                        allow_checks: agent_allow_checks,
                     },
                     allowed_hosts,
                     allowed_origins,

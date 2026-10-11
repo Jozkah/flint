@@ -130,6 +130,16 @@ fn summarize(
         // be live; everything else is at rest.
         "status": if link.is_some_and(|l| l.3) { "running" } else { "idle" },
         "campaign": link.map(|l| json!({ "id": l.0, "title": l.1 })),
+        // The isolated checkout a server session works in, in short: the
+        // worktree commands take the session id, never this path.
+        "worktree": thread.pointer("/metadata/worktree").filter(|w| w.get("baseSha").is_some()).map(|w| json!({
+            "path": w.get("path"),
+            "branch": w.get("branch"),
+            "baseBranch": w.get("baseBranch"),
+            "baseSha": w.get("baseSha"),
+            "sourceRoot": w.get("sourceRoot"),
+        })),
+        "worktreeDiscarded": thread.pointer("/metadata/worktreeDiscarded").and_then(Value::as_bool).unwrap_or(false),
     });
     (row, folder)
 }

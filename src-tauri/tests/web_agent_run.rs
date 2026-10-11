@@ -483,3 +483,312 @@ fn a_stored_session_resumes_after_a_restart_and_only_runner_sessions_are_deletab
     let (status, _) = server.rpc("agent_run_get", json!({ "id": id }));
     assert_eq!(status, 404);
 }
+
+// ---------------------------------------------------------------------------
+// P2: worktrees and proposals for server sessions
+// ---------------------------------------------------------------------------
+
+fn git(dir: &Path, args: &[&str]) -> String {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["-c", "commit.gpgsign=false", "-c", "core.autocrlf=false"])
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "T")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "T")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .output()
+        .expect("git");
+    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim().to_owned()
+}
+
+/// `work/app` as a repository with one commit on `main`.
+fn git_scratch(name: &str) -> (PathBuf, PathBuf) {
+    let dir = scratch(name);
+    let app = dir.join("work").join("app");
+    git(&app, &["init", "-q", "-b", "main"]);
+    std::fs::write(app.join("README.md"), "hello\n").unwrap();
+    git(&app, &["add", "-A"]);
+    git(&app, &["commit", "-q", "-m", "first"]);
+    let app = app.canonicalize().unwrap();
+    (dir, app)
+}
+
+/// Run one "WRITE" turn, allowing the write, and return the events seen.
+fn write_turn(server: &Server, id: &str, after: u64) -> Vec<Value> {
+    let (status, _) = server.rpc("agent_run_start", json!({ "id": id, "input": "WRITE it" }));
+    assert_eq!(status, 200);
+    let seen = server.events(id, after, Duration::from_secs(60), |e| {
+        e["payload"]["type"] == "permission_request" || is_completed(e)
+    });
+    let request = seen
+        .iter()
+        .find(|e| e["payload"]["type"] == "permission_request")
+        .unwrap_or_else(|| panic!("no permission request in {seen:?}"));
+    let rid = request["payload"]["request_id"].as_str().unwrap().to_owned();
+    let (status, _) =
+        server.rpc("agent_run_approve", json!({ "id": id, "requestId": rid, "decision": "allow_once" }));
+    assert_eq!(status, 200);
+    let cursor = seen.last().unwrap()["seq"].as_u64().unwrap();
+    let mut rest = server.events(id, cursor, Duration::from_secs(60), is_completed);
+    let mut all = seen;
+    all.append(&mut rest);
+    all
+}
+
+fn approval_for(proposal: &Value, paths: &[&str]) -> Value {
+    json!({
+        "proposalId": proposal["id"],
+        "patchHash": proposal["patchHash"],
+        "baseStateHash": proposal["baseStateHash"],
+        "scope": proposal["scope"],
+        "files": paths.iter().map(|p| json!({ "path": p, "hunks": { "kind": "all" } })).collect::<Vec<_>>(),
+    })
+}
+
+#[test]
+fn a_worktree_session_writes_in_its_checkout_and_the_root_changes_only_on_approval() {
+    let (dir, app) = git_scratch("wt-apply");
+    let server = start(&dir, &[]);
+    let folder = app.to_string_lossy().into_owned();
+
+    let (status, created) = server.rpc("agent_run_create", json!({ "folder": folder, "access": "ask" }));
+    assert_eq!(status, 200, "{created}");
+    let id = created["id"].as_str().unwrap().to_owned();
+    // Writing access on a repository is isolated by default, under the
+    // server's own folder.
+    let worktree = created["worktree"].clone();
+    let wt_path = PathBuf::from(worktree["path"].as_str().unwrap_or_else(|| panic!("{created}")));
+    assert!(wt_path.canonicalize().unwrap().starts_with(dir.join("data").canonicalize().unwrap()), "{wt_path:?}");
+    let (_, row) = server.rpc("agent_run_get", json!({ "id": id }));
+    assert_eq!(row["worktree"]["branch"], worktree["branch"], "{row}");
+    assert_eq!(row["folder"], folder.as_str());
+
+    let seen = write_turn(&server, &id, 0);
+    let kinds: Vec<&str> = seen.iter().map(|e| e["kind"].as_str().unwrap()).collect();
+    let made = kinds.iter().position(|k| *k == "proposal.created").unwrap_or_else(|| panic!("{kinds:?} {seen:?}"));
+    assert!(made < kinds.iter().position(|k| *k == "turn.completed").unwrap());
+    // The write landed in the checkout and not in the root.
+    assert_eq!(std::fs::read_to_string(wt_path.join("out.txt")).unwrap(), "written by the runner");
+    assert!(!app.join("out.txt").exists(), "the root must not change before approval");
+
+    // The proposal is on the existing review plane.
+    let project = worktree["sourceRoot"].as_str().unwrap();
+    let (status, listed) = server.rpc("agent_proposal_list", json!({ "project": project }));
+    assert_eq!(status, 200, "{listed}");
+    let pending: Vec<&Value> = listed.as_array().unwrap().iter().filter(|p| p["state"] == "pending").collect();
+    assert_eq!(pending.len(), 1, "{listed}");
+    let proposal = pending[0].clone();
+    assert_eq!(proposal["scope"]["session"], id.as_str());
+    assert_eq!(proposal["files"][0]["path"], "out.txt");
+    assert!(!app.join("out.txt").exists());
+
+    // A stale hash is refused; nothing is written.
+    let mut wrong = approval_for(&proposal, &["out.txt"]);
+    wrong["patchHash"] = json!("0".repeat(64));
+    let (status, _) = server.rpc("agent_proposal_apply", json!({ "approval": wrong }));
+    assert_eq!(status, 422);
+    assert!(!app.join("out.txt").exists());
+    // A file the change does not contain is refused.
+    let (status, _) =
+        server.rpc("agent_proposal_apply", json!({ "approval": approval_for(&proposal, &["../evil.txt"]) }));
+    assert_eq!(status, 422);
+
+    // Approved: it lands in the root, and only that file.
+    let (status, report) =
+        server.rpc("agent_proposal_apply", json!({ "approval": approval_for(&proposal, &["out.txt"]) }));
+    assert_eq!(status, 200, "{report}");
+    assert_eq!(std::fs::read_to_string(app.join("out.txt")).unwrap(), "written by the runner");
+    // A second turn with the same content proposes nothing new.
+    let (status, _) = server.rpc("agent_run_start", json!({ "id": id, "input": "hello again" }));
+    assert_eq!(status, 200);
+    let cursor = seen.last().unwrap()["seq"].as_u64().unwrap();
+    let again = server.events(&id, cursor, Duration::from_secs(60), is_completed);
+    assert!(!again.iter().any(|e| e["kind"] == "proposal.created"), "{again:?}");
+}
+
+#[test]
+fn merge_and_discard_are_explicit_and_audited_and_a_read_session_has_no_worktree() {
+    let (dir, app) = git_scratch("wt-merge");
+    let server = start(&dir, &["--agent-allow-checks"]);
+    let (_, info) = server.rpc("agent_server_info", json!({}));
+    assert_eq!(info["runsChecks"], true);
+    let folder = app.to_string_lossy().into_owned();
+
+    // Read access runs in place.
+    let (_, read) = server.rpc("agent_run_create", json!({ "folder": folder, "access": "read" }));
+    assert!(read["worktree"].is_null(), "{read}");
+    let (status, _) = server.rpc("agent_worktree_state", json!({ "id": read["id"] }));
+    assert_eq!(status, 404);
+    server.rpc("agent_run_delete", json!({ "id": read["id"] }));
+    // An in-place session scaffolds its project settings in the root.
+    let _ = std::fs::remove_dir_all(app.join(".jan"));
+
+    let (status, created) =
+        server.rpc("agent_run_create", json!({ "folder": folder, "access": "ask", "title": "Fix things" }));
+    assert_eq!(status, 200, "{created}");
+    let id = created["id"].as_str().unwrap().to_owned();
+    let branch = created["worktree"]["branch"].as_str().unwrap().to_owned();
+    assert!(branch.starts_with("flint/"), "{branch}");
+    write_turn(&server, &id, 0);
+
+    let (_, state) = server.rpc("agent_worktree_state", json!({ "id": id }));
+    assert_eq!(state["state"], "ready", "{state}");
+    let (_, pending) = server.rpc("agent_worktree_pending", json!({ "id": id }));
+    assert!(pending["files"].as_array().unwrap().iter().any(|f| f == "out.txt"), "{pending}");
+    // Uncommitted work blocks a merge until it is committed.
+    let (status, refused) = server.rpc("agent_worktree_merge", json!({ "id": id }));
+    assert_eq!(status, 422, "{refused}");
+    assert!(!app.join("out.txt").exists());
+    let (status, committed) =
+        server.rpc("agent_worktree_commit_pending", json!({ "id": id, "message": "runner work" }));
+    assert_eq!(status, 200, "{committed}");
+    assert_eq!(committed["committed"], true);
+    let (_, unmerged) = server.rpc("agent_worktree_unmerged", json!({ "id": id }));
+    assert_eq!(unmerged["commits"].as_array().unwrap().len(), 1, "{unmerged}");
+    // Discard refuses while the branch holds unmerged commits.
+    let (status, _) = server.rpc("agent_worktree_discard", json!({ "id": id }));
+    assert_eq!(status, 422);
+
+    let (status, merged) = server.rpc("agent_worktree_merge", json!({ "id": id }));
+    assert_eq!(status, 200, "{merged}");
+    assert_eq!(merged["merged"], true);
+    assert_eq!(merged["target"], "main");
+    assert_eq!(git(&app, &["log", "-1", "--format=%s"]), "runner work");
+    let tracked = git(&app, &["ls-files"]);
+    assert!(!tracked.contains(".jan/"), "session state must not be merged: {tracked}");
+    assert_eq!(std::fs::read_to_string(app.join("out.txt")).unwrap(), "written by the runner");
+
+    // The audit trail names the client by digest, never the token.
+    let mut events = String::new();
+    let mut stack = vec![dir.join("data")];
+    while let Some(path) = stack.pop() {
+        if path.is_dir() {
+            if let Ok(read) = std::fs::read_dir(&path) {
+                stack.extend(read.flatten().map(|e| e.path()));
+            }
+        } else if path.extension().is_some_and(|e| e == "jsonl" || e == "json") {
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                events.push_str(&text);
+            }
+        }
+    }
+    assert!(events.contains("worktree.merge") && events.contains("worktree.commit_pending"), "audit missing");
+    assert!(!events.contains(&server.token));
+
+    // Discard removes the checkout and the branch, and ends the session.
+    let wt_path = PathBuf::from(created["worktree"]["path"].as_str().unwrap());
+    assert!(wt_path.exists());
+    let (status, gone) = server.rpc("agent_worktree_discard", json!({ "id": id }));
+    assert_eq!(status, 200, "{gone}");
+    assert!(!wt_path.exists());
+    assert!(git(&app, &["branch", "--list", &branch]).is_empty());
+    let (status, _) = server.rpc("agent_run_start", json!({ "id": id, "input": "more" }));
+    assert!(matches!(status, 404 | 409 | 410), "{status}");
+    let (_, row) = server.rpc("agent_run_get", json!({ "id": id }));
+    assert_eq!(row["worktreeDiscarded"], true);
+}
+
+#[test]
+fn escapes_and_a_forged_record_are_refused_and_the_flag_is_off_by_default() {
+    let (dir, app) = git_scratch("wt-escape");
+    let server = start(&dir, &[]);
+    let (_, info) = server.rpc("agent_server_info", json!({}));
+    assert_eq!(info["runsChecks"], false);
+    let folder = app.to_string_lossy().into_owned();
+    let data = dir.join("data").canonicalize().unwrap();
+
+    // A client names neither a path nor a record: only a session.
+    let (status, _) = server.rpc("agent_worktree_list", json!({ "project": data.to_string_lossy() }));
+    assert_eq!(status, 403);
+    let climbing = app.join("..").join("..");
+    let (status, _) = server.rpc("agent_worktree_list", json!({ "project": climbing.to_string_lossy() }));
+    assert!(matches!(status, 403 | 404), "{status}");
+    let (status, _) = server.rpc("agent_run_create", json!({ "folder": folder, "base": "--upload-pack=x" }));
+    assert_eq!(status, 400);
+    let (status, _) = server.rpc("agent_run_create", json!({ "folder": folder, "base": "no-such-branch" }));
+    assert_eq!(status, 422);
+    let (_, listed) = server.rpc("agent_run_list", json!({}));
+    assert!(listed["sessions"].as_array().unwrap().is_empty(), "a refused create leaves no session: {listed}");
+
+    let (status, created) = server.rpc("agent_run_create", json!({ "folder": folder }));
+    assert_eq!(status, 200, "{created}");
+    let id = created["id"].as_str().unwrap().to_owned();
+    let (status, listed) = server.rpc("agent_worktree_list", json!({ "project": folder }));
+    assert_eq!(status, 200, "{listed}");
+    assert_eq!(listed["worktrees"].as_array().unwrap().len(), 1);
+
+    // A forged path or record in the request is ignored.
+    let (status, state) = server.rpc(
+        "agent_worktree_state",
+        json!({ "id": id, "record": { "path": data.to_string_lossy() }, "path": data.to_string_lossy() }),
+    );
+    assert_eq!(status, 200);
+    assert_eq!(state["worktree"]["path"], created["worktree"]["path"]);
+
+    // A stored record that points outside the owned root, or at a repository
+    // outside the roots, is refused by every operation, and nothing moves.
+    let thread = dir.join("data").join("threads").join(&id).join("thread.json");
+    let original = std::fs::read_to_string(&thread).unwrap();
+    let outside = dir.join("home").to_string_lossy().into_owned();
+    let decoy = app.to_string_lossy().into_owned();
+    let data_s = data.to_string_lossy().into_owned();
+    let forgeries: Vec<(&str, String)> =
+        vec![("path", outside), ("path", decoy), ("sourceRoot", data_s)];
+    for (key, value) in forgeries {
+        let mut forged: Value = serde_json::from_str(&original).unwrap();
+        forged["metadata"]["worktree"][key] = json!(value);
+        std::fs::write(&thread, forged.to_string()).unwrap();
+        for (command, args) in [
+            ("agent_worktree_state", json!({ "id": id })),
+            ("agent_worktree_pending", json!({ "id": id })),
+            ("agent_worktree_merge", json!({ "id": id, "commitMessage": "x" })),
+            ("agent_worktree_discard", json!({ "id": id, "force": true })),
+            ("agent_worktree_rename", json!({ "id": id, "title": "x" })),
+            ("agent_worktree_commit_pending", json!({ "id": id })),
+        ] {
+            let (status, body) = server.rpc(command, args);
+            assert!(matches!(status, 403 | 404), "{key} {command}: {status} {body}");
+        }
+    }
+    assert!(app.join("README.md").exists());
+    assert_eq!(git(&app, &["rev-parse", "--abbrev-ref", "HEAD"]), "main");
+    std::fs::write(&thread, &original).unwrap();
+    let (status, _) = server.rpc("agent_worktree_state", json!({ "id": id }));
+    assert_eq!(status, 200);
+
+    // A link out of the checkout stops the proposal and says why.
+    let wt_path = PathBuf::from(created["worktree"]["path"].as_str().unwrap());
+    let secret = dir.join("home").join("secret.txt");
+    std::fs::write(&secret, "outside").unwrap();
+    #[cfg(unix)]
+    let linked = std::os::unix::fs::symlink(&secret, wt_path.join("leak.txt")).is_ok();
+    #[cfg(windows)]
+    let linked = std::os::windows::fs::symlink_file(&secret, wt_path.join("leak.txt")).is_ok();
+    if linked {
+        let (status, _) = server.rpc("agent_run_start", json!({ "id": id, "input": "hello" }));
+        assert_eq!(status, 200);
+        let seen = server.events(&id, 0, Duration::from_secs(60), is_completed);
+        assert!(seen.iter().any(|e| e["kind"] == "proposal.error"), "{seen:?}");
+        assert!(!seen.iter().any(|e| e["kind"] == "proposal.created"));
+    } else {
+        eprintln!("symlink not permitted here; link escape case skipped");
+    }
+    // A session that is not a runner session has no worktree to act on.
+    let foreign_id = "22222222-2222-4222-8222-222222222222";
+    let foreign = dir.join("data").join("threads").join(foreign_id);
+    std::fs::create_dir_all(&foreign).unwrap();
+    std::fs::write(
+        foreign.join("thread.json"),
+        json!({"id":foreign_id,"title":"cli","updated":1.0,"model":{"id":"m"},
+               "metadata":{"folder":folder,"worktree":{"path":wt_path.to_string_lossy(),"branch":"flint/x"}}})
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(foreign.join("messages.jsonl"), "").unwrap();
+    let (status, _) = server.rpc("agent_worktree_discard", json!({ "id": foreign_id, "force": true }));
+    assert_eq!(status, 403);
+    assert!(wt_path.exists());
+}

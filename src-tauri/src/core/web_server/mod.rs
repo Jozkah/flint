@@ -15,6 +15,7 @@ pub mod rooms;
 pub mod resources;
 pub mod runner;
 pub mod server;
+pub mod session_worktree;
 pub mod settings;
 pub mod uploads;
 #[path = "../remote/static_files.rs"]

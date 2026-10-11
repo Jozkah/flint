@@ -47,6 +47,8 @@ use tokio_stream::StreamExt;
 
 use super::agent::Fail;
 use super::agent_runs;
+use super::session_worktree as wt;
+use crate::core::agent::worktree::{self, WorktreeRecord, WorktreeState};
 use super::events::Bus;
 use super::server::Resp;
 use crate::core::agent::events::StreamEvent;
@@ -84,7 +86,7 @@ pub fn handles(command: &str) -> bool {
             | "agent_run_delete"
             | "agent_run_set_model"
             | "agent_run_set_mode"
-    )
+    ) || super::session_worktree::handles(command)
 }
 
 /// The operator's switches (`--agent-max-sessions`, `--agent-allow-bypass`,
@@ -97,6 +99,10 @@ pub struct RunnerOptions {
     pub allow_always: bool,
     pub approval_timeout: Duration,
     pub require_sandbox: bool,
+    /// `--agent-allow-checks`: the operator lets this server run a project's
+    /// own commands (verification checks, a build or test gate). Reported as
+    /// `runsChecks`; P2 adds no such runner, so nothing is gated on it yet.
+    pub allow_checks: bool,
 }
 
 impl Default for RunnerOptions {
@@ -107,6 +113,7 @@ impl Default for RunnerOptions {
             allow_always: false,
             approval_timeout: Duration::from_secs(30 * 60),
             require_sandbox: true,
+            allow_checks: false,
         }
     }
 }
@@ -265,6 +272,7 @@ enum Cmd {
     AnswerAsk { request_id: String, results: Vec<crate::core::agent::interaction::QuestionResult>, reply: Reply },
     SetModel { model: String, reply: Reply },
     SetAccess { mode: PermissionMode, reply: Reply },
+    Worktree { op: super::session_worktree::Op, caller: Caller, reply: Reply },
     Delete { reply: Reply },
 }
 
@@ -285,6 +293,10 @@ struct Session {
     title: String,
     asks: crate::core::agent::interaction::AskRegistry,
     turns: u32,
+    /// The isolated checkout the tools work in, when the session has one.
+    worktree: Option<WorktreeRecord>,
+    /// Digest of the content of the last proposal made from it.
+    proposed: Option<String>,
 }
 
 struct Active {
@@ -527,8 +539,37 @@ impl Runner {
                     None => self.delete_stored(id),
                 }
             }
+            command if wt::handles(command) => self.worktree(command, args, caller, confined).await,
             _ => Err(fail(404, "Unknown agent command")),
         }
+    }
+
+    /// A worktree command. By session id, never by a path: the record comes
+    /// from that session's stored thread (`session_worktree::execute`). A live
+    /// session runs it on its own actor, so it cannot interleave with a turn.
+    async fn worktree(
+        self: &Arc<Self>,
+        command: &str,
+        args: &Value,
+        caller: &Caller,
+        confined: Option<PathBuf>,
+    ) -> Result<Value, Fail> {
+        let data = self.data_folder.clone();
+        if command == "agent_worktree_list" {
+            let project = confined.ok_or_else(|| fail(400, "project is required"))?;
+            return tokio::task::spawn_blocking(move || wt::list(&data, &project))
+                .await
+                .map_err(|_| fail(500, "the worktree list did not finish"))?;
+        }
+        let id = text(args, "id")?.to_owned();
+        let op = wt::parse_op(command, args)?;
+        if let Some(live) = self.get(&id) {
+            return self.send(&live, |reply| Cmd::Worktree { op, caller: caller.clone(), reply }).await;
+        }
+        let (roots, by, ip) = (self.roots.clone(), caller.client.clone(), caller.ip_hash.clone());
+        tokio::task::spawn_blocking(move || wt::execute(&data, &roots, &id, op, &by, &ip))
+            .await
+            .map_err(|_| fail(500, "the worktree operation did not finish"))?
     }
 
     fn require(&self, id: &str) -> Result<Arc<Live>, Fail> {
@@ -592,7 +633,7 @@ impl Runner {
             ));
         }
         let id = uuid::Uuid::new_v4().to_string();
-        let metadata = json!({
+        let mut metadata = json!({
             "source": "runner",
             "remote": true,
             "folder": folder.to_string_lossy(),
@@ -601,7 +642,49 @@ impl Runner {
             "client": caller.client,
             "createdFrom": caller.ip_hash,
         });
-        let session = self.build_session(folder, model, mode, &id, Vec::new(), metadata, title).await?;
+        // An isolated checkout by default when the session may write and the
+        // folder is a repository; `worktree: false` opts out, `true` insists.
+        let in_git = {
+            let folder = folder.to_path_buf();
+            tokio::task::spawn_blocking(move || wt::in_git(&folder)).await.unwrap_or(false)
+        };
+        let wants = args.get("worktree").and_then(Value::as_bool);
+        let isolate = match wants {
+            Some(false) => false,
+            Some(true) if !in_git => {
+                return Err(fail(422, "that folder is not inside a git repository, so it cannot be isolated"))
+            }
+            Some(true) => true,
+            None => in_git && mode != PermissionMode::Review,
+        };
+        let worktree = if isolate {
+            let (data, roots, folder, id2, title2) =
+                (self.data_folder.clone(), self.roots.clone(), folder.to_path_buf(), id.clone(), title.clone());
+            let base = args.get("base").and_then(Value::as_str).map(str::to_owned);
+            let record = tokio::task::spawn_blocking(move || {
+                wt::create(&data, &roots, &folder, &id2, &title2, base.as_deref())
+            })
+            .await
+            .map_err(|_| fail(500, "the worktree could not be made"))??;
+            metadata[wt::KEY] = wt::record_json(&record);
+            Some(record)
+        } else {
+            None
+        };
+        let session = match self
+            .build_session(folder, model, mode, &id, Vec::new(), metadata, title, worktree.clone())
+            .await
+        {
+            Ok(session) => session,
+            Err(error) => {
+                // The checkout was made for a session that never existed.
+                if let Some(record) = worktree {
+                    let owned = wt::owned_root(&self.data_folder)?;
+                    let _ = worktree::discard_owned(&record, &owned, true);
+                }
+                return Err(error);
+            }
+        };
         self.write_stub(&session)?;
         let info = self.admit(session)?;
         self.bus.publish("agent-session-changed", &json!({ "id": id, "status": "idle" }));
@@ -609,8 +692,10 @@ impl Runner {
     }
 
     /// Build the agent for a session. Bash always runs in the sandbox (the
-    /// caller refused earlier when it cannot), no worktree is made, and no MCP
-    /// server is connected: a remote session gets the built-in tools only.
+    /// caller refused earlier when it cannot), and no MCP server is connected:
+    /// a remote session gets the built-in tools only. With a worktree record
+    /// the tools work in that checkout (never the source folder); the
+    /// thread, the credentials and the model stay the server's.
     #[allow(clippy::too_many_arguments)]
     async fn build_session(
         &self,
@@ -621,6 +706,7 @@ impl Runner {
         history: Vec<Value>,
         metadata: Value,
         title: String,
+        worktree: Option<WorktreeRecord>,
     ) -> Result<Session, Fail> {
         let flags = SessionFlags {
             auto_approve: mode.auto_approve(),
@@ -630,8 +716,12 @@ impl Runner {
             worktree: Some(false),
             ..Default::default()
         };
+        let tool_dir = match &worktree {
+            Some(record) => wt::tool_dir(record, folder),
+            None => folder.to_path_buf(),
+        };
         let mut agent = prepare_agent_session(
-            &folder.to_string_lossy(),
+            &tool_dir.to_string_lossy(),
             model,
             ProviderOverrides::default(),
             flags.clone(),
@@ -652,6 +742,8 @@ impl Runner {
             title,
             asks,
             turns: 0,
+            worktree,
+            proposed: None,
         })
     }
 
@@ -719,6 +811,7 @@ impl Runner {
             "mode": session.metadata.get("mode"),
             "status": "idle",
             "lastSeq": 0,
+            "worktree": session.worktree.as_ref().map(wt::record_json),
         });
         let runner = self.clone();
         tokio::spawn(actor(runner, session, shared, rx, tx));
@@ -757,7 +850,27 @@ impl Runner {
                 format!("this server runs at most {} sessions at once", self.options.max_sessions),
             ));
         }
-        let session = self.build_session(&folder, model, mode, id, history, meta, title).await?;
+        if meta.get("worktreeDiscarded").and_then(Value::as_bool) == Some(true) {
+            return Err(fail(409, "this session's worktree was discarded; start a new session"));
+        }
+        let record = wt::record_of(&meta);
+        if let Some(record) = &record {
+            let (data, roots, record2) = (self.data_folder.clone(), self.roots.clone(), record.clone());
+            let checked = tokio::task::spawn_blocking(move || {
+                wt::validated(&data, &roots, &record2)?;
+                match worktree::state(&record2) {
+                    WorktreeState::Ready => Ok(()),
+                    other => Err(fail(
+                        409,
+                        format!("this session's worktree is {}; discard it or start a new session", wt::state_word(&other)),
+                    )),
+                }
+            })
+            .await
+            .map_err(|_| fail(500, "the worktree check did not finish"))?;
+            checked?;
+        }
+        let session = self.build_session(&folder, model, mode, id, history, meta, title, record).await?;
         self.admit(session)?;
         self.get(id).ok_or_else(|| fail(410, "that session has ended"))
     }
@@ -832,8 +945,23 @@ async fn actor(
                         while turn_times.front().is_some_and(|t| now.duration_since(*t) > Duration::from_secs(60)) {
                             turn_times.pop_front();
                         }
+                        let broken = match &session.worktree {
+                            Some(record) if active.is_none() => {
+                                let record = record.clone();
+                                match tokio::task::spawn_blocking(move || worktree::state(&record)).await {
+                                    Ok(WorktreeState::Ready) | Err(_) => None,
+                                    Ok(other) => Some(wt::state_word(&other)),
+                                }
+                            }
+                            _ => None,
+                        };
                         let answer = if active.is_some() {
                             Err(fail(409, "this session has an active turn; steer it or wait for it to finish"))
+                        } else if let Some(state) = broken {
+                            Err(fail(
+                                409,
+                                format!("this session's worktree is {state}; discard it or start a new session"),
+                            ))
                         } else if turn_times.len() >= TURNS_PER_MINUTE {
                             Err(fail(429, "too many turns on this session; wait a minute"))
                         } else {
@@ -894,6 +1022,7 @@ async fn actor(
                         for event in release_requests(&session.agent.args, "interrupted").await {
                             publish_stream(&shared, &event, &runner.options);
                         }
+                        propose(&runner, &mut session, &shared).await;
                         // Persist what the turn had so far, then read it back
                         // the way a resume does: that repairs a tool call the
                         // abort left without its result.
@@ -988,7 +1117,11 @@ async fn actor(
                             match crate::core::agent::upstream::resolve_upstream_for_model(&model, configs).await {
                                 Err(message) => Err(fail(422, message)),
                                 Ok(_) => match prepare_agent_session(
-                                    &session.folder.to_string_lossy(),
+                                    &match &session.worktree {
+                                        Some(record) => wt::tool_dir(record, &session.folder),
+                                        None => session.folder.clone(),
+                                    }
+                                    .to_string_lossy(),
                                     Some(model),
                                     ProviderOverrides::default(),
                                     session.flags.clone(),
@@ -1030,6 +1163,40 @@ async fn actor(
                         };
                         let _ = reply.send(answer);
                     }
+                    Cmd::Worktree { op, caller, reply } => {
+                        if active.is_some() && op.mutates() {
+                            let _ = reply.send(Err(fail(
+                                409,
+                                "this session has an active turn; retry after it finishes",
+                            )));
+                            continue;
+                        }
+                        let discarding = matches!(op, wt::Op::Discard { .. });
+                        let (data, roots, sid) = (runner.data_folder.clone(), runner.roots.clone(), session.id.clone());
+                        let (by, ip) = (caller.client, caller.ip_hash);
+                        let outcome = tokio::task::spawn_blocking(move || wt::execute(&data, &roots, &sid, op, &by, &ip))
+                            .await
+                            .unwrap_or_else(|_| Err(fail(500, "the worktree operation did not finish")));
+                        if let Some((meta, record)) = wt::reload(&runner.data_folder, &session.id) {
+                            session.metadata = meta;
+                            session.worktree = record;
+                        }
+                        let done = outcome.is_ok();
+                        if done && discarding {
+                            // Its checkout is gone: the session ends with it
+                            // (the thread stays, marked, as a record).
+                            session.agent.permission_requests.lock().await.clear();
+                            cancel_asks(&session).await;
+                            shared.publish("worktree.discarded", json!({}));
+                            ping("closed");
+                            let _ = reply.send(outcome);
+                            break;
+                        }
+                        if done {
+                            shared.publish("worktree.changed", json!({ "worktree": session.worktree.as_ref().map(wt::record_json) }));
+                        }
+                        let _ = reply.send(outcome);
+                    }
                     Cmd::Delete { reply } => {
                         if let Some(turn) = active.take() {
                             turn.task.runner.abort();
@@ -1052,6 +1219,7 @@ async fn actor(
                 let Some(message) = message else {
                     // The run's task is gone without an outcome.
                     let turn = active.take().expect("active");
+                    propose(&runner, &mut session, &shared).await;
                     finish(&runner, &mut session, &shared, turn, Err("the run ended without an outcome".to_owned()));
                     approvals.clear();
                     ask_requests.clear();
@@ -1114,6 +1282,7 @@ async fn actor(
                     }
                     TurnMessage::Finished(result) => {
                         let turn = active.take().expect("active");
+                        propose(&runner, &mut session, &shared).await;
                         finish(&runner, &mut session, &shared, turn, result);
                         approvals.clear();
                         ask_requests.clear();
@@ -1128,6 +1297,51 @@ async fn actor(
     }
     runner.live.lock().unwrap().remove(&id);
     shared.publish("session.closed", json!({}));
+}
+
+/// When the session works in a worktree and the turn changed something new,
+/// store the change as a proposal and say so on the stream. The review plane
+/// (`agent_proposal_list|apply|reject`) does the rest; nothing is applied here.
+async fn propose(runner: &Runner, session: &mut Session, shared: &Shared) {
+    let Some(record) = session.worktree.clone() else { return };
+    if session.mode.plan() {
+        return;
+    }
+    let (data, roots, sid, last) =
+        (runner.data_folder.clone(), runner.roots.clone(), session.id.clone(), session.proposed.clone());
+    let outcome =
+        tokio::task::spawn_blocking(move || wt::propose(&data, &roots, &sid, &record, last.as_deref())).await;
+    match outcome {
+        Ok(Ok(Some(made))) => {
+            session.proposed = Some(made.digest);
+            let files = made.record.files.len();
+            let (additions, deletions) = made
+                .record
+                .files
+                .iter()
+                .fold((0, 0), |(a, d), f| (a + f.additions, d + f.deletions));
+            shared.publish(
+                "proposal.created",
+                json!({
+                    "proposalId": made.record.id,
+                    "project": made.record.scope.project,
+                    "files": files,
+                    "additions": additions,
+                    "deletions": deletions,
+                    "superseded": made.superseded,
+                }),
+            );
+            runner.bus.publish(
+                "agent-proposal-created",
+                &json!({ "id": session.id, "proposalId": made.record.id }),
+            );
+        }
+        Ok(Ok(None)) => {}
+        Ok(Err(message)) => {
+            shared.publish("proposal.error", json!({ "message": message }));
+        }
+        Err(_) => {}
+    }
 }
 
 fn publish_stream(shared: &Shared, event: &StreamEvent, options: &RunnerOptions) {
