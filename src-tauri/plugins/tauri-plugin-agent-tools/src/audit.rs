@@ -208,6 +208,14 @@ pub fn format_rfc3339(secs: u64) -> String {
 /// `PGPASSWORD=... psql`. Redaction happens before the record is built, so a
 /// secret is never written and then cleaned up.
 pub fn redact(text: &str) -> String {
+    // The word-level pass first, then the shared line rules
+    // (`secrets::redact_secrets`): quoted `"token":"x"` pairs, `API_KEY= x`,
+    // `Bearer <token>`. Every persisted copy (audit, events, prompts) applies
+    // the same rules the CLI log scrubber and the renderer do.
+    crate::secrets::redact_secrets(&redact_words(text))
+}
+
+fn redact_words(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for word in text.split_inclusive(char::is_whitespace) {
         let trimmed = word.trim_end();
@@ -568,6 +576,24 @@ mod tests {
         // A bare high-entropy key is still caught.
         let key = "aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5";
         assert!(redact(key).contains("[redacted]"));
+    }
+
+    #[test]
+    fn shared_quoted_key_env_key_and_bearer_rules_apply() {
+        for (line, secret) in [
+            ("API_KEY= hunter2x", "hunter2x"),
+            ("{\"token\":\"abcdefghij\"}", "abcdefghij"),
+            (
+                "curl -H 'Authorization: Bearer abcdefghij1234567890' https://x.test",
+                "abcdefghij1234567890",
+            ),
+        ] {
+            let out = redact(line);
+            assert!(!out.contains(secret), "{line} -> {out}");
+        }
+        for line in ["{\"max_tokens\": 4096}", "PATH=/usr/bin", "HOME=/home/u"] {
+            assert_eq!(redact(line), line, "{line} must not be redacted");
+        }
     }
 
     #[test]

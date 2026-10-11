@@ -55,9 +55,26 @@ impl Redactor {
                 label: "api key / token value",
                 // Both `api_key="..."` and JSON `"api_key":"..."`.
                 re: Regex::new(
-                    r#"(?i)((?:\\?["'])?(?:api[_-]?key|apikey|secret|token|access[_-]?token|refresh[_-]?token)(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?)[A-Za-z0-9._~+/\-=]{12,}"#,
+                    r#"(?i)((?:\\?["'])?(?:api[_-]?key|apikey|secret|token|access[_-]?token|refresh[_-]?token)(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?)[A-Za-z0-9._~+/\-=]{8,}"#,
                 )
                 .expect("key regex"),
+            },
+            Rule {
+                label: "quoted key's value",
+                // `{"token":"abc"}` in a shell string or a JSON record: a
+                // quoted key with a quoted value is an assignment whatever the
+                // value's length, and a short one slips under the minimum the
+                // unquoted rule above needs to stay out of prose.
+                // The pattern is shared with the desktop redactor.
+                re: Regex::new(tauri_plugin_agent_tools::secrets::QUOTED_KEY_VALUE_RE)
+                    .expect("quoted key regex"),
+            },
+            Rule {
+                label: "env key assignment",
+                // `STRIPE_KEY= value`, `KEY=value`: an upper-case variable named
+                // for a key. Case-sensitive so prose ("the key = ...") is left.
+                re: Regex::new(tauri_plugin_agent_tools::secrets::ENV_KEY_ASSIGNMENT_RE)
+                    .expect("env key regex"),
             },
             Rule {
                 label: "password value",
@@ -147,6 +164,50 @@ impl Redactor {
     }
 }
 
+/// One persisted text: the CLI rules, then the desktop line rules, so a copy on
+/// disk obeys the same redaction as the live log (`secrets_redact`).
+pub(crate) fn scrub_text(text: &str) -> String {
+    let first = SHARED.scrub(text);
+    tauri_plugin_agent_tools::secrets::redact_secrets(&first)
+}
+
+/// Redact every string inside a JSON value in place, keeping it valid JSON.
+/// A string that is itself JSON (a tool call's `arguments`) is parsed and its
+/// leaves redacted, so the line-level rules never see structural quotes. Id and
+/// role-like keys are left alone.
+pub(crate) fn scrub_json(value: &mut serde_json::Value) {
+    use serde_json::Value;
+    const KEEP: [&str; 8] = [
+        "id", "role", "type", "object", "status", "thread_id", "tool_call_id", "name",
+    ];
+    match value {
+        Value::String(text) => {
+            let trimmed = text.trim_start();
+            if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                if let Ok(mut inner) = serde_json::from_str::<Value>(text) {
+                    scrub_json(&mut inner);
+                    if let Ok(back) = serde_json::to_string(&inner) {
+                        *text = back;
+                        return;
+                    }
+                }
+                *text = SHARED.scrub(text).into_owned();
+                return;
+            }
+            *text = scrub_text(text);
+        }
+        Value::Array(items) => items.iter_mut().for_each(scrub_json),
+        Value::Object(map) => {
+            for (key, child) in map.iter_mut() {
+                if !KEEP.contains(&key.as_str()) {
+                    scrub_json(child);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Values the user marked secret, whatever their shape, which no rule above
 /// recognises. janhq/jan#8208; see `core::secret_values`.
 fn apply_exact(text: &str) -> Option<String> {
@@ -226,6 +287,39 @@ mod tests {
             assert!(!scrubbed.contains(secret), "{secret} survived: {scrubbed}");
         }
         serde_json::from_str::<serde_json::Value>(&scrubbed).expect("still valid JSON");
+    }
+
+    /// A key assigned nothing, then a value after a space; and a short value
+    /// under a quoted key inside a shell string or an escaped JSON record.
+    #[test]
+    fn a_value_after_an_empty_key_or_in_json_in_a_shell_string_is_redacted() {
+        for (line, secret) in [
+            ("export API_KEY= abcdefghijklmnop1234", "abcdefghijklmnop1234"),
+            ("STRIPE_KEY= hunter2x", "hunter2x"),
+            ("KEY= s3cr3tvalue", "s3cr3tvalue"),
+            ("curl -d '{\"token\":\"abc\"}' https://x.test", "abc"),
+            ("curl -d '{\"password\": \"pw\"}' https://x.test", "pw"),
+            (r#"bash -c "echo {\"api_key\":\"short\"}""#, "short"),
+            (r#"{"cmd":"curl -d '{\"client_secret\":\"zz9\"}'"}"#, "zz9"),
+            ("SECRET_KEY=hunter2hunter2", "hunter2hunter2"),
+        ] {
+            let out = SHARED.scrub(line);
+            assert!(!out.contains(secret), "{secret} survived: {out}");
+            assert!(out.contains("<redacted>"), "{out}");
+        }
+        // The record around an escaped one still parses.
+        let record = serde_json::json!({"cmd": "curl -d '{\"token\":\"abc\"}'"}).to_string();
+        let out = SHARED.scrub(&record);
+        assert!(!out.contains("abc"), "{out}");
+        serde_json::from_str::<serde_json::Value>(&out).expect("still valid JSON");
+        // Prose and a count named for tokens are not credentials.
+        for clean in [
+            "the key = value pair is stored in a map",
+            r#"{"max_tokens": "10"}"#,
+            r#"{"token":"<redacted>"}"#,
+        ] {
+            assert_eq!(SHARED.scrub(clean), clean);
+        }
     }
 
     #[test]

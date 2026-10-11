@@ -420,6 +420,9 @@ pub struct HookRun {
     pub output: String,
     #[serde(default)]
     pub error: Option<HookError>,
+    /// Wall-clock time the hook took, including shell selection and spawn.
+    #[serde(default)]
+    pub duration_ms: u64,
 }
 
 /// What the hooks for one point decided.
@@ -482,7 +485,17 @@ async fn run_with_env(
 ) -> Decision {
     let mut decision = Decision::default();
     for hook in hooks.iter().filter(|h| h.applies_to(event, tool)) {
+        let started = std::time::Instant::now();
         let (ok, output, error) = execute(hook, event, tool, ctx, extra_env).await;
+        let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        log::debug!(
+            "hook finished: event={} command={:?} ok={} outcome={} duration_ms={}",
+            event.as_str(),
+            crate::harness_error::scrub(&hook.command),
+            ok,
+            error.as_ref().map_or_else(|| "ok".to_string(), |e| format!("{:?}", e.kind)),
+            duration_ms
+        );
         if !ok {
             let error = error.clone().unwrap_or_else(|| {
                 HookError::new(HookErrorKind::Failed, "the hook failed with no output")
@@ -500,6 +513,7 @@ async fn run_with_env(
             ok,
             output,
             error,
+            duration_ms,
         });
         if decision.blocked.is_some() {
             break;
@@ -913,6 +927,25 @@ mod tests {
     /// way on every host this runs on.
     const OK: &str = "exit 0";
     const FAIL: &str = "echo the linter says no 1>&2; exit 3";
+
+    /// A finished hook reports how long it took, and serializes it.
+    #[tokio::test]
+    async fn a_finished_hook_reports_its_duration() {
+        let root = dir("duration");
+        write_config(
+            &root,
+            &format!("[[hook]]\nevent = \"post-tool\"\ncommand = \"{OK}\"\n"),
+        );
+        let hooks = load(&root).unwrap();
+        let decision = run(&hooks, Event::PostTool, Some("bash"), &ctx(&root)).await;
+        assert_eq!(decision.runs.len(), 1);
+        let run0 = &decision.runs[0];
+        assert!(run0.ok);
+        assert!(run0.duration_ms < 60_000, "duration {} is not a plausible hook time", run0.duration_ms);
+        let json = serde_json::to_value(run0).unwrap();
+        assert!(json.get("durationMs").is_some(), "durationMs missing from {json}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn a_project_with_no_file_has_no_hooks() {

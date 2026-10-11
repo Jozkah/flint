@@ -112,5 +112,13 @@
     "remote": "클라우드 공급자",
     "remoteHint": "메시지가 이 컴퓨터 밖으로 나감",
     "inUse": "여기서 사용 중: {{model}} · {{provider}}"
+  },
+  "offload": {
+    "heading": "GPU offload (this load)",
+    "all": "All {{layers}} layers run on the GPU.",
+    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
+    "none": "No layers run on the GPU: the model is running on the CPU.",
+    "unknown": "The engine did not say how many layers it offloaded.",
+    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
   }
 }

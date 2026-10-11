@@ -72,6 +72,24 @@ describe('runCcContextHooks', () => {
     })
   })
 
+  it('reports a turn stopped during the prompt hooks so it can be refused', async () => {
+    invokeMock.mockResolvedValue({
+      enabled: true,
+      sessionStart: [],
+      promptSubmit: [],
+      interrupted: true,
+    })
+    const got = await runCcContextHooks({ sessionId: 's', prompt: 'hi' })
+    expect(got.interrupted).toBe(true)
+    invokeMock.mockResolvedValue({
+      enabled: true,
+      sessionStart: [],
+      promptSubmit: [],
+      interrupted: false,
+    })
+    expect((await runCcContextHooks({ sessionId: 's', prompt: 'hi' })).interrupted).toBeUndefined()
+  })
+
   it('does not hold the turn for a hook that never answers', async () => {
     invokeMock.mockReturnValue(new Promise(() => {}))
     const got = await runCcContextHooks({

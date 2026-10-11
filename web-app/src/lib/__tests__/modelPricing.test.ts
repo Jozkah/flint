@@ -146,7 +146,25 @@ describe('resolvePricing with cache prices', () => {
 
   it('adds a user’s cached price to a well-known model’s built-in price', () => {
     const p = resolvePricing('anthropic', { id: 'claude-sonnet-4', cachedInputCostPerMillion: 0.3 })
-    expect(p).toEqual({ input: 3, output: 15, cachedInput: 0.3 })
+    expect(p).toEqual({ input: 3, output: 15, cachedInput: 0.3, cacheWrite: 3.75 })
+  })
+
+  it('fills Anthropic cache ratios for Claude models only', () => {
+    const claude = resolvePricing('anthropic', { id: 'claude-sonnet-4' })
+    expect(claude?.cachedInput).toBeCloseTo(0.3)
+    expect(claude?.cacheWrite).toBeCloseTo(3.75)
+    // A user-priced Claude model without cache prices gets the ratios too.
+    const own = resolvePricing('anthropic', {
+      id: 'claude-x',
+      inputCostPerMillion: 10,
+      outputCostPerMillion: 20,
+    })
+    expect(own).toEqual({ input: 10, output: 20, cachedInput: 1, cacheWrite: 12.5 })
+    // Not Claude: cached tokens are priced at the input rate, nothing invented.
+    const gpt = resolvePricing('openai', { id: 'gpt-4o' })
+    expect(gpt).toEqual({ input: 2.5, output: 10 })
+    const c = costBreakdown(gpt!, { inputTokens: 1_000_000, cachedInputTokens: 500_000 })
+    expect(c.total).toBeCloseTo(2.5)
   })
 
   it('treats a local model as free, and an unknown one as unpriced', () => {

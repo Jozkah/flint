@@ -579,6 +579,36 @@ const RETRY_WALL_BUDGET: Duration = Duration::from_secs(180);
 /// seldom transient the way a dropped connection is, and each one is long.
 const MAX_TIMEOUT_ATTEMPTS: u32 = 2;
 
+/// Operator override for [`MAX_RETRY_DELAY`], in milliseconds.
+const RETRY_MAX_DELAY_ENV: &str = "FLINT_RETRY_MAX_DELAY_MS";
+/// Operator override for [`RETRY_BUDGET`], in milliseconds.
+const RETRY_BUDGET_ENV: &str = "FLINT_RETRY_BUDGET_MS";
+
+/// A positive millisecond count from a raw variable value, else `default`.
+/// Zero and anything unparseable fall back: a zero budget would turn retries
+/// off silently, which is a different setting than this one.
+fn duration_from_env_ms(raw: Option<&str>, default: Duration) -> Duration {
+    raw.and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|ms| *ms > 0)
+        .map_or(default, Duration::from_millis)
+}
+
+/// The backoff ceiling in effect, read from the environment once.
+fn max_retry_delay() -> Duration {
+    static VALUE: std::sync::OnceLock<Duration> = std::sync::OnceLock::new();
+    *VALUE.get_or_init(|| {
+        duration_from_env_ms(std::env::var(RETRY_MAX_DELAY_ENV).ok().as_deref(), MAX_RETRY_DELAY)
+    })
+}
+
+/// The total wait budget in effect, read from the environment once.
+fn retry_budget() -> Duration {
+    static VALUE: std::sync::OnceLock<Duration> = std::sync::OnceLock::new();
+    *VALUE.get_or_init(|| {
+        duration_from_env_ms(std::env::var(RETRY_BUDGET_ENV).ok().as_deref(), RETRY_BUDGET)
+    })
+}
+
 /// Fraction of a backoff that jitter may remove.
 ///
 /// Jitter only ever *shortens*. Lengthening would let a delay quietly exceed
@@ -1025,7 +1055,7 @@ pub(crate) async fn stream_chat_completions(
 fn next_delay(attempt: u32, provider: Option<Duration>, jitter: f64) -> Duration {
     let backoff = BASE_RETRY_DELAY
         .saturating_mul(1u32 << attempt.min(15))
-        .min(MAX_RETRY_DELAY);
+        .min(max_retry_delay());
     let backoff = backoff.mul_f64(1.0 - RETRY_JITTER * jitter.clamp(0.0, 1.0));
     match provider {
         Some(p) if p > backoff => p,
@@ -1035,7 +1065,7 @@ fn next_delay(attempt: u32, provider: Option<Duration>, jitter: f64) -> Duration
 
 /// Clamp a delay to what remains of [`RETRY_BUDGET`]; `None` when nothing does.
 fn budgeted(delay: Duration, spent: Duration) -> Option<Duration> {
-    let remaining = RETRY_BUDGET.checked_sub(spent)?;
+    let remaining = retry_budget().checked_sub(spent)?;
     if remaining.is_zero() {
         return None;
     }
@@ -1950,7 +1980,7 @@ mod tests {
         assert_eq!(next_delay(1, None, 0.0), BASE_RETRY_DELAY * 2);
         assert_eq!(
             next_delay(20, None, 0.0),
-            MAX_RETRY_DELAY,
+            max_retry_delay(),
             "capped, not overflowing"
         );
     }
@@ -1963,7 +1993,7 @@ mod tests {
         // hammer it faster than we would have.
         assert_eq!(
             next_delay(5, Some(Duration::from_millis(1)), 0.0),
-            MAX_RETRY_DELAY
+            max_retry_delay()
         );
     }
 
@@ -2004,12 +2034,22 @@ mod tests {
         assert_eq!(
             budgeted(
                 Duration::from_secs(10),
-                RETRY_BUDGET - Duration::from_secs(2)
+                retry_budget() - Duration::from_secs(2)
             ),
             Some(Duration::from_secs(2)),
             "clamped to what is left"
         );
-        assert_eq!(budgeted(Duration::from_secs(1), RETRY_BUDGET), None);
+        assert_eq!(budgeted(Duration::from_secs(1), retry_budget()), None);
+    }
+
+    #[test]
+    fn retry_limits_take_a_positive_millisecond_override_and_ignore_the_rest() {
+        let d = Duration::from_secs(8);
+        assert_eq!(duration_from_env_ms(Some("1500"), d), Duration::from_millis(1500));
+        assert_eq!(duration_from_env_ms(Some(" 250 "), d), Duration::from_millis(250));
+        for odd in [None, Some(""), Some("0"), Some("-5"), Some("fast"), Some("1.5")] {
+            assert_eq!(duration_from_env_ms(odd, d), d, "{odd:?}");
+        }
     }
 
     #[test]

@@ -296,19 +296,20 @@ fn a_run_with_an_unknown_model_fails_into_its_record() {
 // ---- a stopped run leaves no process behind ----
 
 #[cfg(windows)]
-const SLEEP_COMMAND: &str = "powershell -NoProfile -Command Start-Sleep -Seconds 987";
+const SLEEP_COMMAND: &str = "ping -n 987 127.0.0.1";
 #[cfg(not(windows))]
 const SLEEP_COMMAND: &str = "sleep 987";
 
 /// How many processes have the sleep (987 seconds, a length no other test
-/// uses) on their command line.
+/// uses) on their command line. Windows sleeps with `ping`, not a PowerShell
+/// `-Command`, which the command scan treats as opaque and so always asks about.
 fn sleepers() -> usize {
     #[cfg(windows)]
     let out = Command::new("powershell")
         .args([
             "-NoProfile",
             "-Command",
-            "(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*Start-Sleep -Seconds 987*' -and $_.Name -eq 'powershell.exe' } | Measure-Object).Count",
+            "(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*-n 987 127.0.0.1*' -and $_.Name -eq 'PING.EXE' } | Measure-Object).Count",
         ])
         .output();
     #[cfg(not(windows))]

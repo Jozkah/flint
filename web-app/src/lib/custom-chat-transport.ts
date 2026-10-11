@@ -2946,6 +2946,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       projectDir: this.projectRoot,
       prompt: userMessageText(messagesToConvert[messagesToConvert.length - 1]),
     })
+    // Stopped while the prompt hooks ran: fail closed rather than answer a
+    // prompt no hook has looked at.
+    if (ccContext.interrupted) {
+      throw new Error(
+        'The turn was stopped while its prompt hooks ran, so the prompt was not submitted.'
+      )
+    }
     const effectiveSystem = appendSessionContext(
       this.buildSystemPrompt(messagesToConvert),
       ccContext.sessionStart

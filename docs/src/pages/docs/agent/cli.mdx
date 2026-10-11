@@ -860,3 +860,7 @@ flint cli agent run \
 No flag is needed: tool calls are auto-approved by default, which is what a CI runner wants since
 there's nobody at a keyboard to answer a prompt. Do not pass `--safe` here. With no TTY on stdin
 there is no way to answer, so every prompt is denied and the run stalls out on its first write.
+
+### Cache prices in prices.toml
+
+A `prices.toml` entry may add `cache_read` and `cache_write` (dollars per million tokens; `cached_input` is an alias for `cache_read`). Both are optional. Cached prompt tokens are a share of the prompt and are billed at those rates instead of `input`. When omitted, Claude-family models use Anthropic's ratios (read 0.1x, write 1.25x `input`); every other model bills cached tokens at `input`, with no discount assumed.

@@ -470,22 +470,49 @@ pub struct Usage {
 }
 
 impl Usage {
+    /// Read a completion's `usage`, normalizing every provider convention to
+    /// "`prompt_tokens` is the full prompt, cache shares included":
+    ///
+    /// * OpenAI-compatible: `prompt_tokens` already includes cached tokens;
+    ///   reads are `prompt_tokens_details.cached_tokens`.
+    /// * DeepSeek: `prompt_cache_hit_tokens` (+ `prompt_cache_miss_tokens`).
+    /// * Anthropic native (`input_tokens`, no `prompt_tokens`): `input_tokens`
+    ///   EXCLUDES `cache_read_input_tokens` and `cache_creation_input_tokens`,
+    ///   so all three are summed into the prompt total.
+    ///
+    /// (genai already does the Anthropic sum before this runs.)
     pub(crate) fn from_completion(completion: &serde_json::Value) -> Option<Self> {
         let usage = completion.get("usage")?;
         let details = usage.get("prompt_tokens_details");
+        let num = |v: Option<&serde_json::Value>| v.and_then(|v| v.as_u64());
+        let cache_read_native = num(usage.get("cache_read_input_tokens"));
+        let cache_write = num(usage.get("cache_creation_input_tokens"))
+            .or_else(|| num(details.and_then(|d| d.get("cache_creation_tokens"))));
+        let cached = num(details.and_then(|d| d.get("cached_tokens")))
+            .or_else(|| num(usage.get("prompt_cache_hit_tokens")))
+            .or(cache_read_native);
+
+        let mut prompt = num(usage.get("prompt_tokens"));
+        let mut completion_tokens = num(usage.get("completion_tokens"));
+        let mut total = num(usage.get("total_tokens"));
+        if prompt.is_none() {
+            if let Some(input) = num(usage.get("input_tokens")) {
+                // Anthropic's convention: cache is reported outside input.
+                prompt = Some(
+                    input + cache_read_native.unwrap_or(0) + cache_write.unwrap_or(0),
+                );
+                completion_tokens = completion_tokens.or_else(|| num(usage.get("output_tokens")));
+                if total.is_none() {
+                    total = Some(prompt.unwrap_or(0) + completion_tokens.unwrap_or(0));
+                }
+            }
+        }
         Some(Self {
-            prompt_tokens: usage.get("prompt_tokens").and_then(|v| v.as_u64()),
-            completion_tokens: usage.get("completion_tokens").and_then(|v| v.as_u64()),
-            total_tokens: usage.get("total_tokens").and_then(|v| v.as_u64()),
-            cached_prompt_tokens: details
-                .and_then(|d| d.get("cached_tokens"))
-                .and_then(|v| v.as_u64()),
-            // Anthropic's name, as the server converter and OpenAI-shaped
-            // proxies in front of Anthropic pass it through.
-            cache_write_tokens: usage
-                .get("cache_creation_input_tokens")
-                .or_else(|| details.and_then(|d| d.get("cache_creation_tokens")))
-                .and_then(|v| v.as_u64()),
+            prompt_tokens: prompt,
+            completion_tokens,
+            total_tokens: total,
+            cached_prompt_tokens: cached,
+            cache_write_tokens: cache_write,
         })
     }
 }
@@ -1194,5 +1221,31 @@ pub(crate) mod tests {
         let wire = serde_json::to_value(&silent).unwrap();
         assert!(wire.get("cached_prompt_tokens").is_none());
         assert!(wire.get("cache_write_tokens").is_none());
+    }
+
+    #[test]
+    fn usage_shapes_from_each_provider_normalize_to_prompt_including_cache() {
+        // Anthropic native: input_tokens excludes cache.
+        let a = Usage::from_completion(&json!({ "usage": {
+            "input_tokens": 100, "output_tokens": 40,
+            "cache_read_input_tokens": 900, "cache_creation_input_tokens": 50 } }))
+        .unwrap();
+        assert_eq!(a.prompt_tokens, Some(1050));
+        assert_eq!(a.completion_tokens, Some(40));
+        assert_eq!(a.total_tokens, Some(1090));
+        assert_eq!(a.cached_prompt_tokens, Some(900));
+        assert_eq!(a.cache_write_tokens, Some(50));
+        // OpenAI: prompt_tokens already includes the cached share.
+        let o = Usage::from_completion(&json!({ "usage": {
+            "prompt_tokens": 1000, "completion_tokens": 5,
+            "prompt_tokens_details": { "cached_tokens": 800 } } }))
+        .unwrap();
+        assert_eq!((o.prompt_tokens, o.cached_prompt_tokens), (Some(1000), Some(800)));
+        // DeepSeek.
+        let d = Usage::from_completion(&json!({ "usage": {
+            "prompt_tokens": 1000, "completion_tokens": 5,
+            "prompt_cache_hit_tokens": 640, "prompt_cache_miss_tokens": 360 } }))
+        .unwrap();
+        assert_eq!((d.prompt_tokens, d.cached_prompt_tokens), (Some(1000), Some(640)));
     }
 }

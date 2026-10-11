@@ -610,25 +610,20 @@ pub(crate) async fn execute_text(
         // readable and unwritable.
         "read" => read_or_list(args, ctx).await.0,
         "ls" => ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
-        "write" => {
-            write(
-                args,
-                project_root,
-                scratch,
-                ctx.confine_writes,
-                ctx.write_roots,
-            )
-            .await
-        }
-        "edit" => {
-            edit(
-                args,
-                project_root,
-                scratch,
-                ctx.confine_writes,
-                ctx.write_roots,
-            )
-            .await
+        "write" | "edit" => {
+            let verb = if tool.name == "write" { "overwrite" } else { "edit" };
+            if let Some(refusal) = stale_edit_refusal(verb, args, ctx).await {
+                return refusal;
+            }
+            let out = if tool.name == "write" {
+                write(args, project_root, scratch, ctx.confine_writes, ctx.write_roots).await
+            } else {
+                edit(args, project_root, scratch, ctx.confine_writes, ctx.write_roots).await
+            };
+            if !out.starts_with("ERROR") {
+                record_seen(args, ctx).await;
+            }
+            out
         }
         "bash" => bash(args, ctx).await,
         "find" => find(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
@@ -939,6 +934,9 @@ pub async fn execute_builtin_with_diff(
             // and the diff a person reviews should be what the file now holds
             // -- not a version the next `cargo fmt` will rewrite.
             let diff = format_after_edit(args, ctx, before.as_deref(), diff).await;
+            // The formatter may have rewritten the file: what the model saw
+            // last is what is there now, so its next edit is not "stale".
+            record_seen(args, ctx).await;
             (content, diff, images)
         }
         // Tools that can hand the model an image. `screenshot` and `browser`
@@ -1410,7 +1408,13 @@ async fn read_or_list(
             return (format!("{path} is a directory. Contents:\n{listing}"), None);
         }
     }
-    read(args, ctx.project_root, ctx.scratch_root, ctx.read_roots).await
+    let out = read(args, ctx.project_root, ctx.scratch_root, ctx.read_roots).await;
+    // A text file that opens with "ERROR" is still a successful read, but it is
+    // indistinguishable here; the model re-reads in that rare case.
+    if !out.0.starts_with("ERROR") {
+        record_seen(args, ctx).await;
+    }
+    out
 }
 
 async fn read(
@@ -1424,6 +1428,7 @@ async fn read(
     };
     let offset = arg_u64(args, "offset").map(|v| v as usize);
     let limit = arg_u64(args, "limit").map(|v| v as usize);
+    let allow_large = arg_bool(args, "allow_large");
     let target = resolve_path(root, scratch, path);
     // Fail closed: a component swapped to a symlink after the gate validated
     // the path must not redirect the open out of the workspace.
@@ -1457,7 +1462,7 @@ async fn read(
             None,
         );
     }
-    if let Err(e) = readable_file(&target).await {
+    if let Err(e) = readable_file_with(&target, allow_large).await {
         return (format!("ERROR: {path}: {e}"), None);
     }
     let bytes = match tokio::fs::read(&target).await {
@@ -1563,6 +1568,91 @@ pub async fn with_read_success<F: std::future::Future>(work: F) -> (F::Output, O
             (out, success)
         })
         .await
+}
+
+/// What each session last saw of each file: a SHA-256 of its bytes, recorded
+/// when `read` succeeds and when `write`/`edit` lands. `write` over an existing
+/// file and `edit` consult it, so a change made behind the model's back (the
+/// user, a formatter, another process) is not silently overwritten by a stale
+/// copy of the file the model is still holding.
+///
+/// Keyed by session (falling back to the run) and then by the resolved path.
+/// A call with neither id is not tracked and not checked: nothing could tell
+/// one caller's reads from another's. Bounded per session; hitting the bound
+/// forgets that session's records, which only asks the model to read again.
+const MAX_TRACKED_FILES: usize = 4096;
+
+type ReadHashes = Mutex<HashMap<String, HashMap<PathBuf, [u8; 32]>>>;
+
+fn read_hashes() -> &'static ReadHashes {
+    static HASHES: OnceLock<ReadHashes> = OnceLock::new();
+    HASHES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn content_hash(bytes: &[u8]) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes).into()
+}
+
+fn stale_key(ctx: &ToolContext<'_>) -> Option<String> {
+    ctx.session_id.or(ctx.run_id).map(str::to_string)
+}
+
+/// The path a call's `path` argument lands on, as the handlers open it.
+fn tracked_path(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Option<PathBuf> {
+    let path = arg_str(args, "path")?;
+    resolved_for_open(&resolve_path(ctx.project_root, ctx.scratch_root, path)).ok()
+}
+
+/// Remember the bytes now on disk at the call's path as what this session has
+/// seen. A file that cannot be read is forgotten instead.
+async fn record_seen(args: &serde_json::Value, ctx: &ToolContext<'_>) {
+    let (Some(key), Some(path)) = (stale_key(ctx), tracked_path(args, ctx)) else {
+        return;
+    };
+    let hash = tokio::fs::read(&path).await.ok().map(|b| content_hash(&b));
+    let mut all = read_hashes().lock().unwrap();
+    let seen = all.entry(key).or_default();
+    match hash {
+        Some(h) => {
+            if seen.len() >= MAX_TRACKED_FILES && !seen.contains_key(&path) {
+                seen.clear();
+            }
+            seen.insert(path, h);
+        }
+        None => {
+            seen.remove(&path);
+        }
+    }
+}
+
+/// An error when `write` (over an existing file) or `edit` would act on a file
+/// this session has not read, or that changed since it did. `None` when the
+/// call may go ahead: a file that does not exist yet, an untracked caller, or a
+/// file still byte-identical to what was last read or written.
+async fn stale_edit_refusal(
+    verb: &str,
+    args: &serde_json::Value,
+    ctx: &ToolContext<'_>,
+) -> Option<String> {
+    let key = stale_key(ctx)?;
+    let path = tracked_path(args, ctx)?;
+    let now = content_hash(&tokio::fs::read(&path).await.ok()?);
+    let shown = arg_str(args, "path").unwrap_or_default();
+    let seen = read_hashes()
+        .lock()
+        .unwrap()
+        .get(&key)
+        .and_then(|files| files.get(&path).copied());
+    match seen {
+        Some(h) if h == now => None,
+        Some(_) => Some(format!(
+            "ERROR: {shown}: file has been modified since it was read. Read it again, then {verb} it."
+        )),
+        None => Some(format!(
+            "ERROR: {shown}: this file exists but has not been read in this session. Read it first, then {verb} it."
+        )),
+    }
 }
 
 /// " (it resolves to X)" for a symlink refusal, so the model can see where the
@@ -1829,6 +1919,45 @@ fn anchored(path: &Path) -> PathBuf {
     }
 }
 
+/// Run the pieces of a read-only command in order and join what they say.
+/// Shell steps run in the sandbox as the same `bash` call; git steps run by
+/// the host's git, confined to the folders the run may use.
+fn run_split_read_only<'a>(
+    args: &'a serde_json::Value,
+    ctx: &'a ToolContext<'_>,
+    pieces: Vec<super::nul_programs::Piece>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>> {
+    Box::pin(async move {
+        use super::nul_programs::Piece;
+        let roots = crate::tools::git_tool::Roots::from_ctx(ctx);
+        let mut out: Vec<String> = Vec::new();
+        for piece in pieces {
+            let text = match piece {
+                Piece::Shell(step) => {
+                    let mut a = args.clone();
+                    if let Some(obj) = a.as_object_mut() {
+                        obj.insert("command".into(), serde_json::Value::String(step));
+                    }
+                    bash(&a, ctx).await
+                }
+                Piece::Git(argv) => {
+                    let plan = match crate::tools::git_tool::plan("git", &argv) {
+                        Ok(p) => p,
+                        Err(e) => return format!("ERROR: git: {e}"),
+                    };
+                    let cwd = match crate::tools::git_tool::resolve_cwd(None, &plan, &roots) {
+                        Ok(c) => c,
+                        Err(e) => return format!("ERROR: git: {e}"),
+                    };
+                    crate::tools::git_tool::execute(&plan, &cwd).await
+                }
+            };
+            out.push(text);
+        }
+        out.join("\n")
+    })
+}
+
 async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let owner = ctx.job_owner;
     let Some(command) = arg_str(args, "command").filter(|command| !command.trim().is_empty())
@@ -2008,6 +2137,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             if let Some(program) =
                 super::nul_programs::opens_null_device(command, ctx.nul_programs)
             {
+                // Pure reading (`git status`, `git log`) needs no outside run:
+                // the git steps go to the host's git, the rest stays here.
+                if let Some(pieces) =
+                    super::nul_programs::split_for_host_git(command, ctx.nul_programs)
+                {
+                    return run_split_read_only(args, ctx, pieces).await;
+                }
                 return super::nul_programs::not_run_refusal(&program);
             }
         }
@@ -2444,6 +2580,11 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                 out.push_str(
                     "\n[warning: the process tree may not have terminated cleanly]",
                 );
+            }
+            if let Some(note) =
+                super::node_runner::timeout_note(command, sandboxed, shell_flavor, shell_description)
+            {
+                out.push_str(&note);
             }
             if !partial.trim().is_empty() {
                 out.push_str("\n--- output before the timeout ---\n");
@@ -3639,10 +3780,43 @@ mod find_cap_tests {
 
         let (out, _) = read(&serde_json::json!({"path": "model.gguf"}), &root, None, &[]).await;
         assert!(out.starts_with("ERROR") && out.contains("too large"), "{out}");
+        assert!(out.contains("allow_large"), "the refusal names the way out: {out}");
+        assert!(!out.contains("  "), "refusal text is single-spaced: {out}");
+        assert!(out.contains("true to read up to 256 MiB, or use bash"), "{out}");
+
+        // `allow_large` reads past the normal limit, still windowed by `limit`.
+        let (out, _) = read(
+            &serde_json::json!({"path": "model.gguf", "allow_large": true, "limit": 1}),
+            &root,
+            None,
+            &[],
+        )
+        .await;
+        assert!(!out.contains("too large"), "{out}");
+        assert!(!out.starts_with("ERROR: model.gguf"), "{out}");
 
         let out = grep(&serde_json::json!({"pattern": "needle", "path": "."}), &root, None, false, &[], &[]).await;
         assert!(out.contains("notes.txt"), "{out}");
         assert!(out.contains("Skipped 1 file(s) over"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `allow_large` has a hard ceiling, and still refuses what is not text.
+    #[tokio::test]
+    async fn allow_large_has_a_ceiling_and_keeps_the_binary_refusal() {
+        let root = std::env::temp_dir().join(format!("jan_allow_large_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let huge = std::fs::File::create(root.join("huge.bin")).unwrap();
+        huge.set_len(READ_MAX_BYTES_ALLOW_LARGE + 1).unwrap();
+        drop(huge);
+        std::fs::write(root.join("blob.bin"), [0xffu8, 0xfe, 0x00, 0x80]).unwrap();
+        let args = |p: &str| serde_json::json!({"path": p, "allow_large": true});
+
+        let (out, _) = read(&args("huge.bin"), &root, None, &[]).await;
+        assert!(out.starts_with("ERROR") && out.contains("allow_large ceiling"), "{out}");
+        let (out, _) = read(&args("blob.bin"), &root, None, &[]).await;
+        assert!(out.contains("Binary file"), "{out}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -3871,19 +4045,35 @@ async fn grep(
 /// `rg`), which stream.
 const READ_MAX_BYTES: u64 = 32 * 1024 * 1024;
 
+/// What `read` accepts when the model passes `allow_large: true`: 8x the normal
+/// limit. A hard ceiling, not an opt-out; past it the file is for `bash`.
+const READ_MAX_BYTES_ALLOW_LARGE: u64 = READ_MAX_BYTES * 8;
+
 /// Whether `path` is a regular file small enough to load whole
-/// (Jozkah/jan#250). A FIFO, device or other special file is refused: reading
-/// one blocks or never ends.
-async fn readable_file(path: &Path) -> Result<(), String> {
+/// (Jozkah/jan#250), at the size limit `read`'s `allow_large` argument selects.
+/// A FIFO, device or other special file is refused: reading one blocks or never
+/// ends. The refusal names the argument so the model knows the way out without
+/// reaching for the shell.
+async fn readable_file_with(path: &Path, allow_large: bool) -> Result<(), String> {
     let meta = tokio::fs::metadata(path).await.map_err(|e| e.to_string())?;
     if !meta.is_file() {
         return Err("not a regular file".to_string());
     }
-    if meta.len() > READ_MAX_BYTES {
+    const MIB: u64 = 1024 * 1024;
+    if allow_large {
+        if meta.len() > READ_MAX_BYTES_ALLOW_LARGE {
+            return Err(format!(
+                "{} MiB is over even the allow_large ceiling ({} MiB); use bash with head, tail or rg",
+                meta.len() / MIB,
+                READ_MAX_BYTES_ALLOW_LARGE / MIB
+            ));
+        }
+    } else if meta.len() > READ_MAX_BYTES {
         return Err(format!(
-            "{} MiB is too large to read here (limit {} MiB); use bash with head, tail or rg",
-            meta.len() / (1024 * 1024),
-            READ_MAX_BYTES / (1024 * 1024)
+            "{} MiB is too large to read here (limit {} MiB); pass allow_large: true to read up to {} MiB, or use bash with head, tail or rg",
+            meta.len() / MIB,
+            READ_MAX_BYTES / MIB,
+            READ_MAX_BYTES_ALLOW_LARGE / MIB
         ));
     }
     Ok(())
@@ -4763,6 +4953,95 @@ mod tests {
         )
         .await
         .is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // -- stale-edit check: a file the model has not read, or that changed
+    // since it did, is not written over.
+
+    async fn run_in(
+        session: &'static str,
+        root: &Path,
+        tool: &str,
+        args: serde_json::Value,
+    ) -> String {
+        let store = root.join("store");
+        let ctx = ToolContext::new(root, &store, &[]).in_session(Some(session), false);
+        super::execute_builtin(lookup(tool).unwrap(), &args, &ctx).await.0
+    }
+
+    fn one_edit() -> serde_json::Value {
+        json!({"path": "a.txt", "edits": [{"old_string": "one", "new_string": "uno"}]})
+    }
+
+    #[tokio::test]
+    async fn an_existing_file_that_was_never_read_is_not_edited_or_overwritten() {
+        let root = unique_root();
+        std::fs::write(root.join("a.txt"), "one
+").unwrap();
+
+        let edited = run_in("stale-never", &root, "edit", one_edit()).await;
+        assert!(edited.starts_with("ERROR"), "{edited}");
+        assert!(edited.contains("not been read"), "{edited}");
+        let written =
+            run_in("stale-never", &root, "write", json!({"path": "a.txt", "content": "x"})).await;
+        assert!(written.contains("not been read"), "{written}");
+        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "one
+");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_file_that_changed_since_it_was_read_is_refused_until_read_again() {
+        let root = unique_root();
+        std::fs::write(root.join("a.txt"), "one
+").unwrap();
+        run_in("stale-changed", &root, "read", json!({"path": "a.txt"})).await;
+
+        // Someone else changes it behind the model's back.
+        std::fs::write(root.join("a.txt"), "one
+two
+").unwrap();
+        let refused = run_in("stale-changed", &root, "edit", one_edit()).await;
+        assert!(refused.contains("modified since it was read"), "{refused}");
+        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "one
+two
+");
+
+        run_in("stale-changed", &root, "read", json!({"path": "a.txt"})).await;
+        let applied = run_in("stale-changed", &root, "edit", one_edit()).await;
+        assert!(applied.starts_with("Applied"), "{applied}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_file_the_agent_just_wrote_can_be_edited_and_rewritten_without_a_read() {
+        let root = unique_root();
+        let made = run_in(
+            "stale-created",
+            &root,
+            "write",
+            json!({"path": "a.txt", "content": "one
+"}),
+        )
+        .await;
+        assert!(made.starts_with("Created"), "{made}");
+        let applied = run_in("stale-created", &root, "edit", one_edit()).await;
+        assert!(applied.starts_with("Applied"), "{applied}");
+        let again =
+            run_in("stale-created", &root, "write", json!({"path": "a.txt", "content": "z"})).await;
+        assert!(again.starts_with("Overwrote"), "{again}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn one_session_reading_a_file_does_not_unlock_it_for_another() {
+        let root = unique_root();
+        std::fs::write(root.join("a.txt"), "one
+").unwrap();
+        run_in("stale-reader", &root, "read", json!({"path": "a.txt"})).await;
+        let other = run_in("stale-other", &root, "edit", one_edit()).await;
+        assert!(other.contains("not been read"), "{other}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

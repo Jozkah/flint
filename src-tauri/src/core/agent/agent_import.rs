@@ -342,6 +342,7 @@ fn read_markdown(path: &Path, skipped: &mut Vec<String>) -> Result<Option<Import
             // choosing a model on their behalf; an unknown one fails when it
             // is dispatched, saying so.
             model: fm.model.clone().map(|m| m.trim().to_string()).filter(|m| !m.is_empty()),
+            auto_compact_window: None,
             scope: SubagentScope::User,
         },
         dialect,
@@ -446,6 +447,7 @@ fn read_opencode_json(path: &Path, skipped: &mut Vec<String>) -> Result<Vec<Impo
                 system_prompt,
                 allowed_tools,
                 model: fm.model.clone().map(|m| m.trim().to_string()).filter(|m| !m.is_empty()),
+                auto_compact_window: None,
                 scope: SubagentScope::User,
             },
             dialect: Dialect::OpenCode,

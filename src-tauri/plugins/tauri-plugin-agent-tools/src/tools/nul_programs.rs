@@ -28,6 +28,84 @@ pub fn opens_null_device(command: &str, extra: &[String]) -> Option<String> {
     })
 }
 
+/// One step of a command that can be served without the sandbox's null device.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Piece {
+    /// Run in the sandbox as written.
+    Shell(String),
+    /// A read-only `git` call: run by the host's git (the `git` tool's path),
+    /// which asks nothing because it only reads.
+    Git(Vec<String>),
+}
+
+/// Split a command that sequences its steps with `;` or newlines into pieces
+/// when its only NUL-opening steps are plain read-only git calls
+/// (`git status`, `git log --oneline -3`, `git diff` ...). Such a command used
+/// to be refused up front so the user was asked to run it outside the sandbox;
+/// it is pure reading, so the git steps go to the host's git and the rest runs
+/// in the sandbox. `None` when any NUL-opening step is not such a call (a
+/// write, a remote, a pipe, a redirection, a substitution), which keeps the
+/// ask.
+pub fn split_for_host_git(command: &str, extra: &[String]) -> Option<Vec<Piece>> {
+    let mut steps: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    for c in command.chars() {
+        match quote {
+            Some(q) => {
+                current.push(c);
+                if c == q {
+                    quote = None;
+                }
+            }
+            None => match c {
+                '\'' | '"' => {
+                    quote = Some(c);
+                    current.push(c);
+                }
+                ';' | '\n' | '\r' => steps.push(std::mem::take(&mut current)),
+                _ => current.push(c),
+            },
+        }
+    }
+    steps.push(current);
+    steps.retain(|s| !s.trim().is_empty());
+    let mut pieces = Vec::new();
+    let mut any_git = false;
+    for step in steps {
+        let Some(program) = opens_null_device(&step, extra) else {
+            pieces.push(Piece::Shell(step));
+            continue;
+        };
+        if program != "git" {
+            return None;
+        }
+        let mut words = words(step.trim());
+        // Merging stderr into stdout is what the host's git already does.
+        words.retain(|w| w != "2>&1");
+        let first = words.first()?;
+        if normalize(first) != "git" {
+            return None;
+        }
+        let args: Vec<String> = words[1..].to_vec();
+        if args.iter().any(|a| {
+            a.contains(['&', '|', '<', '>', '$', '`', '(', ')']) || a.starts_with("--output")
+        }) {
+            return None;
+        }
+        let plan = super::git_tool::plan("git", &args).ok()?;
+        if plan.class != super::git_tool::GitClass::Read
+            || plan.destructive.is_some()
+            || plan.reaches_remote
+        {
+            return None;
+        }
+        any_git = true;
+        pieces.push(Piece::Git(args));
+    }
+    any_git.then_some(pieces)
+}
+
 /// What the model gets instead of a run. Carries the null-device refusal
 /// (and its retry tag), so the surface offers the unsandboxed retry exactly as
 /// it does after a failed run.
@@ -201,6 +279,36 @@ mod tests {
         assert_eq!(opens_null_device("bazel build //...", &extra), Some("bazel".into()));
         assert_eq!(opens_null_device("protoc --version", &extra), Some("protoc".into()));
         assert_eq!(opens_null_device("cargo build", &extra), None);
+    }
+
+    #[test]
+    fn read_only_git_steps_are_split_off_for_the_host() {
+        let got = split_for_host_git(
+            "ls -R src test 2>&1; echo ---; git status --short; git log --oneline -3",
+            &[],
+        )
+        .unwrap();
+        assert_eq!(got.len(), 4);
+        assert_eq!(got[0], Piece::Shell("ls -R src test 2>&1".into()));
+        assert_eq!(got[2], Piece::Git(vec!["status".into(), "--short".into()]));
+        assert_eq!(got[3], Piece::Git(vec!["log".into(), "--oneline".into(), "-3".into()]));
+        assert!(split_for_host_git("git diff 2>&1\ngit branch", &[]).is_some());
+    }
+
+    #[test]
+    fn anything_that_writes_or_chains_keeps_the_ask() {
+        for c in [
+            "git add . && git commit -m x",
+            "git status; git commit -m x",
+            "git push origin main",
+            "git log | head",
+            "git diff > out.txt",
+            "go build; git status",
+            "git reset --hard",
+            "echo $(git rev-parse HEAD)",
+        ] {
+            assert!(split_for_host_git(c, &[]).is_none(), "{c}");
+        }
     }
 
     #[test]

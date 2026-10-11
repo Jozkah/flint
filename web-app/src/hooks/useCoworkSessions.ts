@@ -4,6 +4,7 @@ import {
   withoutExtraFolder,
 } from '@/lib/coworkFolders'
 import { stripSessionToolImages } from '@/lib/toolOutputImages'
+import { redactingSessionStorage } from '@/lib/redactSessionStorage'
 import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { useUsageStats } from '@/stores/usage-stats-store'
@@ -962,7 +963,9 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // live in <jan_data>/settings.json instead of webview localStorage.
       // Async storage requires skipHydration + explicit rehydrate in
       // hydrateBackendStores() once the ServiceHub is ready.
-      storage: createJSONStorage(() => backendStorage),
+      // Tool arguments and results are redacted on their way to disk only; the
+      // live history the model reads stays raw.
+      storage: createJSONStorage(() => redactingSessionStorage(backendStorage)),
       skipHydration: true,
       // Images a tool returned (a `read` of a png) are in the live history for
       // the model to see; the saved session keeps only the text of the result.

@@ -22,6 +22,7 @@ pub mod host_package;
 pub mod host_powershell;
 pub mod host_ssh;
 pub mod host_wsl;
+pub mod node_runner;
 pub mod notify_user;
 pub mod clipboard;
 pub mod computer;

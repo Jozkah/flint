@@ -40,6 +40,10 @@ pub struct SubagentDefinition {
     pub system_prompt: String,
     pub allowed_tools: Option<Vec<String>>,
     pub model: Option<String>,
+    /// Tokens at which this subagent's own context is compacted. It can only
+    /// lower the trigger the run would otherwise use, never raise it past the
+    /// model's window (`apply_child_compact_window`).
+    pub auto_compact_window: Option<u64>,
     pub scope: SubagentScope,
 }
 
@@ -54,6 +58,78 @@ struct SubagentFile {
     allowed_tools: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    auto_compact_window: Option<u64>,
+}
+
+/// Keys a subagent `.toml` understands. Anything else is ignored; the loader
+/// names it at debug level so a typo is findable.
+const SUBAGENT_FILE_KEYS: &[&str] = &[
+    "name",
+    "description",
+    "system_prompt",
+    "allowed_tools",
+    "model",
+    "auto_compact_window",
+];
+
+/// Frontmatter keys a Claude Code agent file is read for.
+const PLUGIN_AGENT_KEYS: &[&str] = &["name", "description", "tools", "auto_compact_window"];
+
+/// Edit distance within which an unrecognised key is offered a hint.
+const KEY_TYPO_DISTANCE: usize = 2;
+
+/// Levenshtein distance over chars, compared case-insensitively.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.to_lowercase().chars().collect();
+    let b: Vec<char> = b.to_lowercase().chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.iter().enumerate() {
+        let mut cur = vec![i + 1];
+        for (j, cb) in b.iter().enumerate() {
+            let cost = usize::from(ca != cb);
+            cur.push((prev[j] + cost).min(prev[j + 1] + 1).min(cur[j] + 1));
+        }
+        prev = cur;
+    }
+    prev[b.len()]
+}
+
+/// The recognised key nearest `key`, when it is close enough to be a typo.
+fn nearest_known_key<'a>(key: &str, known: &[&'a str]) -> Option<&'a str> {
+    known
+        .iter()
+        .map(|k| (edit_distance(key, k), *k))
+        .filter(|(d, _)| *d <= KEY_TYPO_DISTANCE)
+        .min_by_key(|(d, _)| *d)
+        .map(|(_, k)| k)
+}
+
+/// Unrecognised keys with a nearest-key hint where one is close. Never fails:
+/// an unknown key is information, not an error.
+fn unknown_keys<'a>(
+    keys: impl IntoIterator<Item = &'a str>,
+    known: &[&str],
+) -> Vec<(String, Option<String>)> {
+    keys.into_iter()
+        .filter(|k| !known.contains(k))
+        .map(|k| (k.to_string(), nearest_known_key(k, known).map(str::to_string)))
+        .collect()
+}
+
+fn log_unknown_keys(source: &Path, unknown: &[(String, Option<String>)]) {
+    for (key, hint) in unknown {
+        match hint {
+            Some(near) => log::debug!(
+                "subagent: {} has unrecognized key `{key}` (ignored); did you mean `{near}`?",
+                source.display()
+            ),
+            None => log::debug!(
+                "subagent: {} has unrecognized key `{key}` (ignored)",
+                source.display()
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,6 +328,7 @@ impl SubagentRegistry {
             system_prompt: def.system_prompt.clone(),
             allowed_tools: def.allowed_tools.clone(),
             model: def.model.clone(),
+            auto_compact_window: def.auto_compact_window,
         };
         let body = toml::to_string_pretty(&file)
             .map_err(|e| SubagentError::Upstream(format!("failed to serialize subagent: {e}")))?;
@@ -422,7 +499,7 @@ fn scan_agent_files(dir: &Path, visit: &mut dyn FnMut(&Path, &str)) {
 
 fn scan_agent_dir(dir: &Path, out: &mut Vec<SubagentDefinition>) {
     scan_agent_files(dir, &mut |path, raw| match parse_plugin_agent(raw) {
-        Some((name, description, tools, system_prompt)) => {
+        Some((name, description, tools, system_prompt, auto_compact_window)) => {
             if validate_name(&name).is_err() {
                 log::warn!("subagent: skipping plugin agent '{name}' (invalid name)");
                 return;
@@ -433,6 +510,7 @@ fn scan_agent_dir(dir: &Path, out: &mut Vec<SubagentDefinition>) {
                 system_prompt,
                 allowed_tools: tools,
                 model: None,
+                auto_compact_window,
                 scope: SubagentScope::Plugin,
             });
         }
@@ -453,6 +531,8 @@ struct PluginAgentFrontmatter {
     description: Option<String>,
     #[serde(default)]
     tools: Option<serde_yaml::Value>,
+    #[serde(default)]
+    auto_compact_window: Option<u64>,
 }
 
 /// Tool names from a `tools` value: a list, or one comma- or space-separated
@@ -496,18 +576,51 @@ fn lenient_frontmatter(yaml: &str) -> PluginAgentFrontmatter {
             "name" => fm.name = Some(value),
             "description" => fm.description = Some(value),
             "tools" => fm.tools = Some(serde_yaml::Value::String(value)),
+            "auto_compact_window" => fm.auto_compact_window = value.parse().ok(),
             _ => {}
         }
     }
     fm
 }
 
+/// Frontmatter keys present in an agent file that Flint does not read, with a
+/// nearest-key hint where one is within edit distance 2. Empty when the YAML is
+/// not a mapping; parsing never depends on this.
+fn unknown_frontmatter_keys(yaml: &str) -> Vec<(String, Option<String>)> {
+    let Ok(serde_yaml::Value::Mapping(map)) = serde_yaml::from_str::<serde_yaml::Value>(yaml)
+    else {
+        // Not strict YAML: take the top-level `key:` lines the lenient reader does.
+        let keys: Vec<&str> = yaml
+            .lines()
+            .filter(|l| !l.starts_with([' ', '\t', '#']))
+            .filter_map(|l| l.split_once(':').map(|(k, _)| k.trim()))
+            .filter(|k| !k.is_empty())
+            .collect();
+        return unknown_keys(keys, PLUGIN_AGENT_KEYS);
+    };
+    let keys: Vec<&str> = map.keys().filter_map(|k| k.as_str()).collect();
+    unknown_keys(keys, PLUGIN_AGENT_KEYS)
+}
+
+/// `(name, description, tools, system_prompt, auto_compact_window)` of a plugin agent file.
+type ParsedPluginAgent = (String, String, Option<Vec<String>>, String, Option<u64>);
+
 /// Parse a Claude Code agent markdown file into `(name, description, tools,
-/// system_prompt)`. `None` when the file has no `---` frontmatter or no
-/// `name` — such files are not dispatchable.
-fn parse_plugin_agent(raw: &str) -> Option<(String, String, Option<Vec<String>>, String)> {
+/// system_prompt, auto_compact_window)`. `None` when the file has no `---`
+/// frontmatter or no `name` — such files are not dispatchable.
+fn parse_plugin_agent(raw: &str) -> Option<ParsedPluginAgent> {
     let (yaml, body) = crate::core::agent::skills::split_frontmatter(raw);
     let yaml = yaml?;
+    for (key, hint) in unknown_frontmatter_keys(&yaml) {
+        match hint {
+            Some(near) => log::debug!(
+                "subagent: plugin agent frontmatter has unrecognized key `{key}` (ignored); did you mean `{near}`?"
+            ),
+            None => log::debug!(
+                "subagent: plugin agent frontmatter has unrecognized key `{key}` (ignored)"
+            ),
+        }
+    }
     let fm: PluginAgentFrontmatter =
         serde_yaml::from_str(&yaml).unwrap_or_else(|_| lenient_frontmatter(&yaml));
     let name = fm
@@ -515,7 +628,13 @@ fn parse_plugin_agent(raw: &str) -> Option<(String, String, Option<Vec<String>>,
         .map(|n| n.trim().to_string())
         .filter(|n| !n.is_empty())?;
     let description = fm.description.unwrap_or_default();
-    Some((name, description, map_claude_tools(&tool_names(fm.tools.as_ref())), body))
+    Some((
+        name,
+        description,
+        map_claude_tools(&tool_names(fm.tools.as_ref())),
+        body,
+        fm.auto_compact_window.filter(|w| *w > 0),
+    ))
 }
 
 /// Claude Code tool names with a Flint equivalent, 1:1 where one exists. Unknown
@@ -553,7 +672,7 @@ pub(crate) fn plugin_agent_metas(root: &Path, plugin: &str) -> Vec<(String, Stri
         .join(plugin)
         .join("agents");
     scan_agent_files(&base, &mut |_, raw| {
-        if let Some((name, description, _, _)) = parse_plugin_agent(raw) {
+        if let Some((name, description, _, _, _)) = parse_plugin_agent(raw) {
             out.push((name, description));
         }
     });
@@ -577,6 +696,12 @@ fn load_dir(dir: &Path, scope: SubagentScope, out: &mut Vec<SubagentDefinition>)
                 continue;
             }
         };
+        if let Ok(table) = raw.parse::<toml::Table>() {
+            log_unknown_keys(
+                &path,
+                &unknown_keys(table.keys().map(String::as_str), SUBAGENT_FILE_KEYS),
+            );
+        }
         match toml::from_str::<SubagentFile>(&raw) {
             Ok(file) => out.push(SubagentDefinition {
                 name: file.name,
@@ -584,6 +709,7 @@ fn load_dir(dir: &Path, scope: SubagentScope, out: &mut Vec<SubagentDefinition>)
                 system_prompt: file.system_prompt,
                 allowed_tools: file.allowed_tools,
                 model: file.model,
+                auto_compact_window: file.auto_compact_window.filter(|w| *w > 0),
                 scope,
             }),
             Err(e) => log::warn!("subagent: failed to parse {}: {e}", path.display()),
@@ -869,6 +995,7 @@ pub(crate) fn resolve_dispatch(
                 system_prompt,
                 allowed_tools: req.allowed_tools.clone(),
                 model: None,
+                auto_compact_window: None,
                 scope: SubagentScope::Project,
             };
             // The inline allowed_tools IS the definition's toolset; only the
@@ -1474,7 +1601,9 @@ pub(crate) fn load_model_settings() -> ModelSettings {
 /// (`web-app/src/lib/subagentSettings.ts`), so every spawn path orders the same
 /// sources the same way:
 ///
-///   an explicit argument the calling model supplied
+///   the `FLINT_SUBAGENT_MODEL` pin, when set (an operator's override for every
+///     child, above anything a model or a config file chose)
+///     > an explicit argument the calling model supplied
 ///     > a routing rule written about this subagent by name (AH-194)
 ///     > the role's setting
 ///     > the definition's own model
@@ -1486,7 +1615,9 @@ pub(crate) fn load_model_settings() -> ModelSettings {
 /// subagents" and less than a choice made for this role. Only the model is
 /// decided here: a child's tools and permissions come from
 /// `intersect_allowed_tools` and the parent's own gate, never from this.
+#[cfg(test)]
 pub(crate) fn choose_child_model(
+    pinned: Option<&str>,
     requested: Option<&str>,
     rule: Option<&str>,
     role_setting: Option<&str>,
@@ -1494,13 +1625,56 @@ pub(crate) fn choose_child_model(
     global_setting: Option<&str>,
     parent: &str,
 ) -> String {
-    requested
-        .or(rule)
-        .or(role_setting)
-        .or(definition)
-        .or(global_setting)
-        .unwrap_or(parent)
-        .to_string()
+    choose_child_model_with_source(
+        pinned,
+        requested,
+        rule,
+        role_setting,
+        definition,
+        global_setting,
+        parent,
+    )
+    .0
+}
+
+/// [`choose_child_model`], also naming which source won: `pinned`,
+/// `requested`, `rule`, `role`, `definition`, `global` or `parent`. Logged at
+/// dispatch so a run can prove a pin took effect.
+pub(crate) fn choose_child_model_with_source(
+    pinned: Option<&str>,
+    requested: Option<&str>,
+    rule: Option<&str>,
+    role_setting: Option<&str>,
+    definition: Option<&str>,
+    global_setting: Option<&str>,
+    parent: &str,
+) -> (String, &'static str) {
+    let ordered = [
+        (pinned, "pinned"),
+        (requested, "requested"),
+        (rule, "rule"),
+        (role_setting, "role"),
+        (definition, "definition"),
+        (global_setting, "global"),
+    ];
+    match ordered.into_iter().find_map(|(m, source)| m.map(|m| (m, source))) {
+        Some((model, source)) => (model.to_string(), source),
+        None => (parent.to_string(), "parent"),
+    }
+}
+
+/// Environment variable that pins every subagent to one model id.
+pub(crate) const SUBAGENT_MODEL_ENV: &str = "FLINT_SUBAGENT_MODEL";
+
+/// A pinned model id from the raw variable value: a non-empty single line of
+/// sane length (the same bar as a model id in the settings blob), else `None`
+/// so an unset or malformed pin has no effect.
+pub(crate) fn pinned_model_from(raw: Option<&str>) -> Option<String> {
+    let id = raw?.trim();
+    if id.is_empty() || id.chars().count() > 200 || id.chars().any(char::is_control) {
+        return None;
+    }
+    Some(id.to_string())
 }
 
 /// Build the child request body shared by every subagent run.
@@ -1527,13 +1701,19 @@ pub(crate) fn child_body(
             model: &fallback,
         },
     );
-    let model = choose_child_model(
+    let pinned = pinned_model_from(std::env::var(SUBAGENT_MODEL_ENV).ok().as_deref());
+    let (model, model_source) = choose_child_model_with_source(
+        pinned.as_deref(),
         None,
         rule.as_deref(),
         parent.model_settings.roles.get(&resolved.definition.name).map(String::as_str),
         resolved.definition.model.as_deref(),
         parent.model_settings.global.as_deref(),
         &parent.model,
+    );
+    log::info!(
+        "agent: subagent '{}' runs on model '{model}' (source: {model_source})",
+        resolved.definition.name
     );
     let mut body = serde_json::Map::new();
     body.insert("model".to_string(), serde_json::json!(model));
@@ -1566,6 +1746,14 @@ pub(crate) fn child_body(
     // the field on the second child turn.
     if !parent.send_reasoning {
         body.insert("send_reasoning".to_string(), serde_json::json!(false));
+    }
+    // The definition's own compaction window; the run loop lowers its trigger
+    // to it and never raises it (`apply_child_compact_window`).
+    if let Some(window) = resolved.definition.auto_compact_window.filter(|w| *w > 0) {
+        body.insert(
+            crate::core::agent::r#loop::BODY_CHILD_COMPACT_WINDOW.to_string(),
+            serde_json::json!(window),
+        );
     }
     serde_json::Value::Object(body)
 }
@@ -2490,6 +2678,7 @@ pub fn parse_create_args(
             system_prompt,
             allowed_tools: optional_tool_list(args),
             model: args.get("model").and_then(|v| v.as_str()).map(String::from),
+            auto_compact_window: None,
             scope,
         },
         scope,
@@ -2557,13 +2746,56 @@ mod tests {
     #[test]
     fn child_model_precedence_matches_the_web_app() {
         // argument > rule > role > definition > global > parent
-        let pick = |req, rule, role, def, global| choose_child_model(req, rule, role, def, global, "parent");
+        let pick = |req, rule, role, def, global| {
+            choose_child_model(None, req, rule, role, def, global, "parent")
+        };
         assert_eq!(pick(Some("asked"), Some("rule"), Some("role"), Some("def"), Some("global")), "asked");
         assert_eq!(pick(None, Some("rule"), Some("role"), Some("def"), Some("global")), "rule");
         assert_eq!(pick(None, None, Some("role"), Some("def"), Some("global")), "role");
         assert_eq!(pick(None, None, None, Some("def"), Some("global")), "def");
         assert_eq!(pick(None, None, None, None, Some("global")), "global");
         assert_eq!(pick(None, None, None, None, None), "parent");
+    }
+
+    #[test]
+    fn the_chosen_model_names_the_source_that_won() {
+        let src = |p, r, rule, role, def, g| {
+            choose_child_model_with_source(p, r, rule, role, def, g, "parent").1
+        };
+        assert_eq!(src(Some("m"), Some("a"), Some("r"), Some("x"), Some("d"), Some("g")), "pinned");
+        assert_eq!(src(None, Some("a"), Some("r"), Some("x"), Some("d"), Some("g")), "requested");
+        assert_eq!(src(None, None, Some("r"), Some("x"), Some("d"), Some("g")), "rule");
+        assert_eq!(src(None, None, None, Some("x"), Some("d"), Some("g")), "role");
+        assert_eq!(src(None, None, None, None, Some("d"), Some("g")), "definition");
+        assert_eq!(src(None, None, None, None, None, Some("g")), "global");
+        assert_eq!(src(None, None, None, None, None, None), "parent");
+        let (model, source) =
+            choose_child_model_with_source(Some("pin"), None, None, None, None, None, "parent");
+        assert_eq!((model.as_str(), source), ("pin", "pinned"));
+    }
+
+    #[test]
+    fn a_pinned_subagent_model_outranks_every_other_source() {
+        let pinned = pinned_model_from(Some("  pinned-model "));
+        assert_eq!(pinned.as_deref(), Some("pinned-model"));
+        let chosen = choose_child_model(
+            pinned.as_deref(),
+            Some("asked"),
+            Some("rule"),
+            Some("role"),
+            Some("def"),
+            Some("global"),
+            "parent",
+        );
+        assert_eq!(chosen, "pinned-model");
+        // Unset or invalid pins change nothing.
+        for odd in [None, Some(""), Some("   "), Some("a
+b")] {
+            assert_eq!(pinned_model_from(odd), None, "{odd:?}");
+        }
+        assert_eq!(pinned_model_from(Some(&"x".repeat(201))), None);
+        let unpinned = choose_child_model(None, Some("asked"), None, None, None, None, "parent");
+        assert_eq!(unpinned, "asked");
     }
 
     #[test]
@@ -2896,6 +3128,7 @@ mod tests {
             system_prompt: "sp".into(),
             allowed_tools: Some(vec!["write".into()]),
             model: None,
+            auto_compact_window: None,
             scope: SubagentScope::Builtin,
         };
         assert!(reg
@@ -2999,6 +3232,7 @@ mod tests {
             system_prompt: "sp".to_string(),
             allowed_tools: Some(vec!["read".to_string()]),
             model: None,
+            auto_compact_window: None,
             scope: SubagentScope::Project,
         };
         let shadows = reg
@@ -3028,6 +3262,7 @@ mod tests {
             system_prompt: "sp".to_string(),
             allowed_tools: None,
             model: None,
+            auto_compact_window: None,
             scope: SubagentScope::Project,
         };
         let err = reg
@@ -3083,6 +3318,7 @@ mod tests {
             system_prompt: "sp".to_string(),
             allowed_tools: None,
             model: None,
+            auto_compact_window: None,
             scope: SubagentScope::Project,
         };
         let shadows = reg
@@ -3106,6 +3342,7 @@ mod tests {
             system_prompt: "sp".to_string(),
             allowed_tools: None,
             model: None,
+            auto_compact_window: None,
             scope: SubagentScope::Project,
         };
         assert!(reg
@@ -3258,6 +3495,7 @@ mod tests {
                 system_prompt: "sp".to_string(),
                 allowed_tools: allowed,
                 model: None,
+                auto_compact_window: None,
                 scope: SubagentScope::Project,
             }],
         }
@@ -3477,6 +3715,78 @@ mod tests {
             None,
         );
         assert_eq!(off["send_reasoning"], serde_json::json!(false));
+    }
+
+    #[test]
+    fn child_body_carries_the_definitions_compact_window() {
+        let mut reg = registry_with("reviewer", None);
+        let p = ToolPermissions::allow_all();
+        let key = crate::core::agent::r#loop::BODY_CHILD_COMPACT_WINDOW;
+        let resolved = resolve_dispatch(&reg, &req("reviewer", None), &p).expect("resolves");
+        assert!(child_body(&resolved, "t", &parent_run(), None, None).get(key).is_none());
+        reg.defs[0].auto_compact_window = Some(20_000);
+        let resolved = resolve_dispatch(&reg, &req("reviewer", None), &p).expect("resolves");
+        let body = child_body(&resolved, "t", &parent_run(), None, None);
+        assert_eq!(body[key], serde_json::json!(20_000));
+    }
+
+    #[test]
+    fn unknown_frontmatter_keys_get_a_nearest_key_hint_and_never_fail_parsing() {
+        let raw = "---
+name: rev
+descripton: typo here
+colour: red
+tools: Read
+auto_compact_windw: 5
+---
+body
+";
+        let (yaml, _) = crate::core::agent::skills::split_frontmatter(raw);
+        let unknown = unknown_frontmatter_keys(&yaml.expect("frontmatter"));
+        let hint = |k: &str| {
+            unknown
+                .iter()
+                .find(|(key, _)| key == k)
+                .map(|(_, h)| h.clone())
+        };
+        assert_eq!(hint("descripton"), Some(Some("description".to_string())));
+        assert_eq!(hint("auto_compact_windw"), Some(Some("auto_compact_window".to_string())));
+        // Too far from anything known: reported, no hint.
+        assert_eq!(hint("colour"), Some(None));
+        assert_eq!(hint("name"), None);
+        // Parsing still succeeds and ignores the strays.
+        let parsed = parse_plugin_agent(raw).expect("still dispatchable");
+        assert_eq!(parsed.0, "rev");
+        assert_eq!(edit_distance("Model", "model"), 0);
+        assert_eq!(nearest_known_key("tool", PLUGIN_AGENT_KEYS), Some("tools"));
+    }
+
+    #[test]
+    fn auto_compact_window_is_read_from_frontmatter_and_toml() {
+        let raw = "---
+name: rev
+description: d
+auto_compact_window: 30000
+---
+body
+";
+        assert_eq!(parse_plugin_agent(raw).expect("parses").4, Some(30_000));
+        let none = "---
+name: rev
+description: d
+---
+body
+";
+        assert_eq!(parse_plugin_agent(none).expect("parses").4, None);
+        let file: SubagentFile = toml::from_str(
+            "name = \"a\"
+description = \"d\"
+system_prompt = \"s\"
+auto_compact_window = 9000
+",
+        )
+        .unwrap();
+        assert_eq!(file.auto_compact_window, Some(9000));
     }
 
     #[test]
@@ -4911,6 +5221,7 @@ mod tests {
             system_prompt: "sp".to_string(),
             allowed_tools: None,
             model: None,
+            auto_compact_window: None,
             scope: SubagentScope::Plugin,
         };
         let dir = project_subagents_dir(&root);
