@@ -96,6 +96,28 @@ export type IntegrateReport = {
   campaign: Campaign
 }
 
+/** One file a task changed (`agent_campaign_task_diff`). */
+export type TaskDiffFile = {
+  path: string
+  status: 'added' | 'modified' | 'deleted' | 'renamed'
+  oldPath?: string | null
+  added: number
+  removed: number
+  binary: boolean
+  /** Unified diff from the first hunk; absent for binary or over-size files. */
+  patch?: string | null
+  truncated: boolean
+}
+
+export type TaskDiff = {
+  files: TaskDiffFile[]
+  added: number
+  removed: number
+  truncated: boolean
+  /** The worktree holds work that is not committed yet. */
+  uncommitted: boolean
+}
+
 export type GateChoice = { source: string; command?: string | null }
 
 export type FinalizeReport = {
@@ -177,6 +199,9 @@ export const campaignApi = {
     }),
   refresh: (id: string) => invoke<Campaign>('agent_campaign_refresh', { id }),
   orphans: () => invoke<OrphanWorktree[]>('agent_campaign_orphans'),
+  /** `patches: false` counts only; the board's rows poll that. */
+  taskDiff: (id: string, taskId: string, patches = true) =>
+    invoke<TaskDiff>('agent_campaign_task_diff', { id, taskId, patches }),
 }
 
 export type CampaignApi = typeof campaignApi
