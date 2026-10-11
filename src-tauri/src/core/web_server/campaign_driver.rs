@@ -1536,7 +1536,13 @@ impl Host for RunnerHost {
         name: &str,
         request: Value,
     ) -> Result<(String, u64), String> {
-        self.runner.ask_model(folder, model, name, request).await
+        // The model call is the server's own: it runs in a folder of the
+        // server's, never in the repository (a project scaffold would be
+        // written there), so the project config of the repo plays no part.
+        let _ = folder;
+        let utility = tauri_plugin_agent_tools::workspace::permanent_store(self.runner.data_folder()).join("utility");
+        std::fs::create_dir_all(&utility).map_err(|e| format!("the utility folder could not be made: {e}"))?;
+        self.runner.ask_model(&utility, model, name, request).await
     }
 
     async fn commit_pending(&self, c: &Campaign, task: &CampaignTask) -> (Vec<String>, String) {

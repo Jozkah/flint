@@ -23,6 +23,29 @@ fn chunk(delta: Value, finish: Value, usage: Option<Value>) -> String {
     format!("data: {c}\n\n")
 }
 
+/// What a utility call (the campaign planner or verifier) is answered with.
+/// The engine streams these too, so they are told apart by their prompts.
+fn utility_text(request: &Value) -> Option<String> {
+    let text = request.to_string();
+    if text.contains("You split a software goal") {
+        return Some(
+            json!({
+                "title": "Three files",
+                "tasks": [
+                    {"id": "a", "title": "write a", "brief": "WRITE_FILE a.txt", "paths": ["a.txt"]},
+                    {"id": "b", "title": "write b", "brief": "WRITE_FILE b.txt", "paths": ["b.txt"]},
+                    {"id": "c", "title": "write c", "brief": "WRITE_FILE c.txt", "paths": ["c.txt"], "dependsOn": ["a", "b"]}
+                ]
+            })
+            .to_string(),
+        );
+    }
+    if text.contains("BEGIN UNTRUSTED EVIDENCE") {
+        return Some("VERDICT: PASS\nEVIDENCE: the file is there".to_string());
+    }
+    None
+}
+
 fn answer_for(request: &Value) -> String {
     let messages = request["messages"].as_array().cloned().unwrap_or_default();
     let last = messages.last().cloned().unwrap_or(Value::Null);
@@ -33,8 +56,29 @@ fn answer_for(request: &Value) -> String {
     };
     let usage = json!({"prompt_tokens":5,"completion_tokens":2,"total_tokens":7});
     let mut out = String::new();
+    if let Some(reply) = utility_text(request) {
+        out.push_str(&chunk(json!({"role":"assistant","content":reply}), Value::Null, None));
+        out.push_str(&chunk(json!({}), json!("stop"), Some(usage)));
+        out.push_str("data: [DONE]\n\n");
+        return out;
+    }
     let last_text = text_of(&last);
-    if last["role"] == "user" && last_text.contains("WRITE") {
+    if last["role"] == "user" && last_text.contains("WRITE_FILE ") {
+        let name = last_text
+            .split("WRITE_FILE ")
+            .nth(1)
+            .and_then(|rest| rest.split_whitespace().next())
+            .unwrap_or("x.txt")
+            .to_owned();
+        let args = json!({"path": name, "content": format!("from {name}")}).to_string();
+        out.push_str(&chunk(
+            json!({"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function",
+                "function":{"name":"write","arguments": args}}]}),
+            Value::Null,
+            None,
+        ));
+        out.push_str(&chunk(json!({}), json!("tool_calls"), Some(usage)));
+    } else if last["role"] == "user" && last_text.contains("WRITE") {
         out.push_str(&chunk(
             json!({"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function",
                 "function":{"name":"write","arguments":"{\"path\":\"out.txt\",\"content\":\"written by the runner\"}"}}]}),
@@ -791,4 +835,185 @@ fn escapes_and_a_forged_record_are_refused_and_the_flag_is_off_by_default() {
     let (status, _) = server.rpc("agent_worktree_discard", json!({ "id": foreign_id, "force": true }));
     assert_eq!(status, 403);
     assert!(wt_path.exists());
+}
+
+// ---------------------------------------------------------------------------
+// P3: campaigns driven by the server
+// ---------------------------------------------------------------------------
+
+fn wait_for(what: &str, max: Duration, mut check: impl FnMut() -> bool) {
+    let deadline = Instant::now() + max;
+    while Instant::now() < deadline {
+        if check() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    panic!("timed out waiting for {what}");
+}
+
+fn campaign_of(server: &Server, id: &str) -> Value {
+    let (status, got) = server.rpc("agent_campaign_get", json!({ "id": id }));
+    assert_eq!(status, 200, "{got}");
+    got
+}
+
+fn statuses(c: &Value) -> Vec<String> {
+    c["tasks"].as_array().unwrap().iter().map(|t| t["status"].as_str().unwrap().to_owned()).collect()
+}
+
+#[test]
+fn a_campaign_is_planned_approved_run_merged_and_proposed_with_no_client_attached() {
+    let (dir, app) = git_scratch("campaign");
+    let server = start(&dir, &["--agent-allow-bypass"]);
+    let folder = app.to_string_lossy().into_owned();
+
+    let (_, info) = server.rpc("agent_server_info", json!({}));
+    assert_eq!(info["runsCampaigns"], true, "{info}");
+
+    // The gate: confinement, and no goal is refused.
+    let (status, _) = server.rpc(
+        "agent_campaign_start_server",
+        json!({ "goal": "x", "folder": dir.join("data").to_string_lossy() }),
+    );
+    assert_eq!(status, 403);
+    let (status, _) = server.rpc("agent_campaign_start_server", json!({ "goal": "", "folder": folder }));
+    assert_eq!(status, 400);
+
+    // Planned by the server's model; nothing runs before a person approves.
+    let (status, made) = server.rpc(
+        "agent_campaign_start_server",
+        json!({ "goal": "write three files", "folder": folder, "options": { "maxParallel": 2 } }),
+    );
+    assert_eq!(status, 200, "{made}");
+    let id = made["id"].as_str().unwrap().to_owned();
+    assert_eq!(made["status"], "planned");
+    assert_eq!(made["driver"], "server");
+    assert_eq!(made["tasks"].as_array().unwrap().len(), 3);
+    let (_, approvals) = server.rpc("agent_campaign_approvals", json!({}));
+    assert!(
+        approvals["approvals"].as_array().unwrap().iter().any(|a| a["campaignId"] == id.as_str() && a["kind"] == "plan"),
+        "{approvals}"
+    );
+    std::thread::sleep(Duration::from_secs(4));
+    assert_eq!(campaign_of(&server, &id)["status"], "planned");
+    let (_, sessions) = server.rpc("agent_run_list", json!({}));
+    assert!(sessions["sessions"].as_array().unwrap().is_empty(), "{sessions}");
+
+    // Task moves and a plan approval are not a client's to make by transition.
+    let (status, _) = server.rpc(
+        "agent_campaign_transition",
+        json!({ "id": id, "input": { "campaign": "running" } }),
+    );
+    assert_eq!(status, 403);
+    // Unattended access is the operator's switch: a bypass-off server refuses it.
+
+    let (status, approved) = server.rpc("agent_campaign_approve", json!({ "id": id, "access": "worktree" }));
+    assert_eq!(status, 200, "{approved}");
+    assert_eq!(approved["status"], "running");
+    assert_eq!(approved["modeCeiling"], "auto");
+
+    wait_for("the campaign to reach reviewing", Duration::from_secs(240), || {
+        let c = campaign_of(&server, &id);
+        assert_ne!(c["status"], "failed", "{c}");
+        c["status"] == "reviewing"
+    });
+    let c = campaign_of(&server, &id);
+    assert_eq!(statuses(&c), vec!["merged", "merged", "merged"], "{c}");
+    // Dependency order: c started after a and b were merged.
+    let events = server.rpc("agent_campaign_events", json!({ "id": id })).1;
+    let events = events.as_array().unwrap();
+    let at = |kind: &str, task: &str| {
+        events.iter().position(|e| e["kind"] == kind && e["task"] == task).unwrap_or_else(|| panic!("{kind} {task}: {events:?}"))
+    };
+    assert!(at("task-merged", "a") < at("task-settled", "c"));
+    assert!(at("task-merged", "b") < at("task-settled", "c"));
+
+    // Finalize is a person's call: it ran no gate (no command to run) and
+    // stored one proposal against the user's checkout, which is untouched.
+    assert!(!app.join("a.txt").exists());
+    let (status, report) = server.rpc("agent_campaign_finalize", json!({ "id": id }));
+    assert_eq!(status, 200, "{report}");
+    let proposal_id = report["proposalId"].as_str().unwrap_or_else(|| panic!("{report}")).to_owned();
+    assert!(!app.join("a.txt").exists(), "nothing reaches the checkout before an approval");
+
+    let (_, listed) = server.rpc("agent_proposal_list", json!({ "project": folder }));
+    let proposal = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == proposal_id.as_str())
+        .unwrap_or_else(|| panic!("{listed}"))
+        .clone();
+    let files: Vec<String> =
+        proposal["files"].as_array().unwrap().iter().map(|f| f["path"].as_str().unwrap().to_owned()).collect();
+    assert!(["a.txt", "b.txt", "c.txt"].iter().all(|f| files.iter().any(|g| g == f)), "{files:?}");
+    let (status, applied) = server.rpc(
+        "agent_proposal_apply",
+        json!({ "approval": approval_for(&proposal, &["a.txt", "b.txt", "c.txt"]) }),
+    );
+    assert_eq!(status, 200, "{applied}");
+    assert_eq!(std::fs::read_to_string(app.join("c.txt")).unwrap(), "from c.txt");
+    let (_, refreshed) = server.rpc("agent_campaign_refresh", json!({ "id": id }));
+    assert_eq!(refreshed["status"], "done", "{refreshed}");
+}
+
+#[test]
+fn a_server_without_the_bypass_flag_refuses_unattended_task_access() {
+    let (dir, app) = git_scratch("campaign-ask");
+    let server = start(&dir, &[]);
+    let folder = app.to_string_lossy().into_owned();
+    let plan = json!([{ "id": "a", "title": "a", "brief": "WRITE_FILE a.txt", "paths": ["a.txt"] }]);
+    let (status, made) = server.rpc(
+        "agent_campaign_start_server",
+        json!({ "goal": "one file", "folder": folder, "options": { "plan": plan } }),
+    );
+    assert_eq!(status, 200, "{made}");
+    let id = made["id"].as_str().unwrap();
+    let (status, _) = server.rpc("agent_campaign_approve", json!({ "id": id, "access": "worktree" }));
+    assert_eq!(status, 403);
+    assert_eq!(campaign_of(&server, id)["status"], "planned");
+    // Cancelling a plan that was never approved leaves nothing behind.
+    let (status, cancelled) = server.rpc("agent_campaign_cancel", json!({ "id": id }));
+    assert_eq!(status, 200, "{cancelled}");
+    assert_eq!(cancelled["status"], "cancelled");
+}
+
+#[test]
+fn a_campaign_continues_by_itself_after_the_server_restarts_mid_run() {
+    let (dir, app) = git_scratch("campaign-restart");
+    let folder = app.to_string_lossy().into_owned();
+    let plan = json!([
+        { "id": "a", "title": "write a", "brief": "SLOW WRITE_FILE a.txt", "paths": ["a.txt"] },
+        { "id": "b", "title": "write b", "brief": "WRITE_FILE b.txt", "paths": ["b.txt"], "dependsOn": ["a"] }
+    ]);
+    let id = {
+        let server = start(&dir, &["--agent-allow-bypass"]);
+        let (status, made) = server.rpc(
+            "agent_campaign_start_server",
+            json!({ "goal": "two files", "folder": folder, "options": { "plan": plan } }),
+        );
+        assert_eq!(status, 200, "{made}");
+        let id = made["id"].as_str().unwrap().to_owned();
+        let (status, _) = server.rpc("agent_campaign_approve", json!({ "id": id, "access": "worktree" }));
+        assert_eq!(status, 200);
+        wait_for("task a to be running", Duration::from_secs(60), || {
+            statuses(&campaign_of(&server, &id))[0] == "running"
+        });
+        id
+        // The server is killed here, with a run in flight.
+    };
+    let server = start(&dir, &["--agent-allow-bypass"]);
+    wait_for("the campaign to reach reviewing after the restart", Duration::from_secs(240), || {
+        let c = campaign_of(&server, &id);
+        assert_ne!(c["status"], "failed", "{c}");
+        c["status"] == "reviewing"
+    });
+    let c = campaign_of(&server, &id);
+    assert_eq!(statuses(&c), vec!["merged", "merged"], "{c}");
+    let events = server.rpc("agent_campaign_events", json!({ "id": id })).1;
+    assert!(
+        events.as_array().unwrap().iter().any(|e| e["kind"] == "driver-resumed"),
+        "{events}"
+    );
 }
