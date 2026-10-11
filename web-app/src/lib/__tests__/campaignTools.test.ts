@@ -306,6 +306,45 @@ describe('campaign_plan', () => {
     expect(raw.runner.kick).toHaveBeenCalledWith('new1')
   })
 
+  it('puts the task-access choice on the card, recommended by default, and records it', async () => {
+    const first = deps()
+    const c = ctx({ mode: 'ask' })
+    await executeCampaignTool(call('campaign_plan', PLAN), c, first.d)
+    const asked = (c.onApprove as ReturnType<typeof vi.fn>).mock.calls[0]
+    // The payload names the recommended way and the card gets both options.
+    expect(asked[2]).toMatchObject({ task_access: 'worktree', mode: 'auto' })
+    expect(asked[5].choice.defaultId).toBe('worktree')
+    expect(asked[5].choice.options.map((o: { id: string }) => o.id)).toEqual([
+      'worktree',
+      'ask',
+    ])
+    expect(asked[5].choice.options[0].label).toMatch(/their own folder/)
+    expect(asked[5].reason).toContain('without asking')
+    // Untouched card: the recommended way, scoped to the worktree, never bypass.
+    const moves = first.raw.api.transition.mock.calls.map((x: unknown[]) => x[1])
+    expect(moves[0]).toMatchObject({
+      campaign: 'approved',
+      integration: { modeCeiling: 'auto', taskAccess: 'worktree' },
+    })
+
+    // The person picks "Ask for each action": the ceiling and the access say so.
+    const second = deps()
+    const asking = ctx({
+      mode: 'auto',
+      onApprove: vi.fn(async (...args: unknown[]) => {
+        ;(args[5] as { onChoice: (id: string) => void }).onChoice('ask')
+        return true
+      }),
+    })
+    const out = await executeCampaignTool(call('campaign_plan', PLAN), asking, second.d)
+    expect(JSON.parse(out.output)).toMatchObject({ task_access: 'ask' })
+    const later = second.raw.api.transition.mock.calls.map((x: unknown[]) => x[1])
+    expect(later[0]).toMatchObject({
+      integration: { modeCeiling: 'ask', taskAccess: 'ask' },
+    })
+    expect(JSON.stringify(later)).not.toContain('bypass')
+  })
+
   it('denied: cancels the recorded plan and starts nothing', async () => {
     const { d, raw } = deps()
     const out = await executeCampaignTool(

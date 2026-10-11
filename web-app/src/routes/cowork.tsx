@@ -4100,6 +4100,13 @@ export function CoworkPage() {
                                     taskContext: forced?.reason,
                                     workspaceLabel: current?.folder ?? undefined,
                                     signal: approveSignal,
+                                    // The plan card's "how should tasks work".
+                                    choice: forced?.choice,
+                                    onDecision: (decision, chosenId) => {
+                                      if (decision !== 'deny' && chosenId) {
+                                        forced?.onChoice?.(chosenId)
+                                      }
+                                    },
                                   }
                                 ),
                           },

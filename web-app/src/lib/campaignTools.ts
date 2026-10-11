@@ -16,8 +16,13 @@ import type { CampaignApi } from '@/lib/campaignApi'
 import type { CampaignRunner } from '@/lib/campaignRunner'
 import {
   CAMPAIGN_MAX_TASKS,
+  DEFAULT_TASK_ACCESS,
+  TASK_ACCESS_OPTIONS,
+  TASK_ACCESS_QUESTION,
   campaignCeiling,
+  ceilingForAccess,
   clampCampaignParallel,
+  parseTaskAccess,
   taskModeFor,
   type Campaign,
   type PlanTask,
@@ -82,7 +87,18 @@ export type CampaignApprove = (
   input: unknown,
   preview?: string,
   signal?: AbortSignal,
-  options?: { alwaysAsk: true; reason: string }
+  options?: {
+    alwaysAsk: true
+    reason: string
+    /** A structured choice put with the answer (how tasks work). */
+    choice?: {
+      question: string
+      options: { id: string; label: string; description?: string }[]
+      defaultId: string
+    }
+    /** Told which option was selected when the answer is given. */
+    onChoice?: (optionId: string) => void
+  }
 ) => Promise<boolean>
 
 export type CampaignToolContext = {
@@ -187,6 +203,7 @@ export function planSummary(input: {
     `${dependent} with dependencies`,
     paths.length > 0 ? `paths: ${paths.slice(0, 6).join(', ')}${paths.length > 6 ? ', ...' : ''}` : 'no paths declared',
     `each runs in ${taskModeFor(campaignCeiling(input.mode))} mode on its own worktree branch`,
+    'by default tasks work on their own inside their own folder: edits and test commands there run without asking, while anything outside it, network and destructive commands still ask (you can choose to be asked for each action)',
     `up to ${input.parallel} at once`,
     input.tokenBudget ? `token budget ${input.tokenBudget}` : 'no token budget',
     'uncommitted changes in your checkout are not visible to tasks',
@@ -242,6 +259,7 @@ const digest = (c: Campaign) => ({
     merged_sha: t.mergedSha ?? null,
     detail: t.detail || null,
   })),
+  task_access: c.limits.taskAccess ?? null,
   gate: c.gate
     ? {
         passed: c.gate.passed,
@@ -432,6 +450,8 @@ async function plan(
     tokenBudget: budget,
   })
   let allowed = false
+  // The recommended way until the person picks the other one on the card.
+  let access = DEFAULT_TASK_ACCESS
   try {
     allowed = await ctx.onApprove(
       call.toolCallId,
@@ -446,12 +466,24 @@ async function plan(
           depends_on: t.dependsOn ?? [],
         })),
         parallel,
-        mode: taskModeFor(ceiling),
+        mode: taskModeFor(ceilingForAccess(DEFAULT_TASK_ACCESS)),
+        task_access: DEFAULT_TASK_ACCESS,
         token_budget: budget ?? null,
       },
       undefined,
       ctx.signal,
-      { alwaysAsk: true, reason: summary }
+      {
+        alwaysAsk: true,
+        reason: summary,
+        choice: {
+          question: TASK_ACCESS_QUESTION,
+          options: TASK_ACCESS_OPTIONS.map((o) => ({ ...o })),
+          defaultId: DEFAULT_TASK_ACCESS,
+        },
+        onChoice: (id) => {
+          access = parseTaskAccess(id)
+        },
+      }
     )
   } catch {
     allowed = false
@@ -498,6 +530,9 @@ async function plan(
         worktree: made.record.path,
         baseBranch: made.record.baseBranch ?? undefined,
         baseSha: made.record.baseSha,
+        // Recorded with the approval: what the person chose on the card.
+        modeCeiling: ceilingForAccess(access),
+        taskAccess: access,
       },
     })
     await deps.api.transition(campaign.id, { campaign: 'running' })
@@ -510,6 +545,7 @@ async function plan(
     campaign_id: campaign.id,
     status: 'running',
     started_tasks: started?.started ?? [],
+    task_access: access,
     note:
       'Tasks run in separate sessions in panes beside this one. Finished ' +
       'tasks are reported to you as notices; read them with campaign_collect.',

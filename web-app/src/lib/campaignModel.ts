@@ -85,6 +85,12 @@ export type CampaignLimits = {
   taskTokens?: number | null
   taskSteps?: number | null
   wallClockSecs?: number | null
+  /**
+   * What the user chose at the plan card: `worktree` (tasks edit and run
+   * tests inside their own folder without asking; the rest still asks) or
+   * `ask` (every action asks). Absent on a plan made before the choice.
+   */
+  taskAccess?: 'worktree' | 'ask' | null
 }
 
 export type Campaign = {
@@ -166,6 +172,54 @@ export function taskModeFor(ceiling: string): CoworkMode {
   return MODE_ORDER.indexOf(cap) < MODE_ORDER.indexOf(DEFAULT_TASK_MODE)
     ? cap
     : DEFAULT_TASK_MODE
+}
+
+/**
+ * How tasks work, as the plan card puts it to the user.
+ *
+ * - `worktree` (recommended): Auto mode inside the task's own managed
+ *   worktree. Edits and test commands there run without asking; anything
+ *   outside it, a delete outside it, network access and destructive commands
+ *   still ask, exactly as Auto mode always does. Never bypass.
+ * - `ask`: every action asks.
+ */
+export type TaskAccess = 'worktree' | 'ask'
+
+export const DEFAULT_TASK_ACCESS: TaskAccess = 'worktree'
+
+/** The highest mode tasks may run in for a choice. Never `bypass`. */
+export function ceilingForAccess(access: TaskAccess): CoworkMode {
+  return access === 'ask' ? 'ask' : 'auto'
+}
+
+export const TASK_ACCESS_QUESTION = 'How should the tasks work?'
+
+export const TASK_ACCESS_OPTIONS: {
+  id: TaskAccess
+  label: string
+  description: string
+}[] = [
+  {
+    id: 'worktree',
+    label:
+      'Let tasks work on their own inside their own folder (recommended)',
+    description:
+      'Edits and test commands in the task worktree run without asking. ' +
+      'Anything outside it, deletes outside the worktree, network and ' +
+      'destructive commands still ask.',
+  },
+  {
+    id: 'ask',
+    label: 'Ask for each action',
+    description:
+      'Every write and shell command in a task waits for you. Slower, and ' +
+      'each task will often be waiting on you.',
+  },
+]
+
+/** A choice id from a card, or the recommended one when it is absent or unknown. */
+export function parseTaskAccess(value: unknown): TaskAccess {
+  return value === 'ask' || value === 'worktree' ? value : DEFAULT_TASK_ACCESS
 }
 
 // ---------------------------------------------------------------------------

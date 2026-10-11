@@ -42,6 +42,9 @@ export type CampaignTransition = {
     worktree: string
     baseBranch?: string
     baseSha?: string
+    /** The plan card's choice, recorded with the approval. */
+    modeCeiling?: string
+    taskAccess?: 'worktree' | 'ask'
   }
 }
 

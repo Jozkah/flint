@@ -126,6 +126,14 @@ pub struct CampaignLimits {
     pub task_steps: Option<u32>,
     #[serde(default)]
     pub wall_clock_secs: Option<u64>,
+    /// What the user chose at the plan card for how tasks work:
+    /// `worktree` (edits and test commands inside the task's own folder run
+    /// without asking; anything outside it, network and destructive commands
+    /// still ask) or `ask` (every action asks). `None` on a plan made before
+    /// the choice existed. Recorded on approval; tasks run in `auto` or
+    /// `ask` mode accordingly, never `bypass`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_access: Option<String>,
 }
 
 impl Default for CampaignLimits {
@@ -137,6 +145,7 @@ impl Default for CampaignLimits {
             task_tokens: None,
             task_steps: None,
             wall_clock_secs: None,
+            task_access: None,
         }
     }
 }
@@ -950,6 +959,14 @@ pub struct IntegrationInfo {
     pub base_branch: String,
     #[serde(default)]
     pub base_sha: String,
+    /// The user's choice at the plan card, recorded with the approval: the
+    /// highest mode a task may run in (`ask`, `auto`; never `bypass`) and the
+    /// access choice behind it (`worktree` or `ask`). Empty keeps what the
+    /// plan was created with.
+    #[serde(default)]
+    pub mode_ceiling: String,
+    #[serde(default)]
+    pub task_access: String,
 }
 
 /// Exactly one of `campaign` or `task`. `integration` rides along with a
@@ -981,6 +998,19 @@ pub fn transition(data_folder: &Path, id: &str, input: TransitionInput) -> Resul
                 }
                 if !info.base_sha.is_empty() {
                     c.base_sha = cap(info.base_sha, 64);
+                }
+                let ceiling = info.mode_ceiling.trim().to_ascii_lowercase();
+                if matches!(ceiling.as_str(), "review" | "ask" | "auto") {
+                    c.mode_ceiling = ceiling;
+                } else if !ceiling.is_empty() {
+                    return Err(CampaignError::new(
+                        CampaignErrorKind::InvalidPlan,
+                        "a campaign's mode ceiling is review, ask or auto; bypass is never granted to tasks",
+                    ));
+                }
+                let access = info.task_access.trim().to_ascii_lowercase();
+                if matches!(access.as_str(), "worktree" | "ask") {
+                    c.limits.task_access = Some(access);
                 }
             }
             c.updated_at = now();
@@ -1736,6 +1766,8 @@ pub(crate) mod tests {
                     worktree: "/w/c".into(),
                     base_branch: "main".into(),
                     base_sha: "abc123".into(),
+                    mode_ceiling: String::new(),
+                    task_access: String::new(),
                 }),
             },
         )

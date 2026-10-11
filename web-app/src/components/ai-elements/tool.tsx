@@ -522,6 +522,7 @@ export const ToolApprovalActions = memo(() => {
     toolCallId ? s.pending[toolCallId] : undefined
   )
   const resolveApproval = useToolApprovalRequests((s) => s.resolveApproval)
+  const chooseOption = useToolApprovalRequests((s) => s.chooseOption)
   // When this request is answered, the next one under the same call id takes
   // its place under the same buttons. They pause first, so a double-click or a
   // repeated key cannot answer a request that was never read.
@@ -665,6 +666,51 @@ export const ToolApprovalActions = memo(() => {
         showTechnicalDetails={false}
         layout="rows"
       />
+      {/* A structured choice the request asks for with its answer (the
+          campaign plan: how tasks work). The recommended one is selected. */}
+      {pending.choice && (
+        <fieldset
+          data-testid="approval-choice"
+          className="flex min-w-0 flex-col gap-1.5 border-0 p-0"
+        >
+          <legend className="mb-1 text-[13px] font-medium text-foreground">
+            {pending.choice.question}
+          </legend>
+          {pending.choice.options.map((option) => {
+            const inputId = `${titleId}-choice-${option.id}`
+            const selected =
+              (pending.chosenId ?? pending.choice?.defaultId) === option.id
+            return (
+              <label
+                key={option.id}
+                htmlFor={inputId}
+                data-selected={selected}
+                className="flex min-w-0 cursor-pointer items-start gap-2 rounded-md border border-border px-3 py-2 text-left has-[:checked]:border-(--tk) pointer-coarse:min-h-11"
+              >
+                <input
+                  id={inputId}
+                  type="radio"
+                  name={`${titleId}-choice`}
+                  className="mt-0.5"
+                  checked={selected}
+                  disabled={!armed}
+                  onChange={() =>
+                    chooseOption(toolCallId, pending.requestId, option.id)
+                  }
+                />
+                <span className="min-w-0 text-[13px] leading-snug">
+                  <b className="font-medium text-foreground">{option.label}</b>
+                  {option.description && (
+                    <span className="block text-xs text-muted-foreground">
+                      {option.description}
+                    </span>
+                  )}
+                </span>
+              </label>
+            )
+          })}
+        </fieldset>
+      )}
       {repeatedCommand && (
         <p
           data-testid="approval-repeat-notice"
