@@ -5,11 +5,50 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   Campaign,
+  CampaignAction,
   CampaignStatus,
   CampaignTaskStatus,
   CampaignLimits,
+  LiveState,
   PlanTask,
+  TaskCheck,
 } from '@/lib/campaignModel'
+
+/** One edit of a plan that is not approved yet (`agent_campaign_plan_update`). */
+export type PlanOp =
+  | { op: 'add'; task: PlanTask; at?: number }
+  | {
+      op: 'update'
+      id: string
+      title?: string
+      brief?: string
+      acceptance?: string[]
+      paths?: string[]
+      dependsOn?: string[]
+    }
+  | { op: 'remove'; id: string }
+  | { op: 'reorder'; ids: string[] }
+  | { op: 'replace'; tasks: PlanTask[] }
+
+export type PlanEdit = {
+  ops?: PlanOp[]
+  title?: string
+  /** 0 clears the token budget. */
+  tokenBudget?: number
+}
+
+/** What `agent_campaign_resolve` returns: the resolver's seed and worktree. */
+export type ResolvePlan = {
+  taskId: string
+  sessionId: string
+  branch: string
+  worktreePath: string
+  baseSha: string
+  files: string[]
+  clean: boolean
+  brief: string
+  campaign: Campaign
+}
 
 export type CampaignCreateInput = {
   id?: string
@@ -64,6 +103,8 @@ export type SettleInput = {
 export type CampaignContext = {
   decisions: string
   handoffs: { taskId: string; text: string }[]
+  /** A resolver task's brief (written when the resolver was prepared). */
+  resolutions?: { taskId: string; text: string }[]
 }
 
 export type VerifyRequest = {
@@ -83,6 +124,10 @@ export type VerifyOutcome = {
   verdict: string
   next: VerifyNext
   evidence: string
+  /** Why a verifier PASS was taken back, when it was. */
+  downgraded?: string | null
+  /** The objective check this verification ran, when there was one. */
+  check?: TaskCheck | null
   campaign: Campaign
 }
 
@@ -162,10 +207,9 @@ export const campaignApi = {
   context: (id: string, taskIds: string[]) =>
     invoke<CampaignContext>('agent_campaign_context', { id, taskIds }),
   events: (id: string) =>
-    invoke<{ ts: string; kind: string; task?: string | null; detail: string }[]>(
-      'agent_campaign_events',
-      { id }
-    ),
+    invoke<
+      { ts: string; kind: string; task?: string | null; detail: string }[]
+    >('agent_campaign_events', { id }),
   notified: (id: string, taskId: string) =>
     invoke<void>('agent_campaign_notified', { id, taskId }),
   verifyPrepare: (
@@ -210,6 +254,25 @@ export const campaignApi = {
   /** `patches: false` counts only; the board's rows poll that. */
   taskDiff: (id: string, taskId: string, patches = true) =>
     invoke<TaskDiff>('agent_campaign_task_diff', { id, taskId, patches }),
+  /** The integration branch's whole change against the base. */
+  campaignDiff: (id: string, patches = true) =>
+    invoke<TaskDiff>('agent_campaign_diff', { id, patches }),
+  /** Edit a planned (not approved) campaign; the whole plan is re-validated. */
+  planUpdate: (id: string, edit: PlanEdit) =>
+    invoke<Campaign>('agent_campaign_plan_update', { id, edit }),
+  /** The scheduler's decision, made by the backend (the source of truth). */
+  nextActions: (id: string, live: LiveState, maxParallel: number) =>
+    invoke<CampaignAction[]>('agent_campaign_next_actions', {
+      id,
+      live,
+      maxParallel,
+    }),
+  /** Start a resolver for a conflicted task in the session just created. */
+  resolve: (id: string, taskId: string, sessionId: string) =>
+    invoke<ResolvePlan>('agent_campaign_resolve', { id, taskId, sessionId }),
+  /** True the first time per key; recorded in the event log. */
+  claimNotice: (id: string, key: string) =>
+    invoke<boolean>('agent_campaign_claim_notice', { id, key }),
 }
 
 export type CampaignApi = typeof campaignApi

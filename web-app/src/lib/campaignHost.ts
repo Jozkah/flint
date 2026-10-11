@@ -26,6 +26,7 @@ import { pushNotice } from '@/lib/coworkRunNotices'
 import { abortRun } from '@/lib/coworkRunner'
 import { executeAgentTool } from '@/lib/agentTools'
 import { campaignApi } from '@/lib/campaignApi'
+import { allowNotifications, notifyInBackground } from '@/lib/notify'
 import { accountPanes } from '@/lib/campaignPanes'
 import { useCampaignResumed } from '@/hooks/useCampaignResumed'
 import { useCampaignNotes } from '@/lib/campaignNotes'
@@ -52,7 +53,9 @@ function paneAccounting(busy?: ReadonlySet<string>) {
   const queue = useMessageQueue.getState()
   const t = Date.now()
   const recent = new Set(
-    [...openedAt].filter(([, at]) => t - at < PANE_START_GRACE_MS).map(([s]) => s)
+    [...openedAt]
+      .filter(([, at]) => t - at < PANE_START_GRACE_MS)
+      .map(([s]) => s)
   )
   return accountPanes({
     panes,
@@ -127,7 +130,11 @@ export function createRunnerHost(): RunnerHost {
       return { ok: true }
     },
     registerMailbox: async (sid, title, folder) => {
-      await sessionMailbox.register({ sessionId: sid, displayName: title, folder })
+      await sessionMailbox.register({
+        sessionId: sid,
+        displayName: title,
+        folder,
+      })
     },
     enqueueSeed: (sid, text) =>
       useMessageQueue.getState().enqueue(sid, {
@@ -153,7 +160,8 @@ export function createRunnerHost(): RunnerHost {
       const reply =
         [...(session?.turns ?? [])]
           .reverse()
-          .find((t) => t.role === 'assistant' && t.content.trim())?.content ?? ''
+          .find((t) => t.role === 'assistant' && t.content.trim())?.content ??
+        ''
       return {
         stoppedBy: ending?.stoppedBy ?? 'done',
         errorText: ending?.errorText,
@@ -211,8 +219,11 @@ export function createRunnerHost(): RunnerHost {
         abortSignal: AbortSignal.timeout(180_000),
         maxRetries: 1,
       })
-      // The utility call records its own token counts in the audit log.
-      return { text, tokens: 0 }
+      // The utility call returns text only (its exact counts go to the audit
+      // log), so the cost recorded on the task is an estimate from sizes, at
+      // about four characters a token: honest in magnitude, not to the digit.
+      const sent = (system?.content.length ?? 0) + (user?.content.length ?? 0)
+      return { text, tokens: Math.ceil((sent + text.length) / 4) }
     },
     runInfo: (sid) => {
       const state = useCoworkRun.getState()
@@ -245,6 +256,7 @@ export function createRunnerHost(): RunnerHost {
         .getState()
         .panes.some((p) => p.kind === 'cowork' && p.refId === sid),
     hasEnded: (sid) => !!useCoworkRun.getState().outcomes[sid],
+    desktopNotify: (title, body) => notifyInBackground(title, body),
   }
 }
 
@@ -282,7 +294,11 @@ export function createToolDeps(runner: CampaignRunner): CampaignToolDeps {
             : JSON.stringify(r.content ?? ''),
       }
     },
-    track: (id) => trackCampaign(id),
+    track: (id) => {
+      // Asked once, from the approval the person just gave.
+      void allowNotifications()
+      trackCampaign(id)
+    },
   }
 }
 
@@ -343,13 +359,18 @@ export function startCampaignRunner(): () => void {
     if (state.maxParallel !== prev.maxParallel) kickAll()
   })
   const offPanes = useSplitConversation.subscribe((state, prev) => {
-    if (state.panes !== prev.panes || state.maxPanes !== prev.maxPanes) kickAll()
+    if (state.panes !== prev.panes || state.maxPanes !== prev.maxPanes)
+      kickAll()
   })
   const timer = setInterval(sweepAll, SWEEP_EVERY_MS)
   void (async () => {
     try {
       for (const c of await campaignApi.list()) {
-        if (c.status === 'done' || c.status === 'failed' || c.status === 'cancelled') {
+        if (
+          c.status === 'done' ||
+          c.status === 'failed' ||
+          c.status === 'cancelled'
+        ) {
           continue
         }
         trackCampaign(c.id)
@@ -388,7 +409,9 @@ export function createLiveBoardActions() {
     abortRun: (sid) => abortRun(sid, 'cancelled'),
     liveSessions: () => new Set(Object.keys(useCoworkRun.getState().runs)),
     noteSent: (campaignId, taskId, sessionId, messageId) =>
-      useCampaignNotes.getState().record(campaignId, taskId, sessionId, messageId),
+      useCampaignNotes
+        .getState()
+        .record(campaignId, taskId, sessionId, messageId),
   })
 }
 

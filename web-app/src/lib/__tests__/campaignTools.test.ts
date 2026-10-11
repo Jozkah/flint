@@ -668,3 +668,96 @@ describe('P4 tools: verify, merge, orphans', () => {
     expect(raw.api.transition).not.toHaveBeenCalled()
   })
 })
+
+describe('campaign_plan: revision and estimate', () => {
+  const estimate = {
+    tasks: 2,
+    perTaskLow: 36000,
+    perTaskExpected: 60000,
+    perTaskHigh: 108000,
+    low: 72000,
+    expected: 120000,
+    high: 216000,
+    basis: 'default' as const,
+    samples: 0,
+  }
+
+  it('puts the cost estimate on the plan card and in the result', async () => {
+    const { d, raw } = deps()
+    raw.api.create = vi.fn(async (input) =>
+      campaign({
+        id: 'new1',
+        status: 'planned',
+        estimate,
+        tasks: input.tasks.map((t: { id: string }) =>
+          baseTask({ id: t.id, status: 'pending' })
+        ),
+      })
+    )
+    const c = ctx()
+    const out = await executeCampaignTool(call('campaign_plan', PLAN), c, d)
+    expect(out.isError).toBeFalsy()
+    const approve = c.onApprove as ReturnType<typeof vi.fn>
+    const [, , payload, , , options] = approve.mock.calls[0]
+    expect(payload.estimate.expected).toBe(120000)
+    expect(options.reason).toContain('rough cost 120k tokens')
+    expect(JSON.parse(out.output).estimate.expected).toBe(120000)
+  })
+
+  it('revises a plan that is still planned instead of making a new one', async () => {
+    const { d, raw, records } = deps()
+    records.push(campaign({ id: 'p1', status: 'planned' }))
+    const planUpdate = vi.fn(async () => campaign({ id: 'p1', status: 'planned' }))
+    ;(raw.api as unknown as { planUpdate: unknown }).planUpdate = planUpdate
+    const out = await executeCampaignTool(
+      call('campaign_plan', { ...PLAN, campaign_id: 'p1' }),
+      ctx(),
+      d
+    )
+    expect(out.isError).toBeFalsy()
+    expect(planUpdate).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({
+        ops: [{ op: 'replace', tasks: expect.any(Array) }],
+      })
+    )
+    expect(raw.api.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses to revise an approved plan', async () => {
+    const { d, raw, records } = deps()
+    records.push(campaign({ id: 'r1', status: 'running' }))
+    const planUpdate = vi.fn()
+    ;(raw.api as unknown as { planUpdate: unknown }).planUpdate = planUpdate
+    const out = await executeCampaignTool(
+      call('campaign_plan', { ...PLAN, campaign_id: 'r1' }),
+      ctx(),
+      d
+    )
+    expect(out.isError).toBe(true)
+    expect(out.output).toContain('only a plan that is not approved')
+    expect(planUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('campaign_merge: resolve', () => {
+  it('asks the runner for resolvers on the named conflicted tasks', async () => {
+    const { d, raw, records } = deps()
+    records[0] = campaign({ tasks: [baseTask({ status: 'conflict' })] })
+    const resolve = vi.fn(async () => [
+      { taskId: 'a', started: true, files: ['x.ts'] },
+    ])
+    ;(raw.runner as unknown as { resolve: unknown }).resolve = resolve
+    const out = await executeCampaignTool(
+      call('campaign_merge', { resolve: ['a'] }),
+      ctx(),
+      d
+    )
+    expect(out.isError).toBeFalsy()
+    expect(resolve).toHaveBeenCalledWith('c1', ['a'])
+    expect(JSON.parse(out.output).resolvers[0]).toMatchObject({
+      task_id: 'a',
+      started: true,
+    })
+  })
+})

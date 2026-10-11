@@ -3,9 +3,11 @@
  * made on it (docs/CAMPAIGNS.md).
  *
  * The backend record (`src-tauri/src/core/agent/campaign.rs`) is the truth for
- * status. Nothing here persists anything; `nextActions` is a port of
- * `campaign_scheduler::next_actions` so the renderer can decide synchronously
- * on every store change. Keep the two in step.
+ * status. Nothing here persists anything. `nextActions` is only the FALLBACK
+ * of `campaign_scheduler::next_actions`: the runner asks the backend command
+ * `agent_campaign_next_actions` and uses this when the command is unavailable
+ * (tests, a browser). Both are driven by the same fixtures
+ * (`campaignScheduler.fixtures.json`); keep them in step.
  */
 import type { CoworkMode } from '@/lib/coworkMode'
 
@@ -56,6 +58,8 @@ export type CampaignTaskStatus =
   | 'cancelled'
   | 'interrupted'
   | 'conflict'
+  /** A resolver session is merging a conflicted task (one attempt). */
+  | 'resolving'
 
 export type CampaignTask = {
   id: string
@@ -76,6 +80,15 @@ export type CampaignTask = {
   mergedSha?: string | null
   fingerprint?: string | null
   detail: string
+  /** Tokens the verifier's own calls cost, over every verification. */
+  verifyTokens?: number
+  /**
+   * What the last verification established itself: the objective check, an
+   * empty diff, conflict markers left by a resolver.
+   */
+  evidence?: TaskEvidence | null
+  /** Set once a resolver was started for this task's conflict (one attempt). */
+  resolver?: TaskResolver | null
   /**
    * Set when a person accepted the task although its verification did not
    * pass ("accept anyway"): who, why, and what the verifier had said.
@@ -86,6 +99,49 @@ export type CampaignTask = {
     at: string
     previousVerdict?: 'PASS' | 'PARTIAL' | 'FAIL' | 'BLOCKED' | null
   } | null
+}
+
+export type TaskCheck = {
+  command: string
+  source: string
+  exitCode?: number | null
+  timedOut: boolean
+  passed: boolean
+  output: string
+  at: string
+}
+
+export type TaskEvidence = {
+  empty: boolean
+  markers: string[]
+  check?: TaskCheck | null
+  at: string
+}
+
+export type TaskResolver = {
+  attempts: number
+  files: string[]
+  originalSessionId?: string | null
+  originalBranch?: string | null
+  originalWorktreePath?: string | null
+  originalBaseSha?: string | null
+  worktreePath: string
+  branch: string
+  at: string
+}
+
+/** A rough token cost of a plan, made before approval. */
+export type CostEstimate = {
+  tasks: number
+  perTaskLow: number
+  perTaskExpected: number
+  perTaskHigh: number
+  low: number
+  expected: number
+  high: number
+  /** `history` (earlier campaigns' tasks) or `default`. */
+  basis: 'history' | 'default'
+  samples: number
 }
 
 export type CampaignLimits = {
@@ -125,7 +181,22 @@ export type Campaign = {
   gate?: CampaignGate | null
   /** The proposal handed to the user's checkout, once the gate passed. */
   proposalId?: string | null
+  /** A rough cost range of the plan, set when it is recorded or edited. */
+  estimate?: CostEstimate | null
 }
+
+/** The tasks of a plan can be edited only before it is approved. */
+export const isPlanEditable = (c: Pick<Campaign, 'status'>): boolean =>
+  c.status === 'planned' || c.status === 'draft'
+
+/** What a task cost: the worker's run and the verifier's calls. */
+export const taskTokens = (
+  t: Pick<CampaignTask, 'tokensUsed' | 'verifyTokens'>
+): number => t.tokensUsed + (t.verifyTokens ?? 0)
+
+/** A task the campaign cannot finish without a person (or a resolver). */
+export const isConflictParked = (t: CampaignTask): boolean =>
+  t.status === 'conflict' && (t.resolver?.attempts ?? 0) >= 1
 
 export type CampaignGate = {
   /** `agent_toml`, `detected` or `none`. */
@@ -211,8 +282,7 @@ export const TASK_ACCESS_OPTIONS: {
 }[] = [
   {
     id: 'worktree',
-    label:
-      'Let tasks work on their own inside their own folder (recommended)',
+    label: 'Let tasks work on their own inside their own folder (recommended)',
     description:
       'Edits and test commands in the task worktree run without asking. ' +
       'Anything outside it, deletes outside the worktree, network and ' +
@@ -241,6 +311,8 @@ export type LiveState = {
   liveTasks: string[]
   /** Panes free to open, when that is a tighter limit than `maxParallel`. */
   freePanes?: number
+  /** Tokens live runs have used so far, by task id. */
+  liveTokens?: Record<string, number>
 }
 
 export type CampaignAction =
@@ -280,7 +352,13 @@ export function nextActions(
 
   const budget = campaign.limits.tokenBudget
   if (budget != null) {
-    const spent = campaign.tasks.reduce((n, t) => n + t.tokensUsed, 0)
+    const spent = campaign.tasks.reduce(
+      (n, t) =>
+        n +
+        Math.max(t.tokensUsed, live.liveTokens?.[t.id] ?? 0) +
+        (t.verifyTokens ?? 0),
+      0
+    )
     if (spent >= budget) return actions
   }
 

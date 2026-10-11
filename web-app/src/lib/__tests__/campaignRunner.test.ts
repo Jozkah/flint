@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   createCampaignRunner,
   fingerprintOf,
+  noticeFor,
   type RunnerHost,
 } from '../campaignRunner'
 import type { CampaignApi, CampaignTransition } from '../campaignApi'
@@ -820,5 +821,224 @@ describe('campaign runner: waking an idle coordinator', () => {
     await failing.runner.kick('c1')
     await settleA(failing)
     expect(failing.notices).toHaveLength(1)
+  })
+})
+
+describe('campaign runner: the backend scheduler is the source of truth', () => {
+  it('follows the backend decision and passes what only the renderer knows', async () => {
+    const f = fixture([task('a'), task('b')])
+    const next = vi.fn(async () => [{ action: 'start' as const, taskId: 'b' }])
+    ;(f.api as unknown as { nextActions: typeof next }).nextActions = next
+    const res = await f.runner.kick('c1')
+    expect(res.started).toEqual(['b'])
+    expect(next).toHaveBeenCalledWith(
+      'c1',
+      expect.objectContaining({ liveTasks: [], freePanes: 6, liveTokens: {} }),
+      4
+    )
+  })
+
+  it('falls back to the local port when the command is unavailable', async () => {
+    const f = fixture([task('a'), task('b')])
+    ;(f.api as unknown as { nextActions: unknown }).nextActions = vi.fn(
+      async () => {
+        throw new Error('command not found')
+      }
+    )
+    expect((await f.runner.kick('c1')).started).toEqual(['a', 'b'])
+  })
+})
+
+describe('campaign runner: conflict resolver', () => {
+  const conflicted = (over: Partial<CampaignTask> = {}) =>
+    task('a', 'conflict', [], {
+      sessionId: 'old',
+      branch: 'flint/old',
+      worktreePath: '/wt/old',
+      ...over,
+    })
+  const withResolve = (f: ReturnType<typeof fixture>) => {
+    const resolve = vi.fn(async (_id: string, taskId: string, sid: string) => ({
+      taskId,
+      sessionId: sid,
+      branch: 'flint/res',
+      worktreePath: '/wt/res',
+      baseSha: 'sha1',
+      files: ['shared.txt'],
+      clean: false,
+      brief: 'RESOLVE BRIEF',
+      campaign: f.current(),
+    }))
+    ;(f.api as unknown as { resolve: typeof resolve }).resolve = resolve
+    return resolve
+  }
+  const parkOnIntegrate = (f: ReturnType<typeof fixture>) => {
+    ;(f.api as unknown as { integrate: unknown }).integrate = vi.fn(async () => {
+      // The backend parked the task as conflict.
+      await f.api.transition('c1', { task: { id: 'a', to: 'conflict' } })
+      return {
+        merged: [],
+        conflicts: [{ taskId: 'a', files: ['shared.txt'] }],
+        skipped: [],
+        errors: [],
+        campaign: f.current(),
+      }
+    })
+  }
+
+  it('starts a resolver session seeded with the backend brief, on its worktree', async () => {
+    const f = fixture([conflicted()])
+    const resolve = withResolve(f)
+    const out = await f.runner.resolve('c1', ['a'])
+    expect(out).toEqual([{ taskId: 'a', started: true, files: ['shared.txt'] }])
+    expect(resolve).toHaveBeenCalledWith('c1', 'a', 'sess-1')
+    expect(f.host.attachWorktree).toHaveBeenCalledWith(
+      'sess-1',
+      '/wt/res',
+      '/data'
+    )
+    expect(f.seeds.get('sess-1')).toBe('RESOLVE BRIEF')
+    expect(f.current().tasks[0].status).toBe('running')
+    expect(f.sessions.get('sess-1')?.link).toEqual({
+      id: 'c1',
+      taskId: 'a',
+      role: 'task',
+    })
+  })
+
+  it('makes one attempt: a task that already had a resolver is not tried again', async () => {
+    const f = fixture([
+      conflicted({
+        resolver: {
+          attempts: 1,
+          files: [],
+          worktreePath: '/wt/res',
+          branch: 'flint/res',
+          at: '',
+        },
+      }),
+    ])
+    const resolve = withResolve(f)
+    const out = await f.runner.resolve('c1', ['a'])
+    expect(out[0].started).toBe(false)
+    expect(resolve).not.toHaveBeenCalled()
+    expect(f.sessions.size).toBe(0)
+  })
+
+  it('removes the session it made when the backend refuses', async () => {
+    const f = fixture([conflicted()])
+    ;(f.api as unknown as { resolve: unknown }).resolve = vi.fn(async () => {
+      throw new Error('already tried')
+    })
+    const out = await f.runner.resolve('c1', ['a'])
+    expect(out[0]).toMatchObject({ started: false, reason: 'already tried' })
+    expect(f.sessions.size).toBe(0)
+  })
+
+  it('goes back to conflict when no pane is free', async () => {
+    const f = fixture([conflicted()], {}, { openPane: () => 'full' })
+    withResolve(f)
+    const out = await f.runner.resolve('c1', ['a'])
+    expect(out[0].started).toBe(false)
+    expect(f.current().tasks[0].status).toBe('conflict')
+  })
+
+  it('starts one by itself when a merge conflicts', async () => {
+    const f = fixture([task('a', 'verified', [], { sessionId: 'old' })])
+    const resolve = withResolve(f)
+    parkOnIntegrate(f)
+    await f.runner.integrate('c1')
+    expect(resolve).toHaveBeenCalledTimes(1)
+    expect(f.current().tasks[0].status).toBe('running')
+    expect(
+      f.notices.some((n) => n.text.includes('resolver session started'))
+    ).toBe(true)
+  })
+
+  it('can be switched off', async () => {
+    const f = fixture(
+      [task('a', 'verified', [], { sessionId: 'old' })],
+      {},
+      { autoResolve: () => false }
+    )
+    const resolve = withResolve(f)
+    parkOnIntegrate(f)
+    await f.runner.integrate('c1')
+    expect(resolve).not.toHaveBeenCalled()
+  })
+
+  it('continues an interrupted resolver from its stored brief', async () => {
+    const f = fixture([
+      task('a', 'queued', [], {
+        sessionId: 'sess-r',
+        worktreePath: '/wt/res',
+        resolver: {
+          attempts: 1,
+          files: ['x'],
+          worktreePath: '/wt/res',
+          branch: 'flint/res',
+          at: '',
+        },
+      }),
+    ])
+    f.host.sessionExists = (sid) => sid === 'sess-r'
+    ;(f.api.context as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async () => ({
+        decisions: '',
+        handoffs: [],
+        resolutions: [{ taskId: 'a', text: 'STORED RESOLVE BRIEF' }],
+      })
+    )
+    await f.runner.kick('c1')
+    expect(f.seeds.get('sess-r')).toContain('STORED RESOLVE BRIEF')
+  })
+})
+
+describe('campaign runner: desktop notifications', () => {
+  it('notices follow the state, and the same state gives the same key', () => {
+    const base = fixture([task('a', 'running')]).current()
+    expect(noticeFor(base)).toBeNull()
+    const waiting = {
+      ...base,
+      tasks: [{ ...base.tasks[0], status: 'awaiting_approval' as const }],
+    }
+    const n = noticeFor(waiting)
+    expect(n?.key).toBe('needs-you:a@awaiting_approval')
+    expect(noticeFor(waiting)?.key).toBe(n?.key)
+    expect(noticeFor({ ...base, status: 'reviewing' })?.title).toContain(
+      'Ready for your review'
+    )
+    expect(noticeFor({ ...base, status: 'done' })?.key).toBe('done')
+    expect(noticeFor({ ...base, status: 'failed' })?.key).toBe('failed')
+    expect(noticeFor({ ...base, status: 'cancelled' })).toBeNull()
+  })
+
+  it('shows one notification per transition, honouring the log across restarts', async () => {
+    const shown: string[] = []
+    const f = fixture(
+      [task('a', 'merged')],
+      { status: 'reviewing' },
+      {
+        desktopNotify: (title) => {
+          shown.push(title)
+          return true
+        },
+      }
+    )
+    const seen = new Set<string>()
+    ;(f.api as unknown as { claimNotice: unknown }).claimNotice = vi.fn(
+      async (_id: string, key: string) => {
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      }
+    )
+    await f.runner.sweep('c1')
+    await f.runner.sweep('c1')
+    expect(shown).toHaveLength(1)
+    // A second process: the log already holds the key.
+    const again = createCampaignRunner(f.host, f.api)
+    await again.sweep('c1')
+    expect(shown).toHaveLength(1)
   })
 })

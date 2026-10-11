@@ -39,12 +39,21 @@ export function campaignToolSchemas(): CampaignToolSchema[] {
         'Tasks that can run at the same time must not declare overlapping ' +
         'paths. Every call is put to the user. Nothing starts until they ' +
         'approve. A finished task is verified by an independent reviewer ' +
-        'and merged into the campaign\'s integration branch; tasks that ' +
+        "and merged into the campaign's integration branch; tasks that " +
         'depend on it start after that merge.',
       parameters: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'A short name for the campaign.' },
+          campaign_id: {
+            type: 'string',
+            description:
+              'Revise this plan instead of making a new one. Only a plan that ' +
+              'is recorded but not approved yet can be revised; the tasks are replaced.',
+          },
+          title: {
+            type: 'string',
+            description: 'A short name for the campaign.',
+          },
           tasks: {
             type: 'array',
             minItems: 1,
@@ -94,7 +103,7 @@ export function campaignToolSchemas(): CampaignToolSchema[] {
     {
       name: CAMPAIGN_STATUS_TOOL_NAME,
       description:
-        'Where your campaign stands: its status and each task\'s status, ' +
+        "Where your campaign stands: its status and each task's status, " +
         'branch and detail.',
       parameters: {
         type: 'object',
@@ -135,7 +144,7 @@ export function campaignToolSchemas(): CampaignToolSchema[] {
     {
       name: CAMPAIGN_STEER_TOOL_NAME,
       description:
-        'Send a message to a running task\'s session. It arrives as mail, ' +
+        "Send a message to a running task's session. It arrives as mail, " +
         'subject to the same rate limits as send_message. Use it for a ' +
         'correction or an answer, not for new work.',
       parameters: {
@@ -166,7 +175,7 @@ export function campaignToolSchemas(): CampaignToolSchema[] {
       name: CAMPAIGN_VERIFY_TOOL_NAME,
       description:
         'Run the independent verifier on finished tasks. It sees the task ' +
-        'spec, the diff and build output, never the worker\'s reasoning. ' +
+        "spec, the diff and build output, never the worker's reasoning. " +
         'PASS merges the task; FAIL or PARTIAL gives the worker one repair ' +
         'round; BLOCKED or no verdict never merges. Tasks are verified ' +
         'automatically when they finish: use this to retry a blocked one.',
@@ -188,24 +197,32 @@ export function campaignToolSchemas(): CampaignToolSchema[] {
         'Merge verified tasks into the integration branch in dependency ' +
         'order (this also starts tasks that were waiting on them), skip ' +
         'tasks that cannot finish, or finish the campaign. A conflict ' +
-        'changes nothing and returns the conflicting files; the task waits ' +
-        'for you to steer it or skip it. With finalize=true the build and ' +
+        'changes nothing and returns the conflicting files; a resolver session ' +
+        'then merges it (one attempt), or it waits for you to steer or skip ' +
+        'it. With finalize=true the build and ' +
         'test gate runs on the integration branch and one proposal for the ' +
-        'user\'s checkout is created, after the user approves. Nothing is ' +
-        'written to the user\'s checkout until they apply the proposal.',
+        "user's checkout is created, after the user approves. Nothing is " +
+        "written to the user's checkout until they apply the proposal.",
       parameters: {
         type: 'object',
         properties: {
           campaign_id: campaignIdProp,
           task_id: {
             type: 'string',
-            description: 'Merge only this verified task. Omit to merge all that can.',
+            description:
+              'Merge only this verified task. Omit to merge all that can.',
           },
           skip: {
             type: 'array',
             items: { type: 'string' },
             description:
               'Cancel these failed, conflicted or blocked tasks so the campaign can finish without them.',
+          },
+          resolve: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Start a resolver session for these conflicted tasks (one attempt each). Happens by itself on the first conflict.',
           },
           finalize: {
             type: 'boolean',
