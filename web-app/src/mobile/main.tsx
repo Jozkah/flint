@@ -19,7 +19,7 @@ import { registerServiceWorker } from './sw/register'
 import { app, handleEvent, installRuntime } from './state/app'
 import { invalidate } from './state/rpc'
 import { readPairingFragment } from './state/router'
-import { startTheme } from './theme'
+import { apply as applyTheme, startTheme } from './theme'
 import { getLanguage, LANGUAGE_KEY, onLanguageChange } from './i18n'
 import { ConnectDesktop } from './screens/ConnectDesktop'
 import {
@@ -34,6 +34,8 @@ import {
 } from './shell'
 
 applyIosClass()
+applyTheme()
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme)
 const root = createRoot(document.getElementById('root')!)
 
 /** A thrown error at startup would otherwise leave a blank screen. */

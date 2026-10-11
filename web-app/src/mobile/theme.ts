@@ -7,7 +7,9 @@ import { app, client } from './state/app'
 let accent: AppearanceResult['vars'] | null = null
 let applied: string[] = []
 
-function apply() {
+/** Light or dark from the phone (or the saved choice). Exported so the first
+ * screen of the iOS shell, which shows before the app starts, is themed too. */
+export function apply() {
   const root = document.documentElement
   const pref = app.get().theme
   const dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
