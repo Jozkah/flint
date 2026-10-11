@@ -1452,7 +1452,7 @@
     "openInCode": "Jatuhkan untuk membuka — hanya-baca",
     "attachToMessage": "Jatuhkan untuk melampirkan ke pesan Anda",
     "releaseToAttach": "Lepaskan untuk melampirkan",
-    "releaseToAttachCount": "Release to attach {{count}} files"
+    "releaseToAttachCount": "Lepas untuk melampirkan {{count}} file"
   },
   "coworkMode": {
     "label": "Yang boleh dilakukan Flint",
@@ -2029,11 +2029,11 @@
     "movedTo": "Dipindahkan ke {{name}}",
     "notifications": "Notifikasi",
     "approvalWaiting": "Persetujuan menunggu",
-    "tabs": "Sidebar view",
-    "tabChat": "Chat",
+    "tabs": "Tampilan sidebar",
+    "tabChat": "Obrolan",
     "tabCowork": "Cowork",
     "studio": "Studio",
-    "schedules": "Schedules"
+    "schedules": "Jadwal"
   },
   "systemNav": {
     "label": "Diagnostik",
@@ -2447,12 +2447,12 @@
     "downloading": "Mengunduh…"
   },
   "composerChip": {
-    "list": "Attached files",
-    "pastedImage": "Pasted image {{n}}",
-    "open": "Preview {{name}}",
-    "noVision": "This model can't read images",
-    "details": "Details for {{name}}",
-    "previewLoading": "Loading preview…",
-    "previewNone": "No preview available"
+    "list": "File terlampir",
+    "pastedImage": "Gambar yang ditempel {{n}}",
+    "open": "Pratinjau {{name}}",
+    "noVision": "Model ini tidak bisa membaca gambar",
+    "details": "Detail untuk {{name}}",
+    "previewLoading": "Memuat pratinjau…",
+    "previewNone": "Pratinjau tidak tersedia"
   }
 }

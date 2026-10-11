@@ -113,7 +113,7 @@
   "keyboardShortcuts": "ショートカット",
   "home": "ホーム",
   "cowork": "Cowork",
-  "campaign": "Campaign",
+  "campaign": "キャンペーン",
   "newSession": "新しいセッション",
   "artifacts": "アーティファクト",
   "customize": "カスタマイズ",
@@ -1473,7 +1473,7 @@
     "openInCode": "ドロップして開く — 読み取り専用",
     "attachToMessage": "ドロップしてメッセージに添付",
     "releaseToAttach": "ドロップして添付",
-    "releaseToAttachCount": "Release to attach {{count}} files"
+    "releaseToAttachCount": "離すと {{count}} 個のファイルを添付します"
   },
   "coworkRunSettings": {
     "label": "実行設定",
@@ -2067,11 +2067,11 @@
     "movedTo": "{{name}} に移動しました",
     "notifications": "通知",
     "approvalWaiting": "承認待ち",
-    "tabs": "Sidebar view",
-    "tabChat": "Chat",
+    "tabs": "サイドバーの表示",
+    "tabChat": "チャット",
     "tabCowork": "Cowork",
     "studio": "Studio",
-    "schedules": "Schedules"
+    "schedules": "スケジュール"
   },
   "systemNav": {
     "label": "診断",
@@ -2485,12 +2485,12 @@
     "downloading": "ダウンロード中…"
   },
   "composerChip": {
-    "list": "Attached files",
-    "pastedImage": "Pasted image {{n}}",
-    "open": "Preview {{name}}",
-    "noVision": "This model can't read images",
-    "details": "Details for {{name}}",
-    "previewLoading": "Loading preview…",
-    "previewNone": "No preview available"
+    "list": "添付ファイル",
+    "pastedImage": "貼り付けた画像 {{n}}",
+    "open": "{{name}} をプレビュー",
+    "noVision": "このモデルは画像を読み取れません",
+    "details": "{{name}} の詳細",
+    "previewLoading": "プレビューを読み込んでいます…",
+    "previewNone": "プレビューはありません"
   }
 }

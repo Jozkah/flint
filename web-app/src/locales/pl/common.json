@@ -115,7 +115,7 @@
   "keyboardShortcuts": "Skróty",
   "home": "Strona główna",
   "cowork": "Cowork",
-  "campaign": "Campaign",
+  "campaign": "Kampania",
   "newSession": "Nowa sesja",
   "artifacts": "Artefakty",
   "customize": "Dostosuj",
@@ -1525,7 +1525,7 @@
     "openInCode": "Upuść, aby otworzyć — tylko do odczytu",
     "attachToMessage": "Upuść, aby załączyć do wiadomości",
     "releaseToAttach": "Upuść, aby dołączyć",
-    "releaseToAttachCount": "Release to attach {{count}} files"
+    "releaseToAttachCount": "Puść, aby dołączyć pliki: {{count}}"
   },
   "coworkRunSettings": {
     "label": "Ustawienia uruchomienia",
@@ -2141,11 +2141,11 @@
     "movedTo": "Przeniesiono do {{name}}",
     "notifications": "Powiadomienia",
     "approvalWaiting": "Zatwierdzenie oczekuje",
-    "tabs": "Sidebar view",
-    "tabChat": "Chat",
+    "tabs": "Widok paska bocznego",
+    "tabChat": "Czat",
     "tabCowork": "Cowork",
     "studio": "Studio",
-    "schedules": "Schedules"
+    "schedules": "Harmonogramy"
   },
   "systemNav": {
     "label": "Diagnostyka",
@@ -2578,12 +2578,12 @@
     "downloading": "Pobieranie…"
   },
   "composerChip": {
-    "list": "Attached files",
-    "pastedImage": "Pasted image {{n}}",
-    "open": "Preview {{name}}",
-    "noVision": "This model can't read images",
-    "details": "Details for {{name}}",
-    "previewLoading": "Loading preview…",
-    "previewNone": "No preview available"
+    "list": "Dołączone pliki",
+    "pastedImage": "Wklejony obraz {{n}}",
+    "open": "Podgląd: {{name}}",
+    "noVision": "Ten model nie czyta obrazów",
+    "details": "Szczegóły: {{name}}",
+    "previewLoading": "Wczytywanie podglądu…",
+    "previewNone": "Podgląd niedostępny"
   }
 }

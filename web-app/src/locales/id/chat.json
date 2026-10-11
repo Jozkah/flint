@@ -99,10 +99,10 @@
     "newChatFailed": "Tidak dapat memulai obrolan baru",
     "room": "Ruang",
     "recentRooms": "Ruang",
-    "needsApproval": "Needs approval",
-    "needsApprovalShort": "Needs approval",
-    "done": "Done",
-    "failed": "Failed"
+    "needsApproval": "Perlu persetujuan",
+    "needsApprovalShort": "Perlu persetujuan",
+    "done": "Selesai",
+    "failed": "Gagal"
   },
   "transcriptView": {
     "steps_other": "{{count}} langkah",

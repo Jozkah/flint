@@ -99,10 +99,10 @@
     "newChatFailed": "새 채팅을 시작할 수 없습니다",
     "room": "룸",
     "recentRooms": "룸",
-    "needsApproval": "Needs approval",
-    "needsApprovalShort": "Needs approval",
-    "done": "Done",
-    "failed": "Failed"
+    "needsApproval": "승인 필요",
+    "needsApprovalShort": "승인 필요",
+    "done": "완료",
+    "failed": "실패"
   },
   "transcriptView": {
     "steps_one": "{{count}}단계",

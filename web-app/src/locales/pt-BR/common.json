@@ -114,7 +114,7 @@
   "keyboardShortcuts": "Atalhos",
   "home": "Início",
   "cowork": "Cowork",
-  "campaign": "Campaign",
+  "campaign": "Campanha",
   "newSession": "Nova sessão",
   "artifacts": "Artefatos",
   "customize": "Personalizar",
@@ -1499,7 +1499,7 @@
     "openInCode": "Solte para abrir — somente leitura",
     "attachToMessage": "Solte para anexar à sua mensagem",
     "releaseToAttach": "Solte para anexar",
-    "releaseToAttachCount": "Release to attach {{count}} files"
+    "releaseToAttachCount": "Solte para anexar {{count}} arquivos"
   },
   "coworkRunSettings": {
     "label": "Configurações da execução",
@@ -2104,11 +2104,11 @@
     "movedTo": "Movido para {{name}}",
     "notifications": "Notificações",
     "approvalWaiting": "Aprovação aguardando",
-    "tabs": "Sidebar view",
+    "tabs": "Visualização da barra lateral",
     "tabChat": "Chat",
     "tabCowork": "Cowork",
     "studio": "Studio",
-    "schedules": "Schedules"
+    "schedules": "Agendamentos"
   },
   "systemNav": {
     "label": "Diagnóstico",
@@ -2533,12 +2533,12 @@
     "downloading": "Baixando…"
   },
   "composerChip": {
-    "list": "Attached files",
-    "pastedImage": "Pasted image {{n}}",
-    "open": "Preview {{name}}",
-    "noVision": "This model can't read images",
-    "details": "Details for {{name}}",
-    "previewLoading": "Loading preview…",
-    "previewNone": "No preview available"
+    "list": "Arquivos anexados",
+    "pastedImage": "Imagem colada {{n}}",
+    "open": "Pré-visualizar {{name}}",
+    "noVision": "Este modelo não consegue ler imagens",
+    "details": "Detalhes de {{name}}",
+    "previewLoading": "Carregando pré-visualização…",
+    "previewNone": "Nenhuma pré-visualização disponível"
   }
 }
