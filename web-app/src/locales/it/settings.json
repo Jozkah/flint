@@ -709,15 +709,6 @@
         "conflict": "Conflict",
         "cancelled": "Cancelled"
       },
-      "column": {
-        "blocked": "Blocked",
-        "queued": "Queued",
-        "running": "Running",
-        "needsYou": "Needs you",
-        "verifying": "Verifying",
-        "done": "Done",
-        "failed": "Failed / Conflict"
-      },
       "status": {
         "draft": "draft",
         "planned": "planned",
@@ -731,12 +722,9 @@
         "cancelled": "cancelled",
         "interrupted": "interrupted"
       },
-      "progress": "{{done}}/{{total}} done · {{status}}",
-      "coordinator": "Coordinator",
       "openBoard": "Open campaign board",
       "notFound": "This campaign was not found.",
       "loading": "Loading campaign…",
-      "emptyColumn": "No tasks",
       "budget": {
         "label": "Token budget",
         "used": "{{used}} of {{budget}} tokens",
@@ -745,11 +733,7 @@
       "parallel": "Parallel limit {{n}}",
       "card": {
         "branch": "Branch",
-        "noBranch": "no branch yet",
-        "files": "{{n}} files changed",
-        "tokens": "{{n}} tokens",
-        "activity": "Last activity {{when}}",
-        "attempt": "Attempt {{n}}"
+        "noBranch": "no branch yet"
       },
       "action": {
         "open": "Open session",
@@ -765,7 +749,9 @@
         "review": "Review & apply",
         "send": "Send",
         "close": "Close",
-        "confirm": "Confirm"
+        "confirm": "Confirm",
+        "reviewChanges": "Review changes",
+        "openCoordinator": "Open coordinator"
       },
       "note": {
         "title": "Note to {{task}}",
@@ -802,7 +788,100 @@
         "sent": "Note sent",
         "delivered": "Note delivered to the task"
       },
-      "error": "Action failed: {{reason}}"
+      "error": "Action failed: {{reason}}",
+      "headline": {
+        "planning": "Planning the work",
+        "working": "Working: {{done}} of {{total}} tasks done",
+        "attention_one": "Needs your attention: {{count}} task is waiting for you",
+        "attention_other": "Needs your attention: {{count}} tasks are waiting for you",
+        "review": "Ready for your review",
+        "merging": "Putting the results together",
+        "paused": "Paused: {{done}} of {{total}} tasks done",
+        "interrupted": "Stopped when the app closed: {{done}} of {{total}} tasks done",
+        "done": "All done",
+        "failed": "This campaign could not finish",
+        "cancelled": "Cancelled"
+      },
+      "progressLabel": "{{done}} of {{total}} tasks done",
+      "planning": "Planning… waiting for the coordinator's plan.",
+      "group": {
+        "needsYou": "Needs you",
+        "working": "Working",
+        "upNext": "Up next",
+        "done": "Done"
+      },
+      "word": {
+        "writing": "Writing code",
+        "checking": "Checking the result",
+        "ready": "Checked, ready to merge",
+        "needsInput": "Waiting for your answer",
+        "needsApproval": "Waiting for your approval",
+        "failed": "Did not work out",
+        "conflict": "Clashes with other changes",
+        "waiting": "Waiting for {{tasks}}",
+        "queued": "Starts soon",
+        "merged": "Merged",
+        "skipped": "Skipped"
+      },
+      "row": {
+        "open": "Open",
+        "details": "Details",
+        "attempts": "Attempts",
+        "tokens": "Tokens used",
+        "lastActivity": "Last activity",
+        "seeChanges": "See what {{task}} changed"
+      },
+      "details": "Details",
+      "detailBranch": "Results are collected on {{branch}}",
+      "statusWord": {
+        "draft": "Starting",
+        "planned": "Starting",
+        "approved": "Starting",
+        "running": "Working",
+        "paused": "Paused",
+        "reviewing": "Ready to review",
+        "merging": "Merging",
+        "done": "Done",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+        "interrupted": "Stopped"
+      },
+      "groupProgress": "{{done}} of {{total}} done · {{status}}",
+      "fold": "Hide the sessions of {{title}}",
+      "unfold": "Show the sessions of {{title}}"
+    },
+    "changes": {
+      "loading": "Looking at the changes…",
+      "unavailable": "The changes could not be read. Open the session to see them.",
+      "none": "This task has not changed any files.",
+      "files_one": "{{count}} file",
+      "files_other": "{{count}} files",
+      "namesOnly": "Only the file names are known for this task.",
+      "uncommitted": "Some of this work is not saved to the task's branch yet.",
+      "cut": "A long list was shortened.",
+      "kind": {
+        "new": "New",
+        "edited": "Edited",
+        "deleted": "Deleted",
+        "renamed": "Renamed"
+      },
+      "binary": "binary",
+      "binaryNote": "This is not a text file, so there is nothing to show.",
+      "renamedFrom": "Renamed from {{from}}",
+      "showMore_one": "Show {{count}} more line",
+      "showMore_other": "Show {{count}} more lines",
+      "fileCut": "This change is long, so only the start is shown.",
+      "noPatch": "There is no line-by-line view for this file."
+    },
+    "start": {
+      "title": "New campaign",
+      "menu": "New campaign",
+      "prompt": "Describe the big task. Flint will plan how to split it.",
+      "goalLabel": "What should the campaign do?",
+      "placeholder": "For example: add dark mode across the app, with tests",
+      "hint": "Up to {{n}} threads work at the same time. You can change this in Settings.",
+      "folder": "In {{folder}}",
+      "go": "Start"
     }
   }
 }
