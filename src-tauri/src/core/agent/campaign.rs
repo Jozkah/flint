@@ -357,6 +357,19 @@ pub struct Campaign {
     /// A rough token cost of the plan, made when it is recorded or edited.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate: Option<CostEstimate>,
+    /// Who runs the campaign: `renderer` (the desktop app's scheduler, the
+    /// default for every record that predates the field) or `server` (the
+    /// campaign driver of `flint serve --agent-run`). The renderer's campaign
+    /// host leaves a `server` campaign alone.
+    #[serde(default = "default_driver")]
+    pub driver: String,
+}
+
+pub const DRIVER_RENDERER: &str = "renderer";
+pub const DRIVER_SERVER: &str = "server";
+
+fn default_driver() -> String {
+    DRIVER_RENDERER.to_string()
 }
 
 /// A rough, honest cost range for a plan, shown before approval.
@@ -970,6 +983,9 @@ pub struct CreateInput {
     #[serde(default)]
     pub limits: Option<CampaignLimits>,
     pub tasks: Vec<PlanTask>,
+    /// `renderer` (default) or `server`.
+    #[serde(default)]
+    pub driver: Option<String>,
 }
 
 fn new_id() -> String {
@@ -1034,6 +1050,10 @@ pub fn create(data_folder: &Path, input: CreateInput) -> Result<Campaign, Campai
         gate: None,
         proposal_id: None,
         estimate: Some(estimate),
+        driver: match input.driver.as_deref().map(str::trim) {
+            Some(DRIVER_SERVER) => DRIVER_SERVER.to_string(),
+            _ => DRIVER_RENDERER.to_string(),
+        },
     };
     save(data_folder, &c)?;
     append_event(data_folder, &id, "campaign-created", None, &format!("{} tasks", c.tasks.len()));
@@ -1762,6 +1782,7 @@ pub(crate) mod tests {
             gate: None,
             proposal_id: None,
             estimate: None,
+            driver: DRIVER_RENDERER.to_string(),
         }
     }
 
@@ -1789,6 +1810,7 @@ pub(crate) mod tests {
             model: "m".into(),
             limits: None,
             tasks,
+            driver: None,
         }
     }
 

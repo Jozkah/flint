@@ -758,6 +758,30 @@ async fn rpc_route(
     args: serde_json::Value,
     caller: &super::runner::Caller,
 ) -> Resp {
+    if super::campaign_driver::handles(command) {
+        let Some(agent) = &state.agent else {
+            return text(
+                StatusCode::FORBIDDEN,
+                "The agent review plane is off on this server. Start it with --agent-root <folder>.",
+            );
+        };
+        return match agent.call_campaign(command, &args).await {
+            Ok(value) => json(&value),
+            Err(failure) => {
+                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
+                match failure.body {
+                    serde_json::Value::String(message) => {
+                        reply(status, "text/plain; charset=utf-8", message)
+                    }
+                    other => reply(
+                        status,
+                        "application/json",
+                        serde_json::to_vec(&other).unwrap_or_default(),
+                    ),
+                }
+            }
+        };
+    }
     if super::runner::handles(command) {
         let Some(agent) = &state.agent else {
             return text(
@@ -1562,6 +1586,11 @@ pub async fn serve(options: Options) -> io::Result<()> {
         shutdown: shutdown.clone(),
         shutdown_token: shutdown_token.clone(),
     });
+    // Campaigns the records say this server drives continue on their own,
+    // with no client connected (P3 of the server runner).
+    if let Some(agent) = &state.agent {
+        agent.start_driver();
+    }
     eprintln!(
         "Flint web server listening on http://{}",
         listener.local_addr()?

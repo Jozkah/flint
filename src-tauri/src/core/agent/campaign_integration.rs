@@ -148,7 +148,7 @@ pub fn trusted_worktree(
     Ok(record)
 }
 
-fn task_record(c: &Campaign, t: &CampaignTask, roots: &Path) -> Result<WorktreeRecord, CampaignError> {
+pub fn task_record(c: &Campaign, t: &CampaignTask, roots: &Path) -> Result<WorktreeRecord, CampaignError> {
     let path = t.worktree_path.as_deref().unwrap_or_default();
     let branch = t.branch.as_deref().unwrap_or_default();
     if !c.integration_branch.is_empty() && branch == c.integration_branch {
@@ -1788,6 +1788,7 @@ mod tests {
                 model: String::new(),
                 limits: None,
                 tasks,
+                driver: None,
             },
         )
         .unwrap();

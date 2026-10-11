@@ -30,8 +30,10 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 use super::agent_runs;
+use super::campaign_driver::{self, Driver, DriverConfig, Host as _, RunnerHost};
 use super::runner::{self, Caller, Runner, RunnerOptions};
 use crate::core::agent::campaign;
+use crate::core::agent::campaign_integration;
 use tauri_plugin_agent_tools::proposal;
 use tauri_plugin_agent_tools::tools::jail;
 
@@ -93,6 +95,13 @@ pub fn handles(command: &str) -> bool {
             | "agent_campaign_events"
             | "agent_campaign_transition"
             | "agent_campaign_cancel"
+            | "agent_campaign_plan_update"
+            | "agent_campaign_diff"
+            | "agent_campaign_task_diff"
+            | "agent_campaign_claim_notice"
+            | "agent_campaign_gate_plan"
+            | "agent_campaign_refresh"
+            | "agent_campaign_orphans"
             | "agent_proposal_list"
             | "agent_proposal_apply"
             | "agent_proposal_reject"
@@ -108,6 +117,8 @@ pub struct Agent {
     /// The session runner, present once [`Agent::with_runner`] built it.
     runner: Option<Arc<Runner>>,
     options: RunnerOptions,
+    /// The campaign driver (P3), built with the runner.
+    driver: Option<Arc<Driver<RunnerHost>>>,
 }
 
 /// Whether the session runner is built into this release (P1: `runner.rs`).
@@ -181,6 +192,7 @@ impl Agent {
             run,
             runner: None,
             options: RunnerOptions::default(),
+            driver: None,
         }))
     }
 
@@ -189,9 +201,29 @@ impl Agent {
     pub fn with_runner(mut self, options: RunnerOptions, bus: super::events::Bus) -> Agent {
         self.options = options.clone();
         if self.run {
-            self.runner = Some(Arc::new(Runner::new(&self.data_folder, &self.roots, options, bus)));
+            let runner = Arc::new(Runner::new(&self.data_folder, &self.roots, options.clone(), bus));
+            let host = RunnerHost::new(
+                runner.clone(),
+                DriverConfig {
+                    allow_checks: options.allow_checks,
+                    allow_bypass: options.allow_bypass,
+                    max_sessions: options.max_sessions,
+                    approval_timeout: options.approval_timeout,
+                },
+            );
+            self.driver = Some(Driver::new(host));
+            self.runner = Some(runner);
         }
         self
+    }
+
+    /// Start the campaign driver's loop, when this server runs sessions. The
+    /// loop reads the campaign records, so campaigns left running by an earlier
+    /// life of the server continue without a client.
+    pub fn start_driver(&self) {
+        if let (Some(driver), true) = (&self.driver, self.missing().is_empty()) {
+            driver.spawn();
+        }
     }
 
     /// Why this server will not run a session, in words a person can act on;
@@ -253,6 +285,104 @@ impl Agent {
             _ => None,
         };
         runner.call(command, args, caller, confined).await
+    }
+
+    /// The driver, when sessions may run here.
+    fn ready_driver(&self) -> Result<&Arc<Driver<RunnerHost>>, Fail> {
+        self.ready_runner()?;
+        self.driver.as_ref().ok_or_else(|| fail(403, "this server does not run campaigns"))
+    }
+
+    /// A campaign this server drives; anything else is refused.
+    fn server_campaign(&self, id: &str) -> Result<campaign::Campaign, Fail> {
+        let c = campaign::get(&self.data_folder, id).map_err(|e| failure(e.message))?;
+        if c.driver != campaign::DRIVER_SERVER {
+            return Err(fail(403, "that campaign is not run by this server"));
+        }
+        Ok(c)
+    }
+
+    /// The campaign commands that need the runner or wait on a model or a
+    /// project command (`campaign_driver::handles`). Signed-in clients only,
+    /// like every other command.
+    pub async fn call_campaign(&self, command: &str, args: &Value) -> Result<Value, Fail> {
+        match command {
+            "agent_campaign_cancel" => {
+                let id = text(args, "id")?.to_owned();
+                let detail = args.get("detail").and_then(Value::as_str).unwrap_or_default().to_owned();
+                if let Some(driver) = self.driver.as_ref().filter(|_| self.runner.is_some()) {
+                    let c = campaign::get(&self.data_folder, &id).map_err(|e| failure(e.message))?;
+                    if c.driver == campaign::DRIVER_SERVER {
+                        return to_json(driver.cancel(&id, &detail).await.map_err(failure)?);
+                    }
+                }
+                to_json(campaign::cancel(&self.data_folder, &id, &detail).map_err(|e| failure(e.message))?)
+            }
+            "agent_campaign_approvals" => {
+                let driver = self.ready_driver()?;
+                Ok(json!({ "approvals": driver.approvals() }))
+            }
+            "agent_campaign_start_server" => {
+                let driver = self.ready_driver()?.clone();
+                let folder = self.confine(text(args, "folder")?)?;
+                let goal = text(args, "goal")?.to_owned();
+                let options: campaign_driver::StartOptions = match args.get("options") {
+                    Some(v) if !v.is_null() => serde_json::from_value(v.clone())
+                        .map_err(|e| fail(400, format!("options are not valid: {e}")))?,
+                    _ => Default::default(),
+                };
+                let made = campaign_driver::start_server(driver.host().as_ref(), &folder, &goal, options).await?;
+                driver.poke();
+                to_json(made)
+            }
+            "agent_campaign_approve" => {
+                let driver = self.ready_driver()?.clone();
+                let id = text(args, "id")?.to_owned();
+                let access = args.get("access").and_then(Value::as_str).unwrap_or("ask").to_owned();
+                self.server_campaign(&id)?;
+                let (data, roots, cfg) = (self.data_folder.clone(), self.roots.clone(), driver.host().config());
+                let approved = tokio::task::spawn_blocking(move || {
+                    campaign_driver::approve_plan(&data, &roots, &cfg, &id, &access)
+                })
+                .await
+                .map_err(|_| fail(500, "the approval did not finish"))??;
+                driver.poke();
+                to_json(approved)
+            }
+            "agent_campaign_finalize" => {
+                let driver = self.ready_driver()?.clone();
+                let id = text(args, "id")?.to_owned();
+                self.server_campaign(&id)?;
+                let seconds = args
+                    .get("seconds")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(600)
+                    .clamp(1, campaign_integration::MAX_COMMAND_SECS);
+                let (data, owned) =
+                    (self.data_folder.clone(), super::session_worktree::owned_root(&self.data_folder)?);
+                let allow_checks = self.options.allow_checks;
+                let id2 = id.clone();
+                let report = tokio::task::spawn_blocking(move || {
+                    let plan = campaign_integration::gate_plan(&data, &owned, &id2).map_err(|e| failure(e.message))?;
+                    // The gate runs the repository's own build or test command.
+                    if plan.command.is_some() && !allow_checks {
+                        return Err(fail(
+                            403,
+                            "this server does not run a project command; start it with --agent-allow-checks to run the gate",
+                        ));
+                    }
+                    campaign_integration::finalize(&data, &owned, &id2, seconds).map_err(|e| failure(e.message))
+                })
+                .await
+                .map_err(|_| fail(500, "the gate did not finish"))??;
+                if let (Some(proposal), Some(runner)) = (&report.proposal_id, &self.runner) {
+                    runner.ping("agent-proposal-created", &json!({ "campaignId": id, "proposalId": proposal }));
+                }
+                driver.poke();
+                to_json(report)
+            }
+            _ => Err(fail(404, "Unknown agent command")),
+        }
     }
 
     /// The canonical form of `raw` when it names an existing path inside a root.
@@ -344,6 +474,57 @@ impl Agent {
                         .map_err(|e| failure(e.message))?,
                 )
             }
+            "agent_campaign_plan_update" => {
+                let id = text(args, "id")?;
+                self.ready_runner()?;
+                self.server_campaign(id)?;
+                let edit: campaign::PlanEdit = field(args, "edit")?;
+                to_json(campaign::plan_update(&self.data_folder, id, edit).map_err(|e| failure(e.message))?)
+            }
+            "agent_campaign_claim_notice" => {
+                let id = text(args, "id")?;
+                let key = text(args, "key")?;
+                to_json(campaign::claim_notice(&self.data_folder, id, key).map_err(|e| failure(e.message))?)
+            }
+            "agent_campaign_diff" => {
+                let id = text(args, "id")?;
+                self.ready_runner()?;
+                let owned = super::session_worktree::owned_root(&self.data_folder)?;
+                let patches = args.get("patches").and_then(Value::as_bool).unwrap_or(true);
+                to_json(
+                    campaign_integration::campaign_diff(&self.data_folder, &owned, id, patches)
+                        .map_err(|e| failure(e.message))?,
+                )
+            }
+            "agent_campaign_task_diff" => {
+                let id = text(args, "id")?;
+                let task = text(args, "taskId")?;
+                self.ready_runner()?;
+                let owned = super::session_worktree::owned_root(&self.data_folder)?;
+                let patches = args.get("patches").and_then(Value::as_bool).unwrap_or(true);
+                to_json(
+                    campaign_integration::task_diff(&self.data_folder, &owned, id, task, patches)
+                        .map_err(|e| failure(e.message))?,
+                )
+            }
+            "agent_campaign_gate_plan" => {
+                let id = text(args, "id")?;
+                self.ready_runner()?;
+                let owned = super::session_worktree::owned_root(&self.data_folder)?;
+                to_json(
+                    campaign_integration::gate_plan(&self.data_folder, &owned, id)
+                        .map_err(|e| failure(e.message))?,
+                )
+            }
+            "agent_campaign_refresh" => {
+                let id = text(args, "id")?;
+                to_json(campaign_integration::refresh(&self.data_folder, id).map_err(|e| failure(e.message))?)
+            }
+            "agent_campaign_orphans" => {
+                self.ready_runner()?;
+                let owned = super::session_worktree::owned_root(&self.data_folder)?;
+                to_json(campaign_integration::orphans(&self.data_folder, &owned))
+            }
             "agent_proposal_list" => {
                 let project = self.confine(text(args, "project")?)?;
                 to_json(proposal::list(&self.data_folder, &project.to_string_lossy()))
@@ -397,6 +578,9 @@ impl Agent {
             // such runner; the operator's switch is reported as it stands.
             "runsChecks": self.options.allow_checks,
             "runsWorktrees": ready,
+            // Campaigns whose driver is this server (P3): created here,
+            // planned by the server's model, run with no client connected.
+            "runsCampaigns": ready && self.driver.is_some(),
             "runRequested": self.run,
             "runnerPlanned": true,
             "sandbox": backend.as_str(),

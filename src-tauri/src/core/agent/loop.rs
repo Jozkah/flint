@@ -6537,6 +6537,70 @@ pub(crate) async fn evaluate_goal(
     crate::core::agent::goal::evaluate(smol_model_id, condition, messages, &model).await
 }
 
+/// One stateless, tool-free model call against `model_id`, through the same
+/// provider path a turn uses (provider configs, credentials, snapshot, secret
+/// filter). Used by hosts that need a model's judgement outside a session: the
+/// server's campaign verifier and planner. Returns the chat completion.
+#[cfg(feature = "cli")]
+pub(crate) async fn utility_completion(
+    args: &OrchestrationArgs,
+    model_id: &str,
+    agent_name: &str,
+    request: &serde_json::Value,
+) -> Result<serde_json::Value, HarnessError> {
+    let (upstream_url, api_keys) = resolve_upstream_for_model(
+        model_id,
+        args.provider_configs.clone(),
+        #[cfg(not(feature = "cli"))]
+        args.llama_state.clone(),
+        #[cfg(not(feature = "cli"))]
+        args.mlx_sessions.clone(),
+    )
+    .await?;
+    let (converter, api_type) = wire_for(model_id, args.provider_configs.clone()).await;
+    let provenance = ProvenanceIdentity::resolve(
+        model_id,
+        &args.provider_configs,
+        args.session_id.as_deref(),
+        args.run_id.as_deref(),
+    )
+    .await;
+    let model = HttpModelInvoker {
+        secrets: crate::core::agent::secrets::for_run(),
+        provenance,
+        quota: None,
+        client_request_id: crate::core::agent::correlation::session_request_id(
+            args.session_id.as_deref(),
+        ),
+        client: args.client.clone(),
+        upstream_url,
+        api_keys,
+        provider_configs: args.provider_configs.clone(),
+        converter,
+        api_type,
+        converter_client: converter_http_client(),
+        invocations: std::sync::Arc::new(Invocations::default()),
+        fallbacks: Vec::new(),
+        snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
+            session: args.session_id.clone().unwrap_or_default(),
+            run: String::new(),
+            thread: args.session_id.clone().unwrap_or_default(),
+            agent: agent_name.to_string(),
+            provider: model_id
+                .split_once('/')
+                .map(|(p, _)| p.to_string())
+                .unwrap_or_default(),
+            invocation: String::new(),
+            turn: String::new(),
+            attempt: 1,
+            kind: Default::default(),
+        },
+    };
+    // The call's own tokens are not a user-facing stream.
+    let (sink, _rx) = mpsc::unbounded_channel();
+    model.invoke(request, &sink).await
+}
+
 /// Summary of still-open (pending/in-progress) todos, or `None` when there is
 /// no list or nothing is open. Drives the close-out nudge before the loop hands
 /// control back.

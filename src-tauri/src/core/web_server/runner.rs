@@ -200,6 +200,37 @@ struct Feed {
     /// The seq a client subscribes after to see the turn in flight from its
     /// first event (what `agent_run_start` returned as `after`).
     turn_after: u64,
+    /// Tokens this session's turns have used so far (provider usage events).
+    tokens: u64,
+    /// Tool calls made so far.
+    steps: u32,
+    /// The assistant's last message of the last settled turn.
+    last_reply: String,
+    /// How the last turn ended, for a host that drives sessions itself.
+    last_turn: Option<TurnEnd>,
+}
+
+/// How a session's last turn ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TurnEnd {
+    pub turn_id: String,
+    /// `completed`, `interrupted` or `error`.
+    pub stop_reason: String,
+    pub error: Option<String>,
+}
+
+/// What a host that drives sessions itself (the campaign driver) reads of a
+/// live session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionView {
+    /// `idle`, `running`, `awaiting_approval` or `awaiting_answer`.
+    pub status: String,
+    pub tokens: u64,
+    pub steps: u32,
+    pub last_reply: String,
+    pub last_turn: Option<TurnEnd>,
+    pub pending_approvals: usize,
+    pub pending_asks: usize,
 }
 
 struct Shared {
@@ -220,6 +251,10 @@ impl Shared {
                 access,
                 turns: 0,
                 turn_after: 0,
+                tokens: 0,
+                steps: 0,
+                last_reply: String::new(),
+                last_turn: None,
             }),
             tail: broadcast::channel(512).0,
         }
@@ -274,6 +309,8 @@ enum Cmd {
     SetAccess { mode: PermissionMode, reply: Reply },
     Worktree { op: super::session_worktree::Op, caller: Caller, reply: Reply },
     Delete { reply: Reply },
+    /// Leave memory (the thread stays); refused while a turn is active.
+    Close { reply: Reply },
 }
 
 struct Live {
@@ -876,6 +913,201 @@ impl Runner {
     }
 }
 
+// ---------------------------------------------------------------------------
+// For a host that drives sessions itself: the campaign driver
+// ---------------------------------------------------------------------------
+
+/// The worktree a driven session works in.
+pub enum TaskWorktree {
+    /// Make one from `base` (a local branch) under the server's own folder.
+    Create { base: String },
+    /// An existing record (a conflict resolver's, made by `resolve_prepare`).
+    Existing(WorktreeRecord),
+}
+
+/// What the campaign driver asks the runner for: one session per task.
+pub struct TaskSessionSpec {
+    /// Chosen by the caller when a worktree is keyed by it first.
+    pub id: Option<String>,
+    pub title: String,
+    /// The campaign's source folder, already confined.
+    pub folder: PathBuf,
+    pub model: Option<String>,
+    pub mode: PermissionMode,
+    pub campaign_id: String,
+    pub task_id: String,
+    pub worktree: TaskWorktree,
+}
+
+pub struct TaskSession {
+    pub id: String,
+    pub worktree: WorktreeRecord,
+}
+
+impl Runner {
+    pub fn data_folder(&self) -> &Path {
+        &self.data_folder
+    }
+
+    pub fn roots(&self) -> &[PathBuf] {
+        &self.roots
+    }
+
+    /// A coarse ping on `/api/v1/events`.
+    pub fn ping(&self, kind: &str, payload: &Value) {
+        self.bus.publish(kind, payload);
+    }
+
+    /// What a live session says about itself; `None` when it is not live.
+    pub fn view(&self, id: &str) -> Option<SessionView> {
+        let live = self.get(id)?;
+        Some(live.shared.with(|f| SessionView {
+            status: f.status.to_owned(),
+            tokens: f.tokens,
+            steps: f.steps,
+            last_reply: f.last_reply.clone(),
+            last_turn: f.last_turn.clone(),
+            pending_approvals: f.pending.len(),
+            pending_asks: f.asks.len(),
+        }))
+    }
+
+    /// A session for one campaign task (or resolver): live, confined, with its
+    /// worktree under the server's own folder. The turn is started separately.
+    pub async fn open_task_session(self: &Arc<Self>, spec: TaskSessionSpec) -> Result<TaskSession, Fail> {
+        if self.live_count() >= self.options.max_sessions as usize {
+            return Err(fail(
+                429,
+                format!("this server runs at most {} sessions at once", self.options.max_sessions),
+            ));
+        }
+        let id = spec.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let title: String = spec.title.chars().filter(|c| !c.is_control()).take(MAX_TITLE).collect();
+        let (record, created) = match spec.worktree {
+            TaskWorktree::Create { base } => {
+                let (data, roots, folder, id2, title2) =
+                    (self.data_folder.clone(), self.roots.clone(), spec.folder.clone(), id.clone(), title.clone());
+                let record = tokio::task::spawn_blocking(move || {
+                    wt::create(&data, &roots, &folder, &id2, &title2, Some(&base))
+                })
+                .await
+                .map_err(|_| fail(500, "the worktree could not be made"))??;
+                (record, true)
+            }
+            TaskWorktree::Existing(record) => {
+                let (data, roots, record2) = (self.data_folder.clone(), self.roots.clone(), record.clone());
+                tokio::task::spawn_blocking(move || {
+                    wt::validated(&data, &roots, &record2)?;
+                    match worktree::state(&record2) {
+                        WorktreeState::Ready => Ok(()),
+                        other => Err(fail(409, format!("that worktree is {}", wt::state_word(&other)))),
+                    }
+                })
+                .await
+                .map_err(|_| fail(500, "the worktree check did not finish"))??;
+                (record, false)
+            }
+        };
+        let mut metadata = json!({
+            "source": "runner",
+            "remote": true,
+            "folder": spec.folder.to_string_lossy(),
+            "access": access_name(spec.mode),
+            "mode": "campaign",
+            "client": "campaign-driver",
+            "campaign": { "id": spec.campaign_id, "taskId": spec.task_id },
+        });
+        metadata[wt::KEY] = wt::record_json(&record);
+        let built = self
+            .build_session(&spec.folder, spec.model, spec.mode, &id, Vec::new(), metadata, title, Some(record.clone()))
+            .await;
+        let session = match built {
+            Ok(session) => session,
+            Err(error) => {
+                if created {
+                    if let Ok(owned) = wt::owned_root(&self.data_folder) {
+                        let _ = worktree::discard_owned(&record, &owned, true);
+                    }
+                }
+                return Err(error);
+            }
+        };
+        self.write_stub(&session)?;
+        self.admit(session)?;
+        self.bus.publish("agent-session-changed", &json!({ "id": id, "status": "idle" }));
+        Ok(TaskSession { id, worktree: record })
+    }
+
+    /// Start a turn on a session (resuming a stored one that is not live).
+    /// Returns the turn id.
+    pub async fn start_text(self: &Arc<Self>, id: &str, text: String) -> Result<String, Fail> {
+        let input = check_input(&Value::String(text))?;
+        let live = self.live_or_resume(id).await?;
+        let caller = Caller { client: "campaign-driver".to_owned(), ip_hash: String::new() };
+        let started = self.send(&live, |reply| Cmd::Start { input, caller, reply }).await?;
+        Ok(started.get("turnId").and_then(Value::as_str).unwrap_or_default().to_owned())
+    }
+
+    /// Abort the active turn, if any. Never an error.
+    pub async fn abort_turn(&self, id: &str) {
+        if let Some(live) = self.get(id) {
+            let _ = self.send(&live, |reply| Cmd::Interrupt { reply }).await;
+        }
+    }
+
+    /// Take a settled session out of memory so its slot is free. Its thread
+    /// stays; a later start resumes it.
+    pub async fn close_session(&self, id: &str) {
+        if let Some(live) = self.get(id) {
+            let _ = self.send(&live, |reply| Cmd::Close { reply }).await;
+        }
+    }
+
+    /// One tool-free model call through the server's own provider path. The
+    /// model is `model` or the server's default; returns the reply text and
+    /// the tokens it cost (the provider's count, else an estimate).
+    pub async fn ask_model(
+        &self,
+        folder: &Path,
+        model: Option<&str>,
+        name: &str,
+        mut request: Value,
+    ) -> Result<(String, u64), String> {
+        let flags = SessionFlags {
+            auto_approve: false,
+            plan: true,
+            require_model: true,
+            sandbox: Some(tauri_plugin_agent_tools::tools::jail::backend().enforces()),
+            worktree: Some(false),
+            ..Default::default()
+        };
+        let mut agent = prepare_agent_session(
+            &folder.to_string_lossy(),
+            model.map(str::trim).filter(|m| !m.is_empty()).map(str::to_owned),
+            ProviderOverrides::default(),
+            flags,
+            None,
+        )?;
+        if let Some(task) = agent.mcp_task.take() {
+            task.abort();
+        }
+        let asked = request.get("model").and_then(Value::as_str).unwrap_or_default().trim().to_owned();
+        let model_id = if asked.is_empty() { agent.model.clone() } else { asked };
+        request["model"] = json!(model_id);
+        let completion = crate::core::agent::r#loop::utility_completion(&agent.args, &model_id, name, &request)
+            .await
+            .map_err(|e| e.message().to_string())?;
+        let reply = completion
+            .pointer("/choices/0/message/content")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let counted = completion.pointer("/usage/total_tokens").and_then(Value::as_u64);
+        let tokens = counted.unwrap_or_else(|| ((request.to_string().len() + reply.len()) / 4) as u64);
+        Ok((reply, tokens))
+    }
+}
+
 fn text<'a>(args: &'a Value, key: &str) -> Result<&'a str, Fail> {
     args.get(key)
         .and_then(Value::as_str)
@@ -1050,7 +1282,17 @@ async fn actor(
                             "turn.completed",
                             json!({ "turnId": turn.turn_id, "stopReason": settled.stop_reason, "error": settled.error }),
                         );
-                        shared.with(|f| { f.status = "idle"; f.turns = session.turns; });
+                        let reply_text = last_assistant_text(&session.history);
+                        shared.with(|f| {
+                            f.status = "idle";
+                            f.turns = session.turns;
+                            f.last_reply = reply_text;
+                            f.last_turn = Some(TurnEnd {
+                                turn_id: turn.turn_id.clone(),
+                                stop_reason: "interrupted".to_owned(),
+                                error: None,
+                            });
+                        });
                         ping("idle");
                         let _ = reply.send(Ok(json!({})));
                     }
@@ -1197,6 +1439,16 @@ async fn actor(
                         }
                         let _ = reply.send(outcome);
                     }
+                    Cmd::Close { reply } => {
+                        if active.is_some() {
+                            let _ = reply.send(Err(fail(409, "this session has an active turn")));
+                            continue;
+                        }
+                        session.agent.permission_requests.lock().await.clear();
+                        cancel_asks(&session).await;
+                        let _ = reply.send(Ok(json!({})));
+                        break;
+                    }
                     Cmd::Delete { reply } => {
                         if let Some(turn) = active.take() {
                             turn.task.runner.abort();
@@ -1275,6 +1527,15 @@ async fn actor(
                             StreamEvent::AskResolved { request_id } => {
                                 ask_requests.remove(request_id);
                                 shared.with(|f| f.asks.retain(|a| a["request_id"] != json!(request_id)));
+                            }
+                            StreamEvent::TurnUsage { usage, .. } => {
+                                let used = usage
+                                    .total_tokens
+                                    .unwrap_or_else(|| usage.prompt_tokens.unwrap_or(0) + usage.completion_tokens.unwrap_or(0));
+                                shared.with(|f| f.tokens = f.tokens.saturating_add(used));
+                            }
+                            StreamEvent::ToolCall { .. } => {
+                                shared.with(|f| f.steps = f.steps.saturating_add(1));
                             }
                             _ => {}
                         }
@@ -1387,12 +1648,37 @@ fn finish(
             "ms": turn.started.elapsed().as_millis() as u64,
         }),
     );
+    let reply_text = last_assistant_text(&session.history);
     shared.with(|f| {
         f.status = "idle";
         f.turns = session.turns;
         f.pending.clear();
         f.asks.clear();
+        f.last_reply = reply_text;
+        f.last_turn = Some(TurnEnd {
+            turn_id: turn.turn_id.clone(),
+            stop_reason: settled.reported_reason().to_owned(),
+            error: settled.error.clone(),
+        });
     });
+}
+
+/// The assistant's last text message in a history, capped.
+fn last_assistant_text(history: &[Value]) -> String {
+    history
+        .iter()
+        .rev()
+        .filter(|m| m.get("role").and_then(Value::as_str) == Some("assistant"))
+        .find_map(|m| match m.get("content") {
+            Some(Value::String(s)) if !s.trim().is_empty() => Some(s.clone()),
+            Some(Value::Array(parts)) => {
+                let joined: String = parts.iter().filter_map(|p| p["text"].as_str()).collect::<Vec<_>>().join("");
+                (!joined.trim().is_empty()).then_some(joined)
+            }
+            _ => None,
+        })
+        .map(|t| t.chars().take(20_000).collect())
+        .unwrap_or_default()
 }
 
 async fn cancel_asks(session: &Session) {
