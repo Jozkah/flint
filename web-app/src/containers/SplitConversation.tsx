@@ -10,6 +10,7 @@ import {
 } from 'react'
 import type { KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react'
 import {
+  AlertTriangle,
   Check,
   Columns2,
   List,
@@ -48,6 +49,8 @@ import {
 import { plainTitle, usePaneTitle } from '@/hooks/useSplitPaneTitle'
 import { useRoomsStore } from '@/lib/rooms/store'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useCampaignStore } from '@/hooks/useCampaigns'
+import { paneMarkOf } from '@/lib/campaignView'
 import { useNeedsApproval } from '@/hooks/useNeedsApproval'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useElementWidth } from '@/hooks/useElementWidth'
@@ -316,14 +319,20 @@ function PaneTab({
     pane.id === PRIMARY_PANE
       ? closePrimaryPane()
       : useSplitConversation.getState().closePane(pane.id)
+  // The finished mark is earned: a campaign task that verified or merged, or
+  // a Cowork run that ended normally. A failure gets its own mark.
+  const task = useCampaignStore((s) =>
+    pane.kind === 'cowork' && pane.refId
+      ? s.campaigns
+          .flatMap((c) => c.tasks)
+          .find((x) => x.sessionId === pane.refId)
+      : undefined
+  )
+  const ending = useCoworkRun((s) =>
+    pane.kind === 'cowork' && pane.refId ? s.outcomes?.[pane.refId] : undefined
+  )
   // One indicator: a question waiting for the person outranks activity.
-  const state: 'approval' | 'running' | 'done' | 'none' = needsApproval
-    ? 'approval'
-    : streaming
-      ? 'running'
-      : pane.refId
-        ? 'done'
-        : 'none'
+  const state = paneMarkOf({ needsApproval, streaming, task, ending })
   return (
     <div
       role="presentation"
@@ -372,6 +381,15 @@ function PaneTab({
               className="size-3.5 shrink-0 text-muted-foreground motion-safe:animate-spin"
             />
             <span className="sr-only">{t('chat:split.streaming')}</span>
+          </>
+        )}
+        {state === 'error' && (
+          <>
+            <AlertTriangle
+              aria-hidden
+              className="size-3.5 shrink-0 text-destructive"
+            />
+            <span className="sr-only">{t('chat:split.failed')}</span>
           </>
         )}
         {state === 'done' && (
