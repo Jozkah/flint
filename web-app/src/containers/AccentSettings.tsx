@@ -1,12 +1,9 @@
 import {
   useCallback,
-  useEffect,
-  useId,
-  useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { CheckIcon, InfoIcon, OctagonAlert } from 'lucide-react'
+import { CheckIcon, InfoIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { Switch } from '@/components/ui/switch'
@@ -25,9 +22,7 @@ import {
   DEFAULT_ACCENT,
   accentBase,
   contrastRatio,
-  deriveAccentTokens,
   normalizeHex,
-  readHexInput,
   sameSelection,
   semanticProximity,
 } from '@/lib/accent'
@@ -75,7 +70,7 @@ type Hsv = { h: number; s: number; v: number }
 
 /** Colours offered under the picker; a colour the user applies joins the front. */
 const RECENT_DEFAULTS = [
-  '#E0654D',
+  '#14B8A6',
   '#E0A526',
   '#2BB673',
   '#1FA2C4',
@@ -301,10 +296,10 @@ function CustomColorPicker({
 /**
  * Settings > Appearance > Accent colour. Presets as swatch radios (the
  * selected one is raised and ticked, never tinted with the accent), a custom
- * colour picker that opens in a popover, and a hex field that validates as the
- * user types. A valid value applies immediately and is saved; an invalid one
- * is explained and leaves the accent unchanged. A sample row shows the
- * accent's roles next to success and error, so their meanings stay apart.
+ * colour picker that opens in a popover (the hex value lives there). A sample
+ * row built from the app's own primary button, link, tab and selected row
+ * shows the accent's roles next to success and error, so their meanings stay
+ * apart.
  */
 export function AccentSettings() {
   const { t } = useTranslation()
@@ -314,8 +309,6 @@ export function AccentSettings() {
   const isDark = useTheme((s) => s.isDark)
   const theme = isDark ? 'dark' : 'light'
   const base = accentBase(accent, theme)
-  const tokens = deriveAccentTokens(base.hex, theme)
-  const onFillRatio = contrastRatio(base.hex, tokens.onFill)
   const isCustom = 'custom' in accent
   const isDefault = sameSelection(accent, DEFAULT_ACCENT)
   const proximity = semanticProximity(base.hex)
@@ -324,65 +317,13 @@ export function AccentSettings() {
   const defaultName =
     ACCENT_PRESETS.find((p) => p.id === defaultPresetId)?.name ?? 'Slate'
 
-  const hexId = useId()
-  const msgId = useId()
-  const [draft, setDraft] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [note, setNote] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [recent, setRecent] = useState<string[]>(RECENT_DEFAULTS)
   const lastCustom = isCustom ? accent.custom : recent[0]
 
-  // A change of accent (a preset, reset, the picker, or a valid hex typed
-  // here) replaces the field's contents, unless an error is on screen: then
-  // the user's text stays so they can correct it.
-  const errorRef = useRef(error)
-  errorRef.current = error
-  useEffect(() => {
-    if (!errorRef.current) setDraft(null)
-  }, [accent])
-
-  const fieldValue = draft ?? (isCustom ? accent.custom : base.hex)
-
-  const clearMessages = () => {
-    setError(null)
-    setNote(null)
-  }
-
-  const onHexChange = (raw: string) => {
-    setDraft(raw)
-    const state = readHexInput(raw)
-    if (state.kind === 'invalid-characters') {
-      setError(t('settings:accent.hexInvalidCharacters', { value: raw }))
-      setNote(null)
-      return
-    }
-    setError(null)
-    if (state.kind === 'valid') {
-      setAccent({ custom: state.hex })
-      setNote(t('settings:accent.hexApplied'))
-    } else {
-      setNote(t('settings:accent.hexKeepTyping'))
-    }
-  }
-
-  const onHexCommit = () => {
-    if (draft === null) return
-    const hex = normalizeHex(draft)
-    if (!hex) {
-      setError(t('settings:accent.hexInvalid', { value: draft }))
-      return
-    }
-    clearMessages()
-    setDraft(null)
-    setAccent({ custom: hex })
-  }
-
   const applyCustom = useCallback(
     (hex: string) => {
       setPickerOpen(false)
-      setError(null)
-      setNote(null)
       setRecent((r) => [hex, ...r.filter((c) => c !== hex)].slice(0, 7))
       setAccent({ custom: hex })
     },
@@ -416,8 +357,6 @@ export function AccentSettings() {
           className="pointer-coarse:h-11"
           disabled={isDefault}
           onClick={() => {
-            clearMessages()
-            setDraft(null)
             resetAccent()
           }}
           data-testid="accent-reset"
@@ -460,7 +399,6 @@ export function AccentSettings() {
               aria-checked={checked}
               data-testid={`accent-preset-${p.id}`}
               onClick={() => {
-                clearMessages()
                 setAccent({ preset: p.id })
               }}
               className={swatchClass(checked)}
@@ -530,68 +468,6 @@ export function AccentSettings() {
         </Popover>
       </div>
 
-      <div className="flex flex-col gap-2.5 border-t border-dashed border-border px-0.5 py-[11px] sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <label
-            htmlFor={hexId}
-            className="text-[13px] leading-tight font-medium text-foreground"
-          >
-            {t('settings:accent.hexLabel')}
-          </label>
-          <span
-            id={msgId}
-            role="status"
-            className={cn(
-              'inline-flex items-start gap-1.5 text-xs leading-[1.4] text-muted-foreground',
-              error && 'text-destructive'
-            )}
-          >
-            {error && (
-              <OctagonAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-            )}
-            {error ?? note ?? t('settings:accent.hexHelp')}
-          </span>
-        </div>
-        <span
-          className={cn(
-            'inline-flex h-8 shrink-0 items-center gap-1.5 self-start rounded-lg border-[0.8px] border-border bg-card pr-1 pl-2 transition-[border-color,box-shadow] focus-within:border-border-strong focus-within:ring-[3px] focus-within:ring-ring/20 sm:self-auto pointer-coarse:h-11',
-            error && 'border-destructive'
-          )}
-        >
-          <i
-            aria-hidden
-            className="size-4 rounded-[5px] shadow-[inset_0_0_0_1px_rgba(0,0,0,.15)] transition-colors duration-300"
-            style={{ background: base.hex }}
-          />
-          <input
-            id={hexId}
-            data-testid="accent-hex-input"
-            className="h-7 w-[100px] bg-transparent px-1 font-mono text-[13px] text-foreground outline-hidden"
-            value={fieldValue}
-            maxLength={7}
-            autoComplete="off"
-            spellCheck={false}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={msgId}
-            onChange={(e) => onHexChange(e.target.value)}
-            onBlur={onHexCommit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onHexCommit()
-            }}
-          />
-        </span>
-      </div>
-
-      <p className="mb-1.5 px-0.5 text-[12.5px] leading-normal text-muted-foreground">
-        {t('settings:accent.onFill', {
-          ink:
-            tokens.onFill === '#FFFFFF'
-              ? t('settings:accent.white')
-              : t('settings:accent.nearBlack'),
-          ratio: onFillRatio.toFixed(1),
-        })}{' '}
-        {t('settings:accent.independentOfTheme')}
-      </p>
       {proximity && (
         <p className="mb-1.5 flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-fg-2">
           <InfoIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
@@ -609,13 +485,15 @@ export function AccentSettings() {
         <Button tabIndex={-1}>
           {t('settings:accent.previewPrimary')}
         </Button>
-        <span className="text-[13px] font-medium text-acc-text underline underline-offset-2">
+        <Button variant="link" tabIndex={-1} className="h-auto p-0">
           {t('settings:accent.previewLink')}
+        </Button>
+        <span className="rounded-lg bg-muted p-0.5 shadow-[inset_0_0_0_0.8px_var(--border)]">
+          <span className="block rounded-md bg-card px-3 py-1 text-[0.8125rem] font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,.08)]">
+            {t('settings:accent.previewTab')}
+          </span>
         </span>
-        <span className="border-b-2 border-primary pb-[3px] text-[12.5px] text-foreground">
-          {t('settings:accent.previewTab')}
-        </span>
-        <span className="rounded-md bg-acc-soft px-2.5 py-1 text-[12.5px] text-foreground shadow-[inset_2px_0_0_var(--primary)]">
+        <span className="rounded-lg border-[0.8px] border-border bg-card px-2.5 py-1.5 text-[0.8125rem] leading-none text-foreground shadow-[0_4px_7px_rgba(0,0,0,.04)]">
           {t('settings:accent.previewSelected')}
         </span>
         <Switch
