@@ -49,6 +49,7 @@ const campaign = (tasks: CampaignTask[], over: Partial<Campaign> = {}): Campaign
 
 const actions = {
   pause: vi.fn(async () => ({ ok: true })),
+  retryTask: vi.fn(async () => ({ ok: true })),
   resume: vi.fn(async () => ({ ok: true })),
 } as unknown as BoardActions
 
@@ -61,7 +62,10 @@ const load = () =>
     uncommitted: false,
   })
 
-const show = (c: Campaign) => {
+const show = (
+  c: Campaign,
+  extra: Partial<React.ComponentProps<typeof CampaignBoard>> = {}
+) => {
   useCampaignStore.setState({ campaigns: [c], loaded: true })
   // The store is read through a poller; no backend here, so keep it quiet.
   return render(
@@ -70,6 +74,9 @@ const show = (c: Campaign) => {
       actions={actions}
       loadDiff={load}
       loadSummary={load}
+      loadEvents={async () => []}
+      loadActivity={async () => []}
+      {...extra}
     />
   )
 }
@@ -93,11 +100,12 @@ describe('CampaignBoard', () => {
     )
     expect(screen.getByTestId('campaign-primary')).toHaveTextContent('Pause')
     expect(screen.getByTestId('campaign-progress')).toBeInTheDocument()
-    // The raw token string stays out of sight until Details is opened.
+    // Raw counts are not on the surface: the cost is one plain figure.
     expect(screen.queryByTestId('campaign-budget')).toBeNull()
-    // The board's own Details comes last, after each row's.
-    fireEvent.click(screen.getAllByRole('button', { name: 'Details' }).at(-1)!)
-    expect(screen.getByTestId('campaign-budget')).toBeInTheDocument()
+    expect(screen.getByTestId('campaign-cost')).toHaveTextContent('tokens')
+    expect(screen.getByTestId('campaign-summary')).toBeInTheDocument()
+    expect(screen.queryByText('Attempts')).toBeNull()
+    expect(screen.queryByText('Tokens used')).toBeNull()
   })
 
   it('groups tasks under plain headings and only shows groups that hold something', () => {
@@ -143,5 +151,95 @@ describe('CampaignBoard', () => {
     expect(primary).toHaveTextContent('Resume')
     fireEvent.click(primary)
     expect(actions.resume).toHaveBeenCalledWith('c1')
+  })
+
+  it('tells what a task did in a sentence and how long it took', async () => {
+    show(
+      campaign([
+        task('a', {
+          status: 'merged',
+          sessionId: 's-a',
+          worktreePath: '/w/a',
+          brief: 'Write the JSON storage layer',
+        }),
+      ], { status: 'done' }),
+      {
+        loadSummary: async () => ({
+          files: [
+            { path: 'a.ts', status: 'added', added: 100, removed: 0, binary: false, truncated: false },
+            { path: 'b.ts', status: 'added', added: 76, removed: 0, binary: false, truncated: false },
+          ],
+          added: 176,
+          removed: 0,
+          truncated: false,
+          uncommitted: false,
+        }),
+        loadEvents: async () => [
+          { ts: '2026-01-01T10:00:00Z', kind: 'task-status', task: 'a', detail: 'Queued -> Running' },
+          { ts: '2026-01-01T10:03:00Z', kind: 'task-status', task: 'a', detail: 'Running -> Merged' },
+        ],
+      }
+    )
+    expect(
+      await screen.findByText(/Wrote 2 files, \+176 −0 lines/)
+    ).toBeInTheDocument()
+    expect(await screen.findByTestId('campaign-task-time-a')).toHaveTextContent(
+      'Took 3 min'
+    )
+    expect(screen.getByTestId('campaign-wrapup')).toBeInTheDocument()
+  })
+
+  it('shows the real error and a recommended action for a stuck task, and sends the hint with Retry', async () => {
+    show(
+      campaign([
+        task('a', {
+          status: 'failed',
+          sessionId: 's-a',
+          detail: 'the shell failed 3 times',
+        }),
+      ]),
+      {
+        loadActivity: async () =>
+          [
+            {
+              tool: 'bash',
+              summary: 'npm test',
+              phase: 'failed',
+              exit_code: 1,
+              output: 'ENOENT: no such file or directory, open data.json',
+              requested_at_ms: 1,
+            },
+          ] as never,
+      }
+    )
+    const err = await screen.findByTestId('campaign-error-a')
+    expect(err).toHaveTextContent('ENOENT: no such file or directory')
+    expect(screen.getByTestId('campaign-stuck-a')).toHaveTextContent(
+      'Try again, and say what it should do differently.'
+    )
+    fireEvent.change(screen.getByTestId('campaign-hint-a'), {
+      target: { value: 'use the sync fs api' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(actions.retryTask).toHaveBeenCalledWith('c1', 'a', 'use the sync fs api')
+  })
+
+  it('shows the step by step story when asked, and degrades without a record', async () => {
+    show(
+      campaign([
+        task('a', { status: 'verified', sessionId: 's-a', brief: 'Do the thing' }),
+      ]),
+      {
+        loadActivity: async () =>
+          [
+            { tool: 'read', summary: 'src/a.ts', phase: 'succeeded', requested_at_ms: 1 },
+            { tool: 'write', summary: 'src/b.ts', phase: 'succeeded', requested_at_ms: 2 },
+          ] as never,
+      }
+    )
+    fireEvent.click(screen.getByTestId('campaign-story-toggle-a'))
+    expect(await screen.findByText('Read src/a.ts')).toBeInTheDocument()
+    expect(screen.getByText('Wrote src/b.ts')).toBeInTheDocument()
+    expect(screen.getByText('Do the thing')).toBeInTheDocument()
   })
 })

@@ -1021,7 +1021,90 @@
       },
       "groupProgress": "{{done}} of {{total}} done · {{status}}",
       "fold": "Hide the sessions of {{title}}",
-      "unfold": "Show the sessions of {{title}}"
+      "unfold": "Show the sessions of {{title}}",
+      "story": {
+        "wrote_one": "Wrote {{count}} file, +{{added}} −{{removed}} lines",
+        "wrote_other": "Wrote {{count}} files, +{{added}} −{{removed}} lines",
+        "wroteUncounted_one": "Wrote {{count}} file",
+        "wroteUncounted_other": "Wrote {{count}} files",
+        "stop": {
+          "none": "It stopped before finishing.",
+          "one": "It stopped after a command failed.",
+          "many": "It stopped after commands failed {{count}} times."
+        },
+        "headline": {
+          "noOutput": "Nothing was written.",
+          "stoppedPlain": "Stopped without finishing.",
+          "finishedNoFiles": "Finished without changing any files.",
+          "working_one": "Working on it: {{count}} step so far.",
+          "working_other": "Working on it: {{count}} steps so far.",
+          "starting": "Just getting started.",
+          "conflict": "Finished, but its changes clash with what other tasks wrote.",
+          "waiting": "Waiting for {{tasks}} to finish first.",
+          "queued": "Starts as soon as there is room.",
+          "needsInput": "Paused: it asked you a question.",
+          "needsApproval": "Paused: it needs your approval to go on.",
+          "skipped": "Skipped."
+        },
+        "took": "Took {{time}}",
+        "running": "Running for {{time}}",
+        "toggle": "What happened",
+        "asked": "What it was asked",
+        "did": "What it did",
+        "stoppedAt": "Where it stopped",
+        "noRecord": "No step by step record is available for this task.",
+        "more_one": "and {{count}} more step",
+        "more_other": "and {{count}} more steps",
+        "step": {
+          "read": "Read {{label}}",
+          "readMany_one": "Read {{count}} file",
+          "readMany_other": "Read {{count}} files",
+          "search_one": "Searched the project",
+          "search_other": "Searched the project {{count}} times",
+          "write": "Wrote {{label}}",
+          "writeMany_one": "Wrote {{count}} file",
+          "writeMany_other": "Wrote {{count}} files",
+          "ran": "Ran {{label}}",
+          "ranFailed": "Ran {{label}} and it failed"
+        },
+        "next": {
+          "retry": "Try again, and say what it should do differently.",
+          "conflict": "Open the conversation and ask it to rebuild on the latest results, or skip it.",
+          "open": "It has used its retries. Open the conversation to see where it got stuck, or skip it.",
+          "answer": "Open the conversation and answer its question.",
+          "approve": "Open the conversation and approve or deny the request."
+        },
+        "hintLabel": "Tell it what to do differently",
+        "openConversation": "Open conversation"
+      },
+      "summary": {
+        "title": "The whole picture",
+        "goal": "What you asked for",
+        "plan": "How it was split up",
+        "sideBySide_one": "{{count}} task ran on its own",
+        "sideBySide_other": "These {{count}} tasks ran side by side",
+        "waitsFor": "{{task}} waits for {{tasks}}",
+        "time": "Time",
+        "timeSoFar": "{{time}} so far",
+        "timeTotal": "{{time}} in total",
+        "result": "Result",
+        "cost": "Cost",
+        "costTokens": "About {{tokens}} tokens",
+        "costBudget": "About {{tokens}} tokens of your {{budget}} budget",
+        "branch": "Where the results are",
+        "branchBody": "Everything is collected on a separate branch, {{branch}}. Your own files stay untouched until you review and apply it.",
+        "copy": "Copy branch name",
+        "copied": "Copied",
+        "wrapUp": {
+          "doneTitle": "All done",
+          "reviewTitle": "Ready for your review",
+          "built": "What got built",
+          "tasks": "Tasks finished",
+          "files": "Files changed",
+          "lines": "Lines changed"
+        }
+      },
+      "effort": "About {{percent}}% of the work is done"
     },
     "changes": {
       "loading": "Looking at the changes…",

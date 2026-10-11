@@ -103,7 +103,11 @@ export function StartCampaignDialog({
           <p className="truncate text-xs text-muted-foreground" title={folder}>
             {t('settings:campaigns.start.folder', { folder })}
           </p>
-        ) : null}
+        ) : (
+          <p className="text-xs text-muted-foreground" data-testid="campaign-no-folder">
+            {t('settings:campaigns.start.noFolder')}
+          </p>
+        )}
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             {t('common:cancel')}

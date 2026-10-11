@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronRight, MoreHorizontal } from 'lucide-react'
+import { MoreHorizontal, Workflow } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -20,12 +20,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { BudgetBar } from '@/components/campaign/BudgetBar'
+import {
+  CampaignSummary,
+  WrapUp,
+  type ChangeTotals,
+} from '@/components/campaign/CampaignSummary'
 import { CampaignProposalPanel } from '@/components/campaign/ProposalPanel'
 import { TaskRow, type TaskRowAction } from '@/components/campaign/TaskRow'
 import { TaskChanges } from '@/components/campaign/TaskChanges'
 import { useCampaign, useCampaignStore } from '@/hooks/useCampaigns'
-import { useCampaignSettings } from '@/hooks/useCampaignSettings'
 import { useCampaignResumed } from '@/hooks/useCampaignResumed'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useFileActivity } from '@/hooks/useFileActivity'
@@ -33,10 +36,12 @@ import { route } from '@/constants/routes'
 import { checkNoteDelivery, createLiveBoardActions } from '@/lib/campaignHost'
 import { noteKey, useCampaignNotes } from '@/lib/campaignNotes'
 import { campaignApi, type TaskDiff } from '@/lib/campaignApi'
+import { effortPercent, type CampaignEvent } from '@/lib/campaignStory'
+import { hasWork } from '@/hooks/useCampaignTaskDiff'
+import type { ToolActivityItem } from '@/lib/toolActivity'
 import type { BoardActions } from '@/lib/campaignBoardActions'
 import type { CampaignTask } from '@/lib/campaignModel'
 import {
-  budgetOf,
   canCancel,
   changedFilesOf,
   groupTasks,
@@ -73,6 +78,8 @@ export function CampaignBoard({
   actions: injected,
   loadDiff,
   loadSummary,
+  loadEvents,
+  loadActivity,
 }: {
   campaignId: string
   /** Tests pass fakes; the app builds the live ones. */
@@ -81,12 +88,15 @@ export function CampaignBoard({
   loadDiff?: (id: string, taskId: string) => Promise<TaskDiff>
   /** What a task changed, counts only (a row's summary). */
   loadSummary?: (id: string, taskId: string) => Promise<TaskDiff>
+  /** The campaign's event log (when each task ran). */
+  loadEvents?: (id: string) => Promise<CampaignEvent[]>
+  /** A task session's recorded tool activity (what it did). */
+  loadActivity?: (session: string) => Promise<ToolActivityItem[]>
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const campaign = useCampaign(campaignId)
   const loaded = useCampaignStore((s) => s.loaded)
-  const maxParallel = useCampaignSettings((s) => s.maxParallel)
   const sessions = useCoworkSessions((s) => s.sessions)
   const activity = useFileActivity((s) => s.byConversation)
   const resumed = useCampaignResumed((s) => s.byCampaign[campaignId])
@@ -112,7 +122,53 @@ export function CampaignBoard({
     () => groupTasks(campaign?.tasks ?? []),
     [campaign?.tasks]
   )
-  const [detailsOpen, setDetailsOpen] = useState(false)
+  // The event log says how long each task took; it is read again whenever
+  // the campaign record moves.
+  const [events, setEvents] = useState<CampaignEvent[]>([])
+  const updatedAt = campaign?.updatedAt
+  useEffect(() => {
+    let alive = true
+    ;(loadEvents ?? campaignApi.events)(campaignId).then(
+      (rows) => alive && setEvents(rows),
+      () => alive && setEvents([])
+    )
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignId, updatedAt])
+  // Files and lines changed across the campaign, for the wrap-up and the
+  // summary: asked once the work is over or waiting for review.
+  const [totals, setTotals] = useState<ChangeTotals | null>(null)
+  const over = campaign
+    ? ['done', 'reviewing', 'merging'].includes(campaign.status)
+    : false
+  useEffect(() => {
+    if (!campaign || !over) {
+      setTotals(null)
+      return
+    }
+    let alive = true
+    const load = loadSummary ?? ((id, tid) => campaignApi.taskDiff(id, tid, false))
+    Promise.all(
+      campaign.tasks
+        .filter((x) => hasWork(x))
+        .map((x) => load(campaign.id, x.id).catch(() => null))
+    ).then((rows) => {
+      if (!alive) return
+      const known = rows.filter((d): d is TaskDiff => d !== null)
+      setTotals({
+        files: known.reduce((n, d) => n + d.files.length, 0),
+        added: known.reduce((n, d) => n + d.added, 0),
+        removed: known.reduce((n, d) => n + d.removed, 0),
+      })
+    })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaign?.id, over, updatedAt])
+  const [reviewAll, setReviewAll] = useState(false)
   const updatedOf = (sid?: string | null) =>
     sid ? sessions.find((s) => s.id === sid)?.updated : undefined
 
@@ -148,9 +204,12 @@ export function CampaignBoard({
     )
   }
 
-  const budget = budgetOf(campaign)
   const status = campaign.status
-  const onAction = (action: TaskRowAction, task: CampaignTask) => {
+  const onAction = (
+    action: TaskRowAction,
+    task: CampaignTask,
+    hint?: string
+  ) => {
     switch (action) {
       case 'open':
         if (task.sessionId) openSession(task.sessionId)
@@ -172,7 +231,7 @@ export function CampaignBoard({
         void run(() => actions.stopTask(campaign.id, task.id))
         return
       case 'retry':
-        void run(() => actions.retryTask(campaign.id, task.id))
+        void run(() => actions.retryTask(campaign.id, task.id, hint))
         return
       case 'skip':
         void run(() => actions.skipTask(campaign.id, task.id))
@@ -182,8 +241,7 @@ export function CampaignBoard({
 
   const headline = headlineOf(campaign)
   const primary = primaryActionOf(campaign)
-  const percent =
-    headline.total > 0 ? Math.round((headline.done / headline.total) * 100) : 0
+  const percent = effortPercent(campaign.tasks)
   const primaryButton = (() => {
     switch (primary) {
       case 'pause':
@@ -226,7 +284,10 @@ export function CampaignBoard({
       <header className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-medium">{campaign.title}</h1>
+            <h1 className="flex items-center gap-2 truncate text-lg font-medium">
+              <Workflow aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+              <span className="truncate">{campaign.title}</span>
+            </h1>
             <p
               className="mt-1 text-sm text-muted-foreground"
               data-testid="campaign-headline"
@@ -292,14 +353,24 @@ export function CampaignBoard({
           </div>
         </div>
         {headline.total > 0 && (
-          <Progress
-            value={percent}
-            aria-label={t('settings:campaigns.board.progressLabel', {
-              done: headline.done,
-              total: headline.total,
-            })}
-            data-testid="campaign-progress"
-          />
+          <div className="flex flex-col gap-1">
+            <Progress
+              value={percent}
+              aria-label={t('settings:campaigns.board.progressLabel', {
+                done: headline.done,
+                total: headline.total,
+              })}
+              data-testid="campaign-progress"
+            />
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {t('settings:campaigns.board.progressLabel', {
+                done: headline.done,
+                total: headline.total,
+              })}
+              {' · '}
+              {t('settings:campaigns.board.effort', { percent })}
+            </p>
+          </div>
         )}
       </header>
 
@@ -324,6 +395,26 @@ export function CampaignBoard({
 
       {(status === 'merging' || status === 'reviewing') && campaign.proposalId ? (
         <CampaignProposalPanel campaign={campaign} />
+      ) : null}
+
+      {(status === 'done' || status === 'reviewing') &&
+      campaign.tasks.length > 0 ? (
+        <WrapUp
+          campaign={campaign}
+          totals={totals}
+          action={
+            <Button
+              size="sm"
+              disabled={busy}
+              data-testid="campaign-wrapup-review"
+              onClick={() =>
+                primary === 'review' ? primaryButton.run() : setReviewAll(true)
+              }
+            >
+              {t('settings:campaigns.board.action.reviewChanges')}
+            </Button>
+          }
+        />
       ) : null}
 
       {campaign.tasks.length === 0 ? (
@@ -361,8 +452,11 @@ export function CampaignBoard({
                   lastActivity={updatedOf(task.sessionId)}
                   busy={busy}
                   note={notes[noteKey(campaign.id, task.id)]?.state}
+                  events={events}
+                  defaultOpen={reviewAll}
                   onAction={onAction}
                   loadSummary={loadSummary}
+                  loadActivity={loadActivity}
                 />
               ))}
             </ul>
@@ -370,36 +464,9 @@ export function CampaignBoard({
         ))
       )}
 
-      <section className="flex flex-col gap-2" aria-label={t('settings:campaigns.board.details')}>
-        <button
-          type="button"
-          aria-expanded={detailsOpen}
-          onClick={() => setDetailsOpen((v) => !v)}
-          className="flex w-fit cursor-pointer items-center gap-1 rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <ChevronRight
-            aria-hidden
-            className={`size-3.5 transition-transform ${detailsOpen ? 'rotate-90' : ''}`}
-          />
-          {t('settings:campaigns.board.details')}
-        </button>
-        {detailsOpen && (
-          <div
-            className="flex flex-col gap-3 rounded-xl border-[0.8px] border-border p-4 text-xs"
-            data-testid="campaign-details"
-          >
-            <BudgetBar budget={budget} />
-            <p className="text-muted-foreground">
-              {t('settings:campaigns.board.parallel', { n: maxParallel })}
-            </p>
-            <p className="text-muted-foreground">
-              {t('settings:campaigns.board.detailBranch', {
-                branch: campaign.integrationBranch || campaign.baseBranch,
-              })}
-            </p>
-          </div>
-        )}
-      </section>
+      {campaign.tasks.length > 0 ? (
+        <CampaignSummary campaign={campaign} totals={totals} />
+      ) : null}
 
       <Dialog open={panel?.kind === 'note'} onOpenChange={(o) => !o && setPanel(null)}>
         <DialogContent>
