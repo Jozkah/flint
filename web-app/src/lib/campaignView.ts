@@ -203,6 +203,14 @@ export function deriveCampaignGroups(
   const claimed = new Set<string>()
   const groups: CampaignGroup[] = []
   for (const c of campaigns) {
+    // A plan nobody approved (waiting, denied or cancelled before any task got
+    // a session) is not a group: its coordinator keeps its ordinary place.
+    const neverStarted =
+      (c.status === 'planned' ||
+        c.status === 'draft' ||
+        c.status === 'cancelled') &&
+      !c.tasks.some((t) => t.sessionId)
+    if (neverStarted) continue
     const rows: CampaignGroupRow[] = []
     const take = (row: CampaignGroupRow) => {
       if (!present.has(row.sessionId) || claimed.has(row.sessionId)) return

@@ -132,6 +132,20 @@ describe('deriveCampaignGroups', () => {
     expect(g.rows.map((r) => r.sessionId)).toEqual(['s-b'])
   })
 
+  it('shows no group for a plan that never started (denied, cancelled or waiting)', () => {
+    for (const status of ['planned', 'cancelled', 'draft'] as const) {
+      const never = campaign([task('a', 'pending', { sessionId: null })], {
+        status,
+      })
+      expect(deriveCampaignGroups([never], [{ id: 'coord' }])).toEqual([])
+    }
+    // Once a task has a session the campaign is real, whatever its status.
+    const started = campaign([task('a', 'cancelled', { sessionId: 's-a' })], {
+      status: 'cancelled',
+    })
+    expect(deriveCampaignGroups([started], [{ id: 's-a' }])).toHaveLength(1)
+  })
+
   it('never shows a session twice and puts active campaigns first', () => {
     const old = campaign([task('x', 'merged', { sessionId: 's-x' })], {
       id: 'old',

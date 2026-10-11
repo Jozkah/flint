@@ -529,7 +529,7 @@ export function coworkToolSignature(
     sandboxEnforces ? 'jail' : 'nojail',
     opts.allowSubagents ? opts.subagentNames.join(',') : 'nosub',
     opts.webSearch ? 'web' : 'noweb',
-    opts.campaignCoordinator && !opts.planMode ? 'campaign' : 'nocampaign',
+    opts.campaignCoordinator ? 'campaign' : 'nocampaign',
     useVisualizeConfig.getState().enabled ? 'viz' : 'noviz',
     // Readiness is part of the signature because it changes the advertised
     // tools: a shell that starts after a retry must produce a different tool
@@ -721,9 +721,11 @@ export function coworkToolsFromSchemas(
     }
   }
 
-  // The coordinator's tools. Not in review mode: planning a campaign starts
-  // sessions that change files, and review mode changes nothing.
-  if (opts.campaignCoordinator && !opts.planMode) {
+  // The coordinator's tools. The caller withholds them in review mode
+  // (`campaignCoordinator` is false there): planning a campaign starts
+  // sessions that change files. A read-only *opening* turn still gets them, so
+  // the coordinator can plan on its first turn.
+  if (opts.campaignCoordinator) {
     for (const schema of campaignToolSchemas()) {
       tools[schema.name] = {
         description: schema.description,

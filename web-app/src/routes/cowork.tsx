@@ -3251,6 +3251,7 @@ export function CoworkPage() {
       priorTurns: current?.turns.length ?? 0,
       text: text ?? '',
       record: recordFor(current?.continuity ?? null, current?.folder ?? null),
+      campaignTask: current?.campaign?.role === 'task',
     })
     const inspecting = opening === 'inspect-and-propose'
     /**
@@ -3342,8 +3343,13 @@ export function CoworkPage() {
       webSearch,
       // The campaign tools go to a top-level session that is not itself a
       // campaign task, and only when there is a repository to branch from.
+      // Judged on the session's own mode, not the opening's forced review:
+      // a read-only opening still sees `campaign_plan` (it asks first and
+      // writes nothing to the checkout); a review-mode session does not.
       campaignCoordinator:
-        isCoordinatorEligible(current?.campaign) && !!current?.folder,
+        isCoordinatorEligible(current?.campaign) &&
+        !!current?.folder &&
+        !isReadOnly(storedMode),
       // The session's own folder, which is what makes `stop_session` offerable
       // and what readiness is probed for. Not `runReadRoot`: a worktree run
       // reads somewhere else but is still this folder's session.
@@ -4062,7 +4068,9 @@ export function CoworkPage() {
                           call,
                           {
                             sessionId: sid,
-                            mode: runMode,
+                            // The session's own mode: an opening turn's
+                            // forced review must not cap the tasks at review.
+                            mode: storedMode,
                             sourceRoot: current?.folder ?? null,
                             model: selectedModel
                               ? {

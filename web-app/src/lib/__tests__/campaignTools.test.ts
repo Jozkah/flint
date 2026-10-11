@@ -182,12 +182,22 @@ describe('who is offered the tools', () => {
     const task = coworkToolsFromSchemas([], base)
     for (const n of NAMES) expect(task[n]).toBeUndefined()
 
-    const review = coworkToolsFromSchemas([], {
+    // A read-only opening turn keeps the tools: the caller passes
+    // `campaignCoordinator` from the session's own mode, not the forced review.
+    const opening = coworkToolsFromSchemas([], {
       ...base,
       planMode: true,
+      openingInspection: true,
       campaignCoordinator: true,
     })
-    for (const n of NAMES) expect(review[n]).toBeUndefined()
+    for (const n of NAMES) expect(opening[n]).toBeDefined()
+
+    const reviewSession = coworkToolsFromSchemas([], {
+      ...base,
+      planMode: true,
+      campaignCoordinator: false,
+    })
+    for (const n of NAMES) expect(reviewSession[n]).toBeUndefined()
   })
 
   it('treats a campaign task session as ineligible', () => {
@@ -283,6 +293,9 @@ describe('campaign_plan', () => {
     const created = raw.api.create.mock.calls[0][0]
     expect(created.modeCeiling).toBe('auto')
     expect(created.limits.maxParallel).toBe(3)
+    // The backend needs every limit it has no default for (campaign_plan
+    // failed with "missing field maxTasks").
+    expect(created.limits).toMatchObject({ maxTasks: 12, tokenBudget: null })
     const moves = raw.api.transition.mock.calls.map((x: unknown[]) => x[1])
     expect(moves[0]).toMatchObject({
       campaign: 'approved',
@@ -293,7 +306,7 @@ describe('campaign_plan', () => {
     expect(raw.runner.kick).toHaveBeenCalledWith('new1')
   })
 
-  it('denied: leaves the campaign planned and starts nothing', async () => {
+  it('denied: cancels the recorded plan and starts nothing', async () => {
     const { d, raw } = deps()
     const out = await executeCampaignTool(
       call('campaign_plan', PLAN),
@@ -301,8 +314,9 @@ describe('campaign_plan', () => {
       d
     )
     expect(out.isError).toBe(true)
-    expect(out.output).toContain('planned')
+    expect(out.output).toContain('cancelled')
     expect(raw.api.create).toHaveBeenCalledTimes(1)
+    expect(raw.api.cancel).toHaveBeenCalledWith('new1', expect.any(String))
     expect(raw.api.transition).not.toHaveBeenCalled()
     expect(raw.ensureIntegration).not.toHaveBeenCalled()
     expect(raw.runner.kick).not.toHaveBeenCalled()

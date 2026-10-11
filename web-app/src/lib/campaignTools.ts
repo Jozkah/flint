@@ -50,6 +50,20 @@ export { CAMPAIGN_TOOLS, campaignToolSchemas }
  * task. Subagents and chat never reach this: they are not top-level Cowork
  * runs, and the dispatcher refuses them by context as well.
  */
+/** Where the gate command came from, in words for the approval card. */
+export function gateSourceLabel(source: string): string {
+  switch (source) {
+    case 'agent_toml':
+      return "set by [campaign] gate in the repository's agent.toml"
+    case 'agent_toml_checkout':
+      return "set by [campaign] gate in your checkout's agent.toml, committed or not"
+    case 'detected':
+      return 'detected from the repository'
+    default:
+      return source
+  }
+}
+
 export function isCoordinatorEligible(link: CampaignLink | undefined): boolean {
   return !link || link.role === 'coordinator'
 }
@@ -294,7 +308,7 @@ async function mergeTool(
     }
     const plan = await deps.api.gatePlan(c.id)
     const reason =
-      `Run ${plan.command ? `\`${plan.command}\` (${plan.source})` : 'no build or test command (none is configured or detected)'} ` +
+      `Run ${plan.command ? `\`${plan.command}\` (${gateSourceLabel(plan.source)})` : 'no build or test command (none is configured or detected)'} ` +
       `on the merged result of campaign "${current.title}", then create one proposal ` +
       `for your checkout. Nothing is applied until you approve that proposal.`
     let allowed = false
@@ -397,7 +411,14 @@ async function plan(
       sourceRoot: ctx.sourceRoot,
       modeCeiling: ceiling,
       model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : '',
-      limits: { maxParallel: parallel, tokenBudget: budget ?? null },
+      limits: {
+        maxParallel: parallel,
+        maxTasks: CAMPAIGN_MAX_TASKS,
+        tokenBudget: budget ?? null,
+        taskTokens: null,
+        taskSteps: null,
+        wallClockSecs: null,
+      },
       tasks: parsed.tasks,
     })
   } catch (e) {
@@ -442,10 +463,15 @@ async function plan(
     )
   }
   if (!allowed) {
+    // A denied plan is closed, not left `planned` for ever: nothing started,
+    // so cancelling it moves nothing, and the sidebar group goes away.
+    await deps.api
+      .cancel(campaign.id, 'the plan was not approved')
+      .catch(() => undefined)
     return {
       output:
-        `The user did not approve the campaign plan. It stays recorded as ` +
-        `${campaign.id} (planned) and nothing was started. Do not retry; ` +
+        `The user did not approve the campaign plan. It is recorded as ` +
+        `${campaign.id} (cancelled) and nothing was started. Do not retry; ` +
         'ask what they want changed, or do the work in this session.',
       isError: true,
     }
