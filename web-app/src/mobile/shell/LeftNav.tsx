@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { SessionSummary } from '@/lib/remote/protocol'
 import { D, FlintMark } from '../ui/bits'
 import { I } from '../ui/icons'
@@ -7,6 +7,9 @@ import { useRpc } from '../state/rpc'
 import { byKind, grouped, reachLabel, useSessions } from '../state/sessions'
 import type { Route } from '../state/router'
 import { t } from '../i18n'
+import { headlineOf, modelOf, sortCampaigns } from '../state/campaigns'
+import { MORE_ROUTES, initialTab, tabForRoute, writeTab, type NavTab } from './navTabs'
+import './leftNavTabs.css'
 
 const CHATS_SHOWN = 12
 
@@ -40,6 +43,40 @@ function SessionRow({ s, active }: { s: SessionSummary; active: boolean }) {
   )
 }
 
+function NavRow({
+  icon,
+  label,
+  active,
+  onClick,
+  count,
+  testId,
+  expanded,
+}: {
+  icon: React.ReactNode
+  label: string
+  active?: boolean
+  onClick: () => void
+  count?: React.ReactNode
+  testId?: string
+  expanded?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      className={`row${active ? ' act' : ''}`}
+      onClick={onClick}
+      data-testid={testId}
+      aria-expanded={expanded}
+    >
+      {icon}
+      <span className="tx">
+        <b style={{ fontWeight: 400 }}>{label}</b>
+      </span>
+      {count}
+    </button>
+  )
+}
+
 export function LeftNav() {
   const route = useApp((s) => s.route)
   const computer = useApp((s) => s.computerName) ?? t('common.yourComputerCap')
@@ -47,12 +84,23 @@ export function LeftNav() {
   const { sessions } = useSessions()
   const status = useRpc('status', {})
   const models = useRpc('models.list', {})
-  const [coworkOpen, setCoworkOpen] = useState(true)
+  const campaignList = useRpc('campaigns.list', {})
   const [allChats, setAllChats] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  // The tab follows the page; pages both tabs share keep the one showing.
+  const [tab, setTab] = useState<NavTab>(() => initialTab(route))
+  useEffect(() => {
+    const next = tabForRoute(route)
+    if (next) setTab((cur) => (cur === next ? cur : next))
+  }, [route])
+  const choose = (next: NavTab) => {
+    setTab(next)
+    writeTab(next)
+  }
 
   const isActive = (r: Route) =>
     r.name === route.name && (!('id' in r) || ('id' in route && route.id === r.id))
-  const act = (name: Route['name']) => (route.name === name ? ' act' : '')
+  const is = (...names: Route['name'][]) => names.includes(route.name)
 
   const cowork = byKind(sessions, 'cowork')
   const rooms = byKind(sessions, 'room')
@@ -63,6 +111,47 @@ export function LeftNav() {
   const ch = grouped(shownChats)
   const liveRooms = rooms.filter((r) => r.status === 'running' || r.status === 'waiting').slice(0, 4)
   const loaded = status.data?.modelsLoaded ?? 0
+
+  const live = sortCampaigns(campaignList.data?.campaigns ?? []).filter(
+    (c) => !['done', 'failed', 'cancelled'].includes(c.status)
+  )
+  const liveRows = live.slice(0, 4).map((c) => ({ c, h: headlineOf(modelOf(c)) }))
+  const progress = live.reduce(
+    (a, c) => {
+      const h = headlineOf(modelOf(c))
+      return { done: a.done + h.done, total: a.total + h.total }
+    },
+    { done: 0, total: 0 }
+  )
+
+  const resume = (
+    <NavRow
+      icon={<D n="sb-dashboard" />}
+      label={t('nav.resume')}
+      active={is('overview')}
+      onClick={() => go({ name: 'overview' })}
+      testId="nav-resume"
+    />
+  )
+  const modelsRow = (
+    <NavRow
+      icon={<D n="x-cube" />}
+      label={t('models.title')}
+      active={is('models')}
+      onClick={() => go({ name: 'models' })}
+      count={models.data && <span className="cnt">{models.data.models.length}</span>}
+      testId="nav-models"
+    />
+  )
+  const discoverRow = (
+    <NavRow
+      icon={<I n="globe" size={16} />}
+      label={t('nav.discover')}
+      active={is('hf')}
+      onClick={() => go({ name: 'hf' })}
+      testId="nav-discover"
+    />
+  )
 
   return (
     <>
@@ -79,171 +168,191 @@ export function LeftNav() {
         <D n="search" />
         {t('nav.search')}
       </button>
-      <div className="navs">
-        <div className="ng">
-          <span>{t('common.workspace')}</span>
-        </div>
-        <button type="button" className={`row${act('overview')}`} onClick={() => go({ name: 'overview' })}>
-          <D n="sb-dashboard" />
-          <span className="tx">
-            <b style={{ fontWeight: 400 }}>{t('nav.overview')}</b>
-          </span>
-        </button>
-        <button type="button" className={`row${act('home')}`} onClick={() => go({ name: 'home', mode: 'chat' })}>
-          <D n="x-edit" />
-          <span className="tx">
-            <b style={{ fontWeight: 400 }}>{t('home.title')}</b>
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`row${route.name === 'cowork' ? ' act' : ''}`}
-          onClick={() => setCoworkOpen((o) => !o)}
-          aria-expanded={coworkOpen}
-        >
-          <D n="x-cowork" />
-          <span className="tx">
-            <b style={{ fontWeight: 400 }}>{t('home.modes.cowork')}</b>
-          </span>
-          {activeCowork > 0 && <span className="cnt">{activeCowork}</span>}
-          <span
-            role="button"
-            tabIndex={0}
-            className="ib"
-            style={{ width: 24, height: 24 }}
-            aria-label={t('nav.coworkMenu')}
-            onClick={(e) => {
-              e.stopPropagation()
-              openSheet('coworkmenu')
-            }}
+      <div role="tablist" aria-label={t('nav.tabs')} className="ntabs" data-testid="nav-tabs">
+        {(['chat', 'cowork'] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            data-testid={`nav-tab-${id}`}
+            onClick={() => choose(id)}
           >
-            <I n="more" size={14} />
-          </span>
-          <I n="chev" size={13} style={{ color: 'var(--muted-foreground)', transform: coworkOpen ? undefined : 'rotate(-90deg)' }} />
-        </button>
-        {coworkOpen && (
-          <div className="sub">
-            <button type="button" className="row" onClick={() => go({ name: 'home', mode: 'cowork' })}>
-              <I n="plus" size={13} />
-              {t('nav.newSession')}
-            </button>
+            {id === 'chat' ? t('nav.tabChat') : t('nav.tabCowork')}
+            {id === 'cowork' && activeCowork > 0 && <span className="cnt">{activeCowork}</span>}
+          </button>
+        ))}
+      </div>
+      <div className="navs lnav" role="tabpanel">
+        {resume}
+        {tab === 'chat' && (
+          <>
+            <NavRow
+              icon={<D n="x-edit" />}
+              label={t('home.title')}
+              active={route.name === 'home' && route.mode !== 'cowork' && route.mode !== 'room'}
+              onClick={() => go({ name: 'home', mode: 'chat' })}
+              testId="nav-new-chat"
+            />
+            <NavRow
+              icon={<D n="x-library" />}
+              label={t('library.title')}
+              active={is('library')}
+              onClick={() => go({ name: 'library' })}
+            />
+            {modelsRow}
+            {discoverRow}
+
+            <div className="ng">
+              <span>{t('chat.crumb')}</span>
+              <button type="button" className="ib" onClick={() => openSheet('palette')} aria-label={t('nav.searchChats')}>
+                <I n="search" />
+              </button>
+              <button type="button" className="ib" onClick={() => openSheet('chatfilter')} aria-label={t('nav.filter')}>
+                <I n="sliders" />
+              </button>
+            </div>
+            {chats.length === 0 && <div className="gh">{t('nav.noChats')}</div>}
+            {chats.some((s) => s.pinned) && (
+              <>
+                <div className="gh" data-testid="pinned">
+                  <I n="pin" />
+                  {t('nav.pinned')}
+                </div>
+                {chats
+                  .filter((s) => s.pinned)
+                  .map((s) => (
+                    <SessionRow key={`pin-${s.id}`} s={s} active={isActive({ name: 'chat', id: s.id })} />
+                  ))}
+              </>
+            )}
+            {ch.groups.map(([g, list]) => (
+              <div key={g} style={{ display: 'contents' }}>
+                <div className="gh">
+                  <I n="group" />
+                  {g} <span className="cnt">{list.length}</span>
+                </div>
+                {list.map((s) => (
+                  <SessionRow key={s.id} s={s} active={isActive({ name: 'chat', id: s.id })} />
+                ))}
+              </div>
+            ))}
+            {ch.loose.length > 0 && ch.groups.length > 0 && <div className="gh">{t('nav.ungrouped')}</div>}
+            {ch.loose.map((s) => (
+              <SessionRow key={s.id} s={s} active={isActive({ name: 'chat', id: s.id })} />
+            ))}
+            {!allChats && chats.length > CHATS_SHOWN && (
+              <button type="button" className="row" style={{ color: 'var(--muted-foreground)', fontSize: 12 }} onClick={() => setAllChats(true)}>
+                {t('nav.showMore', { count: chats.length - CHATS_SHOWN })}
+              </button>
+            )}
+          </>
+        )}
+        {tab === 'cowork' && (
+          <>
+            <NavRow
+              icon={<I n="sparkles" size={16} />}
+              label={t('nav.newSession')}
+              active={route.name === 'home' && (route.mode === 'cowork' || route.mode === 'room')}
+              onClick={() => go({ name: 'home', mode: 'cowork' })}
+              testId="nav-new-session"
+            />
+            <NavRow
+              icon={<I n="flow" size={16} />}
+              label={t('nav.campaigns')}
+              active={is('campaigns', 'campaign')}
+              onClick={() => go({ name: 'campaigns' })}
+              testId="nav-campaigns"
+              count={
+                progress.total > 0 && (
+                  <span className="cnt" data-testid="nav-campaigns-progress">
+                    {t('campaigns.tasksDone', { done: progress.done, total: progress.total })}
+                  </span>
+                )
+              }
+            />
+            {liveRows.length > 0 && (
+              <div className="sub">
+                {liveRows.map(({ c, h }) => {
+                  const attention = h.key === 'attention' || h.key === 'review'
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`row${route.name === 'campaign' && route.id === c.id ? ' act' : ''}`}
+                      data-testid="nav-campaign-row"
+                      onClick={() => go({ name: 'campaign', id: c.id })}
+                    >
+                      <span className={`sd ${attention ? 'wait' : 'run'}`} />
+                      <span className="tx">
+                        <b style={{ fontWeight: 400 }}>{c.title || t('common.untitled')}</b>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <NavRow
+              icon={<D n="x-rooms" />}
+              label={t('rooms.title')}
+              active={is('rooms')}
+              onClick={() => go({ name: 'rooms' })}
+              count={rooms.length > 0 && <span className="cnt">{rooms.length}</span>}
+            />
+            {liveRooms.length > 0 && (
+              <div className="sub">
+                {liveRooms.map((s) => (
+                  <SessionRow key={s.id} s={s} active={isActive({ name: 'room', id: s.id })} />
+                ))}
+              </div>
+            )}
+            <NavRow icon={<D n="x-palette" />} label={t('studio.title')} active={is('studio')} onClick={() => go({ name: 'studio' })} />
+            <NavRow icon={<D n="flow" />} label={t('tools.title')} active={is('tools')} onClick={() => go({ name: 'tools' })} />
+            {modelsRow}
+            {discoverRow}
+            <NavRow
+              icon={<I n="more" size={16} />}
+              label={t('nav.more')}
+              onClick={() => setMoreOpen((o) => !o)}
+              expanded={moreOpen}
+              testId="nav-more"
+            />
+            {moreOpen && (
+              <div className="sub" data-testid="nav-more-items">
+                {MORE_ROUTES.map((r) => (
+                  <NavRow
+                    key={r.name === 'settings-sub' ? r.sub : r.name}
+                    icon={<D n={r.name === 'archive' ? 'x-disk' : r.name === 'system' ? 'x-monitor' : 'x-server'} />}
+                    label={r.name === 'archive' ? t('archive.title') : r.name === 'system' ? t('system.title') : t('settings.rows.localApi')}
+                    active={r.name === 'settings-sub' ? route.name === 'settings-sub' && route.sub === r.sub : is(r.name)}
+                    onClick={() => go(r)}
+                  />
+                ))}
+              </div>
+            )}
+
+            <div className="ng">
+              <span>{t('nav.sessions')}</span>
+              <button type="button" className="ib" onClick={() => openSheet('coworkmenu')} aria-label={t('nav.coworkMenu')}>
+                <I n="more" />
+              </button>
+            </div>
+            {cowork.length === 0 && <div className="gh">{t('nav.noSessions')}</div>}
             {cw.groups.map(([g, list]) => (
               <div key={g} style={{ display: 'contents' }}>
                 <div className="gh">
                   <I n="group" />
                   {g} <span className="cnt">{list.length}</span>
                 </div>
-                {list.slice(0, 6).map((s) => (
+                {list.map((s) => (
                   <SessionRow key={s.id} s={s} active={isActive({ name: 'cowork', id: s.id })} />
                 ))}
               </div>
             ))}
-            {cw.loose.slice(0, 6).map((s) => (
+            {cw.loose.slice(0, 12).map((s) => (
               <SessionRow key={s.id} s={s} active={isActive({ name: 'cowork', id: s.id })} />
             ))}
-          </div>
-        )}
-        <button type="button" className={`row${act('rooms')}`} onClick={() => go({ name: 'rooms' })}>
-          <D n="x-rooms" />
-          <span className="tx">
-            <b style={{ fontWeight: 400 }}>{t('rooms.title')}</b>
-          </span>
-          {rooms.length > 0 && <span className="cnt">{rooms.length}</span>}
-        </button>
-        {liveRooms.length > 0 && (
-          <div className="sub">
-            {liveRooms.map((s) => (
-              <SessionRow key={s.id} s={s} active={isActive({ name: 'room', id: s.id })} />
-            ))}
-          </div>
-        )}
-        <button type="button" className={`row${act('library')}`} onClick={() => go({ name: 'library' })}>
-          <D n="x-library" />
-          <span className="tx">
-            <b style={{ fontWeight: 400 }}>{t('library.title')}</b>
-          </span>
-        </button>
-        <button type="button" className={`row${act('studio')}`} onClick={() => go({ name: 'studio' })}>
-          <D n="x-palette" />
-          <span className="tx">
-            <b style={{ fontWeight: 400 }}>{t('studio.title')}</b>
-          </span>
-        </button>
-        <button type="button" className={`row${act('archive')}`} onClick={() => go({ name: 'archive' })}>
-          <D n="x-disk" />
-          <span className="tx">
-            <b style={{ fontWeight: 400 }}>{t('archive.title')}</b>
-          </span>
-        </button>
-
-        <div className="ng">
-          <span>{t('models.crumb')}</span>
-        </div>
-        <button type="button" className={`row${act('models')}`} onClick={() => go({ name: 'models' })}>
-          <D n="x-cube" />
-          <span className="tx">
-            <b style={{ fontWeight: 400 }}>{t('models.title')}</b>
-          </span>
-          {models.data && <span className="cnt">{models.data.models.length}</span>}
-        </button>
-        <button type="button" className={`row${act('tools')}`} onClick={() => go({ name: 'tools' })}>
-          <D n="flow" />
-          <span className="tx">
-            <b style={{ fontWeight: 400 }}>{t('tools.title')}</b>
-          </span>
-        </button>
-        <button type="button" className={`row${act('system')}`} onClick={() => go({ name: 'system' })}>
-          <D n="x-monitor" />
-          <span className="tx">
-            <b style={{ fontWeight: 400 }}>{t('system.title')}</b>
-          </span>
-        </button>
-
-        <div className="ng">
-          <span>{t('chat.crumb')}</span>
-          <button type="button" className="ib" onClick={() => go({ name: 'home', mode: 'chat' })} aria-label={t('home.title')}>
-            <I n="plus" />
-          </button>
-          <button type="button" className="ib" onClick={() => openSheet('palette')} aria-label={t('nav.searchChats')}>
-            <I n="search" />
-          </button>
-          <button type="button" className="ib" onClick={() => openSheet('chatfilter')} aria-label={t('nav.filter')}>
-            <I n="sliders" />
-          </button>
-        </div>
-        {chats.length === 0 && <div className="gh">{t('nav.noChats')}</div>}
-        {chats.some((s) => s.pinned) && (
-          <>
-            <div className="gh" data-testid="pinned">
-              <I n="pin" />
-              {t('nav.pinned')}
-            </div>
-            {chats
-              .filter((s) => s.pinned)
-              .map((s) => (
-                <SessionRow key={`pin-${s.id}`} s={s} active={isActive({ name: 'chat', id: s.id })} />
-              ))}
           </>
-        )}
-        {ch.groups.map(([g, list]) => (
-          <div key={g} style={{ display: 'contents' }}>
-            <div className="gh">
-              <I n="group" />
-              {g} <span className="cnt">{list.length}</span>
-            </div>
-            {list.map((s) => (
-              <SessionRow key={s.id} s={s} active={isActive({ name: 'chat', id: s.id })} />
-            ))}
-          </div>
-        ))}
-        {ch.loose.length > 0 && ch.groups.length > 0 && <div className="gh">{t('nav.ungrouped')}</div>}
-        {ch.loose.map((s) => (
-          <SessionRow key={s.id} s={s} active={isActive({ name: 'chat', id: s.id })} />
-        ))}
-        {!allChats && chats.length > CHATS_SHOWN && (
-          <button type="button" className="row" style={{ color: 'var(--muted-foreground)', fontSize: 12 }} onClick={() => setAllChats(true)}>
-            {t('nav.showMore', { count: chats.length - CHATS_SHOWN })}
-          </button>
         )}
       </div>
       <div className="foot">

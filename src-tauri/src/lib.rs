@@ -256,6 +256,34 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_team_child_settle,
         core::agent::commands::agent_team_children_list,
         core::agent::commands::agent_team_child_propose,
+        core::agent::commands::agent_campaign_create,
+        core::agent::commands::agent_campaign_get,
+        core::agent::commands::agent_campaign_list,
+        core::agent::commands::agent_campaign_transition,
+        core::agent::commands::agent_campaign_task_settle,
+        core::agent::commands::agent_campaign_cancel,
+        core::agent::commands::agent_campaign_decisions_append,
+        core::agent::commands::agent_campaign_context,
+        core::agent::commands::agent_campaign_events,
+        core::agent::commands::agent_campaign_notified,
+        core::agent::commands::agent_campaign_verify_prepare,
+        core::agent::commands::agent_campaign_verify_finish,
+        core::agent::commands::agent_campaign_merge_task,
+        core::agent::commands::agent_campaign_integrate,
+        core::agent::commands::agent_campaign_gate_plan,
+        core::agent::commands::agent_campaign_task_diff,
+        core::agent::commands::agent_campaign_finalize,
+        core::agent::commands::agent_campaign_refresh,
+        core::agent::commands::agent_campaign_orphans,
+        core::agent::commands::agent_campaign_plan_update,
+        core::agent::commands::agent_campaign_gate_repair,
+        core::agent::commands::agent_campaign_retry_gate,
+        core::agent::commands::agent_campaign_skip_task,
+        core::agent::commands::agent_campaign_next_actions,
+        core::agent::commands::agent_campaign_resolve,
+        core::agent::commands::agent_campaign_diff,
+        core::agent::commands::agent_campaign_claim_notice,
+        core::agent::commands::agent_worktree_commit_pending,
         core::agent::commands::agent_checkpoint_capture,
         core::agent::commands::agent_checkpoint_plan,
         core::agent::commands::agent_checkpoint_preview_diff,
@@ -1056,6 +1084,18 @@ pub fn run() {
 pub fn run_app(app: tauri::App) {
     app.run(|app, event| {
         use std::sync::atomic::Ordering;
+        // A hidden spare "Open in new window" webview must not outlive the
+        // main window and keep the process running with nothing to see.
+        if let RunEvent::WindowEvent {
+            event: tauri::WindowEvent::Destroyed,
+            label,
+            ..
+        } = &event
+        {
+            if label == "main" {
+                core::solo_window::close_idle_spares(app);
+            }
+        }
         if let RunEvent::WindowEvent {
             event: tauri::WindowEvent::CloseRequested { api, .. },
             label,

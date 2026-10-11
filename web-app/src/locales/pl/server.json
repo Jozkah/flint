@@ -1,0 +1,26 @@
+{
+  "title": "Serwer Flint",
+  "desc": "Używaj Flint na serwerze, który prowadzisz, z tego urządzenia.",
+  "address": "Adres serwera",
+  "addressDesc": "Adres HTTPS Twojego flint serve, na przykład nazwa Tailscale, pod którą jest opublikowany. Logujesz się na stronie samego serwera; ta aplikacja nigdy nie zapisuje danych logowania.",
+  "test": "Przetestuj połączenie",
+  "open": "Otwórz serwer",
+  "forget": "Zapomnij serwer",
+  "checking": "Sprawdzanie...",
+  "statusOk": "Połączono z serwerem Flint.",
+  "statusReachable": "Coś odpowiedziało, ale stąd nie można potwierdzić, że to Flint. Otwórz go, aby się dowiedzieć.",
+  "statusUnreachable": "Nie udało się połączyć. Sprawdź adres, czy serwer działa i czy to urządzenie ma do niego dostęp (włączony VPN lub Tailscale).",
+  "insecure": "Ten adres nie używa HTTPS. Sesja byłaby przesyłana jawnie, a Android może ją odrzucić.",
+  "problem": {
+    "empty": "Wpisz adres serwera.",
+    "invalid": "To nie jest prawidłowy adres.",
+    "scheme": "Użyj adresu http lub https.",
+    "credentials": "Pomiń nazwę użytkownika i hasło w adresie."
+  },
+  "auto": "Otwieraj przy starcie",
+  "autoDesc": "Otwórz serwer przy starcie aplikacji, po kilku sekundach, w których możesz wybrać to urządzenie.",
+  "opening": "Otwieranie {{host}} za {{seconds}} s",
+  "useDevice": "Użyj tego urządzenia",
+  "limitsTitle": "Co gdzie działa",
+  "limits": "Czat, pokoje, modele i narzędzia działają na serwerze. Sesje Cowork i kampanie potrzebują agenta działającego na komputerze z otwartym Flint: połącz się z tym komputerem przez dostęp zdalny i aplikację na telefon. Serwer bez interfejsu może wyświetlać kampanie i przeglądać propozycje, ale nie uruchamia sesji."
+}

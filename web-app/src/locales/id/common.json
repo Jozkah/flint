@@ -112,6 +112,7 @@
   "keyboardShortcuts": "Pintasan",
   "home": "Beranda",
   "cowork": "Cowork",
+  "campaign": "Campaign",
   "newSession": "Sesi baru",
   "artifacts": "Artefak",
   "customize": "Sesuaikan",
@@ -1450,7 +1451,8 @@
   "drop": {
     "openInCode": "Jatuhkan untuk membuka — hanya-baca",
     "attachToMessage": "Jatuhkan untuk melampirkan ke pesan Anda",
-    "releaseToAttach": "Lepaskan untuk melampirkan"
+    "releaseToAttach": "Lepaskan untuk melampirkan",
+    "releaseToAttachCount": "Lepas untuk melampirkan {{count}} file"
   },
   "coworkMode": {
     "label": "Yang boleh dilakukan Flint",
@@ -2026,7 +2028,12 @@
     "usageOverview": "Ringkasan penggunaan",
     "movedTo": "Dipindahkan ke {{name}}",
     "notifications": "Notifikasi",
-    "approvalWaiting": "Persetujuan menunggu"
+    "approvalWaiting": "Persetujuan menunggu",
+    "tabs": "Tampilan sidebar",
+    "tabChat": "Obrolan",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Jadwal"
   },
   "systemNav": {
     "label": "Diagnostik",
@@ -2438,5 +2445,14 @@
     "stop": "Berhenti",
     "retry": "Coba lagi",
     "downloading": "Mengunduh…"
+  },
+  "composerChip": {
+    "list": "File terlampir",
+    "pastedImage": "Gambar yang ditempel {{n}}",
+    "open": "Pratinjau {{name}}",
+    "noVision": "Model ini tidak bisa membaca gambar",
+    "details": "Detail untuk {{name}}",
+    "previewLoading": "Memuat pratinjau…",
+    "previewNone": "Pratinjau tidak tersedia"
   }
 }

@@ -10,8 +10,9 @@
  * - UserPromptSubmit text is a `<SYSTEM>` reminder appended to the user's own,
  *   unanswered message, never to a tool result and never stored.
  *
- * Nothing here can fail a turn: no opt-in, no Tauri, a broken hook or a slow
- * one all come back as "nothing to add".
+ * Nothing here can fail a turn except a stop: no opt-in, no Tauri, a broken
+ * hook or a slow one all come back as "nothing to add", but a turn stopped
+ * while its prompt hooks ran comes back `interrupted` and is refused.
  */
 import type { UIMessage } from 'ai'
 import { invoke } from '@/lib/previewInvoke'
@@ -20,6 +21,12 @@ export type CcContextHooks = {
   enabled: boolean
   sessionStart: string[]
   promptSubmit: string[]
+  /**
+   * The turn was stopped while the prompt hooks ran. The caller must refuse
+   * the turn rather than send a prompt no hook has looked at. A failing or
+   * slow hook is not this: it adds nothing and the turn goes on.
+   */
+  interrupted?: boolean
 }
 
 export const NO_CC_CONTEXT: CcContextHooks = {
@@ -78,6 +85,7 @@ export async function runCcContextHooks(args: {
       enabled: true,
       sessionStart: strings(answer.sessionStart),
       promptSubmit: strings(answer.promptSubmit),
+      ...(answer.interrupted === true ? { interrupted: true } : {}),
     }
   } catch {
     return NO_CC_CONTEXT

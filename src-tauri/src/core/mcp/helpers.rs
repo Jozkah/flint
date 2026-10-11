@@ -1267,6 +1267,40 @@ impl Drop for ShutdownGuard {
     }
 }
 
+/// How long a stdio server gets to exit once its stdin is closed.
+pub(crate) const STDIO_EXIT_GRACE: Duration = Duration::from_millis(300);
+
+/// How a stdio server's process ended up stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StdioStop {
+    /// It exited within the grace period; nothing was signalled.
+    Exited,
+    /// It was still running when the grace period ended, so its tree was killed.
+    Killed,
+}
+
+/// After a stdio server's stdin has been closed, wait up to `grace` for the
+/// process to exit, then kill its process tree only if it is still running.
+/// A server that exits on stdin EOF -- the common case -- is never signalled.
+pub(crate) async fn stop_stdio_child(pid: u32, grace: Duration) -> StdioStop {
+    use crate::core::migration::lock::pid_alive;
+    let deadline = tokio::time::Instant::now() + grace;
+    loop {
+        if !pid_alive(pid) {
+            return StdioStop::Exited;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            break;
+        }
+        sleep(Duration::from_millis(25)).await;
+    }
+    let _ = tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::tools::proc::kill_tree(pid)
+    })
+    .await;
+    StdioStop::Killed
+}
+
 pub async fn stop_mcp_servers_with_context<R: Runtime>(
     app: &AppHandle<R>,
     state: &State<'_, AppState>,
@@ -1351,10 +1385,27 @@ pub async fn stop_mcp_servers_with_context<R: Runtime>(
             tauri::async_runtime::spawn(async move {
                 let cancel_future = service.cancel();
 
+                // `cancel` closes the transport, and with it the child's stdin:
+                // the polite way to ask a stdio server to exit.
                 let success = tokio::time::timeout(per_server_timeout, cancel_future)
                     .await
                     .map(|r| r.is_ok())
                     .unwrap_or(false);
+
+                // Then give the process a moment to leave on its own before
+                // its tree is killed. The Browser MCP has its own teardown
+                // below, which also frees its port.
+                if name != "Jan Browser MCP" {
+                    if let Some(pid) = child_pid {
+                        if stop_stdio_child(pid, STDIO_EXIT_GRACE).await
+                            == StdioStop::Killed
+                        {
+                            log::info!(
+                                "MCP server {name} (PID {pid}) did not exit after its stdin closed; killed its process tree"
+                            );
+                        }
+                    }
+                }
 
                 if name == "Jan Browser MCP" {
                     if let Some(port) = port {
@@ -1400,6 +1451,11 @@ pub async fn stop_mcp_servers_with_context<R: Runtime>(
     // Force-kill processes that didn't stop gracefully
     for server_name in &failed_servers {
         if let Some(&pid) = pids_snapshot.get(server_name) {
+            // Already gone (it left within its grace period): nothing to kill,
+            // and a recycled pid is not ours to signal.
+            if !crate::core::migration::lock::pid_alive(pid) {
+                continue;
+            }
             log::warn!("Force-killing MCP server {} (PID {})", server_name, pid);
             if let Err(e) = kill_process_by_pid(pid).await {
                 log::error!("Failed to force-kill PID {}: {}", pid, e);
@@ -1793,4 +1849,81 @@ pub fn spawn_idle_shutdown_loop<R: Runtime>(app: AppHandle<R>) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod stdio_stop_tests {
+    use super::*;
+
+    /// A command that reads stdin until EOF and then exits.
+    fn reader() -> std::process::Command {
+        #[cfg(windows)]
+        {
+            let mut c = std::process::Command::new("findstr");
+            c.arg("x");
+            c
+        }
+        #[cfg(not(windows))]
+        {
+            std::process::Command::new("cat")
+        }
+    }
+
+    /// A command that outlives any grace period.
+    fn sleeper() -> std::process::Command {
+        #[cfg(windows)]
+        {
+            let mut c = std::process::Command::new("ping");
+            c.args(["-n", "30", "127.0.0.1"]);
+            c
+        }
+        #[cfg(not(windows))]
+        {
+            let mut c = std::process::Command::new("sleep");
+            c.arg("30");
+            c
+        }
+    }
+
+    #[tokio::test]
+    async fn a_server_that_exits_on_stdin_eof_is_not_killed() {
+        let mut child = reader()
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn a stdin reader");
+        let pid = child.id();
+        // Closing stdin is what the transport's cancel does.
+        drop(child.stdin.take());
+        // Reap it so the pid disappears, as it does for the real child.
+        let reaper = std::thread::spawn(move || child.wait());
+        let outcome = stop_stdio_child(pid, Duration::from_secs(5)).await;
+        let _ = reaper.join();
+        assert_eq!(outcome, StdioStop::Exited);
+    }
+
+    #[tokio::test]
+    async fn a_server_that_ignores_stdin_eof_is_killed_after_the_grace() {
+        let mut child = sleeper()
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn a long-running process");
+        let pid = child.id();
+        drop(child.stdin.take());
+        let reaper = std::thread::spawn(move || child.wait());
+        let started = std::time::Instant::now();
+        let outcome = stop_stdio_child(pid, Duration::from_millis(200)).await;
+        let _ = reaper.join();
+        assert_eq!(outcome, StdioStop::Killed);
+        assert!(started.elapsed() >= Duration::from_millis(200));
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn the_grace_period_is_300_ms() {
+        assert_eq!(STDIO_EXIT_GRACE, Duration::from_millis(300));
+    }
 }

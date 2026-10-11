@@ -98,7 +98,11 @@
     "noModel": "新しいチャットを始める前にモデルを選んでください。",
     "newChatFailed": "新しいチャットを開始できませんでした",
     "room": "ルーム",
-    "recentRooms": "ルーム"
+    "recentRooms": "ルーム",
+    "needsApproval": "承認が必要",
+    "needsApprovalShort": "承認が必要",
+    "done": "完了",
+    "failed": "失敗"
   },
   "transcriptView": {
     "steps_one": "{{count}} ステップ",

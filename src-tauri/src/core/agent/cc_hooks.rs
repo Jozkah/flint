@@ -205,13 +205,78 @@ pub fn context_from_output(stdout: &str) -> Option<String> {
 /// A hook that fails, times out or prints nothing contributes nothing: these
 /// hooks add to a prompt, and a broken one must not stop the run.
 pub async fn run(hooks: &[Hook], event: Event, payload: &Value, cwd: &Path) -> Vec<String> {
+    run_cancellable(hooks, event, payload, cwd, None)
+        .await
+        .unwrap_or_default()
+}
+
+/// The turn was stopped while its hooks were running.
+///
+/// Distinct from a hook that fails or times out, which adds nothing and lets
+/// the turn go on: a stopped turn must not carry on as though the hooks had
+/// looked at the prompt and found nothing to say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Interrupted(pub tauri_plugin_agent_tools::lifecycle::StopReason);
+
+impl Interrupted {
+    /// The refusal a caller reports for the turn.
+    pub fn message(self) -> &'static str {
+        "the turn was stopped while its prompt hooks ran, so the prompt was not submitted"
+    }
+}
+
+type CancelToken = tauri_plugin_agent_tools::lifecycle::Token;
+
+/// Resolves once `token` is stopped; never, without one.
+async fn stopped(token: Option<&CancelToken>) {
+    match token {
+        Some(token) => {
+            while !token.is_stopped() {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }
+        None => std::future::pending::<()>().await,
+    }
+}
+
+/// [`run`], stopped by `cancel`. A running hook is killed (its child is
+/// `kill_on_drop`) and the caller is told the turn was interrupted, so it can
+/// refuse the prompt instead of sending it on unchecked.
+pub async fn run_cancellable(
+    hooks: &[Hook],
+    event: Event,
+    payload: &Value,
+    cwd: &Path,
+    cancel: Option<&CancelToken>,
+) -> Result<Vec<String>, Interrupted> {
+    use tauri_plugin_agent_tools::lifecycle::StopReason;
+    let interrupted = || {
+        cancel
+            .and_then(|t| t.stopped())
+            .map(Interrupted)
+    };
     let mut out = Vec::new();
     for hook in hooks.iter().filter(|h| h.event == event) {
-        if let Some(text) = exec(hook, payload, cwd).await {
-            out.push(text);
+        if let Some(why) = interrupted() {
+            return Err(why);
+        }
+        tokio::select! {
+            biased;
+            _ = stopped(cancel) => {
+                return Err(interrupted().unwrap_or(Interrupted(StopReason::Cancelled)));
+            }
+            text = exec(hook, payload, cwd) => {
+                if let Some(text) = text {
+                    out.push(text);
+                }
+            }
         }
     }
-    out
+    // A stop that landed as the last hook finished still counts.
+    if let Some(why) = interrupted() {
+        return Err(why);
+    }
+    Ok(out)
 }
 
 async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Option<String> {
@@ -340,9 +405,10 @@ pub async fn prompt_submit_context(
     session_id: Option<&str>,
     cwd: &Path,
     prompt: &str,
-) -> Vec<String> {
+    cancel: Option<&CancelToken>,
+) -> Result<Vec<String>, Interrupted> {
     if !hooks.iter().any(|h| h.event == Event::UserPromptSubmit) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let payload = json!({
         "session_id": session_id.unwrap_or_default(),
@@ -350,7 +416,7 @@ pub async fn prompt_submit_context(
         "hook_event_name": Event::UserPromptSubmit.name(),
         "prompt": prompt,
     });
-    run(hooks, Event::UserPromptSubmit, &payload, cwd).await
+    run_cancellable(hooks, Event::UserPromptSubmit, &payload, cwd, cancel).await
 }
 
 /// What the Claude Code context hooks add to one turn, for the surfaces that do
@@ -365,6 +431,10 @@ pub struct CcContextHooks {
     pub enabled: bool,
     pub session_start: Vec<String>,
     pub prompt_submit: Vec<String>,
+    /// The turn was stopped while the hooks ran. The prompt must not be sent
+    /// on as though the hooks had checked it; a surface that sees this refuses
+    /// the turn. A hook that merely fails or times out does not set it.
+    pub interrupted: bool,
 }
 
 /// `hooks` run for one turn. Same trust, timeouts and output caps as the loop:
@@ -374,19 +444,26 @@ pub async fn context_for_turn(
     session_id: Option<&str>,
     cwd: &Path,
     prompt: Option<&str>,
+    cancel: Option<&CancelToken>,
 ) -> CcContextHooks {
     if hooks.is_empty() {
         return CcContextHooks::default();
     }
     let session_start = session_start_context(hooks, session_id, cwd).await;
-    let prompt_submit = match prompt.map(str::trim).filter(|p| !p.is_empty()) {
-        Some(prompt) => prompt_submit_context(hooks, session_id, cwd, prompt).await,
-        None => Vec::new(),
+    let (prompt_submit, interrupted) = match prompt.map(str::trim).filter(|p| !p.is_empty()) {
+        Some(prompt) => {
+            match prompt_submit_context(hooks, session_id, cwd, prompt, cancel).await {
+                Ok(blocks) => (blocks, false),
+                Err(_) => (Vec::new(), true),
+            }
+        }
+        None => (Vec::new(), false),
     };
     CcContextHooks {
         enabled: true,
         session_start,
         prompt_submit,
+        interrupted,
     }
 }
 
@@ -405,7 +482,24 @@ pub async fn run_cc_context_hooks(
         .map(PathBuf::from)
         .or_else(crate::core::app::commands::jan_home_dir)
         .unwrap_or_default();
-    context_for_turn(&hooks, session_id.as_deref(), &cwd, prompt.as_deref()).await
+    // Registered under the session so a stop aimed at it (the person pressing
+    // Stop, an application-wide stop) reaches the hooks too. Without a session
+    // there is nothing for a stop to name.
+    let registered = session_id
+        .as_deref()
+        .filter(|id| !id.is_empty())
+        .map(|id| {
+            use tauri_plugin_agent_tools::lifecycle::{register, Scope};
+            register(CancelToken::new(Scope::new(id, "", "cc-prompt-hooks")))
+        });
+    context_for_turn(
+        &hooks,
+        session_id.as_deref(),
+        &cwd,
+        prompt.as_deref(),
+        registered.as_ref().map(|r| r.token()),
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -532,7 +626,7 @@ mod tests {
     #[tokio::test]
     async fn no_hooks_means_a_disabled_empty_answer() {
         let cwd = tempfile::tempdir().unwrap();
-        let got = context_for_turn(&[], Some("s"), cwd.path(), Some("hi")).await;
+        let got = context_for_turn(&[], Some("s"), cwd.path(), Some("hi"), None).await;
         assert_eq!(got, CcContextHooks::default());
         assert!(!got.enabled);
     }
@@ -546,8 +640,32 @@ mod tests {
             timeout_secs: 5,
             plugin_root: None,
         }];
-        let got = context_for_turn(&hooks, Some("s"), cwd.path(), Some("hi")).await;
+        let got = context_for_turn(&hooks, Some("s"), cwd.path(), Some("hi"), None).await;
         assert!(got.enabled);
+        assert!(got.prompt_submit.is_empty());
+        assert!(got.session_start.is_empty());
+    }
+
+    /// These hooks only ever add to a prompt; none of them can hold it back.
+    /// A prompt hook that exits non-zero (Claude Code's "block" is exit 2) or
+    /// outlives its limit -- what a stopped run looks like from here -- adds
+    /// nothing and the turn still carries the prompt as written. There is no
+    /// outcome in which the prompt is dropped, or passed on as if a hook had
+    /// approved it.
+    #[tokio::test]
+    async fn a_failed_or_timed_out_prompt_hook_adds_nothing_and_leaves_the_prompt_alone() {
+        let cwd = tempfile::tempdir().unwrap();
+        let hook = |command: &str, timeout_secs| Hook {
+            event: Event::UserPromptSubmit,
+            command: command.into(),
+            timeout_secs,
+            plugin_root: None,
+        };
+        let hooks = vec![hook("exit 2", 5), hook("sleep 10", 1)];
+        let started = std::time::Instant::now();
+        let got = context_for_turn(&hooks, Some("s"), cwd.path(), Some("hi"), None).await;
+        assert!(got.enabled);
+        assert!(started.elapsed() < Duration::from_secs(8), "the slow hook was not bounded");
         assert!(got.prompt_submit.is_empty());
         assert!(got.session_start.is_empty());
     }
@@ -561,7 +679,7 @@ mod tests {
             timeout_secs: 5,
             plugin_root: None,
         }];
-        let got = context_for_turn(&hooks, Some("s"), cwd.path(), Some("   ")).await;
+        let got = context_for_turn(&hooks, Some("s"), cwd.path(), Some("   "), None).await;
         assert!(got.enabled);
         assert!(got.prompt_submit.is_empty());
     }
@@ -584,7 +702,7 @@ mod tests {
                 plugin_root: None,
             },
         ];
-        let got = context_for_turn(&hooks, Some("turn-s1"), cwd.path(), Some("hello")).await;
+        let got = context_for_turn(&hooks, Some("turn-s1"), cwd.path(), Some("hello"), None).await;
         assert_eq!(got.session_start, vec!["style-on".to_string()]);
         assert_eq!(got.prompt_submit, vec!["per-prompt".to_string()]);
     }
@@ -600,7 +718,69 @@ mod tests {
             timeout_secs: 10,
             plugin_root: None,
         }];
-        let got = prompt_submit_context(&hooks, Some("s1"), cwd.path(), "hello").await;
+        let got = prompt_submit_context(&hooks, Some("s1"), cwd.path(), "hello", None)
+            .await
+            .unwrap();
         assert_eq!(got, vec!["saw: hello".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn a_turn_stopped_while_prompt_hooks_run_is_interrupted_not_checked() {
+        use tauri_plugin_agent_tools::lifecycle::StopReason;
+        let cwd = tempfile::tempdir().unwrap();
+        let hooks = vec![Hook {
+            event: Event::UserPromptSubmit,
+            command: "sleep 10".into(),
+            timeout_secs: 30,
+            plugin_root: None,
+        }];
+        let token = CancelToken::detached();
+        let stopper = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            stopper.stop(StopReason::Cancelled);
+        });
+        let started = std::time::Instant::now();
+        let got = prompt_submit_context(&hooks, Some("s"), cwd.path(), "hi", Some(&token)).await;
+        assert_eq!(got, Err(Interrupted(StopReason::Cancelled)));
+        assert!(started.elapsed() < Duration::from_secs(5), "the hook was not stopped");
+
+        let turn = context_for_turn(&hooks, Some("s"), cwd.path(), Some("hi"), Some(&token)).await;
+        assert!(turn.interrupted);
+        assert!(turn.prompt_submit.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_already_stopped_turn_runs_no_hook() {
+        use tauri_plugin_agent_tools::lifecycle::StopReason;
+        let cwd = tempfile::tempdir().unwrap();
+        let marker = cwd.path().join("ran");
+        let hooks = vec![Hook {
+            event: Event::UserPromptSubmit,
+            command: format!("echo x > \"{}\"", marker.to_string_lossy().replace('\\', "/")),
+            timeout_secs: 5,
+            plugin_root: None,
+        }];
+        let token = CancelToken::detached();
+        token.stop(StopReason::Cancelled);
+        let got = prompt_submit_context(&hooks, Some("s"), cwd.path(), "hi", Some(&token)).await;
+        assert_eq!(got, Err(Interrupted(StopReason::Cancelled)));
+        assert!(!marker.exists());
+    }
+
+    #[tokio::test]
+    async fn a_failing_hook_on_a_live_turn_is_not_an_interruption() {
+        let cwd = tempfile::tempdir().unwrap();
+        let hooks = vec![Hook {
+            event: Event::UserPromptSubmit,
+            command: "exit 2".into(),
+            timeout_secs: 5,
+            plugin_root: None,
+        }];
+        let token = CancelToken::detached();
+        let got = context_for_turn(&hooks, Some("s"), cwd.path(), Some("hi"), Some(&token)).await;
+        assert!(got.enabled);
+        assert!(!got.interrupted);
+        assert!(got.prompt_submit.is_empty());
     }
 }

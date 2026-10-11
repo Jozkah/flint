@@ -1,0 +1,26 @@
+{
+  "title": "Server Flint",
+  "desc": "Používejte Flint na serveru, který provozujete, z tohoto zařízení.",
+  "address": "Adresa serveru",
+  "addressDesc": "Adresa HTTPS vašeho flint serve, například název v Tailscale, pod kterým je zveřejněn. Přihlašujete se na stránce samotného serveru; tato aplikace přihlašovací údaje nikdy neukládá.",
+  "test": "Vyzkoušet připojení",
+  "open": "Otevřít server",
+  "forget": "Zapomenout server",
+  "checking": "Kontroluje se...",
+  "statusOk": "Server Flint byl nalezen.",
+  "statusReachable": "Něco odpovědělo, ale odsud se nepodařilo potvrdit, že jde o Flint. Otevřete to a zjistěte.",
+  "statusUnreachable": "Nepodařilo se ho zastihnout. Zkontrolujte adresu, že server běží a že se k němu toto zařízení dostane (zapnutá VPN nebo Tailscale).",
+  "insecure": "Tato adresa není HTTPS. Relace by putovala nešifrovaně a Android ji může odmítnout.",
+  "problem": {
+    "empty": "Zadejte adresu serveru.",
+    "invalid": "To není platná adresa.",
+    "scheme": "Použijte adresu http nebo https.",
+    "credentials": "Uživatelské jméno a heslo do adresy nepište."
+  },
+  "auto": "Otevřít při spuštění",
+  "autoDesc": "Otevře server při spuštění aplikace, po několika sekundách, během nichž můžete místo toho zvolit toto zařízení.",
+  "opening": "Otevírá se {{host}} za {{seconds}} s",
+  "useDevice": "Použít toto zařízení",
+  "limitsTitle": "Co kde běží",
+  "limits": "Chat, místnosti, modely a nástroje běží na serveru. Relace Cowork a kampaně potřebují agenta, který běží na počítači s otevřeným Flintem: k tomuto počítači se dostanete přes vzdálený přístup a mobilní aplikaci. Server bez obrazovky umí kampaně vypsat a kontrolovat návrhy, ale relace nespouští."
+}

@@ -103,6 +103,17 @@
       .reduce-motion .fl-bar i { left: 30%; }
       .reduce-motion #initial-loader-caption { color: var(--sub); background: none; }
       .loaded #initial-loader { opacity: 0; pointer-events: none; }
+      /* A "New window" (see lib/soloFlag): no brand splash, only the quiet
+         outline of a conversation until its page is up. */
+      .solo-skel { display: none; }
+      .solo .fl-frame, .solo .fl-text, .solo .fl-bar { display: none; }
+      .solo #initial-loader { justify-content: flex-start; align-items: stretch; gap: 14px; padding: 56px 8% 0; }
+      .solo .solo-skel { display: block; height: 14px; border-radius: 7px; background: var(--track); }
+      .solo .solo-skel.w1 { width: 46%; margin-left: auto; height: 38px; border-radius: 12px; }
+      .solo .solo-skel.w2 { width: 78%; }
+      .solo .solo-skel.w3 { width: 64%; }
+      .solo .solo-skel.w4 { width: 30%; margin-top: auto; margin-bottom: 28px; height: 44px; border-radius: 14px; width: 100%; }
+      .solo .solo-skel { animation: fl-fade .4s ease both; }
     </style>
     <script src="/unsupported-check.js"></script>
     <script src="/boot-appearance.js"></script>
@@ -121,6 +132,7 @@
         <p id="initial-loader-caption" data-tauri-drag-region>Starting your workspace…</p>
       </div>
       <div class="fl-bar" aria-hidden="true"><i></i></div>
+      <i class="solo-skel w1"></i><i class="solo-skel w2"></i><i class="solo-skel w3"></i><i class="solo-skel w4"></i>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

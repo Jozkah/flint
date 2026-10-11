@@ -20,6 +20,7 @@ import { Route as ArchiveRouteImport } from './routes/archive'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RoomsIndexRouteImport } from './routes/rooms/index'
 import { Route as HubIndexRouteImport } from './routes/hub/index'
+import { Route as CampaignsIndexRouteImport } from './routes/campaigns/index'
 import { Route as ThreadsThreadIdRouteImport } from './routes/threads/$threadId'
 import { Route as SettingsWebSearchRouteImport } from './routes/settings/web-search'
 import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
@@ -42,6 +43,7 @@ import { Route as RoomsRoomIdRouteImport } from './routes/rooms/$roomId'
 import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
 import { Route as LocalApiServerLogsRouteImport } from './routes/local-api-server/logs'
 import { Route as HubModelIdRouteImport } from './routes/hub/$modelId'
+import { Route as CampaignCampaignIdRouteImport } from './routes/campaign/$campaignId'
 import { Route as SettingsProvidersIndexRouteImport } from './routes/settings/providers/index'
 import { Route as SettingsProvidersProviderNameRouteImport } from './routes/settings/providers/$providerName'
 
@@ -98,6 +100,11 @@ const RoomsIndexRoute = RoomsIndexRouteImport.update({
 const HubIndexRoute = HubIndexRouteImport.update({
   id: '/hub/',
   path: '/hub/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CampaignsIndexRoute = CampaignsIndexRouteImport.update({
+  id: '/campaigns/',
+  path: '/campaigns/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ThreadsThreadIdRoute = ThreadsThreadIdRouteImport.update({
@@ -210,6 +217,11 @@ const HubModelIdRoute = HubModelIdRouteImport.update({
   path: '/hub/$modelId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CampaignCampaignIdRoute = CampaignCampaignIdRouteImport.update({
+  id: '/campaign/$campaignId',
+  path: '/campaign/$campaignId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsProvidersIndexRoute = SettingsProvidersIndexRouteImport.update({
   id: '/settings/providers/',
   path: '/settings/providers/',
@@ -232,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
+  '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
@@ -254,6 +267,7 @@ export interface FileRoutesByFullPath {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/campaigns/': typeof CampaignsIndexRoute
   '/hub/': typeof HubIndexRoute
   '/rooms/': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
@@ -269,6 +283,7 @@ export interface FileRoutesByTo {
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
+  '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
@@ -291,6 +306,7 @@ export interface FileRoutesByTo {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/campaigns': typeof CampaignsIndexRoute
   '/hub': typeof HubIndexRoute
   '/rooms': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
@@ -307,6 +323,7 @@ export interface FileRoutesById {
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
+  '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
@@ -329,6 +346,7 @@ export interface FileRoutesById {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/campaigns/': typeof CampaignsIndexRoute
   '/hub/': typeof HubIndexRoute
   '/rooms/': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
@@ -346,6 +364,7 @@ export interface FileRouteTypes {
     | '/overview'
     | '/studio'
     | '/system-monitor'
+    | '/campaign/$campaignId'
     | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
@@ -368,6 +387,7 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/campaigns/'
     | '/hub/'
     | '/rooms/'
     | '/settings/providers/$providerName'
@@ -383,6 +403,7 @@ export interface FileRouteTypes {
     | '/overview'
     | '/studio'
     | '/system-monitor'
+    | '/campaign/$campaignId'
     | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
@@ -405,6 +426,7 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/campaigns'
     | '/hub'
     | '/rooms'
     | '/settings/providers/$providerName'
@@ -420,6 +442,7 @@ export interface FileRouteTypes {
     | '/overview'
     | '/studio'
     | '/system-monitor'
+    | '/campaign/$campaignId'
     | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
@@ -442,6 +465,7 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/campaigns/'
     | '/hub/'
     | '/rooms/'
     | '/settings/providers/$providerName'
@@ -458,6 +482,7 @@ export interface RootRouteChildren {
   OverviewRoute: typeof OverviewRoute
   StudioRoute: typeof StudioRoute
   SystemMonitorRoute: typeof SystemMonitorRoute
+  CampaignCampaignIdRoute: typeof CampaignCampaignIdRoute
   HubModelIdRoute: typeof HubModelIdRoute
   LocalApiServerLogsRoute: typeof LocalApiServerLogsRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRoute
@@ -480,6 +505,7 @@ export interface RootRouteChildren {
   SettingsShortcutsRoute: typeof SettingsShortcutsRoute
   SettingsWebSearchRoute: typeof SettingsWebSearchRoute
   ThreadsThreadIdRoute: typeof ThreadsThreadIdRoute
+  CampaignsIndexRoute: typeof CampaignsIndexRoute
   HubIndexRoute: typeof HubIndexRoute
   RoomsIndexRoute: typeof RoomsIndexRoute
   SettingsProvidersProviderNameRoute: typeof SettingsProvidersProviderNameRoute
@@ -563,6 +589,13 @@ declare module '@tanstack/react-router' {
       path: '/hub'
       fullPath: '/hub/'
       preLoaderRoute: typeof HubIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/campaigns/': {
+      id: '/campaigns/'
+      path: '/campaigns'
+      fullPath: '/campaigns/'
+      preLoaderRoute: typeof CampaignsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/threads/$threadId': {
@@ -719,6 +752,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HubModelIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/campaign/$campaignId': {
+      id: '/campaign/$campaignId'
+      path: '/campaign/$campaignId'
+      fullPath: '/campaign/$campaignId'
+      preLoaderRoute: typeof CampaignCampaignIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/providers/': {
       id: '/settings/providers/'
       path: '/settings/providers'
@@ -746,6 +786,7 @@ const rootRouteChildren: RootRouteChildren = {
   OverviewRoute: OverviewRoute,
   StudioRoute: StudioRoute,
   SystemMonitorRoute: SystemMonitorRoute,
+  CampaignCampaignIdRoute: CampaignCampaignIdRoute,
   HubModelIdRoute: HubModelIdRoute,
   LocalApiServerLogsRoute: LocalApiServerLogsRoute,
   ProjectProjectIdRoute: ProjectProjectIdRoute,
@@ -768,6 +809,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsShortcutsRoute: SettingsShortcutsRoute,
   SettingsWebSearchRoute: SettingsWebSearchRoute,
   ThreadsThreadIdRoute: ThreadsThreadIdRoute,
+  CampaignsIndexRoute: CampaignsIndexRoute,
   HubIndexRoute: HubIndexRoute,
   RoomsIndexRoute: RoomsIndexRoute,
   SettingsProvidersProviderNameRoute: SettingsProvidersProviderNameRoute,

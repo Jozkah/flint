@@ -38,7 +38,8 @@
     "gitLocal": "Flint chce spustit {{command}}",
     "gitLocalIn": "Flint chce spustit {{command}} v {{workspace}}",
     "gitRemote": "Flint chce spustit {{command}}, což změní {{target}}",
-    "gitDestructive": "Flint chce spustit {{command}}, což může způsobit ztrátu práce"
+    "gitDestructive": "Flint chce spustit {{command}}, což může způsobit ztrátu práce",
+    "approveCampaign": "Flint chce spustit kampaň „{{title}}“ (úkolů: {{count}})"
   },
   "consequence": {
     "fileChange": "Může vytvářet, přepisovat nebo měnit obsah souborů.",
@@ -55,7 +56,8 @@
     "writeClipboard": "Nahradí to, co je aktuálně ve vaší schránce.",
     "gitLocal": "Mění soubory, větve nebo historii tohoto repozitáře na tomto počítači.",
     "gitRemote": "Odesílá změny do vzdáleného repozitáře, který mohou vidět další lidé. Flint se ptá pokaždé, pokud pro tuto konverzaci dočasně nepovolíte běžné vzdálené akce Gitu.",
-    "gitDestructive": "To, co odstraní nebo přepíše, nemusí jít obnovit."
+    "gitDestructive": "To, co odstraní nebo přepíše, nemusí jít obnovit.",
+    "campaignPlan": "Spustí samostatné relace, každou na vlastní větvi pracovního stromu, které čtou a mění soubory a souběžně čerpají z kvóty vašeho modelu. Schválení plánu neschvaluje žádné volání, které úkol provede. Flint se ptá pokaždé."
   },
   "repeat": {
     "allowedOnceBefore": "Tento příkaz jste v této konverzaci již jednou povolili."

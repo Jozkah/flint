@@ -689,5 +689,424 @@
     "noVisionModel": "Es ist kein Modell mit Bildverständnis verfügbar. Fügen Sie eines hinzu oder markieren Sie ein Modell als bildfähig.",
     "embed": "Angehängte Bilder durchsuchbar machen",
     "embedDesc": "Speichert die Beschreibung jedes Bildes zusätzlich bei den Dokumenten des Chats, damit sie später durchsucht werden kann. Dabei wird jedes angehängte Bild an das Beschreibungsmodell gesendet."
+  },
+  "campaigns": {
+    "title": "Kampagnen",
+    "maxParallel": "Parallele Threads für Kampagnen",
+    "maxParallelDesc": "Wie viele Kampagnenaufgaben gleichzeitig laufen dürfen, jede in ihrem eigenen geteilten Bereich. Von 1 bis 6. Gilt sofort für eine laufende Kampagne; freie Bereiche begrenzen weiterhin.",
+    "board": {
+      "dot": {
+        "queued": "In der Warteschlange",
+        "blocked": "Blockiert",
+        "running": "Läuft",
+        "needsYou": "Du bist gefragt",
+        "verifying": "Wird verifiziert",
+        "verified": "Verifiziert",
+        "merged": "Zusammengeführt",
+        "failed": "Fehlgeschlagen",
+        "conflict": "Konflikt",
+        "cancelled": "Abgebrochen",
+        "planning": "Planung",
+        "review": "Bereit zur Prüfung"
+      },
+      "status": {
+        "draft": "Entwurf",
+        "planned": "geplant",
+        "approved": "genehmigt",
+        "running": "läuft",
+        "paused": "pausiert",
+        "reviewing": "in Prüfung",
+        "merging": "wird zusammengeführt",
+        "done": "erledigt",
+        "failed": "fehlgeschlagen",
+        "cancelled": "abgebrochen",
+        "interrupted": "unterbrochen"
+      },
+      "openBoard": "Kampagnenübersicht öffnen",
+      "notFound": "Diese Kampagne wurde nicht gefunden.",
+      "loading": "Kampagne wird geladen…",
+      "budget": {
+        "label": "Token-Budget",
+        "used": "{{used}} von {{budget}} Tokens",
+        "none": "{{used}} Tokens, kein Budget festgelegt"
+      },
+      "parallel": "Parallelitätslimit {{n}}",
+      "card": {
+        "branch": "Branch",
+        "noBranch": "noch kein Branch"
+      },
+      "action": {
+        "open": "Sitzung öffnen",
+        "note": "Notiz senden",
+        "stop": "Stoppen",
+        "retry": "Wiederholen",
+        "skip": "Überspringen",
+        "handoff": "Übergabe ansehen",
+        "diff": "Änderungen ansehen",
+        "pause": "Pausieren",
+        "resume": "Fortsetzen",
+        "cancel": "Kampagne abbrechen",
+        "review": "Prüfen und anwenden",
+        "send": "Senden",
+        "close": "Schließen",
+        "confirm": "Bestätigen",
+        "reviewChanges": "Änderungen prüfen",
+        "openCoordinator": "Koordinator öffnen",
+        "openCowork": "Cowork öffnen, um fortzufahren"
+      },
+      "note": {
+        "title": "Notiz an {{task}}",
+        "placeholder": "Sag der Aufgabe, was sie anders machen soll",
+        "sent": "Notiz gesendet"
+      },
+      "handoff": {
+        "title": "Übergabe: {{task}}",
+        "empty": "Es wurde noch keine Übergabe geschrieben."
+      },
+      "diff": {
+        "title": "Von {{task}} geänderte Dateien",
+        "empty": "Für diese Aufgabe wurden keine Dateiänderungen aufgezeichnet."
+      },
+      "review": {
+        "title": "Prüfen und anwenden",
+        "body": "Dadurch wird die Prüfung auf das zusammengeführte Ergebnis angewendet und anschließend ein Vorschlag für dein Projekt erstellt. Nichts wird angewendet, bis du diesen Vorschlag genehmigst.",
+        "command": "Prüfbefehl: {{command}}",
+        "noCommand": "Es ist kein Build- oder Testbefehl konfiguriert oder erkannt, daher wird das zusammengeführte Ergebnis weder gebaut noch getestet.",
+        "proposal": "Vorschlag erstellt. Prüfe und wende ihn in dieser Übersicht an.",
+        "failed": "Die Prüfung ist fehlgeschlagen; die Kampagne bleibt in der Prüfung."
+      },
+      "cancelConfirm": {
+        "title": "Diese Kampagne abbrechen?",
+        "body": "Alle unfertigen Aufgaben werden abgebrochen und laufende Aufgaben gestoppt. Worktrees bleiben erhalten."
+      },
+      "proposal": {
+        "title": "Änderungen der Kampagne",
+        "loading": "Vorschlag wird geladen…",
+        "missing": "Der Vorschlag wurde nicht gefunden. Führe „Prüfen und anwenden“ erneut aus."
+      },
+      "resumed": "{{n}} Aufgabe(n) fortgesetzt, die beim Beenden der App unterbrochen wurden.",
+      "stalled": "{{n}} Aufgabe(n) werden als laufend angezeigt, aber in diesem Fenster führt sie nichts aus. Öffne Cowork, um sie fortzusetzen.",
+      "noteState": {
+        "sent": "Notiz gesendet",
+        "delivered": "Notiz an die Aufgabe zugestellt"
+      },
+      "error": "Aktion fehlgeschlagen: {{reason}}",
+      "headline": {
+        "planning": "Die Arbeit wird geplant",
+        "working": "In Arbeit: {{done}} von {{total}} Aufgaben erledigt",
+        "attention_one": "Braucht deine Aufmerksamkeit: {{count}} Aufgabe wartet auf dich",
+        "attention_other": "Braucht deine Aufmerksamkeit: {{count}} Aufgaben warten auf dich",
+        "review": "Bereit für deine Prüfung",
+        "merging": "Die Ergebnisse werden zusammengeführt",
+        "paused": "Pausiert: {{done}} von {{total}} Aufgaben erledigt",
+        "interrupted": "Beim Schließen der App angehalten: {{done}} von {{total}} Aufgaben erledigt",
+        "done": "Alles erledigt",
+        "failed": "Diese Kampagne konnte nicht abgeschlossen werden",
+        "cancelled": "Abgebrochen",
+        "gateFailed": "Abschließende Prüfungen fehlgeschlagen: Die Arbeit ist zusammengeführt, aber nicht verifiziert"
+      },
+      "progressLabel": "{{done}} von {{total}} Aufgaben erledigt",
+      "planning": "Planung… Warten auf den Plan des Koordinators.",
+      "group": {
+        "needsYou": "Du bist gefragt",
+        "working": "In Arbeit",
+        "upNext": "Als Nächstes",
+        "done": "Erledigt",
+        "skipped": "Übersprungen"
+      },
+      "word": {
+        "writing": "Schreibt Code",
+        "checking": "Prüft das Ergebnis",
+        "ready": "Geprüft, bereit zum Zusammenführen",
+        "needsInput": "Wartet auf deine Antwort",
+        "needsApproval": "Wartet auf deine Genehmigung",
+        "failed": "Hat nicht geklappt",
+        "conflict": "Kollidiert mit anderen Änderungen",
+        "waiting": "Wartet auf {{tasks}}",
+        "queued": "Startet bald",
+        "merged": "Zusammengeführt",
+        "skipped": "Übersprungen",
+        "resolving": "Löst einen Konflikt",
+        "verifyBlocked": "Fertig, aber die Prüfung konnte keine Entscheidung treffen",
+        "waitingSkipped": "Wartet auf {{tasks}}, was übersprungen wurde"
+      },
+      "row": {
+        "open": "Öffnen",
+        "details": "Details",
+        "attempts": "Versuche",
+        "tokens": "Verbrauchte Tokens",
+        "lastActivity": "Letzte Aktivität",
+        "seeChanges": "Ansehen, was {{task}} geändert hat"
+      },
+      "details": "Details",
+      "detailBranch": "Die Ergebnisse werden auf {{branch}} gesammelt",
+      "statusWord": {
+        "draft": "Startet",
+        "planned": "Startet",
+        "approved": "Startet",
+        "running": "In Arbeit",
+        "paused": "Pausiert",
+        "reviewing": "Bereit zur Prüfung",
+        "merging": "Wird zusammengeführt",
+        "done": "Erledigt",
+        "failed": "Fehlgeschlagen",
+        "cancelled": "Abgebrochen",
+        "interrupted": "Angehalten"
+      },
+      "groupProgress": "{{done}} von {{total}} erledigt · {{status}}",
+      "fold": "Sitzungen von {{title}} ausblenden",
+      "unfold": "Sitzungen von {{title}} anzeigen",
+      "story": {
+        "wrote_one": "{{count}} Datei geschrieben, +{{added}} −{{removed}} Zeilen",
+        "wrote_other": "{{count}} Dateien geschrieben, +{{added}} −{{removed}} Zeilen",
+        "wroteUncounted_one": "{{count}} Datei geschrieben",
+        "wroteUncounted_other": "{{count}} Dateien geschrieben",
+        "stop": {
+          "none": "Wurde angehalten, bevor sie fertig war.",
+          "one": "Wurde angehalten, nachdem ein Befehl fehlgeschlagen ist.",
+          "many": "Wurde angehalten, nachdem Befehle {{count}}-mal fehlgeschlagen sind."
+        },
+        "headline": {
+          "noOutput": "Es wurde nichts geschrieben.",
+          "stoppedPlain": "Angehalten, ohne fertig zu werden.",
+          "finishedNoFiles": "Fertig, ohne Dateien zu ändern.",
+          "working_one": "In Arbeit: bisher {{count}} Schritt.",
+          "working_other": "In Arbeit: bisher {{count}} Schritte.",
+          "starting": "Fängt gerade erst an.",
+          "conflict": "Fertig, aber ihre Änderungen kollidieren mit dem, was andere Aufgaben geschrieben haben.",
+          "waiting": "Wartet zuerst auf das Ende von {{tasks}}.",
+          "queued": "Startet, sobald Platz frei ist.",
+          "needsInput": "Pausiert: Sie hat dir eine Frage gestellt.",
+          "needsApproval": "Pausiert: Sie braucht deine Genehmigung, um fortzufahren.",
+          "skipped": "Übersprungen.",
+          "verifyBlocked": "Fertig, aber die Prüfung konnte nicht sagen, ob es stimmt."
+        },
+        "took": "Hat {{time}} gearbeitet",
+        "running": "Läuft seit {{time}}",
+        "toggle": "Was passiert ist",
+        "asked": "Was verlangt wurde",
+        "did": "Was sie getan hat",
+        "stoppedAt": "Wo sie stehen geblieben ist",
+        "noRecord": "Für diese Aufgabe ist keine Schritt-für-Schritt-Aufzeichnung verfügbar.",
+        "more_one": "und {{count}} weiterer Schritt",
+        "more_other": "und {{count}} weitere Schritte",
+        "step": {
+          "read": "{{label}} gelesen",
+          "readMany_one": "{{count}} Datei gelesen",
+          "readMany_other": "{{count}} Dateien gelesen",
+          "search_one": "Das Projekt durchsucht",
+          "search_other": "Das Projekt {{count}}-mal durchsucht",
+          "write": "{{label}} geschrieben",
+          "writeMany_one": "{{count}} Datei geschrieben",
+          "writeMany_other": "{{count}} Dateien geschrieben",
+          "ran": "{{label}} ausgeführt",
+          "ranFailed": "{{label}} ausgeführt, und es ist fehlgeschlagen"
+        },
+        "next": {
+          "retry": "Versuche es erneut und sag, was sie anders machen soll.",
+          "conflict": "Öffne die Unterhaltung und bitte sie, auf den neuesten Ergebnissen neu aufzubauen, oder überspringe sie.",
+          "open": "Sie hat ihre Wiederholungen aufgebraucht. Öffne die Unterhaltung, um zu sehen, wo sie hängen geblieben ist, oder überspringe sie.",
+          "answer": "Öffne die Unterhaltung und beantworte ihre Frage.",
+          "approve": "Öffne die Unterhaltung und genehmige oder lehne die Anfrage ab.",
+          "verify": "Prüfe es erneut, oder akzeptiere es selbst, wenn du siehst, dass es passt.",
+          "help": "Hier ist ein anderer Ansatz nötig. Der vorgeschlagene Hinweis ist schon eingetragen; ändere ihn nach Belieben und versuche es erneut."
+        },
+        "hintLabel": "Sag ihr, was sie anders machen soll",
+        "openConversation": "Unterhaltung öffnen"
+      },
+      "summary": {
+        "title": "Das Gesamtbild",
+        "goal": "Was du verlangt hast",
+        "plan": "Wie es aufgeteilt wurde",
+        "sideBySide_one": "{{count}} Aufgabe lief für sich",
+        "sideBySide_other": "Diese {{count}} Aufgaben liefen parallel",
+        "waitsFor": "{{task}} wartet auf {{tasks}}",
+        "time": "Zeit",
+        "timeSoFar": "bisher {{time}}",
+        "timeTotal": "insgesamt {{time}}",
+        "result": "Ergebnis",
+        "cost": "Kosten",
+        "costTokens": "Etwa {{tokens}} Tokens",
+        "costBudget": "Etwa {{tokens}} Tokens von deinem Budget von {{budget}}",
+        "branch": "Wo die Ergebnisse sind",
+        "branchBody": "Alles wird auf einem eigenen Branch gesammelt, {{branch}}. Deine eigenen Dateien bleiben unangetastet, bis du es prüfst und anwendest.",
+        "copy": "Branch-Namen kopieren",
+        "copied": "Kopiert",
+        "wrapUp": {
+          "doneTitle": "Alles erledigt",
+          "reviewTitle": "Bereit für deine Prüfung",
+          "built": "Was gebaut wurde",
+          "tasks": "Erledigte Aufgaben",
+          "files": "Geänderte Dateien",
+          "lines": "Geänderte Zeilen",
+          "skipped": "{{count}} übersprungen"
+        }
+      },
+      "effort": "Etwa {{percent}} % der Arbeit sind erledigt",
+      "recovery": {
+        "checkAgain": "Erneut prüfen",
+        "accept": "Trotzdem akzeptieren",
+        "acceptWhy": "Warum ist es in Ordnung, das zu akzeptieren? Eine Zeile, wird bei der Aufgabe gespeichert.",
+        "acceptConfirm": "Akzeptieren",
+        "accepted": "Von dir akzeptiert",
+        "acceptedWhy": "Von dir akzeptiert: {{reason}}",
+        "blocks": "Warten darauf: {{tasks}}."
+      },
+      "changes": {
+        "title": "Alles, was diese Kampagne geändert hat",
+        "body": "Alle fertigen Aufgaben zusammen, Datei für Datei. Von hier aus wird nichts auf deinen Ordner angewendet.",
+        "continue": "Bauen und testen, dann prüfen"
+      },
+      "conflict": {
+        "explain": "Diese Aufgabe und eine andere haben dieselben Zeilen geändert, daher konnte Flint sie nicht allein zusammenführen.",
+        "files": "Dateien im Konflikt",
+        "resolve": "Automatisch lösen versuchen",
+        "skip": "Aufgabe überspringen",
+        "resolving": "Konflikt wird gelöst...",
+        "resolvingFiles": "Konflikt in {{count}} Dateien wird gelöst..."
+      },
+      "verify": {
+        "verdict": "Vom Verifizierer geprüft",
+        "verdicts": {
+          "PASS": "Bestanden",
+          "PARTIAL": "Teilweise erledigt",
+          "FAIL": "Nicht bestanden",
+          "BLOCKED": "Keine Entscheidung möglich"
+        },
+        "testsPassed": "Tests bestanden",
+        "testsFailed": "Tests fehlgeschlagen",
+        "testsFailedTail": "Tests fehlgeschlagen: {{tail}}",
+        "tokens": "Für die Prüfung verbrauchte Tokens"
+      },
+      "progressLabelSkipped": "{{done}} erledigt · {{skipped}} übersprungen · {{total}} Aufgaben",
+      "groupProgressSkipped": "{{done}} erledigt · {{skipped}} übersprungen · {{status}}",
+      "effortGateFailed": "Die abschließenden Prüfungen sind fehlgeschlagen, daher ist die Arbeit nicht fertig",
+      "stranded": {
+        "explain": "Diese Aufgabe wartet auf {{tasks}}, was übersprungen wurde, daher kann sie nicht von selbst starten.",
+        "skipToo": "Diese ebenfalls überspringen",
+        "runWithout": "Ohne sie ausführen"
+      },
+      "skipConfirm": {
+        "title": "„{{task}}“ überspringen?",
+        "body_one": "{{count}} weitere Aufgabe wartet darauf. Sie ebenfalls überspringen oder ohne diese laufen lassen?",
+        "body_other": "{{count}} weitere Aufgaben warten darauf. Sie ebenfalls überspringen oder ohne diese laufen lassen?",
+        "cascade_one": "Sie und die Aufgabe, die darauf wartet, überspringen",
+        "cascade_other": "Sie und die {{count}} Aufgaben, die darauf warten, überspringen",
+        "release": "Sie überspringen, die anderen ohne sie ausführen"
+      },
+      "gate": {
+        "title": "Prüfungen fehlgeschlagen",
+        "body": "Die Arbeit wurde zusammengeführt, aber die abschließende Build- und Testprüfung ist nicht bestanden, daher ist sie nicht bereit zum Anwenden.",
+        "command": "Befehl",
+        "result": "Ergebnis",
+        "exit": "Exit-Code {{code}}",
+        "noExit": "Nicht normal beendet",
+        "timedOut": "Zeitüberschreitung",
+        "output": "Letzte Ausgabezeilen",
+        "copy": "Kopieren",
+        "copied": "Kopiert",
+        "fix": "Automatisch beheben",
+        "retry": "Prüfungen erneut ausführen",
+        "reviewAnyway": "Trotzdem prüfen",
+        "reviewWarning": "Die abschließenden Prüfungen sind fehlgeschlagen. Prüfe die Änderungen mit diesem Wissen."
+      },
+      "recheck": {
+        "again": "Wird erneut geprüft…",
+        "stalled": "Die Prüfung dauert länger als erwartet."
+      }
+    },
+    "changes": {
+      "loading": "Änderungen werden angesehen…",
+      "unavailable": "Die Änderungen konnten nicht gelesen werden. Öffne die Sitzung, um sie zu sehen.",
+      "none": "Diese Aufgabe hat keine Dateien geändert.",
+      "files_one": "{{count}} Datei",
+      "files_other": "{{count}} Dateien",
+      "namesOnly": "Für diese Aufgabe sind nur die Dateinamen bekannt.",
+      "uncommitted": "Ein Teil dieser Arbeit ist noch nicht auf dem Branch der Aufgabe gespeichert.",
+      "cut": "Eine lange Liste wurde gekürzt.",
+      "kind": {
+        "new": "Neu",
+        "edited": "Bearbeitet",
+        "deleted": "Gelöscht",
+        "renamed": "Umbenannt"
+      },
+      "binary": "binär",
+      "binaryNote": "Das ist keine Textdatei, daher gibt es nichts anzuzeigen.",
+      "renamedFrom": "Umbenannt von {{from}}",
+      "showMore_one": "{{count}} weitere Zeile anzeigen",
+      "showMore_other": "{{count}} weitere Zeilen anzeigen",
+      "fileCut": "Diese Änderung ist lang, daher wird nur der Anfang angezeigt.",
+      "noPatch": "Für diese Datei gibt es keine zeilenweise Ansicht."
+    },
+    "start": {
+      "title": "Neue Kampagne",
+      "menu": "Neue Kampagne",
+      "prompt": "Beschreibe die große Aufgabe. Flint plant, wie sie aufgeteilt wird.",
+      "goalLabel": "Was soll die Kampagne tun?",
+      "placeholder": "Zum Beispiel: Dunkelmodus in der ganzen App hinzufügen, mit Tests",
+      "hint": "Bis zu {{n}} Threads arbeiten gleichzeitig. Du kannst das in den Einstellungen ändern.",
+      "folder": "In {{folder}}",
+      "go": "Starten",
+      "noFolder": "Öffne einen git-Ordner, um eine Kampagne zu starten",
+      "error": {
+        "no-model": "Wähle zuerst ein Modell, das Werkzeuge nutzen kann (Modelle in der Seitenleiste oder die Modellauswahl), und starte dann erneut.",
+        "failed": "Flint konnte die Kampagnensitzung nicht öffnen. Es wurde nichts gestartet; versuche es erneut."
+      }
+    },
+    "nav": "Kampagnen",
+    "list": {
+      "subtitle": "Große Aufgaben, in Teile aufgeteilt, an denen mehrere Agenten parallel arbeiten.",
+      "start": "Kampagne starten",
+      "empty": "Noch keine Kampagnen",
+      "emptyHint": "Eine Kampagne nimmt eine große Aufgabe, teilt sie in kleinere auf und lässt mehrere Agenten gleichzeitig daran arbeiten, jeden auf seinem eigenen Branch.",
+      "doneOf": "{{done}} von {{total}} erledigt",
+      "planning": "Planung",
+      "updated": "Aktualisiert {{when}}",
+      "loading": "Kampagnen werden geladen",
+      "loadFailed": "Kampagnen konnten nicht geladen werden.",
+      "retry": "Wiederholen"
+    },
+    "plan": {
+      "edit": "Plan bearbeiten",
+      "save": "Änderungen speichern",
+      "discard": "Änderungen verwerfen",
+      "saved": "Plan gespeichert.",
+      "saveFailed": "Der Plan konnte nicht gespeichert werden: {{reason}}",
+      "unsaved": "Noch nicht gespeichert",
+      "saveFirst": "Speichere oder verwirf deine Planänderungen, bevor du erlaubst.",
+      "addTask": "Aufgabe hinzufügen",
+      "count": "{{count}} von {{max}} Aufgaben",
+      "after": "Nach: {{tasks}}",
+      "moveUp": "{{task}} nach oben",
+      "moveDown": "{{task}} nach unten",
+      "remove": "{{task}} entfernen",
+      "addAfter": "Eine Aufgabe hinzufügen, auf die gewartet wird",
+      "removeAfter": "Diese Abhängigkeit entfernen",
+      "field": {
+        "title": "Aufgabenname",
+        "brief": "Was zu tun ist",
+        "acceptance": "Woran wir erkennen, dass sie fertig ist (eine pro Zeile)",
+        "paths": "Dateien und Ordner, die sie ändern darf (einer pro Zeile)",
+        "pathsHint": "src/feature",
+        "after": "Startet nach"
+      },
+      "estimate": {
+        "one": "Etwa {{tokens}} Tokens",
+        "range": "Etwa {{low}} bis {{high}} Tokens",
+        "basis": "Hängt ab von: {{basis}}",
+        "generic": "Hängt davon ab, wie viele Dateien die Aufgaben lesen und wie oft eine Prüfung wiederholt werden muss."
+      },
+      "issue": {
+        "noTasks": "Füge mindestens eine Aufgabe hinzu.",
+        "tooMany": "{{count}} Aufgaben sind zu viele; das Limit ist {{max}}.",
+        "emptyTitle": "Eine Aufgabe hat keinen Namen.",
+        "emptyBrief": "{{task}} braucht eine Beschreibung dessen, was zu tun ist.",
+        "badPath": "{{task}}: „{{path}}“ ist kein Ordner und keine Datei im Projekt.",
+        "selfDependency": "{{task}} kann nicht auf sich selbst warten.",
+        "unknownDependency": "{{task}} wartet auf eine Aufgabe, die nicht mehr existiert.",
+        "cycle": "Diese Aufgaben warten aufeinander: {{tasks}}.",
+        "overlap": "{{a}} und {{b}} würden gleichzeitig laufen, ändern aber beide {{path}}. Lass eine auf die andere warten."
+      }
+    }
   }
 }

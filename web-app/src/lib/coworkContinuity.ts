@@ -177,8 +177,15 @@ export function decideOpening(input: {
   text: string
   /** An existing record, when the session already has one. */
   record?: ContinuityRecord | null
+  /**
+   * The session is a campaign task. Its brief came from an approved plan, not
+   * from a remark to inspect, and it works in its own worktree: it starts
+   * executing from turn one.
+   */
+  campaignTask?: boolean
 }): OpeningDecision {
   if (!input.folder) return 'follow-the-request'
+  if (input.campaignTask) return 'follow-the-request'
   // Answering a proposal is not a fresh opening, whatever it says.
   if (input.record && input.record.state === 'awaiting-continuation') {
     return 'follow-the-request'

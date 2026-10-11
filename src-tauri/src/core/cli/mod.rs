@@ -24,7 +24,7 @@ pub mod memory_cmd;
 pub mod migrate_cmd;
 /// `jan mcp serve`: the other direction, Jan's toolset served over MCP.
 pub mod mcp_serve;
-mod model_capabilities;
+pub(crate) mod model_capabilities;
 mod path_refs;
 /// `jan cli agent schema`: the protocol's JSON Schema, generated from the types.
 pub mod protocol_schema;
@@ -32,6 +32,8 @@ pub mod protocol_schema;
 pub mod rpc;
 /// `jan cli agent rpc-schema`: the RPC request and event schemas.
 pub mod rpc_schema;
+/// The turn steps the stdio RPC loop and the HTTP session runner share.
+pub(crate) mod turn_host;
 pub mod providers;
 pub mod run_report;
 pub mod archive_cmd;
@@ -308,7 +310,7 @@ pub fn cli_delete_thread(thread_id: &str) -> Result<(), String> {
 /// has no repository in hand to drop the ref from (Jozkah/jan#143).
 pub(crate) const SNAPSHOT_REPO_KEY: &str = "snapshot_repo";
 
-fn delete_thread_at(data_folder: &std::path::Path, thread_id: &str) -> Result<(), String> {
+pub(crate) fn delete_thread_at(data_folder: &std::path::Path, thread_id: &str) -> Result<(), String> {
     use std::fs;
 
     // Read where the snapshots live before the thread's files go away.
@@ -410,6 +412,12 @@ pub fn cli_save_thread(
                 if let Some(v) = m.get(key) {
                     record[key] = v.clone();
                 }
+            }
+            // The copy on disk goes through the shared redactor; the in-memory
+            // history the model sees is untouched.
+            secrets::scrub_json(&mut record["content"]);
+            if let Some(calls) = record.get_mut("tool_calls") {
+                secrets::scrub_json(calls);
             }
             Some(record)
         })
@@ -900,12 +908,13 @@ fn resolve_cost_ceiling(
     })?;
     // prices.toml is dollars per million tokens.
     let per_token = |per_million: f64| per_million / 1_000_000.0;
+    let (cache_read, cache_write) = price.cache_rates(model);
     Ok(Some(crate::core::agent::session::CostCeiling {
         rates: crate::core::agent::session::TokenRates {
             prompt_usd: per_token(price.input),
             completion_usd: per_token(price.output),
-            cache_read_usd: price.cached_input.map(per_token),
-            cache_write_usd: None,
+            cache_read_usd: Some(per_token(cache_read)),
+            cache_write_usd: Some(per_token(cache_write)),
         },
         max_usd,
     }))
@@ -1670,7 +1679,7 @@ fn resolve_workspace(
 
 /// Resolve project config + credentials into a ready-to-run engine handle.
 /// Shared by `run_agent_loop` (plain CLI) and `cli_agent_ui` (TUI).
-fn prepare_agent_session(
+pub(crate) fn prepare_agent_session(
     project: &str,
     model_override: Option<String>,
     overrides: ProviderOverrides,
@@ -4674,6 +4683,41 @@ mod tests {
     }
 
     #[test]
+    fn saved_thread_file_has_no_raw_secrets_but_keeps_prose() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        let history = vec![
+            serde_json::json!({ "role": "user", "content": "run it" }),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call_1", "type": "function",
+                    "function": {"name": "bash", "arguments":
+                        "{\"command\":\"curl -H 'Authorization: Bearer abcdefghij1234567890' https://x.test\"}"}
+                }],
+            }),
+            serde_json::json!({
+                "role": "tool", "tool_call_id": "call_1",
+                "content": "API_KEY= hunter2x\n{\"token\":\"abcdefghij\"}\nPATH=/usr/bin max_tokens 4096",
+            }),
+        ];
+        let id = cli_save_thread(base, None, "m", &history, None).unwrap();
+        let text = std::fs::read_to_string(get_messages_path(base, &id)).unwrap();
+        for secret in ["hunter2x", "abcdefghij1234567890", "abcdefghij\\\""] {
+            assert!(!text.contains(secret), "{secret} reached disk: {text}");
+        }
+        assert!(text.contains("PATH=/usr/bin max_tokens 4096"), "{text}");
+        for line in text.lines() {
+            serde_json::from_str::<serde_json::Value>(line).expect("line parses");
+        }
+        let calls = &read_messages_from_file(base, &id).unwrap()[1]["tool_calls"];
+        assert_eq!(calls[0]["id"], "call_1");
+        let args = calls[0]["function"]["arguments"].as_str().unwrap();
+        serde_json::from_str::<serde_json::Value>(args).expect("arguments stay JSON");
+    }
+
+    #[test]
     fn resume_cycle_preserves_thread_id_and_history() {
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path();
@@ -5569,6 +5613,7 @@ mod tests {
                 input: 3.0,
                 output: 15.0,
                 cached_input: Some(0.3),
+                cache_write: None,
             },
         );
         let ceiling = resolve_cost_ceiling(Some(0.0), None, &prices, "anthropic/claude-x")

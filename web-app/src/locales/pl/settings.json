@@ -693,5 +693,424 @@
     "noVisionModel": "Brak modelu, który widzi. Dodaj go lub oznacz model jako obsługujący obraz.",
     "embed": "Umożliwij wyszukiwanie w załączonych obrazach",
     "embedDesc": "Zapisuje też opis każdego obrazu wraz z dokumentami czatu, aby można go było później wyszukać. Każdy załączony obraz jest wysyłany do modelu opisującego."
+  },
+  "campaigns": {
+    "title": "Kampanie",
+    "maxParallel": "Równoległe wątki kampanii",
+    "maxParallelDesc": "Ile zadań kampanii może działać jednocześnie, każde we własnym panelu. Od 1 do 6. Zmiana działa od razu na trwającą kampanię; liczba wolnych paneli nadal ją ogranicza.",
+    "board": {
+      "dot": {
+        "queued": "W kolejce",
+        "blocked": "Zablokowane",
+        "running": "W toku",
+        "needsYou": "Wymaga Ciebie",
+        "verifying": "Weryfikacja",
+        "verified": "Zweryfikowane",
+        "merged": "Scalone",
+        "failed": "Niepowodzenie",
+        "conflict": "Konflikt",
+        "cancelled": "Anulowane",
+        "planning": "Planowanie",
+        "review": "Gotowe do przeglądu"
+      },
+      "status": {
+        "draft": "wersja robocza",
+        "planned": "zaplanowana",
+        "approved": "zatwierdzona",
+        "running": "w toku",
+        "paused": "wstrzymana",
+        "reviewing": "w przeglądzie",
+        "merging": "scalanie",
+        "done": "gotowa",
+        "failed": "nieudana",
+        "cancelled": "anulowana",
+        "interrupted": "przerwana"
+      },
+      "openBoard": "Otwórz tablicę kampanii",
+      "notFound": "Nie znaleziono tej kampanii.",
+      "loading": "Wczytywanie kampanii…",
+      "budget": {
+        "label": "Budżet tokenów",
+        "used": "Tokeny: {{used}} z {{budget}}",
+        "none": "Tokeny: {{used}}, bez ustawionego budżetu"
+      },
+      "parallel": "Limit równoległości: {{n}}",
+      "card": {
+        "branch": "Branch",
+        "noBranch": "brak brancha"
+      },
+      "action": {
+        "open": "Otwórz sesję",
+        "note": "Wyślij notatkę",
+        "stop": "Zatrzymaj",
+        "retry": "Ponów",
+        "skip": "Pomiń",
+        "handoff": "Zobacz przekazanie",
+        "diff": "Zobacz zmiany",
+        "pause": "Wstrzymaj",
+        "resume": "Wznów",
+        "cancel": "Anuluj kampanię",
+        "review": "Przejrzyj i zastosuj",
+        "send": "Wyślij",
+        "close": "Zamknij",
+        "confirm": "Potwierdź",
+        "reviewChanges": "Przejrzyj zmiany",
+        "openCoordinator": "Otwórz koordynatora",
+        "openCowork": "Otwórz Cowork, aby kontynuować"
+      },
+      "note": {
+        "title": "Notatka do: {{task}}",
+        "placeholder": "Napisz zadaniu, co ma zrobić inaczej",
+        "sent": "Notatka wysłana"
+      },
+      "handoff": {
+        "title": "Przekazanie: {{task}}",
+        "empty": "Nie zapisano jeszcze przekazania."
+      },
+      "diff": {
+        "title": "Pliki zmienione przez: {{task}}",
+        "empty": "Dla tego zadania nie zapisano żadnych zmian w plikach."
+      },
+      "review": {
+        "title": "Przejrzyj i zastosuj",
+        "body": "Uruchomi to końcową kontrolę na scalonym wyniku, a potem utworzy jedną propozycję dla Twojego checkoutu. Nic nie zostanie zastosowane, dopóki jej nie zatwierdzisz.",
+        "command": "Polecenie kontroli: {{command}}",
+        "noCommand": "Nie skonfigurowano ani nie wykryto polecenia budowania lub testów, więc scalony wynik nie zostanie zbudowany ani przetestowany.",
+        "proposal": "Propozycja utworzona. Przejrzyj ją i zastosuj na tej tablicy.",
+        "failed": "Kontrola nie przeszła; kampania pozostaje w przeglądzie."
+      },
+      "cancelConfirm": {
+        "title": "Anulować tę kampanię?",
+        "body": "Wszystkie nieukończone zadania zostaną anulowane, a działające zatrzymane. Worktree zostają."
+      },
+      "proposal": {
+        "title": "Zmiany kampanii",
+        "loading": "Wczytywanie propozycji…",
+        "missing": "Nie znaleziono propozycji. Uruchom ponownie Przejrzyj i zastosuj."
+      },
+      "resumed": "Wznowiono zadania przerwane po zatrzymaniu aplikacji: {{n}}.",
+      "stalled": "Zadania pokazane jako w toku, których nic nie wykonuje w tym oknie: {{n}}. Otwórz Cowork, aby je kontynuować.",
+      "noteState": {
+        "sent": "Notatka wysłana",
+        "delivered": "Notatka dostarczona do zadania"
+      },
+      "error": "Akcja nie powiodła się: {{reason}}",
+      "headline": {
+        "planning": "Planowanie pracy",
+        "working": "W toku: ukończono {{done}} z {{total}} zadań",
+        "attention_one": "Wymaga Twojej uwagi: zadań czekających na Ciebie: {{count}}",
+        "attention_other": "Wymaga Twojej uwagi: zadań czekających na Ciebie: {{count}}",
+        "review": "Gotowe do Twojego przeglądu",
+        "merging": "Łączenie wyników",
+        "paused": "Wstrzymano: ukończono {{done}} z {{total}} zadań",
+        "interrupted": "Zatrzymano po zamknięciu aplikacji: ukończono {{done}} z {{total}} zadań",
+        "done": "Wszystko gotowe",
+        "failed": "Ta kampania nie mogła zostać ukończona",
+        "cancelled": "Anulowana",
+        "gateFailed": "Końcowe kontrole nie przeszły: praca jest scalona, ale niezweryfikowana"
+      },
+      "progressLabel": "Ukończono {{done}} z {{total}} zadań",
+      "planning": "Planowanie… czekam na plan koordynatora.",
+      "group": {
+        "needsYou": "Wymaga Ciebie",
+        "working": "W toku",
+        "upNext": "Dalej",
+        "done": "Gotowe",
+        "skipped": "Pominięte"
+      },
+      "word": {
+        "writing": "Pisanie kodu",
+        "checking": "Sprawdzanie wyniku",
+        "ready": "Sprawdzone, gotowe do scalenia",
+        "needsInput": "Czeka na Twoją odpowiedź",
+        "needsApproval": "Czeka na Twoją zgodę",
+        "failed": "Nie wyszło",
+        "conflict": "Koliduje z innymi zmianami",
+        "waiting": "Czeka na: {{tasks}}",
+        "queued": "Wystartuje wkrótce",
+        "merged": "Scalone",
+        "skipped": "Pominięte",
+        "resolving": "Rozwiązywanie konfliktu",
+        "verifyBlocked": "Zakończone, ale kontrola nie mogła rozstrzygnąć",
+        "waitingSkipped": "Czeka na: {{tasks}} (pominięte)"
+      },
+      "row": {
+        "open": "Otwórz",
+        "details": "Szczegóły",
+        "attempts": "Próby",
+        "tokens": "Zużyte tokeny",
+        "lastActivity": "Ostatnia aktywność",
+        "seeChanges": "Zobacz, co zmieniło zadanie {{task}}"
+      },
+      "details": "Szczegóły",
+      "detailBranch": "Wyniki są zbierane w {{branch}}",
+      "statusWord": {
+        "draft": "Start",
+        "planned": "Start",
+        "approved": "Start",
+        "running": "W toku",
+        "paused": "Wstrzymana",
+        "reviewing": "Gotowa do przeglądu",
+        "merging": "Scalanie",
+        "done": "Gotowa",
+        "failed": "Niepowodzenie",
+        "cancelled": "Anulowana",
+        "interrupted": "Zatrzymana"
+      },
+      "groupProgress": "Ukończono {{done}} z {{total}} · {{status}}",
+      "fold": "Ukryj sesje: {{title}}",
+      "unfold": "Pokaż sesje: {{title}}",
+      "story": {
+        "wrote_one": "Zapisano plików: {{count}}, +{{added}} −{{removed}} wierszy",
+        "wrote_other": "Zapisano plików: {{count}}, +{{added}} −{{removed}} wierszy",
+        "wroteUncounted_one": "Zapisano plików: {{count}}",
+        "wroteUncounted_other": "Zapisano plików: {{count}}",
+        "stop": {
+          "none": "Zatrzymało się przed ukończeniem.",
+          "one": "Zatrzymało się po nieudanym poleceniu.",
+          "many": "Zatrzymało się po nieudanych poleceniach (razy: {{count}})."
+        },
+        "headline": {
+          "noOutput": "Nic nie zapisano.",
+          "stoppedPlain": "Zatrzymano bez ukończenia.",
+          "finishedNoFiles": "Zakończono bez zmian w plikach.",
+          "working_one": "W trakcie pracy, dotąd kroków: {{count}}.",
+          "working_other": "W trakcie pracy, dotąd kroków: {{count}}.",
+          "starting": "Dopiero się zaczyna.",
+          "conflict": "Zakończone, ale zmiany kolidują z tym, co zapisały inne zadania.",
+          "waiting": "Najpierw czeka na zakończenie: {{tasks}}.",
+          "queued": "Wystartuje, gdy tylko będzie miejsce.",
+          "needsInput": "Wstrzymane: zadało Ci pytanie.",
+          "needsApproval": "Wstrzymane: potrzebuje Twojej zgody, aby kontynuować.",
+          "skipped": "Pominięte.",
+          "verifyBlocked": "Zakończone, ale kontrola nie mogła stwierdzić, czy wynik jest poprawny."
+        },
+        "took": "Czas pracy: {{time}}",
+        "running": "W toku od: {{time}}",
+        "toggle": "Co się stało",
+        "asked": "O co poproszono",
+        "did": "Co zrobiło",
+        "stoppedAt": "Gdzie się zatrzymało",
+        "noRecord": "Brak zapisu krok po kroku dla tego zadania.",
+        "more_one": "i kroków więcej: {{count}}",
+        "more_other": "i kroków więcej: {{count}}",
+        "step": {
+          "read": "Odczytano {{label}}",
+          "readMany_one": "Odczytano plików: {{count}}",
+          "readMany_other": "Odczytano plików: {{count}}",
+          "search_one": "Przeszukano projekt",
+          "search_other": "Przeszukano projekt, razy: {{count}}",
+          "write": "Zapisano {{label}}",
+          "writeMany_one": "Zapisano plików: {{count}}",
+          "writeMany_other": "Zapisano plików: {{count}}",
+          "ran": "Uruchomiono {{label}}",
+          "ranFailed": "Uruchomiono {{label}}, zakończyło się błędem"
+        },
+        "next": {
+          "retry": "Spróbuj ponownie i napisz, co ma zrobić inaczej.",
+          "conflict": "Otwórz rozmowę i poproś o odbudowanie na najnowszych wynikach albo pomiń zadanie.",
+          "open": "Wykorzystano wszystkie próby. Otwórz rozmowę, aby zobaczyć, gdzie utknęło, albo pomiń zadanie.",
+          "answer": "Otwórz rozmowę i odpowiedz na pytanie.",
+          "approve": "Otwórz rozmowę i zatwierdź lub odrzuć prośbę.",
+          "verify": "Sprawdź ponownie albo zaakceptuj sam, jeśli widzisz, że jest dobrze.",
+          "help": "Potrzebne jest inne podejście. Podpowiedź jest już wpisana; zmień ją, jeśli chcesz, i ponów."
+        },
+        "hintLabel": "Napisz, co ma zrobić inaczej",
+        "openConversation": "Otwórz rozmowę"
+      },
+      "summary": {
+        "title": "Pełny obraz",
+        "goal": "O co prosiłeś",
+        "plan": "Jak to podzielono",
+        "sideBySide_one": "Zadanie wykonane osobno: {{count}}",
+        "sideBySide_other": "Zadania wykonane równolegle: {{count}}",
+        "waitsFor": "{{task}} czeka na: {{tasks}}",
+        "time": "Czas",
+        "timeSoFar": "Dotąd {{time}}",
+        "timeTotal": "Łącznie {{time}}",
+        "result": "Wynik",
+        "cost": "Koszt",
+        "costTokens": "Około {{tokens}} tokenów",
+        "costBudget": "Około {{tokens}} tokenów z budżetu {{budget}}",
+        "branch": "Gdzie są wyniki",
+        "branchBody": "Wszystko jest zbierane na osobnym branchu, {{branch}}. Twoje pliki pozostają nietknięte, dopóki ich nie przejrzysz i nie zastosujesz.",
+        "copy": "Kopiuj nazwę brancha",
+        "copied": "Skopiowano",
+        "wrapUp": {
+          "doneTitle": "Wszystko gotowe",
+          "reviewTitle": "Gotowe do Twojego przeglądu",
+          "built": "Co powstało",
+          "tasks": "Ukończone zadania",
+          "files": "Zmienione pliki",
+          "lines": "Zmienione wiersze",
+          "skipped": "Pominięto: {{count}}"
+        }
+      },
+      "effort": "Ukończono około {{percent}}% pracy",
+      "recovery": {
+        "checkAgain": "Sprawdź ponownie",
+        "accept": "Zaakceptuj mimo to",
+        "acceptWhy": "Dlaczego można to zaakceptować? Jedna linijka, zapisana przy zadaniu.",
+        "acceptConfirm": "Zaakceptuj",
+        "accepted": "Zaakceptowane przez Ciebie",
+        "acceptedWhy": "Zaakceptowane przez Ciebie: {{reason}}",
+        "blocks": "To blokuje: {{tasks}}."
+      },
+      "changes": {
+        "title": "Wszystko, co zmieniła ta kampania",
+        "body": "Wszystkie ukończone zadania razem, plik po pliku. Nic nie jest stąd stosowane w Twoim folderze.",
+        "continue": "Zbuduj i przetestuj, potem przejrzyj"
+      },
+      "conflict": {
+        "explain": "To zadanie i inne zmieniły te same wiersze, więc Flint nie mógł ich sam połączyć.",
+        "files": "Pliki w konflikcie",
+        "resolve": "Spróbuj rozwiązać automatycznie",
+        "skip": "Pomiń zadanie",
+        "resolving": "Rozwiązywanie konfliktu...",
+        "resolvingFiles": "Rozwiązywanie konfliktu w plikach: {{count}}..."
+      },
+      "verify": {
+        "verdict": "Sprawdzone przez weryfikatora",
+        "verdicts": {
+          "PASS": "Zaliczone",
+          "PARTIAL": "Częściowo wykonane",
+          "FAIL": "Niezaliczone",
+          "BLOCKED": "Nie można rozstrzygnąć"
+        },
+        "testsPassed": "Testy przeszły",
+        "testsFailed": "Testy nie przeszły",
+        "testsFailedTail": "Testy nie przeszły: {{tail}}",
+        "tokens": "Tokeny zużyte na sprawdzanie"
+      },
+      "progressLabelSkipped": "Gotowe: {{done}} · pominięte: {{skipped}} · zadań: {{total}}",
+      "groupProgressSkipped": "Gotowe: {{done}} · pominięte: {{skipped}} · {{status}}",
+      "effortGateFailed": "Końcowe kontrole nie przeszły, więc praca nie jest ukończona",
+      "stranded": {
+        "explain": "To zadanie czeka na {{tasks}}, które pominięto, więc nie może wystartować samo.",
+        "skipToo": "Pomiń też to",
+        "runWithout": "Uruchom bez tego"
+      },
+      "skipConfirm": {
+        "title": "Pominąć „{{task}}”?",
+        "body_one": "Zadań czekających na to: {{count}}. Pominąć je też, czy pozwolić im działać bez tego zadania?",
+        "body_other": "Zadań czekających na to: {{count}}. Pominąć je też, czy pozwolić im działać bez tego zadania?",
+        "cascade_one": "Pomiń je i zadanie, które na nie czeka",
+        "cascade_other": "Pomiń je i zadania, które na nie czekają (liczba: {{count}})",
+        "release": "Pomiń, resztę uruchom bez niego"
+      },
+      "gate": {
+        "title": "Kontrole nie przeszły",
+        "body": "Praca została scalona, ale końcowa kontrola budowania i testów nie przeszła, więc nie jest gotowa do zastosowania.",
+        "command": "Polecenie",
+        "result": "Wynik",
+        "exit": "Kod wyjścia {{code}}",
+        "noExit": "Nie zakończyło się normalnie",
+        "timedOut": "Przekroczono czas",
+        "output": "Ostatnie wiersze wyniku",
+        "copy": "Kopiuj",
+        "copied": "Skopiowano",
+        "fix": "Napraw automatycznie",
+        "retry": "Uruchom kontrole ponownie",
+        "reviewAnyway": "Przejrzyj mimo to",
+        "reviewWarning": "Końcowe kontrole nie przeszły. Przeglądaj zmiany z tą świadomością."
+      },
+      "recheck": {
+        "again": "Ponowne sprawdzanie…",
+        "stalled": "Sprawdzanie trwa dłużej, niż oczekiwano."
+      }
+    },
+    "changes": {
+      "loading": "Sprawdzanie zmian…",
+      "unavailable": "Nie udało się odczytać zmian. Otwórz sesję, aby je zobaczyć.",
+      "none": "To zadanie nie zmieniło żadnych plików.",
+      "files_one": "Plików: {{count}}",
+      "files_other": "Plików: {{count}}",
+      "namesOnly": "Dla tego zadania znane są tylko nazwy plików.",
+      "uncommitted": "Część tej pracy nie jest jeszcze zapisana w branchu zadania.",
+      "cut": "Długą listę skrócono.",
+      "kind": {
+        "new": "Nowy",
+        "edited": "Edytowany",
+        "deleted": "Usunięty",
+        "renamed": "Zmieniono nazwę"
+      },
+      "binary": "binarny",
+      "binaryNote": "To nie jest plik tekstowy, więc nie ma czego pokazać.",
+      "renamedFrom": "Poprzednia nazwa: {{from}}",
+      "showMore_one": "Pokaż więcej wierszy: {{count}}",
+      "showMore_other": "Pokaż więcej wierszy: {{count}}",
+      "fileCut": "Ta zmiana jest długa, więc pokazano tylko początek.",
+      "noPatch": "Dla tego pliku nie ma widoku wiersz po wierszu."
+    },
+    "start": {
+      "title": "Nowa kampania",
+      "menu": "Nowa kampania",
+      "prompt": "Opisz duże zadanie. Flint zaplanuje, jak je podzielić.",
+      "goalLabel": "Co ma zrobić kampania?",
+      "placeholder": "Na przykład: dodaj tryb ciemny w całej aplikacji, z testami",
+      "hint": "Jednocześnie pracuje do {{n}} wątków. Możesz to zmienić w Ustawieniach.",
+      "folder": "W {{folder}}",
+      "go": "Start",
+      "noFolder": "Otwórz folder git, aby rozpocząć kampanię",
+      "error": {
+        "no-model": "Najpierw wybierz model obsługujący narzędzia (Modele na pasku bocznym lub selektor modelu), a potem zacznij ponownie.",
+        "failed": "Flint nie mógł otworzyć sesji kampanii. Nic nie uruchomiono; spróbuj ponownie."
+      }
+    },
+    "nav": "Kampanie",
+    "list": {
+      "subtitle": "Duże zadania podzielone na części, nad którymi pracuje równolegle kilku agentów.",
+      "start": "Rozpocznij kampanię",
+      "empty": "Brak kampanii",
+      "emptyHint": "Kampania bierze jedno duże zadanie, dzieli je na mniejsze i zleca kilku agentom, którzy pracują nad nimi jednocześnie, każdy na własnym branchu.",
+      "doneOf": "Ukończono {{done}} z {{total}}",
+      "planning": "Planowanie",
+      "updated": "Zaktualizowano {{when}}",
+      "loading": "Wczytywanie kampanii",
+      "loadFailed": "Nie udało się wczytać kampanii.",
+      "retry": "Ponów"
+    },
+    "plan": {
+      "edit": "Edytuj plan",
+      "save": "Zapisz zmiany",
+      "discard": "Odrzuć zmiany",
+      "saved": "Plan zapisany.",
+      "saveFailed": "Nie udało się zapisać planu: {{reason}}",
+      "unsaved": "Jeszcze nie zapisano",
+      "saveFirst": "Zapisz lub odrzuć zmiany w planie przed zatwierdzeniem.",
+      "addTask": "Dodaj zadanie",
+      "count": "Zadań: {{count}} z {{max}}",
+      "after": "Po: {{tasks}}",
+      "moveUp": "Przesuń w górę: {{task}}",
+      "moveDown": "Przesuń w dół: {{task}}",
+      "remove": "Usuń: {{task}}",
+      "addAfter": "Dodaj zadanie, na które trzeba poczekać",
+      "removeAfter": "Usuń tę zależność",
+      "field": {
+        "title": "Nazwa zadania",
+        "brief": "Co zrobić",
+        "acceptance": "Skąd wiadomo, że gotowe (po jednym w wierszu)",
+        "paths": "Pliki i foldery, które może zmieniać (po jednym w wierszu)",
+        "pathsHint": "src/feature",
+        "after": "Zaczyna po"
+      },
+      "estimate": {
+        "one": "Około {{tokens}} tokenów",
+        "range": "Około {{low}} do {{high}} tokenów",
+        "basis": "Zależy od: {{basis}}",
+        "generic": "Zależy od tego, ile plików czytają zadania i jak często trzeba powtarzać kontrolę."
+      },
+      "issue": {
+        "noTasks": "Dodaj co najmniej jedno zadanie.",
+        "tooMany": "Zadań: {{count}} to za dużo; limit to {{max}}.",
+        "emptyTitle": "Zadanie nie ma nazwy.",
+        "emptyBrief": "{{task}} wymaga opisu, co zrobić.",
+        "badPath": "{{task}}: „{{path}}” nie jest folderem ani plikiem w projekcie.",
+        "selfDependency": "{{task}} nie może czekać na samo siebie.",
+        "unknownDependency": "{{task}} czeka na zadanie, które już nie istnieje.",
+        "cycle": "Te zadania czekają na siebie nawzajem: {{tasks}}.",
+        "overlap": "{{a}} i {{b}} działałyby jednocześnie, ale oba zmieniają {{path}}. Niech jedno czeka na drugie."
+      }
+    }
   }
 }

@@ -138,8 +138,13 @@ export class ExtensionManager {
   /**
    * Loads all registered extension.
    */
-  async load(onProgress?: (done: number, total: number) => void) {
-    const exts = this.listExtensions()
+  async load(
+    onProgress?: (done: number, total: number) => void,
+    only?: readonly string[]
+  ) {
+    const exts = this.listExtensions().filter(
+      (e) => !only || only.includes(e.name)
+    )
     let done = 0
     onProgress?.(0, exts.length)
     const results = await Promise.allSettled(
@@ -239,9 +244,11 @@ export class ExtensionManager {
    * Registers all active extensions.
    * @returns {void}
    */
-  async registerActive() {
+  async registerActive(only?: readonly string[]) {
     // Get active extensions
-    const activeExtensions = (await this.getActive()) ?? []
+    const activeExtensions = ((await this.getActive()) ?? []).filter(
+      (e) => !only || only.includes(e.name)
+    )
     // Activate all
     await Promise.all(
       activeExtensions.map((ext: Extension) => this.activateExtension(ext))

@@ -1,0 +1,26 @@
+{
+  "title": "Server Flint",
+  "desc": "Gunakan Flint di server yang Anda jalankan, dari perangkat ini.",
+  "address": "Alamat server",
+  "addressDesc": "Alamat HTTPS dari flint serve Anda, misalnya nama Tailscale tempat ia dipublikasikan. Anda masuk di halaman server itu sendiri; aplikasi ini tidak pernah menyimpan kredensialnya.",
+  "test": "Uji koneksi",
+  "open": "Buka server",
+  "forget": "Lupakan server",
+  "checking": "Memeriksa...",
+  "statusOk": "Server Flint terjangkau.",
+  "statusReachable": "Ada yang menjawab, tetapi tidak bisa dipastikan sebagai Flint dari sini. Buka untuk mengetahuinya.",
+  "statusUnreachable": "Tidak terjangkau. Periksa alamatnya, bahwa server berjalan, dan perangkat ini bisa menjangkaunya (VPN atau Tailscale aktif).",
+  "insecure": "Alamat ini bukan HTTPS. Sesi akan dikirim tanpa enkripsi, dan Android mungkin menolaknya.",
+  "problem": {
+    "empty": "Masukkan alamat server.",
+    "invalid": "Alamat itu tidak valid.",
+    "scheme": "Gunakan alamat http atau https.",
+    "credentials": "Jangan sertakan nama pengguna dan kata sandi di alamat."
+  },
+  "auto": "Buka saat mulai",
+  "autoDesc": "Buka server saat aplikasi dimulai, setelah beberapa detik di mana Anda bisa memilih perangkat ini.",
+  "opening": "Membuka {{host}} dalam {{seconds}} dtk",
+  "useDevice": "Gunakan perangkat ini",
+  "limitsTitle": "Apa yang berjalan di mana",
+  "limits": "Obrolan, ruang, model, dan tool berjalan di server. Sesi Cowork dan Campaign membutuhkan agen yang berjalan di komputer dengan Flint terbuka: jangkau komputer itu lewat Akses jarak jauh dan aplikasi ponsel. Server headless bisa menampilkan daftar campaign dan meninjau proposal, tetapi tidak menjalankan sesi."
+}

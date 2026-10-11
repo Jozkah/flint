@@ -821,6 +821,7 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
             let cd = POWERSHELL_WORKSPACE_CD;
             let shims = POWERSHELL_CMD_SHIMS;
             let files = POWERSHELL_WORKSPACE_FILE_CMDS;
+            let node = super::node_runner::POWERSHELL_NODE_TEST_SHIM;
             format!(
                 "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{ws}' -Scope Global; \
                  Set-Location JanWorkspace:\\; [Environment]::CurrentDirectory = '{ws}'; \
@@ -829,6 +830,7 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
                  {cd}\n\
                  {shims}\n\
                  {files}\n\
+                 {node}\n\
                  {nested}\n\
                  . ([scriptblock]::Create('{body}'))\n\
                  $global:__JanThrown = @($Error | Select-Object -First ([Math]::Max(0, $Error.Count - $global:__JanErrors)) | \

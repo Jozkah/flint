@@ -1,4 +1,12 @@
-import { useMemo, useEffect, useState, useRef, useId, memo } from 'react'
+import {
+  useMemo,
+  useEffect,
+  useState,
+  useRef,
+  useId,
+  useCallback,
+  memo,
+} from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn, formatTokenCount } from '@/lib/utils'
 import {
@@ -48,6 +56,43 @@ interface TokenCounterProps {
 
 const formatExact = (num: number) => num.toLocaleString()
 
+/**
+ * Hover previews the card; a click pins it open and a second click, Escape or
+ * a click outside closes it. Radix opens a tooltip only on hover or focus and
+ * closes it on the trigger's own press, so on its own a click could not
+ * reopen the card until the pointer left and came back.
+ */
+function usePinnedCard() {
+  const [open, setOpen] = useState(false)
+  const pinned = useRef(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const onOpenChange = useCallback((next: boolean) => {
+    // A pinned card ignores the pointer leaving, blur and the press itself.
+    if (!next && pinned.current) return
+    setOpen(next)
+  }, [])
+  const dismiss = useCallback(() => {
+    pinned.current = false
+    setOpen(false)
+  }, [])
+  const toggle = useCallback(() => {
+    if (pinned.current) {
+      dismiss()
+    } else {
+      pinned.current = true
+      setOpen(true)
+    }
+  }, [dismiss])
+  const contentProps = {
+    onEscapeKeyDown: dismiss,
+    onPointerDownOutside: (e: Event) => {
+      if (triggerRef.current?.contains(e.target as Node)) return
+      dismiss()
+    },
+  }
+  return { open, onOpenChange, toggle, triggerRef, contentProps }
+}
+
 export const TokenCounter = memo(function TokenCounter({
   messages = [],
   className,
@@ -58,6 +103,7 @@ export const TokenCounter = memo(function TokenCounter({
   onSetPrice,
 }: TokenCounterProps) {
   const { t } = useTranslation()
+  const card = usePinnedCard()
   const { calculateTokens, ...tokenData } = useTokensCount(messages, source)
   // Which conversation these numbers belong to, stamped on the badge and its
   // popover so nothing -- a test, a screen reader, a stale portal left over
@@ -286,15 +332,20 @@ export const TokenCounter = memo(function TokenCounter({
 
   return (
     <TooltipProvider delayDuration={isUpdating ? 1200 : 400}>
-      <Tooltip>
+      <Tooltip open={card.open} onOpenChange={card.onOpenChange}>
         <TooltipTrigger asChild>
           <button
+            ref={card.triggerRef}
             type="button"
             aria-label={t('common:a11y.tokenUsage')}
+            aria-expanded={card.open}
             data-testid="token-counter"
             data-usage-scope={scope}
             className={cn('relative cursor-pointer', className)}
-            onClick={handleCalculateTokens}
+            onClick={() => {
+              card.toggle()
+              handleCalculateTokens()
+            }}
           >
             {/* The composer's context ring: how full the window is, as a
                 circle and nothing else. The figures are on hover; a
@@ -330,6 +381,7 @@ export const TokenCounter = memo(function TokenCounter({
           showArrow={false}
           className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
           data-testid="token-usage-popover"
+          {...card.contentProps}
         >
           {reconciled ? (
             <div className="border-b border-border">
@@ -516,16 +568,20 @@ function TokenCountOnly({
   className?: string
 }) {
   const { t } = useTranslation()
+  const pinned = usePinnedCard()
   return (
     <TooltipProvider delayDuration={400}>
-      <Tooltip>
+      <Tooltip open={pinned.open} onOpenChange={pinned.onOpenChange}>
         <TooltipTrigger asChild>
           <button
+            ref={pinned.triggerRef}
             type="button"
             aria-label={t('common:a11y.tokenUsage')}
+            aria-expanded={pinned.open}
             data-testid="token-counter"
             data-usage-scope={scope}
-            className={cn('relative cursor-default', className)}
+            className={cn('relative cursor-pointer', className)}
+            onClick={pinned.toggle}
           >
             {/* No window size is known for this provider, so the ring has no
                 fill to show: the same ring the local models get, dashed. */}
@@ -542,6 +598,7 @@ function TokenCountOnly({
           showArrow={false}
           className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
           data-testid="token-usage-popover"
+          {...pinned.contentProps}
         >
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
             <Brain className="size-4 text-muted-foreground shrink-0" />

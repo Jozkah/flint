@@ -113,6 +113,7 @@
   "keyboardShortcuts": "快捷鍵",
   "home": "首頁",
   "cowork": "Cowork",
+  "campaign": "戰役",
   "newSession": "新工作階段",
   "artifacts": "成品",
   "customize": "自訂",
@@ -1473,7 +1474,8 @@
   "drop": {
     "openInCode": "拖放以開啟 — 唯讀",
     "attachToMessage": "拖放以附加到你的訊息",
-    "releaseToAttach": "放開以附加"
+    "releaseToAttach": "放開以附加",
+    "releaseToAttachCount": "放開以附加 {{count}} 個檔案"
   },
   "coworkRunSettings": {
     "label": "執行設定",
@@ -2066,7 +2068,12 @@
     "usageOverview": "用量總覽",
     "movedTo": "已移到 {{name}}",
     "notifications": "通知",
-    "approvalWaiting": "核准等待中"
+    "approvalWaiting": "核准等待中",
+    "tabs": "側邊欄檢視",
+    "tabChat": "聊天",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "排程"
   },
   "systemNav": {
     "label": "診斷",
@@ -2481,5 +2488,14 @@
     "stop": "停止",
     "retry": "重試",
     "downloading": "下載中…"
+  },
+  "composerChip": {
+    "list": "已附加的檔案",
+    "pastedImage": "貼上的圖片 {{n}}",
+    "open": "預覽 {{name}}",
+    "noVision": "此模型無法讀取圖片",
+    "details": "{{name}} 的詳細資料",
+    "previewLoading": "正在載入預覽…",
+    "previewNone": "沒有可用的預覽"
   }
 }

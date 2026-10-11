@@ -12,6 +12,8 @@ export type Route =
   | { name: 'cowork'; id: string }
   | { name: 'room'; id: string }
   | { name: 'rooms' }
+  | { name: 'campaigns' }
+  | { name: 'campaign'; id: string }
   | { name: 'overview' }
   | { name: 'library' }
   | { name: 'studio' }
@@ -27,6 +29,7 @@ export type Route =
 
 const SIMPLE = [
   'rooms',
+  'campaigns',
   'overview',
   'library',
   'studio',
@@ -47,6 +50,7 @@ export function routeToHash(r: Route): string {
     case 'chat':
     case 'cowork':
     case 'room':
+    case 'campaign':
       return `#/${r.name}/${encodeURIComponent(r.id)}`
     case 'settings-sub':
       return `#/settings/${encodeURIComponent(r.sub)}`
@@ -72,6 +76,7 @@ export function hashToRoute(hash: string): Route {
   if (!head) return { name: 'home' }
   if (head === 'new' && (arg === 'cowork' || arg === 'room' || arg === 'chat')) return { name: 'home', mode: arg }
   if ((head === 'chat' || head === 'cowork' || head === 'room') && arg) return { name: head, id: arg }
+  if (head === 'campaign' && arg) return { name: 'campaign', id: arg }
   if (head === 'settings' && arg) return { name: 'settings-sub', sub: arg }
   if ((SIMPLE as readonly string[]).includes(head)) return { name: head } as Route
   return { name: 'home' }

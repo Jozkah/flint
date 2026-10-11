@@ -19,6 +19,8 @@ import { t } from '../i18n'
 // whole viewport for a loading placeholder. Less frequently used screens can
 // still load on demand to keep the initial phone bundle modest.
 const Rooms = lazy(() => import('../screens/Rooms'))
+const Campaigns = lazy(() => import('../screens/Campaigns'))
+const Campaign = lazy(() => import('../screens/Campaign'))
 const Overview = lazy(() => import('../screens/Overview'))
 const Library = lazy(() => import('../screens/Library'))
 const Studio = lazy(() => import('../screens/Studio'))
@@ -45,6 +47,8 @@ function Screen({ route }: { route: Route }) {
       return <Cowork id={route.id} />
     case 'room':
       return <Room id={route.id} />
+    case 'campaign':
+      return <Campaign id={route.id} />
     case 'settings-sub':
       return <SettingsSub sub={route.sub} />
     case 'remote':
@@ -52,6 +56,7 @@ function Screen({ route }: { route: Route }) {
     default: {
       const map: Record<string, ComponentType> = {
         rooms: Rooms,
+        campaigns: Campaigns,
         overview: Overview,
         library: Library,
         studio: Studio,

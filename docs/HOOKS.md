@@ -65,6 +65,16 @@ A hook fails when it exits non-zero, times out, is cancelled, or cannot start.
 - `warn` lets the work proceed and reports the failure.
 - `ignore` records the run and nothing else.
 
+Per event: `pre-tool` honors all three (`block` is the only way a hook stops a
+call; the default `warn` lets it run). `post-tool`, `post-tool-batch` and
+`run-end` accept `warn` and `ignore` only, because the work has already
+happened. There is no `prompt-submit` event in this file, so `block` cannot be
+configured for one: the `UserPromptSubmit` hooks imported from Claude Code
+(`~/.claude`, see `cc_hooks.rs`) only add context. A prompt hook that fails or
+times out adds nothing and the prompt goes on unchanged (fail open); a turn
+that is stopped while they run is refused instead of being sent on unchecked
+(fail closed).
+
 ## What a hook is told
 
 Only these environment variables (the `JAN_` names are kept as legacy aliases

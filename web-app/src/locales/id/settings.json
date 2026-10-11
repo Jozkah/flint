@@ -687,5 +687,424 @@
     "noVisionModel": "Tidak ada model yang bisa melihat. Tambahkan satu atau tandai model sebagai mampu melihat.",
     "embed": "Buat gambar terlampir bisa dicari",
     "embedDesc": "Simpan juga deskripsi tiap gambar bersama dokumen obrolan agar bisa dicari nanti. Ini mengirim setiap gambar terlampir ke model deskripsi."
+  },
+  "campaigns": {
+    "title": "Campaign",
+    "maxParallel": "Utas paralel campaign",
+    "maxParallelDesc": "Berapa banyak tugas campaign yang boleh berjalan sekaligus, masing-masing di panel terpisah. Dari 1 sampai 6. Berlaku langsung untuk campaign yang sedang berjalan; panel kosong tetap membatasinya.",
+    "board": {
+      "dot": {
+        "queued": "Antre",
+        "blocked": "Terblokir",
+        "running": "Berjalan",
+        "needsYou": "Perlu Anda",
+        "verifying": "Memverifikasi",
+        "verified": "Terverifikasi",
+        "merged": "Digabung",
+        "failed": "Gagal",
+        "conflict": "Konflik",
+        "cancelled": "Dibatalkan",
+        "planning": "Merencanakan",
+        "review": "Siap ditinjau"
+      },
+      "status": {
+        "draft": "draf",
+        "planned": "direncanakan",
+        "approved": "disetujui",
+        "running": "berjalan",
+        "paused": "dijeda",
+        "reviewing": "meninjau",
+        "merging": "menggabungkan",
+        "done": "selesai",
+        "failed": "gagal",
+        "cancelled": "dibatalkan",
+        "interrupted": "terhenti"
+      },
+      "openBoard": "Buka papan campaign",
+      "notFound": "Campaign ini tidak ditemukan.",
+      "loading": "Memuat campaign…",
+      "budget": {
+        "label": "Anggaran token",
+        "used": "{{used}} dari {{budget}} token",
+        "none": "{{used}} token, tanpa anggaran"
+      },
+      "parallel": "Batas paralel {{n}}",
+      "card": {
+        "branch": "Branch",
+        "noBranch": "belum ada branch"
+      },
+      "action": {
+        "open": "Buka sesi",
+        "note": "Kirim catatan",
+        "stop": "Hentikan",
+        "retry": "Coba lagi",
+        "skip": "Lewati",
+        "handoff": "Lihat serah terima",
+        "diff": "Lihat perubahan",
+        "pause": "Jeda",
+        "resume": "Lanjutkan",
+        "cancel": "Batalkan campaign",
+        "review": "Tinjau & terapkan",
+        "send": "Kirim",
+        "close": "Tutup",
+        "confirm": "Konfirmasi",
+        "reviewChanges": "Tinjau perubahan",
+        "openCoordinator": "Buka koordinator",
+        "openCowork": "Buka Cowork untuk melanjutkan"
+      },
+      "note": {
+        "title": "Catatan untuk {{task}}",
+        "placeholder": "Beri tahu tugas ini apa yang harus dilakukan berbeda",
+        "sent": "Catatan terkirim"
+      },
+      "handoff": {
+        "title": "Serah terima: {{task}}",
+        "empty": "Belum ada serah terima yang ditulis."
+      },
+      "diff": {
+        "title": "File yang diubah oleh {{task}}",
+        "empty": "Tidak ada perubahan file yang tercatat untuk tugas ini."
+      },
+      "review": {
+        "title": "Tinjau dan terapkan",
+        "body": "Ini menjalankan pemeriksaan akhir pada hasil gabungan, lalu membuat satu proposal untuk checkout Anda. Tidak ada yang diterapkan sampai Anda menyetujui proposal itu.",
+        "command": "Perintah pemeriksaan akhir: {{command}}",
+        "noCommand": "Tidak ada perintah build atau tes yang dikonfigurasi atau terdeteksi, jadi hasil gabungan tidak akan di-build atau diuji.",
+        "proposal": "Proposal dibuat. Tinjau dan terapkan di papan ini.",
+        "failed": "Pemeriksaan akhir gagal; campaign tetap dalam peninjauan."
+      },
+      "cancelConfirm": {
+        "title": "Batalkan campaign ini?",
+        "body": "Setiap tugas yang belum selesai dibatalkan dan tugas yang berjalan dihentikan. Worktree tetap disimpan."
+      },
+      "proposal": {
+        "title": "Perubahan campaign",
+        "loading": "Memuat proposal…",
+        "missing": "Proposal tidak ditemukan. Jalankan Tinjau & terapkan lagi."
+      },
+      "resumed": "Melanjutkan {{n}} tugas yang terhenti saat aplikasi berhenti.",
+      "stalled": "{{n}} tugas tampak berjalan tetapi tidak ada yang menjalankannya di jendela ini. Buka Cowork untuk melanjutkannya.",
+      "noteState": {
+        "sent": "Catatan terkirim",
+        "delivered": "Catatan sudah sampai ke tugas"
+      },
+      "error": "Tindakan gagal: {{reason}}",
+      "headline": {
+        "planning": "Merencanakan pekerjaan",
+        "working": "Bekerja: {{done}} dari {{total}} tugas selesai",
+        "attention_one": "Perlu perhatian Anda: {{count}} tugas menunggu Anda",
+        "attention_other": "Perlu perhatian Anda: {{count}} tugas menunggu Anda",
+        "review": "Siap untuk Anda tinjau",
+        "merging": "Menyatukan hasil",
+        "paused": "Dijeda: {{done}} dari {{total}} tugas selesai",
+        "interrupted": "Berhenti saat aplikasi ditutup: {{done}} dari {{total}} tugas selesai",
+        "done": "Selesai semua",
+        "failed": "Campaign ini tidak dapat diselesaikan",
+        "cancelled": "Dibatalkan",
+        "gateFailed": "Pemeriksaan akhir gagal: pekerjaan sudah digabung tetapi belum terverifikasi"
+      },
+      "progressLabel": "{{done}} dari {{total}} tugas selesai",
+      "planning": "Merencanakan… menunggu rencana dari koordinator.",
+      "group": {
+        "needsYou": "Perlu Anda",
+        "working": "Berjalan",
+        "upNext": "Berikutnya",
+        "done": "Selesai",
+        "skipped": "Dilewati"
+      },
+      "word": {
+        "writing": "Menulis kode",
+        "checking": "Memeriksa hasil",
+        "ready": "Sudah diperiksa, siap digabung",
+        "needsInput": "Menunggu jawaban Anda",
+        "needsApproval": "Menunggu persetujuan Anda",
+        "failed": "Tidak berhasil",
+        "conflict": "Bentrok dengan perubahan lain",
+        "waiting": "Menunggu {{tasks}}",
+        "queued": "Segera dimulai",
+        "merged": "Digabung",
+        "skipped": "Dilewati",
+        "resolving": "Menyelesaikan bentrokan",
+        "verifyBlocked": "Selesai, tetapi pemeriksaan tidak bisa memutuskan",
+        "waitingSkipped": "Menunggu {{tasks}}, yang dilewati"
+      },
+      "row": {
+        "open": "Buka",
+        "details": "Detail",
+        "attempts": "Percobaan",
+        "tokens": "Token terpakai",
+        "lastActivity": "Aktivitas terakhir",
+        "seeChanges": "Lihat apa yang diubah {{task}}"
+      },
+      "details": "Detail",
+      "detailBranch": "Hasil dikumpulkan di {{branch}}",
+      "statusWord": {
+        "draft": "Memulai",
+        "planned": "Memulai",
+        "approved": "Memulai",
+        "running": "Bekerja",
+        "paused": "Dijeda",
+        "reviewing": "Siap ditinjau",
+        "merging": "Menggabungkan",
+        "done": "Selesai",
+        "failed": "Gagal",
+        "cancelled": "Dibatalkan",
+        "interrupted": "Terhenti"
+      },
+      "groupProgress": "{{done}} dari {{total}} selesai · {{status}}",
+      "fold": "Sembunyikan sesi {{title}}",
+      "unfold": "Tampilkan sesi {{title}}",
+      "story": {
+        "wrote_one": "Menulis {{count}} file, +{{added}} −{{removed}} baris",
+        "wrote_other": "Menulis {{count}} file, +{{added}} −{{removed}} baris",
+        "wroteUncounted_one": "Menulis {{count}} file",
+        "wroteUncounted_other": "Menulis {{count}} file",
+        "stop": {
+          "none": "Berhenti sebelum selesai.",
+          "one": "Berhenti setelah satu perintah gagal.",
+          "many": "Berhenti setelah perintah gagal {{count}} kali."
+        },
+        "headline": {
+          "noOutput": "Tidak ada yang ditulis.",
+          "stoppedPlain": "Berhenti tanpa selesai.",
+          "finishedNoFiles": "Selesai tanpa mengubah file apa pun.",
+          "working_one": "Sedang dikerjakan: sejauh ini {{count}} langkah.",
+          "working_other": "Sedang dikerjakan: sejauh ini {{count}} langkah.",
+          "starting": "Baru mulai.",
+          "conflict": "Selesai, tetapi perubahannya bentrok dengan yang ditulis tugas lain.",
+          "waiting": "Menunggu {{tasks}} selesai lebih dulu.",
+          "queued": "Dimulai segera setelah ada ruang.",
+          "needsInput": "Dijeda: ia mengajukan pertanyaan kepada Anda.",
+          "needsApproval": "Dijeda: ia butuh persetujuan Anda untuk melanjutkan.",
+          "skipped": "Dilewati.",
+          "verifyBlocked": "Selesai, tetapi pemeriksaan tidak bisa memastikan hasilnya benar."
+        },
+        "took": "Bekerja selama {{time}}",
+        "running": "Berjalan selama {{time}}",
+        "toggle": "Apa yang terjadi",
+        "asked": "Apa yang diminta",
+        "did": "Apa yang dilakukan",
+        "stoppedAt": "Tempat berhenti",
+        "noRecord": "Tidak ada catatan langkah demi langkah untuk tugas ini.",
+        "more_one": "dan {{count}} langkah lagi",
+        "more_other": "dan {{count}} langkah lagi",
+        "step": {
+          "read": "Membaca {{label}}",
+          "readMany_one": "Membaca {{count}} file",
+          "readMany_other": "Membaca {{count}} file",
+          "search_one": "Mencari di proyek",
+          "search_other": "Mencari di proyek {{count}} kali",
+          "write": "Menulis {{label}}",
+          "writeMany_one": "Menulis {{count}} file",
+          "writeMany_other": "Menulis {{count}} file",
+          "ran": "Menjalankan {{label}}",
+          "ranFailed": "Menjalankan {{label}} dan gagal"
+        },
+        "next": {
+          "retry": "Coba lagi, dan beri tahu apa yang harus dilakukan berbeda.",
+          "conflict": "Buka percakapan dan minta ia membangun ulang di atas hasil terbaru, atau lewati.",
+          "open": "Percobaan ulangnya sudah habis. Buka percakapan untuk melihat di mana ia macet, atau lewati.",
+          "answer": "Buka percakapan dan jawab pertanyaannya.",
+          "approve": "Buka percakapan dan setujui atau tolak permintaannya.",
+          "verify": "Periksa lagi, atau terima sendiri jika Anda yakin hasilnya baik.",
+          "help": "Ini butuh pendekatan lain. Petunjuk yang disarankan sudah diisi; ubah jika perlu lalu coba lagi."
+        },
+        "hintLabel": "Beri tahu apa yang harus dilakukan berbeda",
+        "openConversation": "Buka percakapan"
+      },
+      "summary": {
+        "title": "Gambaran keseluruhan",
+        "goal": "Yang Anda minta",
+        "plan": "Cara pembagiannya",
+        "sideBySide_one": "{{count}} tugas berjalan sendiri",
+        "sideBySide_other": "{{count}} tugas ini berjalan berdampingan",
+        "waitsFor": "{{task}} menunggu {{tasks}}",
+        "time": "Waktu",
+        "timeSoFar": "{{time}} sejauh ini",
+        "timeTotal": "{{time}} total",
+        "result": "Hasil",
+        "cost": "Biaya",
+        "costTokens": "Sekitar {{tokens}} token",
+        "costBudget": "Sekitar {{tokens}} token dari anggaran {{budget}} Anda",
+        "branch": "Lokasi hasil",
+        "branchBody": "Semuanya dikumpulkan di branch terpisah, {{branch}}. File Anda sendiri tidak tersentuh sampai Anda meninjau dan menerapkannya.",
+        "copy": "Salin nama branch",
+        "copied": "Disalin",
+        "wrapUp": {
+          "doneTitle": "Selesai semua",
+          "reviewTitle": "Siap untuk Anda tinjau",
+          "built": "Yang berhasil dibuat",
+          "tasks": "Tugas selesai",
+          "files": "File diubah",
+          "lines": "Baris diubah",
+          "skipped": "{{count}} dilewati"
+        }
+      },
+      "effort": "Sekitar {{percent}}% pekerjaan selesai",
+      "recovery": {
+        "checkAgain": "Periksa lagi",
+        "accept": "Terima saja",
+        "acceptWhy": "Mengapa aman diterima? Satu baris, disimpan bersama tugas.",
+        "acceptConfirm": "Terima",
+        "accepted": "Diterima oleh Anda",
+        "acceptedWhy": "Diterima oleh Anda: {{reason}}",
+        "blocks": "Menunggu ini: {{tasks}}."
+      },
+      "changes": {
+        "title": "Semua yang diubah campaign ini",
+        "body": "Semua tugas selesai digabung, file demi file. Tidak ada yang diterapkan ke folder Anda dari sini.",
+        "continue": "Build dan uji, lalu tinjau"
+      },
+      "conflict": {
+        "explain": "Tugas ini dan tugas lain mengubah baris yang sama, jadi Flint tidak bisa menggabungkannya sendiri.",
+        "files": "File yang konflik",
+        "resolve": "Coba selesaikan otomatis",
+        "skip": "Lewati tugas",
+        "resolving": "Menyelesaikan konflik...",
+        "resolvingFiles": "Menyelesaikan konflik di {{count}} file..."
+      },
+      "verify": {
+        "verdict": "Diperiksa oleh verifier",
+        "verdicts": {
+          "PASS": "Lulus",
+          "PARTIAL": "Sebagian selesai",
+          "FAIL": "Tidak lulus",
+          "BLOCKED": "Tidak bisa memutuskan"
+        },
+        "testsPassed": "Tes lulus",
+        "testsFailed": "Tes gagal",
+        "testsFailedTail": "Tes gagal: {{tail}}",
+        "tokens": "Token untuk pemeriksaan"
+      },
+      "progressLabelSkipped": "{{done}} selesai · {{skipped}} dilewati · {{total}} tugas",
+      "groupProgressSkipped": "{{done}} selesai · {{skipped}} dilewati · {{status}}",
+      "effortGateFailed": "Pemeriksaan akhir gagal, jadi pekerjaan belum selesai",
+      "stranded": {
+        "explain": "Tugas ini menunggu {{tasks}}, yang dilewati, jadi tidak bisa dimulai sendiri.",
+        "skipToo": "Lewati ini juga",
+        "runWithout": "Jalankan tanpanya"
+      },
+      "skipConfirm": {
+        "title": "Lewati \"{{task}}\"?",
+        "body_one": "{{count}} tugas lain menunggunya. Lewati juga, atau biarkan berjalan tanpa tugas ini?",
+        "body_other": "{{count}} tugas lain menunggunya. Lewati juga, atau biarkan berjalan tanpa tugas ini?",
+        "cascade_one": "Lewati dan tugas yang menunggunya",
+        "cascade_other": "Lewati dan {{count}} tugas yang menunggunya",
+        "release": "Lewati, jalankan yang lain tanpanya"
+      },
+      "gate": {
+        "title": "Pemeriksaan gagal",
+        "body": "Pekerjaan sudah digabung, tetapi pemeriksaan build dan tes akhir tidak lulus, jadi belum siap diterapkan.",
+        "command": "Perintah",
+        "result": "Hasil",
+        "exit": "Kode keluar {{code}}",
+        "noExit": "Tidak selesai secara normal",
+        "timedOut": "Waktu habis",
+        "output": "Baris terakhir output",
+        "copy": "Salin",
+        "copied": "Disalin",
+        "fix": "Perbaiki otomatis",
+        "retry": "Jalankan pemeriksaan lagi",
+        "reviewAnyway": "Tinjau saja",
+        "reviewWarning": "Pemeriksaan akhir gagal. Tinjau perubahannya dengan mempertimbangkan hal itu."
+      },
+      "recheck": {
+        "again": "Memeriksa lagi…",
+        "stalled": "Pemeriksaan memakan waktu lebih lama dari perkiraan."
+      }
+    },
+    "changes": {
+      "loading": "Melihat perubahan…",
+      "unavailable": "Perubahan tidak dapat dibaca. Buka sesi untuk melihatnya.",
+      "none": "Tugas ini belum mengubah file apa pun.",
+      "files_one": "{{count}} file",
+      "files_other": "{{count}} file",
+      "namesOnly": "Hanya nama file yang diketahui untuk tugas ini.",
+      "uncommitted": "Sebagian pekerjaan ini belum disimpan ke branch tugas.",
+      "cut": "Daftar yang panjang dipersingkat.",
+      "kind": {
+        "new": "Baru",
+        "edited": "Diedit",
+        "deleted": "Dihapus",
+        "renamed": "Diganti nama"
+      },
+      "binary": "biner",
+      "binaryNote": "Ini bukan file teks, jadi tidak ada yang bisa ditampilkan.",
+      "renamedFrom": "Diganti nama dari {{from}}",
+      "showMore_one": "Tampilkan {{count}} baris lagi",
+      "showMore_other": "Tampilkan {{count}} baris lagi",
+      "fileCut": "Perubahan ini panjang, jadi hanya bagian awal yang ditampilkan.",
+      "noPatch": "Tidak ada tampilan baris demi baris untuk file ini."
+    },
+    "start": {
+      "title": "Campaign baru",
+      "menu": "Campaign baru",
+      "prompt": "Jelaskan tugas besarnya. Flint akan merencanakan cara membaginya.",
+      "goalLabel": "Apa yang harus dilakukan campaign?",
+      "placeholder": "Contoh: tambahkan mode gelap di seluruh aplikasi, beserta tes",
+      "hint": "Hingga {{n}} utas bekerja bersamaan. Anda bisa mengubahnya di Pengaturan.",
+      "folder": "Di {{folder}}",
+      "go": "Mulai",
+      "noFolder": "Buka folder git untuk memulai campaign",
+      "error": {
+        "no-model": "Pilih model yang bisa memakai tool terlebih dahulu (Model di sidebar, atau pemilih model), lalu mulai lagi.",
+        "failed": "Flint tidak bisa membuka sesi campaign. Tidak ada yang dimulai; coba lagi."
+      }
+    },
+    "nav": "Campaign",
+    "list": {
+      "subtitle": "Tugas besar yang dibagi menjadi bagian-bagian yang dikerjakan beberapa agen secara berdampingan.",
+      "start": "Mulai campaign",
+      "empty": "Belum ada campaign",
+      "emptyHint": "Campaign mengambil satu tugas besar, membaginya menjadi tugas-tugas kecil, dan membuat beberapa agen mengerjakannya bersamaan di branch masing-masing.",
+      "doneOf": "{{done}} dari {{total}} selesai",
+      "planning": "Merencanakan",
+      "updated": "Diperbarui {{when}}",
+      "loading": "Memuat campaign",
+      "loadFailed": "Campaign tidak dapat dimuat.",
+      "retry": "Coba lagi"
+    },
+    "plan": {
+      "edit": "Edit rencana",
+      "save": "Simpan perubahan",
+      "discard": "Buang perubahan",
+      "saved": "Rencana disimpan.",
+      "saveFailed": "Rencana tidak dapat disimpan: {{reason}}",
+      "unsaved": "Belum disimpan",
+      "saveFirst": "Simpan atau buang perubahan rencana sebelum mengizinkan.",
+      "addTask": "Tambah tugas",
+      "count": "{{count}} dari {{max}} tugas",
+      "after": "Setelah: {{tasks}}",
+      "moveUp": "Naikkan {{task}}",
+      "moveDown": "Turunkan {{task}}",
+      "remove": "Hapus {{task}}",
+      "addAfter": "Tambah tugas untuk ditunggu",
+      "removeAfter": "Hapus ketergantungan ini",
+      "field": {
+        "title": "Nama tugas",
+        "brief": "Apa yang harus dilakukan",
+        "acceptance": "Bagaimana kita tahu sudah selesai (satu per baris)",
+        "paths": "File dan folder yang boleh diubah (satu per baris)",
+        "pathsHint": "src/feature",
+        "after": "Mulai setelah"
+      },
+      "estimate": {
+        "one": "Sekitar {{tokens}} token",
+        "range": "Sekitar {{low}} sampai {{high}} token",
+        "basis": "Bergantung pada: {{basis}}",
+        "generic": "Bergantung pada berapa banyak file yang dibaca tugas dan seberapa sering pemeriksaan harus diulang."
+      },
+      "issue": {
+        "noTasks": "Tambahkan setidaknya satu tugas.",
+        "tooMany": "{{count}} tugas terlalu banyak; batasnya {{max}}.",
+        "emptyTitle": "Ada tugas tanpa nama.",
+        "emptyBrief": "{{task}} membutuhkan deskripsi tentang apa yang harus dilakukan.",
+        "badPath": "{{task}}: \"{{path}}\" bukan folder atau file di dalam proyek.",
+        "selfDependency": "{{task}} tidak bisa menunggu dirinya sendiri.",
+        "unknownDependency": "{{task}} menunggu tugas yang sudah tidak ada.",
+        "cycle": "Tugas-tugas ini saling menunggu: {{tasks}}.",
+        "overlap": "{{a}} dan {{b}} akan berjalan bersamaan tetapi keduanya mengubah {{path}}. Buat salah satunya menunggu yang lain."
+      }
+    }
   }
 }

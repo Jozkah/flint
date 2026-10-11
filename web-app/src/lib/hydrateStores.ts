@@ -46,12 +46,14 @@ import { useSkillActivation } from '@/hooks/useSkillActivation'
 import { useImageDescription } from '@/hooks/useImageDescription'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
+import { useCampaignSettings } from '@/hooks/useCampaignSettings'
 import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
 // Side effect only in builds with VITE_JAN_E2E_HOOKS=1 (the rooms smoke lane).
 import '@/lib/rooms/e2eHooks'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useGlobalExtensions } from '@/hooks/useGlobalExtensions'
 import { initConversationGroups } from '@/lib/groups/bootstrap'
+import { isChatWindow } from '@/lib/soloFlag'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -106,6 +108,7 @@ const secondaryStores = [
   useImageDescription,
   useOnboardingGuide,
   useSessionMessaging,
+  useCampaignSettings,
   useSplitConversation,
   useGlobalExtensions,
 ] as const
@@ -122,6 +125,9 @@ export async function hydrateBackendStores(): Promise<void> {
   // died with the process that owned them. Settle whatever the previous app
   // run left in flight, or the panel would show work still running that
   // nothing can ever finish.
+  // A "New window" is not a restart: the main window's work is still running,
+  // and its one-time recoveries are the main window's to do.
+  if (isChatWindow()) return
   useCoworkActivity.getState().recoverOnLoad(INTERRUPTED_BY_RESTART)
   // Conversation groups: own per-surface keys, synced across windows. A
   // failure leaves every item visible under Recents.

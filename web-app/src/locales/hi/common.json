@@ -113,6 +113,7 @@
   "keyboardShortcuts": "शॉर्टकट",
   "home": "होम",
   "cowork": "Cowork",
+  "campaign": "कैंपेन",
   "newSession": "नया सत्र",
   "artifacts": "आर्टिफ़ैक्ट",
   "customize": "कस्टमाइज़ करें",
@@ -1471,7 +1472,8 @@
   "drop": {
     "openInCode": "खोलने के लिए ड्रॉप करें — केवल पढ़ने के लिए",
     "attachToMessage": "अपने संदेश में संलग्न करने के लिए ड्रॉप करें",
-    "releaseToAttach": "जोड़ने के लिए छोड़ें"
+    "releaseToAttach": "जोड़ने के लिए छोड़ें",
+    "releaseToAttachCount": "{{count}} फ़ाइलें जोड़ने के लिए छोड़ें"
   },
   "coworkMode": {
     "label": "Flint क्या कर सकता है",
@@ -2059,7 +2061,12 @@
     "usageOverview": "उपयोग अवलोकन",
     "movedTo": "{{name}} में ले जाया गया",
     "notifications": "सूचनाएँ",
-    "approvalWaiting": "अनुमोदन प्रतीक्षा में"
+    "approvalWaiting": "अनुमोदन प्रतीक्षा में",
+    "tabs": "साइडबार दृश्य",
+    "tabChat": "चैट",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "शेड्यूल"
   },
   "systemNav": {
     "label": "डायग्नोस्टिक्स",
@@ -2481,5 +2488,14 @@
     "stop": "रोकें",
     "retry": "फिर कोशिश करें",
     "downloading": "डाउनलोड हो रहा है…"
+  },
+  "composerChip": {
+    "list": "जुड़ी हुई फ़ाइलें",
+    "pastedImage": "चिपकाई गई छवि {{n}}",
+    "open": "{{name}} का पूर्वावलोकन करें",
+    "noVision": "यह मॉडल छवियाँ नहीं पढ़ सकता",
+    "details": "{{name}} का विवरण",
+    "previewLoading": "पूर्वावलोकन लोड हो रहा है…",
+    "previewNone": "कोई पूर्वावलोकन उपलब्ध नहीं"
   }
 }

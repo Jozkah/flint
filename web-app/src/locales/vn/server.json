@@ -1,0 +1,26 @@
+{
+  "title": "Máy chủ Flint",
+  "desc": "Dùng Flint trên một máy chủ do bạn chạy, từ thiết bị này.",
+  "address": "Địa chỉ máy chủ",
+  "addressDesc": "Địa chỉ HTTPS của flint serve của bạn, ví dụ tên Tailscale mà nó được công bố. Bạn đăng nhập trên trang của chính máy chủ; ứng dụng này không bao giờ lưu thông tin xác thực.",
+  "test": "Kiểm tra kết nối",
+  "open": "Mở máy chủ",
+  "forget": "Quên máy chủ",
+  "checking": "Đang kiểm tra...",
+  "statusOk": "Đã kết nối tới một máy chủ Flint.",
+  "statusReachable": "Có phản hồi, nhưng từ đây không xác nhận được đó là Flint. Hãy mở nó để biết.",
+  "statusUnreachable": "Không kết nối được. Hãy kiểm tra địa chỉ, máy chủ đang chạy và thiết bị này có thể truy cập nó (đã bật VPN hoặc Tailscale).",
+  "insecure": "Địa chỉ này không phải HTTPS. Phiên sẽ được truyền dạng không mã hóa và Android có thể từ chối.",
+  "problem": {
+    "empty": "Nhập địa chỉ máy chủ.",
+    "invalid": "Đó không phải địa chỉ hợp lệ.",
+    "scheme": "Hãy dùng địa chỉ http hoặc https.",
+    "credentials": "Đừng đưa tên người dùng và mật khẩu vào địa chỉ."
+  },
+  "auto": "Mở khi khởi động",
+  "autoDesc": "Mở máy chủ khi ứng dụng khởi động, sau vài giây để bạn có thể chọn thiết bị này.",
+  "opening": "Đang mở {{host}} sau {{seconds}} giây",
+  "useDevice": "Dùng thiết bị này",
+  "limitsTitle": "Cái gì chạy ở đâu",
+  "limits": "Trò chuyện, phòng, mô hình và công cụ chạy trên máy chủ. Phiên Cowork và Chiến dịch cần một tác tử chạy trên máy tính đang mở Flint: hãy kết nối tới máy tính đó qua Truy cập từ xa và ứng dụng điện thoại. Máy chủ không giao diện có thể liệt kê chiến dịch và xem xét đề xuất, nhưng không chạy phiên."
+}

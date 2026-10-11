@@ -691,5 +691,424 @@
     "noVisionModel": "Aucun modèle capable de voir n'est disponible. Ajoutez-en un ou marquez un modèle comme capable de voir.",
     "embed": "Rendre les images jointes recherchables",
     "embedDesc": "Stocke aussi la description de chaque image avec les documents du chat pour pouvoir la rechercher. Cela envoie chaque image jointe au modèle de description."
+  },
+  "campaigns": {
+    "title": "Campagnes",
+    "maxParallel": "Threads parallèles de campagne",
+    "maxParallelDesc": "Nombre de tâches de campagne pouvant s'exécuter en même temps, chacune dans son propre panneau partagé. De 1 à 6. S'applique immédiatement à une campagne en cours ; les panneaux libres la limitent toujours.",
+    "board": {
+      "dot": {
+        "queued": "En file d'attente",
+        "blocked": "Bloquée",
+        "running": "En cours",
+        "needsYou": "Besoin de vous",
+        "verifying": "Vérification",
+        "verified": "Vérifiée",
+        "merged": "Fusionnée",
+        "failed": "Échec",
+        "conflict": "Conflit",
+        "cancelled": "Annulée",
+        "planning": "Planification",
+        "review": "Prête pour la relecture"
+      },
+      "status": {
+        "draft": "brouillon",
+        "planned": "planifiée",
+        "approved": "approuvée",
+        "running": "en cours",
+        "paused": "en pause",
+        "reviewing": "en relecture",
+        "merging": "fusion",
+        "done": "terminée",
+        "failed": "échouée",
+        "cancelled": "annulée",
+        "interrupted": "interrompue"
+      },
+      "openBoard": "Ouvrir le tableau de la campagne",
+      "notFound": "Cette campagne est introuvable.",
+      "loading": "Chargement de la campagne…",
+      "budget": {
+        "label": "Budget de jetons",
+        "used": "{{used}} jetons sur {{budget}}",
+        "none": "{{used}} jetons, aucun budget défini"
+      },
+      "parallel": "Limite de parallélisme : {{n}}",
+      "card": {
+        "branch": "Branche",
+        "noBranch": "pas encore de branche"
+      },
+      "action": {
+        "open": "Ouvrir la session",
+        "note": "Envoyer une note",
+        "stop": "Arrêter",
+        "retry": "Réessayer",
+        "skip": "Passer",
+        "handoff": "Voir la passation",
+        "diff": "Voir les modifications",
+        "pause": "Pause",
+        "resume": "Reprendre",
+        "cancel": "Annuler la campagne",
+        "review": "Relire et appliquer",
+        "send": "Envoyer",
+        "close": "Fermer",
+        "confirm": "Confirmer",
+        "reviewChanges": "Relire les modifications",
+        "openCoordinator": "Ouvrir le coordinateur",
+        "openCowork": "Ouvrir Cowork pour continuer"
+      },
+      "note": {
+        "title": "Note pour {{task}}",
+        "placeholder": "Dites à la tâche ce qu'elle doit faire autrement",
+        "sent": "Note envoyée"
+      },
+      "handoff": {
+        "title": "Passation : {{task}}",
+        "empty": "Aucune passation n'a encore été rédigée."
+      },
+      "diff": {
+        "title": "Fichiers modifiés par {{task}}",
+        "empty": "Aucune modification de fichier n'a été enregistrée pour cette tâche."
+      },
+      "review": {
+        "title": "Relire et appliquer",
+        "body": "Cela exécute la vérification sur le résultat fusionné, puis crée une proposition pour votre projet. Rien n'est appliqué tant que vous n'avez pas approuvé cette proposition.",
+        "command": "Commande de vérification : {{command}}",
+        "noCommand": "Aucune commande de build ou de test n'est configurée ni détectée : le résultat fusionné ne sera donc ni compilé ni testé.",
+        "proposal": "Proposition créée. Relisez-la et appliquez-la sur ce tableau.",
+        "failed": "La vérification a échoué ; la campagne reste en relecture."
+      },
+      "cancelConfirm": {
+        "title": "Annuler cette campagne ?",
+        "body": "Toutes les tâches non terminées sont annulées et les tâches en cours sont arrêtées. Les worktrees sont conservés."
+      },
+      "proposal": {
+        "title": "Modifications de la campagne",
+        "loading": "Chargement de la proposition…",
+        "missing": "La proposition est introuvable. Relancez Relire et appliquer."
+      },
+      "resumed": "{{n}} tâche(s) interrompue(s) à l'arrêt de l'application ont repris.",
+      "stalled": "{{n}} tâche(s) apparaissent comme en cours mais rien ne les exécute dans cette fenêtre. Ouvrez Cowork pour les continuer.",
+      "noteState": {
+        "sent": "Note envoyée",
+        "delivered": "Note remise à la tâche"
+      },
+      "error": "L'action a échoué : {{reason}}",
+      "headline": {
+        "planning": "Planification du travail",
+        "working": "En cours : {{done}} tâches sur {{total}} terminées",
+        "attention_one": "Votre attention est requise : {{count}} tâche vous attend",
+        "attention_other": "Votre attention est requise : {{count}} tâches vous attendent",
+        "review": "Prête pour votre relecture",
+        "merging": "Assemblage des résultats",
+        "paused": "En pause : {{done}} tâches sur {{total}} terminées",
+        "interrupted": "Arrêtée à la fermeture de l'application : {{done}} tâches sur {{total}} terminées",
+        "done": "Tout est terminé",
+        "failed": "Cette campagne n'a pas pu aboutir",
+        "cancelled": "Annulée",
+        "gateFailed": "Les vérifications finales ont échoué : le travail est fusionné mais non vérifié"
+      },
+      "progressLabel": "{{done}} tâches sur {{total}} terminées",
+      "planning": "Planification… en attente du plan du coordinateur.",
+      "group": {
+        "needsYou": "Besoin de vous",
+        "working": "En cours",
+        "upNext": "À suivre",
+        "done": "Terminées",
+        "skipped": "Ignorées"
+      },
+      "word": {
+        "writing": "Écriture du code",
+        "checking": "Vérification du résultat",
+        "ready": "Vérifiée, prête à fusionner",
+        "needsInput": "En attente de votre réponse",
+        "needsApproval": "En attente de votre approbation",
+        "failed": "N'a pas abouti",
+        "conflict": "Entre en conflit avec d'autres modifications",
+        "waiting": "En attente de {{tasks}}",
+        "queued": "Démarre bientôt",
+        "merged": "Fusionnée",
+        "skipped": "Ignorée",
+        "resolving": "Résolution d'un conflit",
+        "verifyBlocked": "Terminée, mais la vérification n'a pas pu trancher",
+        "waitingSkipped": "En attente de {{tasks}}, qui a été ignorée"
+      },
+      "row": {
+        "open": "Ouvrir",
+        "details": "Détails",
+        "attempts": "Tentatives",
+        "tokens": "Jetons utilisés",
+        "lastActivity": "Dernière activité",
+        "seeChanges": "Voir ce que {{task}} a modifié"
+      },
+      "details": "Détails",
+      "detailBranch": "Les résultats sont rassemblés sur {{branch}}",
+      "statusWord": {
+        "draft": "Démarrage",
+        "planned": "Démarrage",
+        "approved": "Démarrage",
+        "running": "En cours",
+        "paused": "En pause",
+        "reviewing": "Prête à relire",
+        "merging": "Fusion",
+        "done": "Terminée",
+        "failed": "Échec",
+        "cancelled": "Annulée",
+        "interrupted": "Arrêtée"
+      },
+      "groupProgress": "{{done}} sur {{total}} terminées · {{status}}",
+      "fold": "Masquer les sessions de {{title}}",
+      "unfold": "Afficher les sessions de {{title}}",
+      "story": {
+        "wrote_one": "{{count}} fichier écrit, +{{added}} −{{removed}} lignes",
+        "wrote_other": "{{count}} fichiers écrits, +{{added}} −{{removed}} lignes",
+        "wroteUncounted_one": "{{count}} fichier écrit",
+        "wroteUncounted_other": "{{count}} fichiers écrits",
+        "stop": {
+          "none": "S'est arrêtée avant la fin.",
+          "one": "S'est arrêtée après l'échec d'une commande.",
+          "many": "S'est arrêtée après l'échec de commandes à {{count}} reprises."
+        },
+        "headline": {
+          "noOutput": "Rien n'a été écrit.",
+          "stoppedPlain": "Arrêtée sans avoir terminé.",
+          "finishedNoFiles": "Terminée sans modifier aucun fichier.",
+          "working_one": "En cours : {{count}} étape jusqu'ici.",
+          "working_other": "En cours : {{count}} étapes jusqu'ici.",
+          "starting": "Vient de démarrer.",
+          "conflict": "Terminée, mais ses modifications entrent en conflit avec ce que d'autres tâches ont écrit.",
+          "waiting": "En attente de la fin de {{tasks}}.",
+          "queued": "Démarre dès qu'il y a de la place.",
+          "needsInput": "En pause : elle vous a posé une question.",
+          "needsApproval": "En pause : elle a besoin de votre approbation pour continuer.",
+          "skipped": "Ignorée.",
+          "verifyBlocked": "Terminée, mais la vérification n'a pas pu dire si c'est correct."
+        },
+        "took": "A travaillé pendant {{time}}",
+        "running": "En cours depuis {{time}}",
+        "toggle": "Ce qui s'est passé",
+        "asked": "Ce qui lui a été demandé",
+        "did": "Ce qu'elle a fait",
+        "stoppedAt": "Où elle s'est arrêtée",
+        "noRecord": "Aucun historique étape par étape n'est disponible pour cette tâche.",
+        "more_one": "et {{count}} étape de plus",
+        "more_other": "et {{count}} étapes de plus",
+        "step": {
+          "read": "A lu {{label}}",
+          "readMany_one": "A lu {{count}} fichier",
+          "readMany_other": "A lu {{count}} fichiers",
+          "search_one": "A cherché dans le projet",
+          "search_other": "A cherché dans le projet {{count}} fois",
+          "write": "A écrit {{label}}",
+          "writeMany_one": "A écrit {{count}} fichier",
+          "writeMany_other": "A écrit {{count}} fichiers",
+          "ran": "A exécuté {{label}}",
+          "ranFailed": "A exécuté {{label}} sans succès"
+        },
+        "next": {
+          "retry": "Réessayez en indiquant ce qu'elle doit faire autrement.",
+          "conflict": "Ouvrez la conversation et demandez-lui de refaire le travail à partir des derniers résultats, ou ignorez-la.",
+          "open": "Elle a épuisé ses nouvelles tentatives. Ouvrez la conversation pour voir où elle a bloqué, ou ignorez-la.",
+          "answer": "Ouvrez la conversation et répondez à sa question.",
+          "approve": "Ouvrez la conversation et approuvez ou refusez la demande.",
+          "verify": "Vérifiez de nouveau, ou acceptez vous-même si vous voyez que c'est correct.",
+          "help": "Il faut une autre approche. L'indication suggérée est déjà saisie ; modifiez-la si vous le souhaitez, puis réessayez."
+        },
+        "hintLabel": "Dites-lui ce qu'elle doit faire autrement",
+        "openConversation": "Ouvrir la conversation"
+      },
+      "summary": {
+        "title": "Vue d'ensemble",
+        "goal": "Ce que vous avez demandé",
+        "plan": "Comment c'était découpé",
+        "sideBySide_one": "{{count}} tâche s'est exécutée seule",
+        "sideBySide_other": "Ces {{count}} tâches se sont exécutées en parallèle",
+        "waitsFor": "{{task}} attend {{tasks}}",
+        "time": "Durée",
+        "timeSoFar": "{{time}} jusqu'ici",
+        "timeTotal": "{{time}} au total",
+        "result": "Résultat",
+        "cost": "Coût",
+        "costTokens": "Environ {{tokens}} jetons",
+        "costBudget": "Environ {{tokens}} jetons sur votre budget de {{budget}}",
+        "branch": "Où sont les résultats",
+        "branchBody": "Tout est rassemblé sur une branche séparée, {{branch}}. Vos propres fichiers ne sont pas touchés tant que vous n'avez pas relu et appliqué.",
+        "copy": "Copier le nom de la branche",
+        "copied": "Copié",
+        "wrapUp": {
+          "doneTitle": "Tout est terminé",
+          "reviewTitle": "Prête pour votre relecture",
+          "built": "Ce qui a été construit",
+          "tasks": "Tâches terminées",
+          "files": "Fichiers modifiés",
+          "lines": "Lignes modifiées",
+          "skipped": "{{count}} ignorées"
+        }
+      },
+      "effort": "Environ {{percent}} % du travail est fait",
+      "recovery": {
+        "checkAgain": "Vérifier de nouveau",
+        "accept": "Accepter quand même",
+        "acceptWhy": "Pourquoi est-il correct de l'accepter ? Une ligne, conservée avec la tâche.",
+        "acceptConfirm": "L'accepter",
+        "accepted": "Acceptée par vous",
+        "acceptedWhy": "Acceptée par vous : {{reason}}",
+        "blocks": "Attendent celle-ci : {{tasks}}."
+      },
+      "changes": {
+        "title": "Tout ce que cette campagne a modifié",
+        "body": "Toutes les tâches terminées ensemble, fichier par fichier. Rien n'est appliqué à votre dossier depuis ici.",
+        "continue": "Compiler et tester, puis relire"
+      },
+      "conflict": {
+        "explain": "Cette tâche et une autre ont modifié les mêmes lignes, donc Flint n'a pas pu les combiner seul.",
+        "files": "Fichiers en conflit",
+        "resolve": "Essayer de résoudre automatiquement",
+        "skip": "Ignorer la tâche",
+        "resolving": "Résolution du conflit...",
+        "resolvingFiles": "Résolution du conflit dans {{count}} fichiers..."
+      },
+      "verify": {
+        "verdict": "Vérifié par le vérificateur",
+        "verdicts": {
+          "PASS": "Réussi",
+          "PARTIAL": "Partiellement fait",
+          "FAIL": "Échec de la vérification",
+          "BLOCKED": "Impossible de trancher"
+        },
+        "testsPassed": "Tests réussis",
+        "testsFailed": "Tests échoués",
+        "testsFailedTail": "Tests échoués : {{tail}}",
+        "tokens": "Jetons dépensés pour la vérification"
+      },
+      "progressLabelSkipped": "{{done}} terminées · {{skipped}} ignorées · {{total}} tâches",
+      "groupProgressSkipped": "{{done}} terminées · {{skipped}} ignorées · {{status}}",
+      "effortGateFailed": "Les vérifications finales ont échoué : le travail n'est donc pas terminé",
+      "stranded": {
+        "explain": "Cette tâche attend {{tasks}}, qui a été ignorée : elle ne peut donc pas démarrer seule.",
+        "skipToo": "Ignorer aussi celle-ci",
+        "runWithout": "Exécuter sans elle"
+      },
+      "skipConfirm": {
+        "title": "Ignorer « {{task}} » ?",
+        "body_one": "{{count}} autre tâche l'attend. L'ignorer aussi, ou la laisser s'exécuter sans celle-ci ?",
+        "body_other": "{{count}} autres tâches l'attendent. Les ignorer aussi, ou les laisser s'exécuter sans celle-ci ?",
+        "cascade_one": "L'ignorer ainsi que la tâche qui l'attend",
+        "cascade_other": "L'ignorer ainsi que les {{count}} tâches qui l'attendent",
+        "release": "L'ignorer et exécuter les autres sans elle"
+      },
+      "gate": {
+        "title": "Vérifications échouées",
+        "body": "Le travail a été fusionné, mais la vérification finale de build et de tests n'a pas réussi : il n'est donc pas prêt à être appliqué.",
+        "command": "Commande",
+        "result": "Résultat",
+        "exit": "Code de sortie {{code}}",
+        "noExit": "Ne s'est pas terminée normalement",
+        "timedOut": "Délai dépassé",
+        "output": "Dernières lignes de la sortie",
+        "copy": "Copier",
+        "copied": "Copié",
+        "fix": "Corriger automatiquement",
+        "retry": "Relancer les vérifications",
+        "reviewAnyway": "Relire quand même",
+        "reviewWarning": "Les vérifications finales ont échoué. Relisez les modifications en en tenant compte."
+      },
+      "recheck": {
+        "again": "Nouvelle vérification…",
+        "stalled": "La vérification prend plus de temps que prévu."
+      }
+    },
+    "changes": {
+      "loading": "Examen des modifications…",
+      "unavailable": "Impossible de lire les modifications. Ouvrez la session pour les voir.",
+      "none": "Cette tâche n'a modifié aucun fichier.",
+      "files_one": "{{count}} fichier",
+      "files_other": "{{count}} fichiers",
+      "namesOnly": "Seuls les noms de fichiers sont connus pour cette tâche.",
+      "uncommitted": "Une partie de ce travail n'est pas encore enregistrée sur la branche de la tâche.",
+      "cut": "Une longue liste a été raccourcie.",
+      "kind": {
+        "new": "Nouveau",
+        "edited": "Modifié",
+        "deleted": "Supprimé",
+        "renamed": "Renommé"
+      },
+      "binary": "binaire",
+      "binaryNote": "Ce n'est pas un fichier texte, il n'y a donc rien à afficher.",
+      "renamedFrom": "Renommé depuis {{from}}",
+      "showMore_one": "Afficher {{count}} ligne de plus",
+      "showMore_other": "Afficher {{count}} lignes de plus",
+      "fileCut": "Cette modification est longue, seul le début est affiché.",
+      "noPatch": "Il n'y a pas de vue ligne par ligne pour ce fichier."
+    },
+    "start": {
+      "title": "Nouvelle campagne",
+      "menu": "Nouvelle campagne",
+      "prompt": "Décrivez la grande tâche. Flint prévoira comment la découper.",
+      "goalLabel": "Que doit faire la campagne ?",
+      "placeholder": "Par exemple : ajouter le mode sombre dans toute l'application, avec des tests",
+      "hint": "Jusqu'à {{n}} threads travaillent en même temps. Vous pouvez le modifier dans les Paramètres.",
+      "folder": "Dans {{folder}}",
+      "go": "Démarrer",
+      "noFolder": "Ouvrez un dossier git pour démarrer une campagne",
+      "error": {
+        "no-model": "Choisissez d'abord un modèle capable d'utiliser des outils (Modèles dans la barre latérale, ou le sélecteur de modèle), puis recommencez.",
+        "failed": "Flint n'a pas pu ouvrir la session de la campagne. Rien n'a été démarré ; réessayez."
+      }
+    },
+    "nav": "Campagnes",
+    "list": {
+      "subtitle": "De grandes tâches découpées en parties sur lesquelles plusieurs agents travaillent en parallèle.",
+      "start": "Démarrer une campagne",
+      "empty": "Aucune campagne pour l'instant",
+      "emptyHint": "Une campagne prend une grande tâche, la découpe en tâches plus petites et fait travailler plusieurs agents dessus en même temps, chacun sur sa propre branche.",
+      "doneOf": "{{done}} sur {{total}} terminées",
+      "planning": "Planification",
+      "updated": "Mise à jour {{when}}",
+      "loading": "Chargement des campagnes",
+      "loadFailed": "Impossible de charger les campagnes.",
+      "retry": "Réessayer"
+    },
+    "plan": {
+      "edit": "Modifier le plan",
+      "save": "Enregistrer les modifications",
+      "discard": "Annuler les modifications",
+      "saved": "Plan enregistré.",
+      "saveFailed": "Impossible d'enregistrer le plan : {{reason}}",
+      "unsaved": "Pas encore enregistré",
+      "saveFirst": "Enregistrez ou annulez les modifications du plan avant d'autoriser.",
+      "addTask": "Ajouter une tâche",
+      "count": "{{count}} tâches sur {{max}}",
+      "after": "Après : {{tasks}}",
+      "moveUp": "Monter {{task}}",
+      "moveDown": "Descendre {{task}}",
+      "remove": "Retirer {{task}}",
+      "addAfter": "Ajouter une tâche à attendre",
+      "removeAfter": "Retirer cette dépendance",
+      "field": {
+        "title": "Nom de la tâche",
+        "brief": "Ce qu'il faut faire",
+        "acceptance": "Comment savoir que c'est terminé (un critère par ligne)",
+        "paths": "Fichiers et dossiers qu'elle peut modifier (un par ligne)",
+        "pathsHint": "src/feature",
+        "after": "Démarre après"
+      },
+      "estimate": {
+        "one": "Environ {{tokens}} jetons",
+        "range": "Environ {{low}} à {{high}} jetons",
+        "basis": "Dépend de : {{basis}}",
+        "generic": "Dépend du nombre de fichiers lus par les tâches et du nombre de fois qu'une vérification doit être répétée."
+      },
+      "issue": {
+        "noTasks": "Ajoutez au moins une tâche.",
+        "tooMany": "{{count}} tâches, c'est trop ; la limite est de {{max}}.",
+        "emptyTitle": "Une tâche n'a pas de nom.",
+        "emptyBrief": "{{task}} a besoin d'une description de ce qu'il faut faire.",
+        "badPath": "{{task}} : « {{path}} » n'est ni un dossier ni un fichier du projet.",
+        "selfDependency": "{{task}} ne peut pas s'attendre elle-même.",
+        "unknownDependency": "{{task}} attend une tâche qui n'existe plus.",
+        "cycle": "Ces tâches s'attendent les unes les autres : {{tasks}}.",
+        "overlap": "{{a}} et {{b}} s'exécuteraient en même temps mais modifient toutes deux {{path}}. Faites attendre l'une l'autre."
+      }
+    }
   }
 }

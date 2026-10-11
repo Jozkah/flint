@@ -5,6 +5,8 @@
 // ThemeProvider re-resolves the real theme once React mounts.
 (function () {
   var d = document.documentElement
+  // A "New window" (lib/soloFlag) gets the quiet splash, not the brand one.
+  if (location.search.indexOf('chatWindow') !== -1) d.classList.add('solo')
   var b = null
   try {
     b = JSON.parse(localStorage.getItem('flint-boot') || 'null')

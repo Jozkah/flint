@@ -1,7 +1,11 @@
 //! Headless HTTP server for the production browser application.
 
+pub mod agent;
+pub mod agent_runs;
 pub mod auth;
+pub mod campaign_driver;
 pub mod control;
+pub mod coordinator;
 pub mod data;
 pub mod engine;
 pub mod events;
@@ -11,7 +15,9 @@ pub mod mcp;
 pub mod provider;
 pub mod rooms;
 pub mod resources;
+pub mod runner;
 pub mod server;
+pub mod session_worktree;
 pub mod settings;
 pub mod uploads;
 #[path = "../remote/static_files.rs"]

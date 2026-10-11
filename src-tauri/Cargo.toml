@@ -59,6 +59,11 @@ name = "scheduled_run"
 path = "tests/scheduled_run.rs"
 required-features = ["cli"]
 
+[[test]]
+name = "web_agent_run"
+path = "tests/web_agent_run.rs"
+required-features = ["cli"]
+
 # Real-Tauri UI smoke harness. Excluded from release builds: `cowork-smoke` is
 # not in `default`, so `required-features` keeps cargo from building this target
 # unless it is asked for explicitly.

@@ -1180,16 +1180,24 @@ impl HttpModelInvoker {
 
     fn record_completion(&self, invocation: &str, completion: &serde_json::Value) {
         if let Some(usage) = Usage::from_completion(completion) {
+            let mut payload = serde_json::json!({
+                "inputTokens": usage.prompt_tokens,
+                "outputTokens": usage.completion_tokens,
+                "totalTokens": usage.total_tokens,
+                "requests": 1,
+            });
+            // Cache shares of the prompt, only when the provider said.
+            if let Some(v) = usage.cached_prompt_tokens {
+                payload["cachedInputTokens"] = v.into();
+            }
+            if let Some(v) = usage.cache_write_tokens {
+                payload["cacheWriteTokens"] = v.into();
+            }
             self.invocations.record(
                 "usage.reported",
                 &format!("usage:{invocation}"),
                 invocation,
-                serde_json::json!({
-                    "inputTokens": usage.prompt_tokens,
-                    "outputTokens": usage.completion_tokens,
-                    "totalTokens": usage.total_tokens,
-                    "requests": 1,
-                }),
+                payload,
             );
         }
         let message = extract_choice_message(completion);
@@ -4044,7 +4052,7 @@ impl CompositeToolInvoker {
                     // Inside the project or the run's own scratch directory is
                     // ordinary work; both are resolved and canonicalised, so an
                     // absolute path into either is not asked about.
-                    crate::core::agent::destructive::destructive_reason_in(
+                    crate::core::agent::destructive::forced_prompt_reason(
                         c,
                         &crate::core::agent::destructive::Scope::new([
                             &self.project_root,
@@ -5709,19 +5717,38 @@ async fn orchestrate_inner(
     if !arranged.prompt.is_empty() {
         set_system_prompt(&mut conversation_messages, &arranged.prompt);
     }
+    // One id for this run, used by the cancellation scope, the execution
+    // record and every request's invocation (AH-004): minted once so a stop, a
+    // snapshot and a recorded call all name the same run.
+    let run_id = run_id_for_cancellation(session_id.as_deref());
     // `UserPromptSubmit` hooks see the prompt this run is answering. Their
     // output travels through the append-only reminder channel, like the todo
     // guidance below, so the system prompt stays byte-stable.
+    //
+    // Fail closed on a stop: a run cancelled while these hooks ran must not go
+    // on to answer a prompt nothing has checked. A hook that merely fails or
+    // times out adds nothing and the turn continues.
     if !cc_hooks.is_empty() {
         if let Some(prompt) = trailing_user_text(&conversation_messages) {
-            for block in crate::core::agent::cc_hooks::prompt_submit_context(
+            let hook_scope = tauri_plugin_agent_tools::lifecycle::register(
+                tauri_plugin_agent_tools::lifecycle::Token::new(
+                    tauri_plugin_agent_tools::lifecycle::Scope::new(
+                        session_id.clone().unwrap_or_default(),
+                        run_id.clone(),
+                        "prompt-submit-hooks".to_string(),
+                    ),
+                ),
+            );
+            let blocks = crate::core::agent::cc_hooks::prompt_submit_context(
                 &cc_hooks,
                 session_id.as_deref(),
                 &cc_cwd,
                 &prompt,
+                Some(hook_scope.token()),
             )
             .await
-            {
+            .map_err(|stopped| HarnessError::cancelled(stopped.message()))?;
+            for block in blocks {
                 crate::core::agent::reminder::attach(&mut conversation_messages, &block);
             }
         }
@@ -5910,10 +5937,6 @@ async fn orchestrate_inner(
         }
     }
 
-    // One id for this run, used by the cancellation scope, the execution
-    // record and every request's invocation (AH-004): minted once so a stop, a
-    // snapshot and a recorded call all name the same run.
-    let run_id = run_id_for_cancellation(session_id.as_deref());
     let invocations = std::sync::Arc::new(Invocations::new(
         session_id.clone().unwrap_or_default(),
         run_id.clone(),
@@ -6514,6 +6537,70 @@ pub(crate) async fn evaluate_goal(
     crate::core::agent::goal::evaluate(smol_model_id, condition, messages, &model).await
 }
 
+/// One stateless, tool-free model call against `model_id`, through the same
+/// provider path a turn uses (provider configs, credentials, snapshot, secret
+/// filter). Used by hosts that need a model's judgement outside a session: the
+/// server's campaign verifier and planner. Returns the chat completion.
+#[cfg(feature = "cli")]
+pub(crate) async fn utility_completion(
+    args: &OrchestrationArgs,
+    model_id: &str,
+    agent_name: &str,
+    request: &serde_json::Value,
+) -> Result<serde_json::Value, HarnessError> {
+    let (upstream_url, api_keys) = resolve_upstream_for_model(
+        model_id,
+        args.provider_configs.clone(),
+        #[cfg(not(feature = "cli"))]
+        args.llama_state.clone(),
+        #[cfg(not(feature = "cli"))]
+        args.mlx_sessions.clone(),
+    )
+    .await?;
+    let (converter, api_type) = wire_for(model_id, args.provider_configs.clone()).await;
+    let provenance = ProvenanceIdentity::resolve(
+        model_id,
+        &args.provider_configs,
+        args.session_id.as_deref(),
+        args.run_id.as_deref(),
+    )
+    .await;
+    let model = HttpModelInvoker {
+        secrets: crate::core::agent::secrets::for_run(),
+        provenance,
+        quota: None,
+        client_request_id: crate::core::agent::correlation::session_request_id(
+            args.session_id.as_deref(),
+        ),
+        client: args.client.clone(),
+        upstream_url,
+        api_keys,
+        provider_configs: args.provider_configs.clone(),
+        converter,
+        api_type,
+        converter_client: converter_http_client(),
+        invocations: std::sync::Arc::new(Invocations::default()),
+        fallbacks: Vec::new(),
+        snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
+            session: args.session_id.clone().unwrap_or_default(),
+            run: String::new(),
+            thread: args.session_id.clone().unwrap_or_default(),
+            agent: agent_name.to_string(),
+            provider: model_id
+                .split_once('/')
+                .map(|(p, _)| p.to_string())
+                .unwrap_or_default(),
+            invocation: String::new(),
+            turn: String::new(),
+            attempt: 1,
+            kind: Default::default(),
+        },
+    };
+    // The call's own tokens are not a user-facing stream.
+    let (sink, _rx) = mpsc::unbounded_channel();
+    model.invoke(request, &sink).await
+}
+
 /// Summary of still-open (pending/in-progress) todos, or `None` when there is
 /// no list or nothing is open. Drives the close-out nudge before the loop hands
 /// control back.
@@ -6756,11 +6843,41 @@ async fn receive_steering(
 pub(crate) const BODY_COMPACT_AT: &str = "jan_compaction_compact_at";
 pub(crate) const BODY_EFFECTIVE_WINDOW: &str = "jan_compaction_effective_window";
 
+/// Body key a subagent dispatch sets from its definition's
+/// `auto_compact_window`: the token count at which this child compacts.
+pub(crate) const BODY_CHILD_COMPACT_WINDOW: &str = "jan_child_compact_window";
+
+/// A subagent's own compaction window can only bring the trigger forward: the
+/// result is never above `compact_at`, and never below 1 (0 would compact
+/// every turn). `None` or `0` leaves the trigger alone.
+pub(crate) fn apply_child_compact_window(compact_at: u64, window: Option<u64>) -> u64 {
+    match window {
+        Some(w) if w > 0 => compact_at.min(w),
+        _ => compact_at,
+    }
+}
+
+/// Whether a subagent's window actually moved the trigger (it was set and
+/// below the trigger the model's own window allows).
+pub(crate) fn child_compact_window_applied(compact_at: u64, window: Option<u64>) -> bool {
+    apply_child_compact_window(compact_at, window) < compact_at
+}
+
 /// Read the proactive compaction thresholds off the request body, if present.
 fn read_compaction_thresholds(
     json_body: &serde_json::Value,
 ) -> Option<crate::core::agent::compaction_policy::Thresholds> {
-    let compact_at = json_body.get(BODY_COMPACT_AT)?.as_u64()?;
+    let base_compact_at = json_body.get(BODY_COMPACT_AT)?.as_u64()?;
+    let child_window = json_body.get(BODY_CHILD_COMPACT_WINDOW).and_then(|v| v.as_u64());
+    let compact_at = apply_child_compact_window(base_compact_at, child_window);
+    // Read once per run: say when a subagent's own window moved the trigger,
+    // so a QA run can see the override took effect.
+    if child_compact_window_applied(base_compact_at, child_window) {
+        log::debug!(
+            "agent: subagent compact window applied: compact_at {base_compact_at} -> {compact_at} (definition window {})",
+            child_window.unwrap_or_default()
+        );
+    }
     let effective_window = json_body.get(BODY_EFFECTIVE_WINDOW)?.as_u64()?;
     Some(crate::core::agent::compaction_policy::Thresholds {
         effective_window,
@@ -7877,6 +7994,31 @@ async fn run_turn_cycle(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_child_compact_window_override_is_reported_only_when_it_lowers_the_trigger() {
+        assert!(child_compact_window_applied(100_000, Some(20_000)));
+        assert!(!child_compact_window_applied(100_000, Some(500_000)));
+        assert!(!child_compact_window_applied(100_000, Some(100_000)));
+        assert!(!child_compact_window_applied(100_000, None));
+        assert!(!child_compact_window_applied(100_000, Some(0)));
+    }
+
+    #[test]
+    fn a_child_compact_window_only_lowers_the_trigger() {
+        assert_eq!(apply_child_compact_window(100_000, Some(20_000)), 20_000);
+        // Never raised past what the model window allows.
+        assert_eq!(apply_child_compact_window(100_000, Some(500_000)), 100_000);
+        assert_eq!(apply_child_compact_window(100_000, None), 100_000);
+        assert_eq!(apply_child_compact_window(100_000, Some(0)), 100_000);
+        let body = serde_json::json!({
+            BODY_COMPACT_AT: 100_000u64,
+            BODY_EFFECTIVE_WINDOW: 120_000u64,
+            BODY_CHILD_COMPACT_WINDOW: 8_000u64,
+        });
+        let t = read_compaction_thresholds(&body).expect("thresholds");
+        assert_eq!((t.compact_at, t.effective_window), (8_000, 120_000));
+    }
+
     /// After a full compaction the conversation is shorter than the number of
     /// messages already scanned; the scan must not slice past the end.
     #[test]

@@ -198,14 +198,14 @@ pub fn compact(data_folder: &Path, policy: &Retention, now: i64) -> Result<Remov
         let before = all.len();
         let kept = retain(all, |s| s.at.as_str(), policy, now);
         removed.snapshots = before - kept.len();
-        rewrite_if_changed(&snapshot::log_path(data_folder), &kept, removed.snapshots)?;
+        rewrite_if_worthwhile(&snapshot::log_path(data_folder), &kept, removed.snapshots, LARGE_LOG_BYTES)?;
     }
     if usage::log_path(data_folder).exists() {
         let all = usage::read_all(data_folder);
         let before = all.len();
         let kept = retain(all, |u| u.at.as_str(), policy, now);
         removed.usage = before - kept.len();
-        rewrite_if_changed(&usage::log_path(data_folder), &kept, removed.usage)?;
+        rewrite_if_worthwhile(&usage::log_path(data_folder), &kept, removed.usage, LARGE_LOG_BYTES)?;
     }
     // The diff store and the permission log grew for the life of the install
     // (Jozkah/jan#234): both are held to the same age limit.
@@ -283,6 +283,39 @@ pub fn delete_session(data_folder: &Path, session: &str) -> Result<Removed, Stri
 fn rewrite_if_changed<T: Serialize>(path: &Path, kept: &[T], removed: usize) -> Result<(), String> {
     if removed == 0 {
         return Ok(());
+    }
+    rewrite(path, kept)
+}
+
+/// A log at least this big is not rewritten by retention for a small gain.
+const LARGE_LOG_BYTES: u64 = 1 << 20;
+
+/// [`rewrite_if_changed`] for age/size retention, which runs on a schedule and
+/// can afford to wait: rewriting a large log to drop a sliver of it costs a
+/// full read and write for almost nothing. When the file is at least
+/// `large_bytes` and dropping `removed` records would free under a tenth of
+/// it, the rewrite is skipped; the records go on a later pass, once enough has
+/// aged out. Not used for deleting a conversation, which must take effect now.
+fn rewrite_if_worthwhile<T: Serialize>(
+    path: &Path,
+    kept: &[T],
+    removed: usize,
+    large_bytes: u64,
+) -> Result<(), String> {
+    if removed == 0 {
+        return Ok(());
+    }
+    if let Ok(len) = std::fs::metadata(path).map(|m| m.len()) {
+        if len >= large_bytes {
+            let kept_bytes: u64 = kept
+                .iter()
+                .map(|r| serde_json::to_string(r).map(|l| l.len() as u64 + 1).unwrap_or(0))
+                .sum();
+            let freed = len.saturating_sub(kept_bytes);
+            if freed.saturating_mul(10) < len {
+                return Ok(());
+            }
+        }
     }
     rewrite(path, kept)
 }
@@ -518,6 +551,37 @@ mod tests {
         let d = dir("absent");
         assert_eq!(compact(&d, &DEFAULT_RETENTION, 0).unwrap(), Removed::default());
         assert_eq!(delete_session(&d, "t").unwrap(), Removed::default());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_large_log_is_not_rewritten_for_under_a_tenth_of_its_size() {
+        let d = dir("worthwhile");
+        let path = d.join("log.jsonl");
+        let records: Vec<serde_json::Value> =
+            (0..100).map(|i| json!({ "n": i, "pad": "x".repeat(50) })).collect();
+        rewrite(&path, &records).unwrap();
+        let before = std::fs::metadata(&path).unwrap().len();
+
+        // One record of a hundred is about 1%: skipped when the file counts as large.
+        let kept: Vec<_> = records[1..].to_vec();
+        rewrite_if_worthwhile(&path, &kept, 1, 1).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), before);
+
+        // Below the large threshold it is rewritten as before.
+        rewrite_if_worthwhile(&path, &kept, 1, u64::MAX).unwrap();
+        assert!(std::fs::metadata(&path).unwrap().len() < before);
+
+        // Half of a large log is worth the rewrite.
+        let half: Vec<_> = records[..50].to_vec();
+        rewrite(&path, &records).unwrap();
+        rewrite_if_worthwhile(&path, &half, 50, 1).unwrap();
+        assert!(std::fs::metadata(&path).unwrap().len() < before * 6 / 10);
+
+        // Nothing removed never rewrites.
+        let now = std::fs::metadata(&path).unwrap().len();
+        rewrite_if_worthwhile(&path, &half, 0, 1).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), now);
         let _ = std::fs::remove_dir_all(&d);
     }
 }

@@ -597,7 +597,10 @@ fn note_non_posix_shell(mut value: serde_json::Value) -> serde_json::Value {
         ls/Get-ChildItem, New-Item); and write Windows paths with backslashes. \
         Discard output with `2>$null` or `| Out-Null` -- cmd's `2>nul`/`>nul` is \
         refused here, because in PowerShell `nul` is a file name. To read a file, \
-        prefer the `read` tool over `cat`.";
+        prefer the `read` tool over `cat`. Inside this sandbox a Node process cannot \
+        start child processes with piped output (it hangs): run tests with \
+        `node --test --test-isolation=none <files>` or `node <file>`, and do not \
+        repeat a command that timed out.";
     if let Some(function) = value.get_mut("function").and_then(|f| f.as_object_mut()) {
         if let Some(updated) = function
             .get("description")

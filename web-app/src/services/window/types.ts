@@ -14,6 +14,8 @@ export interface WindowConfig {
   maximizable?: boolean
   closable?: boolean
   fullscreen?: boolean
+  /** False creates the window hidden (a spare to be shown later). */
+  visible?: boolean
   /** Isolate the window's cookies/session from the app. */
   incognito?: boolean
 }

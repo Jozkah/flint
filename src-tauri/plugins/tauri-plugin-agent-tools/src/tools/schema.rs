@@ -43,13 +43,14 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "read",
-                "description": "Read the contents of a UTF-8 text file. Use this to inspect a file before you act on it, including before you `edit` it, because `edit` matches against the exact current text and will fail if your memory of the file is stale. Prefer a targeted `offset`/`limit` window over reading a whole large file. Output is truncated to 2000 lines or 64KB, whichever is hit first; when you need more, page through it with `offset`. Image files (png/jpeg/gif/webp, detected by signature or extension) come back as a vision image instead of text, so you can look at what you rendered. Do not use this to list a directory (use `ls`) or to search contents across files (use `grep`).",
+                "description": "Read the contents of a UTF-8 text file. Use this to inspect a file before you act on it, including before you `edit` it, because `edit` matches against the exact current text and will fail if your memory of the file is stale. Prefer a targeted `offset`/`limit` window over reading a whole large file. Output is truncated to 2000 lines or 64KB, whichever is hit first; when you need more, page through it with `offset`. A text file over the normal size limit is refused unless you pass `allow_large: true`, which raises the limit eightfold (binary files are still refused). Image files (png/jpeg/gif/webp, detected by signature or extension) come back as a vision image instead of text, so you can look at what you rendered. Do not use this to list a directory (use `ls`) or to search contents across files (use `grep`).",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "path": { "type": "string", "description": "File to read, relative to your working folder (the session worktree when the run has one, else your workspace), or absolute. On Windows write C:/tmp/x or C:\\\\tmp\\\\x: a single backslash is a JSON escape (\\t is a TAB). Must be inside the workspace or an attached read root." },
                         "offset": { "type": "integer", "description": "1-indexed line to start from. Default 1 (start of file)." },
-                        "limit": { "type": "integer", "description": "Maximum number of lines to read from `offset`. Omit to read to the truncation cap." }
+                        "limit": { "type": "integer", "description": "Maximum number of lines to read from `offset`. Omit to read to the truncation cap." },
+                        "allow_large": { "type": "boolean", "description": "Read a text file that is over the normal size limit, up to 8x that limit. Default false. Combine with `offset`/`limit`; the output cap still applies." }
                     },
                     "required": ["path"]
                 }

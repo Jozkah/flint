@@ -689,5 +689,424 @@
     "noVisionModel": "画像を認識できるモデルがありません。追加するか、モデルを画像対応として設定してください。",
     "embed": "添付画像を検索できるようにする",
     "embedDesc": "各画像の説明をチャットのドキュメントとしても保存し、後で検索できるようにします。添付画像はすべて説明用モデルに送信されます。"
+  },
+  "campaigns": {
+    "title": "キャンペーン",
+    "maxParallel": "キャンペーンの並列スレッド数",
+    "maxParallelDesc": "キャンペーンのタスクを同時に実行する数を、それぞれ専用の分割ペインで 1〜6 の範囲で指定します。実行中のキャンペーンにはすぐに反映されます。空きペインの数によっても制限されます。",
+    "board": {
+      "dot": {
+        "queued": "待機中",
+        "blocked": "ブロック中",
+        "running": "実行中",
+        "needsYou": "対応が必要",
+        "verifying": "検証中",
+        "verified": "検証済み",
+        "merged": "マージ済み",
+        "failed": "失敗",
+        "conflict": "競合",
+        "cancelled": "キャンセル済み",
+        "planning": "計画中",
+        "review": "レビュー待ち"
+      },
+      "status": {
+        "draft": "下書き",
+        "planned": "計画済み",
+        "approved": "承認済み",
+        "running": "実行中",
+        "paused": "一時停止中",
+        "reviewing": "レビュー中",
+        "merging": "マージ中",
+        "done": "完了",
+        "failed": "失敗",
+        "cancelled": "キャンセル済み",
+        "interrupted": "中断"
+      },
+      "openBoard": "キャンペーンボードを開く",
+      "notFound": "このキャンペーンは見つかりませんでした。",
+      "loading": "キャンペーンを読み込んでいます…",
+      "budget": {
+        "label": "トークン予算",
+        "used": "{{budget}} トークン中 {{used}} トークン",
+        "none": "{{used}} トークン (予算は未設定)"
+      },
+      "parallel": "並列数の上限 {{n}}",
+      "card": {
+        "branch": "ブランチ",
+        "noBranch": "ブランチはまだありません"
+      },
+      "action": {
+        "open": "セッションを開く",
+        "note": "メモを送る",
+        "stop": "停止",
+        "retry": "再試行",
+        "skip": "スキップ",
+        "handoff": "引き継ぎを表示",
+        "diff": "変更を表示",
+        "pause": "一時停止",
+        "resume": "再開",
+        "cancel": "キャンペーンをキャンセル",
+        "review": "レビューして適用",
+        "send": "送信",
+        "close": "閉じる",
+        "confirm": "確認",
+        "reviewChanges": "変更をレビュー",
+        "openCoordinator": "コーディネーターを開く",
+        "openCowork": "Cowork を開いて続行"
+      },
+      "note": {
+        "title": "{{task}} へのメモ",
+        "placeholder": "タスクに変えてほしい点を伝えてください",
+        "sent": "メモを送信しました"
+      },
+      "handoff": {
+        "title": "引き継ぎ: {{task}}",
+        "empty": "引き継ぎはまだ書かれていません。"
+      },
+      "diff": {
+        "title": "{{task}} が変更したファイル",
+        "empty": "このタスクのファイル変更は記録されていません。"
+      },
+      "review": {
+        "title": "レビューして適用",
+        "body": "マージ結果に対して最終チェックを実行し、お使いのチェックアウト向けの提案を 1 つ作成します。その提案を承認するまで、何も適用されません。",
+        "command": "最終チェックのコマンド: {{command}}",
+        "noCommand": "ビルドまたはテストのコマンドが設定も検出もされていないため、マージ結果はビルドもテストもされません。",
+        "proposal": "提案を作成しました。このボードでレビューして適用してください。",
+        "failed": "最終チェックに失敗しました。キャンペーンはレビュー中のままです。"
+      },
+      "cancelConfirm": {
+        "title": "このキャンペーンをキャンセルしますか?",
+        "body": "未完了のタスクはすべてキャンセルされ、実行中のタスクは停止します。ワークツリーは残ります。"
+      },
+      "proposal": {
+        "title": "キャンペーンの変更",
+        "loading": "提案を読み込んでいます…",
+        "missing": "提案が見つかりませんでした。「レビューして適用」をもう一度実行してください。"
+      },
+      "resumed": "アプリの停止時に中断された {{n}} 件のタスクを再開しました。",
+      "stalled": "{{n}} 件のタスクは実行中と表示されていますが、このウィンドウでは何も実行していません。Cowork を開いて続行してください。",
+      "noteState": {
+        "sent": "メモを送信しました",
+        "delivered": "メモがタスクに届きました"
+      },
+      "error": "操作に失敗しました: {{reason}}",
+      "headline": {
+        "planning": "作業を計画しています",
+        "working": "作業中: {{total}} 件中 {{done}} 件のタスクが完了",
+        "attention_one": "対応が必要です: {{count}} 件のタスクがあなたを待っています",
+        "attention_other": "対応が必要です: {{count}} 件のタスクがあなたを待っています",
+        "review": "レビューの準備ができました",
+        "merging": "結果をまとめています",
+        "paused": "一時停止中: {{total}} 件中 {{done}} 件のタスクが完了",
+        "interrupted": "アプリの終了時に停止しました: {{total}} 件中 {{done}} 件のタスクが完了",
+        "done": "すべて完了しました",
+        "failed": "このキャンペーンは完了できませんでした",
+        "cancelled": "キャンセル済み",
+        "gateFailed": "最終チェックに失敗しました: 作業はマージされましたが、検証されていません"
+      },
+      "progressLabel": "{{total}} 件中 {{done}} 件のタスクが完了",
+      "planning": "計画中… コーディネーターの計画を待っています。",
+      "group": {
+        "needsYou": "対応が必要",
+        "working": "作業中",
+        "upNext": "次に実行",
+        "done": "完了",
+        "skipped": "スキップ済み"
+      },
+      "word": {
+        "writing": "コードを作成中",
+        "checking": "結果を確認中",
+        "ready": "確認済み、マージできます",
+        "needsInput": "あなたの回答を待っています",
+        "needsApproval": "あなたの承認を待っています",
+        "failed": "うまくいきませんでした",
+        "conflict": "ほかの変更と競合しています",
+        "waiting": "{{tasks}} を待っています",
+        "queued": "まもなく開始します",
+        "merged": "マージ済み",
+        "skipped": "スキップ済み",
+        "resolving": "競合を解決中",
+        "verifyBlocked": "作業は終わりましたが、チェックで判断できませんでした",
+        "waitingSkipped": "{{tasks}} を待っていますが、スキップされました"
+      },
+      "row": {
+        "open": "開く",
+        "details": "詳細",
+        "attempts": "試行回数",
+        "tokens": "使用トークン数",
+        "lastActivity": "最終アクティビティ",
+        "seeChanges": "{{task}} の変更内容を見る"
+      },
+      "details": "詳細",
+      "detailBranch": "結果は {{branch}} に集められます",
+      "statusWord": {
+        "draft": "開始中",
+        "planned": "開始中",
+        "approved": "開始中",
+        "running": "作業中",
+        "paused": "一時停止中",
+        "reviewing": "レビュー待ち",
+        "merging": "マージ中",
+        "done": "完了",
+        "failed": "失敗",
+        "cancelled": "キャンセル済み",
+        "interrupted": "停止"
+      },
+      "groupProgress": "{{total}} 件中 {{done}} 件完了 · {{status}}",
+      "fold": "{{title}} のセッションを隠す",
+      "unfold": "{{title}} のセッションを表示",
+      "story": {
+        "wrote_one": "{{count}} 個のファイルを作成、+{{added}} −{{removed}} 行",
+        "wrote_other": "{{count}} 個のファイルを作成、+{{added}} −{{removed}} 行",
+        "wroteUncounted_one": "{{count}} 個のファイルを作成",
+        "wroteUncounted_other": "{{count}} 個のファイルを作成",
+        "stop": {
+          "none": "完了前に停止しました。",
+          "one": "コマンドが失敗したため停止しました。",
+          "many": "コマンドが {{count}} 回失敗したため停止しました。"
+        },
+        "headline": {
+          "noOutput": "何も書き込まれませんでした。",
+          "stoppedPlain": "完了せずに停止しました。",
+          "finishedNoFiles": "ファイルを変更せずに完了しました。",
+          "working_one": "作業中: これまでに {{count}} ステップ。",
+          "working_other": "作業中: これまでに {{count}} ステップ。",
+          "starting": "開始したところです。",
+          "conflict": "作業は終わりましたが、変更がほかのタスクの書き込みと競合しています。",
+          "waiting": "先に {{tasks}} の完了を待っています。",
+          "queued": "空きができ次第、開始します。",
+          "needsInput": "一時停止中: あなたへの質問があります。",
+          "needsApproval": "一時停止中: 続行にはあなたの承認が必要です。",
+          "skipped": "スキップしました。",
+          "verifyBlocked": "作業は終わりましたが、チェックでは正しいかどうか判断できませんでした。"
+        },
+        "took": "作業時間 {{time}}",
+        "running": "実行時間 {{time}}",
+        "toggle": "経緯",
+        "asked": "依頼内容",
+        "did": "実行内容",
+        "stoppedAt": "停止した箇所",
+        "noRecord": "このタスクにはステップごとの記録がありません。",
+        "more_one": "ほか {{count}} ステップ",
+        "more_other": "ほか {{count}} ステップ",
+        "step": {
+          "read": "{{label}} を読み取り",
+          "readMany_one": "{{count}} 個のファイルを読み取り",
+          "readMany_other": "{{count}} 個のファイルを読み取り",
+          "search_one": "プロジェクトを検索",
+          "search_other": "プロジェクトを {{count}} 回検索",
+          "write": "{{label}} を書き込み",
+          "writeMany_one": "{{count}} 個のファイルを書き込み",
+          "writeMany_other": "{{count}} 個のファイルを書き込み",
+          "ran": "{{label}} を実行",
+          "ranFailed": "{{label}} を実行しましたが、失敗しました"
+        },
+        "next": {
+          "retry": "もう一度試してください。変えてほしい点も伝えてください。",
+          "conflict": "会話を開き、最新の結果をもとにやり直すよう依頼するか、スキップしてください。",
+          "open": "再試行の回数を使い切りました。会話を開いて行き詰まった箇所を確認するか、スキップしてください。",
+          "answer": "会話を開いて、質問に答えてください。",
+          "approve": "会話を開いて、リクエストを承認または拒否してください。",
+          "verify": "もう一度チェックするか、問題ないことが確認できる場合は自分で承認してください。",
+          "help": "別の方法が必要です。提案されたヒントが入力されています。必要に応じて変更して再試行してください。"
+        },
+        "hintLabel": "変えてほしい点を伝える",
+        "openConversation": "会話を開く"
+      },
+      "summary": {
+        "title": "全体像",
+        "goal": "依頼内容",
+        "plan": "分割のしかた",
+        "sideBySide_one": "{{count}} 件のタスクを単独で実行",
+        "sideBySide_other": "{{count}} 件のタスクを並行して実行",
+        "waitsFor": "{{task}} は {{tasks}} を待ちます",
+        "time": "時間",
+        "timeSoFar": "ここまで {{time}}",
+        "timeTotal": "合計 {{time}}",
+        "result": "結果",
+        "cost": "コスト",
+        "costTokens": "約 {{tokens}} トークン",
+        "costBudget": "予算 {{budget}} トークンのうち約 {{tokens}} トークン",
+        "branch": "結果の保存先",
+        "branchBody": "すべて別のブランチ {{branch}} に集められます。レビューして適用するまで、お使いのファイルは変更されません。",
+        "copy": "ブランチ名をコピー",
+        "copied": "コピーしました",
+        "wrapUp": {
+          "doneTitle": "すべて完了しました",
+          "reviewTitle": "レビューの準備ができました",
+          "built": "作成されたもの",
+          "tasks": "完了したタスク",
+          "files": "変更したファイル",
+          "lines": "変更した行数",
+          "skipped": "{{count}} 件をスキップ"
+        }
+      },
+      "effort": "作業の約 {{percent}}% が完了しています",
+      "recovery": {
+        "checkAgain": "もう一度チェック",
+        "accept": "そのまま承認",
+        "acceptWhy": "承認して問題ない理由を 1 行で入力してください。タスクと一緒に保存されます。",
+        "acceptConfirm": "承認する",
+        "accepted": "あなたが承認しました",
+        "acceptedWhy": "あなたが承認しました: {{reason}}",
+        "blocks": "これを待っています: {{tasks}}。"
+      },
+      "changes": {
+        "title": "このキャンペーンで変更されたすべて",
+        "body": "完了したすべてのタスクの変更を、ファイルごとにまとめています。ここからフォルダーに適用されることはありません。",
+        "continue": "ビルドとテストを実行してレビュー"
+      },
+      "conflict": {
+        "explain": "このタスクとほかのタスクが同じ行を変更したため、Flint では自動的に統合できませんでした。",
+        "files": "競合しているファイル",
+        "resolve": "自動で解決を試す",
+        "skip": "タスクをスキップ",
+        "resolving": "競合を解決しています...",
+        "resolvingFiles": "{{count}} 個のファイルの競合を解決しています..."
+      },
+      "verify": {
+        "verdict": "検証担当によるチェック結果",
+        "verdicts": {
+          "PASS": "合格",
+          "PARTIAL": "一部のみ完了",
+          "FAIL": "不合格",
+          "BLOCKED": "判断できませんでした"
+        },
+        "testsPassed": "テストに合格しました",
+        "testsFailed": "テストに失敗しました",
+        "testsFailedTail": "テストに失敗しました: {{tail}}",
+        "tokens": "チェックに使用したトークン数"
+      },
+      "progressLabelSkipped": "{{done}} 件完了 · {{skipped}} 件スキップ · 全 {{total}} 件",
+      "groupProgressSkipped": "{{done}} 件完了 · {{skipped}} 件スキップ · {{status}}",
+      "effortGateFailed": "最終チェックに失敗したため、作業は完了していません",
+      "stranded": {
+        "explain": "このタスクは {{tasks}} を待っていますが、スキップされたため自動では開始できません。",
+        "skipToo": "これもスキップ",
+        "runWithout": "待たずに実行"
+      },
+      "skipConfirm": {
+        "title": "「{{task}}」をスキップしますか?",
+        "body_one": "ほかの {{count}} 件のタスクがこのタスクを待っています。あわせてスキップしますか、それともこのタスクなしで実行しますか?",
+        "body_other": "ほかの {{count}} 件のタスクがこのタスクを待っています。あわせてスキップしますか、それともこのタスクなしで実行しますか?",
+        "cascade_one": "このタスクと、それを待っているタスクをスキップ",
+        "cascade_other": "このタスクと、それを待っている {{count}} 件のタスクをスキップ",
+        "release": "このタスクをスキップし、ほかは待たずに実行"
+      },
+      "gate": {
+        "title": "最終チェックに失敗しました",
+        "body": "作業はマージされましたが、最終のビルドとテストのチェックに合格しなかったため、適用できません。",
+        "command": "コマンド",
+        "result": "結果",
+        "exit": "終了コード {{code}}",
+        "noExit": "正常に終了しませんでした",
+        "timedOut": "タイムアウトしました",
+        "output": "出力の最後の行",
+        "copy": "コピー",
+        "copied": "コピーしました",
+        "fix": "自動で修正",
+        "retry": "チェックを再実行",
+        "reviewAnyway": "そのままレビュー",
+        "reviewWarning": "最終チェックに失敗しています。そのことを踏まえて変更をレビューしてください。"
+      },
+      "recheck": {
+        "again": "もう一度チェックしています…",
+        "stalled": "チェックに想定より時間がかかっています。"
+      }
+    },
+    "changes": {
+      "loading": "変更内容を確認しています…",
+      "unavailable": "変更内容を読み取れませんでした。セッションを開いて確認してください。",
+      "none": "このタスクはファイルを変更していません。",
+      "files_one": "{{count}} 個のファイル",
+      "files_other": "{{count}} 個のファイル",
+      "namesOnly": "このタスクについては、ファイル名のみ分かっています。",
+      "uncommitted": "この作業の一部は、まだタスクのブランチに保存されていません。",
+      "cut": "長い一覧を省略しました。",
+      "kind": {
+        "new": "新規",
+        "edited": "編集",
+        "deleted": "削除",
+        "renamed": "名前変更"
+      },
+      "binary": "バイナリ",
+      "binaryNote": "テキストファイルではないため、表示できる内容はありません。",
+      "renamedFrom": "{{from}} から名前を変更",
+      "showMore_one": "さらに {{count}} 行を表示",
+      "showMore_other": "さらに {{count}} 行を表示",
+      "fileCut": "この変更は長いため、先頭のみ表示しています。",
+      "noPatch": "このファイルには行ごとの表示がありません。"
+    },
+    "start": {
+      "title": "新しいキャンペーン",
+      "menu": "新しいキャンペーン",
+      "prompt": "大きなタスクを説明してください。Flint が分割方法を計画します。",
+      "goalLabel": "キャンペーンで何をしますか?",
+      "placeholder": "例: テスト付きで、アプリ全体にダークモードを追加する",
+      "hint": "同時に最大 {{n}} 個のスレッドが作業します。設定で変更できます。",
+      "folder": "{{folder}} 内",
+      "go": "開始",
+      "noFolder": "キャンペーンを開始するには、git フォルダーを開いてください",
+      "error": {
+        "no-model": "まずツールを使えるモデルを選んでから (サイドバーの「モデル」またはモデルピッカー)、もう一度開始してください。",
+        "failed": "Flint はキャンペーンのセッションを開けませんでした。何も開始されていません。もう一度お試しください。"
+      }
+    },
+    "nav": "キャンペーン",
+    "list": {
+      "subtitle": "大きなタスクを複数の部分に分け、複数のエージェントが並行して作業します。",
+      "start": "キャンペーンを開始",
+      "empty": "キャンペーンはまだありません",
+      "emptyHint": "キャンペーンは、1 つの大きなタスクを小さなタスクに分割し、複数のエージェントがそれぞれ専用のブランチで同時に作業します。",
+      "doneOf": "{{total}} 件中 {{done}} 件完了",
+      "planning": "計画中",
+      "updated": "{{when}} に更新",
+      "loading": "キャンペーンを読み込んでいます",
+      "loadFailed": "キャンペーンを読み込めませんでした。",
+      "retry": "再試行"
+    },
+    "plan": {
+      "edit": "計画を編集",
+      "save": "変更を保存",
+      "discard": "変更を破棄",
+      "saved": "計画を保存しました。",
+      "saveFailed": "計画を保存できませんでした: {{reason}}",
+      "unsaved": "未保存",
+      "saveFirst": "許可する前に、計画の変更を保存するか破棄してください。",
+      "addTask": "タスクを追加",
+      "count": "{{max}} 件中 {{count}} 件のタスク",
+      "after": "後: {{tasks}}",
+      "moveUp": "{{task}} を上へ移動",
+      "moveDown": "{{task}} を下へ移動",
+      "remove": "{{task}} を削除",
+      "addAfter": "待機するタスクを追加",
+      "removeAfter": "この依存関係を削除",
+      "field": {
+        "title": "タスク名",
+        "brief": "実行内容",
+        "acceptance": "完了の判断基準 (1 行に 1 つ)",
+        "paths": "変更してよいファイルとフォルダー (1 行に 1 つ)",
+        "pathsHint": "src/feature",
+        "after": "開始のタイミング"
+      },
+      "estimate": {
+        "one": "約 {{tokens}} トークン",
+        "range": "約 {{low}}〜{{high}} トークン",
+        "basis": "見積もりの根拠: {{basis}}",
+        "generic": "タスクが読み取るファイルの数と、チェックを繰り返す回数によって変わります。"
+      },
+      "issue": {
+        "noTasks": "タスクを 1 つ以上追加してください。",
+        "tooMany": "{{count}} 件のタスクは多すぎます。上限は {{max}} 件です。",
+        "emptyTitle": "名前のないタスクがあります。",
+        "emptyBrief": "{{task}} には、実行内容の説明が必要です。",
+        "badPath": "{{task}}: 「{{path}}」はプロジェクト内のフォルダーまたはファイルではありません。",
+        "selfDependency": "{{task}} は自分自身を待てません。",
+        "unknownDependency": "{{task}} は、すでに存在しないタスクを待っています。",
+        "cycle": "これらのタスクが互いに待ち合っています: {{tasks}}。",
+        "overlap": "{{a}} と {{b}} は同時に実行されますが、どちらも {{path}} を変更します。一方がもう一方を待つようにしてください。"
+      }
+    }
   }
 }

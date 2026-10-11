@@ -1,0 +1,26 @@
+{
+  "title": "Flint 服务器",
+  "desc": "在你运行的服务器上使用 Flint，从此设备访问。",
+  "address": "服务器地址",
+  "addressDesc": "你的 flint serve 的 HTTPS 地址，例如它发布时使用的 Tailscale 名称。你在服务器自己的页面上登录；此应用从不保存凭据。",
+  "test": "测试连接",
+  "open": "打开服务器",
+  "forget": "忘记服务器",
+  "checking": "正在检查...",
+  "statusOk": "已连接到 Flint 服务器。",
+  "statusReachable": "有响应，但从这里无法确认它是 Flint。请打开它确认。",
+  "statusUnreachable": "无法连接。请检查地址、服务器是否在运行，以及此设备能否访问它（已开启 VPN 或 Tailscale）。",
+  "insecure": "此地址不是 HTTPS。会话将以明文传输，Android 可能会拒绝。",
+  "problem": {
+    "empty": "请输入服务器地址。",
+    "invalid": "这不是有效的地址。",
+    "scheme": "请使用 http 或 https 地址。",
+    "credentials": "请不要在地址中包含用户名和密码。"
+  },
+  "auto": "启动时打开",
+  "autoDesc": "应用启动时打开该服务器，在此之前会有几秒钟让你选择改用此设备。",
+  "opening": "{{seconds}} 秒后打开 {{host}}",
+  "useDevice": "使用此设备",
+  "limitsTitle": "什么在哪里运行",
+  "limits": "聊天、房间、模型和工具在服务器上运行。协作会话和战役需要一个在已打开 Flint 的电脑上运行的智能体：请通过远程访问和手机应用连接到那台电脑。无头服务器可以列出战役并审阅提案，但不运行会话。"
+}

@@ -689,5 +689,424 @@
     "noVisionModel": "Không có mô hình nào nhìn được. Hãy thêm một mô hình hoặc đánh dấu một mô hình có khả năng nhìn.",
     "embed": "Cho phép tìm kiếm hình ảnh đính kèm",
     "embedDesc": "Lưu thêm bản mô tả của mỗi hình ảnh cùng tài liệu của cuộc trò chuyện để tìm kiếm sau. Việc này gửi mọi hình ảnh đính kèm tới mô hình mô tả."
+  },
+  "campaigns": {
+    "title": "Chiến dịch",
+    "maxParallel": "Luồng song song của chiến dịch",
+    "maxParallelDesc": "Số tác vụ chiến dịch được chạy cùng lúc, mỗi tác vụ trong một ngăn riêng. Từ 1 đến 6. Áp dụng ngay cho chiến dịch đang chạy; số ngăn trống vẫn là giới hạn.",
+    "board": {
+      "dot": {
+        "queued": "Đang chờ",
+        "blocked": "Bị chặn",
+        "running": "Đang chạy",
+        "needsYou": "Cần bạn",
+        "verifying": "Đang xác minh",
+        "verified": "Đã xác minh",
+        "merged": "Đã hợp nhất",
+        "failed": "Thất bại",
+        "conflict": "Xung đột",
+        "cancelled": "Đã hủy",
+        "planning": "Đang lập kế hoạch",
+        "review": "Sẵn sàng để xem xét"
+      },
+      "status": {
+        "draft": "bản nháp",
+        "planned": "đã lập kế hoạch",
+        "approved": "đã duyệt",
+        "running": "đang chạy",
+        "paused": "đã tạm dừng",
+        "reviewing": "đang xem xét",
+        "merging": "đang hợp nhất",
+        "done": "xong",
+        "failed": "thất bại",
+        "cancelled": "đã hủy",
+        "interrupted": "bị gián đoạn"
+      },
+      "openBoard": "Mở bảng chiến dịch",
+      "notFound": "Không tìm thấy chiến dịch này.",
+      "loading": "Đang tải chiến dịch…",
+      "budget": {
+        "label": "Ngân sách token",
+        "used": "{{used}} trên {{budget}} token",
+        "none": "{{used}} token, chưa đặt ngân sách"
+      },
+      "parallel": "Giới hạn song song {{n}}",
+      "card": {
+        "branch": "Nhánh",
+        "noBranch": "chưa có nhánh"
+      },
+      "action": {
+        "open": "Mở phiên",
+        "note": "Gửi ghi chú",
+        "stop": "Dừng",
+        "retry": "Thử lại",
+        "skip": "Bỏ qua",
+        "handoff": "Xem bàn giao",
+        "diff": "Xem thay đổi",
+        "pause": "Tạm dừng",
+        "resume": "Tiếp tục",
+        "cancel": "Hủy chiến dịch",
+        "review": "Xem xét và áp dụng",
+        "send": "Gửi",
+        "close": "Đóng",
+        "confirm": "Xác nhận",
+        "reviewChanges": "Xem xét thay đổi",
+        "openCoordinator": "Mở bộ điều phối",
+        "openCowork": "Mở Cowork để tiếp tục"
+      },
+      "note": {
+        "title": "Ghi chú cho {{task}}",
+        "placeholder": "Cho tác vụ biết cần làm khác đi thế nào",
+        "sent": "Đã gửi ghi chú"
+      },
+      "handoff": {
+        "title": "Bàn giao: {{task}}",
+        "empty": "Chưa có bản bàn giao nào được viết."
+      },
+      "diff": {
+        "title": "Các tệp bị {{task}} thay đổi",
+        "empty": "Không có thay đổi tệp nào được ghi lại cho tác vụ này."
+      },
+      "review": {
+        "title": "Xem xét và áp dụng",
+        "body": "Bước này chạy kiểm tra trên kết quả đã hợp nhất, rồi tạo một đề xuất cho thư mục của bạn. Không có gì được áp dụng cho đến khi bạn phê duyệt đề xuất đó.",
+        "command": "Lệnh kiểm tra: {{command}}",
+        "noCommand": "Chưa cấu hình hoặc phát hiện lệnh build hay test nào, nên kết quả đã hợp nhất sẽ không được build hay kiểm thử.",
+        "proposal": "Đã tạo đề xuất. Hãy xem xét và áp dụng ngay trên bảng này.",
+        "failed": "Kiểm tra không đạt; chiến dịch vẫn ở bước xem xét."
+      },
+      "cancelConfirm": {
+        "title": "Hủy chiến dịch này?",
+        "body": "Mọi tác vụ chưa xong sẽ bị hủy và các tác vụ đang chạy sẽ bị dừng. Worktree được giữ lại."
+      },
+      "proposal": {
+        "title": "Thay đổi của chiến dịch",
+        "loading": "Đang tải đề xuất…",
+        "missing": "Không tìm thấy đề xuất. Hãy chạy lại Xem xét và áp dụng."
+      },
+      "resumed": "Đã tiếp tục {{n}} tác vụ bị gián đoạn khi ứng dụng dừng.",
+      "stalled": "{{n}} tác vụ hiển thị là đang chạy nhưng không có gì chạy chúng trong cửa sổ này. Hãy mở Cowork để tiếp tục.",
+      "noteState": {
+        "sent": "Đã gửi ghi chú",
+        "delivered": "Ghi chú đã được chuyển tới tác vụ"
+      },
+      "error": "Thao tác thất bại: {{reason}}",
+      "headline": {
+        "planning": "Đang lập kế hoạch công việc",
+        "working": "Đang làm: xong {{done}} trên {{total}} tác vụ",
+        "attention_one": "Cần bạn chú ý: {{count}} tác vụ đang chờ bạn",
+        "attention_other": "Cần bạn chú ý: {{count}} tác vụ đang chờ bạn",
+        "review": "Sẵn sàng để bạn xem xét",
+        "merging": "Đang tổng hợp kết quả",
+        "paused": "Đã tạm dừng: xong {{done}} trên {{total}} tác vụ",
+        "interrupted": "Đã dừng khi ứng dụng đóng: xong {{done}} trên {{total}} tác vụ",
+        "done": "Đã xong tất cả",
+        "failed": "Chiến dịch này không thể hoàn tất",
+        "cancelled": "Đã hủy",
+        "gateFailed": "Kiểm tra cuối cùng thất bại: công việc đã hợp nhất nhưng chưa được xác minh"
+      },
+      "progressLabel": "Xong {{done}} trên {{total}} tác vụ",
+      "planning": "Đang lập kế hoạch… chờ kế hoạch của bộ điều phối.",
+      "group": {
+        "needsYou": "Cần bạn",
+        "working": "Đang làm",
+        "upNext": "Tiếp theo",
+        "done": "Xong",
+        "skipped": "Đã bỏ qua"
+      },
+      "word": {
+        "writing": "Đang viết mã",
+        "checking": "Đang kiểm tra kết quả",
+        "ready": "Đã kiểm tra, sẵn sàng hợp nhất",
+        "needsInput": "Đang chờ câu trả lời của bạn",
+        "needsApproval": "Đang chờ bạn phê duyệt",
+        "failed": "Không thành công",
+        "conflict": "Xung đột với các thay đổi khác",
+        "waiting": "Đang chờ {{tasks}}",
+        "queued": "Sắp bắt đầu",
+        "merged": "Đã hợp nhất",
+        "skipped": "Đã bỏ qua",
+        "resolving": "Đang giải quyết xung đột",
+        "verifyBlocked": "Đã xong, nhưng bước kiểm tra không thể quyết định",
+        "waitingSkipped": "Đang chờ {{tasks}}, tác vụ đã bị bỏ qua"
+      },
+      "row": {
+        "open": "Mở",
+        "details": "Chi tiết",
+        "attempts": "Số lần thử",
+        "tokens": "Token đã dùng",
+        "lastActivity": "Hoạt động gần nhất",
+        "seeChanges": "Xem {{task}} đã thay đổi gì"
+      },
+      "details": "Chi tiết",
+      "detailBranch": "Kết quả được gom về {{branch}}",
+      "statusWord": {
+        "draft": "Đang bắt đầu",
+        "planned": "Đang bắt đầu",
+        "approved": "Đang bắt đầu",
+        "running": "Đang làm",
+        "paused": "Đã tạm dừng",
+        "reviewing": "Sẵn sàng để xem xét",
+        "merging": "Đang hợp nhất",
+        "done": "Xong",
+        "failed": "Thất bại",
+        "cancelled": "Đã hủy",
+        "interrupted": "Đã dừng"
+      },
+      "groupProgress": "Xong {{done}} trên {{total}} · {{status}}",
+      "fold": "Ẩn các phiên của {{title}}",
+      "unfold": "Hiện các phiên của {{title}}",
+      "story": {
+        "wrote_one": "Đã ghi {{count}} tệp, +{{added}} −{{removed}} dòng",
+        "wrote_other": "Đã ghi {{count}} tệp, +{{added}} −{{removed}} dòng",
+        "wroteUncounted_one": "Đã ghi {{count}} tệp",
+        "wroteUncounted_other": "Đã ghi {{count}} tệp",
+        "stop": {
+          "none": "Đã dừng trước khi hoàn tất.",
+          "one": "Đã dừng sau khi một lệnh thất bại.",
+          "many": "Đã dừng sau khi các lệnh thất bại {{count}} lần."
+        },
+        "headline": {
+          "noOutput": "Chưa ghi gì cả.",
+          "stoppedPlain": "Đã dừng mà chưa hoàn tất.",
+          "finishedNoFiles": "Đã xong mà không thay đổi tệp nào.",
+          "working_one": "Đang thực hiện: đã làm {{count}} bước.",
+          "working_other": "Đang thực hiện: đã làm {{count}} bước.",
+          "starting": "Vừa mới bắt đầu.",
+          "conflict": "Đã xong, nhưng thay đổi của nó xung đột với những gì các tác vụ khác đã viết.",
+          "waiting": "Đang chờ {{tasks}} hoàn tất trước.",
+          "queued": "Sẽ bắt đầu ngay khi có chỗ.",
+          "needsInput": "Đã tạm dừng: nó đã hỏi bạn một câu.",
+          "needsApproval": "Đã tạm dừng: cần bạn phê duyệt để tiếp tục.",
+          "skipped": "Đã bỏ qua.",
+          "verifyBlocked": "Đã xong, nhưng bước kiểm tra không thể xác định kết quả có đúng hay không."
+        },
+        "took": "Đã làm trong {{time}}",
+        "running": "Đang chạy được {{time}}",
+        "toggle": "Đã xảy ra gì",
+        "asked": "Nó được yêu cầu gì",
+        "did": "Nó đã làm gì",
+        "stoppedAt": "Nó dừng ở đâu",
+        "noRecord": "Không có bản ghi từng bước cho tác vụ này.",
+        "more_one": "và thêm {{count}} bước",
+        "more_other": "và thêm {{count}} bước",
+        "step": {
+          "read": "Đã đọc {{label}}",
+          "readMany_one": "Đã đọc {{count}} tệp",
+          "readMany_other": "Đã đọc {{count}} tệp",
+          "search_one": "Đã tìm trong dự án",
+          "search_other": "Đã tìm trong dự án {{count}} lần",
+          "write": "Đã ghi {{label}}",
+          "writeMany_one": "Đã ghi {{count}} tệp",
+          "writeMany_other": "Đã ghi {{count}} tệp",
+          "ran": "Đã chạy {{label}}",
+          "ranFailed": "Đã chạy {{label}} và thất bại"
+        },
+        "next": {
+          "retry": "Hãy thử lại và cho nó biết cần làm khác đi thế nào.",
+          "conflict": "Mở cuộc trò chuyện và yêu cầu nó làm lại dựa trên kết quả mới nhất, hoặc bỏ qua.",
+          "open": "Nó đã hết lượt thử. Hãy mở cuộc trò chuyện để xem nó bị kẹt ở đâu, hoặc bỏ qua.",
+          "answer": "Mở cuộc trò chuyện và trả lời câu hỏi của nó.",
+          "approve": "Mở cuộc trò chuyện và phê duyệt hoặc từ chối yêu cầu.",
+          "verify": "Hãy kiểm tra lại, hoặc tự chấp nhận nếu bạn thấy nó ổn.",
+          "help": "Việc này cần một cách tiếp cận khác. Gợi ý đề xuất đã được điền sẵn; hãy sửa nếu muốn rồi thử lại."
+        },
+        "hintLabel": "Cho nó biết cần làm khác đi thế nào",
+        "openConversation": "Mở cuộc trò chuyện"
+      },
+      "summary": {
+        "title": "Bức tranh toàn cảnh",
+        "goal": "Điều bạn yêu cầu",
+        "plan": "Cách chia việc",
+        "sideBySide_one": "{{count}} tác vụ chạy riêng",
+        "sideBySide_other": "{{count}} tác vụ này chạy song song",
+        "waitsFor": "{{task}} chờ {{tasks}}",
+        "time": "Thời gian",
+        "timeSoFar": "Đến nay {{time}}",
+        "timeTotal": "Tổng cộng {{time}}",
+        "result": "Kết quả",
+        "cost": "Chi phí",
+        "costTokens": "Khoảng {{tokens}} token",
+        "costBudget": "Khoảng {{tokens}} token trong ngân sách {{budget}} của bạn",
+        "branch": "Kết quả nằm ở đâu",
+        "branchBody": "Mọi thứ được gom vào một nhánh riêng, {{branch}}. Các tệp của bạn không bị động đến cho tới khi bạn xem xét và áp dụng.",
+        "copy": "Sao chép tên nhánh",
+        "copied": "Đã sao chép",
+        "wrapUp": {
+          "doneTitle": "Đã xong tất cả",
+          "reviewTitle": "Sẵn sàng để bạn xem xét",
+          "built": "Những gì đã làm xong",
+          "tasks": "Tác vụ đã xong",
+          "files": "Tệp đã thay đổi",
+          "lines": "Dòng đã thay đổi",
+          "skipped": "Đã bỏ qua {{count}}"
+        }
+      },
+      "effort": "Khoảng {{percent}}% công việc đã xong",
+      "recovery": {
+        "checkAgain": "Kiểm tra lại",
+        "accept": "Vẫn chấp nhận",
+        "acceptWhy": "Vì sao có thể chấp nhận? Một dòng, được lưu cùng tác vụ.",
+        "acceptConfirm": "Chấp nhận",
+        "accepted": "Bạn đã chấp nhận",
+        "acceptedWhy": "Bạn đã chấp nhận: {{reason}}",
+        "blocks": "Đang chặn: {{tasks}}."
+      },
+      "changes": {
+        "title": "Mọi thứ chiến dịch này đã thay đổi",
+        "body": "Tất cả tác vụ đã xong gộp lại, từng tệp một. Từ đây không có gì được áp dụng vào thư mục của bạn.",
+        "continue": "Build và kiểm thử, rồi xem xét"
+      },
+      "conflict": {
+        "explain": "Tác vụ này và một tác vụ khác đã thay đổi cùng những dòng, nên Flint không thể tự kết hợp chúng.",
+        "files": "Các tệp xung đột",
+        "resolve": "Thử giải quyết tự động",
+        "skip": "Bỏ qua tác vụ",
+        "resolving": "Đang giải quyết xung đột...",
+        "resolvingFiles": "Đang giải quyết xung đột trong {{count}} tệp..."
+      },
+      "verify": {
+        "verdict": "Đã được bộ xác minh kiểm tra",
+        "verdicts": {
+          "PASS": "Đạt",
+          "PARTIAL": "Làm được một phần",
+          "FAIL": "Không đạt",
+          "BLOCKED": "Không thể quyết định"
+        },
+        "testsPassed": "Kiểm thử đạt",
+        "testsFailed": "Kiểm thử thất bại",
+        "testsFailedTail": "Kiểm thử thất bại: {{tail}}",
+        "tokens": "Token đã dùng cho việc kiểm tra"
+      },
+      "progressLabelSkipped": "Xong {{done}} · bỏ qua {{skipped}} · {{total}} tác vụ",
+      "groupProgressSkipped": "Xong {{done}} · bỏ qua {{skipped}} · {{status}}",
+      "effortGateFailed": "Kiểm tra cuối cùng thất bại nên công việc chưa hoàn tất",
+      "stranded": {
+        "explain": "Tác vụ này chờ {{tasks}}, tác vụ đã bị bỏ qua, nên không thể tự bắt đầu.",
+        "skipToo": "Bỏ qua cả tác vụ này",
+        "runWithout": "Chạy mà không cần nó"
+      },
+      "skipConfirm": {
+        "title": "Bỏ qua \"{{task}}\"?",
+        "body_one": "{{count}} tác vụ khác đang chờ nó. Bỏ qua luôn, hay để chúng chạy mà không cần tác vụ này?",
+        "body_other": "{{count}} tác vụ khác đang chờ nó. Bỏ qua luôn, hay để chúng chạy mà không cần tác vụ này?",
+        "cascade_one": "Bỏ qua nó và tác vụ đang chờ nó",
+        "cascade_other": "Bỏ qua nó và {{count}} tác vụ đang chờ nó",
+        "release": "Bỏ qua nó, chạy các tác vụ khác mà không cần nó"
+      },
+      "gate": {
+        "title": "Kiểm tra thất bại",
+        "body": "Công việc đã được hợp nhất, nhưng bước kiểm tra build và test cuối cùng không đạt, nên chưa sẵn sàng để áp dụng.",
+        "command": "Lệnh",
+        "result": "Kết quả",
+        "exit": "Mã thoát {{code}}",
+        "noExit": "Không kết thúc bình thường",
+        "timedOut": "Đã hết thời gian chờ",
+        "output": "Các dòng cuối của đầu ra",
+        "copy": "Sao chép",
+        "copied": "Đã sao chép",
+        "fix": "Tự động sửa",
+        "retry": "Chạy lại kiểm tra",
+        "reviewAnyway": "Vẫn xem xét",
+        "reviewWarning": "Kiểm tra cuối cùng thất bại. Hãy xem xét các thay đổi với điều đó trong đầu."
+      },
+      "recheck": {
+        "again": "Đang kiểm tra lại…",
+        "stalled": "Việc kiểm tra mất nhiều thời gian hơn dự kiến."
+      }
+    },
+    "changes": {
+      "loading": "Đang xem các thay đổi…",
+      "unavailable": "Không đọc được các thay đổi. Hãy mở phiên để xem.",
+      "none": "Tác vụ này chưa thay đổi tệp nào.",
+      "files_one": "{{count}} tệp",
+      "files_other": "{{count}} tệp",
+      "namesOnly": "Với tác vụ này chỉ biết được tên tệp.",
+      "uncommitted": "Một phần công việc này chưa được lưu vào nhánh của tác vụ.",
+      "cut": "Danh sách dài đã được rút gọn.",
+      "kind": {
+        "new": "Mới",
+        "edited": "Đã sửa",
+        "deleted": "Đã xóa",
+        "renamed": "Đã đổi tên"
+      },
+      "binary": "nhị phân",
+      "binaryNote": "Đây không phải tệp văn bản nên không có gì để hiển thị.",
+      "renamedFrom": "Đổi tên từ {{from}}",
+      "showMore_one": "Hiện thêm {{count}} dòng",
+      "showMore_other": "Hiện thêm {{count}} dòng",
+      "fileCut": "Thay đổi này dài nên chỉ hiển thị phần đầu.",
+      "noPatch": "Không có chế độ xem từng dòng cho tệp này."
+    },
+    "start": {
+      "title": "Chiến dịch mới",
+      "menu": "Chiến dịch mới",
+      "prompt": "Hãy mô tả tác vụ lớn. Flint sẽ lập kế hoạch chia nhỏ.",
+      "goalLabel": "Chiến dịch cần làm gì?",
+      "placeholder": "Ví dụ: thêm chế độ tối cho toàn ứng dụng, kèm kiểm thử",
+      "hint": "Tối đa {{n}} luồng chạy cùng lúc. Bạn có thể đổi trong Cài đặt.",
+      "folder": "Trong {{folder}}",
+      "go": "Bắt đầu",
+      "noFolder": "Hãy mở một thư mục git để bắt đầu chiến dịch",
+      "error": {
+        "no-model": "Hãy chọn một mô hình có thể dùng công cụ trước (Mô hình ở thanh bên, hoặc bộ chọn mô hình), rồi bắt đầu lại.",
+        "failed": "Flint không thể mở phiên chiến dịch. Chưa có gì được bắt đầu; hãy thử lại."
+      }
+    },
+    "nav": "Chiến dịch",
+    "list": {
+      "subtitle": "Các tác vụ lớn được chia thành nhiều phần để nhiều tác tử cùng làm song song.",
+      "start": "Bắt đầu chiến dịch",
+      "empty": "Chưa có chiến dịch nào",
+      "emptyHint": "Một chiến dịch nhận một tác vụ lớn, chia thành các tác vụ nhỏ hơn và để nhiều tác tử làm chúng cùng lúc, mỗi tác tử trên nhánh riêng.",
+      "doneOf": "Xong {{done}} trên {{total}}",
+      "planning": "Đang lập kế hoạch",
+      "updated": "Cập nhật {{when}}",
+      "loading": "Đang tải chiến dịch",
+      "loadFailed": "Không thể tải chiến dịch.",
+      "retry": "Thử lại"
+    },
+    "plan": {
+      "edit": "Sửa kế hoạch",
+      "save": "Lưu thay đổi",
+      "discard": "Bỏ thay đổi",
+      "saved": "Đã lưu kế hoạch.",
+      "saveFailed": "Không thể lưu kế hoạch: {{reason}}",
+      "unsaved": "Chưa lưu",
+      "saveFirst": "Hãy lưu hoặc bỏ các thay đổi kế hoạch trước khi cho phép.",
+      "addTask": "Thêm tác vụ",
+      "count": "{{count}} trên {{max}} tác vụ",
+      "after": "Sau: {{tasks}}",
+      "moveUp": "Chuyển {{task}} lên",
+      "moveDown": "Chuyển {{task}} xuống",
+      "remove": "Xóa {{task}}",
+      "addAfter": "Thêm một tác vụ để chờ",
+      "removeAfter": "Xóa phụ thuộc này",
+      "field": {
+        "title": "Tên tác vụ",
+        "brief": "Cần làm gì",
+        "acceptance": "Biết đã xong bằng cách nào (mỗi dòng một mục)",
+        "paths": "Tệp và thư mục được phép thay đổi (mỗi dòng một mục)",
+        "pathsHint": "src/feature",
+        "after": "Bắt đầu sau"
+      },
+      "estimate": {
+        "one": "Khoảng {{tokens}} token",
+        "range": "Khoảng {{low}} đến {{high}} token",
+        "basis": "Phụ thuộc vào: {{basis}}",
+        "generic": "Phụ thuộc vào số tệp các tác vụ đọc và tần suất phải lặp lại một lần kiểm tra."
+      },
+      "issue": {
+        "noTasks": "Hãy thêm ít nhất một tác vụ.",
+        "tooMany": "{{count}} tác vụ là quá nhiều; giới hạn là {{max}}.",
+        "emptyTitle": "Có một tác vụ chưa có tên.",
+        "emptyBrief": "{{task}} cần mô tả những gì phải làm.",
+        "badPath": "{{task}}: \"{{path}}\" không phải thư mục hay tệp bên trong dự án.",
+        "selfDependency": "{{task}} không thể tự chờ chính nó.",
+        "unknownDependency": "{{task}} đang chờ một tác vụ không còn tồn tại.",
+        "cycle": "Các tác vụ này đang chờ lẫn nhau: {{tasks}}.",
+        "overlap": "{{a}} và {{b}} sẽ chạy cùng lúc nhưng cùng thay đổi {{path}}. Hãy để một tác vụ chờ tác vụ kia."
+      }
+    }
   }
 }

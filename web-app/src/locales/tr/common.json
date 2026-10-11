@@ -113,6 +113,7 @@
   "keyboardShortcuts": "Klavye Kısayolları",
   "home": "Ana Sayfa",
   "cowork": "Birlikte Çalış",
+  "campaign": "Kampanya",
   "newSession": "Yeni Oturum",
   "artifacts": "Üretimler",
   "customize": "Özelleştir",
@@ -1471,7 +1472,8 @@
   "drop": {
     "openInCode": "Açmak için bırakın — salt okunur",
     "attachToMessage": "Mesajınıza eklemek için bırakın",
-    "releaseToAttach": "Eklemek için bırakın"
+    "releaseToAttach": "Eklemek için bırakın",
+    "releaseToAttachCount": "{{count}} dosyayı eklemek için bırakın"
   },
   "coworkRunSettings": {
     "label": "Çalıştırma ayarları",
@@ -2064,7 +2066,12 @@
     "usageOverview": "Kullanım genel bakışı",
     "movedTo": "{{name}} grubuna taşındı",
     "notifications": "Bildirimler",
-    "approvalWaiting": "Onay bekliyor"
+    "approvalWaiting": "Onay bekliyor",
+    "tabs": "Kenar çubuğu görünümü",
+    "tabChat": "Sohbet",
+    "tabCowork": "Birlikte Çalış",
+    "studio": "Studio",
+    "schedules": "Zamanlamalar"
   },
   "systemNav": {
     "label": "Tanılama",
@@ -2479,5 +2486,14 @@
     "stop": "Durdur",
     "retry": "Yeniden dene",
     "downloading": "İndiriliyor…"
+  },
+  "composerChip": {
+    "list": "Eklenen dosyalar",
+    "pastedImage": "Yapıştırılan görsel {{n}}",
+    "open": "{{name}} önizle",
+    "noVision": "Bu model görselleri okuyamaz",
+    "details": "{{name}} ayrıntıları",
+    "previewLoading": "Önizleme yükleniyor…",
+    "previewNone": "Önizleme yok"
   }
 }

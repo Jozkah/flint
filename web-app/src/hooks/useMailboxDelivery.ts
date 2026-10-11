@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { getMailboxDelivery } from '@/lib/mailboxDelivery'
+import { startCampaignRunner } from '@/lib/campaignHost'
 import {
   MAILBOX_UPDATED_EVENT,
   type MailboxUpdatedPayload,
@@ -22,6 +23,9 @@ export function useMailboxDelivery() {
     const delivery = getMailboxDelivery()
     const stop = delivery.start()
     void delivery.sweep()
+    // Campaign tasks settle and start from the same place mail is delivered:
+    // both follow runs ending and panes opening.
+    const stopCampaigns = startCampaignRunner()
 
     let unlisten: UnlistenFn | undefined
     let cancelled = false
@@ -40,6 +44,7 @@ export function useMailboxDelivery() {
       cancelled = true
       unlisten?.()
       stop()
+      stopCampaigns()
     }
   }, [serviceHub])
 }

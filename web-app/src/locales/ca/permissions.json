@@ -38,7 +38,8 @@
     "gitLocal": "Flint vol executar {{command}}",
     "gitLocalIn": "Flint vol executar {{command}} a {{workspace}}",
     "gitRemote": "Flint vol executar {{command}}, que canvia {{target}}",
-    "gitDestructive": "Flint vol executar {{command}}, que pot fer perdre feina"
+    "gitDestructive": "Flint vol executar {{command}}, que pot fer perdre feina",
+    "approveCampaign": "Flint vol iniciar la campanya \"{{title}}\" ({{count}} tasques)"
   },
   "consequence": {
     "fileChange": "Pot crear, sobreescriure o canviar el contingut de fitxers.",
@@ -55,7 +56,8 @@
     "writeClipboard": "Substitueix el que hi ha ara al teu porta-retalls.",
     "gitLocal": "Canvia els fitxers, les branques o l'historial d'aquest repositori en aquest ordinador.",
     "gitRemote": "Envia canvis a un repositori remot que altres persones poden veure. Flint ho pregunta cada vegada tret que permetis temporalment les accions Git remotes ordinàries per a aquesta conversa.",
-    "gitDestructive": "El que elimina o sobreescriu pot no ser recuperable."
+    "gitDestructive": "El que elimina o sobreescriu pot no ser recuperable.",
+    "campaignPlan": "Inicia sessions separades, cadascuna en la seva pròpia branca de worktree, que llegeixen i canvien fitxers i fan servir la quota del teu model en paral·lel. Aprovar el pla no aprova cap crida que faci una tasca. Flint pregunta cada vegada."
   },
   "repeat": {
     "allowedOnceBefore": "Ja has permès aquesta ordre una vegada en aquesta conversa."

@@ -1,0 +1,26 @@
+{
+  "title": "Servidor de Flint",
+  "desc": "Fes servir Flint en un servidor que gestiones tu, des d'aquest dispositiu.",
+  "address": "Adreça del servidor",
+  "addressDesc": "L'adreça HTTPS del teu flint serve, per exemple el nom de Tailscale on està publicat. Inicies la sessió a la pàgina del mateix servidor; aquesta aplicació no desa mai la credencial.",
+  "test": "Prova la connexió",
+  "open": "Obre el servidor",
+  "forget": "Oblida el servidor",
+  "checking": "Comprovant...",
+  "statusOk": "S'ha connectat amb un servidor de Flint.",
+  "statusReachable": "Alguna cosa ha respost, però des d'aquí no s'ha pogut confirmar que sigui Flint. Obre'l per comprovar-ho.",
+  "statusUnreachable": "No s'hi ha pogut connectar. Comprova l'adreça, que el servidor estigui en marxa i que aquest dispositiu hi pugui arribar (VPN o Tailscale activat).",
+  "insecure": "Aquesta adreça no és HTTPS. La sessió viatjaria sense xifrar i Android pot rebutjar-la.",
+  "problem": {
+    "empty": "Introdueix l'adreça del servidor.",
+    "invalid": "Aquesta adreça no és vàlida.",
+    "scheme": "Fes servir una adreça http o https.",
+    "credentials": "Deixa el nom d'usuari i la contrasenya fora de l'adreça."
+  },
+  "auto": "Obre a l'inici",
+  "autoDesc": "Obre el servidor quan s'inicia l'aplicació, després d'uns segons en què pots triar aquest dispositiu.",
+  "opening": "Obrint {{host}} d'aquí a {{seconds}} s",
+  "useDevice": "Fes servir aquest dispositiu",
+  "limitsTitle": "Què s'executa on",
+  "limits": "El xat, les sales, els models i les eines s'executen al servidor. Les sessions de Cowork i les campanyes necessiten un agent que s'executi en un ordinador amb Flint obert: arriba a aquest ordinador amb l'accés remot i l'aplicació del mòbil. Un servidor sense pantalla pot llistar campanyes i revisar propostes, però no executa sessions."
+}

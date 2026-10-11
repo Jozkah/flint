@@ -1,0 +1,26 @@
+{
+  "title": "Servidor de Flint",
+  "desc": "Usa Flint en un servidor que gestionas tú, desde este dispositivo.",
+  "address": "Dirección del servidor",
+  "addressDesc": "La dirección HTTPS de tu flint serve, por ejemplo el nombre de Tailscale en el que está publicado. Inicias sesión en la página del propio servidor; esta aplicación nunca guarda la credencial.",
+  "test": "Probar conexión",
+  "open": "Abrir servidor",
+  "forget": "Olvidar servidor",
+  "checking": "Comprobando...",
+  "statusOk": "Se alcanzó un servidor de Flint.",
+  "statusReachable": "Algo respondió, pero desde aquí no se pudo confirmar que sea Flint. Ábrelo para comprobarlo.",
+  "statusUnreachable": "No se pudo alcanzar. Revisa la dirección, que el servidor esté en marcha y que este dispositivo pueda llegar a él (VPN o Tailscale activados).",
+  "insecure": "Esta dirección no es HTTPS. La sesión viajaría sin cifrar y Android puede rechazarla.",
+  "problem": {
+    "empty": "Introduce la dirección del servidor.",
+    "invalid": "Esa no es una dirección válida.",
+    "scheme": "Usa una dirección http o https.",
+    "credentials": "Deja el nombre de usuario y la contraseña fuera de la dirección."
+  },
+  "auto": "Abrir al inicio",
+  "autoDesc": "Abre el servidor cuando se inicia la aplicación, tras unos segundos en los que puedes elegir este dispositivo.",
+  "opening": "Abriendo {{host}} en {{seconds}} s",
+  "useDevice": "Usar este dispositivo",
+  "limitsTitle": "Qué se ejecuta dónde",
+  "limits": "El chat, las salas, los modelos y las herramientas se ejecutan en el servidor. Las sesiones de Cowork y las campañas necesitan un agente que se ejecute en un ordenador con Flint abierto: llega a ese ordenador con el acceso remoto y la aplicación del móvil. Un servidor sin pantalla puede listar campañas y revisar propuestas, pero no ejecuta sesiones."
+}

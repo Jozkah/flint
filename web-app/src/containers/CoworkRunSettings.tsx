@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
+import { useComposerCollapsed } from '@/containers/ComposerDensity'
 
 export type RunSettingsException = { id: string; label: string; warn?: boolean }
 
@@ -22,6 +23,7 @@ type Props = {
  */
 export function CoworkRunSettings({ children, exceptions }: Props) {
   const { t } = useTranslation()
+  const iconOnly = useComposerCollapsed('runSettingsLabel')
   return (
     <>
       <Popover>
@@ -31,10 +33,12 @@ export function CoworkRunSettings({ children, exceptions }: Props) {
             size="xs"
             data-testid="cowork-run-settings"
             aria-label={t('common:coworkRunSettings.label')}
+            title={iconOnly ? t('common:coworkRunSettings.label') : undefined}
+            data-collapsed={iconOnly ? 'true' : undefined}
             className="h-7 shrink-0 gap-1.5 px-2 text-xs font-medium text-muted-foreground pointer-coarse:h-11"
           >
             <SlidersHorizontal aria-hidden className="size-3.5 shrink-0" />
-            <span>{t('common:coworkRunSettings.label')}</span>
+            {!iconOnly && <span>{t('common:coworkRunSettings.label')}</span>}
           </Button>
         </PopoverTrigger>
         <PopoverContent

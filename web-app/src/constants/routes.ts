@@ -10,6 +10,8 @@ export const route = {
   appLogs: '/logs',
   project: '/project',
   projectDetail: '/project/$projectId',
+  campaigns: '/campaigns',
+  campaignDetail: '/campaign/$campaignId',
   rooms: '/rooms',
   roomDetail: '/rooms/$roomId',
   hub: {
@@ -48,4 +50,7 @@ export const route = {
  * instead of falling back to Home. A new Cowork route only has to be added here.
  */
 export const isCoworkRoute = (pathname: string): boolean =>
-  pathname === route.cowork || pathname === route.artifacts
+  pathname === route.cowork ||
+  pathname === route.artifacts ||
+  pathname === route.campaigns ||
+  pathname.startsWith('/campaign/')

@@ -98,7 +98,11 @@
     "noModel": "Wähle ein Modell, bevor du einen neuen Chat beginnst.",
     "newChatFailed": "Neuer Chat konnte nicht gestartet werden",
     "room": "Raum",
-    "recentRooms": "Räume"
+    "recentRooms": "Räume",
+    "needsApproval": "Genehmigung nötig",
+    "needsApprovalShort": "Genehmigung nötig",
+    "done": "Fertig",
+    "failed": "Fehlgeschlagen"
   },
   "transcriptView": {
     "steps_one": "{{count}} Schritt",

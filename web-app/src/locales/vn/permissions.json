@@ -38,7 +38,8 @@
     "gitLocal": "Flint muốn chạy {{command}}",
     "gitLocalIn": "Flint muốn chạy {{command}} trong {{workspace}}",
     "gitRemote": "Flint muốn chạy {{command}}, lệnh này thay đổi {{target}}",
-    "gitDestructive": "Flint muốn chạy {{command}}, lệnh này có thể làm mất công việc"
+    "gitDestructive": "Flint muốn chạy {{command}}, lệnh này có thể làm mất công việc",
+    "approveCampaign": "Flint muốn bắt đầu chiến dịch \"{{title}}\" ({{count}} tác vụ)"
   },
   "consequence": {
     "fileChange": "Nó có thể tạo, ghi đè hoặc thay đổi nội dung các tệp.",
@@ -55,7 +56,8 @@
     "writeClipboard": "Nó thay thế những gì hiện có trên clipboard của bạn.",
     "gitLocal": "Nó thay đổi các tệp, nhánh hoặc lịch sử của kho lưu trữ này trên máy tính này.",
     "gitRemote": "Nó gửi các thay đổi đến một kho từ xa mà người khác có thể thấy. Flint hỏi mỗi lần trừ khi bạn tạm thời cho phép các thao tác Git từ xa thông thường cho cuộc trò chuyện này.",
-    "gitDestructive": "Những gì nó xóa hoặc ghi đè có thể không khôi phục được."
+    "gitDestructive": "Những gì nó xóa hoặc ghi đè có thể không khôi phục được.",
+    "campaignPlan": "Nó bắt đầu các phiên riêng biệt, mỗi phiên trên nhánh worktree của nó, đọc và thay đổi tệp và dùng song song hạn mức mô hình của bạn. Việc duyệt kế hoạch không duyệt bất kỳ lệnh gọi nào mà một tác vụ thực hiện. Flint hỏi mỗi lần."
   },
   "repeat": {
     "allowedOnceBefore": "Bạn đã cho phép lệnh này một lần trong cuộc trò chuyện này."

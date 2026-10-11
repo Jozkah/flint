@@ -54,6 +54,7 @@ import { ComputerExclusionSettings } from '@/containers/ComputerExclusionSetting
 import { SandboxToolchainGrants } from '@/containers/SandboxToolchainGrants'
 import { BrowserAgentSettings } from '@/containers/BrowserAgentSettings'
 import { SubagentSettings } from '@/containers/SubagentSettings'
+import { CampaignSettings } from '@/containers/CampaignSettings'
 import { VisualizeSettings } from '@/containers/VisualizeSettings'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
@@ -529,6 +530,7 @@ function AgentToolsContent() {
         )}
 
         {tab === 'behaviour' && <SubagentSettings />}
+        {tab === 'behaviour' && <CampaignSettings />}
         {tab === 'behaviour' && <CompactionPolicySettings />}
         {tab === 'behaviour' && <BrowserAgentSettings />}
         {tab === 'behaviour' && <VisualizeSettings />}

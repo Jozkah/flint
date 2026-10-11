@@ -689,5 +689,424 @@
     "noVisionModel": "Görebilen bir model yok. Bir tane ekleyin veya bir modeli görme destekli olarak işaretleyin.",
     "embed": "Eklenen görselleri aranabilir yap",
     "embedDesc": "Her görselin betimlemesini sohbetin belgeleriyle birlikte de saklar, böylece sonra aranabilir. Eklenen her görsel betimleme modeline gönderilir."
+  },
+  "campaigns": {
+    "title": "Kampanyalar",
+    "maxParallel": "Kampanya paralel iş parçacıkları",
+    "maxParallelDesc": "Aynı anda kaç kampanya görevinin çalışabileceği; her biri kendi bölünmüş panelinde. 1 ile 6 arası. Çalışan bir kampanyaya hemen uygulanır; boş paneller yine de sınırlar.",
+    "board": {
+      "dot": {
+        "queued": "Sırada",
+        "blocked": "Engellendi",
+        "running": "Çalışıyor",
+        "needsYou": "Sizi bekliyor",
+        "verifying": "Doğrulanıyor",
+        "verified": "Doğrulandı",
+        "merged": "Birleştirildi",
+        "failed": "Başarısız",
+        "conflict": "Çakışma",
+        "cancelled": "İptal edildi",
+        "planning": "Planlanıyor",
+        "review": "İncelemeye hazır"
+      },
+      "status": {
+        "draft": "taslak",
+        "planned": "planlandı",
+        "approved": "onaylandı",
+        "running": "çalışıyor",
+        "paused": "duraklatıldı",
+        "reviewing": "inceleniyor",
+        "merging": "birleştiriliyor",
+        "done": "bitti",
+        "failed": "başarısız",
+        "cancelled": "iptal edildi",
+        "interrupted": "kesintiye uğradı"
+      },
+      "openBoard": "Kampanya panosunu aç",
+      "notFound": "Bu kampanya bulunamadı.",
+      "loading": "Kampanya yükleniyor…",
+      "budget": {
+        "label": "Token bütçesi",
+        "used": "{{budget}} tokenin {{used}} kadarı",
+        "none": "{{used}} token, bütçe belirlenmedi"
+      },
+      "parallel": "Paralel sınır {{n}}",
+      "card": {
+        "branch": "Dal",
+        "noBranch": "henüz dal yok"
+      },
+      "action": {
+        "open": "Oturumu aç",
+        "note": "Not gönder",
+        "stop": "Durdur",
+        "retry": "Yeniden dene",
+        "skip": "Atla",
+        "handoff": "Devri görüntüle",
+        "diff": "Değişiklikleri görüntüle",
+        "pause": "Duraklat",
+        "resume": "Sürdür",
+        "cancel": "Kampanyayı iptal et",
+        "review": "İncele ve uygula",
+        "send": "Gönder",
+        "close": "Kapat",
+        "confirm": "Onayla",
+        "reviewChanges": "Değişiklikleri incele",
+        "openCoordinator": "Koordinatörü aç",
+        "openCowork": "Devam etmek için Birlikte Çalış'ı aç"
+      },
+      "note": {
+        "title": "{{task}} görevine not",
+        "placeholder": "Göreve neyi farklı yapması gerektiğini söyleyin",
+        "sent": "Not gönderildi"
+      },
+      "handoff": {
+        "title": "Devir: {{task}}",
+        "empty": "Henüz devir notu yazılmadı."
+      },
+      "diff": {
+        "title": "{{task}} tarafından değiştirilen dosyalar",
+        "empty": "Bu görev için kaydedilmiş dosya değişikliği yok."
+      },
+      "review": {
+        "title": "İncele ve uygula",
+        "body": "Bu, birleştirilmiş sonuç üzerinde kontrolü çalıştırır, ardından klasörünüz için tek bir öneri oluşturur. Bu öneriyi onaylayana kadar hiçbir şey uygulanmaz.",
+        "command": "Kontrol komutu: {{command}}",
+        "noCommand": "Yapılandırılmış veya algılanmış bir derleme ya da test komutu yok, bu yüzden birleştirilmiş sonuç derlenmeyecek ve test edilmeyecek.",
+        "proposal": "Öneri oluşturuldu. Bu panoda inceleyip uygulayın.",
+        "failed": "Kontrol başarısız oldu; kampanya incelemede kalıyor."
+      },
+      "cancelConfirm": {
+        "title": "Bu kampanya iptal edilsin mi?",
+        "body": "Tamamlanmamış tüm görevler iptal edilir ve çalışanlar durdurulur. Worktree'ler korunur."
+      },
+      "proposal": {
+        "title": "Kampanya değişiklikleri",
+        "loading": "Öneri yükleniyor…",
+        "missing": "Öneri bulunamadı. İncele ve uygula'yı yeniden çalıştırın."
+      },
+      "resumed": "Uygulama durduğunda kesintiye uğrayan {{n}} görev sürdürüldü.",
+      "stalled": "{{n}} görev çalışıyor gibi görünüyor ama bu pencerede onları çalıştıran bir şey yok. Devam ettirmek için Birlikte Çalış'ı açın.",
+      "noteState": {
+        "sent": "Not gönderildi",
+        "delivered": "Not göreve iletildi"
+      },
+      "error": "İşlem başarısız oldu: {{reason}}",
+      "headline": {
+        "planning": "İş planlanıyor",
+        "working": "Çalışıyor: {{total}} görevin {{done}} tanesi bitti",
+        "attention_one": "Dikkatiniz gerekiyor: {{count}} görev sizi bekliyor",
+        "attention_other": "Dikkatiniz gerekiyor: {{count}} görev sizi bekliyor",
+        "review": "İncelemeniz için hazır",
+        "merging": "Sonuçlar bir araya getiriliyor",
+        "paused": "Duraklatıldı: {{total}} görevin {{done}} tanesi bitti",
+        "interrupted": "Uygulama kapandığında durdu: {{total}} görevin {{done}} tanesi bitti",
+        "done": "Hepsi bitti",
+        "failed": "Bu kampanya tamamlanamadı",
+        "cancelled": "İptal edildi",
+        "gateFailed": "Son kontroller başarısız oldu: iş birleştirildi ama doğrulanmadı"
+      },
+      "progressLabel": "{{total}} görevin {{done}} tanesi bitti",
+      "planning": "Planlanıyor… koordinatörün planı bekleniyor.",
+      "group": {
+        "needsYou": "Sizi bekliyor",
+        "working": "Çalışıyor",
+        "upNext": "Sıradaki",
+        "done": "Bitti",
+        "skipped": "Atlandı"
+      },
+      "word": {
+        "writing": "Kod yazıyor",
+        "checking": "Sonucu kontrol ediyor",
+        "ready": "Kontrol edildi, birleştirmeye hazır",
+        "needsInput": "Yanıtınızı bekliyor",
+        "needsApproval": "Onayınızı bekliyor",
+        "failed": "Olmadı",
+        "conflict": "Diğer değişikliklerle çakışıyor",
+        "waiting": "{{tasks}} bekleniyor",
+        "queued": "Yakında başlayacak",
+        "merged": "Birleştirildi",
+        "skipped": "Atlandı",
+        "resolving": "Çakışma çözülüyor",
+        "verifyBlocked": "Bitti, ancak kontrol karar veremedi",
+        "waitingSkipped": "Atlanan {{tasks}} bekleniyor"
+      },
+      "row": {
+        "open": "Aç",
+        "details": "Ayrıntılar",
+        "attempts": "Denemeler",
+        "tokens": "Kullanılan token",
+        "lastActivity": "Son etkinlik",
+        "seeChanges": "{{task}} neyi değiştirdi, gör"
+      },
+      "details": "Ayrıntılar",
+      "detailBranch": "Sonuçlar {{branch}} üzerinde toplanıyor",
+      "statusWord": {
+        "draft": "Başlıyor",
+        "planned": "Başlıyor",
+        "approved": "Başlıyor",
+        "running": "Çalışıyor",
+        "paused": "Duraklatıldı",
+        "reviewing": "İncelemeye hazır",
+        "merging": "Birleştiriliyor",
+        "done": "Bitti",
+        "failed": "Başarısız",
+        "cancelled": "İptal edildi",
+        "interrupted": "Durduruldu"
+      },
+      "groupProgress": "{{total}} görevin {{done}} tanesi bitti · {{status}}",
+      "fold": "{{title}} oturumlarını gizle",
+      "unfold": "{{title}} oturumlarını göster",
+      "story": {
+        "wrote_one": "{{count}} dosya yazıldı, +{{added}} −{{removed}} satır",
+        "wrote_other": "{{count}} dosya yazıldı, +{{added}} −{{removed}} satır",
+        "wroteUncounted_one": "{{count}} dosya yazıldı",
+        "wroteUncounted_other": "{{count}} dosya yazıldı",
+        "stop": {
+          "none": "Bitirmeden durdu.",
+          "one": "Bir komut başarısız olunca durdu.",
+          "many": "Komutlar {{count}} kez başarısız olunca durdu."
+        },
+        "headline": {
+          "noOutput": "Hiçbir şey yazılmadı.",
+          "stoppedPlain": "Bitirmeden durduruldu.",
+          "finishedNoFiles": "Hiçbir dosyayı değiştirmeden bitti.",
+          "working_one": "Üzerinde çalışılıyor: şimdiye kadar {{count}} adım.",
+          "working_other": "Üzerinde çalışılıyor: şimdiye kadar {{count}} adım.",
+          "starting": "Daha yeni başlıyor.",
+          "conflict": "Bitti, ancak değişiklikleri diğer görevlerin yazdıklarıyla çakışıyor.",
+          "waiting": "Önce {{tasks}} görevinin bitmesi bekleniyor.",
+          "queued": "Yer açılır açılmaz başlayacak.",
+          "needsInput": "Duraklatıldı: size bir soru sordu.",
+          "needsApproval": "Duraklatıldı: devam etmek için onayınız gerekiyor.",
+          "skipped": "Atlandı.",
+          "verifyBlocked": "Bitti, ancak kontrol doğru olup olmadığına karar veremedi."
+        },
+        "took": "{{time}} çalıştı",
+        "running": "{{time}} süredir çalışıyor",
+        "toggle": "Ne oldu",
+        "asked": "Ondan ne istendi",
+        "did": "Ne yaptı",
+        "stoppedAt": "Nerede durdu",
+        "noRecord": "Bu görev için adım adım kayıt yok.",
+        "more_one": "ve {{count}} adım daha",
+        "more_other": "ve {{count}} adım daha",
+        "step": {
+          "read": "{{label}} okundu",
+          "readMany_one": "{{count}} dosya okundu",
+          "readMany_other": "{{count}} dosya okundu",
+          "search_one": "Proje arandı",
+          "search_other": "Proje {{count}} kez arandı",
+          "write": "{{label}} yazıldı",
+          "writeMany_one": "{{count}} dosya yazıldı",
+          "writeMany_other": "{{count}} dosya yazıldı",
+          "ran": "{{label}} çalıştırıldı",
+          "ranFailed": "{{label}} çalıştırıldı ve başarısız oldu"
+        },
+        "next": {
+          "retry": "Yeniden deneyin ve neyi farklı yapması gerektiğini söyleyin.",
+          "conflict": "Konuşmayı açın ve son sonuçlar üzerinde yeniden oluşturmasını isteyin ya da atlayın.",
+          "open": "Deneme hakkı bitti. Nerede takıldığını görmek için konuşmayı açın ya da atlayın.",
+          "answer": "Konuşmayı açın ve sorusunu yanıtlayın.",
+          "approve": "Konuşmayı açın ve isteği onaylayın ya da reddedin.",
+          "verify": "Yeniden kontrol edin ya da sorun olmadığını görüyorsanız kendiniz kabul edin.",
+          "help": "Bu, farklı bir yaklaşım gerektiriyor. Önerilen ipucu dolduruldu; isterseniz değiştirin ve yeniden deneyin."
+        },
+        "hintLabel": "Neyi farklı yapması gerektiğini söyleyin",
+        "openConversation": "Konuşmayı aç"
+      },
+      "summary": {
+        "title": "Genel tablo",
+        "goal": "İstediğiniz",
+        "plan": "Nasıl bölündü",
+        "sideBySide_one": "{{count}} görev kendi başına çalıştı",
+        "sideBySide_other": "Bu {{count}} görev yan yana çalıştı",
+        "waitsFor": "{{task}}, {{tasks}} görevini bekliyor",
+        "time": "Süre",
+        "timeSoFar": "Şimdiye kadar {{time}}",
+        "timeTotal": "Toplam {{time}}",
+        "result": "Sonuç",
+        "cost": "Maliyet",
+        "costTokens": "Yaklaşık {{tokens}} token",
+        "costBudget": "{{budget}} bütçenizden yaklaşık {{tokens}} token",
+        "branch": "Sonuçlar nerede",
+        "branchBody": "Her şey ayrı bir dalda, {{branch}} üzerinde toplanır. İncelemeden ve uygulamadan önce kendi dosyalarınıza dokunulmaz.",
+        "copy": "Dal adını kopyala",
+        "copied": "Kopyalandı",
+        "wrapUp": {
+          "doneTitle": "Hepsi bitti",
+          "reviewTitle": "İncelemeniz için hazır",
+          "built": "Neler yapıldı",
+          "tasks": "Biten görevler",
+          "files": "Değişen dosyalar",
+          "lines": "Değişen satırlar",
+          "skipped": "{{count}} atlandı"
+        }
+      },
+      "effort": "İşin yaklaşık %{{percent}} kadarı bitti",
+      "recovery": {
+        "checkAgain": "Yeniden kontrol et",
+        "accept": "Yine de kabul et",
+        "acceptWhy": "Kabul etmek neden uygun? Tek satır, görevle birlikte saklanır.",
+        "acceptConfirm": "Kabul et",
+        "accepted": "Siz kabul ettiniz",
+        "acceptedWhy": "Siz kabul ettiniz: {{reason}}",
+        "blocks": "Buna bağlı: {{tasks}}."
+      },
+      "changes": {
+        "title": "Bu kampanyanın değiştirdiği her şey",
+        "body": "Biten tüm görevler birlikte, dosya dosya. Buradan klasörünüze hiçbir şey uygulanmaz.",
+        "continue": "Derle ve test et, sonra incele"
+      },
+      "conflict": {
+        "explain": "Bu görev ve bir başkası aynı satırları değiştirdi, bu yüzden Flint bunları kendi başına birleştiremedi.",
+        "files": "Çakışan dosyalar",
+        "resolve": "Otomatik çözmeyi dene",
+        "skip": "Görevi atla",
+        "resolving": "Çakışma çözülüyor...",
+        "resolvingFiles": "{{count}} dosyadaki çakışma çözülüyor..."
+      },
+      "verify": {
+        "verdict": "Doğrulayıcı tarafından kontrol edildi",
+        "verdicts": {
+          "PASS": "Geçti",
+          "PARTIAL": "Kısmen bitti",
+          "FAIL": "Geçmedi",
+          "BLOCKED": "Karar veremedi"
+        },
+        "testsPassed": "Testler geçti",
+        "testsFailed": "Testler başarısız oldu",
+        "testsFailedTail": "Testler başarısız oldu: {{tail}}",
+        "tokens": "Kontrole harcanan token"
+      },
+      "progressLabelSkipped": "{{done}} bitti · {{skipped}} atlandı · {{total}} görev",
+      "groupProgressSkipped": "{{done}} bitti · {{skipped}} atlandı · {{status}}",
+      "effortGateFailed": "Son kontroller başarısız oldu, bu yüzden iş bitmedi",
+      "stranded": {
+        "explain": "Bu görev, atlanan {{tasks}} görevini bekliyor, bu yüzden kendi başına başlayamaz.",
+        "skipToo": "Bunu da atla",
+        "runWithout": "Onsuz çalıştır"
+      },
+      "skipConfirm": {
+        "title": "\"{{task}}\" atlansın mı?",
+        "body_one": "{{count}} başka görev bunu bekliyor. O da atlansın mı, yoksa bu olmadan mı çalışsın?",
+        "body_other": "{{count}} başka görev bunu bekliyor. Onlar da atlansın mı, yoksa bu olmadan mı çalışsınlar?",
+        "cascade_one": "Bunu ve bunu bekleyen görevi atla",
+        "cascade_other": "Bunu ve bunu bekleyen {{count}} görevi atla",
+        "release": "Bunu atla, diğerlerini onsuz çalıştır"
+      },
+      "gate": {
+        "title": "Kontroller başarısız oldu",
+        "body": "İş birleştirildi ancak son derleme ve test kontrolü geçmedi, bu yüzden uygulamaya hazır değil.",
+        "command": "Komut",
+        "result": "Sonuç",
+        "exit": "Çıkış kodu {{code}}",
+        "noExit": "Normal şekilde bitmedi",
+        "timedOut": "Zaman aşımına uğradı",
+        "output": "Çıktının son satırları",
+        "copy": "Kopyala",
+        "copied": "Kopyalandı",
+        "fix": "Otomatik düzelt",
+        "retry": "Kontrolleri yeniden çalıştır",
+        "reviewAnyway": "Yine de incele",
+        "reviewWarning": "Son kontroller başarısız oldu. Değişiklikleri bunu akılda tutarak inceleyin."
+      },
+      "recheck": {
+        "again": "Yeniden kontrol ediliyor…",
+        "stalled": "Kontrol beklenenden uzun sürüyor."
+      }
+    },
+    "changes": {
+      "loading": "Değişiklikler inceleniyor…",
+      "unavailable": "Değişiklikler okunamadı. Görmek için oturumu açın.",
+      "none": "Bu görev hiçbir dosyayı değiştirmedi.",
+      "files_one": "{{count}} dosya",
+      "files_other": "{{count}} dosya",
+      "namesOnly": "Bu görev için yalnızca dosya adları biliniyor.",
+      "uncommitted": "Bu işin bir kısmı henüz görevin dalına kaydedilmedi.",
+      "cut": "Uzun bir liste kısaltıldı.",
+      "kind": {
+        "new": "Yeni",
+        "edited": "Düzenlendi",
+        "deleted": "Silindi",
+        "renamed": "Yeniden adlandırıldı"
+      },
+      "binary": "ikili",
+      "binaryNote": "Bu bir metin dosyası değil, gösterilecek bir şey yok.",
+      "renamedFrom": "{{from}} adından yeniden adlandırıldı",
+      "showMore_one": "{{count}} satır daha göster",
+      "showMore_other": "{{count}} satır daha göster",
+      "fileCut": "Bu değişiklik uzun, bu yüzden yalnızca başı gösteriliyor.",
+      "noPatch": "Bu dosya için satır satır görünüm yok."
+    },
+    "start": {
+      "title": "Yeni kampanya",
+      "menu": "Yeni kampanya",
+      "prompt": "Büyük görevi anlatın. Flint nasıl bölüneceğini planlayacak.",
+      "goalLabel": "Kampanya ne yapmalı?",
+      "placeholder": "Örneğin: uygulamanın her yerine karanlık mod ekle, testlerle birlikte",
+      "hint": "Aynı anda {{n}} adede kadar iş parçacığı çalışır. Bunu Ayarlar'dan değiştirebilirsiniz.",
+      "folder": "{{folder}} içinde",
+      "go": "Başlat",
+      "noFolder": "Kampanya başlatmak için bir git klasörü açın",
+      "error": {
+        "no-model": "Önce araç kullanabilen bir model seçin (kenar çubuğundaki Modeller ya da model seçici), sonra yeniden başlatın.",
+        "failed": "Flint kampanya oturumunu açamadı. Hiçbir şey başlatılmadı; yeniden deneyin."
+      }
+    },
+    "nav": "Kampanyalar",
+    "list": {
+      "subtitle": "Birkaç ajanın yan yana çalıştığı parçalara bölünmüş büyük görevler.",
+      "start": "Kampanya başlat",
+      "empty": "Henüz kampanya yok",
+      "emptyHint": "Bir kampanya tek bir büyük görevi alır, daha küçük görevlere böler ve birkaç ajanın bunlar üzerinde aynı anda, her biri kendi dalında çalışmasını sağlar.",
+      "doneOf": "{{total}} görevin {{done}} tanesi bitti",
+      "planning": "Planlanıyor",
+      "updated": "Güncellendi: {{when}}",
+      "loading": "Kampanyalar yükleniyor",
+      "loadFailed": "Kampanyalar yüklenemedi.",
+      "retry": "Yeniden dene"
+    },
+    "plan": {
+      "edit": "Planı düzenle",
+      "save": "Değişiklikleri kaydet",
+      "discard": "Değişiklikleri at",
+      "saved": "Plan kaydedildi.",
+      "saveFailed": "Plan kaydedilemedi: {{reason}}",
+      "unsaved": "Henüz kaydedilmedi",
+      "saveFirst": "İzin vermeden önce plan değişikliklerinizi kaydedin ya da atın.",
+      "addTask": "Görev ekle",
+      "count": "{{max}} görevin {{count}} tanesi",
+      "after": "Sonra: {{tasks}}",
+      "moveUp": "{{task}} görevini yukarı taşı",
+      "moveDown": "{{task}} görevini aşağı taşı",
+      "remove": "{{task}} görevini kaldır",
+      "addAfter": "Beklenecek bir görev ekle",
+      "removeAfter": "Bu bağımlılığı kaldır",
+      "field": {
+        "title": "Görev adı",
+        "brief": "Ne yapılacak",
+        "acceptance": "Bittiğini nasıl anlarız (satır başına bir tane)",
+        "paths": "Değiştirebileceği dosyalar ve klasörler (satır başına bir tane)",
+        "pathsHint": "src/feature",
+        "after": "Şundan sonra başlar"
+      },
+      "estimate": {
+        "one": "Yaklaşık {{tokens}} token",
+        "range": "Yaklaşık {{low}} ile {{high}} arası token",
+        "basis": "Şuna bağlı: {{basis}}",
+        "generic": "Görevlerin kaç dosya okuduğuna ve bir kontrolün ne sıklıkla tekrarlanması gerektiğine bağlıdır."
+      },
+      "issue": {
+        "noTasks": "En az bir görev ekleyin.",
+        "tooMany": "{{count}} görev çok fazla; sınır {{max}}.",
+        "emptyTitle": "Bir görevin adı yok.",
+        "emptyBrief": "{{task}} için ne yapılacağının bir açıklaması gerekiyor.",
+        "badPath": "{{task}}: \"{{path}}\" projenin içinde bir klasör ya da dosya değil.",
+        "selfDependency": "{{task}} kendisini bekleyemez.",
+        "unknownDependency": "{{task}}, artık var olmayan bir görevi bekliyor.",
+        "cycle": "Bu görevler birbirini bekliyor: {{tasks}}.",
+        "overlap": "{{a}} ve {{b}} aynı anda çalışırdı ama ikisi de {{path}} dosyasını değiştiriyor. Birini diğerini bekletin."
+      }
+    }
   }
 }

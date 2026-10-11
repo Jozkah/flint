@@ -66,7 +66,7 @@
     "title": "Web preview",
     "openExternal": "Open in browser",
     "popOut": "Pop out to window",
-    "close": "Close",
+    "close": "Close preview",
     "copyUrl": "Copy URL",
     "urlCopied": "URL copied",
     "copyFailed": "Could not copy the URL",
@@ -75,7 +75,6 @@
     "reload": "Reload",
     "back": "Back",
     "forward": "Forward",
-    "close": "Close preview",
     "blockedBanner": "This site may block embedding. Open it in your browser or pop it out.",
     "interceptSetting": "Open links in an in-app preview",
     "interceptSettingDesc": "When on, clicking a web link opens it in a preview panel instead of your browser.",
@@ -114,6 +113,7 @@
   "keyboardShortcuts": "Shortcuts",
   "home": "Home",
   "cowork": "Cowork",
+  "campaign": "Campaign",
   "newSession": "New session",
   "artifacts": "Artifacts",
   "customize": "Customize",
@@ -1472,7 +1472,8 @@
   "drop": {
     "openInCode": "Drop to open — read-only",
     "attachToMessage": "Drop to attach to your message",
-    "releaseToAttach": "Release to attach"
+    "releaseToAttach": "Release to attach",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "voicePill": {
     "cancel": "Cancel"
@@ -2068,7 +2069,12 @@
     "usageOverview": "Usage overview",
     "movedTo": "Moved to {{name}}",
     "notifications": "Notifications",
-    "approvalWaiting": "Approval waiting"
+    "approvalWaiting": "Approval waiting",
+    "tabs": "Sidebar view",
+    "tabChat": "Chat",
+    "tabCowork": "Cowork",
+    "studio": "Studio",
+    "schedules": "Schedules"
   },
   "systemNav": {
     "label": "Diagnostics",
@@ -2480,5 +2486,14 @@
     "stop": "Stop",
     "retry": "Retry",
     "downloading": "Downloading…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images",
+    "details": "Details for {{name}}",
+    "previewLoading": "Loading preview…",
+    "previewNone": "No preview available"
   }
 }

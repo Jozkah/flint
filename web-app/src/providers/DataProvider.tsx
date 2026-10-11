@@ -28,6 +28,7 @@ import { AppEvent, events } from '@janhq/core'
 import { SystemEvent } from '@/types/events'
 import { sweepThreadWorkspaces } from '@/lib/agentTools'
 import { invoke } from '@tauri-apps/api/core'
+import { isChatWindow } from '@/lib/soloFlag'
 import { hostInvoke } from '@/lib/hostInvoke'
 import { providerHasRemoteApiKeys, providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
 import {
@@ -252,6 +253,12 @@ const syncModelParamDefaults = () => {
   )
 }
 
+// A "New window" shows one conversation of an app that is already running: it
+// loads what a conversation needs and leaves the one-time work (provider
+// registration, server auto-start, tray and download settings, deep links, the
+// workspace sweep) to the main window. Fixed for the life of the window.
+const solo = isChatWindow()
+
 export function DataProvider() {
   const navigate = useNavigate()
   const { setProviders, getProviderByName } =
@@ -289,7 +296,6 @@ export function DataProvider() {
     (state) => state.downloadLimitMBps
   )
   const setServerStatus = useAppState((state) => state.setServerStatus)
-
   useEffect(() => {
     console.log('Initializing DataProvider...')
     serviceHub.providers().getProviders().then(async (fetched) => {
@@ -304,7 +310,7 @@ export function DataProvider() {
       await applySecretHeaderValues()
       // Register active remote providers with the backend, keys now in place.
       useModelProvider.getState().providers.forEach((provider) => {
-        if (provider.active) {
+        if (provider.active && !solo) {
           registerRemoteProvider(provider)
           registeredProviderNames.add(provider.provider)
         }
@@ -312,16 +318,18 @@ export function DataProvider() {
     })
     // Re-seed the Hugging Face token from the keyring (no longer persisted to
     // settings storage) into the store + download extension for this session.
-    loadHuggingfaceToken(
-      (command, args) => invoke(command, args),
-      useModelProvider
-        .getState()
-        .providers.find((p) => p.provider === 'huggingface')?.api_key
-    )
-      .then((token) => {
-        if (token) useGeneralSetting.getState().setHuggingfaceToken(token)
-      })
-      .catch(() => {})
+    if (!solo) {
+      loadHuggingfaceToken(
+        (command, args) => invoke(command, args),
+        useModelProvider
+          .getState()
+          .providers.find((p) => p.provider === 'huggingface')?.api_key
+      )
+        .then((token) => {
+          if (token) useGeneralSetting.getState().setHuggingfaceToken(token)
+        })
+        .catch(() => {})
+    }
     serviceHub
       .mcp()
       .getMCPConfig()
@@ -343,10 +351,14 @@ export function DataProvider() {
       .catch((error) => {
         console.warn('Failed to load assistants, keeping default:', error)
       })
-    serviceHub.deeplink().getCurrent().then(handleDeepLink)
-
     let cancelled = false
     let unsubscribeOpenUrl: (() => void) | undefined
+    if (solo) {
+      return () => {
+        cancelled = true
+      }
+    }
+    serviceHub.deeplink().getCurrent().then(handleDeepLink)
     serviceHub
       .deeplink()
       .onOpenUrl(handleDeepLink)
@@ -404,7 +416,7 @@ export function DataProvider() {
           // non-empty result: sweeping against an empty list would delete live
           // sandboxes if this fetch were still a transient not-ready state.
           // Leftovers then wait for the next startup that does see threads.
-          if (!sweptWorkspaces.current && threads.length > 0) {
+          if (!solo && !sweptWorkspaces.current && threads.length > 0) {
             sweptWorkspaces.current = true
             sweepThreadWorkspaces(threads.map((t) => t.id))
           }
@@ -441,6 +453,7 @@ export function DataProvider() {
   // Sync remote providers with backend when providers change
   const providers = useModelProvider((s) => s.providers)
   useEffect(() => {
+    if (solo) return
     syncRemoteProviders()
     syncModelParamDefaults()
   }, [providers])
@@ -463,6 +476,7 @@ export function DataProvider() {
 
   // Keep the backend's hide-to-tray-on-close flag in sync with the setting
   useEffect(() => {
+    if (solo) return
     serviceHub
       .app()
       .setServerRunInBackground(runInBackground)
@@ -473,6 +487,7 @@ export function DataProvider() {
 
   // Keep the backend's close-to-tray flag and download speed cap in sync
   useEffect(() => {
+    if (solo) return
     serviceHub
       .app()
       .setCloseToTray(closeToTray)
@@ -482,6 +497,7 @@ export function DataProvider() {
   }, [serviceHub, closeToTray])
 
   useEffect(() => {
+    if (solo) return
     serviceHub
       .app()
       .setDownloadSpeedLimit(Math.round(downloadLimitMBps * 1024 * 1024))
@@ -492,7 +508,7 @@ export function DataProvider() {
 
   // Auto-start Local API Server on app startup if enabled
   useEffect(() => {
-    if (enableOnStartup) {
+    if (enableOnStartup && !solo) {
       // Check if server is already running
       serviceHub
         .app()

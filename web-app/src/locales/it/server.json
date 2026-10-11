@@ -1,0 +1,26 @@
+{
+  "title": "Server Flint",
+  "desc": "Usa Flint su un server che gestisci, da questo dispositivo.",
+  "address": "Indirizzo del server",
+  "addressDesc": "L'indirizzo HTTPS del tuo flint serve, ad esempio il nome Tailscale su cui è pubblicato. Accedi dalla pagina del server stesso; questa app non memorizza mai la credenziale.",
+  "test": "Prova la connessione",
+  "open": "Apri il server",
+  "forget": "Dimentica il server",
+  "checking": "Verifica in corso...",
+  "statusOk": "Raggiunto un server Flint.",
+  "statusReachable": "Qualcosa ha risposto, ma da qui non è stato possibile confermare che sia Flint. Aprilo per scoprirlo.",
+  "statusUnreachable": "Impossibile raggiungerlo. Controlla l'indirizzo, che il server sia in esecuzione e che questo dispositivo possa raggiungerlo (VPN o Tailscale attivi).",
+  "insecure": "Questo indirizzo non è HTTPS. La sessione viaggerebbe in chiaro e Android potrebbe rifiutarlo.",
+  "problem": {
+    "empty": "Inserisci l'indirizzo del server.",
+    "invalid": "Indirizzo non valido.",
+    "scheme": "Usa un indirizzo http o https.",
+    "credentials": "Lascia fuori dall'indirizzo il nome utente e la password."
+  },
+  "auto": "Apri all'avvio",
+  "autoDesc": "Apri il server all'avvio dell'app, dopo qualche secondo in cui puoi scegliere invece questo dispositivo.",
+  "opening": "Apertura di {{host}} tra {{seconds}} s",
+  "useDevice": "Usa questo dispositivo",
+  "limitsTitle": "Cosa gira dove",
+  "limits": "Chat, stanze, modelli e strumenti girano sul server. Le sessioni Cowork e le campagne richiedono un agente in esecuzione su un computer con Flint aperto: raggiungi quel computer tramite Accesso remoto e l'app per il telefono. Un server headless può elencare le campagne e rivedere le proposte, ma non esegue sessioni."
+}

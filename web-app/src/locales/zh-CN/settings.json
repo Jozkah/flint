@@ -689,5 +689,424 @@
     "noVisionModel": "没有可用的能看图的模型。请添加一个，或将某个模型标记为支持视觉。",
     "embed": "让附加的图片可被搜索",
     "embedDesc": "同时把每张图片的描述与聊天文档一起保存，以便日后搜索。这会把每张附加图片发送给描述模型。"
+  },
+  "campaigns": {
+    "title": "战役",
+    "maxParallel": "战役并行线程数",
+    "maxParallelDesc": "同一时间最多可运行多少个战役任务，每个任务在各自的分屏窗格中运行。范围为 1 到 6。对正在运行的战役立即生效；可用的空闲窗格仍会限制并行数量。",
+    "board": {
+      "dot": {
+        "queued": "排队中",
+        "blocked": "已阻塞",
+        "running": "运行中",
+        "needsYou": "需要你处理",
+        "verifying": "验证中",
+        "verified": "已验证",
+        "merged": "已合并",
+        "failed": "失败",
+        "conflict": "冲突",
+        "cancelled": "已取消",
+        "planning": "规划中",
+        "review": "可供审阅"
+      },
+      "status": {
+        "draft": "草稿",
+        "planned": "已规划",
+        "approved": "已批准",
+        "running": "运行中",
+        "paused": "已暂停",
+        "reviewing": "审阅中",
+        "merging": "合并中",
+        "done": "已完成",
+        "failed": "失败",
+        "cancelled": "已取消",
+        "interrupted": "已中断"
+      },
+      "openBoard": "打开战役看板",
+      "notFound": "未找到此战役。",
+      "loading": "正在加载战役…",
+      "budget": {
+        "label": "Token 预算",
+        "used": "已用 {{used}} / {{budget}} 个 token",
+        "none": "已用 {{used}} 个 token，未设置预算"
+      },
+      "parallel": "并行上限 {{n}}",
+      "card": {
+        "branch": "分支",
+        "noBranch": "暂无分支"
+      },
+      "action": {
+        "open": "打开会话",
+        "note": "发送备注",
+        "stop": "停止",
+        "retry": "重试",
+        "skip": "跳过",
+        "handoff": "查看交接",
+        "diff": "查看更改",
+        "pause": "暂停",
+        "resume": "继续",
+        "cancel": "取消战役",
+        "review": "审阅并应用",
+        "send": "发送",
+        "close": "关闭",
+        "confirm": "确认",
+        "reviewChanges": "审阅更改",
+        "openCoordinator": "打开协调器",
+        "openCowork": "打开协作以继续"
+      },
+      "note": {
+        "title": "给 {{task}} 的备注",
+        "placeholder": "告诉任务应当如何改变做法",
+        "sent": "备注已发送"
+      },
+      "handoff": {
+        "title": "交接：{{task}}",
+        "empty": "尚未撰写交接内容。"
+      },
+      "diff": {
+        "title": "{{task}} 更改的文件",
+        "empty": "未记录此任务的文件更改。"
+      },
+      "review": {
+        "title": "审阅并应用",
+        "body": "这会先对合并后的结果运行检查，然后为你的工作目录创建一份提案。在你批准该提案之前，不会应用任何内容。",
+        "command": "检查命令：{{command}}",
+        "noCommand": "未配置也未检测到构建或测试命令，因此合并后的结果不会被构建或测试。",
+        "proposal": "提案已创建。请在此看板上审阅并应用。",
+        "failed": "检查未通过；战役仍处于审阅状态。"
+      },
+      "cancelConfirm": {
+        "title": "取消此战役？",
+        "body": "所有未完成的任务都会被取消，正在运行的任务会被停止。worktree 会保留。"
+      },
+      "proposal": {
+        "title": "战役更改",
+        "loading": "正在加载提案…",
+        "missing": "找不到该提案。请重新运行“审阅并应用”。"
+      },
+      "resumed": "已恢复 {{n}} 个在应用停止时被中断的任务。",
+      "stalled": "有 {{n}} 个任务显示为运行中，但此窗口中没有任何东西在运行它们。请打开协作以继续这些任务。",
+      "noteState": {
+        "sent": "备注已发送",
+        "delivered": "备注已送达任务"
+      },
+      "error": "操作失败：{{reason}}",
+      "headline": {
+        "planning": "正在规划工作",
+        "working": "进行中：已完成 {{done}} / {{total}} 个任务",
+        "attention_one": "需要你注意：{{count}} 个任务正在等你",
+        "attention_other": "需要你注意：{{count}} 个任务正在等你",
+        "review": "可供你审阅",
+        "merging": "正在整合结果",
+        "paused": "已暂停：已完成 {{done}} / {{total}} 个任务",
+        "interrupted": "应用关闭时已停止：已完成 {{done}} / {{total}} 个任务",
+        "done": "全部完成",
+        "failed": "此战役未能完成",
+        "cancelled": "已取消",
+        "gateFailed": "最终检查失败：工作已合并但未通过验证"
+      },
+      "progressLabel": "已完成 {{done}} / {{total}} 个任务",
+      "planning": "规划中…正在等待协调器的计划。",
+      "group": {
+        "needsYou": "需要你处理",
+        "working": "进行中",
+        "upNext": "接下来",
+        "done": "已完成",
+        "skipped": "已跳过"
+      },
+      "word": {
+        "writing": "正在编写代码",
+        "checking": "正在检查结果",
+        "ready": "已检查，可以合并",
+        "needsInput": "等待你的回答",
+        "needsApproval": "等待你的批准",
+        "failed": "未能完成",
+        "conflict": "与其他更改冲突",
+        "waiting": "等待 {{tasks}}",
+        "queued": "即将开始",
+        "merged": "已合并",
+        "skipped": "已跳过",
+        "resolving": "正在解决冲突",
+        "verifyBlocked": "已完成，但检查无法给出结论",
+        "waitingSkipped": "等待 {{tasks}}（已被跳过）"
+      },
+      "row": {
+        "open": "打开",
+        "details": "详情",
+        "attempts": "尝试次数",
+        "tokens": "已用 token",
+        "lastActivity": "最近活动",
+        "seeChanges": "查看 {{task}} 更改了什么"
+      },
+      "details": "详情",
+      "detailBranch": "结果汇集在 {{branch}} 上",
+      "statusWord": {
+        "draft": "正在启动",
+        "planned": "正在启动",
+        "approved": "正在启动",
+        "running": "进行中",
+        "paused": "已暂停",
+        "reviewing": "可供审阅",
+        "merging": "合并中",
+        "done": "已完成",
+        "failed": "失败",
+        "cancelled": "已取消",
+        "interrupted": "已停止"
+      },
+      "groupProgress": "已完成 {{done}} / {{total}} · {{status}}",
+      "fold": "隐藏 {{title}} 的会话",
+      "unfold": "显示 {{title}} 的会话",
+      "story": {
+        "wrote_one": "已写入 {{count}} 个文件，+{{added}} −{{removed}} 行",
+        "wrote_other": "已写入 {{count}} 个文件，+{{added}} −{{removed}} 行",
+        "wroteUncounted_one": "已写入 {{count}} 个文件",
+        "wroteUncounted_other": "已写入 {{count}} 个文件",
+        "stop": {
+          "none": "在完成之前就停止了。",
+          "one": "在一条命令失败后停止了。",
+          "many": "在命令失败 {{count}} 次后停止了。"
+        },
+        "headline": {
+          "noOutput": "没有写入任何内容。",
+          "stoppedPlain": "未完成就停止了。",
+          "finishedNoFiles": "已完成，但没有更改任何文件。",
+          "working_one": "正在处理：目前已执行 {{count}} 步。",
+          "working_other": "正在处理：目前已执行 {{count}} 步。",
+          "starting": "刚刚开始。",
+          "conflict": "已完成，但其更改与其他任务写入的内容冲突。",
+          "waiting": "需要先等待 {{tasks}} 完成。",
+          "queued": "一有空位就会开始。",
+          "needsInput": "已暂停：它向你提了一个问题。",
+          "needsApproval": "已暂停：需要你批准才能继续。",
+          "skipped": "已跳过。",
+          "verifyBlocked": "已完成，但检查无法判断结果是否正确。"
+        },
+        "took": "用时 {{time}}",
+        "running": "已运行 {{time}}",
+        "toggle": "发生了什么",
+        "asked": "它被要求做什么",
+        "did": "它做了什么",
+        "stoppedAt": "它在哪里停下",
+        "noRecord": "此任务没有可用的逐步记录。",
+        "more_one": "另有 {{count}} 步",
+        "more_other": "另有 {{count}} 步",
+        "step": {
+          "read": "读取了 {{label}}",
+          "readMany_one": "读取了 {{count}} 个文件",
+          "readMany_other": "读取了 {{count}} 个文件",
+          "search_one": "搜索了项目",
+          "search_other": "搜索了项目 {{count}} 次",
+          "write": "写入了 {{label}}",
+          "writeMany_one": "写入了 {{count}} 个文件",
+          "writeMany_other": "写入了 {{count}} 个文件",
+          "ran": "运行了 {{label}}",
+          "ranFailed": "运行了 {{label}}，但失败了"
+        },
+        "next": {
+          "retry": "请重试，并说明它应当如何改变做法。",
+          "conflict": "打开对话，让它基于最新结果重新构建，或者跳过它。",
+          "open": "它已用完重试次数。打开对话查看它卡在哪里，或者跳过它。",
+          "answer": "打开对话并回答它的问题。",
+          "approve": "打开对话并批准或拒绝该请求。",
+          "verify": "再次检查，或者在你确认没问题时自行接受。",
+          "help": "这需要换一种方法。已填入建议的提示，可按需修改后重试。"
+        },
+        "hintLabel": "告诉它应当如何改变做法",
+        "openConversation": "打开对话"
+      },
+      "summary": {
+        "title": "整体情况",
+        "goal": "你的要求",
+        "plan": "如何拆分",
+        "sideBySide_one": "{{count}} 个任务独立运行",
+        "sideBySide_other": "这 {{count}} 个任务并行运行",
+        "waitsFor": "{{task}} 等待 {{tasks}}",
+        "time": "时间",
+        "timeSoFar": "目前已用 {{time}}",
+        "timeTotal": "共 {{time}}",
+        "result": "结果",
+        "cost": "成本",
+        "costTokens": "约 {{tokens}} 个 token",
+        "costBudget": "约 {{tokens}} 个 token，预算为 {{budget}}",
+        "branch": "结果在哪里",
+        "branchBody": "所有内容都汇集在一个单独的分支 {{branch}} 上。在你审阅并应用之前，你自己的文件不会被改动。",
+        "copy": "复制分支名称",
+        "copied": "已复制",
+        "wrapUp": {
+          "doneTitle": "全部完成",
+          "reviewTitle": "可供你审阅",
+          "built": "完成了什么",
+          "tasks": "已完成的任务",
+          "files": "更改的文件",
+          "lines": "更改的行数",
+          "skipped": "已跳过 {{count}} 个"
+        }
+      },
+      "effort": "约 {{percent}}% 的工作已完成",
+      "recovery": {
+        "checkAgain": "重新检查",
+        "accept": "仍然接受",
+        "acceptWhy": "为什么可以接受？一行说明，会随任务保存。",
+        "acceptConfirm": "接受",
+        "accepted": "已由你接受",
+        "acceptedWhy": "已由你接受：{{reason}}",
+        "blocks": "正在阻塞：{{tasks}}。"
+      },
+      "changes": {
+        "title": "此战役更改的全部内容",
+        "body": "所有已完成的任务合并在一起，逐个文件列出。这里不会向你的文件夹应用任何内容。",
+        "continue": "构建并测试，然后审阅"
+      },
+      "conflict": {
+        "explain": "此任务与另一个任务更改了相同的行，因此 Flint 无法自行合并它们。",
+        "files": "冲突的文件",
+        "resolve": "尝试自动解决",
+        "skip": "跳过任务",
+        "resolving": "正在解决冲突...",
+        "resolvingFiles": "正在解决 {{count}} 个文件中的冲突..."
+      },
+      "verify": {
+        "verdict": "已由验证器检查",
+        "verdicts": {
+          "PASS": "通过",
+          "PARTIAL": "部分完成",
+          "FAIL": "未通过",
+          "BLOCKED": "无法判定"
+        },
+        "testsPassed": "测试通过",
+        "testsFailed": "测试失败",
+        "testsFailedTail": "测试失败：{{tail}}",
+        "tokens": "用于检查的 token"
+      },
+      "progressLabelSkipped": "已完成 {{done}} · 已跳过 {{skipped}} · 共 {{total}} 个任务",
+      "groupProgressSkipped": "已完成 {{done}} · 已跳过 {{skipped}} · {{status}}",
+      "effortGateFailed": "最终检查失败，因此工作尚未完成",
+      "stranded": {
+        "explain": "此任务在等待 {{tasks}}，而它已被跳过，因此无法自行开始。",
+        "skipToo": "也跳过它",
+        "runWithout": "不等它直接运行"
+      },
+      "skipConfirm": {
+        "title": "跳过“{{task}}”？",
+        "body_one": "还有 {{count}} 个任务在等它。是一并跳过，还是让它们在没有此任务的情况下运行？",
+        "body_other": "还有 {{count}} 个任务在等它。是一并跳过，还是让它们在没有此任务的情况下运行？",
+        "cascade_one": "跳过它以及等待它的任务",
+        "cascade_other": "跳过它以及等待它的 {{count}} 个任务",
+        "release": "跳过它，其他任务不等它直接运行"
+      },
+      "gate": {
+        "title": "检查失败",
+        "body": "工作已合并，但最终的构建和测试检查未通过，因此尚不能应用。",
+        "command": "命令",
+        "result": "结果",
+        "exit": "退出代码 {{code}}",
+        "noExit": "未正常结束",
+        "timedOut": "已超时",
+        "output": "输出的最后几行",
+        "copy": "复制",
+        "copied": "已复制",
+        "fix": "自动修复",
+        "retry": "重新运行检查",
+        "reviewAnyway": "仍然审阅",
+        "reviewWarning": "最终检查失败。审阅更改时请记住这一点。"
+      },
+      "recheck": {
+        "again": "正在重新检查…",
+        "stalled": "检查耗时比预期更长。"
+      }
+    },
+    "changes": {
+      "loading": "正在查看更改…",
+      "unavailable": "无法读取更改。请打开会话查看。",
+      "none": "此任务没有更改任何文件。",
+      "files_one": "{{count}} 个文件",
+      "files_other": "{{count}} 个文件",
+      "namesOnly": "此任务只能得知文件名。",
+      "uncommitted": "这项工作的一部分尚未保存到任务的分支。",
+      "cut": "过长的列表已被缩短。",
+      "kind": {
+        "new": "新增",
+        "edited": "已编辑",
+        "deleted": "已删除",
+        "renamed": "已重命名"
+      },
+      "binary": "二进制",
+      "binaryNote": "这不是文本文件，没有可显示的内容。",
+      "renamedFrom": "重命名自 {{from}}",
+      "showMore_one": "再显示 {{count}} 行",
+      "showMore_other": "再显示 {{count}} 行",
+      "fileCut": "此更改很长，因此只显示开头部分。",
+      "noPatch": "此文件没有逐行视图。"
+    },
+    "start": {
+      "title": "新建战役",
+      "menu": "新建战役",
+      "prompt": "描述这项大任务，Flint 会规划如何拆分。",
+      "goalLabel": "战役要做什么？",
+      "placeholder": "例如：为整个应用添加深色模式，并附带测试",
+      "hint": "最多 {{n}} 个线程同时工作。你可以在设置中更改。",
+      "folder": "在 {{folder}} 中",
+      "go": "开始",
+      "noFolder": "请打开一个 git 文件夹来开始战役",
+      "error": {
+        "no-model": "请先选择一个支持使用工具的模型（侧边栏中的“模型”或模型选择器），然后重新开始。",
+        "failed": "Flint 无法打开战役会话。没有开始任何操作；请重试。"
+      }
+    },
+    "nav": "战役",
+    "list": {
+      "subtitle": "把大任务拆分成若干部分，由多个智能体并行处理。",
+      "start": "开始战役",
+      "empty": "还没有战役",
+      "emptyHint": "战役会接收一项大任务，将其拆分成更小的任务，并让多个智能体在各自的分支上同时处理。",
+      "doneOf": "已完成 {{done}} / {{total}}",
+      "planning": "规划中",
+      "updated": "{{when}}更新",
+      "loading": "正在加载战役",
+      "loadFailed": "无法加载战役。",
+      "retry": "重试"
+    },
+    "plan": {
+      "edit": "编辑计划",
+      "save": "保存更改",
+      "discard": "放弃更改",
+      "saved": "计划已保存。",
+      "saveFailed": "无法保存计划：{{reason}}",
+      "unsaved": "尚未保存",
+      "saveFirst": "允许之前，请先保存或放弃计划更改。",
+      "addTask": "添加任务",
+      "count": "{{count}} / {{max}} 个任务",
+      "after": "在此之后：{{tasks}}",
+      "moveUp": "上移 {{task}}",
+      "moveDown": "下移 {{task}}",
+      "remove": "移除 {{task}}",
+      "addAfter": "添加要等待的任务",
+      "removeAfter": "移除此依赖",
+      "field": {
+        "title": "任务名称",
+        "brief": "要做什么",
+        "acceptance": "如何确认已完成（每行一条）",
+        "paths": "可更改的文件和文件夹（每行一个）",
+        "pathsHint": "src/feature",
+        "after": "在此之后开始"
+      },
+      "estimate": {
+        "one": "约 {{tokens}} 个 token",
+        "range": "约 {{low}} 到 {{high}} 个 token",
+        "basis": "取决于：{{basis}}",
+        "generic": "取决于任务读取多少个文件，以及检查需要重复多少次。"
+      },
+      "issue": {
+        "noTasks": "请至少添加一个任务。",
+        "tooMany": "{{count}} 个任务太多了；上限为 {{max}}。",
+        "emptyTitle": "有一个任务没有名称。",
+        "emptyBrief": "{{task}} 需要说明要做什么。",
+        "badPath": "{{task}}：“{{path}}”不是项目内的文件夹或文件。",
+        "selfDependency": "{{task}} 不能等待它自己。",
+        "unknownDependency": "{{task}} 在等待一个已不存在的任务。",
+        "cycle": "这些任务在互相等待：{{tasks}}。",
+        "overlap": "{{a}} 和 {{b}} 会同时运行，但都会更改 {{path}}。请让其中一个等待另一个。"
+      }
+    }
   }
 }

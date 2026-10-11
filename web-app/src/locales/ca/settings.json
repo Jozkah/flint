@@ -693,5 +693,424 @@
     "noVisionModel": "No hi ha cap model que hi vegi. Afegiu-ne un o marqueu un model com a capaç de veure.",
     "embed": "Fes que les imatges adjuntes es puguin cercar",
     "embedDesc": "Desa també la descripció de cada imatge amb els documents del xat per poder-la cercar. Envia cada imatge adjunta al model de descripció."
+  },
+  "campaigns": {
+    "title": "Campanyes",
+    "maxParallel": "Fils paral·lels de campanya",
+    "maxParallelDesc": "Quantes tasques d'una campanya poden executar-se alhora, cadascuna en el seu propi panell dividit. De l'1 al 6. S'aplica de seguida a una campanya en curs; els panells lliures continuen limitant-ho.",
+    "board": {
+      "dot": {
+        "queued": "A la cua",
+        "blocked": "Bloquejada",
+        "running": "En execució",
+        "needsYou": "Et necessita",
+        "verifying": "Verificant",
+        "verified": "Verificada",
+        "merged": "Fusionada",
+        "failed": "Ha fallat",
+        "conflict": "Conflicte",
+        "cancelled": "Cancel·lada",
+        "planning": "Planificant",
+        "review": "A punt per revisar"
+      },
+      "status": {
+        "draft": "esborrany",
+        "planned": "planificada",
+        "approved": "aprovada",
+        "running": "en execució",
+        "paused": "en pausa",
+        "reviewing": "en revisió",
+        "merging": "fusionant",
+        "done": "feta",
+        "failed": "fallida",
+        "cancelled": "cancel·lada",
+        "interrupted": "interrompuda"
+      },
+      "openBoard": "Obre el tauler de la campanya",
+      "notFound": "No s'ha trobat aquesta campanya.",
+      "loading": "Carregant la campanya…",
+      "budget": {
+        "label": "Pressupost de tokens",
+        "used": "{{used}} de {{budget}} tokens",
+        "none": "{{used}} tokens, sense pressupost definit"
+      },
+      "parallel": "Límit en paral·lel: {{n}}",
+      "card": {
+        "branch": "Branca",
+        "noBranch": "encara sense branca"
+      },
+      "action": {
+        "open": "Obre la sessió",
+        "note": "Envia una nota",
+        "stop": "Atura",
+        "retry": "Torna-ho a provar",
+        "skip": "Omet",
+        "handoff": "Mostra el traspàs",
+        "diff": "Mostra els canvis",
+        "pause": "Pausa",
+        "resume": "Reprèn",
+        "cancel": "Cancel·la la campanya",
+        "review": "Revisa i aplica",
+        "send": "Envia",
+        "close": "Tanca",
+        "confirm": "Confirma",
+        "reviewChanges": "Revisa els canvis",
+        "openCoordinator": "Obre el coordinador",
+        "openCowork": "Obre Cowork per continuar"
+      },
+      "note": {
+        "title": "Nota per a {{task}}",
+        "placeholder": "Digues a la tasca què ha de fer de manera diferent",
+        "sent": "Nota enviada"
+      },
+      "handoff": {
+        "title": "Traspàs: {{task}}",
+        "empty": "Encara no s'ha escrit cap traspàs."
+      },
+      "diff": {
+        "title": "Fitxers canviats per {{task}}",
+        "empty": "No s'ha registrat cap canvi de fitxers per a aquesta tasca."
+      },
+      "review": {
+        "title": "Revisa i aplica",
+        "body": "Això executa la comprovació sobre el resultat fusionat i després crea una proposta per al teu projecte. No s'aplica res fins que aprovis aquesta proposta.",
+        "command": "Ordre de comprovació: {{command}}",
+        "noCommand": "No hi ha cap ordre de compilació ni de proves configurada o detectada, així que el resultat fusionat no es compilarà ni es provarà.",
+        "proposal": "Proposta creada. Revisa-la i aplica-la en aquest tauler.",
+        "failed": "La comprovació ha fallat; la campanya es queda en revisió."
+      },
+      "cancelConfirm": {
+        "title": "Cancel·lar aquesta campanya?",
+        "body": "Es cancel·len totes les tasques sense acabar i s'aturen les que s'estan executant. Els worktrees es conserven."
+      },
+      "proposal": {
+        "title": "Canvis de la campanya",
+        "loading": "Carregant la proposta…",
+        "missing": "No s'ha trobat la proposta. Torna a executar Revisa i aplica."
+      },
+      "resumed": "S'han represes {{n}} tasca(ques) que s'havien interromput quan l'aplicació es va aturar.",
+      "stalled": "{{n}} tasca(ques) apareixen com a en execució però no hi ha res que les executi en aquesta finestra. Obre Cowork per continuar-les.",
+      "noteState": {
+        "sent": "Nota enviada",
+        "delivered": "Nota lliurada a la tasca"
+      },
+      "error": "L'acció ha fallat: {{reason}}",
+      "headline": {
+        "planning": "Planificant el treball",
+        "working": "Treballant: {{done}} de {{total}} tasques fetes",
+        "attention_one": "Necessita la teva atenció: {{count}} tasca t'està esperant",
+        "attention_other": "Necessita la teva atenció: {{count}} tasques t'estan esperant",
+        "review": "A punt perquè la revisis",
+        "merging": "Ajuntant els resultats",
+        "paused": "En pausa: {{done}} de {{total}} tasques fetes",
+        "interrupted": "Aturada en tancar l'aplicació: {{done}} de {{total}} tasques fetes",
+        "done": "Tot fet",
+        "failed": "Aquesta campanya no s'ha pogut acabar",
+        "cancelled": "Cancel·lada",
+        "gateFailed": "Les comprovacions finals han fallat: el treball està fusionat però no verificat"
+      },
+      "progressLabel": "{{done}} de {{total}} tasques fetes",
+      "planning": "Planificant… esperant el pla del coordinador.",
+      "group": {
+        "needsYou": "Et necessiten",
+        "working": "Treballant",
+        "upNext": "Properes",
+        "done": "Fetes",
+        "skipped": "Omeses"
+      },
+      "word": {
+        "writing": "Escrivint codi",
+        "checking": "Comprovant el resultat",
+        "ready": "Comprovada, a punt per fusionar",
+        "needsInput": "Esperant la teva resposta",
+        "needsApproval": "Esperant la teva aprovació",
+        "failed": "No ha sortit bé",
+        "conflict": "Xoca amb altres canvis",
+        "waiting": "Esperant {{tasks}}",
+        "queued": "Comença aviat",
+        "merged": "Fusionada",
+        "skipped": "Omesa",
+        "resolving": "Resolent un xoc",
+        "verifyBlocked": "Acabada, però la comprovació no ha pogut decidir",
+        "waitingSkipped": "Esperant {{tasks}}, que s'ha omès"
+      },
+      "row": {
+        "open": "Obre",
+        "details": "Detalls",
+        "attempts": "Intents",
+        "tokens": "Tokens utilitzats",
+        "lastActivity": "Última activitat",
+        "seeChanges": "Mostra què ha canviat {{task}}"
+      },
+      "details": "Detalls",
+      "detailBranch": "Els resultats es recullen a {{branch}}",
+      "statusWord": {
+        "draft": "Començant",
+        "planned": "Començant",
+        "approved": "Començant",
+        "running": "Treballant",
+        "paused": "En pausa",
+        "reviewing": "A punt per revisar",
+        "merging": "Fusionant",
+        "done": "Feta",
+        "failed": "Ha fallat",
+        "cancelled": "Cancel·lada",
+        "interrupted": "Aturada"
+      },
+      "groupProgress": "{{done}} de {{total}} fetes · {{status}}",
+      "fold": "Amaga les sessions de {{title}}",
+      "unfold": "Mostra les sessions de {{title}}",
+      "story": {
+        "wrote_one": "Ha escrit {{count}} fitxer, +{{added}} −{{removed}} línies",
+        "wrote_other": "Ha escrit {{count}} fitxers, +{{added}} −{{removed}} línies",
+        "wroteUncounted_one": "Ha escrit {{count}} fitxer",
+        "wroteUncounted_other": "Ha escrit {{count}} fitxers",
+        "stop": {
+          "none": "S'ha aturat abans d'acabar.",
+          "one": "S'ha aturat després que fallés una ordre.",
+          "many": "S'ha aturat després que fallessin ordres {{count}} vegades."
+        },
+        "headline": {
+          "noOutput": "No s'ha escrit res.",
+          "stoppedPlain": "Aturada sense acabar.",
+          "finishedNoFiles": "Acabada sense canviar cap fitxer.",
+          "working_one": "Treballant-hi: {{count}} pas fins ara.",
+          "working_other": "Treballant-hi: {{count}} passos fins ara.",
+          "starting": "Just començant.",
+          "conflict": "Acabada, però els seus canvis xoquen amb el que han escrit altres tasques.",
+          "waiting": "Esperant que acabi {{tasks}} primer.",
+          "queued": "Comença tan aviat com hi hagi lloc.",
+          "needsInput": "En pausa: t'ha fet una pregunta.",
+          "needsApproval": "En pausa: necessita la teva aprovació per continuar.",
+          "skipped": "Omesa.",
+          "verifyBlocked": "Acabada, però la comprovació no ha pogut dir si és correcta."
+        },
+        "took": "Ha treballat durant {{time}}",
+        "running": "En execució des de fa {{time}}",
+        "toggle": "Què ha passat",
+        "asked": "Què se li ha demanat",
+        "did": "Què ha fet",
+        "stoppedAt": "On s'ha aturat",
+        "noRecord": "No hi ha cap registre pas a pas d'aquesta tasca.",
+        "more_one": "i {{count}} pas més",
+        "more_other": "i {{count}} passos més",
+        "step": {
+          "read": "Ha llegit {{label}}",
+          "readMany_one": "Ha llegit {{count}} fitxer",
+          "readMany_other": "Ha llegit {{count}} fitxers",
+          "search_one": "Ha cercat al projecte",
+          "search_other": "Ha cercat al projecte {{count}} vegades",
+          "write": "Ha escrit {{label}}",
+          "writeMany_one": "Ha escrit {{count}} fitxer",
+          "writeMany_other": "Ha escrit {{count}} fitxers",
+          "ran": "Ha executat {{label}}",
+          "ranFailed": "Ha executat {{label}} i ha fallat"
+        },
+        "next": {
+          "retry": "Torna-ho a provar i digues què ha de fer de manera diferent.",
+          "conflict": "Obre la conversa i demana-li que ho refaci sobre els últims resultats, o omet-la.",
+          "open": "Ha esgotat els reintents. Obre la conversa per veure on s'ha encallat, o omet-la.",
+          "answer": "Obre la conversa i respon la seva pregunta.",
+          "approve": "Obre la conversa i aprova o denega la sol·licitud.",
+          "verify": "Comprova-ho un altre cop, o accepta-ho tu mateix si veus que està bé.",
+          "help": "Cal un enfocament diferent. La indicació suggerida ja està escrita; canvia-la si vols i torna-ho a provar."
+        },
+        "hintLabel": "Digues-li què ha de fer de manera diferent",
+        "openConversation": "Obre la conversa"
+      },
+      "summary": {
+        "title": "La visió general",
+        "goal": "El que has demanat",
+        "plan": "Com s'ha dividit",
+        "sideBySide_one": "{{count}} tasca s'ha executat sola",
+        "sideBySide_other": "Aquestes {{count}} tasques s'han executat en paral·lel",
+        "waitsFor": "{{task}} espera {{tasks}}",
+        "time": "Temps",
+        "timeSoFar": "{{time}} fins ara",
+        "timeTotal": "{{time}} en total",
+        "result": "Resultat",
+        "cost": "Cost",
+        "costTokens": "Uns {{tokens}} tokens",
+        "costBudget": "Uns {{tokens}} tokens del teu pressupost de {{budget}}",
+        "branch": "On són els resultats",
+        "branchBody": "Tot es recull en una branca separada, {{branch}}. Els teus fitxers no es toquen fins que ho revisis i ho apliquis.",
+        "copy": "Copia el nom de la branca",
+        "copied": "Copiat",
+        "wrapUp": {
+          "doneTitle": "Tot fet",
+          "reviewTitle": "A punt perquè la revisis",
+          "built": "El que s'ha construït",
+          "tasks": "Tasques acabades",
+          "files": "Fitxers canviats",
+          "lines": "Línies canviades",
+          "skipped": "{{count}} omeses"
+        }
+      },
+      "effort": "Aproximadament el {{percent}}% de la feina està feta",
+      "recovery": {
+        "checkAgain": "Comprova-ho un altre cop",
+        "accept": "Accepta igualment",
+        "acceptWhy": "Per què està bé acceptar-ho? Una línia, que es guarda amb la tasca.",
+        "acceptConfirm": "Accepta-ho",
+        "accepted": "Acceptada per tu",
+        "acceptedWhy": "Acceptada per tu: {{reason}}",
+        "blocks": "Esperant això: {{tasks}}."
+      },
+      "changes": {
+        "title": "Tot el que ha canviat aquesta campanya",
+        "body": "Totes les tasques acabades juntes, fitxer per fitxer. Des d'aquí no s'aplica res a la teva carpeta.",
+        "continue": "Compila i prova, i després revisa"
+      },
+      "conflict": {
+        "explain": "Aquesta tasca i una altra han canviat les mateixes línies, així que Flint no les ha pogut combinar per si sol.",
+        "files": "Fitxers en conflicte",
+        "resolve": "Prova de resoldre-ho automàticament",
+        "skip": "Omet la tasca",
+        "resolving": "Resolent el conflicte...",
+        "resolvingFiles": "Resolent el conflicte en {{count}} fitxers..."
+      },
+      "verify": {
+        "verdict": "Comprovat pel verificador",
+        "verdicts": {
+          "PASS": "Superada",
+          "PARTIAL": "Feta en part",
+          "FAIL": "No superada",
+          "BLOCKED": "No s'ha pogut decidir"
+        },
+        "testsPassed": "Proves superades",
+        "testsFailed": "Proves fallides",
+        "testsFailedTail": "Proves fallides: {{tail}}",
+        "tokens": "Tokens gastats en comprovar"
+      },
+      "progressLabelSkipped": "{{done}} fetes · {{skipped}} omeses · {{total}} tasques",
+      "groupProgressSkipped": "{{done}} fetes · {{skipped}} omeses · {{status}}",
+      "effortGateFailed": "Les comprovacions finals han fallat, així que la feina no està acabada",
+      "stranded": {
+        "explain": "Aquesta tasca espera {{tasks}}, que s'ha omès, així que no pot començar sola.",
+        "skipToo": "Omet també aquesta",
+        "runWithout": "Executa-la sense això"
+      },
+      "skipConfirm": {
+        "title": "Ometre \"{{task}}\"?",
+        "body_one": "{{count}} altra tasca l'espera. Vols ometre-la també o deixar que s'executi sense aquesta?",
+        "body_other": "{{count}} altres tasques l'esperen. Vols ometre-les també o deixar que s'executin sense aquesta?",
+        "cascade_one": "Omet-la i la tasca que l'espera",
+        "cascade_other": "Omet-la i les {{count}} tasques que l'esperen",
+        "release": "Omet-la i executa les altres sense ella"
+      },
+      "gate": {
+        "title": "Comprovacions fallides",
+        "body": "El treball s'ha fusionat, però la comprovació final de compilació i proves no ha passat, així que no està a punt per aplicar.",
+        "command": "Ordre",
+        "result": "Resultat",
+        "exit": "Codi de sortida {{code}}",
+        "noExit": "No ha acabat amb normalitat",
+        "timedOut": "Temps esgotat",
+        "output": "Últimes línies de la sortida",
+        "copy": "Copia",
+        "copied": "Copiat",
+        "fix": "Arregla-ho automàticament",
+        "retry": "Torna a executar les comprovacions",
+        "reviewAnyway": "Revisa igualment",
+        "reviewWarning": "Les comprovacions finals han fallat. Revisa els canvis tenint-ho en compte."
+      },
+      "recheck": {
+        "again": "Comprovant un altre cop…",
+        "stalled": "La comprovació triga més del previst."
+      }
+    },
+    "changes": {
+      "loading": "Mirant els canvis…",
+      "unavailable": "No s'han pogut llegir els canvis. Obre la sessió per veure'ls.",
+      "none": "Aquesta tasca no ha canviat cap fitxer.",
+      "files_one": "{{count}} fitxer",
+      "files_other": "{{count}} fitxers",
+      "namesOnly": "Només es coneixen els noms dels fitxers d'aquesta tasca.",
+      "uncommitted": "Una part d'aquest treball encara no s'ha desat a la branca de la tasca.",
+      "cut": "S'ha escurçat una llista llarga.",
+      "kind": {
+        "new": "Nou",
+        "edited": "Editat",
+        "deleted": "Suprimit",
+        "renamed": "Canviat de nom"
+      },
+      "binary": "binari",
+      "binaryNote": "No és un fitxer de text, així que no hi ha res per mostrar.",
+      "renamedFrom": "Canviat de nom des de {{from}}",
+      "showMore_one": "Mostra {{count}} línia més",
+      "showMore_other": "Mostra {{count}} línies més",
+      "fileCut": "Aquest canvi és llarg, així que només se'n mostra el principi.",
+      "noPatch": "No hi ha vista línia per línia per a aquest fitxer."
+    },
+    "start": {
+      "title": "Campanya nova",
+      "menu": "Campanya nova",
+      "prompt": "Descriu la tasca gran. Flint planificarà com dividir-la.",
+      "goalLabel": "Què ha de fer la campanya?",
+      "placeholder": "Per exemple: afegir el mode fosc a tota l'aplicació, amb proves",
+      "hint": "Fins a {{n}} fils treballen alhora. Ho pots canviar a Configuració.",
+      "folder": "A {{folder}}",
+      "go": "Inicia",
+      "noFolder": "Obre una carpeta git per iniciar una campanya",
+      "error": {
+        "no-model": "Tria primer un model que pugui fer servir eines (Models a la barra lateral, o el selector de model) i torna a començar.",
+        "failed": "Flint no ha pogut obrir la sessió de la campanya. No s'ha iniciat res; torna-ho a provar."
+      }
+    },
+    "nav": "Campanyes",
+    "list": {
+      "subtitle": "Tasques grans dividides en parts en què treballen diversos agents en paral·lel.",
+      "start": "Inicia una campanya",
+      "empty": "Encara no hi ha cap campanya",
+      "emptyHint": "Una campanya agafa una tasca gran, la divideix en tasques més petites i fa que diversos agents hi treballin alhora, cadascun en la seva branca.",
+      "doneOf": "{{done}} de {{total}} fetes",
+      "planning": "Planificant",
+      "updated": "Actualitzada {{when}}",
+      "loading": "Carregant les campanyes",
+      "loadFailed": "No s'han pogut carregar les campanyes.",
+      "retry": "Torna-ho a provar"
+    },
+    "plan": {
+      "edit": "Edita el pla",
+      "save": "Desa els canvis",
+      "discard": "Descarta els canvis",
+      "saved": "Pla desat.",
+      "saveFailed": "No s'ha pogut desar el pla: {{reason}}",
+      "unsaved": "Encara no desat",
+      "saveFirst": "Desa o descarta els canvis del pla abans de permetre.",
+      "addTask": "Afegeix una tasca",
+      "count": "{{count}} de {{max}} tasques",
+      "after": "Després de: {{tasks}}",
+      "moveUp": "Mou {{task}} amunt",
+      "moveDown": "Mou {{task}} avall",
+      "remove": "Elimina {{task}}",
+      "addAfter": "Afegeix una tasca que s'hagi d'esperar",
+      "removeAfter": "Elimina aquesta dependència",
+      "field": {
+        "title": "Nom de la tasca",
+        "brief": "Què cal fer",
+        "acceptance": "Com sabem que està feta (una per línia)",
+        "paths": "Fitxers i carpetes que pot canviar (un per línia)",
+        "pathsHint": "src/feature",
+        "after": "Comença després de"
+      },
+      "estimate": {
+        "one": "Uns {{tokens}} tokens",
+        "range": "Entre {{low}} i {{high}} tokens aproximadament",
+        "basis": "Depèn de: {{basis}}",
+        "generic": "Depèn de quants fitxers llegeixen les tasques i de quantes vegades s'ha de repetir una comprovació."
+      },
+      "issue": {
+        "noTasks": "Afegeix almenys una tasca.",
+        "tooMany": "{{count}} tasques són massa; el límit és {{max}}.",
+        "emptyTitle": "Una tasca no té nom.",
+        "emptyBrief": "{{task}} necessita una descripció de què cal fer.",
+        "badPath": "{{task}}: \"{{path}}\" no és una carpeta ni un fitxer dins del projecte.",
+        "selfDependency": "{{task}} no es pot esperar a si mateixa.",
+        "unknownDependency": "{{task}} espera una tasca que ja no existeix.",
+        "cycle": "Aquestes tasques s'esperen les unes a les altres: {{tasks}}.",
+        "overlap": "{{a}} i {{b}} s'executarien alhora però tots dos canvien {{path}}. Fes que una esperi l'altra."
+      }
+    }
   }
 }

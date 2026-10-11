@@ -720,5 +720,424 @@
     "noVisionModel": "Nenhum modelo que enxerga está disponível. Adicione um ou marque um modelo como capaz de ver.",
     "embed": "Tornar as imagens anexadas pesquisáveis",
     "embedDesc": "Guarda também a descrição de cada imagem com os documentos do chat para poder pesquisá-la depois. Isso envia cada imagem anexada ao modelo de descrição."
+  },
+  "campaigns": {
+    "title": "Campanhas",
+    "maxParallel": "Threads paralelas da campanha",
+    "maxParallelDesc": "Quantas tarefas da campanha podem rodar ao mesmo tempo, cada uma em seu próprio painel dividido. De 1 a 6. Vale na hora para uma campanha em andamento; os painéis livres ainda impõem o limite.",
+    "board": {
+      "dot": {
+        "queued": "Na fila",
+        "blocked": "Bloqueada",
+        "running": "Em execução",
+        "needsYou": "Precisa de você",
+        "verifying": "Verificando",
+        "verified": "Verificada",
+        "merged": "Mesclada",
+        "failed": "Falhou",
+        "conflict": "Conflito",
+        "cancelled": "Cancelada",
+        "planning": "Planejando",
+        "review": "Pronta para revisão"
+      },
+      "status": {
+        "draft": "rascunho",
+        "planned": "planejada",
+        "approved": "aprovada",
+        "running": "em execução",
+        "paused": "pausada",
+        "reviewing": "em revisão",
+        "merging": "mesclando",
+        "done": "concluída",
+        "failed": "falhou",
+        "cancelled": "cancelada",
+        "interrupted": "interrompida"
+      },
+      "openBoard": "Abrir quadro da campanha",
+      "notFound": "Esta campanha não foi encontrada.",
+      "loading": "Carregando campanha…",
+      "budget": {
+        "label": "Orçamento de tokens",
+        "used": "{{used}} de {{budget}} tokens",
+        "none": "{{used}} tokens, sem orçamento definido"
+      },
+      "parallel": "Limite paralelo {{n}}",
+      "card": {
+        "branch": "Branch",
+        "noBranch": "ainda sem branch"
+      },
+      "action": {
+        "open": "Abrir sessão",
+        "note": "Enviar nota",
+        "stop": "Parar",
+        "retry": "Tentar de novo",
+        "skip": "Pular",
+        "handoff": "Ver repasse",
+        "diff": "Ver alterações",
+        "pause": "Pausar",
+        "resume": "Retomar",
+        "cancel": "Cancelar campanha",
+        "review": "Revisar e aplicar",
+        "send": "Enviar",
+        "close": "Fechar",
+        "confirm": "Confirmar",
+        "reviewChanges": "Revisar alterações",
+        "openCoordinator": "Abrir coordenador",
+        "openCowork": "Abrir o Cowork para continuar"
+      },
+      "note": {
+        "title": "Nota para {{task}}",
+        "placeholder": "Diga à tarefa o que fazer de outra forma",
+        "sent": "Nota enviada"
+      },
+      "handoff": {
+        "title": "Repasse: {{task}}",
+        "empty": "Nenhum repasse foi escrito ainda."
+      },
+      "diff": {
+        "title": "Arquivos alterados por {{task}}",
+        "empty": "Nenhuma alteração de arquivo foi registrada para esta tarefa."
+      },
+      "review": {
+        "title": "Revisar e aplicar",
+        "body": "Isso executa a verificação final no resultado mesclado e depois cria uma proposta para o seu checkout. Nada é aplicado até você aprovar essa proposta.",
+        "command": "Comando da verificação final: {{command}}",
+        "noCommand": "Nenhum comando de build ou teste está configurado ou foi detectado, então o resultado mesclado não será compilado nem testado.",
+        "proposal": "Proposta criada. Revise e aplique neste quadro.",
+        "failed": "A verificação final falhou; a campanha continua em revisão."
+      },
+      "cancelConfirm": {
+        "title": "Cancelar esta campanha?",
+        "body": "Todas as tarefas não concluídas são canceladas e as que estão em execução são paradas. Os worktrees são mantidos."
+      },
+      "proposal": {
+        "title": "Alterações da campanha",
+        "loading": "Carregando a proposta…",
+        "missing": "Não foi possível encontrar a proposta. Execute Revisar e aplicar novamente."
+      },
+      "resumed": "{{n}} tarefa(s) que foram interrompidas quando o app parou foram retomadas.",
+      "stalled": "{{n}} tarefa(s) aparecem como em execução, mas nada as está executando nesta janela. Abra o Cowork para continuá-las.",
+      "noteState": {
+        "sent": "Nota enviada",
+        "delivered": "Nota entregue à tarefa"
+      },
+      "error": "Falha na ação: {{reason}}",
+      "headline": {
+        "planning": "Planejando o trabalho",
+        "working": "Em andamento: {{done}} de {{total}} tarefas concluídas",
+        "attention_one": "Requer sua atenção: {{count}} tarefa está esperando por você",
+        "attention_other": "Requer sua atenção: {{count}} tarefas estão esperando por você",
+        "review": "Pronta para sua revisão",
+        "merging": "Juntando os resultados",
+        "paused": "Pausada: {{done}} de {{total}} tarefas concluídas",
+        "interrupted": "Parou quando o app fechou: {{done}} de {{total}} tarefas concluídas",
+        "done": "Tudo concluído",
+        "failed": "Esta campanha não conseguiu terminar",
+        "cancelled": "Cancelada",
+        "gateFailed": "As verificações finais falharam: o trabalho está mesclado, mas não verificado"
+      },
+      "progressLabel": "{{done}} de {{total}} tarefas concluídas",
+      "planning": "Planejando… aguardando o plano do coordenador.",
+      "group": {
+        "needsYou": "Precisa de você",
+        "working": "Em andamento",
+        "upNext": "A seguir",
+        "done": "Concluídas",
+        "skipped": "Puladas"
+      },
+      "word": {
+        "writing": "Escrevendo código",
+        "checking": "Verificando o resultado",
+        "ready": "Verificada, pronta para mesclar",
+        "needsInput": "Aguardando sua resposta",
+        "needsApproval": "Aguardando sua aprovação",
+        "failed": "Não deu certo",
+        "conflict": "Conflita com outras alterações",
+        "waiting": "Aguardando {{tasks}}",
+        "queued": "Começa em breve",
+        "merged": "Mesclada",
+        "skipped": "Pulada",
+        "resolving": "Resolvendo um conflito",
+        "verifyBlocked": "Concluída, mas a verificação não conseguiu decidir",
+        "waitingSkipped": "Aguardando {{tasks}}, que foi pulada"
+      },
+      "row": {
+        "open": "Abrir",
+        "details": "Detalhes",
+        "attempts": "Tentativas",
+        "tokens": "Tokens usados",
+        "lastActivity": "Última atividade",
+        "seeChanges": "Ver o que {{task}} alterou"
+      },
+      "details": "Detalhes",
+      "detailBranch": "Os resultados são reunidos em {{branch}}",
+      "statusWord": {
+        "draft": "Iniciando",
+        "planned": "Iniciando",
+        "approved": "Iniciando",
+        "running": "Em andamento",
+        "paused": "Pausada",
+        "reviewing": "Pronta para revisar",
+        "merging": "Mesclando",
+        "done": "Concluída",
+        "failed": "Falhou",
+        "cancelled": "Cancelada",
+        "interrupted": "Parada"
+      },
+      "groupProgress": "{{done}} de {{total}} concluídas · {{status}}",
+      "fold": "Ocultar as sessões de {{title}}",
+      "unfold": "Mostrar as sessões de {{title}}",
+      "story": {
+        "wrote_one": "Escreveu {{count}} arquivo, +{{added}} −{{removed}} linhas",
+        "wrote_other": "Escreveu {{count}} arquivos, +{{added}} −{{removed}} linhas",
+        "wroteUncounted_one": "Escreveu {{count}} arquivo",
+        "wroteUncounted_other": "Escreveu {{count}} arquivos",
+        "stop": {
+          "none": "Parou antes de terminar.",
+          "one": "Parou depois que um comando falhou.",
+          "many": "Parou depois que comandos falharam {{count}} vezes."
+        },
+        "headline": {
+          "noOutput": "Nada foi escrito.",
+          "stoppedPlain": "Parou sem terminar.",
+          "finishedNoFiles": "Concluiu sem alterar nenhum arquivo.",
+          "working_one": "Em andamento: {{count}} etapa até agora.",
+          "working_other": "Em andamento: {{count}} etapas até agora.",
+          "starting": "Acabou de começar.",
+          "conflict": "Concluiu, mas as alterações conflitam com o que outras tarefas escreveram.",
+          "waiting": "Aguardando {{tasks}} terminar primeiro.",
+          "queued": "Começa assim que houver espaço.",
+          "needsInput": "Pausada: ela fez uma pergunta a você.",
+          "needsApproval": "Pausada: precisa da sua aprovação para continuar.",
+          "skipped": "Pulada.",
+          "verifyBlocked": "Concluiu, mas a verificação não conseguiu dizer se está correto."
+        },
+        "took": "Trabalhou por {{time}}",
+        "running": "Em execução há {{time}}",
+        "toggle": "O que aconteceu",
+        "asked": "O que foi pedido",
+        "did": "O que ela fez",
+        "stoppedAt": "Onde parou",
+        "noRecord": "Não há registro passo a passo disponível para esta tarefa.",
+        "more_one": "e mais {{count}} etapa",
+        "more_other": "e mais {{count}} etapas",
+        "step": {
+          "read": "Leu {{label}}",
+          "readMany_one": "Leu {{count}} arquivo",
+          "readMany_other": "Leu {{count}} arquivos",
+          "search_one": "Pesquisou no projeto",
+          "search_other": "Pesquisou no projeto {{count}} vezes",
+          "write": "Escreveu {{label}}",
+          "writeMany_one": "Escreveu {{count}} arquivo",
+          "writeMany_other": "Escreveu {{count}} arquivos",
+          "ran": "Executou {{label}}",
+          "ranFailed": "Executou {{label}} e falhou"
+        },
+        "next": {
+          "retry": "Tente de novo e diga o que ela deve fazer de outra forma.",
+          "conflict": "Abra a conversa e peça que ela refaça com base nos resultados mais recentes, ou pule-a.",
+          "open": "Ela usou todas as tentativas. Abra a conversa para ver onde travou, ou pule-a.",
+          "answer": "Abra a conversa e responda à pergunta dela.",
+          "approve": "Abra a conversa e aprove ou negue o pedido.",
+          "verify": "Verifique de novo, ou aceite você mesmo se vir que está tudo certo.",
+          "help": "Isso precisa de outra abordagem. A dica sugerida já está preenchida; altere-a se quiser e tente de novo."
+        },
+        "hintLabel": "Diga o que ela deve fazer de outra forma",
+        "openConversation": "Abrir conversa"
+      },
+      "summary": {
+        "title": "O quadro completo",
+        "goal": "O que você pediu",
+        "plan": "Como foi dividida",
+        "sideBySide_one": "{{count}} tarefa rodou sozinha",
+        "sideBySide_other": "Estas {{count}} tarefas rodaram lado a lado",
+        "waitsFor": "{{task}} aguarda {{tasks}}",
+        "time": "Tempo",
+        "timeSoFar": "{{time}} até agora",
+        "timeTotal": "{{time}} no total",
+        "result": "Resultado",
+        "cost": "Custo",
+        "costTokens": "Cerca de {{tokens}} tokens",
+        "costBudget": "Cerca de {{tokens}} tokens do seu orçamento de {{budget}}",
+        "branch": "Onde estão os resultados",
+        "branchBody": "Tudo é reunido em uma branch separada, {{branch}}. Seus próprios arquivos ficam intactos até você revisar e aplicar.",
+        "copy": "Copiar nome da branch",
+        "copied": "Copiado",
+        "wrapUp": {
+          "doneTitle": "Tudo concluído",
+          "reviewTitle": "Pronta para sua revisão",
+          "built": "O que foi construído",
+          "tasks": "Tarefas concluídas",
+          "files": "Arquivos alterados",
+          "lines": "Linhas alteradas",
+          "skipped": "{{count}} puladas"
+        }
+      },
+      "effort": "Cerca de {{percent}}% do trabalho está concluído",
+      "recovery": {
+        "checkAgain": "Verificar de novo",
+        "accept": "Aceitar mesmo assim",
+        "acceptWhy": "Por que é seguro aceitar? Uma linha, guardada com a tarefa.",
+        "acceptConfirm": "Aceitar",
+        "accepted": "Aceita por você",
+        "acceptedWhy": "Aceita por você: {{reason}}",
+        "blocks": "Aguardando esta: {{tasks}}."
+      },
+      "changes": {
+        "title": "Tudo o que esta campanha alterou",
+        "body": "Todas as tarefas concluídas juntas, arquivo por arquivo. Nada é aplicado à sua pasta a partir daqui.",
+        "continue": "Compilar e testar, depois revisar"
+      },
+      "conflict": {
+        "explain": "Esta tarefa e outra alteraram as mesmas linhas, então o Flint não conseguiu combiná-las sozinho.",
+        "files": "Arquivos em conflito",
+        "resolve": "Tentar resolver automaticamente",
+        "skip": "Pular tarefa",
+        "resolving": "Resolvendo o conflito...",
+        "resolvingFiles": "Resolvendo o conflito em {{count}} arquivos..."
+      },
+      "verify": {
+        "verdict": "Verificada pelo verificador",
+        "verdicts": {
+          "PASS": "Aprovada",
+          "PARTIAL": "Parcialmente concluída",
+          "FAIL": "Não passou",
+          "BLOCKED": "Não conseguiu decidir"
+        },
+        "testsPassed": "Testes aprovados",
+        "testsFailed": "Testes falharam",
+        "testsFailedTail": "Testes falharam: {{tail}}",
+        "tokens": "Tokens gastos na verificação"
+      },
+      "progressLabelSkipped": "{{done}} concluídas · {{skipped}} puladas · {{total}} tarefas",
+      "groupProgressSkipped": "{{done}} concluídas · {{skipped}} puladas · {{status}}",
+      "effortGateFailed": "As verificações finais falharam, então o trabalho não está concluído",
+      "stranded": {
+        "explain": "Esta tarefa aguarda {{tasks}}, que foi pulada, então não pode começar sozinha.",
+        "skipToo": "Pular esta também",
+        "runWithout": "Executar sem ela"
+      },
+      "skipConfirm": {
+        "title": "Pular \"{{task}}\"?",
+        "body_one": "{{count}} outra tarefa aguarda por ela. Pular também, ou deixá-la rodar sem esta?",
+        "body_other": "{{count}} outras tarefas aguardam por ela. Pular todas também, ou deixá-las rodar sem esta?",
+        "cascade_one": "Pular esta e a tarefa que aguarda por ela",
+        "cascade_other": "Pular esta e as {{count}} tarefas que aguardam por ela",
+        "release": "Pular esta e executar as outras sem ela"
+      },
+      "gate": {
+        "title": "Verificações falharam",
+        "body": "O trabalho foi mesclado, mas a verificação final de build e teste não passou, então não está pronto para aplicar.",
+        "command": "Comando",
+        "result": "Resultado",
+        "exit": "Código de saída {{code}}",
+        "noExit": "Não terminou normalmente",
+        "timedOut": "Tempo esgotado",
+        "output": "Últimas linhas da saída",
+        "copy": "Copiar",
+        "copied": "Copiado",
+        "fix": "Corrigir automaticamente",
+        "retry": "Executar verificações de novo",
+        "reviewAnyway": "Revisar mesmo assim",
+        "reviewWarning": "As verificações finais falharam. Revise as alterações levando isso em conta."
+      },
+      "recheck": {
+        "again": "Verificando de novo…",
+        "stalled": "A verificação está demorando mais que o esperado."
+      }
+    },
+    "changes": {
+      "loading": "Examinando as alterações…",
+      "unavailable": "Não foi possível ler as alterações. Abra a sessão para vê-las.",
+      "none": "Esta tarefa não alterou nenhum arquivo.",
+      "files_one": "{{count}} arquivo",
+      "files_other": "{{count}} arquivos",
+      "namesOnly": "Só os nomes dos arquivos são conhecidos para esta tarefa.",
+      "uncommitted": "Parte deste trabalho ainda não foi salva na branch da tarefa.",
+      "cut": "Uma lista longa foi encurtada.",
+      "kind": {
+        "new": "Novo",
+        "edited": "Editado",
+        "deleted": "Excluído",
+        "renamed": "Renomeado"
+      },
+      "binary": "binário",
+      "binaryNote": "Este não é um arquivo de texto, então não há nada para mostrar.",
+      "renamedFrom": "Renomeado de {{from}}",
+      "showMore_one": "Mostrar mais {{count}} linha",
+      "showMore_other": "Mostrar mais {{count}} linhas",
+      "fileCut": "Esta alteração é longa, então só o início é mostrado.",
+      "noPatch": "Não há visualização linha a linha para este arquivo."
+    },
+    "start": {
+      "title": "Nova campanha",
+      "menu": "Nova campanha",
+      "prompt": "Descreva a tarefa grande. O Flint vai planejar como dividi-la.",
+      "goalLabel": "O que a campanha deve fazer?",
+      "placeholder": "Por exemplo: adicionar modo escuro em todo o app, com testes",
+      "hint": "Até {{n}} threads trabalham ao mesmo tempo. Você pode mudar isso em Configurações.",
+      "folder": "Em {{folder}}",
+      "go": "Iniciar",
+      "noFolder": "Abra uma pasta git para iniciar uma campanha",
+      "error": {
+        "no-model": "Escolha primeiro um modelo que possa usar ferramentas (Modelos na barra lateral ou o seletor de modelos) e inicie de novo.",
+        "failed": "O Flint não conseguiu abrir a sessão da campanha. Nada foi iniciado; tente de novo."
+      }
+    },
+    "nav": "Campanhas",
+    "list": {
+      "subtitle": "Tarefas grandes divididas em partes nas quais vários agentes trabalham lado a lado.",
+      "start": "Iniciar uma campanha",
+      "empty": "Nenhuma campanha ainda",
+      "emptyHint": "Uma campanha pega uma tarefa grande, divide em tarefas menores e faz vários agentes trabalharem nelas ao mesmo tempo, cada um em sua própria branch.",
+      "doneOf": "{{done}} de {{total}} concluídas",
+      "planning": "Planejando",
+      "updated": "Atualizada {{when}}",
+      "loading": "Carregando campanhas",
+      "loadFailed": "Não foi possível carregar as campanhas.",
+      "retry": "Tentar de novo"
+    },
+    "plan": {
+      "edit": "Editar plano",
+      "save": "Salvar alterações",
+      "discard": "Descartar alterações",
+      "saved": "Plano salvo.",
+      "saveFailed": "Não foi possível salvar o plano: {{reason}}",
+      "unsaved": "Ainda não salvo",
+      "saveFirst": "Salve ou descarte as alterações do plano antes de permitir.",
+      "addTask": "Adicionar tarefa",
+      "count": "{{count}} de {{max}} tarefas",
+      "after": "Depois de: {{tasks}}",
+      "moveUp": "Mover {{task}} para cima",
+      "moveDown": "Mover {{task}} para baixo",
+      "remove": "Remover {{task}}",
+      "addAfter": "Adicionar uma tarefa para aguardar",
+      "removeAfter": "Remover esta dependência",
+      "field": {
+        "title": "Nome da tarefa",
+        "brief": "O que fazer",
+        "acceptance": "Como saberemos que está concluída (uma por linha)",
+        "paths": "Arquivos e pastas que ela pode alterar (um por linha)",
+        "pathsHint": "src/feature",
+        "after": "Começa depois de"
+      },
+      "estimate": {
+        "one": "Cerca de {{tokens}} tokens",
+        "range": "Cerca de {{low}} a {{high}} tokens",
+        "basis": "Depende de: {{basis}}",
+        "generic": "Depende de quantos arquivos as tarefas leem e de quantas vezes uma verificação precisa ser repetida."
+      },
+      "issue": {
+        "noTasks": "Adicione pelo menos uma tarefa.",
+        "tooMany": "{{count}} tarefas é demais; o limite é {{max}}.",
+        "emptyTitle": "Uma tarefa não tem nome.",
+        "emptyBrief": "{{task}} precisa de uma descrição do que fazer.",
+        "badPath": "{{task}}: \"{{path}}\" não é uma pasta nem um arquivo dentro do projeto.",
+        "selfDependency": "{{task}} não pode aguardar a si mesma.",
+        "unknownDependency": "{{task}} aguarda uma tarefa que não existe mais.",
+        "cycle": "Estas tarefas aguardam umas às outras: {{tasks}}.",
+        "overlap": "{{a}} e {{b}} rodariam ao mesmo tempo, mas ambas alteram {{path}}. Faça uma aguardar a outra."
+      }
+    }
   }
 }

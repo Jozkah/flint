@@ -34,6 +34,7 @@ import { isBrowserActionTool } from '@/lib/browserAgent'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { visualizeSchemas } from '@/lib/visualize/tools'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
+import { campaignToolSchemas } from '@/lib/campaignToolSchemas'
 import {
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
@@ -505,6 +506,67 @@ export type CoworkToolOptions = {
    * decides what they mean; see `environmentReadiness`.
    */
   reported?: ComponentReport[]
+  /**
+   * This run is a top-level session that may coordinate a campaign
+   * (docs/CAMPAIGNS.md). Never set for a campaign task, a subagent or chat.
+   */
+  campaignCoordinator?: boolean
+  /**
+   * A campaign session on a small context window (32K or less): the tool set
+   * is cut to what the role needs. The built-in schemas alone are about 60 000
+   * characters, which is most of a 32K window. `coordinator` keeps the reads
+   * and the campaign tools; `task` keeps the work tools and drops the rest.
+   */
+  slim?: 'coordinator' | 'task'
+}
+
+/** Windows at or under this many tokens get the slim tool set in a campaign. */
+export const SMALL_WINDOW_TOKENS = 32_768
+
+/** Tools a campaign session never needs, whatever its role. */
+const SLIM_DENIED = new Set([
+  'computer',
+  'screenshot',
+  'clipboard',
+  'open_path',
+  'open_in_browser',
+  'generate_image',
+  'host_ssh',
+  'host_wsl',
+  'host_package',
+  'host_action',
+  'host_query',
+  'host_build',
+  'host_powershell',
+  'docker',
+  'windows_events',
+  'local_http',
+  'list_plugins',
+  'memory_propose',
+  'skill_write',
+  'notify_user',
+  'git_clone',
+])
+
+/** What a coordinator does not do itself: write code, run commands, drive a browser. */
+const SLIM_COORDINATOR_DENIED = new Set([
+  'bash',
+  'git',
+  'write',
+  'edit',
+  'browser',
+])
+
+/** Whether `slim` removes this tool. */
+export function slimDenies(
+  name: string,
+  slim: 'coordinator' | 'task' | undefined
+): boolean {
+  if (!slim) return false
+  if (SLIM_DENIED.has(name)) return true
+  // The older per-action browser tools duplicate `browser`.
+  if (name.startsWith('browser_')) return true
+  return slim === 'coordinator' && SLIM_COORDINATOR_DENIED.has(name)
 }
 
 /**
@@ -523,6 +585,8 @@ export function coworkToolSignature(
     sandboxEnforces ? 'jail' : 'nojail',
     opts.allowSubagents ? opts.subagentNames.join(',') : 'nosub',
     opts.webSearch ? 'web' : 'noweb',
+    opts.campaignCoordinator ? 'campaign' : 'nocampaign',
+    opts.slim ?? 'full',
     useVisualizeConfig.getState().enabled ? 'viz' : 'noviz',
     // Readiness is part of the signature because it changes the advertised
     // tools: a shell that starts after a retry must produce a different tool
@@ -665,7 +729,12 @@ export function coworkToolsFromSchemas(
   schemas: readonly ToolSchema[],
   opts: Pick<
     CoworkToolOptions,
-    'planMode' | 'webSearch' | 'allowSubagents' | 'subagentNames'
+    | 'planMode'
+    | 'webSearch'
+    | 'allowSubagents'
+    | 'subagentNames'
+    | 'campaignCoordinator'
+    | 'slim'
   >
 ): Record<string, Tool> {
   const tools: Record<string, Tool> = {}
@@ -677,6 +746,7 @@ export function coworkToolsFromSchemas(
     // Review (plan) mode changes nothing, and stopping another session's run
     // is a change. Withheld here and refused by the dispatcher too.
     if (opts.planMode && name === STOP_SESSION_TOOL_NAME) continue
+    if (slimDenies(name, opts.slim)) continue
     const schema = coworkBuiltinSchema(s)
     tools[name] = {
       description: schema.description,
@@ -701,11 +771,24 @@ export function coworkToolsFromSchemas(
   }
 
   // Inline widgets draw nothing outside the transcript, so review mode keeps them.
-  if (useVisualizeConfig.getState().enabled) {
+  if (useVisualizeConfig.getState().enabled && !opts.slim) {
     for (const schema of visualizeSchemas()) {
       tools[schema.function.name] = {
         description: schema.function.description,
         inputSchema: jsonSchema(schema.function.parameters),
+      } as Tool
+    }
+  }
+
+  // The coordinator's tools. The caller withholds them in review mode
+  // (`campaignCoordinator` is false there): planning a campaign starts
+  // sessions that change files. A read-only *opening* turn still gets them, so
+  // the coordinator can plan on its first turn.
+  if (opts.campaignCoordinator) {
+    for (const schema of campaignToolSchemas()) {
+      tools[schema.name] = {
+        description: schema.description,
+        inputSchema: jsonSchema(schema.parameters),
       } as Tool
     }
   }

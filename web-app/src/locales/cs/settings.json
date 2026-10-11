@@ -693,5 +693,437 @@
     "noVisionModel": "Není k dispozici žádný model, který vidí. Přidejte jej nebo označte model jako schopný vidět.",
     "embed": "Umožnit vyhledávání v přiložených obrázcích",
     "embedDesc": "Uloží popis každého obrázku k dokumentům chatu, aby šel později vyhledat. Každý přiložený obrázek se odešle modelu pro popisy."
+  },
+  "campaigns": {
+    "title": "Kampaně",
+    "maxParallel": "Souběžná vlákna kampaní",
+    "maxParallelDesc": "Kolik úkolů kampaně smí běžet najednou, každý ve vlastním rozděleném panelu. Od 1 do 6. Na běžící kampaň se použije okamžitě; volné panely ji stále omezují.",
+    "board": {
+      "dot": {
+        "queued": "Ve frontě",
+        "blocked": "Blokováno",
+        "running": "Běží",
+        "needsYou": "Potřebuje vás",
+        "verifying": "Ověřuje se",
+        "verified": "Ověřeno",
+        "merged": "Sloučeno",
+        "failed": "Selhalo",
+        "conflict": "Konflikt",
+        "cancelled": "Zrušeno",
+        "planning": "Plánování",
+        "review": "Připraveno ke kontrole"
+      },
+      "status": {
+        "draft": "koncept",
+        "planned": "naplánováno",
+        "approved": "schváleno",
+        "running": "běží",
+        "paused": "pozastaveno",
+        "reviewing": "kontroluje se",
+        "merging": "slučuje se",
+        "done": "hotovo",
+        "failed": "selhalo",
+        "cancelled": "zrušeno",
+        "interrupted": "přerušeno"
+      },
+      "openBoard": "Otevřít nástěnku kampaně",
+      "notFound": "Tato kampaň nebyla nalezena.",
+      "loading": "Načítání kampaně…",
+      "budget": {
+        "label": "Rozpočet tokenů",
+        "used": "{{used}} z {{budget}} tokenů",
+        "none": "{{used}} tokenů, rozpočet není nastaven"
+      },
+      "parallel": "Limit souběžnosti {{n}}",
+      "card": {
+        "branch": "Větev",
+        "noBranch": "zatím bez větve"
+      },
+      "action": {
+        "open": "Otevřít relaci",
+        "note": "Poslat poznámku",
+        "stop": "Zastavit",
+        "retry": "Zkusit znovu",
+        "skip": "Přeskočit",
+        "handoff": "Zobrazit předání",
+        "diff": "Zobrazit změny",
+        "pause": "Pozastavit",
+        "resume": "Pokračovat",
+        "cancel": "Zrušit kampaň",
+        "review": "Zkontrolovat a použít",
+        "send": "Odeslat",
+        "close": "Zavřít",
+        "confirm": "Potvrdit",
+        "reviewChanges": "Zkontrolovat změny",
+        "openCoordinator": "Otevřít koordinátora",
+        "openCowork": "Otevřít Cowork a pokračovat"
+      },
+      "note": {
+        "title": "Poznámka pro úkol {{task}}",
+        "placeholder": "Řekněte úkolu, co má udělat jinak",
+        "sent": "Poznámka odeslána"
+      },
+      "handoff": {
+        "title": "Předání: {{task}}",
+        "empty": "Zatím nebylo napsáno žádné předání."
+      },
+      "diff": {
+        "title": "Soubory změněné úkolem {{task}}",
+        "empty": "Pro tento úkol nebyly zaznamenány žádné změny souborů."
+      },
+      "review": {
+        "title": "Zkontrolovat a použít",
+        "body": "Spustí se kontrola na sloučeném výsledku a poté se vytvoří jeden návrh pro váš projekt. Nic se nepoužije, dokud tento návrh neschválíte.",
+        "command": "Příkaz kontroly: {{command}}",
+        "noCommand": "Není nastaven ani zjištěn žádný příkaz pro sestavení ani testy, takže sloučený výsledek nebude sestaven ani otestován.",
+        "proposal": "Návrh vytvořen. Zkontrolujte ho a použijte na této nástěnce.",
+        "failed": "Kontrola selhala; kampaň zůstává ve fázi kontroly."
+      },
+      "cancelConfirm": {
+        "title": "Zrušit tuto kampaň?",
+        "body": "Všechny nedokončené úkoly se zruší a běžící úkoly se zastaví. Pracovní stromy zůstanou zachovány."
+      },
+      "proposal": {
+        "title": "Změny kampaně",
+        "loading": "Načítání návrhu…",
+        "missing": "Návrh nebyl nalezen. Spusťte Zkontrolovat a použít znovu."
+      },
+      "resumed": "Obnoveno úkolů: {{n}}, které byly přerušeny při zastavení aplikace.",
+      "stalled": "Úkolů, které se zobrazují jako běžící, ale v tomto okně je nic nespouští: {{n}}. Otevřete Cowork a pokračujte v nich.",
+      "noteState": {
+        "sent": "Poznámka odeslána",
+        "delivered": "Poznámka doručena úkolu"
+      },
+      "error": "Akce selhala: {{reason}}",
+      "headline": {
+        "planning": "Plánuje se práce",
+        "working": "Pracuje se: hotovo {{done}} z {{total}} úkolů",
+        "attention_one": "Vyžaduje vaši pozornost: čeká na vás {{count}} úkol",
+        "attention_few": "Vyžaduje vaši pozornost: čekají na vás {{count}} úkoly",
+        "attention_other": "Vyžaduje vaši pozornost: čeká na vás {{count}} úkolů",
+        "review": "Připraveno ke kontrole",
+        "merging": "Výsledky se spojují",
+        "paused": "Pozastaveno: hotovo {{done}} z {{total}} úkolů",
+        "interrupted": "Zastaveno při zavření aplikace: hotovo {{done}} z {{total}} úkolů",
+        "done": "Vše hotovo",
+        "failed": "Tuto kampaň se nepodařilo dokončit",
+        "cancelled": "Zrušeno",
+        "gateFailed": "Závěrečné kontroly selhaly: práce je sloučená, ale neověřená"
+      },
+      "progressLabel": "Hotovo {{done}} z {{total}} úkolů",
+      "planning": "Plánování… čeká se na plán koordinátora.",
+      "group": {
+        "needsYou": "Potřebují vás",
+        "working": "Pracuje se",
+        "upNext": "Další na řadě",
+        "done": "Hotovo",
+        "skipped": "Přeskočeno"
+      },
+      "word": {
+        "writing": "Píše kód",
+        "checking": "Kontroluje výsledek",
+        "ready": "Zkontrolováno, připraveno ke sloučení",
+        "needsInput": "Čeká na vaši odpověď",
+        "needsApproval": "Čeká na vaše schválení",
+        "failed": "Nepodařilo se",
+        "conflict": "Koliduje s jinými změnami",
+        "waiting": "Čeká na {{tasks}}",
+        "queued": "Brzy začne",
+        "merged": "Sloučeno",
+        "skipped": "Přeskočeno",
+        "resolving": "Řeší se kolize",
+        "verifyBlocked": "Dokončeno, ale kontrola nedokázala rozhodnout",
+        "waitingSkipped": "Čeká na {{tasks}}, což bylo přeskočeno"
+      },
+      "row": {
+        "open": "Otevřít",
+        "details": "Podrobnosti",
+        "attempts": "Pokusy",
+        "tokens": "Využité tokeny",
+        "lastActivity": "Poslední aktivita",
+        "seeChanges": "Zobrazit, co změnil úkol {{task}}"
+      },
+      "details": "Podrobnosti",
+      "detailBranch": "Výsledky se sbírají ve větvi {{branch}}",
+      "statusWord": {
+        "draft": "Začíná",
+        "planned": "Začíná",
+        "approved": "Začíná",
+        "running": "Pracuje se",
+        "paused": "Pozastaveno",
+        "reviewing": "Připraveno ke kontrole",
+        "merging": "Slučuje se",
+        "done": "Hotovo",
+        "failed": "Selhalo",
+        "cancelled": "Zrušeno",
+        "interrupted": "Zastaveno"
+      },
+      "groupProgress": "Hotovo {{done}} z {{total}} · {{status}}",
+      "fold": "Skrýt relace kampaně {{title}}",
+      "unfold": "Zobrazit relace kampaně {{title}}",
+      "story": {
+        "wrote_one": "Zapsán {{count}} soubor, +{{added}} −{{removed}} řádků",
+        "wrote_few": "Zapsány {{count}} soubory, +{{added}} −{{removed}} řádků",
+        "wrote_other": "Zapsáno souborů: {{count}}, +{{added}} −{{removed}} řádků",
+        "wroteUncounted_one": "Zapsán {{count}} soubor",
+        "wroteUncounted_few": "Zapsány {{count}} soubory",
+        "wroteUncounted_other": "Zapsáno souborů: {{count}}",
+        "stop": {
+          "none": "Zastavilo se to před dokončením.",
+          "one": "Zastavilo se to poté, co selhal příkaz.",
+          "many": "Zastavilo se to poté, co příkazy selhaly {{count}}krát."
+        },
+        "headline": {
+          "noOutput": "Nic nebylo zapsáno.",
+          "stoppedPlain": "Zastaveno bez dokončení.",
+          "finishedNoFiles": "Dokončeno bez změny jakéhokoli souboru.",
+          "working_one": "Pracuje se na tom: zatím {{count}} krok.",
+          "working_few": "Pracuje se na tom: zatím {{count}} kroky.",
+          "working_other": "Pracuje se na tom: zatím kroků: {{count}}.",
+          "starting": "Teprve začíná.",
+          "conflict": "Dokončeno, ale změny kolidují s tím, co napsaly jiné úkoly.",
+          "waiting": "Nejdřív se čeká na dokončení: {{tasks}}.",
+          "queued": "Začne, jakmile bude místo.",
+          "needsInput": "Pozastaveno: položil vám otázku.",
+          "needsApproval": "Pozastaveno: potřebuje vaše schválení, aby mohl pokračovat.",
+          "skipped": "Přeskočeno.",
+          "verifyBlocked": "Dokončeno, ale kontrola nedokázala určit, zda je to správně."
+        },
+        "took": "Pracovalo se {{time}}",
+        "running": "Běží {{time}}",
+        "toggle": "Co se stalo",
+        "asked": "Co bylo zadáno",
+        "did": "Co udělal",
+        "stoppedAt": "Kde se zastavil",
+        "noRecord": "Pro tento úkol není k dispozici žádný záznam krok za krokem.",
+        "more_one": "a ještě {{count}} krok",
+        "more_few": "a ještě {{count}} kroky",
+        "more_other": "a ještě kroků: {{count}}",
+        "step": {
+          "read": "Přečteno: {{label}}",
+          "readMany_one": "Přečten {{count}} soubor",
+          "readMany_few": "Přečteny {{count}} soubory",
+          "readMany_other": "Přečteno souborů: {{count}}",
+          "search_one": "Prohledán projekt",
+          "search_few": "Projekt prohledán {{count}}krát",
+          "search_other": "Projekt prohledán {{count}}krát",
+          "write": "Zapsáno: {{label}}",
+          "writeMany_one": "Zapsán {{count}} soubor",
+          "writeMany_few": "Zapsány {{count}} soubory",
+          "writeMany_other": "Zapsáno souborů: {{count}}",
+          "ran": "Spuštěno: {{label}}",
+          "ranFailed": "Spuštěno: {{label}}, ale selhalo"
+        },
+        "next": {
+          "retry": "Zkuste to znovu a řekněte, co má udělat jinak.",
+          "conflict": "Otevřete konverzaci a požádejte ho, aby práci postavil znovu na nejnovějších výsledcích, nebo ho přeskočte.",
+          "open": "Vyčerpal všechny pokusy. Otevřete konverzaci a podívejte se, kde se zasekl, nebo ho přeskočte.",
+          "answer": "Otevřete konverzaci a odpovězte na jeho otázku.",
+          "approve": "Otevřete konverzaci a požadavek schvalte nebo zamítněte.",
+          "verify": "Zkontrolujte to znovu, nebo to sami přijměte, pokud vidíte, že je to v pořádku.",
+          "help": "Tohle chce jiný přístup. Navržená nápověda je už vyplněná; klidně ji upravte a zkuste to znovu."
+        },
+        "hintLabel": "Řekněte mu, co má udělat jinak",
+        "openConversation": "Otevřít konverzaci"
+      },
+      "summary": {
+        "title": "Celkový obraz",
+        "goal": "Co jste zadali",
+        "plan": "Jak to bylo rozděleno",
+        "sideBySide_one": "{{count}} úkol běžel samostatně",
+        "sideBySide_few": "Tyto {{count}} úkoly běžely současně",
+        "sideBySide_other": "Těchto úkolů běželo současně: {{count}}",
+        "waitsFor": "Úkol {{task}} čeká na: {{tasks}}",
+        "time": "Čas",
+        "timeSoFar": "zatím {{time}}",
+        "timeTotal": "celkem {{time}}",
+        "result": "Výsledek",
+        "cost": "Náklady",
+        "costTokens": "Asi {{tokens}} tokenů",
+        "costBudget": "Asi {{tokens}} tokenů z vašeho rozpočtu {{budget}}",
+        "branch": "Kde jsou výsledky",
+        "branchBody": "Vše se sbírá na samostatné větvi {{branch}}. Vaše vlastní soubory zůstanou nedotčené, dokud je nezkontrolujete a nepoužijete.",
+        "copy": "Kopírovat název větve",
+        "copied": "Zkopírováno",
+        "wrapUp": {
+          "doneTitle": "Vše hotovo",
+          "reviewTitle": "Připraveno ke kontrole",
+          "built": "Co bylo vytvořeno",
+          "tasks": "Dokončené úkoly",
+          "files": "Změněné soubory",
+          "lines": "Změněné řádky",
+          "skipped": "Přeskočeno: {{count}}"
+        }
+      },
+      "effort": "Hotovo je asi {{percent}} % práce",
+      "recovery": {
+        "checkAgain": "Zkontrolovat znovu",
+        "accept": "Přesto přijmout",
+        "acceptWhy": "Proč je v pořádku to přijmout? Jeden řádek, uloží se u úkolu.",
+        "acceptConfirm": "Přijmout",
+        "accepted": "Přijato vámi",
+        "acceptedWhy": "Přijato vámi: {{reason}}",
+        "blocks": "Čeká se na tento úkol: {{tasks}}."
+      },
+      "changes": {
+        "title": "Vše, co tato kampaň změnila",
+        "body": "Všechny dokončené úkoly dohromady, soubor po souboru. Odsud se do vaší složky nic nepoužije.",
+        "continue": "Sestavit a otestovat, pak zkontrolovat"
+      },
+      "conflict": {
+        "explain": "Tento a jiný úkol změnily stejné řádky, takže je Flint nedokázal sám spojit.",
+        "files": "Soubory v konfliktu",
+        "resolve": "Zkusit vyřešit automaticky",
+        "skip": "Přeskočit úkol",
+        "resolving": "Řeší se konflikt...",
+        "resolvingFiles": "Řeší se konflikt v souborech: {{count}}..."
+      },
+      "verify": {
+        "verdict": "Zkontrolováno ověřovatelem",
+        "verdicts": {
+          "PASS": "Prošlo",
+          "PARTIAL": "Částečně hotovo",
+          "FAIL": "Neprošlo",
+          "BLOCKED": "Nelze rozhodnout"
+        },
+        "testsPassed": "Testy prošly",
+        "testsFailed": "Testy selhaly",
+        "testsFailedTail": "Testy selhaly: {{tail}}",
+        "tokens": "Tokeny využité na kontrolu"
+      },
+      "progressLabelSkipped": "Hotovo {{done}} · přeskočeno {{skipped}} · úkolů {{total}}",
+      "groupProgressSkipped": "Hotovo {{done}} · přeskočeno {{skipped}} · {{status}}",
+      "effortGateFailed": "Závěrečné kontroly selhaly, takže práce není dokončena",
+      "stranded": {
+        "explain": "Tento úkol čeká na {{tasks}}, což bylo přeskočeno, takže nemůže začít sám.",
+        "skipToo": "Přeskočit i tento",
+        "runWithout": "Spustit bez něj"
+      },
+      "skipConfirm": {
+        "title": "Přeskočit „{{task}}“?",
+        "body_one": "Čeká na něj {{count}} další úkol. Přeskočit i ten, nebo ho nechat běžet bez tohoto?",
+        "body_few": "Čekají na něj {{count}} další úkoly. Přeskočit i je, nebo je nechat běžet bez tohoto?",
+        "body_other": "Čeká na něj dalších úkolů: {{count}}. Přeskočit i je, nebo je nechat běžet bez tohoto?",
+        "cascade_one": "Přeskočit ho i úkol, který na něj čeká",
+        "cascade_few": "Přeskočit ho i {{count}} úkoly, které na něj čekají",
+        "cascade_other": "Přeskočit ho i úkoly, které na něj čekají ({{count}})",
+        "release": "Přeskočit ho a ostatní spustit bez něj"
+      },
+      "gate": {
+        "title": "Kontroly selhaly",
+        "body": "Práce byla sloučena, ale závěrečná kontrola sestavení a testů neprošla, takže není připravena k použití.",
+        "command": "Příkaz",
+        "result": "Výsledek",
+        "exit": "Návratový kód {{code}}",
+        "noExit": "Neskončilo normálně",
+        "timedOut": "Vypršel časový limit",
+        "output": "Poslední řádky výstupu",
+        "copy": "Kopírovat",
+        "copied": "Zkopírováno",
+        "fix": "Opravit automaticky",
+        "retry": "Spustit kontroly znovu",
+        "reviewAnyway": "Přesto zkontrolovat",
+        "reviewWarning": "Závěrečné kontroly selhaly. Změny kontrolujte s ohledem na to."
+      },
+      "recheck": {
+        "again": "Kontroluje se znovu…",
+        "stalled": "Kontrola trvá déle, než se čekalo."
+      }
+    },
+    "changes": {
+      "loading": "Prohlížejí se změny…",
+      "unavailable": "Změny se nepodařilo přečíst. Otevřete relaci a podívejte se na ně.",
+      "none": "Tento úkol nezměnil žádné soubory.",
+      "files_one": "{{count}} soubor",
+      "files_few": "{{count}} soubory",
+      "files_other": "{{count}} souborů",
+      "namesOnly": "U tohoto úkolu jsou známé jen názvy souborů.",
+      "uncommitted": "Část této práce ještě není uložena ve větvi úkolu.",
+      "cut": "Dlouhý seznam byl zkrácen.",
+      "kind": {
+        "new": "Nový",
+        "edited": "Upraven",
+        "deleted": "Smazán",
+        "renamed": "Přejmenován"
+      },
+      "binary": "binární",
+      "binaryNote": "Toto není textový soubor, takže není co zobrazit.",
+      "renamedFrom": "Přejmenováno z {{from}}",
+      "showMore_one": "Zobrazit ještě {{count}} řádek",
+      "showMore_few": "Zobrazit ještě {{count}} řádky",
+      "showMore_other": "Zobrazit ještě řádků: {{count}}",
+      "fileCut": "Tato změna je dlouhá, proto se zobrazuje jen začátek.",
+      "noPatch": "Pro tento soubor není k dispozici zobrazení po řádcích."
+    },
+    "start": {
+      "title": "Nová kampaň",
+      "menu": "Nová kampaň",
+      "prompt": "Popište velký úkol. Flint naplánuje, jak ho rozdělit.",
+      "goalLabel": "Co má kampaň udělat?",
+      "placeholder": "Například: přidat tmavý režim do celé aplikace, s testy",
+      "hint": "Souběžně pracuje až {{n}} vláken. Můžete to změnit v Nastavení.",
+      "folder": "Ve složce {{folder}}",
+      "go": "Spustit",
+      "noFolder": "Otevřete složku git a spusťte kampaň",
+      "error": {
+        "no-model": "Nejdřív zvolte model, který umí používat nástroje (Modely v postranním panelu nebo výběr modelu), a začněte znovu.",
+        "failed": "Flint nemohl otevřít relaci kampaně. Nic nebylo spuštěno; zkuste to znovu."
+      }
+    },
+    "nav": "Kampaně",
+    "list": {
+      "subtitle": "Velké úkoly rozdělené na části, na kterých souběžně pracuje několik agentů.",
+      "start": "Spustit kampaň",
+      "empty": "Zatím žádné kampaně",
+      "emptyHint": "Kampaň vezme jeden velký úkol, rozdělí ho na menší a nechá na nich souběžně pracovat několik agentů, každého na vlastní větvi.",
+      "doneOf": "Hotovo {{done}} z {{total}}",
+      "planning": "Plánování",
+      "updated": "Aktualizováno {{when}}",
+      "loading": "Načítání kampaní",
+      "loadFailed": "Kampaně se nepodařilo načíst.",
+      "retry": "Zkusit znovu"
+    },
+    "plan": {
+      "edit": "Upravit plán",
+      "save": "Uložit změny",
+      "discard": "Zahodit změny",
+      "saved": "Plán uložen.",
+      "saveFailed": "Plán se nepodařilo uložit: {{reason}}",
+      "unsaved": "Zatím neuloženo",
+      "saveFirst": "Před povolením uložte nebo zahoďte změny plánu.",
+      "addTask": "Přidat úkol",
+      "count": "Úkolů: {{count}} z {{max}}",
+      "after": "Po: {{tasks}}",
+      "moveUp": "Posunout úkol {{task}} nahoru",
+      "moveDown": "Posunout úkol {{task}} dolů",
+      "remove": "Odebrat úkol {{task}}",
+      "addAfter": "Přidat úkol, na který se čeká",
+      "removeAfter": "Odebrat tuto závislost",
+      "field": {
+        "title": "Název úkolu",
+        "brief": "Co udělat",
+        "acceptance": "Podle čeho poznáme, že je hotovo (jedno na řádek)",
+        "paths": "Soubory a složky, které smí měnit (jedna na řádek)",
+        "pathsHint": "src/feature",
+        "after": "Začíná po"
+      },
+      "estimate": {
+        "one": "Asi {{tokens}} tokenů",
+        "range": "Asi {{low}} až {{high}} tokenů",
+        "basis": "Závisí na: {{basis}}",
+        "generic": "Závisí na tom, kolik souborů úkoly čtou a kolikrát se musí kontrola opakovat."
+      },
+      "issue": {
+        "noTasks": "Přidejte alespoň jeden úkol.",
+        "tooMany": "Úkolů je příliš mnoho ({{count}}); limit je {{max}}.",
+        "emptyTitle": "Některý úkol nemá název.",
+        "emptyBrief": "Úkol {{task}} potřebuje popis toho, co udělat.",
+        "badPath": "{{task}}: „{{path}}“ není složka ani soubor uvnitř projektu.",
+        "selfDependency": "Úkol {{task}} nemůže čekat sám na sebe.",
+        "unknownDependency": "Úkol {{task}} čeká na úkol, který už neexistuje.",
+        "cycle": "Tyto úkoly na sebe navzájem čekají: {{tasks}}.",
+        "overlap": "{{a}} a {{b}} by běžely současně, ale oba mění {{path}}. Nechte jeden počkat na druhý."
+      }
+    }
   }
 }

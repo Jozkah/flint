@@ -38,7 +38,8 @@
     "gitLocal": "Flint wants to run {{command}}",
     "gitLocalIn": "Flint wants to run {{command}} in {{workspace}}",
     "gitRemote": "Flint wants to run {{command}}, which changes {{target}}",
-    "gitDestructive": "Flint wants to run {{command}}, which can lose work"
+    "gitDestructive": "Flint wants to run {{command}}, which can lose work",
+    "approveCampaign": "Flint wants to start the campaign \"{{title}}\" ({{count}} tasks)"
   },
   "consequence": {
     "fileChange": "It can create, overwrite or change the contents of files.",
@@ -55,7 +56,8 @@
     "writeClipboard": "It replaces what is currently on your clipboard.",
     "gitLocal": "It changes this repository's files, branches or history on this computer.",
     "gitRemote": "It sends changes to a remote repository that other people can see. Flint asks every time unless you temporarily allow ordinary remote Git actions for this conversation.",
-    "gitDestructive": "What it removes or overwrites may not be recoverable."
+    "gitDestructive": "What it removes or overwrites may not be recoverable.",
+    "campaignPlan": "It starts separate sessions, each on its own worktree branch, that read and change files and use your model quota in parallel. Approving the plan does not approve any call a task makes. Flint asks every time."
   },
   "repeat": {
     "allowedOnceBefore": "You allowed this command once already in this conversation."

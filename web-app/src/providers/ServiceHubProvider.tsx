@@ -3,6 +3,8 @@ import { initializeServiceHub } from '@/services'
 import { initializeServiceHubStore } from '@/hooks/useServiceHub'
 import { hydrateBackendStores } from '@/lib/hydrateStores'
 import { migrateLocalStorageToBackend } from '@/lib/migrateLocalStorageSettings'
+import { isChatWindow } from '@/lib/soloFlag'
+import { bootMark } from '@/lib/bootMarks'
 
 interface ServiceHubProviderProps {
   children: React.ReactNode
@@ -15,13 +17,16 @@ export function ServiceHubProvider({ children }: ServiceHubProviderProps) {
     initializeServiceHub()
       .then(async (hub) => {
         console.log('Services initialized, initializing Zustand store')
+        bootMark('hub:initialized')
         initializeServiceHubStore(hub)
         // One-time localStorage -> backend migration must run before hydration
         // so the backend store is populated before any store reads it.
-        await migrateLocalStorageToBackend()
+        // (A "New window" opens after the main window did that.)
+        if (!isChatWindow()) await migrateLocalStorageToBackend()
         // Settings stores use async backend storage; hydrate before rendering
         // children so no component reads pre-hydration defaults.
         await hydrateBackendStores()
+        bootMark('hub:stores-hydrated')
         setIsReady(true)
       })
       .catch((error) => {

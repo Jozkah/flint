@@ -1,0 +1,26 @@
+{
+  "title": "Flint-Server",
+  "desc": "Nutze Flint auf einem Server, den du betreibst, von diesem Gerät aus.",
+  "address": "Serveradresse",
+  "addressDesc": "Die HTTPS-Adresse deines flint serve, zum Beispiel der Tailscale-Name, unter dem er veröffentlicht ist. Du meldest dich auf der Seite des Servers selbst an; diese App speichert die Zugangsdaten nie.",
+  "test": "Verbindung testen",
+  "open": "Server öffnen",
+  "forget": "Server vergessen",
+  "checking": "Wird geprüft...",
+  "statusOk": "Ein Flint-Server wurde erreicht.",
+  "statusReachable": "Etwas hat geantwortet, aber von hier aus ließ sich nicht bestätigen, dass es Flint ist. Öffne es, um das herauszufinden.",
+  "statusUnreachable": "Nicht erreichbar. Prüfe die Adresse, ob der Server läuft und ob dieses Gerät ihn erreichen kann (VPN oder Tailscale aktiv).",
+  "insecure": "Diese Adresse ist nicht HTTPS. Die Sitzung würde unverschlüsselt übertragen, und Android lehnt sie möglicherweise ab.",
+  "problem": {
+    "empty": "Gib die Serveradresse ein.",
+    "invalid": "Das ist keine gültige Adresse.",
+    "scheme": "Verwende eine http- oder https-Adresse.",
+    "credentials": "Lass Benutzername und Passwort aus der Adresse weg."
+  },
+  "auto": "Beim Start öffnen",
+  "autoDesc": "Öffnet den Server beim Start der App, nach einigen Sekunden, in denen du stattdessen dieses Gerät wählen kannst.",
+  "opening": "{{host}} wird in {{seconds}} s geöffnet",
+  "useDevice": "Dieses Gerät verwenden",
+  "limitsTitle": "Was wo läuft",
+  "limits": "Chat, Räume, Modelle und Werkzeuge laufen auf dem Server. Cowork-Sitzungen und Kampagnen brauchen einen Agenten, der auf einem Computer mit geöffnetem Flint läuft: Erreiche diesen Computer über den Fernzugriff und die Handy-App. Ein Server ohne Oberfläche kann Kampagnen auflisten und Vorschläge prüfen, führt aber keine Sitzungen aus."
+}

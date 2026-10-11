@@ -143,6 +143,19 @@ scope to keep it to yourself.
 
 Once saved, refer to it by name and it picks up its stored prompt and permissions.
 
+A definition can also set `auto_compact_window` (tokens; a TOML key, or a frontmatter key in a
+plugin agent file). The subagent's context is then compacted once it reaches that many tokens. It
+can only bring compaction forward: a value above the run's own threshold, or `0`, changes nothing.
+Keys a definition file does not recognise are ignored and noted in the debug log, with a nearest-key
+hint for a likely typo.
+
+## Pinning the model
+
+Set the `FLINT_SUBAGENT_MODEL` environment variable to a model id to run every subagent on that
+model. It outranks everything else that picks a subagent's model: the model's own argument, routing
+rules, per-role settings, the definition's `model`, and the global subagent setting. A blank or
+malformed value is ignored. The variable is read each time a subagent starts.
+
 ## One-off subagents
 
 A subagent doesn't need a saved definition. The agent can invent one for a single task by supplying

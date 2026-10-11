@@ -42,6 +42,27 @@ const valid = (n: unknown): n is number =>
 type PricedModel = Pick<Model, 'id' | 'inputCostPerMillion' | 'outputCostPerMillion'> &
   Partial<Pick<Model, 'cachedInputCostPerMillion' | 'cacheWriteCostPerMillion'>>
 
+const CLAUDE_FAMILY = ['claude', 'sonnet', 'opus', 'haiku']
+
+/**
+ * Anthropic's published cache ratios (read 0.1x, 5-minute write 1.25x input),
+ * filled in for Claude-family models only, and only where no price was set.
+ * Every other model's cached tokens stay at the input rate: no discount is
+ * invented for a provider that was not asked.
+ */
+export function withClaudeCacheDefaults(
+  modelId: string | undefined,
+  price: Pricing
+): Pricing {
+  const id = modelId?.toLowerCase()
+  if (!id || !CLAUDE_FAMILY.some((m) => id.includes(m))) return price
+  return {
+    ...price,
+    cachedInput: price.cachedInput ?? price.input * 0.1,
+    cacheWrite: price.cacheWrite ?? price.input * 1.25,
+  }
+}
+
 export function resolvePricing(
   providerId: string | undefined,
   model: PricedModel | undefined
@@ -57,17 +78,17 @@ export function resolvePricing(
     ...(cacheWrite !== undefined ? { cacheWrite } : {}),
   }
   if (model && (valid(model.inputCostPerMillion) || valid(model.outputCostPerMillion))) {
-    return {
+    return withClaudeCacheDefaults(model.id, {
       input: valid(model.inputCostPerMillion) ? model.inputCostPerMillion : 0,
       output: valid(model.outputCostPerMillion) ? model.outputCostPerMillion : 0,
       ...extras,
-    }
+    })
   }
   if (providerId && FREE_PROVIDERS.has(providerId)) return { input: 0, output: 0 }
   const id = model?.id?.toLowerCase()
   if (!id) return null
   const known = KNOWN.find(([m]) => id.includes(m))?.[1]
-  return known ? { ...known, ...extras } : null
+  return known ? withClaudeCacheDefaults(id, { ...known, ...extras }) : null
 }
 
 /** Whether a price is zero all round: a local model, which costs nothing. */

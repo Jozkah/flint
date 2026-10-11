@@ -1,0 +1,26 @@
+{
+  "title": "Flint sunucusu",
+  "desc": "Flint'i bu cihazdan, çalıştırdığınız bir sunucuda kullanın.",
+  "address": "Sunucu adresi",
+  "addressDesc": "flint serve sunucunuzun HTTPS adresi, örneğin yayınlandığı Tailscale adı. Sunucunun kendi sayfasında oturum açarsınız; bu uygulama kimlik bilgisini asla saklamaz.",
+  "test": "Bağlantıyı sına",
+  "open": "Sunucuyu aç",
+  "forget": "Sunucuyu unut",
+  "checking": "Denetleniyor...",
+  "statusOk": "Bir Flint sunucusuna ulaşıldı.",
+  "statusReachable": "Bir şey yanıt verdi ancak buradan Flint olduğu doğrulanamadı. Öğrenmek için açın.",
+  "statusUnreachable": "Ulaşılamadı. Adresi, sunucunun çalıştığını ve bu cihazın ona erişebildiğini (VPN veya Tailscale açık) kontrol edin.",
+  "insecure": "Bu adres HTTPS değil. Oturum açık metin olarak iletilir ve Android buna izin vermeyebilir.",
+  "problem": {
+    "empty": "Sunucu adresini girin.",
+    "invalid": "Bu geçerli bir adres değil.",
+    "scheme": "http veya https adresi kullanın.",
+    "credentials": "Kullanıcı adı ve parolayı adresin dışında bırakın."
+  },
+  "auto": "Başlangıçta aç",
+  "autoDesc": "Uygulama başladığında, bu cihazı seçebileceğiniz birkaç saniyenin ardından sunucuyu aç.",
+  "opening": "{{host}} {{seconds}} sn içinde açılıyor",
+  "useDevice": "Bu cihazı kullan",
+  "limitsTitle": "Ne nerede çalışır",
+  "limits": "Sohbet, odalar, modeller ve araçlar sunucuda çalışır. Birlikte Çalış oturumları ve Kampanyalar, Flint'in açık olduğu bir bilgisayarda çalışan bir ajan gerektirir: o bilgisayara Uzaktan erişim ve telefon uygulaması üzerinden ulaşın. Başsız bir sunucu kampanyaları listeleyebilir ve önerileri inceleyebilir, ancak oturum çalıştırmaz."
+}
