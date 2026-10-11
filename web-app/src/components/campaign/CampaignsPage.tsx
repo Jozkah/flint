@@ -5,6 +5,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
 import HeaderPage from '@/containers/HeaderPage'
 import { StatusDot } from '@/components/campaign/StatusDot'
 import { StartCampaignDialog } from '@/components/campaign/StartCampaignDialog'
@@ -26,7 +27,7 @@ export function CampaignsPage() {
   const { t, i18n } = useTranslation()
   const lang = (i18n as { language?: string } | undefined)?.language || 'en'
   const navigate = useNavigate()
-  const { campaigns, loaded } = useCampaigns()
+  const { campaigns, loaded, error, refresh } = useCampaigns()
   const { folder, isRepo } = useCampaignFolderState()
   const [startOpen, setStartOpen] = useState(false)
   // Known not to be a repository: the button says why it cannot start.
@@ -73,7 +74,35 @@ export function CampaignsPage() {
             </p>
           )}
 
-          {loaded && sorted.length === 0 ? (
+          {!loaded ? (
+            <div
+              role="status"
+              aria-busy="true"
+              aria-label={t('settings:campaigns.list.loading')}
+              data-testid="campaigns-loading"
+              className="flex flex-col gap-2"
+            >
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-[74px] rounded-xl" />
+              ))}
+            </div>
+          ) : error && sorted.length === 0 ? (
+            <div
+              role="alert"
+              data-testid="campaigns-error"
+              className="flex flex-col items-start gap-2 rounded-xl border-[0.8px] border-border px-4 py-6 text-sm"
+            >
+              <p>{t('settings:campaigns.list.loadFailed')}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                data-testid="campaigns-retry"
+                onClick={() => void refresh()}
+              >
+                {t('settings:campaigns.list.retry')}
+              </Button>
+            </div>
+          ) : sorted.length === 0 ? (
             <EmptyState
               className="rounded-xl border-[0.8px] border-dashed border-border-strong py-12"
               icon={<Workflow />}
@@ -98,7 +127,7 @@ export function CampaignsPage() {
                           params: { campaignId: c.id },
                         })
                       }
-                      className="flex w-full cursor-pointer flex-col gap-2 rounded-xl border-[0.8px] border-border bg-card px-4 py-3 text-left outline-hidden transition-[background-color,box-shadow] duration-150 hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                      className="flex w-full cursor-pointer flex-col gap-2 rounded-xl border-[0.8px] border-border bg-card px-4 py-3 text-left outline-hidden motion-safe:transition-[background-color,box-shadow] duration-150 hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40"
                     >
                       <span className="flex items-center gap-2">
                         <StatusDot dot={coordinatorDotOf(c)} />
