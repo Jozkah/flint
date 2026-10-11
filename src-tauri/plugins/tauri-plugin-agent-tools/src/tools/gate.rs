@@ -867,6 +867,19 @@ pub fn resolve_decision(
             }
             if grants.covers_command(command) {
                 Decision::Allow
+            } else if grants.covers(PromptKind::Write)
+                && crate::tools::pwsh_scan::classify_in(
+                    command,
+                    project_root,
+                    scratch,
+                    grants.write_roots(),
+                )
+                .is_contained()
+            {
+                // A PowerShell script proven to only create, read and remove
+                // files inside the folders this session may already write to
+                // (tools/pwsh_scan.rs). Everything unproven keeps asking.
+                Decision::Allow
             } else {
                 Decision::Prompt(PromptKind::Exec)
             }
@@ -1413,6 +1426,36 @@ mod tests {
             &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Prompt(PromptKind::Write));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn contained_powershell_runs_only_once_writes_are_granted() {
+        let root = unique_root();
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let script = "$d = Join-Path (Get-Location) 'probe'
+                      New-Item -ItemType Directory -Path $d | Out-Null
+                      Set-Content -Path (Join-Path $d 'a.txt') -Value 'x'
+                      Remove-Item -Recurse -Force $d";
+        let escaping = r"Remove-Item -Recurse -Force C:\Windows\Temp\x";
+        let call = |command: &str, grants: &SessionGrants| {
+            resolve_decision(
+                lookup("bash").unwrap(),
+                &json!({ "command": command }),
+                &root,
+                None,
+                &[],
+                &perms,
+                grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let mut grants = SessionGrants::default();
+        assert_eq!(call(script, &grants), Decision::Prompt(PromptKind::Exec));
+        grants.grant(PromptKind::Write);
+        assert_eq!(call(script, &grants), Decision::Allow);
+        assert_eq!(call(escaping, &grants), Decision::Prompt(PromptKind::Exec));
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -65,7 +65,23 @@ pub fn destructive_reason_in(command: &str, scope: &Scope) -> Option<String> {
 /// Kept apart from [`destructive_reason_in`] on purpose: that function is
 /// parity-tested against the web app's port, while the scan lives only here.
 pub fn forced_prompt_reason(command: &str, scope: &Scope) -> Option<String> {
+    // A PowerShell script that only creates, reads and removes files inside the
+    // scope is neither destructive nor opaque: the scan reads it through a real
+    // tokenizer and proves every path (tools/pwsh_scan.rs), which the textual
+    // checks below cannot do for `$variable` paths. Anything it cannot prove
+    // falls through to them unchanged.
+    if powershell_contained(command, scope) {
+        return None;
+    }
     destructive_reason_in(command, scope).or_else(|| opaque_reason(command))
+}
+
+fn powershell_contained(command: &str, scope: &Scope) -> bool {
+    let roots: Vec<std::path::PathBuf> = scope.roots.iter().map(std::path::PathBuf::from).collect();
+    let Some(cwd) = roots.first() else {
+        return false;
+    };
+    tauri_plugin_agent_tools::tools::pwsh_scan::classify(command, cwd, &roots).is_contained()
 }
 
 /// Why the command scan reports `command` as opaque, or `None` when it
@@ -830,6 +846,27 @@ mod tests {
         assert!(canonical.to_string_lossy().starts_with(r"\\?\"));
         let scope = Scope::new([&canonical]);
         assert_eq!(destructive_reason_in(&rm(&proj.join("sub")), &scope), None);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn contained_powershell_is_not_opaque_and_escapes_still_are() {
+        let base = temp_tree("pwsh");
+        let proj = base.join("proj dir");
+        let scope = Scope::new([&proj]);
+        let probe = "$d = Join-Path (Get-Location) 'qa-probe'
+                     New-Item -ItemType Directory -Path $d | Out-Null
+                     Set-Content -Path (Join-Path $d 'a.txt') -Value 'x'
+                     Get-Content (Join-Path $d 'a.txt')
+                     Remove-Item -Recurse -Force $d";
+        assert_eq!(forced_prompt_reason(probe, &scope), None);
+        for cmd in [
+            r"Remove-Item -Recurse -Force C:\Windows\Temp\x",
+            r"$p = 'C:\Wi' + 'ndows'; Remove-Item $p -Recurse",
+            "Invoke-Expression 'ls'",
+        ] {
+            assert!(forced_prompt_reason(cmd, &scope).is_some(), "{cmd}");
+        }
         let _ = std::fs::remove_dir_all(&base);
     }
 
