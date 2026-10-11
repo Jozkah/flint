@@ -32,6 +32,11 @@ export type TaskPatch = {
   tokensUsed?: number
   fingerprint?: string
   detail?: string
+  /**
+   * With a move to `verified` from `completed`: accept a task whose
+   * verification did not pass. The backend records who and why.
+   */
+  accept?: { by: string; reason?: string }
 }
 
 export type CampaignTransition = {

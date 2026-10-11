@@ -813,6 +813,7 @@
       "word": {
         "writing": "Writing code",
         "checking": "Checking the result",
+        "verifyBlocked": "Finished, but the check could not decide",
         "ready": "Checked, ready to merge",
         "needsInput": "Waiting for your answer",
         "needsApproval": "Waiting for your approval",

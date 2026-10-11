@@ -258,6 +258,14 @@ const digest = (c: Campaign) => ({
     verdict: t.verdict ?? null,
     merged_sha: t.mergedSha ?? null,
     detail: t.detail || null,
+    // A finished task whose check could not decide waits for a person: the
+    // coordinator may ask for the check again (campaign_verify); accepting
+    // it anyway is the user's call, from the board.
+    needs_decision:
+      t.status === 'completed' && t.verdict === 'BLOCKED'
+        ? 'verification blocked: run campaign_verify again, or tell the user; only the user can accept it anyway or skip it'
+        : null,
+    accepted_by: t.manualOverride?.by ?? null,
   })),
   task_access: c.limits.taskAccess ?? null,
   gate: c.gate

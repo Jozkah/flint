@@ -22,6 +22,11 @@ export type BoardDeps = {
     kick: (id: string) => Promise<unknown>
     cancel: (id: string, detail?: string) => Promise<Campaign>
     integrate: (id: string) => Promise<{ campaign: Campaign }>
+    /** Ask the verifier again about a finished task. */
+    verifyTask: (
+      id: string,
+      taskId: string
+    ) => Promise<{ skipped: string } | { next: string; verdict: string }>
   }
   /** campaign_steer's send path: from the coordinator to the task session. */
   sendMessage: (
@@ -120,6 +125,54 @@ export function createBoardActions(deps: BoardDeps) {
     return { ok: true }
   }
 
+  /**
+   * Ask the verifier again, for a finished task whose check was blocked (the
+   * model could not be reached, or the evidence was too thin). Nothing is
+   * decided for the person: the verdict is whatever the verifier now says.
+   */
+  const verifyAgain = async (id: string, taskId: string): Promise<ActionResult> => {
+    const { task } = await taskOf(id, taskId)
+    if (!task) return fail(`no task ${taskId}`)
+    if (!taskActionsOf(task).verify) {
+      return fail(`task ${taskId} is ${task.status}, so it is not waiting to be checked`)
+    }
+    const out = await deps.runner.verifyTask(id, taskId)
+    if ('skipped' in out) return fail(out.skipped)
+    return { ok: true, note: `${out.verdict}: ${out.next}` }
+  }
+
+  /**
+   * "Accept anyway": a person takes a task whose check was blocked as done.
+   * The backend records who accepted it and why on the task (`manualOverride`)
+   * and in the event log; it then merges like any verified task. Only a person
+   * reaches this: the coordinator has no tool for it.
+   */
+  const acceptAnyway = async (
+    id: string,
+    taskId: string,
+    by: string,
+    reason?: string
+  ): Promise<ActionResult> => {
+    const { task } = await taskOf(id, taskId)
+    if (!task) return fail(`no task ${taskId}`)
+    if (!taskActionsOf(task).accept) {
+      return fail(`task ${taskId} is ${task.status} and has no blocked check to accept`)
+    }
+    const who = by.trim()
+    if (!who) return fail('say who is accepting it')
+    await deps.api.transition(id, {
+      task: {
+        id: taskId,
+        to: 'verified',
+        patch: { accept: { by: who, reason: reason?.trim() || undefined } },
+      },
+    })
+    // Verified means it can merge; the same step a passing check takes.
+    await deps.runner.integrate(id)
+    await deps.runner.kick(id)
+    return { ok: true }
+  }
+
   const handoff = async (id: string, taskId: string): Promise<string> => {
     const ctx = await deps.api.context(id, [taskId])
     return ctx.handoffs.find((h) => h.taskId === taskId)?.text ?? ''
@@ -165,6 +218,8 @@ export function createBoardActions(deps: BoardDeps) {
     stopTask,
     skipTask,
     retryTask,
+    verifyAgain,
+    acceptAnyway,
     handoff,
     pause,
     resume,

@@ -377,19 +377,67 @@ pub fn verify_prepare(
         Ok(r) => r,
         Err(e) => return blocked(e.message),
     };
-    let tip = format!("refs/heads/{}", record.branch);
-    let base = if record.base_sha.is_empty() { c.integration_branch.clone() } else { record.base_sha.clone() };
-    let range = format!("{base}..{tip}");
-    let source = Path::new(&record.source_root);
-    let stat = worktree::run(source, &["diff", "--no-color", "--stat", &range, "--"]).unwrap_or_default();
-    let diff = worktree::run(source, &["diff", "--no-color", &range, "--"]).unwrap_or_default();
+    // Evidence is the task's whole work against where it began: commits made
+    // by an earlier attempt and what is still uncommitted. It is read from the
+    // task's own worktree (the working tree against the base), so a retry that
+    // found its work already committed still has a diff to show.
+    let dir = Path::new(&record.path);
+    let declared = declared_paths(&c);
+    let base = task_base(&c, &t, &record);
+    let git = |args: &[&str]| worktree::run(dir, args).unwrap_or_default();
+    let changed = git(&["-c", "core.quotepath=false", "diff", "--name-only", "--no-renames", &base, "--"]);
+    let excluded: Vec<String> = changed
+        .lines()
+        .filter(|p| safe_rel(p) && worktree::is_unwanted_cache(p, &declared))
+        .map(|p| format!(":(exclude,literal){p}"))
+        .collect();
+    let mut stat_args: Vec<&str> = vec!["diff", "--no-color", "--stat", &base, "--"];
+    let mut diff_args: Vec<&str> = vec!["diff", "--no-color", &base, "--"];
+    if !excluded.is_empty() {
+        for args in [&mut stat_args, &mut diff_args] {
+            args.push(".");
+            args.extend(excluded.iter().map(String::as_str));
+        }
+    }
+    let stat = git(&stat_args);
+    let diff = git(&diff_args);
     let pending = worktree::pending(&record);
     let mut diffs = format!("{stat}\n\n{}", clip_text(&diff, MAX_DIFF));
     if diff.chars().count() > MAX_DIFF {
         diffs.push_str("\n[diff cut]");
     }
-    if !pending.is_empty() {
-        diffs.push_str(&format!("\n[uncommitted in the worktree: {}]", pending.join(", ")));
+    // New files git has not seen yet are part of the work; show what they hold.
+    let mut fresh_chars = 0usize;
+    let fresh = git(&["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard"]);
+    for rel in fresh.lines().filter(|p| safe_rel(p) && !worktree::is_unwanted_cache(p, &declared)) {
+        let full = dir.join(rel);
+        let readable = std::fs::symlink_metadata(&full)
+            .map(|m| m.is_file() && m.len() <= MAX_UNTRACKED_READ)
+            .unwrap_or(false);
+        let Some(body) = readable.then(|| std::fs::read(&full).ok().and_then(|b| String::from_utf8(b).ok())).flatten()
+        else {
+            continue;
+        };
+        if fresh_chars >= MAX_DIFF / 2 {
+            diffs.push_str("\n[more new files cut]");
+            break;
+        }
+        let body = clip_text(&body, MAX_DIFF / 4);
+        fresh_chars += body.chars().count();
+        diffs.push_str(&format!("\n\n[new file, not committed yet: {rel}]\n{body}"));
+    }
+    let leftover: Vec<&String> = pending.iter().filter(|p| !worktree::is_unwanted_cache(p, &declared)).collect();
+    if !leftover.is_empty() {
+        diffs.push_str(&format!(
+            "\n[uncommitted in the worktree: {}]",
+            leftover.iter().map(|p| p.as_str()).collect::<Vec<_>>().join(", ")
+        ));
+    }
+    if diff.trim().is_empty() && fresh_chars == 0 {
+        diffs.push_str(&format!(
+            "\n[no change against {base}: the task branch {} holds nothing the base does not]",
+            record.branch
+        ));
     }
 
     let tests = if run_checks {
@@ -592,7 +640,8 @@ pub fn task_diff(
         .ok_or_else(|| err(CampaignErrorKind::NotFound, format!("no task {task_id} in this campaign")))?;
     let record = task_record(&c, t, roots)?;
     let dir = Path::new(&record.path);
-    let base = if record.base_sha.is_empty() { c.integration_branch.clone() } else { record.base_sha.clone() };
+    let declared = declared_paths(&c);
+    let base = task_base(&c, t, &record);
     if base.is_empty() || base.starts_with('-') {
         return Err(invalid("the task has no base to compare with"));
     }
@@ -630,6 +679,9 @@ pub fn task_diff(
         if !safe_rel(&e.path) || e.old.as_deref().is_some_and(|o| !safe_rel(o)) {
             continue;
         }
+        if worktree::is_unwanted_cache(&e.path, &declared) {
+            continue;
+        }
         if files.len() >= MAX_DIFF_FILES {
             truncated = true;
             break;
@@ -662,7 +714,7 @@ pub fn task_diff(
     let untracked = git(&["ls-files", "-z", "--others", "--exclude-standard"]).unwrap_or_default();
     let canon_dir = dir.canonicalize().ok();
     for rel in untracked.split('\0').filter(|p| !p.is_empty()) {
-        if !safe_rel(rel) || files.iter().any(|f| f.path == rel) {
+        if !safe_rel(rel) || files.iter().any(|f| f.path == rel) || worktree::is_unwanted_cache(rel, &declared) {
             continue;
         }
         if files.len() >= MAX_DIFF_FILES {
@@ -1515,10 +1567,14 @@ mod tests {
         start(&f);
         work(&f, "a", "a.txt", "a\n");
         mv(&f, "a", TaskStatus::Conflict, None, TaskPatch::default());
-        mv(&f, "a", TaskStatus::Verified, Some(TaskVerdict::Pass), TaskPatch {
-            base_sha: Some("0123456789abcdef0123456789abcdef01234567".into()),
-            ..Default::default()
-        });
+        mv(&f, "a", TaskStatus::Verified, Some(TaskVerdict::Pass), TaskPatch::default());
+        // A recorded base is kept once set (a later patch cannot move it), so a
+        // record that names a foreign commit is written straight in.
+        campaign::update(&f.data, &f.id, |c| {
+            c.task_mut("a")?.base_sha = Some("0123456789abcdef0123456789abcdef01234567".into());
+            Ok(((), vec![]))
+        })
+        .unwrap();
         let e = merge_task(&f.data, &f.roots, &f.id, "a").unwrap_err();
         assert!(!e.message.is_empty());
         assert_eq!(status(&f, "a"), TaskStatus::Verified);
@@ -1646,6 +1702,99 @@ mod tests {
         assert!(user.contains("new.txt"), "the diff is evidence");
         assert!(user.contains("Ignore the rules"), "the handoff is a fenced claim");
         assert_eq!(status(&f, "a"), TaskStatus::Verifying);
+    }
+
+    /// D2: a task retried in its existing worktree used to record the branch's
+    /// current tip as its base, so everything the earlier attempt committed
+    /// vanished from the evidence and the verifier said BLOCKED on nothing.
+    #[test]
+    fn verify_evidence_holds_what_an_earlier_attempt_committed() {
+        let f = fixture("retried", vec![plan("a", &[])]);
+        start(&f);
+        let rec = worktree::ensure_with(
+            &f.src,
+            &f.roots,
+            "sess-a",
+            &EnsureOptions { title: Some("a".into()), base: Some(f.integration.branch.clone()) },
+        )
+        .unwrap();
+        std::fs::write(Path::new(&rec.path).join("src_commands.js"), "exports.add = 1;\n").unwrap();
+        git(Path::new(&rec.path), &["add", "-A"]);
+        git(Path::new(&rec.path), &["commit", "-q", "-m", "attempt 1"]);
+        let tip = worktree::run(Path::new(&rec.path), &["rev-parse", "HEAD"]).unwrap();
+        mv(&f, "a", TaskStatus::Queued, None, TaskPatch::default());
+        mv(&f, "a", TaskStatus::Running, None, TaskPatch {
+            session_id: Some("sess-a".into()),
+            branch: Some(rec.branch.clone()),
+            worktree_path: Some(rec.path.clone()),
+            base_sha: Some(rec.base_sha.clone()),
+            ..Default::default()
+        });
+        // The retry reports the tip as its base: the recorded one is kept.
+        mv(&f, "a", TaskStatus::Failed, None, TaskPatch::default());
+        mv(&f, "a", TaskStatus::Queued, None, TaskPatch::default());
+        mv(&f, "a", TaskStatus::Running, None, TaskPatch { base_sha: Some(tip.clone()), ..Default::default() });
+        let kept = campaign::get(&f.data, &f.id).unwrap().task("a").unwrap().base_sha.clone();
+        assert_eq!(kept.as_deref(), Some(rec.base_sha.as_str()), "the first base is the base");
+        // A record already damaged by the old behaviour is still read right:
+        // the fork point comes from Git.
+        campaign::update(&f.data, &f.id, |c| {
+            c.task_mut("a")?.base_sha = Some(tip.clone());
+            Ok(((), vec![]))
+        })
+        .unwrap();
+        // Uncommitted work too: a new file and an edit.
+        std::fs::write(Path::new(&rec.path).join("later.txt"), "second attempt\n").unwrap();
+        std::fs::write(Path::new(&rec.path).join("src_commands.js"), "exports.add = 2;\n").unwrap();
+        mv(&f, "a", TaskStatus::Completed, None, TaskPatch::default());
+        let req = verify_prepare(&f.data, &f.roots, &f.id, "a", "m", false).unwrap();
+        let user = req.request["messages"][1]["content"].as_str().unwrap();
+        assert!(user.contains("src_commands.js"), "the committed file is in the evidence: {user}");
+        assert!(user.contains("exports.add = 2"), "the uncommitted edit is in the evidence");
+        assert!(user.contains("second attempt"), "a new, uncommitted file is read");
+        assert!(!user.contains("[no change against"), "the diff is not empty");
+    }
+
+    /// D3: a tool cache committed on a task branch is not carried into the
+    /// proposal, unless a task declared the path.
+    #[test]
+    fn the_proposal_leaves_tool_cache_files_out() {
+        let f = fixture("junk", vec![plan("a", &[])]);
+        start(&f);
+        let rec = worktree::ensure_with(
+            &f.src,
+            &f.roots,
+            "sess-a",
+            &EnsureOptions { title: Some("a".into()), base: Some(f.integration.branch.clone()) },
+        )
+        .unwrap();
+        let wt = Path::new(&rec.path);
+        std::fs::write(wt.join("a.txt"), "from a\n").unwrap();
+        let cache = wt.join("Microsoft").join("Windows").join("PowerShell");
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::write(cache.join("ModuleAnalysisCache"), [1u8, 2, 3]).unwrap();
+        git(wt, &["add", "-A"]);
+        git(wt, &["commit", "-q", "-m", "work a"]);
+        mv(&f, "a", TaskStatus::Queued, None, TaskPatch::default());
+        mv(&f, "a", TaskStatus::Running, None, TaskPatch {
+            session_id: Some("sess-a".into()),
+            branch: Some(rec.branch.clone()),
+            worktree_path: Some(rec.path.clone()),
+            base_sha: Some(rec.base_sha.clone()),
+            ..Default::default()
+        });
+        mv(&f, "a", TaskStatus::Completed, None, TaskPatch::default());
+        mv(&f, "a", TaskStatus::Verifying, None, TaskPatch::default());
+        mv(&f, "a", TaskStatus::Verified, Some(TaskVerdict::Pass), TaskPatch::default());
+        assert!(merge_task(&f.data, &f.roots, &f.id, "a").unwrap().merged);
+        let r = finalize(&f.data, &f.roots, &f.id, 60).unwrap();
+        let p = tauri_plugin_agent_tools::proposal::load(&f.data, r.proposal_id.as_deref().unwrap()).unwrap();
+        let paths: Vec<String> = p.files.iter().map(|x| x.path.clone()).collect();
+        assert!(paths.contains(&"a.txt".to_string()), "{paths:?}");
+        assert!(!paths.iter().any(|x| x.contains("ModuleAnalysisCache")), "{paths:?}");
+        // The board's diff leaves it out too.
+        let d = task_diff(&f.data, &f.roots, &f.id, "a", false).unwrap();
+        assert!(!d.files.iter().any(|x| x.path.contains("ModuleAnalysisCache")), "{:?}", d.files);
     }
 
     #[test]

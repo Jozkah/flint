@@ -16,6 +16,7 @@ import {
   groupTasks,
   headlineOf,
   primaryActionOf,
+  recoveryOf,
   taskActionsOf,
   wordOf,
   TASK_GROUPS,
@@ -362,5 +363,38 @@ describe('pollDelay', () => {
     )
     expect(pollDelay([campaign([], { status: 'done' })])).toBe(POLL_IDLE_MS)
     expect(pollDelay([])).toBe(POLL_IDLE_MS)
+  })
+})
+
+describe('a finished task whose check was blocked', () => {
+  const blocked = task('a', 'completed', {
+    sessionId: 's',
+    verdict: 'BLOCKED',
+    detail: 'verification blocked: the DIFFS section is empty',
+  })
+  it('needs a person: its own dot, group and word, not "checking"', () => {
+    const checking = task('b', 'completed', { sessionId: 's' })
+    expect(dotOf(blocked)).toBe('needs-you')
+    expect(groupOf(blocked)).toBe('needs-you')
+    expect(wordOf(blocked).word).toBe('verifyBlocked')
+    // Not yet verified, no verdict: still being checked.
+    expect(dotOf(checking)).toBe('verifying')
+    expect(wordOf(checking).word).toBe('checking')
+  })
+
+  it('offers check again, accept anyway and skip, with the reason and what it holds up', () => {
+    const next = task('b', 'pending', { dependsOn: ['a'] })
+    const r = recoveryOf(blocked, [blocked, next])
+    expect(r).toMatchObject({
+      state: 'verification-blocked',
+      reason: 'the DIFFS section is empty',
+      blocks: ['b'],
+    })
+    expect(r?.actions.slice(0, 3)).toEqual(['verify', 'accept', 'skip'])
+    expect(taskActionsOf(blocked)).toMatchObject({ verify: true, accept: true, skip: true })
+    // Nothing to decide for a task that is checking, running or merged.
+    expect(recoveryOf(task('c', 'completed', { sessionId: 's' }))).toBeNull()
+    expect(recoveryOf(task('d', 'merged', { verdict: 'BLOCKED' }))).toBeNull()
+    expect(taskActionsOf(task('d', 'running', { sessionId: 's' })).accept).toBe(false)
   })
 })

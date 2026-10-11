@@ -611,11 +611,22 @@ export function createCampaignRunner(
         )
         await kick(id).catch(() => undefined)
       } else {
+        const blocked = out.next === 'blocked'
+        const waiting = fresh.tasks
+          .filter((t) => t.dependsOn.includes(taskId))
+          .map((t) => t.id)
         await tellCoordinator(
           fresh,
           `Campaign "${fresh.title}" task '${taskId}' ${
             out.next === 'failed' ? 'failed' : 'is not verified'
-          } (${out.verdict}). It will not merge. Read it with campaign_collect.`,
+          } (${out.verdict}). It will not merge. Read it with campaign_collect.` +
+            (blocked
+              ? ' The check could not decide, so the task waits for a person' +
+                (waiting.length > 0
+                  ? ` and holds up ${waiting.join(', ')}`
+                  : '') +
+                '. You can run campaign_verify again; only the user can accept it anyway or skip it from the board.'
+              : ''),
           undefined
         )
       }

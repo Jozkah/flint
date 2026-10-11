@@ -76,6 +76,16 @@ export type CampaignTask = {
   mergedSha?: string | null
   fingerprint?: string | null
   detail: string
+  /**
+   * Set when a person accepted the task although its verification did not
+   * pass ("accept anyway"): who, why, and what the verifier had said.
+   */
+  manualOverride?: {
+    by: string
+    reason: string
+    at: string
+    previousVerdict?: 'PASS' | 'PARTIAL' | 'FAIL' | 'BLOCKED' | null
+  } | null
 }
 
 export type CampaignLimits = {

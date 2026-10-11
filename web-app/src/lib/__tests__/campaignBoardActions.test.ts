@@ -59,6 +59,7 @@ function setup(
     kick: vi.fn(async () => ({})),
     cancel: vi.fn(async () => c),
     integrate: vi.fn(async () => ({ campaign: c })),
+    verifyTask: vi.fn(async () => ({ next: 'verified', verdict: 'PASS' })),
   }
   const deps = {
     api,
@@ -152,6 +153,43 @@ describe('board actions', () => {
     expect(runner.kick).toHaveBeenCalled()
     await actions.cancel('c1')
     expect(runner.cancel).toHaveBeenCalledWith('c1')
+  })
+
+  it('checks a finished task again, only while it is waiting to be checked', async () => {
+    const { actions, runner } = setup([
+      task('a', 'completed', { verdict: 'BLOCKED' }),
+      task('b', 'running'),
+    ])
+    expect(await actions.verifyAgain('c1', 'a')).toEqual({
+      ok: true,
+      note: 'PASS: verified',
+    })
+    expect(runner.verifyTask).toHaveBeenCalledWith('c1', 'a')
+    expect((await actions.verifyAgain('c1', 'b')).ok).toBe(false)
+    expect(runner.verifyTask).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts a blocked check anyway, with who and why, then merges', async () => {
+    const { actions, api, runner } = setup([
+      task('a', 'completed', { verdict: 'BLOCKED' }),
+      task('b', 'completed', { verdict: 'FAIL' }),
+      task('c', 'running'),
+    ])
+    const done = await actions.acceptAnyway('c1', 'a', ' jozkah ', ' read the diff ')
+    expect(done.ok).toBe(true)
+    expect(api.transition).toHaveBeenCalledWith('c1', {
+      task: {
+        id: 'a',
+        to: 'verified',
+        patch: { accept: { by: 'jozkah', reason: 'read the diff' } },
+      },
+    })
+    expect(runner.integrate).toHaveBeenCalledWith('c1')
+    // Only a blocked check can be accepted; nobody is not a name.
+    expect((await actions.acceptAnyway('c1', 'b', 'me')).ok).toBe(false)
+    expect((await actions.acceptAnyway('c1', 'c', 'me')).ok).toBe(false)
+    expect((await actions.acceptAnyway('c1', 'a', '  ')).ok).toBe(false)
+    expect(api.transition).toHaveBeenCalledTimes(1)
   })
 
   it('reads a handoff and the gate command', async () => {

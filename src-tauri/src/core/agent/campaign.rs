@@ -186,6 +186,32 @@ pub struct CampaignTask {
     pub fingerprint: Option<String>,
     #[serde(default)]
     pub detail: String,
+    /// Set when a person accepted a task whose verification did not pass
+    /// ("accept anyway"). The verdict is then PASS on the record, and this says
+    /// who decided it and why, and what the verifier had said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_override: Option<ManualOverride>,
+}
+
+/// A task accepted by a person instead of by a passing verification.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ManualOverride {
+    pub by: String,
+    pub reason: String,
+    pub at: String,
+    /// The verdict the verifier had given, when it gave one.
+    #[serde(default)]
+    pub previous_verdict: Option<TaskVerdict>,
+}
+
+/// Who accepts a task by hand, and why. Carried on a task move to `verified`.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ManualAccept {
+    pub by: String,
+    #[serde(default)]
+    pub reason: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -563,6 +589,7 @@ pub fn transition_task(
         task.attempt += 1;
         task.verdict = None;
         task.fingerprint = None;
+        task.manual_override = None;
     }
     if to == TaskStatus::Queued && from == TaskStatus::Interrupted {
         task.verdict = None;
@@ -851,6 +878,7 @@ pub fn create(data_folder: &Path, input: CreateInput) -> Result<Campaign, Campai
                 merged_sha: None,
                 fingerprint: None,
                 detail: String::new(),
+                manual_override: None,
             })
             .collect(),
         gate: None,
@@ -907,6 +935,9 @@ pub struct TaskPatch {
     pub fingerprint: Option<String>,
     #[serde(default)]
     pub detail: Option<String>,
+    /// With a move to `verified` from `completed`: accept the task by hand.
+    #[serde(default)]
+    pub accept: Option<ManualAccept>,
 }
 
 fn apply_patch(t: &mut CampaignTask, p: TaskPatch) {
@@ -921,7 +952,12 @@ fn apply_patch(t: &mut CampaignTask, p: TaskPatch) {
         t.worktree_path = Some(cap(v, 1000));
     }
     if let Some(v) = p.base_sha {
-        t.base_sha = Some(cap(v, 64));
+        // The commit the task began from is recorded once. A retry in the same
+        // worktree reports the branch's current tip, which would make the diff
+        // of everything already committed empty.
+        if t.base_sha.as_deref().map_or(true, str::is_empty) {
+            t.base_sha = Some(cap(v, 64));
+        }
     }
     if let Some(v) = p.tokens_used {
         t.tokens_used = v;
@@ -932,6 +968,36 @@ fn apply_patch(t: &mut CampaignTask, p: TaskPatch) {
     if let Some(v) = p.detail {
         t.detail = cap(v, MAX_DETAIL);
     }
+}
+
+/// "Accept anyway": a completed task whose verification was blocked (or never
+/// ran) is verified by a person. It goes through `verifying` like any other
+/// verification and leaves a record of who decided it and why.
+pub(crate) fn accept_manually(
+    t: &mut CampaignTask,
+    to: TaskStatus,
+    accept: ManualAccept,
+) -> Result<(), CampaignError> {
+    if to != TaskStatus::Verified || t.status != TaskStatus::Completed {
+        return Err(illegal(&format!("task {} (manual acceptance)", t.id), t.status, to));
+    }
+    let by = clip_text(accept.by.trim(), 80);
+    if by.is_empty() {
+        return Err(CampaignError::new(
+            CampaignErrorKind::VerdictRequired,
+            format!("task {} can be accepted by hand only by someone who is named", t.id),
+        ));
+    }
+    let reason = match clip_text(accept.reason.trim(), 400) {
+        r if r.is_empty() => "accepted without a passing verification".to_string(),
+        r => r,
+    };
+    let previous = t.verdict;
+    transition_task(t, TaskStatus::Verifying, None)?;
+    transition_task(t, TaskStatus::Verified, Some(TaskVerdict::Pass))?;
+    t.detail = clip_text(&format!("accepted by {by} without a passing verification: {reason}"), MAX_DETAIL);
+    t.manual_override = Some(ManualOverride { by, reason, at: now(), previous_verdict: previous });
+    Ok(())
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -1024,12 +1090,30 @@ pub fn transition(data_folder: &Path, id: &str, input: TransitionInput) -> Resul
             }
             let t = c.task_mut(&mv.id)?;
             let from = t.status;
-            transition_task(t, mv.to, mv.verdict)?;
+            let accepted = match mv.patch.accept.clone() {
+                Some(accept) => {
+                    accept_manually(t, mv.to, accept)?;
+                    t.manual_override.clone()
+                }
+                None => {
+                    transition_task(t, mv.to, mv.verdict)?;
+                    None
+                }
+            };
             apply_patch(t, mv.patch);
             let reviewing = advance_to_review(&mut c);
             c.updated_at = now();
             save(data_folder, &c)?;
             append_event(data_folder, id, "task-status", Some(&mv.id), &format!("{from:?} -> {:?}", mv.to));
+            if let Some(o) = accepted {
+                append_event(
+                    data_folder,
+                    id,
+                    "task-accepted-manually",
+                    Some(&mv.id),
+                    &format!("{}: {}", o.by, o.reason),
+                );
+            }
             if reviewing {
                 append_event(data_folder, id, "campaign-status", None, "Running -> Reviewing");
             }
@@ -1332,6 +1416,7 @@ pub(crate) mod tests {
                     merged_sha: None,
                     fingerprint: None,
                     detail: String::new(),
+                    manual_override: None,
                 })
                 .collect(),
             gate: None,
@@ -1441,6 +1526,78 @@ pub(crate) mod tests {
         transition_task(&mut t, TaskStatus::Verified, Some(TaskVerdict::Pass)).unwrap();
         transition_task(&mut t, TaskStatus::Merged, None).unwrap();
         assert_eq!(t.verdict, Some(TaskVerdict::Pass));
+    }
+
+    /// D2: a blocked verification is recoverable by a person, on the record.
+    #[test]
+    fn a_blocked_task_can_be_accepted_by_hand_with_who_and_why() {
+        let mut t = task_at(TaskStatus::Completed);
+        t.verdict = Some(TaskVerdict::Blocked);
+        let nobody = ManualAccept { by: "  ".into(), reason: "looks right".into() };
+        assert_eq!(
+            accept_manually(&mut t, TaskStatus::Verified, nobody).unwrap_err().kind,
+            CampaignErrorKind::VerdictRequired
+        );
+        assert_eq!((t.status, t.verdict), (TaskStatus::Completed, Some(TaskVerdict::Blocked)));
+        accept_manually(
+            &mut t,
+            TaskStatus::Verified,
+            ManualAccept { by: "jozkah".into(), reason: "read the diff myself".into() },
+        )
+        .unwrap();
+        assert_eq!((t.status, t.verdict), (TaskStatus::Verified, Some(TaskVerdict::Pass)));
+        let o = t.manual_override.clone().unwrap();
+        assert_eq!((o.by.as_str(), o.reason.as_str()), ("jozkah", "read the diff myself"));
+        assert_eq!(o.previous_verdict, Some(TaskVerdict::Blocked));
+        assert!(t.detail.contains("jozkah"), "{}", t.detail);
+        // It merges like any verified task, and a later retry forgets it.
+        let mut again = task_at(TaskStatus::Completed);
+        assert!(accept_manually(&mut again, TaskStatus::Merged, ManualAccept { by: "x".into(), reason: String::new() }).is_err());
+        let mut running = task_at(TaskStatus::Running);
+        assert!(accept_manually(&mut running, TaskStatus::Verified, ManualAccept { by: "x".into(), reason: String::new() }).is_err());
+        let mut failed = task_at(TaskStatus::Failed);
+        failed.manual_override = Some(o);
+        transition_task(&mut failed, TaskStatus::Queued, None).unwrap();
+        assert!(failed.manual_override.is_none());
+    }
+
+    #[test]
+    fn the_recorded_base_is_not_replaced_and_the_approval_records_the_choice() {
+        let d = data_dir("choice");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[])])).unwrap();
+        let go = |campaign: Option<CampaignStatus>, task: Option<TaskMove>, integration: Option<IntegrationInfo>| {
+            transition(&d, "c", TransitionInput { campaign, task, integration })
+        };
+        // Bypass is never a task ceiling, even asked for at approval.
+        let bad = IntegrationInfo {
+            branch: "flint/c".into(),
+            worktree: "/w".into(),
+            mode_ceiling: "bypass".into(),
+            ..Default::default()
+        };
+        assert!(go(Some(CampaignStatus::Approved), None, Some(bad)).is_err());
+        let chosen = IntegrationInfo {
+            branch: "flint/c".into(),
+            worktree: "/w".into(),
+            mode_ceiling: "auto".into(),
+            task_access: "worktree".into(),
+            ..Default::default()
+        };
+        let c = go(Some(CampaignStatus::Approved), None, Some(chosen)).unwrap();
+        assert_eq!(c.mode_ceiling, "auto");
+        assert_eq!(c.limits.task_access.as_deref(), Some("worktree"));
+        go(Some(CampaignStatus::Running), None, None).unwrap();
+        let mv = |to, base: &str| TaskMove {
+            id: "a".into(),
+            to,
+            verdict: None,
+            patch: TaskPatch { base_sha: Some(base.into()), ..Default::default() },
+        };
+        go(None, Some(mv(TaskStatus::Queued, "")), None).unwrap();
+        go(None, Some(mv(TaskStatus::Running, "aaaa")), None).unwrap();
+        go(None, Some(mv(TaskStatus::Failed, "bbbb")), None).unwrap();
+        let c = get(&d, "c").unwrap();
+        assert_eq!(c.task("a").unwrap().base_sha.as_deref(), Some("aaaa"));
     }
 
     #[test]

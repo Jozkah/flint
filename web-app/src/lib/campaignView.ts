@@ -42,8 +42,20 @@ export function isWaitingOnDeps(
   )
 }
 
+/**
+ * A finished task whose verification could not decide: the verifier said
+ * BLOCKED (or could not run), so it will not merge and nothing that depends
+ * on it can start. It is a person's call, not something still being checked.
+ */
+export function isVerificationBlocked(
+  task: Pick<CampaignTask, 'status'> & Partial<Pick<CampaignTask, 'verdict'>>
+): boolean {
+  return task.status === 'completed' && task.verdict === 'BLOCKED'
+}
+
 export function dotOf(
-  task: Pick<CampaignTask, 'status' | 'dependsOn'>,
+  task: Pick<CampaignTask, 'status' | 'dependsOn'> &
+    Partial<Pick<CampaignTask, 'verdict'>>,
   all: readonly Pick<CampaignTask, 'id' | 'status'>[] = []
 ): CampaignDot {
   const s: CampaignTaskStatus = task.status
@@ -61,6 +73,7 @@ export function dotOf(
     case 'awaiting_approval':
       return 'needs-you'
     case 'completed':
+      return isVerificationBlocked(task) ? 'needs-you' : 'verifying'
     case 'verifying':
       return 'verifying'
     case 'verified':
@@ -125,7 +138,8 @@ export const TASK_GROUPS: readonly TaskGroup[] = [
 ]
 
 export function groupOf(
-  task: Pick<CampaignTask, 'status' | 'dependsOn'>,
+  task: Pick<CampaignTask, 'status' | 'dependsOn'> &
+    Partial<Pick<CampaignTask, 'verdict'>>,
   all: readonly Pick<CampaignTask, 'id' | 'status'>[] = []
 ): TaskGroup {
   switch (dotOf(task, all)) {
@@ -167,6 +181,8 @@ export function groupTasks(
 export type TaskWord =
   | 'writing'
   | 'checking'
+  /** Finished, but the check could not decide: a person chooses. */
+  | 'verifyBlocked'
   | 'ready'
   | 'needsInput'
   | 'needsApproval'
@@ -178,7 +194,8 @@ export type TaskWord =
   | 'skipped'
 
 export function wordOf(
-  task: Pick<CampaignTask, 'status' | 'dependsOn'>,
+  task: Pick<CampaignTask, 'status' | 'dependsOn'> &
+    Partial<Pick<CampaignTask, 'verdict'>>,
   all: readonly Pick<CampaignTask, 'id' | 'status' | 'title'>[] = []
 ): { word: TaskWord; waitingFor: string[] } {
   const waitingFor = task.dependsOn
@@ -202,6 +219,7 @@ export function wordOf(
     case 'awaiting_approval':
       return only('needsApproval')
     case 'completed':
+      return only(isVerificationBlocked(task) ? 'verifyBlocked' : 'checking')
     case 'verifying':
       return only('checking')
     case 'verified':
@@ -480,12 +498,17 @@ export const CAMPAIGN_MAX_RETRIES = 2
 
 /** What the board offers for a task; the backend still enforces every edge. */
 export function taskActionsOf(
-  task: Pick<CampaignTask, 'status' | 'sessionId' | 'attempt'>
+  task: Pick<CampaignTask, 'status' | 'sessionId' | 'attempt'> &
+    Partial<Pick<CampaignTask, 'verdict'>>
 ): {
   open: boolean
   note: boolean
   stop: boolean
   retry: boolean
+  /** Run the verification again (a finished task that is not verified yet). */
+  verify: boolean
+  /** "Accept anyway": a person accepts a task whose check was blocked. */
+  accept: boolean
   skip: boolean
   handoff: boolean
 } {
@@ -497,9 +520,62 @@ export function taskActionsOf(
     stop: LIVE.has(s) || s === 'queued' || s === 'blocked' || s === 'pending',
     retry:
       (s === 'failed' || s === 'conflict') && task.attempt < CAMPAIGN_MAX_RETRIES,
+    verify: s === 'completed',
+    accept: isVerificationBlocked(task),
     // The same set campaign_merge skip accepts.
     skip: ['failed', 'conflict', 'completed', 'blocked', 'interrupted'].includes(s),
     handoff: !['pending', 'blocked', 'queued'].includes(s),
+  }
+}
+
+export type TaskActionName =
+  | 'open'
+  | 'note'
+  | 'stop'
+  | 'retry'
+  | 'verify'
+  | 'accept'
+  | 'skip'
+  | 'handoff'
+
+/**
+ * The recoverable state of a finished task whose check did not pass, for a
+ * card to render: why it is stuck, what it holds up, and the actions on
+ * offer in the order a person should consider them (check again, accept it,
+ * skip it). `null` for any task that is not waiting on that decision.
+ */
+export function recoveryOf(
+  task: Pick<CampaignTask, 'id' | 'status' | 'sessionId' | 'attempt' | 'detail'> &
+    Partial<Pick<CampaignTask, 'verdict'>>,
+  all: readonly Pick<CampaignTask, 'id' | 'status' | 'dependsOn'>[] = []
+): {
+  state: 'verification-blocked'
+  reason: string
+  /** Tasks that cannot start until this one is merged or skipped. */
+  blocks: string[]
+  actions: TaskActionName[]
+} | null {
+  if (!isVerificationBlocked(task)) return null
+  const can = taskActionsOf(task)
+  const actions: TaskActionName[] = []
+  if (can.verify) actions.push('verify')
+  if (can.accept) actions.push('accept')
+  if (can.skip) actions.push('skip')
+  if (can.open) actions.push('open')
+  if (can.handoff) actions.push('handoff')
+  const reason = task.detail.replace(/^verification blocked:\s*/i, '').trim()
+  return {
+    state: 'verification-blocked',
+    reason: reason || 'the check could not decide',
+    blocks: all
+      .filter(
+        (t) =>
+          t.status !== 'merged' &&
+          t.status !== 'cancelled' &&
+          t.dependsOn.includes(task.id)
+      )
+      .map((t) => t.id),
+    actions,
   }
 }
 
