@@ -45,6 +45,7 @@ import {
   Trash2,
   Loader2,
   FolderPlus,
+  LayoutDashboard,
   type LucideIcon,
 } from 'lucide-react'
 import { coworkTranscript, regenerateCoworkTitle } from '@/lib/regenerateSessionTitle'
@@ -100,6 +101,8 @@ import { addNewItemToGroup } from '@/lib/groups/inherit'
 import { CampaignGroups } from '@/components/shell/nav/CampaignGroups'
 import { StatusDot } from '@/components/campaign/StatusDot'
 import { useCampaigns } from '@/hooks/useCampaigns'
+import { useCampaignFolder } from '@/hooks/useCampaignFolder'
+import { StartCampaignDialog } from '@/components/campaign/StartCampaignDialog'
 import {
   claimedSessionIds,
   deriveCampaignGroups,
@@ -475,9 +478,8 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
       ),
     [allSessions, onCowork, currentId, runs]
   )
-  const visibleSessions = expanded
-    ? sessions
-    : sessions.filter((session) => Boolean(runs?.[session.id]))
+  const [startOpen, setStartOpen] = useState(false)
+  const campaignFolder = useCampaignFolder()
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [pluginsOpen, setPluginsOpen] = useState(false)
   // Session pending deletion; drives the confirm dialog (null = closed).
@@ -536,6 +538,23 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
     () => sessions.filter((x) => !claimed.has(x.id)).map((x) => x.id),
     [sessions, claimed]
   )
+  // Collapsed, the tree still lists what is running: a campaign's running
+  // sessions stay inside their group, never loose beside it.
+  const visibleSessions = expanded
+    ? sessions
+    : sessions.filter(
+        (session) => Boolean(runs?.[session.id]) && !claimed.has(session.id)
+      )
+  const runningGroups = useMemo(
+    () =>
+      campaignGroups
+        .map((g) => ({
+          ...g,
+          rows: g.rows.filter((r) => Boolean(runs?.[r.sessionId])),
+        }))
+        .filter((g) => g.rows.length > 0),
+    [campaignGroups, runs]
+  )
   const byId = useMemo(
     () => new Map(sessions.map((x) => [x.id, x])),
     [sessions]
@@ -564,6 +583,15 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
   // The tree is opened first so the group has somewhere to appear.
   const [newGroupRequest, setNewGroupRequest] = useState(0)
   const items: CoworkNavItem[] = [
+    ...(campaignFolder
+      ? [
+          {
+            title: t('settings:campaigns.start.menu'),
+            icon: LayoutDashboard,
+            onClick: () => setStartOpen(true),
+          },
+        ]
+      : []),
     {
       title: t('common:groups.newGroup'),
       icon: FolderPlus,
@@ -743,7 +771,10 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
       </NavItem>
       {/* Collapsed, the tree still lists the sessions that are running,
           until their run ends. */}
-      <NavCollapse as="li" open={expanded || visibleSessions.length > 0}>
+      <NavCollapse
+        as="li"
+        open={expanded || visibleSessions.length > 0 || runningGroups.length > 0}
+      >
         <NavList className="relative pt-0.5 pb-1 pl-5 before:absolute before:inset-y-1 before:left-[17px] before:w-px before:bg-border">
           {expanded && (
             <NavItem>
@@ -753,12 +784,22 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
               </NavButton>
             </NavItem>
           )}
-          {expanded && (
-            <CampaignGroups
-              groups={campaignGroups}
-              renderRow={(row) => renderSession(row.sessionId, row.dot)}
-            />
+          {expanded && campaignFolder && (
+            <NavItem>
+              <NavButton
+                size="sub"
+                onClick={() => setStartOpen(true)}
+                data-testid="nav-new-campaign"
+              >
+                <LayoutDashboard aria-hidden className="size-3.5" />
+                <span>{t('settings:campaigns.start.menu')}</span>
+              </NavButton>
+            </NavItem>
           )}
+          <CampaignGroups
+            groups={expanded ? campaignGroups : runningGroups}
+            renderRow={(row) => renderSession(row.sessionId, row.dot)}
+          />
           {expanded ? (
             <GroupedTree
               surface="cowork"
@@ -780,6 +821,11 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
         </NavList>
       </NavCollapse>
 
+      <StartCampaignDialog
+        open={startOpen}
+        onOpenChange={setStartOpen}
+        folder={campaignFolder}
+      />
       <SkillsManagerDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
       <PluginsManagerDialog open={pluginsOpen} onOpenChange={setPluginsOpen} />
 
