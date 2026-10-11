@@ -91,6 +91,14 @@ fn run(script: &str, cwd: &Path, roots: &[PathBuf]) -> R<()> {
     if script.len() > MAX_SCRIPT {
         return err("script is too long to check");
     }
+    {
+        let cs: Vec<char> = script.chars().collect();
+        for (i, c) in cs.iter().enumerate() {
+            if *c == '\r' && cs.get(i + 1) != Some(&'\n') {
+                return err("a bare carriage return (PowerShell reads it as a line break)");
+            }
+        }
+    }
     if let Some(c) = script.chars().find(|c| is_hostile_char(*c)) {
         return err(format!("contains {:?}, which PowerShell reads in surprising ways", c));
     }
@@ -236,6 +244,13 @@ impl Roots {
         })
     }
 
+    /// `abs` holds one of the roots (deleting it would take the root along).
+    fn is_ancestor_of_root(&self, abs: &str) -> bool {
+        self.items
+            .iter()
+            .any(|(l, c)| under(l, abs, self.ci, true) || under(c, abs, self.ci, true))
+    }
+
     /// Where `abs` really leads (links and junctions followed) is still
     /// inside a root. Unresolvable is not inside.
     fn really_inside(&self, abs: &str) -> bool {
@@ -266,6 +281,9 @@ enum Use {
     Read,
     /// A read of one named thing.
     Exact,
+    /// Reading file contents (or searching them): wildcards must not be able
+    /// to reach a credential file, `.git` or `.jan`.
+    Content,
     /// Create or write one named path.
     Write,
     /// Remove; strictly below a root; bulk patterns never at a root.
@@ -392,13 +410,13 @@ fn lex(src: &str) -> R<Vec<T>> {
     while i < c.len() {
         let ch = c[i];
         match ch {
-            ' ' | '\t' | '\r' => i += 1,
-            '\n' => {
+            ' ' | '\t' => i += 1,
+            '\n' | '\r' => {
                 out.push(T::Nl);
                 i += 1;
             }
             '#' => {
-                while i < c.len() && c[i] != '\n' {
+                while i < c.len() && c[i] != '\n' && c[i] != '\r' {
                     i += 1;
                 }
             }
@@ -653,8 +671,8 @@ enum Val {
     Bool(bool),
     Null,
     List(Vec<Val>),
-    /// Files and folders listed from allowed paths.
-    Items,
+    /// Files and folders listed from allowed paths: (path, recursive).
+    Items(Vec<(String, bool)>),
     /// Anything computed: usable as text or data, never as a path.
     Data,
 }
@@ -670,10 +688,10 @@ fn text_of(v: &Val) -> Option<String> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq)]
 enum Up {
     None,
-    Items,
+    Items(Vec<(String, bool)>),
     Data,
 }
 
@@ -1004,7 +1022,7 @@ impl<'a> Interp<'a> {
         let mut up = Up::None;
         loop {
             let v = if self.is_command_start() {
-                self.command(up)?
+                self.command(up.clone())?
             } else {
                 if up != Up::None {
                     return err("an expression after a pipe");
@@ -1014,7 +1032,10 @@ impl<'a> Interp<'a> {
             if matches!(self.peek(), Some(T::Pipe)) {
                 self.p += 1;
                 self.skip_nl();
-                up = if v == Val::Items { Up::Items } else { Up::Data };
+                up = match v {
+                    Val::Items(i) => Up::Items(i),
+                    _ => Up::Data,
+                };
                 continue;
             }
             return Ok(v);
@@ -1227,7 +1248,15 @@ impl<'a> Interp<'a> {
                         .ok_or_else(|| format!("`{raw}` is not an allowed parameter of `{name}`"))?;
                     let v = match kind {
                         Pk::Sw => Val::Bool(true),
-                        Pk::Blk => self.arg_value(true)?,
+                        Pk::Blk => {
+                            // `ForEach-Object Delete` binds -MemberName and
+                            // calls the method on every item: only a `{}`
+                            // block is a script this scan has read.
+                            if !matches!(self.peek(), Some(T::LBrace)) {
+                                return err("a script-block parameter given something other than a { } block");
+                            }
+                            self.arg_value(true)?
+                        }
                         _ => self.arg_value(false)?,
                     };
                     if canon == "erroraction" {
@@ -1245,7 +1274,10 @@ impl<'a> Interp<'a> {
                         return err("a parameter given twice");
                     }
                 }
-                Some(_) => {
+                Some(other) => {
+                    if spec.blocks && !matches!(other, T::LBrace) {
+                        return err("a bare word where a { } script block was expected");
+                    }
                     let v = self.arg_value(spec.blocks)?;
                     positional.push(v);
                 }
@@ -1283,18 +1315,24 @@ impl<'a> Interp<'a> {
         if args.first().is_none_or(|a| a.starts_with('-')) {
             return err("git global options or no subcommand");
         }
+        const BANNED: &[&str] = &[
+            "--output", "--ext-diff", "--textconv", "--open-files-in-pager", "--exec",
+            "--upload-pack", "--receive-pack", "--config", "--git-dir", "--work-tree",
+        ];
+        let is_grep = args[0].eq_ignore_ascii_case("grep");
         for a in &args {
             let l = a.to_ascii_lowercase();
-            if l.starts_with("--output")
-                || l.starts_with("--ext-diff")
-                || l.starts_with("--textconv")
-                || l.starts_with("--open-files-in-pager")
-                || l.starts_with("--exec")
-                || l.starts_with("--upload-pack")
-                || l == "-o"
+            // An option may be abbreviated to any unambiguous prefix.
+            let name = l.split('=').next().unwrap_or("");
+            let abbreviates = name.starts_with("--")
+                && name.len() > 2
+                && BANNED.iter().any(|b| b.starts_with(name));
+            if abbreviates
+                || l.starts_with("-o")
+                || (is_grep && l.starts_with("-f"))
                 || l.contains('\n')
             {
-                return err("a git option that writes files or runs programs");
+                return err("a git option that writes files, reads patterns from a file or runs programs");
             }
         }
         match crate::tools::git_tool::plan("git", &args) {
@@ -1399,7 +1437,7 @@ impl<'a> Interp<'a> {
                 Val::Str(s) | Val::Path(s) => s.as_str(),
                 _ => return err("a path this scan cannot compute statically"),
             };
-            let abs = self.abs_path(raw, matches!(mode, Use::Read | Use::Delete))?;
+            let abs = self.abs_path(raw, matches!(mode, Use::Read | Use::Content | Use::Delete))?;
             self.check_abs(&abs, mode)?;
             out.push(abs);
         }
@@ -1421,6 +1459,14 @@ impl<'a> Interp<'a> {
         }
         if !wild && crate::project_browse::is_sensitive_name(last) {
             return err("a credential file");
+        }
+        if wild && matches!(mode, Use::Content | Use::Delete | Use::Write) && glob_reaches_protected(last) {
+            return err("a wildcard that can match a credential file, `.git` or `.jan`");
+        }
+        if matches!(mode, Use::Delete | Use::Write)
+            && (self.roots.is_root(abs) || self.roots.is_ancestor_of_root(abs))
+        {
+            return err("a root folder, or a folder holding one");
         }
         if mode == Use::Delete && wild && self.roots.is_root(parent) {
             return err("a bulk delete at the root of a folder");
@@ -1460,25 +1506,41 @@ impl<'a> Interp<'a> {
         let has = |k: &str| a.contains_key(k);
         match cmd {
             Cmd::GetChildItem | Cmd::GetItem => {
-                match self.path_arg(a) {
-                    Some(v) => {
-                        self.use_paths(v, Use::Read)?;
-                    }
-                    None => match up {
+                let recursive = has("recurse");
+                let listed: Vec<(String, bool)> = match self.path_arg(a) {
+                    Some(v) => self
+                        .use_paths(v, Use::Read)?
+                        .into_iter()
+                        .map(|p| (p, recursive))
+                        .collect(),
+                    None => match &up {
                         Up::Data => return err("paths piped in from text"),
                         Up::None if cmd == Cmd::GetItem => return err("Get-Item without a path"),
-                        _ => {}
+                        Up::None => vec![(self.cwd.clone(), recursive)],
+                        Up::Items(i) => i.iter().map(|(p, r)| (p.clone(), *r || recursive)).collect(),
                     },
+                };
+                if recursive {
+                    // 5.1 follows junctions under -Recurse.
+                    for (p, _) in &listed {
+                        let dir = wildcard_parent(p);
+                        let mut budget = MAX_WALK;
+                        if walk_problem(Path::new(&dir), &mut budget, 0, false) {
+                            return err("a recursive listing over a folder holding links or junctions");
+                        }
+                    }
                 }
-                Ok(Val::Items)
+                Ok(Val::Items(listed))
             }
             Cmd::GetContent => {
                 match self.path_arg(a) {
                     Some(v) => {
-                        self.use_paths(v, Use::Read)?;
+                        self.use_paths(v, Use::Content)?;
                     }
-                    None if up == Up::Items => {}
-                    None => return err("Get-Content without a path"),
+                    None => match &up {
+                        Up::Items(i) => items_readable(i)?,
+                        _ => return err("Get-Content without a path"),
+                    },
                 }
                 Ok(Val::Data)
             }
@@ -1542,8 +1604,8 @@ impl<'a> Interp<'a> {
                             p.clone()
                         };
                         let mut budget = MAX_WALK;
-                        if has_link_below(Path::new(&target), &mut budget, 0) {
-                            return err("a recursive delete over a folder holding links or junctions");
+                        if walk_problem(Path::new(&target), &mut budget, 0, true) {
+                            return err("a recursive delete over a folder holding links, junctions, `.git`, `.jan` or credential files");
                         }
                     }
                 }
@@ -1554,7 +1616,7 @@ impl<'a> Interp<'a> {
                     Some(v) => {
                         self.use_paths(v, Use::Read)?;
                     }
-                    None if up == Up::Items => {}
+                    None if matches!(up, Up::Items(_)) => {}
                     None => return err("Test-Path without a path"),
                 }
                 Ok(Val::Data)
@@ -1608,7 +1670,7 @@ impl<'a> Interp<'a> {
                 let paths = self.use_paths(v, Use::Exact)?;
                 match paths.as_slice() {
                     [one] => Ok(Val::Path(one.clone())),
-                    _ => Ok(Val::Items),
+                    _ => Ok(Val::Items(paths.into_iter().map(|p| (p, false)).collect())),
                 }
             }
             Cmd::Write => Ok(Val::Data),
@@ -1616,10 +1678,13 @@ impl<'a> Interp<'a> {
                 a.get("pattern").ok_or("Select-String without a pattern")?;
                 match self.path_arg(a) {
                     Some(v) => {
-                        self.use_paths(v, Use::Read)?;
+                        self.use_paths(v, Use::Content)?;
                     }
-                    None if up != Up::None => {}
-                    None => return err("Select-String reading no input"),
+                    None => match &up {
+                        Up::Items(i) => items_readable(i)?,
+                        Up::Data => {}
+                        Up::None => return err("Select-String reading no input"),
+                    },
                 }
                 Ok(Val::Data)
             }
@@ -1629,7 +1694,10 @@ impl<'a> Interp<'a> {
                     return err("Where-Object without a script block");
                 }
                 let shaping = has("property") || has("expandproperty");
-                Ok(if up == Up::Items && !shaping { Val::Items } else { Val::Data })
+                Ok(match up {
+                    Up::Items(i) if !shaping => Val::Items(i),
+                    _ => Val::Data,
+                })
             }
             Cmd::ForEach => {
                 if !has("process") {
@@ -1662,11 +1730,19 @@ impl<'a> Interp<'a> {
     }
 }
 
-/// Whether `p` is, or holds below it, a symbolic link or a junction. An
-/// unreadable folder, or one larger than the budget, counts as holding one.
-fn has_link_below(p: &Path, budget: &mut usize, depth: usize) -> bool {
+/// Whether `p` is, or holds below it, a symbolic link or a junction -- and,
+/// with `names`, a `.git` / `.jan` entry or a credential file. An unreadable
+/// folder, or one larger than the budget, counts as a problem.
+fn walk_problem(p: &Path, budget: &mut usize, depth: usize, names: bool) -> bool {
     if depth > 48 {
         return true;
+    }
+    if names {
+        if let Some(n) = p.file_name().and_then(|n| n.to_str()) {
+            if protected_name(n) {
+                return true;
+            }
+        }
     }
     let Ok(md) = std::fs::symlink_metadata(p) else {
         // Not there (yet): nothing to follow.
@@ -1686,7 +1762,7 @@ fn has_link_below(p: &Path, budget: &mut usize, depth: usize) -> bool {
             *budget -= 1;
             match e {
                 Ok(e) => {
-                    if has_link_below(&e.path(), budget, depth + 1) {
+                    if walk_problem(&e.path(), budget, depth + 1, names) {
                         return true;
                     }
                 }
@@ -1695,6 +1771,76 @@ fn has_link_below(p: &Path, budget: &mut usize, depth: usize) -> bool {
         }
     }
     false
+}
+
+fn protected_name(n: &str) -> bool {
+    n.eq_ignore_ascii_case(".git")
+        || n.eq_ignore_ascii_case(".jan")
+        || crate::project_browse::is_sensitive_name(n)
+}
+
+/// The folder a listing path covers: the path itself, or the parent of a
+/// wildcard pattern.
+fn wildcard_parent(p: &str) -> String {
+    match p.rsplit_once('/') {
+        Some((d, last)) if last.contains(['*', '?']) => d.to_string(),
+        _ => p.to_string(),
+    }
+}
+
+/// Listed paths whose contents may be read: nothing under them (or, for a
+/// non-recursive listing, directly in them) is a credential file, `.git`,
+/// `.jan` or a link. Checked against the disk as it is now.
+fn items_readable(items: &[(String, bool)]) -> R<()> {
+    for (p, recursive) in items {
+        let dir = wildcard_parent(p);
+        let path = Path::new(&dir);
+        let mut budget = MAX_WALK;
+        let bad = if *recursive {
+            walk_problem(path, &mut budget, 0, true)
+        } else {
+            match std::fs::symlink_metadata(path) {
+                Err(_) => false,
+                Ok(md) if !md.is_dir() => walk_problem(path, &mut budget, 0, true),
+                Ok(_) => match std::fs::read_dir(path) {
+                    Err(_) => true,
+                    Ok(rd) => rd
+                        .flatten()
+                        .any(|e| protected_name(&e.file_name().to_string_lossy())),
+                },
+            }
+        };
+        if bad {
+            return err("a listing that feeds a reader holds credential files, `.git`, `.jan` or links");
+        }
+    }
+    Ok(())
+}
+
+/// Whether the glob `pattern` (one path component) could match a name that
+/// is a credential file, `.git` or `.jan`.
+fn glob_reaches_protected(pattern: &str) -> bool {
+    let candidates = [
+        ".git", ".jan", ".env", ".env.local", ".env.production", ".npmrc", ".netrc", ".pgpass",
+        "credentials", "credentials.json", "service-account.json", "id_rsa", "id_ed25519",
+        "id_ecdsa", "id_rsa.pub", "x.pem", "x.key", "x.p12", "x.pfx", "x.keystore", "x.jks",
+        "x.asc", "x.gpg", "x.kdbx",
+    ];
+    let pat: Vec<char> = pattern.to_ascii_lowercase().chars().collect();
+    candidates.iter().any(|c| {
+        let name: Vec<char> = c.chars().collect();
+        glob_match(&pat, &name)
+    })
+}
+
+/// `*` and `?` glob match; the caller folds ASCII case.
+fn glob_match(pat: &[char], s: &[char]) -> bool {
+    match pat.split_first() {
+        None => s.is_empty(),
+        Some((&'*', rest)) => (0..=s.len()).any(|i| glob_match(rest, &s[i..])),
+        Some((&'?', rest)) => !s.is_empty() && glob_match(rest, &s[1..]),
+        Some((c, rest)) => s.first() == Some(c) && glob_match(rest, &s[1..]),
+    }
 }
 
 #[cfg(windows)]
@@ -2293,6 +2439,90 @@ mod tests {
         no("git status; git push --force");
         no("git log --output=build\\x");
         no("git diff --ext-diff");
+    }
+
+    // --- review findings (adversarial review of 66035d7fb) ------------------
+
+    #[test]
+    fn a_bare_word_block_argument_is_not_a_script() {
+        no("Get-ChildItem -Recurse -Force | ForEach-Object Delete");
+        no("Get-ChildItem | ForEach-Object 'Delete'");
+        no("Get-ChildItem | Where-Object Name");
+        no("Get-ChildItem | ForEach-Object -Process Delete");
+        no("Get-ChildItem | ForEach-Object -MemberName Delete");
+        ok("Get-ChildItem src | ForEach-Object { $_.Name }");
+    }
+
+    #[test]
+    fn a_lone_carriage_return_is_a_line_break() {
+        no("Write-Output hi # x\rStart-Process calc");
+        no("Write-Output ok\riex 'any code'");
+        no("Write-Output a\rRemove-Item C:\\x");
+        no("# c\rStart-Process calc");
+        ok("Write-Output a\r\nWrite-Output b");
+    }
+
+    #[test]
+    fn wildcards_and_pipelines_cannot_reach_credentials_or_git() {
+        no("Get-Content .env*");
+        no("Get-Content *.pem");
+        no("Get-Content .e?v");
+        no("Get-Content *");
+        no("Get-Content id_*");
+        no("Select-String -Pattern 'key' -Path .env*");
+        no("Remove-Item .g* -Recurse -Force");
+        no("Remove-Item src\\.g* -Recurse -Force");
+        no("Remove-Item src\\.j* -Recurse -Force");
+        no("Remove-Item src\\* -Recurse -Force");
+        ok("Get-Content src\\*.txt");
+        ok("Remove-Item build\\*.tmp");
+    }
+
+    #[test]
+    fn listings_that_feed_readers_are_name_checked() {
+        let guarded = env().root.join("guarded");
+        std::fs::create_dir_all(guarded.join(".git")).unwrap();
+        std::fs::write(guarded.join(".env"), "KEY=1").unwrap();
+        std::fs::write(env().root.join("src").join("note.txt"), "x").unwrap();
+        no("Get-ChildItem guarded -Recurse -Force | Get-Content");
+        no("Get-ChildItem guarded -Force | Get-Content");
+        no("Get-ChildItem guarded -Recurse -Force | Select-String -Pattern 'password|token|key'");
+        no("Get-ChildItem guarded | Where-Object { $true } | Select-String x");
+        no("Remove-Item guarded -Recurse -Force");
+        ok("Get-ChildItem src | Get-Content");
+        ok("Get-ChildItem src -Recurse | Select-String 'x'");
+        let _ = std::fs::remove_dir_all(guarded);
+    }
+
+    #[test]
+    fn a_root_or_its_ancestor_is_never_deleted() {
+        let base = std::env::temp_dir().join(format!("flint-pwsh-nest-{}", std::process::id()));
+        let inner = base.join("project");
+        std::fs::create_dir_all(&inner).unwrap();
+        let outer = std::fs::canonicalize(&base).unwrap();
+        let project = std::fs::canonicalize(&inner).unwrap();
+        // The project sits under a granted root: still not deletable.
+        let s = |script: &str| classify_in(script, &project, None, &[outer.clone()]);
+        assert!(!s("Remove-Item -Recurse -Force .").is_contained());
+        assert!(!s("Remove-Item -Recurse -Force ..\\project").is_contained());
+        assert!(!s("Remove-Item -Recurse -Force *").is_contained());
+        let abs = outer.to_string_lossy().trim_start_matches(r"\\?\").to_string();
+        assert!(!s(&format!("Remove-Item -Recurse -Force '{abs}'")).is_contained());
+        assert!(s("New-Item -ItemType Directory -Path sub | Out-Null").is_contained());
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn git_option_abbreviations_and_file_patterns_are_refused() {
+        no("git diff --ext-d");
+        no("git diff --ext");
+        no("git log --out=build\\x");
+        no("git show --textc");
+        no("git log -Obuild\\orderfile");
+        no("git grep -f build\\patterns");
+        no("git grep -ffile x");
+        ok("git diff --stat");
+        ok("git log --oneline -3");
     }
 
     #[test]

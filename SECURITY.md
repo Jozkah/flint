@@ -74,3 +74,28 @@ own folders, and nothing else.
   backticks, `$(` or redirection; wildcards stay in the last component of an in-project path), and the OS
   sandbox still confines whatever runs. Time-of-check/time-of-use races on links
   are not closed by this scan; the sandbox is the backstop.
+
+### PowerShell scan: classes closed after adversarial review, and limits
+
+- A script-block parameter (`ForEach-Object`, `Where-Object`) accepts only a
+  `{ }` block; a bare word would bind `-MemberName` and call a method on every
+  item (`ForEach-Object Delete`).
+- A lone carriage return is a line break in PowerShell; it is refused, and `\r`
+  also ends statements and comments in the tokenizer.
+- Wildcards are tested as globs against the protected names (`.git`, `.jan`,
+  `.env*`, key and keystore extensions, `id_*`) for content reads and deletes;
+  `*` and `.g*` are refused, `*.txt` is not. A listing that feeds `Get-Content`
+  or `Select-String`, and every recursive delete, is walked on disk and refused
+  if it holds protected names or links. Recursive listings are refused over links
+  or junctions (5.1 follows them).
+- Deleting or writing at any root, or at a folder that holds a root, is refused
+  even when another granted root contains it.
+- `git` option abbreviations of the banned options (`--ext-d`, `--out=`) and
+  `-O<file>` / `grep -f` are refused.
+
+Known limits, left as asking is not possible to decide statically: the working
+folder is assumed to be the project root (a managed worktree that differs only
+changes where relative paths land, always inside a granted root); which shell
+runs the text is unknown, so backslash escapes in Git Bash could spell a
+different (still in-root) name; and a link planted between the scan and the run
+is not detected. The OS sandbox is the backstop for all three.
