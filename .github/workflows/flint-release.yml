@@ -362,27 +362,6 @@ jobs:
           fi
           gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
 
-  # Nightly prereleases pile up: keep the newest few and anything younger than
-  # two weeks.
-  prune-nightly:
-    name: Prune old nightly prereleases
-    if: github.event_name == 'schedule'
-    needs: [prepare]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - name: Delete nightlies older than 14 days, keeping the newest 3
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cutoff="$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)"
-          old="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 300             --json tagName,createdAt,isPrerelease             --jq "[.[] | select((.tagName | test(\"^nightly-[0-9]\")) and .isPrerelease)] | sort_by(.createdAt) | reverse | .[3:] | .[] | select(.createdAt < \"$cutoff\") | .tagName")"
-          for tag in $old; do
-            echo "Deleting $tag"
-            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
-          done
-
   publish-nightly:
     name: Publish nightly prerelease
     if: github.event_name == 'schedule' && needs.prepare.outputs.skip != 'true'

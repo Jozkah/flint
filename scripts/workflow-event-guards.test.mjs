@@ -21,7 +21,7 @@ function jobGuards(text) {
   }))
 }
 
-for (const name of ['jan-linter-and-test.yml', 'jan-tauri-build-nightly-external.yaml']) {
+for (const name of ['jan-linter-and-test.yml']) {
   test(`${name}: every job guard can be satisfied by a trigger`, () => {
     const text = read(name)
     const on = triggers(text)

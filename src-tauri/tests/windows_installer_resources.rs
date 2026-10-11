@@ -1,6 +1,6 @@
 //! Guards the one file that silently drops bundled resources.
 //!
-//! `template-tauri-build-windows-x64.yml` patches
+//! the Windows release build patches
 //! `bundle.windows.nsis.template` into the config at build time, so the NSIS
 //! bundler stops deriving its resource list from `bundle.resources` and uses the
 //! committed template's hand-written block instead. The MSI still honours the
