@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Gauge,
+  Hand,
   MoreVertical,
   Search,
   Target,
@@ -664,7 +665,7 @@ function Overview() {
                       ['--wave-delay' as string]: `${blurWordsDelay(greeting) + 700}ms`,
                     }}
                   >
-                    👋
+                    <Hand className="size-[1em] text-warning" />
                   </span>
                 }
               />

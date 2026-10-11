@@ -193,9 +193,11 @@ function FoldedMore({
 function SidebarTabs({
   tab,
   onChange,
+  className,
 }: {
   tab: SidebarTab
   onChange: (tab: SidebarTab) => void
+  className?: string
 }) {
   const { t } = useTranslation()
   const running = useCoworkRun((s) => Object.keys(s.runs ?? {}).length)
@@ -217,7 +219,10 @@ function SidebarTabs({
           .querySelector<HTMLElement>(`[data-testid="sidebar-tab-${next}"]`)
           ?.focus()
       }}
-      className="grid h-8 shrink-0 grid-cols-2 gap-0.5 rounded-lg bg-muted p-0.5 shadow-[inset_0_0_0_0.8px_var(--border)]"
+      className={cn(
+        'grid h-8 shrink-0 grid-cols-2 gap-0.5 rounded-lg bg-muted p-0.5 shadow-[inset_0_0_0_0.8px_var(--border)]',
+        className
+      )}
     >
       {tabs.map(({ id, label }) => {
         const selected = tab === id
@@ -333,15 +338,6 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     onNavigate?.()
   }
 
-  const resume: LinkRow[] = [
-    {
-      to: route.overview,
-      label: t('common:shell.resume'),
-      icon: 'sb-dashboard',
-      active: pathname === route.overview,
-      testId: 'nav-overview',
-    },
-  ]
   // Both tabs.
   const shared: LinkRow[] = [
     {
@@ -470,17 +466,33 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           <FlintMark className="size-[26px] drop-shadow-[0_1px_1px_rgba(0,0,0,.25)] transition-transform duration-500 ease-expo group-hover/brand:-rotate-12 group-hover/brand:scale-110 group-active/brand:rotate-[8deg] group-active/brand:scale-90 dark:brightness-125 dark:drop-shadow-[0_0_1px_rgba(255,255,255,.35)]" />
           <span className="text-base font-semibold tracking-[-0.01em]">Flint</span>
         </Link>
-        {!isMobile && (
-          <button
-            type="button"
-            onClick={toggle}
-            aria-label={t('common:shell.collapseSidebar')}
-            title={t('common:shell.collapseSidebar')}
-            className="-m-1 grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&>svg]:size-4"
+        <div className="flex items-center gap-0.5">
+          <Link
+            to={route.overview}
+            onClick={onNavigate}
+            data-testid="nav-overview"
+            aria-label={t('common:shell.resume')}
+            title={t('common:shell.resume')}
+            aria-current={pathname === route.overview ? 'page' : undefined}
+            className={cn(
+              'grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 [&>svg]:size-4',
+              pathname === route.overview && 'bg-accent text-foreground'
+            )}
           >
-            <Icon name="sidebar-right" />
-          </button>
-        )}
+            <Icon name="sb-dashboard" />
+          </Link>
+          {!isMobile && (
+            <button
+              type="button"
+              onClick={toggle}
+              aria-label={t('common:shell.collapseSidebar')}
+              title={t('common:shell.collapseSidebar')}
+              className="-m-1 grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&>svg]:size-4"
+            >
+              <Icon name="sidebar-right" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 px-3 pb-4">
@@ -502,12 +514,8 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           </span>
         </button>
 
-        {/* Half the column gap (-mt-2 of gap-4): it belongs to the search. */}
-        <NavList className="-mt-2 shrink-0">
-          <LinkRows rows={resume} onNavigate={onNavigate} />
-        </NavList>
-
-        <SidebarTabs tab={tab} onChange={chooseTab} />
+        {/* Half the column gap (-mt-2 of gap-4): the tabs belong to the search. */}
+        <SidebarTabs tab={tab} onChange={chooseTab} className="-mt-2" />
 
         <nav
           ref={navRef}
@@ -520,7 +528,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           {tab === 'chat' ? (
             <>
               <NavGroup>
-                <NavGroupLabel>{t('common:appRail.workspace')}</NavGroupLabel>
+                <NavGroupLabel className="px-2.5 text-[11px] font-medium tracking-wide text-subtle-foreground">
+                  {t('common:appRail.navWorkspace')}
+                </NavGroupLabel>
                 <NavList>
                   <NavItem>
                     <NavButton
@@ -543,7 +553,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             </>
           ) : (
             <NavGroup>
-              <NavGroupLabel>{t('common:appRail.workspace')}</NavGroupLabel>
+              <NavGroupLabel className="px-2.5 text-[11px] font-medium tracking-wide text-subtle-foreground">
+                  {t('common:appRail.navWorkspace')}
+                </NavGroupLabel>
               <NavList>
                 <CoworkNav
                   after={

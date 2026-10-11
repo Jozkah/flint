@@ -361,9 +361,12 @@ html.reduce-motion *::after {
    the way the design does (zoom = size / 16px). Inside it the rem type scale
    stays at design size, or text would grow twice. The height is divided back
    so the zoomed surface still fills the window exactly. An engine without
-   typed calc() division keeps zoom 1 and falls back to the rem scale alone. */
+   typed calc() division keeps zoom 1 and falls back to the rem scale alone.
+   WebKitGTK (Linux) is kept out with html.no-css-zoom: its zoom leaves a bar
+   under the window and offsets the sidebar glide, so it uses the same rem
+   fallback. */
 @supports (zoom: calc(2px / 1px)) {
-  .app-zoom {
+  html:not(.no-css-zoom) .app-zoom {
     --app-zoom: calc(var(--font-size-base, 16px) / 16px);
     --app-font-base: 16px;
     --text-xs: 0.75rem;

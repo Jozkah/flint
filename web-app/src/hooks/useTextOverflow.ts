@@ -9,7 +9,8 @@ import { useLayoutEffect, type RefObject } from 'react'
  */
 export function observeTextOverflow(el: HTMLElement): () => void {
   const measure = () => {
-    if (el.scrollWidth > el.clientWidth) el.setAttribute('data-overflow', 'true')
+    // +1: sub-pixel rounding must not read as overflow.
+    if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-overflow', 'true')
     else el.removeAttribute('data-overflow')
   }
   measure()
@@ -19,9 +20,16 @@ export function observeTextOverflow(el: HTMLElement): () => void {
   const mutate =
     typeof MutationObserver === 'undefined' ? null : new MutationObserver(measure)
   mutate?.observe(el, { childList: true, characterData: true, subtree: true })
+  // A web font swapping in reflows the text without resizing the box, so the
+  // observers above never see it. Without this, a one-word label measured in
+  // the fallback font keeps its fade for good.
+  const fonts = typeof document === 'undefined' ? undefined : document.fonts
+  fonts?.ready?.then(measure).catch(() => {})
+  fonts?.addEventListener?.('loadingdone', measure)
   return () => {
     resize?.disconnect()
     mutate?.disconnect()
+    fonts?.removeEventListener?.('loadingdone', measure)
   }
 }
 
