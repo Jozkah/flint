@@ -13,6 +13,7 @@ pub mod mcp;
 pub mod provider;
 pub mod rooms;
 pub mod resources;
+pub mod runner;
 pub mod server;
 pub mod settings;
 pub mod uploads;

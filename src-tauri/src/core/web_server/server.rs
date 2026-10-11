@@ -60,6 +60,8 @@ pub struct Options {
     pub agent_roots: Vec<PathBuf>,
     /// `--agent-run`: let the server run agent sessions (needs a root).
     pub agent_run: bool,
+    /// What the runner allows (`--agent-max-sessions` and the rest).
+    pub agent_runner: super::runner::RunnerOptions,
     /// Extra exact `host[:port]` values accepted in the Host header; required
     /// when binding beyond loopback.
     pub allowed_hosts: Vec<String>,
@@ -750,7 +752,36 @@ fn plugin_error(error: &tauri_plugin_llamacpp::error::ServerError) -> Resp {
 /// The Tauri commands the app's extensions call, answered for a browser.
 /// Anything not listed is refused, so a command added to the desktop app does
 /// not become reachable from a browser by accident.
-async fn rpc_route(state: &State, command: &str, args: serde_json::Value) -> Resp {
+async fn rpc_route(
+    state: &State,
+    command: &str,
+    args: serde_json::Value,
+    caller: &super::runner::Caller,
+) -> Resp {
+    if super::runner::handles(command) {
+        let Some(agent) = &state.agent else {
+            return text(
+                StatusCode::FORBIDDEN,
+                "The agent review plane is off on this server. Start it with --agent-root <folder>.",
+            );
+        };
+        return match agent.call_run(command, &args, caller).await {
+            Ok(value) => json(&value),
+            Err(failure) => {
+                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
+                match failure.body {
+                    serde_json::Value::String(message) => {
+                        reply(status, "text/plain; charset=utf-8", message)
+                    }
+                    other => reply(
+                        status,
+                        "application/json",
+                        serde_json::to_vec(&other).unwrap_or_default(),
+                    ),
+                }
+            }
+        };
+    }
     if files::handles(command) {
         let (root, command) = (state.data_folder.clone(), command.to_owned());
         return match tokio::task::spawn_blocking(move || files::call(&root, &command, &args)).await {
@@ -1284,6 +1315,10 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
             query_param(req.uri().query(), "after").as_deref(),
             req.headers().get("last-event-id").and_then(|v| v.to_str().ok()),
         );
+        // A session that is live here streams: replay, then the tail.
+        if let Some(live) = agent.tail(&id, after) {
+            return live;
+        }
         return match tokio::task::spawn_blocking(move || agent.replay(&id, after)).await {
             Ok(Ok(body)) => reply(StatusCode::OK, "text/event-stream", body),
             Ok(Err(failure)) => {
@@ -1346,11 +1381,12 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
         let Some(command) = percent_decode(command) else {
             return text(StatusCode::BAD_REQUEST, "Invalid command");
         };
+        let caller = super::runner::Caller::digest(session.unwrap_or(""), client);
         let args = match read_json(req).await {
             Ok(args) => args,
             Err(response) => return response,
         };
-        return rpc_route(&state, &command, args).await;
+        return rpc_route(&state, &command, args, &caller).await;
     }
     if let Some(rest) = path.strip_prefix("/api/v1/mcp/") {
         return mcp_route(&state, &method, rest, req).await;
@@ -1501,11 +1537,12 @@ pub async fn serve(options: Options) -> io::Result<()> {
     // background starter use to reach it. A name an attacker controls can never
     // be this, so it does not weaken the check against DNS rebinding.
     hosts.insert(listener.local_addr()?.to_string());
+    let bus = events::Bus::new();
     let agent = agent::Agent::open_with(&options.data_folder, &options.agent_roots, options.agent_run)
-        .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+        .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?
+        .map(|agent| agent.with_runner(options.agent_runner.clone(), bus.clone()));
     let (auth, bootstrap) = AuthStore::open(options.auth_file)?;
     let settings_store = settings::Store::new(&options.data_folder);
-    let bus = events::Bus::new();
     let shutdown = Arc::new(tokio::sync::Notify::new());
     let shutdown_token = control::new_token();
     let data_folder_for_run = options.data_folder.clone();
@@ -1674,6 +1711,7 @@ mod tests {
             allow_mcp_stdio: false,
             agent_roots: Vec::new(),
             agent_run: false,
+            agent_runner: Default::default(),
             allowed_hosts: Vec::new(),
             allowed_origins: Vec::new(),
             llama_worker: None,
@@ -1726,6 +1764,7 @@ mod tests {
             allow_mcp_stdio: false,
             agent_roots: Vec::new(),
             agent_run: false,
+            agent_runner: Default::default(),
             allowed_hosts: hosts.into_iter().map(String::from).collect(),
             allowed_origins: origins.into_iter().map(String::from).collect(),
             llama_worker: None,

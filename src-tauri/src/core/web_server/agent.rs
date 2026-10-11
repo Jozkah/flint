@@ -25,7 +25,10 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
+use std::sync::Arc;
+
 use super::agent_runs;
+use super::runner::{self, Caller, Runner, RunnerOptions};
 use crate::core::agent::campaign;
 use tauri_plugin_agent_tools::proposal;
 use tauri_plugin_agent_tools::tools::jail;
@@ -100,13 +103,13 @@ pub struct Agent {
     roots: Vec<PathBuf>,
     /// `--agent-run`: the operator asked this server to run agent sessions.
     run: bool,
+    /// The session runner, present once [`Agent::with_runner`] built it.
+    runner: Option<Arc<Runner>>,
+    options: RunnerOptions,
 }
 
-/// Whether the session runner is built into this release. P0 ships the probe,
-/// the flag and the read-only session views; the runner is phase P1.
-const RUNNER_READY: bool = false;
-/// Sessions the runner will allow at once (reported so a client can say so).
-const MAX_SESSIONS: u32 = 4;
+/// Whether the session runner is built into this release (P1: `runner.rs`).
+const RUNNER_READY: bool = true;
 
 /// What the Rust loop on the server does not match yet, said to the client
 /// instead of left to be discovered.
@@ -173,7 +176,79 @@ impl Agent {
             data_folder: data_folder.to_path_buf(),
             roots: canonical,
             run,
+            runner: None,
+            options: RunnerOptions::default(),
         }))
+    }
+
+    /// Build the session runner when `--agent-run` is on. A separate step so
+    /// the plain review plane needs none of its options.
+    pub fn with_runner(mut self, options: RunnerOptions, bus: super::events::Bus) -> Agent {
+        self.options = options.clone();
+        if self.run {
+            self.runner = Some(Arc::new(Runner::new(&self.data_folder, &self.roots, options, bus)));
+        }
+        self
+    }
+
+    /// Why this server will not run a session, in words a person can act on;
+    /// empty when it will.
+    fn missing(&self) -> Vec<&'static str> {
+        let backend = jail::backend();
+        let mut missing: Vec<&'static str> = Vec::new();
+        if !self.run {
+            missing.push("start the server with --agent-run");
+        }
+        if !RUNNER_READY {
+            missing.push("the session runner is not in this release");
+        }
+        if self.options.require_sandbox && !backend.enforces() {
+            missing.push(if cfg!(target_os = "linux") {
+                "install bubblewrap (bwrap) so commands run in a sandbox"
+            } else if cfg!(target_os = "macos") {
+                "the macOS sandbox (sandbox-exec) is unavailable"
+            } else {
+                "the Windows AppContainer sandbox helper is unavailable"
+            });
+        }
+        missing
+    }
+
+    /// The runner when sessions may run here (flag on, sandbox ready).
+    fn ready_runner(&self) -> Result<&Arc<Runner>, Fail> {
+        let missing = self.missing();
+        match (&self.runner, missing.is_empty()) {
+            (Some(runner), true) => Ok(runner),
+            _ => Err(fail(
+                403,
+                format!("this server does not run agent sessions: {}", missing.join("; ")),
+            )),
+        }
+    }
+
+    /// The live event stream of a session, when it is live here.
+    pub fn tail(&self, id: &str, after: u64) -> Option<super::server::Resp> {
+        self.runner.as_ref()?.tail(id, after)
+    }
+
+    /// A runner command (`agent_run_create` and the rest). Async, unlike
+    /// [`Agent::call`]: it waits for the session's task.
+    pub async fn call_run(
+        &self,
+        command: &str,
+        args: &Value,
+        caller: &Caller,
+    ) -> Result<Value, Fail> {
+        if !runner::handles(command) {
+            return Err(fail(404, "Unknown agent command"));
+        }
+        let runner = self.ready_runner()?.clone();
+        let confined = if command == "agent_run_create" {
+            Some(self.confine(text(args, "folder")?)?)
+        } else {
+            None
+        };
+        runner.call(command, args, caller, confined).await
     }
 
     /// The canonical form of `raw` when it names an existing path inside a root.
@@ -194,10 +269,22 @@ impl Agent {
     pub fn call(&self, command: &str, args: &Value) -> Result<Value, Fail> {
         match command {
             "agent_server_info" => Ok(self.info()),
-            "agent_run_list" => Ok(agent_runs::list(&self.data_folder, &self.roots)),
+            "agent_run_list" => {
+                let mut listed = agent_runs::list(&self.data_folder, &self.roots);
+                if let (Some(runner), Some(rows)) =
+                    (&self.runner, listed.get_mut("sessions").and_then(Value::as_array_mut))
+                {
+                    rows.iter_mut().for_each(|row| runner.overlay(row));
+                }
+                Ok(listed)
+            }
             "agent_run_get" => {
                 let id = text(args, "id")?;
-                agent_runs::get(&self.data_folder, &self.roots, id)
+                let mut row = agent_runs::get(&self.data_folder, &self.roots, id)?;
+                if let Some(runner) = &self.runner {
+                    runner.overlay(&mut row);
+                }
+                Ok(row)
             }
             "agent_server_folders" => self.folders(args),
             "agent_campaign_list" => to_json(campaign::list(&self.data_folder)),
@@ -292,23 +379,8 @@ impl Agent {
     /// is in words a person can act on.
     fn info(&self) -> Value {
         let backend = jail::backend();
-        let ready = self.run && RUNNER_READY && backend.enforces();
-        let mut missing: Vec<&str> = Vec::new();
-        if !self.run {
-            missing.push("start the server with --agent-run");
-        }
-        if !RUNNER_READY {
-            missing.push("the session runner is not in this release yet (phase P1)");
-        }
-        if !backend.enforces() {
-            missing.push(if cfg!(target_os = "linux") {
-                "install bubblewrap (bwrap) so commands run in a sandbox"
-            } else if cfg!(target_os = "macos") {
-                "the macOS sandbox (sandbox-exec) is unavailable"
-            } else {
-                "the Windows AppContainer sandbox helper is unavailable"
-            });
-        }
+        let missing = self.missing();
+        let ready = missing.is_empty() && self.runner.is_some();
         let folders: Vec<_> = self.roots.iter().map(|r| r.to_string_lossy()).collect();
         json!({
             "agent": true,
@@ -322,7 +394,11 @@ impl Agent {
             "runnerPlanned": true,
             "sandbox": backend.as_str(),
             "enforces": backend.enforces(),
-            "maxSessions": MAX_SESSIONS,
+            "maxSessions": self.options.max_sessions,
+            "allowBypass": self.options.allow_bypass,
+            "allowAlways": self.options.allow_always,
+            "approvalTimeoutSecs": self.options.approval_timeout.as_secs(),
+            "liveSessions": self.runner.as_ref().map_or(0, |r| r.live_count()),
             "missing": missing,
             "parityGaps": PARITY_GAPS,
         })
@@ -472,14 +548,30 @@ mod tests {
             .unwrap();
         let info = agent.call("agent_server_info", &json!({})).unwrap();
         assert_eq!(info["runRequested"], true);
-        // P0 has no runner: never advertised as running sessions.
+        // No runner built (`with_runner` not called): never advertised.
         assert_eq!(info["runsSessions"], false);
         assert_eq!(info["runnerPlanned"], true);
         assert!(info["sandbox"].is_string());
         assert!(info["enforces"].is_boolean());
         assert_eq!(info["maxSessions"], 4);
-        assert!(!info["missing"].as_array().unwrap().is_empty());
+        assert_eq!(info["allowBypass"], false);
+        assert_eq!(info["allowAlways"], false);
         assert!(!info["parityGaps"].as_array().unwrap().is_empty());
+        // With the runner built, readiness follows the sandbox alone.
+        let built = Agent::open_with(data.path(), &[work.path().to_path_buf()], true)
+            .unwrap()
+            .unwrap()
+            .with_runner(RunnerOptions::default(), super::super::events::Bus::new());
+        let info = built.call("agent_server_info", &json!({})).unwrap();
+        assert_eq!(info["runsSessions"], jail::backend().enforces());
+        let lax = Agent::open_with(data.path(), &[work.path().to_path_buf()], true)
+            .unwrap()
+            .unwrap()
+            .with_runner(
+                RunnerOptions { require_sandbox: false, ..Default::default() },
+                super::super::events::Bus::new(),
+            );
+        assert_eq!(lax.call("agent_server_info", &json!({})).unwrap()["runsSessions"], true);
         let off = Agent::open(data.path(), &[work.path().to_path_buf()]).unwrap().unwrap();
         assert_eq!(off.call("agent_server_info", &json!({})).unwrap()["runRequested"], false);
     }

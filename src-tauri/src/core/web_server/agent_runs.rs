@@ -55,7 +55,7 @@ fn fail(status: u16, message: impl Into<String>) -> Fail {
 }
 
 /// A session's summary row, and the thread it came from.
-struct Found {
+pub(crate) struct Found {
     row: Value,
 }
 
@@ -141,7 +141,7 @@ fn read_thread(data_folder: &Path, id: &str) -> Result<Value, Fail> {
     serde_json::from_str(&raw).map_err(|_| fail(404, "that session cannot be read"))
 }
 
-fn open(data_folder: &Path, roots: &[PathBuf], id: &str) -> Result<(Found, Value), Fail> {
+pub(crate) fn open(data_folder: &Path, roots: &[PathBuf], id: &str) -> Result<(Found, Value), Fail> {
     let thread = read_thread(data_folder, id)?;
     let links = campaign_links(data_folder);
     let (row, folder) = summarize(id, &thread, &links);
