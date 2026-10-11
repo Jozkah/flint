@@ -112,5 +112,13 @@
     "remote": "云提供商",
     "remoteHint": "消息会离开这台电脑",
     "inUse": "此处正在使用：{{model}} · {{provider}}"
+  },
+  "offload": {
+    "heading": "GPU offload (this load)",
+    "all": "All {{layers}} layers run on the GPU.",
+    "partial": "{{gpu}} of {{total}} layers run on the GPU; the rest run on the CPU, which is slower.",
+    "none": "No layers run on the GPU: the model is running on the CPU.",
+    "unknown": "The engine did not say how many layers it offloaded.",
+    "memory": "Model weights: {{gpu}} on the GPU, {{cpu}} in system memory."
   }
 }
