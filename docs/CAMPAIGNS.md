@@ -160,6 +160,8 @@ Known gaps and limits:
 
 You can also just ask for a campaign in a Cowork chat on a git folder ("split this into parallel tasks and plan it as a campaign"); the model has the same `campaign_plan` tool.
 
+From your phone: the phone app (see `docs/MOBILE.md`) has **Campaigns** under Cowork in its menu. It lists your campaigns with the same one-line headline, then shows one campaign with its progress, the tasks grouped Needs you, Working, Up next and Done, how many files each task changed, and the approval cards of the coordinator and its tasks (the plan card included). Pause, Resume, Cancel, Retry, Skip and Stop are there, and when the campaign is ready, Check and prepare changes runs the same final check, then Apply lists the files and applies them to your folder. Files with a review flag need a tick first, and sensitive files are never applied. All of it goes through the computer's own campaign commands and works only while Approvals from phones is on. The phone cannot start a campaign; start it on the computer or ask for it in a Cowork chat from the phone.
+
 ## Open questions
 
 1. Decided: the UI name is Campaigns. Legacy "project" (folder) naming is untouched.
