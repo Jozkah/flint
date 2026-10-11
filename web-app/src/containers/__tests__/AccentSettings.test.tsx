@@ -44,35 +44,18 @@ describe('AccentSettings', () => {
     expect(screen.getByTestId('accent-reset')).not.toBeDisabled()
   })
 
-  it('applies a valid hex as it is typed', () => {
+  it('applies a custom colour and keeps white text off a very light one', () => {
     render(<AccentSettings />)
-    fireEvent.change(screen.getByTestId('accent-hex-input'), { target: { value: '#3b6ea5' } })
-    expect(useInterfaceSettings.getState().accent).toEqual({ custom: '#3B6EA5' })
+    act(() => useInterfaceSettings.getState().setAccent({ custom: '#3B6EA5' }))
     expect(primary()).toBe('#3B6EA5')
-    expect(screen.getByRole('status')).toHaveTextContent('settings:accent.hexApplied')
-  })
-
-  it('rejects invalid hex clearly and keeps the current accent', () => {
-    render(<AccentSettings />)
-    fireEvent.click(screen.getByTestId('accent-preset-ink'))
-    const input = screen.getByTestId('accent-hex-input')
-
-    fireEvent.change(input, { target: { value: '#12G4' } })
-    expect(input).toHaveAttribute('aria-invalid', 'true')
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'settings:accent.hexInvalidCharacters:#12G4'
-    )
-
-    fireEvent.change(input, { target: { value: '#12AB' } })
-    fireEvent.blur(input)
-    expect(screen.getByRole('status')).toHaveTextContent('settings:accent.hexInvalid:#12AB')
-    expect(useInterfaceSettings.getState().accent).toEqual({ preset: 'ink' })
-  })
-
-  it('never uses white text on a very light custom accent', () => {
-    render(<AccentSettings />)
-    fireEvent.change(screen.getByTestId('accent-hex-input'), { target: { value: '#F4F1A0' } })
+    act(() => useInterfaceSettings.getState().setAccent({ custom: '#F4F1A0' }))
     expect(document.documentElement.style.getPropertyValue('--primary-foreground')).toBe('#141210')
+  })
+
+  it('has no separate hex field: custom lives in the picker', () => {
+    render(<AccentSettings />)
+    expect(screen.queryByTestId('accent-hex-input')).toBeNull()
+    expect(screen.getByTestId('accent-custom')).toBeInTheDocument()
   })
 
   it('re-derives tokens for the dark theme and resets to the neutral default', () => {

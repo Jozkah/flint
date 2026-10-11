@@ -1932,6 +1932,7 @@
     "home": "Flint home",
     "working": "Agents are working",
     "workspace": "Start",
+    "navWorkspace": "Workspace",
     "rooms": "Rooms",
     "library": "Library",
     "models": "Models",

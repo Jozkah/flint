@@ -8,6 +8,18 @@ import {
   writeBootAppearance,
 } from '@/lib/bootAppearance'
 
+// WebKitGTK's CSS zoom mis-sizes the app surface and the sidebar glide, so
+// Linux webviews use the rem font scale instead (see .app-zoom in index.css).
+// Set at module load so the first paint is already unzoomed.
+if (
+  typeof navigator !== 'undefined' &&
+  /Linux/.test(navigator.userAgent) &&
+  !/Android/.test(navigator.userAgent) &&
+  !/Chrome|Chromium|Edg\//.test(navigator.userAgent)
+) {
+  document.documentElement.classList.add('no-css-zoom')
+}
+
 /**
  * InterfaceProvider ensures interface settings are applied on every page load
  * This component should be mounted at the root level of the application
