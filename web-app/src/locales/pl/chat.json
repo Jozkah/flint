@@ -101,7 +101,8 @@
     "recentRooms": "Pokoje",
     "needsApproval": "Needs approval",
     "needsApprovalShort": "Needs approval",
-    "done": "Done"
+    "done": "Done",
+    "failed": "Failed"
   },
   "transcriptView": {
     "steps_one": "{{count}} krok",

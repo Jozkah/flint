@@ -819,7 +819,8 @@
         "waiting": "Waiting for {{tasks}}",
         "queued": "Starts soon",
         "merged": "Merged",
-        "skipped": "Skipped"
+        "skipped": "Skipped",
+        "resolving": "Resolving a clash"
       },
       "row": {
         "open": "Open",
@@ -941,6 +942,32 @@
         "accepted": "Accepted by you",
         "acceptedWhy": "Accepted by you: {{reason}}",
         "blocks": "Waiting on this: {{tasks}}."
+      },
+      "changes": {
+        "title": "Everything this campaign changed",
+        "body": "All finished tasks together, file by file. Nothing is applied to your folder from here.",
+        "continue": "Build and test, then review"
+      },
+      "conflict": {
+        "explain": "This task and another one changed the same lines, so Flint could not combine them on its own.",
+        "files": "Files in conflict",
+        "resolve": "Try to resolve automatically",
+        "skip": "Skip task",
+        "resolving": "Resolving the conflict...",
+        "resolvingFiles": "Resolving the conflict in {{count}} files..."
+      },
+      "verify": {
+        "verdict": "Checked by the verifier",
+        "verdicts": {
+          "PASS": "Passed",
+          "PARTIAL": "Partly done",
+          "FAIL": "Did not pass",
+          "BLOCKED": "Could not decide"
+        },
+        "testsPassed": "Tests passed",
+        "testsFailed": "Tests failed",
+        "testsFailedTail": "Tests failed: {{tail}}",
+        "tokens": "Tokens spent on checking"
       }
     },
     "changes": {
@@ -985,7 +1012,52 @@
       "emptyHint": "A campaign takes one big task, splits it into smaller ones, and has several agents work on them at the same time on their own branches.",
       "doneOf": "{{done}} of {{total}} done",
       "planning": "Planning",
-      "updated": "Updated {{when}}"
+      "updated": "Updated {{when}}",
+      "loading": "Loading campaigns",
+      "loadFailed": "Couldn't load campaigns.",
+      "retry": "Retry"
+    },
+    "plan": {
+      "edit": "Edit plan",
+      "save": "Save changes",
+      "discard": "Discard changes",
+      "saved": "Plan saved.",
+      "saveFailed": "Could not save the plan: {{reason}}",
+      "unsaved": "Not saved yet",
+      "saveFirst": "Save or discard your plan changes before allowing.",
+      "addTask": "Add task",
+      "count": "{{count}} of {{max}} tasks",
+      "after": "After: {{tasks}}",
+      "moveUp": "Move {{task}} up",
+      "moveDown": "Move {{task}} down",
+      "remove": "Remove {{task}}",
+      "addAfter": "Add a task to wait for",
+      "removeAfter": "Remove this dependency",
+      "field": {
+        "title": "Task name",
+        "brief": "What to do",
+        "acceptance": "How we know it is done (one per line)",
+        "paths": "Files and folders it may change (one per line)",
+        "pathsHint": "src/feature",
+        "after": "Starts after"
+      },
+      "estimate": {
+        "one": "About {{tokens}} tokens",
+        "range": "About {{low}} to {{high}} tokens",
+        "basis": "Depends on: {{basis}}",
+        "generic": "Depends on how many files the tasks read and how often a check has to be repeated."
+      },
+      "issue": {
+        "noTasks": "Add at least one task.",
+        "tooMany": "{{count}} tasks is too many; the limit is {{max}}.",
+        "emptyTitle": "A task has no name.",
+        "emptyBrief": "{{task}} needs a description of what to do.",
+        "badPath": "{{task}}: \"{{path}}\" is not a folder or file inside the project.",
+        "selfDependency": "{{task}} cannot wait for itself.",
+        "unknownDependency": "{{task}} waits for a task that no longer exists.",
+        "cycle": "These tasks wait for each other: {{tasks}}.",
+        "overlap": "{{a}} and {{b}} would run at the same time but both change {{path}}. Make one wait for the other."
+      }
     }
   }
 }
