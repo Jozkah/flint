@@ -76,7 +76,7 @@ jobs:
       - name: Boot a simulator, install and launch
         run: |
           set -e
-          app=$(find src-tauri/gen/apple -type d -name '*.app' -path '*Products*' | head -n1)
+          app=$(find src-tauri/gen/apple/build -type d -name '*.app' | head -n1)
           if [ -z "$app" ]; then
             echo "no .app found"
             find src-tauri/gen/apple -maxdepth 4 | head -60
