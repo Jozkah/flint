@@ -761,3 +761,15 @@ describe('campaign_merge: resolve', () => {
     })
   })
 })
+
+describe('slim tool set for a small window', () => {
+  it('denies the heavy tools a campaign role does not need', async () => {
+    const { slimDenies } = await import('../coworkTools')
+    expect(slimDenies('host_ssh', 'task')).toBe(true)
+    expect(slimDenies('browser_click', 'task')).toBe(true)
+    expect(slimDenies('bash', 'task')).toBe(false)
+    expect(slimDenies('bash', 'coordinator')).toBe(true)
+    expect(slimDenies('read', 'coordinator')).toBe(false)
+    expect(slimDenies('bash', undefined)).toBe(false)
+  })
+})

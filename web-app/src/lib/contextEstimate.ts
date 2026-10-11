@@ -7,6 +7,11 @@ export function cappedContextWindow(configured?: number | null, discovered?: num
   return cap != null && window != null ? Math.min(cap, window) : cap ?? window
 }
 
+/** 32768 -> "32K", 262144 -> "262K"; small numbers stay exact. */
+function windowLabel(tokens: number): string {
+  return tokens >= 1000 ? `${Math.round(tokens / 1024)}K` : String(tokens)
+}
+
 /** Last-message preservation must not bypass the context budget. */
 /** Start of the message `assertEstimatedContextFits` throws; the chat banner keys on it. */
 export const PREFLIGHT_CONTEXT_ERROR_PREFIX = 'The estimated request exceeds the available context size.'
@@ -24,8 +29,9 @@ export function assertEstimatedContextFits(
     throw new Error(`${PREFLIGHT_CONTEXT_ERROR_PREFIX} ` +
       `Flint estimated ${need} prompt tokens plus ${reserve} reserved for the reply, ` +
       `against a window of ${window}${source ? ` (from ${source})` : ''}. ` +
-      'The latest message or fixed prompt is too large to fit after compaction; shorten it or reduce the enabled tools. ' +
-      'If the window looks wrong, set Max Context Tokens for this model.')
+      `This model's window is ${windowLabel(window)}; Flint needs about ${windowLabel(need + reserve)}. ` +
+      'Pick a larger-context model or raise Max Context Tokens in Assistant settings. ' +
+      'The latest message or fixed prompt is too large to fit after compaction; shorten it or reduce the enabled tools.')
   }
 }
 

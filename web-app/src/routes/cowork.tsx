@@ -546,6 +546,7 @@ import { useJevSettings } from '@/hooks/useJevSettings'
 import { workProfileAsker } from '@/lib/jev'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
+import { SMALL_WINDOW_TOKENS } from '@/lib/coworkTools'
 
 
 export const Route = createFileRoute(route.cowork as any)({
@@ -3352,6 +3353,17 @@ export function CoworkPage() {
       if (loaded === STOPPED) return
       runTooling = loaded.prompt
     }
+    // A campaign coordinator or task on a window of 32K or less gets the
+    // slim tool set: the full one alone would fill most of it.
+    const campaignWindow = configuredContextTokens(modelCapabilities)
+    const campaignSlim: 'coordinator' | 'task' | undefined =
+      current?.campaign &&
+      campaignWindow != null &&
+      campaignWindow <= SMALL_WINDOW_TOKENS
+        ? current.campaign.role === 'coordinator'
+          ? 'coordinator'
+          : 'task'
+        : undefined
     const transport = new CoworkChatTransport(sid, {
       // Captured now: every step of this run uses it, whatever the picker
       // says by then (janhq/jan#8905).
@@ -3360,7 +3372,8 @@ export function CoworkPage() {
       subagentNames: runAgents.map((d) => d.name),
       // Always on at depth 0, even with nothing saved: a one-off subagent with
       // an inline `system_prompt` is first-class, as it is in Rust.
-      allowSubagents: true,
+      allowSubagents: !campaignSlim,
+      slim: campaignSlim,
       webSearch,
       // The campaign tools go to a top-level session that is not itself a
       // campaign task, and only when there is a repository to branch from.
