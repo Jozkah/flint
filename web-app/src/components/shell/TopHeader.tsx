@@ -16,6 +16,7 @@ import { HeaderLiveChips } from '@/components/shell/HeaderLiveChips'
 import { crumbForPath } from '@/lib/breadcrumb'
 import { route } from '@/constants/routes'
 import { useTheme } from '@/hooks/useTheme'
+import { switchTheme } from '@/lib/themeTransition'
 import { useThreads } from '@/hooks/useThreads'
 import { useThreadManagement } from '@/hooks/useThreadManagement'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -96,43 +97,6 @@ function NotifRow({
       </span>
     </DropdownMenuItem>
   )
-}
-
-/**
- * Switch theme with the design's reveal: the new theme opens as a circle from
- * the toggle (View Transitions), or switches at once without motion.
- */
-function switchTheme(
-  from: HTMLElement,
-  next: 'light' | 'dark',
-  setTheme: (t: 'light' | 'dark') => unknown
-) {
-  const doc = document as Document & {
-    startViewTransition?: (cb: () => void) => { ready: Promise<void>; finished: Promise<void> }
-  }
-  const reduce = document.documentElement.classList.contains('reduce-motion')
-  if (reduce || !doc.startViewTransition) {
-    void setTheme(next)
-    return
-  }
-  const r = from.getBoundingClientRect()
-  const x = r.left + r.width / 2
-  const y = r.top + r.height / 2
-  const end = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
-  document.documentElement.classList.add('vt-theme')
-  const t = doc.startViewTransition(() => {
-    void setTheme(next)
-    document.documentElement.classList.toggle('dark', next === 'dark')
-  })
-  t.ready
-    .then(() =>
-      document.documentElement.animate(
-        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${end}px at ${x}px ${y}px)`] },
-        { duration: 520, easing: 'cubic-bezier(.16,1,.3,1)', pseudoElement: '::view-transition-new(root)' }
-      )
-    )
-    .catch(() => {})
-  t.finished.finally(() => document.documentElement.classList.remove('vt-theme'))
 }
 
 /**
