@@ -56,6 +56,11 @@ import { Citations } from '@/components/Citations'
 import { parseCitationsFromToolOutput } from '@/lib/citation-parser'
 import { toolKind } from '@/lib/toolKind'
 import { Chip } from '@/components/ui/chip'
+import {
+  CampaignPlanCard,
+  planCardOf,
+  usePlanDraftStore,
+} from '@/components/campaign/PlanEditor'
 import { ChangeDiff } from '@/components/ChangeDiff'
 import type { WorkState } from '@/containers/StatusChip'
 import { OpenablePath } from '@/containers/message/OpenablePath'
@@ -527,6 +532,7 @@ export const ToolApprovalActions = memo(() => {
   // its place under the same buttons. They pause first, so a double-click or a
   // repeated key cannot answer a request that was never read.
   const armed = useArmedAfterChange(pending?.requestId)
+  const planDirty = usePlanDraftStore((s) => s.dirty)
   const threadPendingCount = usePendingApprovalCount(pending?.threadId)
   // One announcement per thread, from its oldest waiting request, so several
   // pending requests do not all speak at once.
@@ -602,6 +608,8 @@ export const ToolApprovalActions = memo(() => {
   )
   const once = request.scopeExplanations['allow-once']
   const subject = requestSubject(pending.input, request.resources)
+  const planCard = planCardOf(pending.toolName, pending.input)
+  const planUnsaved = Boolean(planCard && planDirty[planCard.campaignId])
   const pendingText =
     threadPendingCount === 1
       ? t('permissions:pending.one')
@@ -666,6 +674,23 @@ export const ToolApprovalActions = memo(() => {
         showTechnicalDetails={false}
         layout="rows"
       />
+      {/* The campaign plan: estimate, task list and the editor. */}
+      {planCard && (
+        <CampaignPlanCard
+          campaignId={planCard.campaignId}
+          estimate={planCard.estimate}
+          tasks={planCard.tasks}
+        />
+      )}
+      {planUnsaved && (
+        <p
+          role="status"
+          data-testid="plan-unsaved-notice"
+          className="text-xs text-warning"
+        >
+          {t('settings:campaigns.plan.saveFirst')}
+        </p>
+      )}
       {/* A structured choice the request asks for with its answer (the
           campaign plan: how tasks work). The recommended one is selected. */}
       {pending.choice && (
@@ -769,7 +794,7 @@ export const ToolApprovalActions = memo(() => {
           <Button
             size="sm"
             type="button"
-            disabled={!armed}
+            disabled={!armed || planUnsaved}
             data-scope="allow-once"
             data-primary="true"
             aria-describedby={once ? `${moreId}-once` : undefined}
@@ -826,7 +851,7 @@ export const ToolApprovalActions = memo(() => {
                     data-suggested={
                       (repeatedCommand && scope === 'allow-thread') || undefined
                     }
-                    disabled={!armed}
+                    disabled={!armed || planUnsaved}
                     className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left transition-colors outline-hidden hover:bg-hover-row focus-visible:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 data-suggested:border-l-2 data-suggested:border-l-warning pointer-coarse:min-h-11"
                     onClick={() => decide(scope)}
                   >
