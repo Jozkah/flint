@@ -30,7 +30,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 use super::agent_runs;
-use super::campaign_driver::{self, Driver, DriverConfig, Host as _, RunnerHost};
+use super::campaign_driver::{self, Driver, DriverConfig, Host as _, RunnerHost, TaskCommand};
 use super::runner::{self, Caller, Runner, RunnerOptions};
 use crate::core::agent::campaign;
 use crate::core::agent::campaign_integration;
@@ -305,7 +305,7 @@ impl Agent {
     /// The campaign commands that need the runner or wait on a model or a
     /// project command (`campaign_driver::handles`). Signed-in clients only,
     /// like every other command.
-    pub async fn call_campaign(&self, command: &str, args: &Value) -> Result<Value, Fail> {
+    pub async fn call_campaign(&self, command: &str, args: &Value, caller: &Caller) -> Result<Value, Fail> {
         match command {
             "agent_campaign_cancel" => {
                 let id = text(args, "id")?.to_owned();
@@ -349,10 +349,11 @@ impl Agent {
                 driver.poke();
                 to_json(approved)
             }
-            "agent_campaign_finalize" => {
+            "agent_campaign_finalize" | "agent_campaign_retry_gate" => {
                 let driver = self.ready_driver()?.clone();
                 let id = text(args, "id")?.to_owned();
                 self.server_campaign(&id)?;
+                let retry = command == "agent_campaign_retry_gate";
                 let seconds = args
                     .get("seconds")
                     .and_then(Value::as_u64)
@@ -362,6 +363,9 @@ impl Agent {
                     (self.data_folder.clone(), super::session_worktree::owned_root(&self.data_folder)?);
                 let allow_checks = self.options.allow_checks;
                 let id2 = id.clone();
+                if retry {
+                    driver.record_client_command(&id, "retry gate", caller);
+                }
                 let report = tokio::task::spawn_blocking(move || {
                     let plan = campaign_integration::gate_plan(&data, &owned, &id2).map_err(|e| failure(e.message))?;
                     // The gate runs the repository's own build or test command.
@@ -371,7 +375,12 @@ impl Agent {
                             "this server does not run a project command; start it with --agent-allow-checks to run the gate",
                         ));
                     }
-                    campaign_integration::finalize(&data, &owned, &id2, seconds).map_err(|e| failure(e.message))
+                    if retry {
+                        campaign_integration::retry_gate(&data, &owned, &id2, seconds)
+                    } else {
+                        campaign_integration::finalize(&data, &owned, &id2, seconds)
+                    }
+                    .map_err(|e| failure(e.message))
                 })
                 .await
                 .map_err(|_| fail(500, "the gate did not finish"))??;
@@ -380,6 +389,42 @@ impl Agent {
                 }
                 driver.poke();
                 to_json(report)
+            }
+            "agent_campaign_gate_repair" => {
+                let driver = self.ready_driver()?.clone();
+                let id = text(args, "id")?.to_owned();
+                self.server_campaign(&id)?;
+                let made = driver.gate_repair(&id, caller).await.map_err(failure)?;
+                driver.poke();
+                to_json(made)
+            }
+            command if campaign_driver::is_task_command(command) => {
+                let driver = self.ready_driver()?.clone();
+                let id = text(args, "id")?.to_owned();
+                self.server_campaign(&id)?;
+                let tid = text(args, "taskId")?.to_owned();
+                let task_command = match command {
+                    "agent_campaign_skip_task" => {
+                        let dependants = match args.get("dependants") {
+                            Some(v) if !v.is_null() => serde_json::from_value(v.clone())
+                                .map_err(|_| fail(400, "dependants is leave, cascade or release"))?,
+                            _ => campaign::SkipDependants::Leave,
+                        };
+                        TaskCommand::Skip { dependants }
+                    }
+                    "agent_campaign_retry_task" => TaskCommand::Retry {
+                        hint: args.get("hint").and_then(Value::as_str).unwrap_or_default().to_owned(),
+                    },
+                    "agent_campaign_accept_task" => TaskCommand::Accept {
+                        reason: args.get("reason").and_then(Value::as_str).unwrap_or_default().to_owned(),
+                    },
+                    "agent_campaign_verify_again" => TaskCommand::VerifyAgain,
+                    "agent_campaign_resolve" => TaskCommand::Resolve,
+                    _ => return Err(fail(404, "Unknown agent command")),
+                };
+                let done = driver.task_command(&id, &tid, task_command, caller).await.map_err(failure)?;
+                driver.poke();
+                Ok(done)
             }
             _ => Err(fail(404, "Unknown agent command")),
         }
@@ -581,6 +626,14 @@ impl Agent {
             // Campaigns whose driver is this server (P3): created here,
             // planned by the server's model, run with no client connected.
             "runsCampaigns": ready && self.driver.is_some(),
+            // The task and gate moves a client may ask of a campaign this
+            // server drives (retry, skip, accept anyway, verify again,
+            // resolve, gate repair and retry). Empty when it drives none.
+            "campaignCommands": if ready && self.driver.is_some() {
+                json!(campaign_driver::TASK_COMMANDS)
+            } else {
+                json!([])
+            },
             "runRequested": self.run,
             "runnerPlanned": true,
             "sandbox": backend.as_str(),

@@ -765,7 +765,7 @@ async fn rpc_route(
                 "The agent review plane is off on this server. Start it with --agent-root <folder>.",
             );
         };
-        return match agent.call_campaign(command, &args).await {
+        return match agent.call_campaign(command, &args, caller).await {
             Ok(value) => json(&value),
             Err(failure) => {
                 let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);

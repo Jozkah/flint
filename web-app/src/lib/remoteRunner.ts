@@ -25,6 +25,8 @@ export type RunnerInfo = {
   runsWorktrees: boolean
   /** Campaigns can be run by the server itself, with no client attached (P3). */
   runsCampaigns: boolean
+  /** The task and gate moves a client may ask of a server campaign. */
+  campaignCommands: string[]
   runRequested: boolean
   runnerPlanned: boolean
   sandbox: string
@@ -100,6 +102,7 @@ export function parseRunnerInfo(raw: unknown): RunnerInfo {
     runsChecks: v.runsChecks === true,
     runsWorktrees: v.runsWorktrees === true,
     runsCampaigns: v.runsCampaigns === true,
+    campaignCommands: strings(v.campaignCommands),
     runRequested: v.runRequested === true,
     runnerPlanned: v.runnerPlanned === true,
     sandbox: typeof v.sandbox === 'string' ? v.sandbox : 'unknown',

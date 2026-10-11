@@ -74,6 +74,35 @@ describe('campaigns over the server transport', () => {
     await expect(campaignApi.approve('c-1', 'worktree')).rejects.toThrow(/unattended/)
   })
 
+  it('asks the server driver for task moves by the names it lists', async () => {
+    const fetch = vi.fn().mockResolvedValue(okJson({ campaign: {} }))
+    vi.stubGlobal('fetch', fetch)
+    const { setServerTransport } = await import('@/lib/serverTransportFlag')
+    setServerTransport(true)
+    try {
+      await campaignApi.retryTask('c-1', 'a', 'use the other API')
+      await campaignApi.acceptAnyway('c-1', 'a', 'me', 'read the diff')
+      await campaignApi.verifyAgain('c-1', 'a')
+      await campaignApi.resolveTask('c-1', 'a')
+      await campaignApi.skipTask('c-1', 'a', 'cascade')
+      await campaignApi.repairGate('c-1')
+      await campaignApi.retryGate('c-1')
+    } finally {
+      setServerTransport(false)
+    }
+    const calls = fetch.mock.calls.map((c) => [c[0], JSON.parse(c[1].body)])
+    expect(calls).toEqual([
+      ['/api/v1/rpc/agent_campaign_retry_task', { id: 'c-1', taskId: 'a', hint: 'use the other API' }],
+      // The server names the client itself: `by` is never sent.
+      ['/api/v1/rpc/agent_campaign_accept_task', { id: 'c-1', taskId: 'a', reason: 'read the diff' }],
+      ['/api/v1/rpc/agent_campaign_verify_again', { id: 'c-1', taskId: 'a' }],
+      ['/api/v1/rpc/agent_campaign_resolve', { id: 'c-1', taskId: 'a' }],
+      ['/api/v1/rpc/agent_campaign_skip_task', { id: 'c-1', taskId: 'a', dependants: 'cascade' }],
+      ['/api/v1/rpc/agent_campaign_gate_repair', { id: 'c-1' }],
+      ['/api/v1/rpc/agent_campaign_retry_gate', { id: 'c-1', seconds: null }],
+    ])
+  })
+
   it('reads the capability and the driver field, tolerating an older server', () => {
     expect(parseRunnerInfo({ agent: true, runsCampaigns: true }).runsCampaigns).toBe(true)
     expect(parseRunnerInfo({ agent: true }).runsCampaigns).toBe(false)

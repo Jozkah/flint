@@ -3,6 +3,7 @@
  * Thin on purpose: the backend validates and records, this only calls.
  */
 import { invoke } from '@tauri-apps/api/core'
+import { isServerTransport } from '@/lib/serverTransportFlag'
 import type {
   Campaign,
   CampaignAction,
@@ -308,6 +309,61 @@ export const campaignApi = {
   /** True the first time per key; recorded in the event log. */
   claimNotice: (id: string, key: string) =>
     invoke<boolean>('agent_campaign_claim_notice', { id, key }),
+  // -- Task moves. On a `flint serve` page these are the server driver's own
+  // commands (a server campaign's tasks are never written by the client); on
+  // the desktop they are the same transitions the board always made. --------
+  /** Queue a failed or conflicted task again, with an optional direction. */
+  retryTask: (id: string, taskId: string, hint?: string) =>
+    isServerTransport()
+      ? invoke<{ campaign: Campaign }>('agent_campaign_retry_task', {
+          id,
+          taskId,
+          hint: hint ?? '',
+        })
+      : invoke<Campaign>('agent_campaign_transition', {
+          id,
+          input: {
+            task: {
+              id: taskId,
+              to: 'queued',
+              ...(hint?.trim() ? { patch: { detail: `hint: ${hint.trim().slice(0, 1000)}` } } : {}),
+            },
+          },
+        }),
+  /**
+   * "Accept anyway": a person takes a task whose check was blocked as done.
+   * The server records the signed-in client (a digest) as who, and needs a
+   * reason; the desktop records `by` as given.
+   */
+  acceptAnyway: (id: string, taskId: string, by: string, reason?: string) =>
+    isServerTransport()
+      ? invoke<{ campaign: Campaign }>('agent_campaign_accept_task', {
+          id,
+          taskId,
+          reason: reason ?? '',
+        })
+      : invoke<Campaign>('agent_campaign_transition', {
+          id,
+          input: {
+            task: {
+              id: taskId,
+              to: 'verified',
+              patch: { accept: { by, reason: reason?.trim() || undefined } },
+            },
+          },
+        }),
+  /** Ask the verifier again about a finished task whose check was blocked (server). */
+  verifyAgain: (id: string, taskId: string) =>
+    invoke<{ started: boolean; taskId: string }>('agent_campaign_verify_again', {
+      id,
+      taskId,
+    }),
+  /** Start the conflict resolver for a conflicted task (server). */
+  resolveTask: (id: string, taskId: string) =>
+    invoke<{ started: boolean; taskId: string }>('agent_campaign_resolve', {
+      id,
+      taskId,
+    }),
   // -- A server-driven campaign (`flint serve --agent-run`, P3) -------------
   /**
    * Plan a campaign on the server for a goal: the server's model proposes the

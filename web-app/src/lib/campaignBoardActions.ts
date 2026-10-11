@@ -8,7 +8,8 @@
  * The backend validates every move, so a stale button fails with its reason.
  */
 import type { CampaignApi } from '@/lib/campaignApi'
-import type { Campaign } from '@/lib/campaignModel'
+import { isServerDriven, type Campaign } from '@/lib/campaignModel'
+import { interruptRun, steerRun } from '@/lib/remoteRunner'
 import { dependantsOf, taskActionsOf } from '@/lib/campaignView'
 import { messageIdOf } from '@/lib/campaignNotes'
 import { retryHintDetail } from '@/lib/campaignSeed'
@@ -28,12 +29,40 @@ export type RecoveryApi = Partial<{
   releaseDependants: (id: string, taskId: string) => Promise<unknown>
 }>
 
+/**
+ * What a campaign the server drives needs instead of the renderer's own
+ * runner: the task moves are the server driver's commands (`campaignApi`),
+ * and a run is steered or stopped through the server's session commands.
+ */
+export type ServerBoardDeps = {
+  steer: (sessionId: string, text: string) => Promise<unknown>
+  interrupt: (sessionId: string) => Promise<unknown>
+}
+
+const serverRunDeps: ServerBoardDeps = {
+  steer: (sessionId, text) => steerRun(sessionId, text),
+  interrupt: (sessionId) => interruptRun(sessionId),
+}
+
 export type BoardDeps = {
   api: Pick<
     CampaignApi,
     'get' | 'transition' | 'context' | 'gatePlan' | 'finalize' | 'refresh'
   > &
-    RecoveryApi
+    RecoveryApi &
+    Partial<
+      Pick<
+        CampaignApi,
+        | 'retryTask'
+        | 'acceptAnyway'
+        | 'verifyAgain'
+        | 'resolveTask'
+        | 'skipTask'
+        | 'cancel'
+      >
+    >
+  /** Replaces the live session commands of a server campaign (tests). */
+  server?: ServerBoardDeps
   runner: {
     kick: (id: string) => Promise<unknown>
     cancel: (id: string, detail?: string) => Promise<Campaign>
@@ -75,6 +104,18 @@ export function createBoardActions(deps: BoardDeps) {
     const c = await deps.api.get(id)
     return { c, task: c.tasks.find((t) => t.id === taskId) }
   }
+  // Read at call time, so a test (or a host) may set `deps.server` late.
+  const serverRun: ServerBoardDeps = {
+    steer: (sessionId, text) => (deps.server ?? serverRunDeps).steer(sessionId, text),
+    interrupt: (sessionId) => (deps.server ?? serverRunDeps).interrupt(sessionId),
+  }
+  /** A campaign the server drives: its moves are the server's commands. */
+  const onServer = async (id: string) => isServerDriven(await deps.api.get(id))
+  const needs = <K extends keyof BoardDeps['api']>(name: K) => {
+    const fn = deps.api[name]
+    if (!fn) throw new Error(`this app cannot ask the server to ${String(name)}`)
+    return fn as NonNullable<BoardDeps['api'][K]>
+  }
 
   const sendNote = async (
     id: string,
@@ -88,6 +129,11 @@ export function createBoardActions(deps: BoardDeps) {
     if (!taskActionsOf(task).note) {
       return fail(`task ${taskId} is ${task.status}, so there is nothing to steer`)
     }
+    if (isServerDriven(c)) {
+      // The task's session lives on the server: the note goes into its turn.
+      await serverRun.steer(task.sessionId, note)
+      return { ok: true, note: 'sent' }
+    }
     const sent = await deps.sendMessage(c.coordinatorSession, task.sessionId, note)
     if (!sent.ok) return fail(sent.error)
     const messageId = messageIdOf(sent.output)
@@ -100,9 +146,19 @@ export function createBoardActions(deps: BoardDeps) {
    * a task that is not running is cancelled by the transition directly.
    */
   const stopTask = async (id: string, taskId: string): Promise<ActionResult> => {
-    const { task } = await taskOf(id, taskId)
+    const { c, task } = await taskOf(id, taskId)
     if (!task) return fail(`no task ${taskId}`)
     if (!taskActionsOf(task).stop) return fail(`task ${taskId} is ${task.status}`)
+    if (isServerDriven(c)) {
+      // A live run is interrupted and the driver settles it as cancelled; a
+      // task that is not running is skipped through the driver.
+      if (task.sessionId && taskActionsOf(task).note) {
+        await serverRun.interrupt(task.sessionId)
+      } else {
+        await needs('skipTask')(id, taskId, 'leave')
+      }
+      return { ok: true }
+    }
     if (task.sessionId && deps.liveSessions().has(task.sessionId)) {
       deps.abortRun(task.sessionId)
       return { ok: true }
@@ -112,10 +168,14 @@ export function createBoardActions(deps: BoardDeps) {
   }
 
   const skipTask = async (id: string, taskId: string): Promise<ActionResult> => {
-    const { task } = await taskOf(id, taskId)
+    const { c, task } = await taskOf(id, taskId)
     if (!task) return fail(`no task ${taskId}`)
     if (!taskActionsOf(task).skip) {
       return fail(`task ${taskId} is ${task.status} and cannot be skipped`)
+    }
+    if (isServerDriven(c)) {
+      await needs('skipTask')(id, taskId, 'leave')
+      return { ok: true }
     }
     await deps.api.transition(id, { task: { id: taskId, to: 'cancelled' } })
     // Skipping may have been the last open task.
@@ -128,10 +188,14 @@ export function createBoardActions(deps: BoardDeps) {
     taskId: string,
     hint?: string
   ): Promise<ActionResult> => {
-    const { task } = await taskOf(id, taskId)
+    const { c, task } = await taskOf(id, taskId)
     if (!task) return fail(`no task ${taskId}`)
     if (!taskActionsOf(task).retry) {
       return fail(`task ${taskId} is ${task.status} and cannot be retried`)
+    }
+    if (isServerDriven(c)) {
+      await needs('retryTask')(id, taskId, hint)
+      return { ok: true }
     }
     // Without a hint the old failure text is left alone, as before.
     const detail = retryHintDetail(hint)
@@ -152,10 +216,15 @@ export function createBoardActions(deps: BoardDeps) {
    * decided for the person: the verdict is whatever the verifier now says.
    */
   const verifyAgain = async (id: string, taskId: string): Promise<ActionResult> => {
-    const { task } = await taskOf(id, taskId)
+    const { c, task } = await taskOf(id, taskId)
     if (!task) return fail(`no task ${taskId}`)
     if (!taskActionsOf(task).verify) {
       return fail(`task ${taskId} is ${task.status}, so it is not waiting to be checked`)
+    }
+    if (isServerDriven(c)) {
+      // The server runs the check in the background; the board shows it.
+      await needs('verifyAgain')(id, taskId)
+      return { ok: true, note: 'checking again' }
     }
     const out = await deps.runner.verifyTask(id, taskId)
     if ('skipped' in out) return fail(out.skipped)
@@ -174,13 +243,19 @@ export function createBoardActions(deps: BoardDeps) {
     by: string,
     reason?: string
   ): Promise<ActionResult> => {
-    const { task } = await taskOf(id, taskId)
+    const { c, task } = await taskOf(id, taskId)
     if (!task) return fail(`no task ${taskId}`)
     if (!taskActionsOf(task).accept) {
       return fail(`task ${taskId} is ${task.status} and has no blocked check to accept`)
     }
     const who = by.trim()
     if (!who) return fail('say who is accepting it')
+    if (isServerDriven(c)) {
+      // The server names the signed-in client itself, and wants a reason.
+      if (!reason?.trim()) return fail('say why you accept it without a passing check')
+      await needs('acceptAnyway')(id, taskId, who, reason.trim())
+      return { ok: true }
+    }
     await deps.api.transition(id, {
       task: {
         id: taskId,
@@ -200,10 +275,14 @@ export function createBoardActions(deps: BoardDeps) {
    * conflict with the files it could not settle); the board shows the states.
    */
   const resolveConflict = async (id: string, taskId: string): Promise<ActionResult> => {
-    const { task } = await taskOf(id, taskId)
+    const { c, task } = await taskOf(id, taskId)
     if (!task) return fail(`no task ${taskId}`)
     if (!taskActionsOf(task).resolve) {
       return fail(`task ${taskId} is ${task.status}, not in conflict`)
+    }
+    if (isServerDriven(c)) {
+      await needs('resolveTask')(id, taskId)
+      return { ok: true }
     }
     if (!deps.runner.resolve) return fail('the resolver is not available here')
     const [out] = await deps.runner.resolve(id, [taskId])
@@ -220,7 +299,8 @@ export function createBoardActions(deps: BoardDeps) {
   const skipCascade = async (id: string, taskId: string): Promise<ActionResult> => {
     if (deps.api.skipCascade) {
       await deps.api.skipCascade(id, taskId)
-      await deps.runner.kick(id)
+      // A server campaign is kicked by its own driver.
+      if (!(await onServer(id))) await deps.runner.kick(id)
       return { ok: true }
     }
     const { c, task } = await taskOf(id, taskId)
@@ -251,7 +331,7 @@ export function createBoardActions(deps: BoardDeps) {
       return fail('this version cannot run a task without the one it waited for')
     }
     await deps.api.releaseDependants(id, taskId)
-    await deps.runner.kick(id)
+    if (!(await onServer(id))) await deps.runner.kick(id)
     return { ok: true }
   }
 
@@ -270,7 +350,7 @@ export function createBoardActions(deps: BoardDeps) {
       return fail('this version cannot start the repair from here')
     }
     await deps.api.repairGate(id)
-    await deps.runner.kick(id)
+    if (!(await onServer(id))) await deps.runner.kick(id)
     return { ok: true }
   }
 
@@ -285,10 +365,15 @@ export function createBoardActions(deps: BoardDeps) {
 
   const resume = async (id: string) => {
     await deps.api.transition(id, { campaign: 'running' })
-    await deps.runner.kick(id)
+    if (!(await onServer(id))) await deps.runner.kick(id)
   }
 
   const cancel = async (id: string) => {
+    // The server's driver stops its own runs.
+    if (deps.api.cancel && (await onServer(id))) {
+      await deps.api.cancel(id)
+      return
+    }
     await deps.runner.cancel(id)
   }
 
@@ -302,7 +387,10 @@ export function createBoardActions(deps: BoardDeps) {
    */
   const finalize = async (id: string): Promise<ActionResult> => {
     let c = await deps.api.get(id)
-    if (c.status === 'running') c = (await deps.runner.integrate(id)).campaign
+    // The server's driver merges by itself; only a renderer campaign is nudged.
+    if (c.status === 'running' && !isServerDriven(c)) {
+      c = (await deps.runner.integrate(id)).campaign
+    }
     if (c.status !== 'reviewing') return fail(`the campaign is ${c.status}, not reviewing`)
     const done = await deps.api.finalize(id)
     if (!done.gate.passed && !done.gate.skipped) {
