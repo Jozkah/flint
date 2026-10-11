@@ -528,15 +528,16 @@ pub const ENV_KEY_ASSIGNMENT_RE: &str = r#"(\b(?:[A-Z][A-Z0-9_]*)?KEY\s*=\s*)[^\
 /// `None` when nothing matched, so the caller keeps its original string.
 fn redact_assignment_patterns(line: &str) -> Option<String> {
     use regex::{Captures, Regex};
-    use std::sync::LazyLock;
-    static RULES: LazyLock<[Regex; 2]> = LazyLock::new(|| {
+    use std::sync::OnceLock;
+    static RULES: OnceLock<[Regex; 2]> = OnceLock::new();
+    let rules = RULES.get_or_init(|| {
         [
             Regex::new(QUOTED_KEY_VALUE_RE).expect("quoted key regex"),
             Regex::new(ENV_KEY_ASSIGNMENT_RE).expect("env key regex"),
         ]
     });
     let mut current = line.to_string();
-    for re in RULES.iter() {
+    for re in rules.iter() {
         let replaced = re.replace_all(&current, |caps: &Captures| {
             let whole = &caps[0];
             let label = caps.get(1).map_or("", |m| m.as_str());
