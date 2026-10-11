@@ -419,10 +419,8 @@ function ModelDiscoverRoute() {
       <header className="shrink-0 border-b border-border bg-[radial-gradient(120%_140%_at_0%_0%,var(--accent)_0%,transparent_55%)] px-5 pt-5 pb-4">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-3.5">
-              <span className="grid size-11 shrink-0 place-items-center rounded-2xl border-[0.8px] border-border bg-card shadow-lift">
-                <HuggingFaceLogo size={28} />
-              </span>
+            <div className="flex min-w-0 items-center gap-3.5">
+              <HuggingFaceLogo size={42} className="shrink-0 self-center" />
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
                   Hugging Face
