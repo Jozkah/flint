@@ -5,15 +5,19 @@ import type {
   CampaignTaskStatus,
 } from '../campaignModel'
 import {
-  BOARD_COLUMNS,
   budgetOf,
+  canCancel,
   changedFilesOf,
   claimedSessionIds,
-  columnOf,
   deriveCampaignGroups,
   dotOf,
-  groupByColumn,
+  groupOf,
+  groupTasks,
+  headlineOf,
+  primaryActionOf,
   taskActionsOf,
+  wordOf,
+  TASK_GROUPS,
 } from '../campaignView'
 import { pollDelay, POLL_ACTIVE_MS, POLL_IDLE_MS } from '@/hooks/useCampaigns'
 
@@ -59,45 +63,104 @@ const campaign = (
   ...over,
 })
 
-describe('status to dot and column', () => {
+describe('status to dot and group', () => {
   const cases: [CampaignTaskStatus, string, string][] = [
-    ['queued', 'queued', 'queued'],
-    ['interrupted', 'queued', 'queued'],
-    ['blocked', 'blocked', 'blocked'],
-    ['running', 'running', 'running'],
+    ['queued', 'queued', 'up-next'],
+    ['interrupted', 'queued', 'up-next'],
+    ['blocked', 'blocked', 'up-next'],
+    ['running', 'running', 'working'],
     ['awaiting_input', 'needs-you', 'needs-you'],
     ['awaiting_approval', 'needs-you', 'needs-you'],
-    ['completed', 'verifying', 'verifying'],
-    ['verifying', 'verifying', 'verifying'],
-    ['verified', 'verified', 'done'],
+    ['completed', 'verifying', 'working'],
+    ['verifying', 'verifying', 'working'],
+    ['verified', 'verified', 'working'],
     ['merged', 'merged', 'done'],
-    ['failed', 'failed', 'failed'],
-    ['conflict', 'conflict', 'failed'],
-    ['cancelled', 'cancelled', 'failed'],
+    ['failed', 'failed', 'needs-you'],
+    ['conflict', 'conflict', 'needs-you'],
+    ['cancelled', 'cancelled', 'done'],
   ]
-  it.each(cases)('%s is dot %s in column %s', (status, dot, col) => {
+  it.each(cases)('%s is dot %s in group %s', (status, dot, group) => {
     expect(dotOf(task('t', status))).toBe(dot)
-    expect(columnOf(task('t', status))).toBe(col)
+    expect(groupOf(task('t', status))).toBe(group)
   })
 
-  it('a pending task waits as blocked until its dependencies are merged', () => {
+  it('a pending task waits until its dependencies are merged', () => {
     const a = task('a', 'running')
     const b = task('b', 'pending', { dependsOn: ['a'] })
-    expect(columnOf(b, [a, b])).toBe('blocked')
+    expect(dotOf(b, [a, b])).toBe('blocked')
+    expect(groupOf(b, [a, b])).toBe('up-next')
+    expect(wordOf(b, [a, b])).toEqual({ word: 'waiting', waitingFor: ['a'] })
     const merged = task('a', 'merged')
-    expect(columnOf(b, [merged, b])).toBe('queued')
+    expect(wordOf(b, [merged, b])).toEqual({ word: 'queued', waitingFor: [] })
     expect(dotOf(task('c', 'pending'), [])).toBe('queued')
   })
 
-  it('groupByColumn fills every column and keeps plan order', () => {
-    const g = groupByColumn([
+  it('groupTasks keeps only groups that hold something, in a fixed order', () => {
+    const g = groupTasks([
       task('a', 'merged'),
       task('b', 'running'),
       task('c', 'merged'),
+      task('d', 'failed'),
     ])
-    expect(Object.keys(g)).toEqual([...BOARD_COLUMNS])
-    expect(g.done.map((t) => t.id)).toEqual(['a', 'c'])
-    expect(g.blocked).toEqual([])
+    expect(g.map((x) => x.group)).toEqual(['needs-you', 'working', 'done'])
+    expect(g.find((x) => x.group === 'done')!.tasks.map((t) => t.id)).toEqual([
+      'a',
+      'c',
+    ])
+    expect(groupTasks([])).toEqual([])
+    expect(TASK_GROUPS).toEqual(['needs-you', 'working', 'up-next', 'done'])
+  })
+
+  it('names each state in a plain word', () => {
+    const w = (s: CampaignTaskStatus) => wordOf(task('t', s)).word
+    expect(w('running')).toBe('writing')
+    expect(w('verifying')).toBe('checking')
+    expect(w('merged')).toBe('merged')
+    expect(w('failed')).toBe('failed')
+    expect(w('awaiting_approval')).toBe('needsApproval')
+    expect(w('cancelled')).toBe('skipped')
+  })
+})
+
+describe('headline and primary action', () => {
+  const c = (status: Campaign['status'], tasks: CampaignTask[]) =>
+    campaign(tasks, { status })
+
+  it('says where the campaign stands in one plain key', () => {
+    expect(headlineOf(c('running', [])).key).toBe('planning')
+    expect(
+      headlineOf(c('running', [task('a', 'merged'), task('b', 'running')]))
+    ).toMatchObject({ key: 'working', done: 1, total: 2 })
+    expect(
+      headlineOf(c('running', [task('a', 'failed'), task('b', 'running')]))
+    ).toMatchObject({ key: 'attention', count: 1 })
+    expect(headlineOf(c('reviewing', [task('a', 'merged')])).key).toBe('review')
+    expect(headlineOf(c('merging', [task('a', 'merged')])).key).toBe('merging')
+    expect(headlineOf(c('paused', [task('a', 'queued')])).key).toBe('paused')
+    expect(headlineOf(c('done', [task('a', 'merged')])).key).toBe('done')
+    expect(headlineOf(c('failed', [task('a', 'failed')])).key).toBe('failed')
+    expect(headlineOf(c('cancelled', [])).key).toBe('cancelled')
+    expect(headlineOf(c('interrupted', [task('a', 'queued')])).key).toBe(
+      'interrupted'
+    )
+  })
+
+  it('leads with the one button that fits', () => {
+    expect(primaryActionOf(c('running', [task('a', 'running')]))).toBe('pause')
+    expect(primaryActionOf(c('running', [task('a', 'awaiting_input')]))).toBe(
+      'coordinator'
+    )
+    expect(primaryActionOf(c('paused', []))).toBe('resume')
+    expect(primaryActionOf(c('interrupted', []))).toBe('resume')
+    expect(primaryActionOf(c('reviewing', []))).toBe('review')
+    expect(primaryActionOf(c('done', []))).toBe('coordinator')
+  })
+
+  it('allows cancelling only an unfinished campaign', () => {
+    expect(canCancel('running')).toBe(true)
+    expect(canCancel('paused')).toBe(true)
+    expect(canCancel('done')).toBe(false)
+    expect(canCancel('cancelled')).toBe(false)
   })
 })
 
@@ -163,6 +226,36 @@ describe('deriveCampaignGroups', () => {
     expect(groups.map((g) => g.campaignId)).toEqual(['c1', 'twin', 'old'])
     const twinRows = groups.find((g) => g.campaignId === 'twin')!.rows
     expect(twinRows.map((r) => r.sessionId)).toEqual(['c-twin'])
+  })
+
+  it('marks a finished campaign so the sidebar can fold it to one line', () => {
+    const live = deriveCampaignGroups([c], [{ id: 's-b' }])[0]
+    expect(live.finished).toBe(false)
+    const over = campaign([task('x', 'merged', { sessionId: 's-x' })], {
+      id: 'over',
+      status: 'done',
+      coordinatorSession: 'c-over',
+    })
+    const [g] = deriveCampaignGroups([over], [{ id: 'c-over' }, { id: 's-x' }])
+    expect(g.finished).toBe(true)
+  })
+
+  it('keeps a campaign\'s sessions only in its group, even a retried task\'s old one', () => {
+    const retried = campaign(
+      [task('a', 'running', { sessionId: 's-new' })],
+      { id: 'r1', coordinatorSession: 'c-r' }
+    )
+    const sessions = [
+      { id: 'c-r' },
+      { id: 's-new', campaign: { id: 'r1', taskId: 'a', role: 'task' as const } },
+      { id: 's-old', campaign: { id: 'r1', taskId: 'a', role: 'task' as const } },
+      { id: 'plain' },
+    ]
+    const [g] = deriveCampaignGroups([retried], sessions)
+    expect(g.rows.map((r) => r.sessionId)).toEqual(['c-r', 's-new', 's-old'])
+    const claimed = claimedSessionIds([g])
+    expect(claimed.has('plain')).toBe(false)
+    expect(claimed.has('s-old')).toBe(true)
   })
 
   it('is pure over its inputs', () => {
