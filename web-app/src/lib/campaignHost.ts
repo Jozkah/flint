@@ -136,11 +136,12 @@ export function createRunnerHost(): RunnerHost {
         createdAt: Date.now(),
       }),
     worktreeRecordFor: (sid) => useCoworkWorktrees.getState().bySession[sid],
-    commitPending: (record, folder, message) =>
+    commitPending: (record, folder, message, declaredPaths) =>
       invoke<boolean>('agent_worktree_commit_pending', {
         dataFolder: folder,
         record,
         message,
+        declared: declaredPaths ?? [],
       }),
     unmergedCommits: (record) =>
       useCoworkWorktrees.getState().unmerged(record as WorktreeRecord),

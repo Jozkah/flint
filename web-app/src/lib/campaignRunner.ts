@@ -86,7 +86,9 @@ export type RunnerHost = {
   commitPending: (
     record: unknown,
     dataFolder: string,
-    message: string
+    message: string,
+    /** Paths the plan declared for the task; a tool cache there is kept. */
+    declaredPaths?: string[]
   ) => Promise<boolean>
   unmergedCommits: (record: unknown) => Promise<string[]>
   /** How the session's last run ended, and what it said last. */
@@ -435,7 +437,8 @@ export function createCampaignRunner(
           await host.commitPending(
             record,
             dataFolder,
-            `${c.title}: ${task.title}`.slice(0, 200)
+            `${c.title}: ${task.title}`.slice(0, 200),
+            task.paths
           )
         } catch (e) {
           note = `Pending changes could not be committed: ${errorText(e)}`

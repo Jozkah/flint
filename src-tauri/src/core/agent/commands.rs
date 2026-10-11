@@ -1673,11 +1673,14 @@ pub fn agent_worktree_commit_pending(
     data_folder: String,
     record: WorktreeRecordInput,
     message: String,
+    declared: Option<Vec<String>>,
 ) -> Result<bool, String> {
     let roots = owned_worktrees_root(&data_folder)?;
     let record: worktree::WorktreeRecord = record.into();
     worktree::ensure_owned(&record, &roots)?;
-    worktree::commit_pending(&record, &message)
+    // Tool-cache files (a PowerShell module cache, `__pycache__`, ...) are
+    // left out unless a path the plan declared covers them.
+    worktree::commit_pending_declared(&record, &message, &declared.unwrap_or_default())
 }
 
 /// Take a checkpoint of the tree a run is about to change.

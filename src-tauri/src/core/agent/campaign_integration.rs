@@ -121,6 +121,34 @@ fn task_record(c: &Campaign, t: &CampaignTask, roots: &Path) -> Result<WorktreeR
     trusted_worktree(c, path, branch, t.base_sha.as_deref(), base_branch, roots)
 }
 
+/// Every path any task of the campaign declared. A tool-cache file under one
+/// of them is work the plan asked for and is kept.
+fn declared_paths(c: &Campaign) -> Vec<String> {
+    c.tasks.iter().flat_map(|t| t.paths.iter().cloned()).collect()
+}
+
+/// The commit a task's own work is measured from.
+///
+/// The recorded base is the commit the worktree was created at, but a task
+/// retried in its existing worktree used to record the branch's *current* tip
+/// as its base, which made the diff of everything it had already committed
+/// empty (a verification then ran on nothing). So the fork point from the
+/// integration branch is asked of Git first. A task that is already merged is
+/// reachable from the integration branch, so its recorded base is kept.
+fn task_base(c: &Campaign, t: &CampaignTask, record: &WorktreeRecord) -> String {
+    let recorded = if record.base_sha.is_empty() { c.integration_branch.clone() } else { record.base_sha.clone() };
+    if t.status == TaskStatus::Merged || c.integration_branch.is_empty() {
+        return recorded;
+    }
+    let source = Path::new(&record.source_root);
+    let integration = format!("refs/heads/{}", c.integration_branch);
+    let tip = format!("refs/heads/{}", record.branch);
+    match worktree::run(source, &["merge-base", &integration, &tip]) {
+        Ok(sha) if !sha.is_empty() && sha.chars().all(|ch| ch.is_ascii_hexdigit()) => sha,
+        _ => recorded,
+    }
+}
+
 fn integration_record(c: &Campaign, roots: &Path) -> Result<WorktreeRecord, CampaignError> {
     if c.integration_branch.is_empty() || c.integration_worktree.is_empty() {
         return Err(invalid("the campaign has no integration branch"));
@@ -1104,7 +1132,12 @@ fn propose_integration(
         roots,
     )?;
     rec.base_sha = c.base_sha.clone();
-    let inputs = crate::core::agent::proposals::changes_in_worktree(&rec).map_err(|e| invalid(e.to_string()))?;
+    let mut inputs = crate::core::agent::proposals::changes_in_worktree(&rec).map_err(|e| invalid(e.to_string()))?;
+    // A tool's cache (PowerShell's module cache, `__pycache__`, ...) that got
+    // committed on a task branch is not part of the change the user is asked
+    // to apply, unless a task's declared paths cover it.
+    let declared = declared_paths(c);
+    inputs.retain(|f| !worktree::is_unwanted_cache(&f.path, &declared));
     if inputs.is_empty() {
         return Err(invalid("the integration branch has no changes against the base to propose"));
     }
