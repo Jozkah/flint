@@ -47,6 +47,7 @@ import {
   listRemoteSessions,
   probeRunner,
   startRun,
+  type RunAttachment,
   steerRun,
   subscribeRun,
   type LiveEnvelope,
@@ -584,7 +585,8 @@ export function remoteRunFor(sid: string): { runId: string } | undefined {
 export async function sendRemoteTurn(
   sid: string,
   text: string,
-  deps: RemoteDeps = {}
+  deps: RemoteDeps = {},
+  attachments?: RunAttachment[]
 ): Promise<void> {
   // A local session never reaches the server runner.
   if (!isRemoteSession(sid)) throw new Error('That session is not a server session.')
@@ -596,7 +598,7 @@ export async function sendRemoteTurn(
   const run = new RemoteRun(sid, crypto.randomUUID(), base, deps)
   run.begin()
   try {
-    const started = await startRun(sid, text, deps.fetchImpl)
+    const started = await startRun(sid, text, deps.fetchImpl, attachments)
     run.subscribe(started.after)
     await run.honourStopBeforeStart()
   } catch (e) {

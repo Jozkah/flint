@@ -10,6 +10,7 @@ import {
   renameRun,
   setRunAccess,
   setRunModel,
+  startRun,
   allowedAccess,
 } from '../remoteRunner'
 
@@ -105,4 +106,19 @@ describe('remoteRunner', () => {
     expect(allowedAccess({ allowBypass: true })).toEqual(['read', 'ask', 'auto'])
   })
 
+  it('sends attachments with the message only when there are some', async () => {
+    const bodies: unknown[] = []
+    const fetchImpl = async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)))
+      return ok('{"turnId":"t","after":0}')
+    }
+    await startRun('s1', 'hello', fetchImpl)
+    await startRun('s1', 'look', fetchImpl, [{ name: 'a.png', mime: 'image/png', data: 'QUJD' }])
+    expect(bodies[0]).toEqual({ id: 's1', input: 'hello' })
+    expect(bodies[1]).toEqual({
+      id: 's1',
+      input: 'look',
+      attachments: [{ name: 'a.png', mime: 'image/png', data: 'QUJD' }],
+    })
+  })
 })

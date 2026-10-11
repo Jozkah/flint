@@ -293,13 +293,24 @@ export function createRun(
 /** A message is text, or the content parts the stdio protocol takes. */
 export type RunInput = string | Array<Record<string, unknown>>
 
+/** A file sent with a message: an image or a text file, base64 encoded. */
+export type RunAttachment = { name: string; mime: string; data: string }
+
+/** Most files one message may carry (the server's own cap). */
+export const MAX_RUN_ATTACHMENTS = 8
+
 /** `after` is the seq to subscribe past to see this turn from its first event. */
 export function startRun(
   id: string,
   input: RunInput,
-  fetchImpl: FetchLike = defaultFetch()
+  fetchImpl: FetchLike = defaultFetch(),
+  attachments?: RunAttachment[]
 ): Promise<{ turnId: string; after: number }> {
-  return rpc('agent_run_start', { id, input }, fetchImpl)
+  return rpc(
+    'agent_run_start',
+    attachments?.length ? { id, input, attachments } : { id, input },
+    fetchImpl
+  )
 }
 
 export function steerRun(id: string, text: string, fetchImpl: FetchLike = defaultFetch()) {

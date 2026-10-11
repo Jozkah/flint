@@ -1346,3 +1346,71 @@ fn a_coordinator_plans_in_process_and_only_a_coordinator_has_the_campaign_tools(
     assert_eq!(planned["status"], "planned");
     assert_eq!(planned["coordinatorSession"], "server");
 }
+
+#[test]
+fn attachments_are_checked_stored_in_the_session_folder_and_reach_the_model() {
+    let dir = scratch("attachments");
+    let server = start(&dir, &[]);
+    let folder = dir.join("work").join("app").canonicalize().unwrap().to_string_lossy().into_owned();
+    let (_, created) = server.rpc("agent_run_create", json!({ "folder": folder, "access": "ask" }));
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    use base64::Engine as _;
+    let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+    let png = base64::engine::general_purpose::STANDARD
+        .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+        .unwrap();
+
+    // Refused before anything is written: a type nobody reads, a bad payload,
+    // too many files.
+    let (status, _) = server.rpc(
+        "agent_run_start",
+        json!({ "id": id, "input": "look", "attachments": [{ "name": "a.bin", "mime": "application/zip", "data": b64(b"PK") }] }),
+    );
+    assert_eq!(status, 415);
+    let (status, _) = server.rpc(
+        "agent_run_start",
+        json!({ "id": id, "input": "look", "attachments": [{ "name": "a.txt", "mime": "text/plain", "data": "***" }] }),
+    );
+    assert_eq!(status, 400);
+    let many: Vec<Value> = (0..9)
+        .map(|i| json!({ "name": format!("{i}.txt"), "mime": "text/plain", "data": b64(b"x") }))
+        .collect();
+    let (status, _) = server.rpc("agent_run_start", json!({ "id": id, "input": "look", "attachments": many }));
+    assert_eq!(status, 400);
+    let attachments = dir.join("data").join("threads").join(&id).join("attachments");
+    assert!(!attachments.exists(), "a refused message stores nothing");
+
+    let (status, started) = server.rpc(
+        "agent_run_start",
+        json!({
+            "id": id,
+            "input": "read these",
+            "attachments": [
+                { "name": "..\\..\\notes.txt", "mime": "text/plain", "data": b64(b"remember the milk") },
+                { "name": "pixel.png", "mime": "image/png", "data": b64(&png) }
+            ]
+        }),
+    );
+    assert_eq!(status, 200, "{started}");
+    let seen = server.events(&id, 0, Duration::from_secs(60), is_completed);
+    assert_eq!(seen.last().unwrap()["payload"]["stopReason"], "completed", "{seen:?}");
+
+    // Stored in the session's own folder in the data folder: names made safe,
+    // nothing under an agent root.
+    let names: Vec<String> = std::fs::read_dir(&attachments)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert!(names.iter().all(|n| !n.contains("..") && !n.contains('\\') && !n.contains('/')), "{names:?}");
+    assert!(names.iter().any(|n| n.ends_with("notes.txt")), "{names:?}");
+    assert!(!dir.join("work").join("app").join("notes.txt").exists());
+
+    // The model got the text in its message and the image as a part.
+    let (_, got) = server.rpc("agent_run_get", json!({ "id": id }));
+    let transcript = got["turns"].to_string();
+    assert!(transcript.contains("remember the milk"), "{transcript}");
+    assert!(transcript.contains("read these"));
+}

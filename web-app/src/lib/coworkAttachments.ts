@@ -2,6 +2,7 @@ import type { ServiceHub } from '@/services'
 import type { Attachment } from '@/types/attachment'
 import { processAttachmentsForSend } from '@/lib/attachmentProcessing'
 import { shrinkImageDataUrl } from '@/lib/imageResize'
+import type { RunAttachment } from '@/lib/remoteRunner'
 
 /**
  * Files attached to a Cowork message.
@@ -82,6 +83,40 @@ export function inlineDocumentsText(
     text: blocks.length ? `\n\n---\nAttached files (their contents are below):\n\n${blocks.join('\n\n')}` : '',
     truncated,
   }
+}
+
+const EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+}
+
+/**
+ * The media of a message as the server's `agent_run_start` takes them: base64
+ * with a name and a type. Only images travel; audio, video and a file that is
+ * not a data URL are counted in `unsupported` so the caller can say so.
+ */
+export function submittedToRunAttachments(files: SubmittedFile[]): {
+  attachments: RunAttachment[]
+  unsupported: number
+} {
+  const attachments: RunAttachment[] = []
+  let unsupported = 0
+  files.forEach((file, index) => {
+    const match = /^data:([^;,]+);base64,(.*)$/s.exec(file.url)
+    if (!match || !match[1].startsWith('image/')) {
+      unsupported += 1
+      return
+    }
+    const mime = match[1].toLowerCase()
+    attachments.push({
+      name: `image-${index + 1}.${EXTENSIONS[mime] ?? 'img'}`,
+      mime,
+      data: match[2],
+    })
+  })
+  return { attachments, unsupported }
 }
 
 export async function prepareCoworkAttachments(

@@ -248,6 +248,7 @@ import { fromCoworkUsage, summarizeUsage } from '@/lib/tokenUsage'
 import { createDecodeClock, generationSpeed, speedStats } from '@/lib/tokenSpeed'
 import {
   prepareCoworkAttachments,
+  submittedToRunAttachments,
   type CoworkAttachmentInput,
   type SubmittedFile,
 } from '@/lib/coworkAttachments'
@@ -516,6 +517,7 @@ import {
 } from '@/lib/coworkRunner'
 import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
 import { isRemoteSession, sendRemoteTurn, useRemoteCowork } from '@/lib/remoteCowork'
+import { MAX_RUN_ATTACHMENTS, type RunAttachment } from '@/lib/remoteRunner'
 import { RemoteWorktreePanel } from '@/components/server/RemoteWorktreePanel'
 import { notifyAnswerFinished } from '@/lib/completionSound'
 import {
@@ -2715,10 +2717,31 @@ export function CoworkPage() {
         onRefused?.()
       }
       if (text === null) return refused('A server session cannot resume from here. Send a message instead.')
+      let outgoing = text
+      let sentFiles: RunAttachment[] | undefined
       if (attachmentInput && (attachmentInput.docs.length > 0 || (attachmentInput.files?.length ?? 0) > 0)) {
-        return refused('Attachments are not sent to server sessions yet.')
+        // Documents become text of the message and images travel as files;
+        // the server stores them with the session and checks every one.
+        try {
+          const prepared = await prepareCoworkAttachments(attachmentInput, {
+            sessionId: sid,
+            serviceHub: serviceHub,
+          })
+          for (const f of prepared.failed) toast.error(`Could not read ${f.name}: ${f.error}`)
+          outgoing = text + prepared.modelSuffix
+          const media = submittedToRunAttachments(prepared.parts)
+          if (media.unsupported > 0) {
+            return refused('Only images can be sent to a server session; remove the other media files.')
+          }
+          if (media.attachments.length > MAX_RUN_ATTACHMENTS) {
+            return refused(`A message can carry at most ${MAX_RUN_ATTACHMENTS} files.`)
+          }
+          sentFiles = media.attachments
+        } catch (e) {
+          return refused(e instanceof Error ? e.message : String(e))
+        }
       }
-      void sendRemoteTurn(sid, text).catch((e) =>
+      void sendRemoteTurn(sid, outgoing, {}, sentFiles).catch((e) =>
         refused(e instanceof Error ? e.message : String(e))
       )
       return
