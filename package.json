@@ -34,6 +34,7 @@
     "dev:web": "yarn workspace @janhq/web-app dev",
     "dev:mobile": "yarn workspace @janhq/web-app dev:mobile",
     "build:mobile": "yarn workspace @janhq/web-app build:mobile",
+    "build:ios:shell": "yarn build:mobile && node scripts/build-ios-shell.mjs",
     "dev:tauri": "yarn build:icon && yarn copy:assets:tauri && cross-env IS_CLEAN=true tauri dev",
     "dev:ios": "yarn copy:assets:mobile && RUSTC_WRAPPER= cross-env IS_IOS=true yarn tauri ios dev --features mobile",
     "dev:android": "yarn copy:assets:mobile && cross-env IS_ANDROID=true yarn tauri android dev --features mobile",

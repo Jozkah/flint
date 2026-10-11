@@ -57,7 +57,7 @@ jobs:
         run: |
           mkdir -p src-tauri/resources
           # generate_context! needs frontendDist to exist; contents are irrelevant to a compile check.
-          mkdir -p web-app/dist
+          mkdir -p web-app/dist-ios
           cp LICENSE src-tauri/resources/LICENSE
 
       - name: cargo check (device)
