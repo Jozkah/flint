@@ -137,6 +137,25 @@ describe('time', () => {
     expect(taskDurationMs(ev, 'zzz', false, 0)).toBeNull()
     expect(taskDurationMs(undefined, 'a', false, 0)).toBeNull()
   })
+  it('counts the run, not verification or merge, even when other event kinds follow', () => {
+    const log = [
+      { ts: '2026-01-01T10:00:00Z', kind: 'task-status', task: 'a', detail: 'Queued -> Running' },
+      { ts: '2026-01-01T10:04:00Z', kind: 'task-settled', task: 'a', detail: 'Running -> Completed' },
+      { ts: '2026-01-01T10:04:01Z', kind: 'task-status', task: 'a', detail: 'Completed -> Verifying' },
+      { ts: '2026-01-01T10:09:00Z', kind: 'task-verified', task: 'a', detail: 'PASS: ok' },
+      { ts: '2026-01-01T10:09:30Z', kind: 'task-merged', task: 'a', detail: 'merged' },
+    ]
+    expect(taskDurationMs(log, 'a', false, 0)).toBe(240_000)
+  })
+  it('adds a second run after a repair and never reports a settled task as 1 s', () => {
+    const log = [
+      { ts: '2026-01-01T10:00:00Z', kind: 'task-status', task: 'a', detail: 'Queued -> Running' },
+      { ts: '2026-01-01T10:02:00Z', kind: 'task-settled', task: 'a', detail: 'Running -> Completed' },
+      { ts: '2026-01-01T10:05:00Z', kind: 'task-status', task: 'a', detail: 'Queued -> Running' },
+      { ts: '2026-01-01T10:06:00Z', kind: 'task-settled', task: 'a', detail: 'Running -> Completed' },
+    ]
+    expect(taskDurationMs(log, 'a', false, 0)).toBe(180_000)
+  })
   it('formats plainly', () => {
     expect(formatDuration(500)).toBe('1 s')
     expect(formatDuration(45_000)).toBe('45 s')
