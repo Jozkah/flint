@@ -1499,7 +1499,8 @@
   "drop": {
     "openInCode": "Suelta para abrir: solo lectura",
     "attachToMessage": "Suelta para adjuntar a tu mensaje",
-    "releaseToAttach": "Suelta para adjuntar"
+    "releaseToAttach": "Suelta para adjuntar",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkMode": {
     "label": "Qué puede hacer Flint",
@@ -2533,5 +2534,11 @@
     "stop": "Detener",
     "retry": "Reintentar",
     "downloading": "Descargando…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

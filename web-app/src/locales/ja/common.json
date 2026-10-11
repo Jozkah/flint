@@ -1472,7 +1472,8 @@
   "drop": {
     "openInCode": "ドロップして開く — 読み取り専用",
     "attachToMessage": "ドロップしてメッセージに添付",
-    "releaseToAttach": "ドロップして添付"
+    "releaseToAttach": "ドロップして添付",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkRunSettings": {
     "label": "実行設定",
@@ -2482,5 +2483,11 @@
     "stop": "停止",
     "retry": "再試行",
     "downloading": "ダウンロード中…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

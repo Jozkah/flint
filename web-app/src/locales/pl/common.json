@@ -1524,7 +1524,8 @@
   "drop": {
     "openInCode": "Upuść, aby otworzyć — tylko do odczytu",
     "attachToMessage": "Upuść, aby załączyć do wiadomości",
-    "releaseToAttach": "Upuść, aby dołączyć"
+    "releaseToAttach": "Upuść, aby dołączyć",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkRunSettings": {
     "label": "Ustawienia uruchomienia",
@@ -2575,5 +2576,11 @@
     "stop": "Zatrzymaj",
     "retry": "Ponów",
     "downloading": "Pobieranie…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

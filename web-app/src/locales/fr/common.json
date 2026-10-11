@@ -1496,7 +1496,8 @@
   "drop": {
     "openInCode": "Déposez pour ouvrir — lecture seule",
     "attachToMessage": "Déposez pour joindre à votre message",
-    "releaseToAttach": "Relâchez pour joindre"
+    "releaseToAttach": "Relâchez pour joindre",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkMode": {
     "label": "Ce que Flint peut faire",
@@ -2532,5 +2533,11 @@
     "stop": "Arrêter",
     "retry": "Réessayer",
     "downloading": "Téléchargement…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

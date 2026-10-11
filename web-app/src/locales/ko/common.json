@@ -1472,7 +1472,8 @@
   "drop": {
     "openInCode": "놓아서 열기 — 읽기 전용",
     "attachToMessage": "놓아서 메시지에 첨부",
-    "releaseToAttach": "놓아서 첨부"
+    "releaseToAttach": "놓아서 첨부",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkRunSettings": {
     "label": "실행 설정",
@@ -2484,5 +2485,11 @@
     "stop": "중지",
     "retry": "다시 시도",
     "downloading": "다운로드 중…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

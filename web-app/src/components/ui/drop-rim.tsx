@@ -10,7 +10,14 @@ import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
  * Mount inside a `relative` box; it is inert (pointer-events none) and renders
  * nothing while `active` is false.
  */
-export function DropRim({ active }: { active: boolean }) {
+export function DropRim({
+  active,
+  count = 0,
+}: {
+  active: boolean
+  /** Files in the drag, when the browser says; 0 is unknown. */
+  count?: number
+}) {
   const { t } = useTranslation()
   const storeReduced = useInterfaceSettings((s) => s.reduceMotion)
   const osReduced = useReducedMotion()
@@ -56,7 +63,11 @@ export function DropRim({ active }: { active: boolean }) {
         <span className="dr-clip">
           <Paperclip className="size-4" />
         </span>
-        <span>{t('common:drop.releaseToAttach')}</span>
+        <span>
+          {count > 1
+            ? t('common:drop.releaseToAttachCount', { count })
+            : t('common:drop.releaseToAttach')}
+        </span>
       </span>
     </div>
   )

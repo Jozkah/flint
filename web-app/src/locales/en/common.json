@@ -1472,7 +1472,8 @@
   "drop": {
     "openInCode": "Drop to open — read-only",
     "attachToMessage": "Drop to attach to your message",
-    "releaseToAttach": "Release to attach"
+    "releaseToAttach": "Release to attach",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "voicePill": {
     "cancel": "Cancel"
@@ -2485,5 +2486,11 @@
     "stop": "Stop",
     "retry": "Retry",
     "downloading": "Downloading…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

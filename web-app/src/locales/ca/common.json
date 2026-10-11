@@ -1500,7 +1500,8 @@
   "drop": {
     "openInCode": "Deixa anar per obrir: només lectura",
     "attachToMessage": "Deixa anar per adjuntar al missatge",
-    "releaseToAttach": "Deixa anar per adjuntar"
+    "releaseToAttach": "Deixa anar per adjuntar",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkMode": {
     "label": "Què pot fer Flint",
@@ -2532,5 +2533,11 @@
     "stop": "Atura",
     "retry": "Torna-ho a provar",
     "downloading": "Baixant…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

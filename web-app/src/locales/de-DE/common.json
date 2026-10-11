@@ -1474,7 +1474,8 @@
   "drop": {
     "openInCode": "Zum Öffnen ablegen – schreibgeschützt",
     "attachToMessage": "Zum Anhängen an deine Nachricht ablegen",
-    "releaseToAttach": "Zum Anhängen loslassen"
+    "releaseToAttach": "Zum Anhängen loslassen",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkMode": {
     "label": "Was Flint tun darf",
@@ -2487,5 +2488,11 @@
     "stop": "Stopp",
     "retry": "Erneut versuchen",
     "downloading": "Wird heruntergeladen…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

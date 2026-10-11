@@ -1498,7 +1498,8 @@
   "drop": {
     "openInCode": "Solte para abrir — somente leitura",
     "attachToMessage": "Solte para anexar à sua mensagem",
-    "releaseToAttach": "Solte para anexar"
+    "releaseToAttach": "Solte para anexar",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkRunSettings": {
     "label": "Configurações da execução",
@@ -2530,5 +2531,11 @@
     "stop": "Parar",
     "retry": "Tentar novamente",
     "downloading": "Baixando…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

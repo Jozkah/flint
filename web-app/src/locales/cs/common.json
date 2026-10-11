@@ -1527,7 +1527,8 @@
   "drop": {
     "openInCode": "Pusťte pro otevření — jen pro čtení",
     "attachToMessage": "Pusťte pro přiložení ke zprávě",
-    "releaseToAttach": "Pusťte pro připojení"
+    "releaseToAttach": "Pusťte pro připojení",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkMode": {
     "label": "Co smí Flint dělat",
@@ -2578,5 +2579,11 @@
     "stop": "Zastavit",
     "retry": "Zkusit znovu",
     "downloading": "Stahuje se…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

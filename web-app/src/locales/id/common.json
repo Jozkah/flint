@@ -1451,7 +1451,8 @@
   "drop": {
     "openInCode": "Jatuhkan untuk membuka — hanya-baca",
     "attachToMessage": "Jatuhkan untuk melampirkan ke pesan Anda",
-    "releaseToAttach": "Lepaskan untuk melampirkan"
+    "releaseToAttach": "Lepaskan untuk melampirkan",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkMode": {
     "label": "Yang boleh dilakukan Flint",
@@ -2444,5 +2445,11 @@
     "stop": "Berhenti",
     "retry": "Coba lagi",
     "downloading": "Mengunduh…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

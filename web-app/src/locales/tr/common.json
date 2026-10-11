@@ -1472,7 +1472,8 @@
   "drop": {
     "openInCode": "Açmak için bırakın — salt okunur",
     "attachToMessage": "Mesajınıza eklemek için bırakın",
-    "releaseToAttach": "Eklemek için bırakın"
+    "releaseToAttach": "Eklemek için bırakın",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkRunSettings": {
     "label": "Çalıştırma ayarları",
@@ -2485,5 +2486,11 @@
     "stop": "Durdur",
     "retry": "Yeniden dene",
     "downloading": "İndiriliyor…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

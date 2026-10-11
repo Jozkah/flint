@@ -8,7 +8,7 @@ import { currentDescriber } from '@/lib/imageDescription'
 import { ImageViewer } from '@/components/ImageViewer'
 import { needsWeb } from '@/lib/needsWeb'
 import { RichComposerEditor, type RichComposerHandle } from '@/containers/RichComposerEditor'
-import { cn, formatBytes, getModelDisplayName } from '@/lib/utils'
+import { cn, getModelDisplayName } from '@/lib/utils'
 import { useElementWidth } from '@/hooks/useElementWidth'
 import { ComposerDensityProvider } from '@/containers/ComposerDensity'
 import { usePrompt } from '@/hooks/usePrompt'
@@ -73,6 +73,8 @@ import { resolveReplyModel } from '@/lib/resolveReplyModel'
 import { fitImageFileToLimit } from '@/lib/imageResize'
 import { VoiceInputButton } from '@/containers/VoiceInputButton'
 import { DropRim } from '@/components/ui/drop-rim'
+import { ComposerAttachmentChips } from '@/containers/ComposerAttachmentChips'
+import { dragFileCount } from '@/lib/attachmentChip'
 import {
   useConversationModel,
   type ModelSelection,
@@ -898,6 +900,7 @@ const ChatInput = memo(function ChatInput({
     'tools' | 'assistants' | false
   >(false)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [dragCount, setDragCount] = useState(0)
   const activeModels = useAppState(useShallow((state) => state.activeModels))
   // Check if selected model is currently loaded/active
   const isModelActive = selectedModel?.id
@@ -1482,6 +1485,7 @@ const ChatInput = memo(function ChatInput({
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
+  const visionSupported = !!selectedModel?.capabilities?.includes('vision')
   const audioSupported = !!selectedModel?.capabilities?.includes('audio')
   const videoInputRef = useRef<HTMLInputElement>(null)
   const videoSupported = !!selectedModel?.capabilities?.includes('video')
@@ -2628,6 +2632,7 @@ const ChatInput = memo(function ChatInput({
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    setDragCount(dragFileCount(e.dataTransfer))
     setIsDragOver(true)
   }
 
@@ -2639,6 +2644,7 @@ const ChatInput = memo(function ChatInput({
     const relatedTarget = e.relatedTarget as Node | null
     if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
       setIsDragOver(false)
+      setDragCount(0)
     }
   }
 
@@ -2652,6 +2658,7 @@ const ChatInput = memo(function ChatInput({
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(false)
+    setDragCount(0)
 
     if (!e.dataTransfer) {
       console.warn('No dataTransfer available in drop event')
@@ -3065,7 +3072,7 @@ const ChatInput = memo(function ChatInput({
             onDragOver={handleDragOver}
             onDrop={handleDrop}
           >
-            <DropRim active={isDragOver} />
+            <DropRim active={isDragOver} count={dragCount} />
             {pathOffer && (
               <div
                 role="status"
@@ -3100,164 +3107,16 @@ const ChatInput = memo(function ChatInput({
                 </button>
               </div>
             )}
-            {attachments.length > 0 && (
-              <div className="flex flex-col gap-2 p-2 pb-0">
-                {/* Attachments as chips: a thumbnail or kind icon, the name,
-                    and a remove button, wrapping instead of overflowing. */}
-                <div className="flex min-w-0 flex-wrap gap-1.5 items-center">
-                  {attachments
-                    .map((att, idx) => ({ att, idx }))
-                    .map(({ att, idx }) => {
-                      const isImage = att.type === 'image'
-                      const isAudio = att.type === 'audio'
-                      const isVideo = att.type === 'video'
-                      const ext = att.fileType || att.mimeType?.split('/')[1]
-                      const durLabel =
-                        isAudio && typeof att.durationSec === 'number'
-                          ? `${Math.floor(att.durationSec / 60)}:${Math.floor(
-                              att.durationSec % 60
-                            )
-                              .toString()
-                              .padStart(2, '0')}`
-                          : undefined
-                      // An image is a preview big enough to see, which opens
-                      // in the viewer; other attachments stay chips.
-                      if (isImage && att.dataUrl) {
-                        const at = composerImages.findIndex((i) => i.url === att.dataUrl)
-                        return (
-                          <div
-                            key={`${att.type}-${idx}-${att.name}`}
-                            data-testid="composer-image-preview"
-                            className="group/thumb relative size-16 shrink-0 overflow-hidden rounded-lg border-[0.8px] border-border bg-muted pointer-coarse:size-20"
-                          >
-                            <button
-                              type="button"
-                              aria-label={`Open ${att.name}`}
-                              title={att.name}
-                              className="size-full focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
-                              onClick={() => setViewerAt(Math.max(0, at))}
-                            >
-                              <img
-                                className="size-full object-cover"
-                                src={att.dataUrl}
-                                alt={att.name}
-                                draggable={false}
-                              />
-                            </button>
-                            {att.processing ? (
-                              <span className="absolute inset-0 grid place-items-center bg-black/40">
-                                <Loader2 className="size-4 motion-safe:animate-spin text-white" />
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                aria-label={`${t('common:dismiss')} ${att.name}`}
-                                className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 focus-visible:opacity-100 group-hover/thumb:opacity-100 pointer-coarse:size-8 pointer-coarse:opacity-100"
-                                onClick={() => handleRemoveAttachment(idx)}
-                              >
-                                <X className="size-3" />
-                              </button>
-                            )}
-                          </div>
-                        )
-                      }
-                      return (
-                        <div
-                          key={`${att.type}-${idx}-${att.name}`}
-                          data-testid="composer-attachment-chip"
-                          className="relative flex h-9 min-w-0 max-w-56 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-muted pl-1 pr-1 text-xs text-foreground pointer-coarse:h-11"
-                        >
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div
-                                className={cn(
-                                  'flex min-w-0 items-center gap-1.5'
-                                )}
-                              >
-                                <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-card text-muted-foreground">
-                                  {isImage && att.dataUrl ? (
-                                    <img
-                                      className="object-cover w-full h-full"
-                                      src={att.dataUrl}
-                                      alt={`${att.name}`}
-                                    />
-                                  ) : isAudio ? (
-                                    <Music className="size-4" />
-                                  ) : isVideo ? (
-                                    <Video className="size-4" />
-                                  ) : (
-                                    <Paperclip className="size-4" />
-                                  )}
-                                </span>
-                                <span className="min-w-0 truncate font-medium">
-                                  {att.name}
-                                </span>
-                                {(durLabel ||
-                                  (!isImage &&
-                                    !isAudio &&
-                                    !isVideo &&
-                                    ext)) && (
-                                  <span className="shrink-0 text-[11px] uppercase text-muted-foreground tabular-nums">
-                                    {durLabel ?? `.${ext}`}
-                                  </span>
-                                )}
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <div className="text-xs">
-                                <div
-                                  className="font-medium truncate max-w-52"
-                                  title={att.name}
-                                >
-                                  {att.name}
-                                </div>
-                                <div className="opacity-70">
-                                  {isImage
-                                    ? att.mimeType || 'image'
-                                    : isAudio
-                                      ? att.audioFormat
-                                        ? `.${att.audioFormat}${durLabel ? ` · ${durLabel}` : ''}`
-                                        : 'audio'
-                                      : ext
-                                        ? `.${ext}`
-                                        : 'document'}
-                                  {att.size
-                                    ? ` · ${formatBytes(att.size, {
-                                        decimals: (_, unit) =>
-                                          unit === 'B' ? 0 : 1,
-                                      })}`
-                                    : ''}
-                                </div>
-                                {isAudio && att.dataUrl && (
-                                  <audio
-                                    controls
-                                    src={att.dataUrl}
-                                    className="mt-1 w-56"
-                                  />
-                                )}
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-
-                          {/* No remove while it is still being processed. */}
-                          {att.processing ? (
-                            <Loader2 className="mx-1 size-3.5 shrink-0 motion-safe:animate-spin text-muted-foreground" />
-                          ) : (
-                            <button
-                              type="button"
-                              aria-label={`${t('common:dismiss')} ${att.name}`}
-                              className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-9"
-                              onClick={() => handleRemoveAttachment(idx)}
-                            >
-                              <X className="size-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })}
-                </div>
-              </div>
-            )}
+            <ComposerAttachmentChips
+              attachments={attachments}
+              canSeeImages={visionSupported}
+              onRemove={(i) => void handleRemoveAttachment(i)}
+              onOpenImage={(url) =>
+                setViewerAt(
+                  Math.max(0, composerImages.findIndex((i) => i.url === url))
+                )
+              }
+            />
             {queuedMessages.length > 0 && (
               <div className="flex flex-col gap-1 px-3 pt-2 pb-0">
                 <QueuedMessageList
@@ -3342,6 +3201,22 @@ const ChatInput = memo(function ChatInput({
               onKeyDownCapture={(event) => {
                 largePaste.noteKeyDown(event)
                 if (event.nativeEvent.isComposing) return
+                // Backspace in an empty box takes the last chip back off.
+                if (
+                  event.key === 'Backspace' &&
+                  !event.ctrlKey &&
+                  !event.metaKey &&
+                  !event.altKey &&
+                  !event.shiftKey &&
+                  prompt.length === 0
+                ) {
+                  const last = attachments.length - 1
+                  if (last >= 0 && !attachments[last].processing) {
+                    event.preventDefault()
+                    void handleRemoveAttachment(last)
+                    return
+                  }
+                }
                 if (slashCommands.open) {
                   const selection = slashCommands.onKeyDown(event)
                   if (typeof selection === 'string') setPrompt(selection)

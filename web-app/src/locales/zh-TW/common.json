@@ -1474,7 +1474,8 @@
   "drop": {
     "openInCode": "拖放以開啟 — 唯讀",
     "attachToMessage": "拖放以附加到你的訊息",
-    "releaseToAttach": "放開以附加"
+    "releaseToAttach": "放開以附加",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkRunSettings": {
     "label": "執行設定",
@@ -2487,5 +2488,11 @@
     "stop": "停止",
     "retry": "重試",
     "downloading": "下載中…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

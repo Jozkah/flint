@@ -1523,7 +1523,8 @@
   "drop": {
     "openInCode": "Перетащите, чтобы открыть — только чтение",
     "attachToMessage": "Перетащите, чтобы прикрепить к сообщению",
-    "releaseToAttach": "Отпустите, чтобы прикрепить"
+    "releaseToAttach": "Отпустите, чтобы прикрепить",
+    "releaseToAttachCount": "Release to attach {{count}} files"
   },
   "coworkRunSettings": {
     "label": "Настройки запуска",
@@ -2574,5 +2575,11 @@
     "stop": "Остановить",
     "retry": "Повторить",
     "downloading": "Загрузка…"
+  },
+  "composerChip": {
+    "list": "Attached files",
+    "pastedImage": "Pasted image {{n}}",
+    "open": "Preview {{name}}",
+    "noVision": "This model can't read images"
   }
 }

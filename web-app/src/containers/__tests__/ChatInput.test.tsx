@@ -1000,6 +1000,59 @@ describe('ChatInput', () => {
     expect(thumb).toBeTruthy()
   })
 
+  it('shows a chip with name and size, and a vision warning for a text-only model', () => {
+    selectedModelOverride = { id: 'm', capabilities: ['tools'], provider: 'llamacpp' }
+    attachmentsList = [
+      { type: 'image', name: 'image.png', size: 2048, dataUrl: 'data:image/png;base64,a', mimeType: 'image/png' },
+      { type: 'document', name: 'notes.md', size: 512, fileType: 'md' },
+    ]
+    renderInput()
+    const chips = screen.getAllByTestId('composer-attachment-chip')
+    expect(chips).toHaveLength(2)
+    expect(chips[0]).toHaveAttribute('title', 'image.png')
+    expect(chips[0]).toHaveTextContent('common:composerChip.noVision')
+    expect(chips[1]).toHaveTextContent('notes.md')
+    expect(chips[1]).toHaveTextContent('512 B')
+  })
+
+  it('removes the last chip with Backspace in an empty box, not with text', () => {
+    promptState = ''
+    attachmentsList = [
+      { type: 'document', name: 'a.md', fileType: 'md' },
+      { type: 'document', name: 'b.md', fileType: 'md' },
+    ]
+    renderInput()
+    fireEvent.keyDown(getTextarea(), { key: 'Backspace' })
+    expect(setAttachmentsMock).toHaveBeenCalledTimes(1)
+    const updater = setAttachmentsMock.mock.calls[0][1]
+    expect(updater(attachmentsList).map((a: any) => a.name)).toEqual(['a.md'])
+  })
+
+  it('leaves chips alone on Backspace while there is text', () => {
+    promptState = 'hello'
+    attachmentsList = [{ type: 'document', name: 'a.md', fileType: 'md' }]
+    renderInput()
+    fireEvent.keyDown(getTextarea(), { key: 'Backspace' })
+    expect(setAttachmentsMock).not.toHaveBeenCalled()
+  })
+
+  it('removes a chip from its remove button', () => {
+    attachmentsList = [{ type: 'document', name: 'a.md', fileType: 'md' }]
+    renderInput()
+    fireEvent.click(screen.getByRole('button', { name: /a\.md/ }))
+    expect(setAttachmentsMock).toHaveBeenCalled()
+  })
+
+  it('shows the drop affordance with a file count while dragging, and clears on leave', () => {
+    renderInput()
+    const zone = document.querySelector('[data-drop-zone="true"]') as HTMLElement
+    const items = [{ kind: 'file' }, { kind: 'file' }]
+    fireEvent.dragEnter(zone, { dataTransfer: { items, files: [], types: ['Files'] } })
+    expect(screen.getByTestId('drop-rim')).toHaveTextContent('releaseToAttachCount')
+    fireEvent.dragLeave(zone, { dataTransfer: { items, files: [], types: ['Files'] } })
+    expect(screen.queryByTestId('drop-rim')).toBeNull()
+  })
+
   it('falls back to the thread key when no scopeKey is given', () => {
     renderInput()
     expect(readKeys.length).toBeGreaterThan(0)
