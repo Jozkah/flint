@@ -4,6 +4,8 @@ import { I } from '../ui/icons'
 import { back, go, openDrawer, openSheet, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { routeFor } from '../state/sessions'
+import { isIos } from '../platform'
+import { backFallback, isTabRoot } from './iosTabs'
 import { t } from '../i18n'
 
 /** Runs in flight and approvals waiting, from the computer's status. */
@@ -70,6 +72,15 @@ function Bell() {
 }
 
 export function SidebarButton() {
+  const route = useApp((s) => s.route)
+  // iOS: pushed screens get a back chevron; tab roots keep the sessions drawer.
+  if (isIos() && !isTabRoot(route)) {
+    return (
+      <button type="button" className="ib ios-back" onClick={() => back(backFallback(route))} aria-label={t('topbar.back')}>
+        <I n="chevl" size={22} />
+      </button>
+    )
+  }
   return (
     <button type="button" className="ib" onClick={() => openDrawer('left')} aria-label={t('topbar.openNav')}>
       <D n="sidebar-right" size={18} style={{ transform: 'rotate(180deg)' }} />
