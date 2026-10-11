@@ -958,12 +958,22 @@
         "body": "This runs the gate on the merged result, then creates one proposal for your checkout. Nothing is applied until you approve that proposal.",
         "command": "Gate command: {{command}}",
         "noCommand": "No build or test command is configured or detected, so the merged result will not be built or tested.",
-        "proposal": "Proposal created. Review it from the coordinator session.",
+        "proposal": "Proposal created. Review and apply it on this board.",
         "failed": "The gate failed; the campaign stays in review."
       },
       "cancelConfirm": {
         "title": "Cancel this campaign?",
         "body": "Every unfinished task is cancelled and running tasks are stopped. Worktrees are kept."
+      },
+      "proposal": {
+        "title": "Campaign changes",
+        "loading": "Loading the proposal…",
+        "missing": "The proposal could not be found. Run Review & apply again."
+      },
+      "resumed": "Resumed {{n}} task(s) that were interrupted when the app stopped.",
+      "noteState": {
+        "sent": "Note sent",
+        "delivered": "Note delivered to the task"
       },
       "error": "Action failed: {{reason}}"
     }

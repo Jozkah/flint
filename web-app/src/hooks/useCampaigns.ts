@@ -34,13 +34,36 @@ export function pollDelay(campaigns: readonly Campaign[]): number {
     : POLL_IDLE_MS
 }
 
+/**
+ * A campaign waiting on its proposal only reaches `done` (applied) or back to
+ * `reviewing` (rejected) when the backend is asked to look at the proposal, so
+ * each poll asks for every merging or reviewing campaign that has one.
+ */
+export async function settleProposals(
+  campaigns: Campaign[],
+  refresh: (id: string) => Promise<Campaign> = campaignApi.refresh
+): Promise<Campaign[]> {
+  return Promise.all(
+    campaigns.map(async (c) => {
+      const waiting =
+        (c.status === 'merging' || c.status === 'reviewing') && !!c.proposalId
+      if (!waiting) return c
+      try {
+        return await refresh(c.id)
+      } catch {
+        return c
+      }
+    })
+  )
+}
+
 export const useCampaignStore = create<CampaignsState>()((set) => ({
   campaigns: [],
   loaded: false,
   error: null,
   refresh: async () => {
     try {
-      const campaigns = await campaignApi.list()
+      const campaigns = await settleProposals(await campaignApi.list())
       set({ campaigns, loaded: true, error: null })
     } catch (e) {
       set({ loaded: true, error: errorText(e) })

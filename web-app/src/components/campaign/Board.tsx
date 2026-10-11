@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -13,13 +13,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { BudgetBar } from '@/components/campaign/BudgetBar'
+import { CampaignProposalPanel } from '@/components/campaign/ProposalPanel'
 import { TaskCard, type TaskCardAction } from '@/components/campaign/TaskCard'
 import { useCampaign, useCampaignStore } from '@/hooks/useCampaigns'
 import { useCampaignSettings } from '@/hooks/useCampaignSettings'
+import { useCampaignResumed } from '@/hooks/useCampaignResumed'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { route } from '@/constants/routes'
-import { createLiveBoardActions } from '@/lib/campaignHost'
+import { checkNoteDelivery, createLiveBoardActions } from '@/lib/campaignHost'
+import { noteKey, useCampaignNotes } from '@/lib/campaignNotes'
 import type { BoardActions } from '@/lib/campaignBoardActions'
 import type { CampaignTask } from '@/lib/campaignModel'
 import {
@@ -70,6 +73,17 @@ export function CampaignBoard({
   const maxParallel = useCampaignSettings((s) => s.maxParallel)
   const sessions = useCoworkSessions((s) => s.sessions)
   const activity = useFileActivity((s) => s.byConversation)
+  const resumed = useCampaignResumed((s) => s.byCampaign[campaignId])
+  const notes = useCampaignNotes((s) => s.notes)
+  const waitingNotes = Object.entries(notes).some(
+    ([k, n]) => k.startsWith(`${campaignId}/`) && n.state === 'sent'
+  )
+  // A sent note shows "delivered" once the run has taken it in.
+  useEffect(() => {
+    if (!waitingNotes) return
+    const timer = setInterval(() => void checkNoteDelivery(), 2_000)
+    return () => clearInterval(timer)
+  }, [waitingNotes])
   const [panel, setPanel] = useState<Panel>(null)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -226,6 +240,29 @@ export function CampaignBoard({
         </div>
       </header>
 
+      {resumed && resumed.length > 0 ? (
+        <div
+          className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2 text-xs"
+          role="status"
+          data-testid="campaign-resumed"
+        >
+          <span>
+            {t('settings:campaigns.board.resumed', { n: resumed.length })}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => useCampaignResumed.getState().dismiss(campaignId)}
+          >
+            {t('settings:campaigns.board.action.close')}
+          </Button>
+        </div>
+      ) : null}
+
+      {(status === 'merging' || status === 'reviewing') && campaign.proposalId ? (
+        <CampaignProposalPanel campaign={campaign} />
+      ) : null}
+
       <div className="grid min-h-0 flex-1 auto-cols-[16rem] grid-flow-col gap-3 overflow-x-auto pb-2">
         {BOARD_COLUMNS.map((col) => (
           <section
@@ -251,6 +288,7 @@ export function CampaignBoard({
                     files={changedFilesOf(activity[task.sessionId ?? '']).length}
                     lastActivity={updatedOf(task.sessionId)}
                     busy={busy}
+                    note={notes[noteKey(campaign.id, task.id)]?.state}
                     onAction={onAction}
                   />
                 ))

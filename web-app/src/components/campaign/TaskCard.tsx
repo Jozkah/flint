@@ -20,6 +20,7 @@ export function TaskCard({
   files,
   lastActivity,
   busy,
+  note,
   onAction,
 }: {
   task: CampaignTask
@@ -29,6 +30,8 @@ export function TaskCard({
   /** Epoch ms of the task session's last change, when known. */
   lastActivity?: number
   busy?: boolean
+  /** A note sent from the board: still unread, or taken in by the run. */
+  note?: 'sent' | 'delivered'
   onAction: (action: TaskCardAction, task: CampaignTask) => void
 }) {
   const { t } = useTranslation()
@@ -75,6 +78,15 @@ export function TaskCard({
           </span>
         )}
       </p>
+      {note ? (
+        <p
+          className="mt-1 text-[11px] text-muted-foreground"
+          data-testid={`campaign-note-${task.id}`}
+          data-state={note}
+        >
+          {t(`settings:campaigns.board.noteState.${note}`)}
+        </p>
+      ) : null}
       {task.detail && (
         <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{task.detail}</p>
       )}
