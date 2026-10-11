@@ -226,7 +226,21 @@
     "results": "{{count}} risultati",
     "trending": "Di tendenza",
     "bestFor": "Il migliore per questo dispositivo · {{name}} {{gb}} GB",
-    "noMatch": "Nessun modello corrisponde."
+    "noMatch": "Nessun modello corrisponde.",
+    "tasks": {
+      "all": "All",
+      "chat": "Chat",
+      "coding": "Coding",
+      "reasoning": "Reasoning",
+      "vision": "Vision",
+      "small": "Small & fast",
+      "tools": "Tool use",
+      "multilingual": "Multilingual",
+      "speech": "Speech",
+      "embeddings": "Embeddings",
+      "summaries": "Summaries",
+      "translation": "Translation"
+    }
   },
   "library": {
     "title": "Libreria",
@@ -938,7 +952,8 @@
     "connected_other": "{{count}} modelli caricati · {{via}}",
     "connected_many": "{{count}} di modelli caricati · {{via}}",
     "connecting": "Connessione · {{via}}",
-    "offline": "Offline · {{via}}"
+    "offline": "Offline · {{via}}",
+    "campaigns": "Campaigns"
   },
   "panels": {
     "files": "File ({{count}})",
@@ -1267,6 +1282,90 @@
       "unpaired": "Questo telefono non è più associato. Apri Flint per associarlo di nuovo.",
       "refused": "Il tuo computer ha rifiutato quella risposta. Apri Flint per vedere perché.",
       "failed": "Impossibile raggiungere il tuo computer. Apri Flint per rispondere."
+    }
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "crumb": "Cowork",
+    "none": "No campaigns yet",
+    "noneHint": "Start one on the computer: describe a big task and Flint splits it into tasks that run side by side.",
+    "unsupported": "Flint on the computer is too old to show campaigns. Update it and try again.",
+    "tasksDone": "{{done}} of {{total}} done",
+    "headline": {
+      "planning": "Planning: waiting for the plan",
+      "working": "Working: {{done}} of {{total}} tasks done",
+      "attention_one": "Needs your attention: {{count}} task is waiting for you",
+      "attention_other": "Needs your attention: {{count}} tasks are waiting for you",
+      "review": "Ready for your review",
+      "merging": "Waiting for the changes to be applied",
+      "paused": "Paused",
+      "interrupted": "Interrupted: resume to continue",
+      "done": "All done",
+      "failed": "Stopped: something failed",
+      "cancelled": "Cancelled"
+    },
+    "group": {
+      "needs-you": "Needs you",
+      "working": "Working",
+      "up-next": "Up next",
+      "done": "Done"
+    },
+    "word": {
+      "writing": "Writing code",
+      "checking": "Checking the result",
+      "ready": "Ready to merge",
+      "needsInput": "Waiting for your answer",
+      "needsApproval": "Waiting for your approval",
+      "failed": "Failed",
+      "conflict": "Clashes with other work",
+      "waiting": "Waiting for {{names}}",
+      "queued": "Queued",
+      "merged": "Merged",
+      "skipped": "Skipped"
+    },
+    "files_one": "{{count}} file, +{{added}} -{{removed}}",
+    "files_other": "{{count}} files, +{{added}} -{{removed}}",
+    "filesUncommitted": "not saved to a commit yet",
+    "budget": "{{used}} of {{budget}} tokens used",
+    "tokens": "{{used}} tokens used",
+    "waitingForYou": "Waiting for you",
+    "pause": "Pause",
+    "resume": "Resume",
+    "cancel": "Cancel campaign",
+    "cancelConfirm": "Cancel this campaign? Running tasks stop; finished work stays in its worktrees.",
+    "openCoordinator": "Open coordinator",
+    "openTask": "Open",
+    "retry": "Retry",
+    "skip": "Skip",
+    "skipConfirm": "Skip this task? The campaign carries on without it.",
+    "stop": "Stop",
+    "paused": "Campaign paused",
+    "resumed": "Campaign resumed",
+    "cancelled": "Campaign cancelled",
+    "taskRetried": "Task queued again",
+    "taskSkipped": "Task skipped",
+    "taskStopped": "Task stopped",
+    "review": {
+      "title": "Review and apply",
+      "gate": "Before it offers the changes, Flint runs: {{command}}",
+      "noGate": "No build or test command was found, so the result is not checked before you apply it.",
+      "prepare": "Check and prepare changes",
+      "prepared": "The changes are ready to review",
+      "changes_one": "{{count}} file to apply",
+      "changes_other": "{{count}} files to apply",
+      "gateFailed": "The check failed: {{command}}",
+      "flagged": "Look at this first",
+      "looked": "I looked at this file",
+      "sensitive": "Not applied: sensitive file",
+      "binary": "binary",
+      "added": "New",
+      "modified": "Edited",
+      "deleted": "Deleted",
+      "apply": "Apply to the project",
+      "applyConfirm": "Apply {{count}} files to the project folder on your computer?",
+      "applied": "Changes applied",
+      "tickFirst": "Tick the flagged files you looked at first.",
+      "missing": "The proposed changes are not there any more. Open the campaign on the computer."
     }
   }
 }

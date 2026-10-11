@@ -995,7 +995,8 @@
         "queued": "Starts soon",
         "merged": "Merged",
         "skipped": "Skipped",
-        "resolving": "Resolving a clash"
+        "resolving": "Resolving a clash",
+        "verifyBlocked": "Finished, but the check could not decide"
       },
       "row": {
         "open": "Open",
