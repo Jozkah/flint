@@ -416,6 +416,17 @@ pub async fn thin_client_forget(app: tauri::AppHandle, url: String) -> Result<()
     forget(dir, &url)
 }
 
+/// The page has no console on a phone; it reports through here so a startup
+/// failure reaches the app log.
+#[tauri::command]
+pub fn thin_client_log(level: String, message: String) {
+    match level.as_str() {
+        "error" => log::error!("[page] {message}"),
+        "warn" => log::warn!("[page] {message}"),
+        _ => log::info!("[page] {message}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

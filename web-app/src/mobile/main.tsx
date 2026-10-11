@@ -29,6 +29,7 @@ import {
   savedDesktop,
   saveDesktop,
   shellInvoke,
+  shellLog,
   splitAddress,
 } from './shell'
 
@@ -37,6 +38,7 @@ const root = createRoot(document.getElementById('root')!)
 
 /** A thrown error at startup would otherwise leave a blank screen. */
 function showFatal(message: string) {
+  shellLog('error', message.slice(0, 2000))
   const el = document.getElementById('root')
   if (!el || el.querySelector('[data-testid="fatal"]')) return
   const box = document.createElement('pre')
@@ -78,6 +80,7 @@ async function resolveBase(): Promise<string> {
       }
     }
     const choice = await new Promise<Choice>((resolve) => {
+      shellLog('info', 'boot: showing the connect screen')
       root.render(
         <StrictMode>
           <ConnectDesktop
@@ -103,7 +106,9 @@ async function resolveBase(): Promise<string> {
 }
 
 async function boot() {
+  shellLog('info', 'boot: start')
   const base = await resolveBase()
+  shellLog('info', `boot: connected ${base || '(browser)'}`)
   const store = mirrorToken(localPairingStore(), (t) => idbSet(TOKEN_KEY, t))
   const client = new RemoteClient({ store, base })
   const socket = new EventSocket({

@@ -72,3 +72,12 @@ export async function connectDesktop(invoke: Invoke, address: string): Promise<C
 export async function forgetPin(invoke: Invoke, address: string): Promise<void> {
   await invoke('thin_client_forget', { url: address })
 }
+
+/** Reports to the app log from the shell; a no-op in a browser. */
+export function shellLog(level: 'info' | 'warn' | 'error', message: string) {
+  try {
+    void shellInvoke()?.('thin_client_log', { level, message })
+  } catch {
+    // The log is best effort.
+  }
+}

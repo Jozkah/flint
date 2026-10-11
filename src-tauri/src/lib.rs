@@ -641,6 +641,11 @@ pub fn build_app() -> tauri::App {
     // error nobody sees.
     core::crash_trace::install_panic_hook();
     let builder = tauri::Builder::default();
+    // Phone builds: record what the webview loads, since there is no console to read.
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let builder = builder.on_page_load(|_webview, payload| {
+        log::info!("[page] {:?} {}", payload.event(), payload.url());
+    });
     // Shadowed rather than mutated: under `cowork-smoke`/`e2e` the plugin below
     // is the only thing that touches `builder`, and a `mut` binding would then
     // be unused -- which CI's `clippy -D warnings` treats as an error.
@@ -755,6 +760,7 @@ pub fn build_app() -> tauri::App {
         // The phone app reaches a desktop through a pinned-TLS loopback proxy.
         core::thin_client::thin_client_connect,
         core::thin_client::thin_client_forget,
+        core::thin_client::thin_client_log,
     ]);
 
     app_builder
