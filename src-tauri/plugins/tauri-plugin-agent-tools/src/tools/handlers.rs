@@ -2535,6 +2535,11 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                     "\n[warning: the process tree may not have terminated cleanly]",
                 );
             }
+            if let Some(note) =
+                super::node_runner::timeout_note(command, sandboxed, shell_flavor, shell_description)
+            {
+                out.push_str(&note);
+            }
             if !partial.trim().is_empty() {
                 out.push_str("\n--- output before the timeout ---\n");
                 out.push_str(&partial);

@@ -120,6 +120,27 @@ pub const HOME_CACHES: &[(&str, &str)] = &[
 
 pub const TEMP_KEYS: &[&str] = &["TEMP", "TMP", "TMPDIR"];
 
+/// Name of the variable that tells a shell prologue it is inside the Windows
+/// AppContainer. Only [`build`] sets it, so it is a fact about the sandbox and
+/// not something a host can leak in.
+pub const SANDBOX_MARKER: &str = "FLINT_SANDBOX";
+
+/// What `NODE_OPTIONS` carries inside the container.
+///
+/// Node resolves a script's real path by `lstat`ing every ancestor folder, and
+/// the container may not read the attributes of the ones above its workspace
+/// (the user's profile folder, a custom data folder). `node app.js` then died
+/// with `EPERM: lstat 'C:\Users\<name>'` before running a line. Both flags are
+/// accepted in `NODE_OPTIONS` and make Node keep the path it was given.
+pub const NODE_SANDBOX_OPTIONS: &str = "--preserve-symlinks --preserve-symlinks-main";
+
+/// PowerShell's module-analysis cache lives under the per-user local app data
+/// folder. Inside the container that folder does not resolve, so the path
+/// collapsed to a relative `Microsoft\Windows\PowerShell\ModuleAnalysisCache`
+/// and an 84 KB binary appeared in the workspace, then in the task's commit.
+/// This variable moves the file; it is pointed at the scratch.
+pub const PS_CACHE_KEY: &str = "PSModuleAnalysisCachePath";
+
 /// Names that must never be copied to a sandboxed process even if some future
 /// passthrough list grows to include them. Matched case-insensitively on a
 /// substring, because the interesting ones are provider-prefixed
@@ -395,6 +416,12 @@ pub fn build<H: HostEnv>(host: &H, spec: &SandboxEnvSpec<'_>) -> Result<SandboxE
     for (name, sub) in HOME_CACHES {
         env.set_if_absent(name, spec.home.join(sub).into_os_string());
     }
+
+    // Tool defaults that would otherwise fail on, or write into, the
+    // workspace. Left alone when the caller chose a value.
+    env.set_if_absent(PS_CACHE_KEY, spec.temp.join("ModuleAnalysisCache").into_os_string());
+    env.set_if_absent("NODE_OPTIONS", NODE_SANDBOX_OPTIONS);
+    env.set_if_absent(SANDBOX_MARKER, "appcontainer");
 
     for name in REQUIRED {
         if !env.contains(name) {
@@ -735,6 +762,34 @@ mod tests {
         for name in TEMP_KEYS {
             assert_eq!(env.get(name), Some(temp.as_os_str()), "{name}");
         }
+    }
+
+    /// D3: PowerShell's cache must not default into the workspace.
+    #[test]
+    fn powershell_module_cache_is_pointed_at_the_scratch() {
+        let (_, temp) = spec_paths();
+        let env = built(&host());
+        assert_eq!(
+            env.get(PS_CACHE_KEY),
+            Some(temp.join("ModuleAnalysisCache").as_os_str())
+        );
+    }
+
+    /// D1: Node must not lstat the ancestors of the workspace, and a caller's
+    /// own `NODE_OPTIONS` wins.
+    #[test]
+    fn node_keeps_the_path_it_is_given_inside_the_container() {
+        let env = built(&host());
+        assert_eq!(env.get("NODE_OPTIONS"), Some(OsStr::new(NODE_SANDBOX_OPTIONS)));
+        assert_eq!(env.get(SANDBOX_MARKER), Some(OsStr::new("appcontainer")));
+        let (home, temp) = spec_paths();
+        let extra = [("NODE_OPTIONS", OsString::from("--max-old-space-size=512"))];
+        let chosen = build(
+            &host(),
+            &SandboxEnvSpec { home: &home, temp: &temp, path: None, extra: &extra },
+        )
+        .expect("built");
+        assert_eq!(chosen.get("NODE_OPTIONS"), Some(OsStr::new("--max-old-space-size=512")));
     }
 
     #[test]
