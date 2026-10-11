@@ -84,8 +84,6 @@ Off by default. When on, a signed-in client may call these commands over `/api/v
 | --- | --- |
 | `agent_server_info`, `agent_server_folders` | Capability, and a browse of the allowed folders (names only, no file reads) |
 | `agent_campaign_list`, `_get`, `_context`, `_events` | Read campaign records, decisions, handoffs and the event log |
-| `agent_run_list`, `agent_run_get` | The sessions an agent wrote in the server's data folder (only those whose folder is under a root), and one transcript. Read-only |
-| `GET /api/v1/agent/sessions/<id>/events?after=<seq>` | Event replay of one session as server-sent events, resumable with `after=` or `Last-Event-ID` |
 | `agent_campaign_transition` | Pause, resume (from paused only) and cancel a campaign. Task moves, plan approval and an integration worktree from a client are refused |
 | `agent_campaign_cancel` | Cancel |
 | `agent_proposal_list`, `_apply`, `_reject` | The stored, hash-approved proposal path. The destination is the stored proposal's project, which must be under a root |
@@ -99,28 +97,6 @@ Every path is canonicalized and must sit inside a root. Nothing here spawns a pr
 3. **Roughly eighty `agent_*` and `plugin:agent-tools|*` commands** back a Cowork session and the board (worktrees, mailbox, checkpoints, skills, memory, access). The server answers none of them except the review plane above.
 
 The way through, and the real work, is a server-side runner. The Rust loop (`core::agent::loop`, `core::cli::rpc` sessions) already runs turns headless, `campaign_scheduler::next_actions` is a pure function, and P7 in `docs/CAMPAIGNS.md` names the durable worker. It needs HTTP endpoints for start, steer, stop, approvals and an event stream, and a UI mode in which Cowork drives that instead of the renderer loop.
-
-### The server runner: phases and security model
-
-Decision: the Rust loop on the server (`core::agent::loop`, the `core::cli::rpc` session machinery) is the accepted Cowork runtime for a headless server. The desktop keeps its TS loop; a phone or .apk WebView at the server's address drives the server's loop through a client adapter. Parity gaps are labelled in the capability probe (`parityGaps`) and not hidden: plan-review UX, goal evaluation, TS-side compaction, agent teams, and the browser and computer panes.
-
-| Phase | What | State |
-| --- | --- | --- |
-| P0 | `--agent-run` flag, capability probe, read-only session list, transcript and event replay, client probe and banner | Landed |
-| P1 | Session runner: start, turn, steer, interrupt, approvals over HTTP with a per-session event stream (extracts the turn start and finish from `core/cli/rpc.rs`) | Not built |
-| P2 | Cowork UI adapter that feeds `useCoworkRun` and `useCoworkSessions` from the server | Not built |
-| P3 | Campaign tasks and verification on the server | Not built |
-
-`flint serve --agent-run --agent-root <folder>`: the flag needs at least one root, or the server refuses to start. In P0 it only turns the probe on: `agent_server_info` reports `runRequested`, `runnerPlanned`, `sandbox`, `enforces`, `roots`, `maxSessions` and a `missing` list in words (for example "install bubblewrap"). `runsSessions` stays false until the runner exists, the flag is on, and the command sandbox (`tools::jail` backend) enforces.
-
-Security model, which P1 must keep:
-
-- Confinement: every session's folder must resolve inside an `--agent-root`; the data folder is never a root. A session that records no folder is not listed.
-- Sandbox required: commands run only under an enforcing backend (bubblewrap, seatbelt, AppContainer). With none, `bash` is withheld rather than run unconfined, and `runsSessions` is false.
-- Approvals: a permission request that no client answers stalls the turn (the server never auto-approves); it is surfaced as awaiting approval and ends at the session's timeout.
-- Same auth as the rest of the server: bearer token or session cookie, same-origin and host checks.
-
-What the P0 transcript does not carry yet: reasoning, tool images, subagent runs, goal state, plan snapshots, compaction dividers, per-turn usage (the response lists them in `notMapped`).
 
 ### Not verified
 
