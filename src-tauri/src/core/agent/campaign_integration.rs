@@ -169,19 +169,32 @@ fn package_manager(root: &Path) -> &'static str {
 /// script in `package.json`, `cargo check` for a `Cargo.toml`, `go build` for
 /// a `go.mod`), else nothing. A command is never invented.
 pub fn gate_command(root: &Path) -> GateChoice {
-    let toml_path = root.join(".jan").join("agent").join("agent.toml");
-    if let Ok(raw) = std::fs::read_to_string(toml_path) {
-        if let Ok(doc) = raw.parse::<toml::Value>() {
-            let configured = doc
-                .get("campaign")
-                .and_then(|t| t.get("gate"))
-                .and_then(toml::Value::as_str)
-                .map(str::trim)
-                .filter(|s| !s.is_empty());
-            if let Some(command) = configured {
-                return GateChoice { source: "agent_toml".into(), command: Some(command.to_string()) };
-            }
-        }
+    gate_command_with_checkout(root, None)
+}
+
+/// `[campaign] gate` from `.jan/agent/agent.toml` under `dir`, if set.
+fn configured_gate(dir: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(dir.join(".jan").join("agent").join("agent.toml")).ok()?;
+    let doc = raw.parse::<toml::Value>().ok()?;
+    doc.get("campaign")
+        .and_then(|t| t.get("gate"))
+        .and_then(toml::Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+/// Like `gate_command`, with the user's own checkout as a second place to look
+/// for `[campaign] gate`: a config file the user has not committed yet is not
+/// in any worktree, but it is still what they configured. Order: the tree's own
+/// `agent.toml` (source `agent_toml`), then the checkout's, committed or not
+/// (source `agent_toml_checkout`), then detection from `root`.
+pub fn gate_command_with_checkout(root: &Path, checkout: Option<&Path>) -> GateChoice {
+    if let Some(command) = configured_gate(root) {
+        return GateChoice { source: "agent_toml".into(), command: Some(command) };
+    }
+    if let Some(command) = checkout.and_then(configured_gate) {
+        return GateChoice { source: "agent_toml_checkout".into(), command: Some(command) };
     }
     if let Ok(text) = std::fs::read_to_string(root.join("package.json")) {
         if let Ok(pkg) = serde_json::from_str::<Value>(&text) {
@@ -352,7 +365,7 @@ pub fn verify_prepare(
     }
 
     let tests = if run_checks {
-        match gate_command(Path::new(&record.path)) {
+        match gate_command_with_checkout(Path::new(&record.path), Some(Path::new(&c.source_root))) {
             GateChoice { command: Some(command), source } => {
                 match run_command(Path::new(&record.path), &command, TASK_CHECK_SECS) {
                     Ok(run) => format!(
@@ -693,7 +706,7 @@ pub struct FinalizeReport {
 pub fn gate_plan(data_folder: &Path, roots: &Path, id: &str) -> Result<GateChoice, CampaignError> {
     let c = campaign::get(data_folder, id)?;
     let rec = integration_record(&c, roots)?;
-    Ok(gate_command(Path::new(&rec.path)))
+    Ok(gate_command_with_checkout(Path::new(&rec.path), Some(Path::new(&c.source_root))))
 }
 
 /// Run the build and test gate on the integration worktree, and when it
@@ -724,7 +737,7 @@ pub fn finalize(data_folder: &Path, roots: &Path, id: &str, seconds: u64) -> Res
         });
     };
 
-    let choice = gate_command(Path::new(&integration.path));
+    let choice = gate_command_with_checkout(Path::new(&integration.path), Some(Path::new(&c.source_root)));
     let stamp = campaign::now();
     let report = match &choice.command {
         None => GateReport {
@@ -1338,6 +1351,27 @@ mod tests {
         let g = gate_command(&d);
         assert_eq!((g.source.as_str(), g.command.as_deref()), ("agent_toml", Some("make ci")));
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn the_checkouts_agent_toml_is_a_fallback_for_the_gate_even_when_uncommitted() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let base = std::env::temp_dir().join(format!("jan-gate-co-{}-{stamp}", std::process::id()));
+        let (tree, checkout) = (base.join("tree"), base.join("checkout"));
+        std::fs::create_dir_all(checkout.join(".jan/agent")).unwrap();
+        std::fs::create_dir_all(tree.join(".jan/agent")).unwrap();
+        std::fs::write(tree.join("package.json"), r#"{"scripts":{"test":"y"}}"#).unwrap();
+        // Nothing configured in the worktree: detection, as before.
+        assert_eq!(gate_command_with_checkout(&tree, Some(&checkout)).source, "detected");
+        // An (uncommitted) config in the user's checkout wins over detection.
+        std::fs::write(checkout.join(".jan/agent/agent.toml"), "[campaign]\ngate = \"make ci\"\n").unwrap();
+        let g = gate_command_with_checkout(&tree, Some(&checkout));
+        assert_eq!((g.source.as_str(), g.command.as_deref()), ("agent_toml_checkout", Some("make ci")));
+        // The tree's own config still outranks the checkout's.
+        std::fs::write(tree.join(".jan/agent/agent.toml"), "[campaign]\ngate = \"just check\"\n").unwrap();
+        let g = gate_command_with_checkout(&tree, Some(&checkout));
+        assert_eq!((g.source.as_str(), g.command.as_deref()), ("agent_toml", Some("just check")));
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

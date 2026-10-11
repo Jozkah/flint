@@ -112,7 +112,9 @@ pub enum TaskVerdict {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+/// Every field is optional on the wire: a missing one takes its default, so a
+/// renderer that sends only `{maxParallel, tokenBudget}` still creates a plan.
+#[serde(rename_all = "camelCase", default)]
 pub struct CampaignLimits {
     pub max_parallel: u32,
     pub max_tasks: u32,
@@ -581,6 +583,17 @@ fn campaign_edge(from: CampaignStatus, to: CampaignStatus) -> bool {
     )
 }
 
+/// A running campaign whose every task is merged or cancelled, with at least
+/// one merged, has nothing left to do but be reviewed. Moves it there and says
+/// whether it did. Called after any task move, so a skipped or cancelled last
+/// task does not leave the campaign `running`.
+pub(crate) fn advance_to_review(c: &mut Campaign) -> bool {
+    c.status == CampaignStatus::Running
+        && c.tasks.iter().all(|t| t.status.is_terminal())
+        && c.tasks.iter().any(|t| t.status == TaskStatus::Merged)
+        && transition_campaign(c, CampaignStatus::Reviewing).is_ok()
+}
+
 /// Move the campaign. `reviewing` needs no unfinished task; `done` needs every
 /// task merged or cancelled, and at least one merged.
 pub fn transition_campaign(c: &mut Campaign, to: CampaignStatus) -> Result<(), CampaignError> {
@@ -983,9 +996,13 @@ pub fn transition(data_folder: &Path, id: &str, input: TransitionInput) -> Resul
             let from = t.status;
             transition_task(t, mv.to, mv.verdict)?;
             apply_patch(t, mv.patch);
+            let reviewing = advance_to_review(&mut c);
             c.updated_at = now();
             save(data_folder, &c)?;
             append_event(data_folder, id, "task-status", Some(&mv.id), &format!("{from:?} -> {:?}", mv.to));
+            if reviewing {
+                append_event(data_folder, id, "campaign-status", None, "Running -> Reviewing");
+            }
         }
         _ => {
             return Err(CampaignError::new(
@@ -1110,9 +1127,13 @@ pub fn task_settle(
         let rel = write_handoff(data_folder, id, task_id, text)?;
         c.task_mut(task_id)?.handoff_path = Some(rel);
     }
+    let reviewing = advance_to_review(&mut c);
     c.updated_at = now();
     save(data_folder, &c)?;
     append_event(data_folder, id, "task-settled", Some(task_id), &format!("{from:?} -> {to:?}"));
+    if reviewing {
+        append_event(data_folder, id, "campaign-status", None, "Running -> Reviewing");
+    }
     Ok(c)
 }
 
@@ -1531,6 +1552,64 @@ pub(crate) mod tests {
         i.mode_ceiling = "bypass".into();
         assert_eq!(create(&d, i).unwrap_err().kind, CampaignErrorKind::InvalidPlan);
         assert!(list(&d).is_empty());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn a_partial_limits_payload_from_the_renderer_deserializes() {
+        // The exact shape `campaignTools.ts` sends to agent_campaign_create.
+        let payload = serde_json::json!({
+            "title": "Ship it",
+            "coordinatorSession": "coord",
+            "sourceRoot": "/src",
+            "modeCeiling": "ask",
+            "model": "p/m",
+            "limits": { "maxParallel": 3, "tokenBudget": null },
+            "tasks": [{ "id": "a", "title": "A", "brief": "do a" }]
+        });
+        let i: CreateInput = serde_json::from_value(payload).unwrap();
+        let l = i.limits.clone().unwrap();
+        assert_eq!((l.max_parallel, l.max_tasks, l.task_tokens), (3, MAX_TASKS as u32, None));
+        let d = data_dir("partial-limits");
+        let made = create(&d, i).unwrap();
+        assert_eq!(made.limits.max_tasks, MAX_TASKS as u32);
+        assert_eq!(made.limits.max_parallel, 3);
+        // An empty limits object and a zero parallel are both safe.
+        let l: CampaignLimits = serde_json::from_str("{}").unwrap();
+        assert_eq!(l, CampaignLimits::default());
+        let l: CampaignLimits = serde_json::from_str(r#"{"maxParallel":0}"#).unwrap();
+        assert_eq!(l.max_parallel.clamp(1, MAX_PARALLEL_CAP), 1);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn a_running_campaign_with_one_merged_and_the_rest_cancelled_moves_to_review() {
+        let d = data_dir("advance");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[]), plan("b", &[], &[])])).unwrap();
+        let mv = |id: &str, to| TransitionInput {
+            campaign: None,
+            task: Some(TaskMove { id: id.into(), to, verdict: None, patch: TaskPatch::default() }),
+            integration: None,
+        };
+        for s in [CampaignStatus::Approved, CampaignStatus::Running] {
+            transition(&d, "c", TransitionInput { campaign: Some(s), task: None, integration: None }).unwrap();
+        }
+        // The merged half is recorded straight into the file, as the
+        // integration phase does, then the other task is cancelled.
+        let mut c = get(&d, "c").unwrap();
+        c.tasks[0].status = TaskStatus::Merged;
+        save(&d, &c).unwrap();
+        let c = transition(&d, "c", mv("b", TaskStatus::Cancelled)).unwrap();
+        assert_eq!(c.status, CampaignStatus::Reviewing);
+        assert_eq!(get(&d, "c").unwrap().status, CampaignStatus::Reviewing);
+
+        // Nothing merged: stays running, the plan produced nothing to review.
+        create(&d, input(Some("d"), vec![plan("a", &[], &[])])).unwrap();
+        for s in [CampaignStatus::Approved, CampaignStatus::Running] {
+            transition(&d, "d", TransitionInput { campaign: Some(s), task: None, integration: None }).unwrap();
+        }
+        let c = transition(&d, "d", mv("a", TaskStatus::Cancelled)).unwrap();
+        assert_eq!(c.status, CampaignStatus::Running);
         std::fs::remove_dir_all(&d).ok();
     }
 
