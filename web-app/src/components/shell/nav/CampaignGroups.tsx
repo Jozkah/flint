@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronRight, LayoutDashboard } from 'lucide-react'
+import { ChevronRight, Workflow } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { route } from '@/constants/routes'
 import { cn } from '@/lib/utils'
@@ -73,7 +73,7 @@ export function CampaignGroups({
                 }
                 className="flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-1 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
               >
-                <LayoutDashboard aria-hidden className="size-3.5 shrink-0" />
+                <Workflow aria-hidden className="size-3.5 shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{group.title}</span>
                 <span
                   className="shrink-0 font-normal tabular-nums"

@@ -45,7 +45,7 @@ import {
   Trash2,
   Loader2,
   FolderPlus,
-  LayoutDashboard,
+  Workflow,
   type LucideIcon,
 } from 'lucide-react'
 import { coworkTranscript, regenerateCoworkTitle } from '@/lib/regenerateSessionTitle'
@@ -592,7 +592,7 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
       ? [
           {
             title: t('settings:campaigns.start.menu'),
-            icon: LayoutDashboard,
+            icon: Workflow,
             onClick: () => setStartOpen(true),
           },
         ]
@@ -796,7 +796,7 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
                 onClick={() => setStartOpen(true)}
                 data-testid="nav-new-campaign"
               >
-                <LayoutDashboard aria-hidden className="size-3.5" />
+                <Workflow aria-hidden className="size-3.5" />
                 <span>{t('settings:campaigns.start.menu')}</span>
               </NavButton>
             </NavItem>
