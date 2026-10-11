@@ -43,3 +43,88 @@ Not verified on a device: the phone UI was built against the same fixtures as th
 4. When the campaign is ready, Check and prepare changes, then Apply: the files land in the project folder; flagged files stay locked until ticked.
 5. Turn Approvals from phones off on the computer: every campaign action answers "turned off on the computer", and the list stays readable.
 6. Open Discover (Hugging Face) from the phone: the task chips narrow the list.
+
+## Using the .apk with a headless Flint server
+
+Requirement: "Cowork and Campaigns should run on the .apk when it connects to a headless server." What is built, and what is not, as of this branch:
+
+**Built.** The Android build can open a `flint serve` instance. The server serves the same web app over HTTPS and that page already talks to the server (`lib/tauriBridgeShim.ts`: `invoke` becomes `POST /api/v1/rpc/<command>`, events arrive over `/api/v1/events`, provider calls over `/api/v1/provider/stream`). Opening the server is therefore the whole "route backend calls to the server" step; there is no second transport in the bundled app. Chat, rooms, models, MCP servers and the other pages the browser build supports run on the server, with the apk as the screen.
+
+**Not built: running a Cowork session or a campaign task on the server.** Three facts block it (see "What blocks agent runs on a headless server"). The .apk and a browser both show the Cowork and Campaigns pages, but a session started from them cannot execute tools. Run sessions and campaigns on a computer with Flint open and reach them from the phone app (pairing, above).
+
+### Set up
+
+1. On the always-on machine, start the server. A TLS proxy in front is required for anything beyond loopback; Tailscale Serve is the usual one:
+
+   ```
+   flint serve --listen 127.0.0.1:1340 --public-host flint.<tailnet>.ts.net --agent-root ~/code
+   ```
+
+   `--agent-root <folder>` is optional and repeatable. It turns on the review plane described below for projects under that folder. A root may not contain the data folder (the server refuses to start if it does).
+2. Copy the first-run administrator credential the server prints (shown once; `flint serve --background` leaves it for the starter to show).
+3. Make the address reachable from the phone (Tailscale on, or the VPN you use) and open it once in the phone's browser to check the certificate is trusted. Android's WebView offers no way past an untrusted certificate, so a self-signed one will not work.
+4. In the .apk: Settings, General, **Flint server**. Enter the HTTPS address, **Test connection**, then **Open server**. Sign in on the server's own page with the credential. Optional: turn on **Open at start**; the app then shows a four second countdown at launch with a **Use this device** button.
+
+### Verify
+
+1. Test connection says "Reached a Flint server." (If it says something answered but could not be confirmed, the server was not started with `--allowed-origin` for the app; Open server still works.)
+2. After signing in, the chat sends a message and the model answers through the server's providers.
+3. `POST /api/v1/rpc/agent_server_info` (curl with a bearer token from `POST /api/v1/token`) returns `{"agent":true,"folders":[...]}` when `--agent-root` was given, and `{"agent":false}` otherwise.
+4. In a browser or the apk, the Campaigns page lists campaigns recorded in the server's data folder, and a proposal for a project under the root can be reviewed, applied or rejected.
+
+### How the credential is kept
+
+The app stores the server **address** and the Open-at-start switch (this origin's local storage), nothing else. The administrator credential is typed on the server's page; the session is the server's `flint_session` cookie (12 hours, HttpOnly, SameSite=Strict, Secure over HTTPS) in the WebView's cookie jar. No token is written to settings, logs or the keyring by the app. A native-shell client that prefers a bearer token can use `POST /api/v1/token` with `--allowed-origin <the app's origin>`, which the server already supports and tests.
+
+### The review plane (`--agent-root`)
+
+Off by default. When on, a signed-in client may call these commands over `/api/v1/rpc/`, and only these:
+
+| Command | Does |
+| --- | --- |
+| `agent_server_info`, `agent_server_folders` | Capability, and a browse of the allowed folders (names only, no file reads) |
+| `agent_campaign_list`, `_get`, `_context`, `_events` | Read campaign records, decisions, handoffs and the event log |
+| `agent_run_list`, `agent_run_get` | The sessions an agent wrote in the server's data folder (only those whose folder is under a root), and one transcript. Read-only |
+| `GET /api/v1/agent/sessions/<id>/events?after=<seq>` | Event replay of one session as server-sent events, resumable with `after=` or `Last-Event-ID` |
+| `agent_campaign_transition` | Pause, resume (from paused only) and cancel a campaign. Task moves, plan approval and an integration worktree from a client are refused |
+| `agent_campaign_cancel` | Cancel |
+| `agent_proposal_list`, `_apply`, `_reject` | The stored, hash-approved proposal path. The destination is the stored proposal's project, which must be under a root |
+
+Every path is canonicalized and must sit inside a root. Nothing here spawns a process, runs a build or test, merges, discards a worktree or executes a tool. Every call needs the bearer token or session cookie like any other server call; the same-origin and host checks apply.
+
+### What blocks agent runs on a headless server
+
+1. **No tool executor in the headless build.** `execute_tool`, the write grants and the sandbox status live in `tauri-plugin-agent-tools` behind its `tauri` feature, which the `flint` binary leaves out on purpose (no GUI stack in the graph). The browser transport has no way to call them, and `Channel` streaming is not available in `tauriBridgeShim`.
+2. **The Cowork loop and the campaign scheduler are renderer code** (`coworkRunner.ts`, `campaignRunner.ts`, `campaignHost.ts`). `useMailboxDelivery` returns early when there is no Tauri bridge, so the campaign host is not even started in the browser build. Moving the loop to the apk's WebView would run the model calls on the phone and leave the tools on a server that cannot run them.
+3. **Roughly eighty `agent_*` and `plugin:agent-tools|*` commands** back a Cowork session and the board (worktrees, mailbox, checkpoints, skills, memory, access). The server answers none of them except the review plane above.
+
+The way through, and the real work, is a server-side runner. The Rust loop (`core::agent::loop`, `core::cli::rpc` sessions) already runs turns headless, `campaign_scheduler::next_actions` is a pure function, and P7 in `docs/CAMPAIGNS.md` names the durable worker. It needs HTTP endpoints for start, steer, stop, approvals and an event stream, and a UI mode in which Cowork drives that instead of the renderer loop.
+
+### The server runner: phases and security model
+
+Decision: the Rust loop on the server (`core::agent::loop`, the `core::cli::rpc` session machinery) is the accepted Cowork runtime for a headless server. The desktop keeps its TS loop; a phone or .apk WebView at the server's address drives the server's loop through a client adapter. Parity gaps are labelled in the capability probe (`parityGaps`) and not hidden: plan-review UX, goal evaluation, TS-side compaction, agent teams, and the browser and computer panes.
+
+| Phase | What | State |
+| --- | --- | --- |
+| P0 | `--agent-run` flag, capability probe, read-only session list, transcript and event replay, client probe and banner | Landed |
+| P1 | Session runner: start, turn, steer, interrupt, approvals over HTTP with a per-session event stream (extracts the turn start and finish from `core/cli/rpc.rs`) | Not built |
+| P2 | Cowork UI adapter that feeds `useCoworkRun` and `useCoworkSessions` from the server | Not built |
+| P3 | Campaign tasks and verification on the server | Not built |
+
+`flint serve --agent-run --agent-root <folder>`: the flag needs at least one root, or the server refuses to start. In P0 it only turns the probe on: `agent_server_info` reports `runRequested`, `runnerPlanned`, `sandbox`, `enforces`, `roots`, `maxSessions` and a `missing` list in words (for example "install bubblewrap"). `runsSessions` stays false until the runner exists, the flag is on, and the command sandbox (`tools::jail` backend) enforces.
+
+Security model, which P1 must keep:
+
+- Confinement: every session's folder must resolve inside an `--agent-root`; the data folder is never a root. A session that records no folder is not listed.
+- Sandbox required: commands run only under an enforcing backend (bubblewrap, seatbelt, AppContainer). With none, `bash` is withheld rather than run unconfined, and `runsSessions` is false.
+- Approvals: a permission request that no client answers stalls the turn (the server never auto-approves); it is surfaced as awaiting approval and ends at the session's timeout.
+- Same auth as the rest of the server: bearer token or session cookie, same-origin and host checks.
+
+What the P0 transcript does not carry yet: reasoning, tool images, subagent runs, goal state, plan snapshots, compaction dividers, per-turn usage (the response lists them in `notMapped`).
+
+### Not verified
+
+- No device or emulator was available: opening an external HTTPS origin inside the Tauri Android WebView, the cookie persisting across app restarts, and the back button returning to the bundled app were not exercised. Unit tests cover the address handling, the stored shape, the reachability probe and the countdown.
+- The Android build itself (`yarn build:android`) was not run.
+- `cargo test` was not run for the new server module; `cargo check --tests` passes for the `cli` feature. The desktop feature set was not compiled; the module uses only code that is compiled in both.
+- Cowork and Campaigns pages on a phone-sized viewport were not reworked. The mobile shell (`src/mobile`) is the touch UI; the desktop pages are not made usable at 390 px by this change.

@@ -184,3 +184,7 @@ From your phone: the phone app (see `docs/MOBILE.md`) has **Campaigns** under Co
 10. Adding the `campaign` field to persisted sessions needs a migration bump in `useCoworkSessions.ts`.
 11. Backend and renderer state can disagree after a crash. Rule: the backend wins for status, the session store wins for transcript.
 12. Decided in P4: the renderer runs the model call; the backend builds the fenced request and parses the verdict (`agent_campaign_verify_prepare` and `_verify_finish`).
+
+## On the Android build and a headless server
+
+Campaigns do not run on the .apk, with or without a server. The scheduler and the task sessions are renderer code driving the Cowork run loop, and the tool executor is not part of the headless `flint` build. What a headless server can do today, with `flint serve --agent-root <folder>`: list campaigns, read their decisions, handoffs and event log, pause, resume and cancel them, and review, apply or reject proposals. It cannot start a campaign, run a task, verify, merge or run the final gate, and a client cannot move a task or approve a plan through it. Setup, the command table and what blocks a server-side runner are in `docs/MOBILE.md` ("Using the .apk with a headless Flint server"). A server-side runner is the open item P7 names; its design, phases and security model (the Rust loop on the server, `--agent-run`) are in `docs/MOBILE.md` ("The server runner"), and P0 of it (probe and read-only session views) is in.
