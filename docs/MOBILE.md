@@ -108,7 +108,7 @@ Decision: the Rust loop on the server (`core::agent::loop`, the `core::cli::rpc`
 | --- | --- | --- |
 | P0 | `--agent-run` flag, capability probe, read-only session list, transcript and event replay, client probe and banner | Landed |
 | P1 | Session runner: create, start, steer, interrupt, approvals and questions over HTTP with a live per-session event stream; the Cowork adapter for one session (`remoteCowork.ts`) and a "Run on server" entry | Landed (single Cowork-style session) |
-| P2 | Worktree RPCs and proposals for server sessions (isolated checkouts, review and apply), model and mode pickers | Not built |
+| P2 | Worktrees and proposals for server sessions: an isolated, server-owned checkout per writing session, `agent_worktree_*` commands by session id, a proposal after each turn that changed something, the worktree panel on the page | Landed (model and mode pickers still missing) |
 | P3 | Campaign tasks and verification on the server | Not built |
 
 `flint serve --agent-run --agent-root <folder>`: the flag needs at least one root, or the server refuses to start. `agent_server_info` reports `runRequested`, `sandbox`, `enforces`, `roots`, `maxSessions`, `allowBypass`, `allowAlways`, `approvalTimeoutSecs`, `liveSessions` and a `missing` list in words (for example "install bubblewrap"). `runsSessions` is true only when the flag is on, the runner is built, and the command sandbox (`tools::jail` backend) enforces; `--agent-require-sandbox=false` is the operator's explicit way to run unsandboxed anyway.
@@ -158,17 +158,53 @@ Security model, which P1 must keep:
 - Sandbox required: commands run only under an enforcing backend (bubblewrap, seatbelt, AppContainer). With none, `bash` is withheld rather than run unconfined, and `runsSessions` is false.
 - Approvals: the server never auto-approves a prompt in `read`/`ask`; an unanswered one is denied at the timeout, with the decision recorded.
 - Same auth as the rest of the server: bearer token or session cookie, same-origin and host checks.
-- A remote session gets the built-in tools only: no MCP server is connected for it, no worktree is created, and no host tool is declared.
+- A remote session gets the built-in tools only: no MCP server is connected for it and no host tool is declared. (P2: a session that may write works in its own worktree; see below.)
 
 What the P0 transcript does not carry yet: reasoning, tool images, subagent runs, goal state, plan snapshots, compaction dividers, per-turn usage (the response lists them in `notMapped`).
+
+### What P2 does: worktrees and proposals
+
+A session that may write (`ask`, `auto`, `bypass`) and whose folder is inside a git repository runs in an isolated checkout by default; `read` sessions and non-repositories run in place. `agent_run_create` takes `worktree` (`false` opts out, `true` insists and fails with 422 outside a repository) and `base` (a local branch or commit to start from; the "Merge" target). The checkout is made with `core::agent::worktree::ensure_with` under the **server's** folder (`<data>/agent-workspace/worktrees`), never a client-supplied path; the branch is `flint/<title>-<short id>` (or `jan/cowork/<id>` without a title). The thread's `metadata.worktree` stores the record (`path`, `branch`, `baseSha`, `baseBranch`, `sourceRoot`, `identity`, `notes`), and `agent_run_list|get` and the create answer show a short form. The thread's `folder` stays the source folder, so listing and confinement behave as before; the session's tools work in the checkout (the same subfolder of it, when the folder was below the repository top).
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `agent_worktree_state` | `id` | `{ state, worktree, project }`; `state` is `ready`, `missing`, `corrupt`, `branch-moved` or `identity-changed` |
+| `agent_worktree_pending` | `id` | `{ files }`: uncommitted files |
+| `agent_worktree_unmerged` | `id` | `{ commits }`: on the branch, not in the base |
+| `agent_worktree_commit_pending` | `id`, `message` | `{ committed }` (hooks skipped, `.jan/` never included) |
+| `agent_worktree_merge` | `id`, `target`, `commitMessage` | `MergeOutcome`; conflicts are found with `git merge-tree` before anything moves; uncommitted work refuses unless `commitMessage` commits it first |
+| `agent_worktree_rename` | `id`, `title` | `{ worktree }` with the branch renamed |
+| `agent_worktree_discard` | `id`, `force` | `{ discarded }`; refuses uncommitted or unmerged work without `force`; the live session ends and cannot be resumed (`worktreeDiscarded: true` on the row) |
+| `agent_worktree_list` | `project` (confined) | `{ worktrees }`: Flint's worktrees of that repository |
+
+Every command names the session. A path or record in the request is ignored: the record is read from that session's stored thread, so a client cannot point a merge or a discard at anything it did not start. On a live session the operation runs on the session's actor (serialised with turns; a state-changing one is refused with 409 while a turn is active).
+
+Proposals: when a turn ends (or is interrupted) and the worktree differs from its base commit, the server stores the change with `proposal::create` (scope `session`, `project` = the repository top level, `worktree` = the checkout), rejects the session's earlier pending proposal as superseded, and emits `proposal.created` (`proposalId`, `files`, `additions`, `deletions`) before `turn.completed`. A turn that left the same content as the last proposal makes no new one. A change the server cannot propose (a path through a link, a worktree that is not `ready`) emits `proposal.error` instead. Review is the existing plane: `agent_proposal_list` (by `project`), `agent_proposal_apply` (hash-approved approval; the destination is the stored proposal's project, confined to the roots) and `agent_proposal_reject`. Nothing reaches the source folder before an approval or an explicit `agent_worktree_merge`.
+
+On the page: `components/server/RemoteWorktreePanel.tsx` (mounted in the Cowork diff rail for a remote session) shows the branch, state and counts, "Merge into <base>" (commits pending work, then merges), "Discard" (asks first, names what it removes), the file list of the pending proposal and the ordinary `CoworkProposalReview` for apply and reject. "Run on server" gets an "own checkout" option for git folders (on by default, off is the explicit opt-out).
+
+Operator switch: `--agent-allow-checks` (default off) is reported as `runsChecks`. P2 has no runner for a project's own commands, so nothing is gated on it yet; it is the switch P3's verification checks and gate will need. `runsWorktrees` in `agent_server_info` says the capability is built.
+
+Security notes (P2):
+
+- The worktree root is the server's own folder. Creation refuses a repository whose top level is not inside an `--agent-root`, a base that starts with `-`, and a worktree that would sit inside the repository.
+- A stored record is trusted for nothing. Before every use it must still be listed by its repository's own git at that path on a Flint branch under the owned root (`worktree::ensure_owned`), and its repository must resolve inside a root. A forged `path` or `sourceRoot` in the thread file gets 403 on every operation (covered by `tests/web_agent_run.rs`).
+- Resuming a session after a restart re-validates the record and the worktree state; a worktree that is missing or moved refuses the start (409) instead of writing somewhere else.
+- A changed path that is, or passes through, a link out of the checkout stops the whole proposal (`ChangesError::LinkEscape`); the content is read from inside the checkout only.
+- State-changing commands are audited in the session's event log as `worktree.commit_pending|merge|rename|discard` with the digests of the client and its address (never the token), and proposal create/apply/reject are audited by the proposal store.
+- Merge writes into the source repository: a fast-forward of the base branch moves the files of the checkout that has it checked out (refused when that checkout is dirty or mid-operation), otherwise only the ref moves. It is an explicit, signed-in client action; there is no automatic merge.
+- Commit is made with hooks skipped. Git itself still runs for creation (`worktree add`), `merge --ff-only` and `worktree remove`, so the repository's own `post-checkout` and `post-merge` hooks can fire; they are the operator's repository's own scripts, run outside the command sandbox. A repository whose hooks must not run on the server should not be an `--agent-root`.
+- `.jan/` (the session's own scaffolding inside the checkout) is added to the repository's local `info/exclude` once, so it is never committed, merged or proposed. That touches one unversioned file in the source repository's git folder.
+
+Gaps after P2: no model or mode picker on the page; no `agent_worktree_optimize` (dependency links, sparse checkout, so a fresh checkout has no `node_modules`); no "work on a copy" for a folder that is not a repository; discard ends the session rather than offering a new checkout; a worktree made by the desktop is listed (`agent_worktree_list`) but only a runner session's own can be acted on; the CLI's `[agent].worktree` setting and `~/.jan/worktrees` are not used by the server (the server's own root is).
 
 ### Parity gaps after P1 (said by `parityGaps`, not hidden)
 
 - Plan-review UX, goal evaluation, TS-side compaction (the Rust loop compacts by its own policy), agent teams, the browser and computer panes.
 - Attachments are not sent to a server session; "resume" (regenerate) is refused.
-- Worktrees and proposals for server sessions, campaign tasks and verification: P2 and P3.
+- Campaign tasks and verification on the server: P3. (Worktrees and proposals for server sessions: P2, below.)
 - The transcript's `notMapped` list still applies to a reopened session (reasoning, tool images, plan snapshots, per-turn usage).
-- Model and mode changes are server commands but have no picker on the page yet.
+- Model and mode changes are server commands but have no picker on the page yet (P2 did not add one).
 - Server sessions are listed beside local ones; deleting one from the Cowork list removes only the local row (the server's list restores it); `agent_run_delete` is the way, and the card has no button for it yet.
 - Image tool results, content-part inputs above the 1 MB JSON body limit, and a client that dozes for longer than the 4096-event ring are covered by refetching the transcript, not by replay.
 
