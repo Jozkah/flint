@@ -15,10 +15,12 @@ use super::rpc_schema::{
     ToolResultContent, TurnStartParams, TurnSteerParams,
 };
 use super::stream_input::{parse_input_line, MAX_LINE_BYTES};
-use super::{agent_dir_for, cli_save_thread, prepare_agent_session, AgentSession, SessionFlags};
+use super::turn_host::{
+    begin_turn, parse_decision, release_requests, settle_turn, spawn_turn, Persist, TurnMessage,
+};
+use super::{agent_dir_for, prepare_agent_session, AgentSession, SessionFlags};
 use crate::core::agent::events::{StreamEvent, PROTOCOL_VERSION};
 use crate::core::agent::host_tools::{HostToolDecl, HostToolResult, HostToolSet};
-use crate::core::agent::r#loop::{run_orchestration_steered, SteeringRequest};
 
 const OUTPUT_CAPACITY: usize = 1025; // 1024 ordinary records and one reserved terminal outcome.
 const INPUT_CAPACITY: usize = 64;
@@ -48,11 +50,6 @@ struct ActiveTurn {
     /// has to keep: `capacity()` counts it as taken, so no notification, reply
     /// or event can be queued in its place.
     terminal: OwnedPermit<Value>,
-}
-
-enum TurnMessage {
-    Event(StreamEvent),
-    Finished(Result<Value, String>),
 }
 
 fn response(id: &Value, result: Value) -> Value {
@@ -99,10 +96,6 @@ fn declare_tools(entries: Vec<Value>) -> Result<HostToolSet, String> {
         })
         .collect::<Result<Vec<_>, _>>()?;
     HostToolSet::declare(decls).map_err(|e| e.to_string())
-}
-
-fn host_names(set: &HostToolSet) -> Vec<String> {
-    set.all().iter().map(|tool| tool.qualified_name.clone()).collect()
 }
 
 /// What the session's next turn advertises, and the host schemas among it.
@@ -176,14 +169,7 @@ async fn release_host_requests(
     out: &mpsc::Sender<Value>,
 ) -> Result<(), String> {
     let Some(session) = session else { return Ok(()) };
-    let registry = &session.agent.args.host_tool_requests;
-    let released = if reason == "client_gone" {
-        crate::core::agent::host_tools::strand_all(registry).await
-    } else {
-        crate::core::agent::host_tools::cancel_all(registry).await
-    };
-    for request_id in released {
-        let event = StreamEvent::ToolRequestCancelled { request_id, reason: reason.to_owned() };
+    for event in release_requests(&session.agent.args, reason).await {
         let wire = serde_json::to_value(&event).map_err(|e| e.to_string())?;
         let params = json!({"sessionId":turn.session_id,"turnId":turn.turn_id,"event":wire});
         if reason == "client_gone" {
@@ -269,48 +255,6 @@ fn output_lines(mut rx: mpsc::Receiver<Value>) -> std::thread::JoinHandle<()> {
     })
 }
 
-/// Everything the engine already emitted, in order. Waits for room rather than
-/// failing on a full queue: the dispatcher drains it, and its own bounded
-/// output queue is what ends a turn whose client stopped reading.
-async fn forward_events(
-    source: &mut mpsc::UnboundedReceiver<StreamEvent>,
-    events: &mpsc::Sender<TurnMessage>,
-) -> Result<(), String> {
-    while let Some(event) = source.recv().await {
-        events
-            .send(TurnMessage::Event(event))
-            .await
-            .map_err(|_| "RPC event queue closed".to_owned())?;
-    }
-    Ok(())
-}
-
-/// Run `engine` while relaying the events it emits, in order.
-///
-/// A burst larger than `events` is a model streaming fast, not a client that
-/// stopped reading, so a full queue waits for the dispatcher instead of
-/// ending the turn; the engine is not polled meanwhile.
-async fn pump_turn(
-    engine: impl std::future::Future<Output = Result<Value, String>>,
-    rx: &mut mpsc::UnboundedReceiver<StreamEvent>,
-    events: &mpsc::Sender<TurnMessage>,
-) -> Result<Value, String> {
-    tokio::pin!(engine);
-    loop {
-        tokio::select! {
-            run = &mut engine => return run,
-            event = rx.recv() => match event {
-                Some(event) => {
-                    if events.send(TurnMessage::Event(event)).await.is_err() {
-                        return Err("RPC event queue closed".to_owned());
-                    }
-                }
-                None => return Err("RPC event stream closed".to_owned()),
-            },
-        }
-    }
-}
-
 fn start_turn(
     session: &mut Session,
     input: Value,
@@ -323,49 +267,15 @@ fn start_turn(
     let terminal = mpsc::Sender::clone(out)
         .try_reserve_owned()
         .map_err(|_| "RPC output queue is full; retry after draining notifications".to_owned())?;
-    session.history.push(json!({"role":"user","content":input}));
-    let mut body = session.agent.body(json!(session.history));
-    if !session.builtins {
-        body["allowed_tools"] = json!(host_names(&session.agent.args.host_tools));
-    }
-    let args = session.agent.args.clone();
-    let (events, receiver) = mpsc::channel(64);
-    let (steering_tx, mut steering_rx) = mpsc::unbounded_channel::<SteeringRequest>();
-    let pending = Arc::new(Mutex::new(Vec::<Value>::new()));
-    let queued = Arc::clone(&pending);
-    let steerer = tokio::spawn(async move {
-        while let Some(request) = steering_rx.recv().await {
-            let messages = std::mem::take(&mut *queued.lock().await);
-            let _ = request.reply.send(messages);
-        }
-    });
-    let runner = tokio::spawn(async move {
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        let mut result = pump_turn(
-            async {
-                run_orchestration_steered(&tx, &body, &args, Some(&steering_tx))
-                    .await
-                    .map_err(|e| e.message().to_string())
-            },
-            &mut rx,
-            &events,
-        )
-        .await;
-        // The run is complete, so stop producing events and deliver what the
-        // engine already emitted.
-        drop(tx);
-        if let Err(message) = forward_events(&mut rx, &events).await {
-            result = Err(message);
-        }
-        let _ = events.send(TurnMessage::Finished(result)).await;
-    });
+    let body = begin_turn(&session.agent, &mut session.history, input, session.builtins);
+    let task = spawn_turn(session.agent.args.clone(), body);
     Ok(ActiveTurn {
         session_id: session.id.clone(),
         turn_id: uuid::Uuid::new_v4().to_string(),
-        events: receiver,
-        runner,
-        steerer,
-        pending,
+        events: task.events,
+        runner: task.runner,
+        steerer: task.steerer,
+        pending: task.pending,
         updated_history: None,
         terminal,
     })
@@ -416,41 +326,24 @@ fn finish_turn(
     let session = sessions
         .get_mut(&session_id)
         .ok_or("active session missing")?;
-    if let Some(history) = updated_history {
-        session.history = history;
-    }
-    let stop_reason = if interrupted {
-        "interrupted"
-    } else if result.is_ok() {
-        "completed"
-    } else {
-        "error"
-    };
-    let mut error_message = if interrupted {
+    let persist = if session.ephemeral {
         None
     } else {
-        result.as_ref().err().cloned()
+        session.agent.args.project_root.as_ref().map(|project| (agent_dir_for(project), None::<Value>))
     };
-    if let Ok(completion) = &result {
-        if let Some(text) = super::completion_text(completion) {
-            session
-                .history
-                .push(json!({"role":"assistant","content":text}));
-        }
-        if !session.ephemeral {
-            if let Some(project) = session.agent.args.project_root.as_ref() {
-                if let Err(message) = cli_save_thread(
-                    &agent_dir_for(project),
-                    Some(&session.id),
-                    &session.agent.model,
-                    &session.history,
-                    None,
-                ) {
-                    error_message = Some(format!("could not save session: {message}"));
-                }
-            }
-        }
-    }
+    let settled = settle_turn(
+        &mut session.history,
+        updated_history,
+        &result,
+        interrupted,
+        persist.as_ref().map(|(base, metadata)| Persist {
+            base,
+            session_id: &session.id,
+            model: &session.agent.model,
+            metadata: metadata.clone(),
+        }),
+    );
+    let (stop_reason, error_message) = (settled.stop_reason, settled.error);
     session.turns += 1;
     // Through the slot the turn reserved, so this cannot be the record that
     // fails to fit: a client that stopped reading gets the outcome when it
@@ -766,12 +659,7 @@ pub async fn serve() -> Result<(), String> {
                     },
                     "permission/respond" => match (active.as_ref(), serde_json::from_value::<PermissionResponseParams>(params.clone())) {
                         (Some(turn), Ok(PermissionResponseParams { request_id, decision })) => {
-                            let decision = match decision.as_str() {
-                                "allow_once" => Some(tauri_plugin_agent_tools::tools::gate::PermissionDecision::AllowOnce),
-                                "allow_always" => Some(tauri_plugin_agent_tools::tools::gate::PermissionDecision::AllowAlways),
-                                "deny" => Some(tauri_plugin_agent_tools::tools::gate::PermissionDecision::Deny),
-                                _ => None,
-                            };
+                            let decision = parse_decision(decision.as_str());
                             if let Some(decision) = decision {
                                 let session = sessions.get(&turn.session_id).expect("active session");
                                 match session.agent.permission_requests.lock().await.remove(&request_id) {
@@ -844,6 +732,7 @@ pub async fn serve() -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::core::cli::stream_input::{MAX_IMAGES, MAX_IMAGE_BYTES};
+    use crate::core::cli::turn_host::{forward_events, host_names, pump_turn};
 
     /// What the runner does: pump while the engine runs, then drain the rest.
     async fn relay(burst: usize, events: mpsc::Sender<TurnMessage>) -> Result<Value, String> {
