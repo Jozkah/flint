@@ -6,6 +6,12 @@ import {
   probeRunner,
   runnerBanner,
   listRemoteSessions,
+  listRunModels,
+  renameRun,
+  setRunAccess,
+  setRunModel,
+  startRun,
+  allowedAccess,
 } from '../remoteRunner'
 
 const ok = (body: string) => new Response(body, { status: 200 })
@@ -65,5 +71,54 @@ describe('remoteRunner', () => {
   it('surfaces a refusal', async () => {
     const fetchImpl = async () => new Response('outside', { status: 403 })
     await expect(replaySession('s', { fetchImpl })).rejects.toThrow('outside')
+  })
+
+  it('lists the models the server can run, and tolerates an odd answer', async () => {
+    const body = JSON.stringify({
+      models: [{ id: 'm', provider: 'p', label: 'p / m', contextWindow: 128000, supportsTools: null }],
+      default: 'm',
+    })
+    expect(await listRunModels(async () => ok(body))).toEqual({
+      models: [{ id: 'm', provider: 'p', label: 'p / m', contextWindow: 128000, supportsTools: null }],
+      default: 'm',
+    })
+    expect(await listRunModels(async () => ok('{}'))).toEqual({ models: [], default: null })
+  })
+
+  it('changes a session by id with the commands the server answers', async () => {
+    const seen: Array<[string, unknown]> = []
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      seen.push([url, JSON.parse(String(init?.body))])
+      return ok('{}')
+    }
+    await setRunModel('s1', 'm', fetchImpl)
+    await setRunAccess('s1', 'read', fetchImpl)
+    await renameRun('s1', 'Report', fetchImpl)
+    expect(seen).toEqual([
+      ['/api/v1/rpc/agent_run_set_model', { id: 's1', model: 'm' }],
+      ['/api/v1/rpc/agent_run_set_mode', { id: 's1', access: 'read' }],
+      ['/api/v1/rpc/agent_run_rename', { id: 's1', title: 'Report' }],
+    ])
+  })
+
+  it('offers unattended access only when the server allows it', () => {
+    expect(allowedAccess({ allowBypass: false })).toEqual(['read', 'ask'])
+    expect(allowedAccess({ allowBypass: true })).toEqual(['read', 'ask', 'auto'])
+  })
+
+  it('sends attachments with the message only when there are some', async () => {
+    const bodies: unknown[] = []
+    const fetchImpl = async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)))
+      return ok('{"turnId":"t","after":0}')
+    }
+    await startRun('s1', 'hello', fetchImpl)
+    await startRun('s1', 'look', fetchImpl, [{ name: 'a.png', mime: 'image/png', data: 'QUJD' }])
+    expect(bodies[0]).toEqual({ id: 's1', input: 'hello' })
+    expect(bodies[1]).toEqual({
+      id: 's1',
+      input: 'look',
+      attachments: [{ name: 'a.png', mime: 'image/png', data: 'QUJD' }],
+    })
   })
 })

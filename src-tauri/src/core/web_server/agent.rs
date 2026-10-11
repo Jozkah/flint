@@ -30,7 +30,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 use super::agent_runs;
-use super::campaign_driver::{self, Driver, DriverConfig, Host as _, RunnerHost};
+use super::campaign_driver::{self, Driver, DriverConfig, Host as _, RunnerHost, TaskCommand};
 use super::runner::{self, Caller, Runner, RunnerOptions};
 use crate::core::agent::campaign;
 use crate::core::agent::campaign_integration;
@@ -211,7 +211,9 @@ impl Agent {
                     approval_timeout: options.approval_timeout,
                 },
             );
-            self.driver = Some(Driver::new(host));
+            let driver = Driver::new(host);
+            runner.set_coordinator_backend(super::coordinator::DriverBackend::new(driver.clone()));
+            self.driver = Some(driver);
             self.runner = Some(runner);
         }
         self
@@ -305,7 +307,7 @@ impl Agent {
     /// The campaign commands that need the runner or wait on a model or a
     /// project command (`campaign_driver::handles`). Signed-in clients only,
     /// like every other command.
-    pub async fn call_campaign(&self, command: &str, args: &Value) -> Result<Value, Fail> {
+    pub async fn call_campaign(&self, command: &str, args: &Value, caller: &Caller) -> Result<Value, Fail> {
         match command {
             "agent_campaign_cancel" => {
                 let id = text(args, "id")?.to_owned();
@@ -331,9 +333,40 @@ impl Agent {
                         .map_err(|e| fail(400, format!("options are not valid: {e}")))?,
                     _ => Default::default(),
                 };
+                // A coordinator conversation instead of the one-shot planner,
+                // when asked for. It falls back to the planner when the
+                // session cannot be started for a runtime reason (the session
+                // cap, no model); a refusal (bad folder, not allowed) is final.
+                let wants_coordinator = args.get("coordinator").and_then(Value::as_bool).unwrap_or(false)
+                    || args
+                        .pointer("/options/coordinator")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                let mut fell_back: Option<String> = None;
+                if wants_coordinator {
+                    let runner = self.ready_runner()?.clone();
+                    if runner.coordinator_ready() {
+                        match self.start_coordinator(&runner, driver.host().as_ref(), &folder, &goal, &options, caller).await {
+                            Ok(started) => return Ok(started),
+                            Err(f) if matches!(f.status, 400 | 403 | 404) => return Err(f),
+                            Err(f) => {
+                                fell_back = Some(match f.body {
+                                    Value::String(s) => s,
+                                    other => other.to_string(),
+                                });
+                            }
+                        }
+                    } else {
+                        fell_back = Some("this server cannot run a coordinator".to_owned());
+                    }
+                }
                 let made = campaign_driver::start_server(driver.host().as_ref(), &folder, &goal, options).await?;
                 driver.poke();
-                to_json(made)
+                let mut out = to_json(made)?;
+                if let Some(reason) = fell_back {
+                    out["coordinatorError"] = json!(reason);
+                }
+                Ok(out)
             }
             "agent_campaign_approve" => {
                 let driver = self.ready_driver()?.clone();
@@ -349,10 +382,11 @@ impl Agent {
                 driver.poke();
                 to_json(approved)
             }
-            "agent_campaign_finalize" => {
+            "agent_campaign_finalize" | "agent_campaign_retry_gate" => {
                 let driver = self.ready_driver()?.clone();
                 let id = text(args, "id")?.to_owned();
                 self.server_campaign(&id)?;
+                let retry = command == "agent_campaign_retry_gate";
                 let seconds = args
                     .get("seconds")
                     .and_then(Value::as_u64)
@@ -362,6 +396,9 @@ impl Agent {
                     (self.data_folder.clone(), super::session_worktree::owned_root(&self.data_folder)?);
                 let allow_checks = self.options.allow_checks;
                 let id2 = id.clone();
+                if retry {
+                    driver.record_client_command(&id, "retry gate", caller);
+                }
                 let report = tokio::task::spawn_blocking(move || {
                     let plan = campaign_integration::gate_plan(&data, &owned, &id2).map_err(|e| failure(e.message))?;
                     // The gate runs the repository's own build or test command.
@@ -371,7 +408,12 @@ impl Agent {
                             "this server does not run a project command; start it with --agent-allow-checks to run the gate",
                         ));
                     }
-                    campaign_integration::finalize(&data, &owned, &id2, seconds).map_err(|e| failure(e.message))
+                    if retry {
+                        campaign_integration::retry_gate(&data, &owned, &id2, seconds)
+                    } else {
+                        campaign_integration::finalize(&data, &owned, &id2, seconds)
+                    }
+                    .map_err(|e| failure(e.message))
                 })
                 .await
                 .map_err(|_| fail(500, "the gate did not finish"))??;
@@ -381,8 +423,97 @@ impl Agent {
                 driver.poke();
                 to_json(report)
             }
+            "agent_campaign_gate_repair" => {
+                let driver = self.ready_driver()?.clone();
+                let id = text(args, "id")?.to_owned();
+                self.server_campaign(&id)?;
+                let made = driver.gate_repair(&id, caller).await.map_err(failure)?;
+                driver.poke();
+                to_json(made)
+            }
+            command if campaign_driver::is_task_command(command) => {
+                let driver = self.ready_driver()?.clone();
+                let id = text(args, "id")?.to_owned();
+                self.server_campaign(&id)?;
+                let tid = text(args, "taskId")?.to_owned();
+                let task_command = match command {
+                    "agent_campaign_skip_task" => {
+                        let dependants = match args.get("dependants") {
+                            Some(v) if !v.is_null() => serde_json::from_value(v.clone())
+                                .map_err(|_| fail(400, "dependants is leave, cascade or release"))?,
+                            _ => campaign::SkipDependants::Leave,
+                        };
+                        TaskCommand::Skip { dependants }
+                    }
+                    "agent_campaign_retry_task" => TaskCommand::Retry {
+                        hint: args.get("hint").and_then(Value::as_str).unwrap_or_default().to_owned(),
+                    },
+                    "agent_campaign_accept_task" => TaskCommand::Accept {
+                        reason: args.get("reason").and_then(Value::as_str).unwrap_or_default().to_owned(),
+                    },
+                    "agent_campaign_verify_again" => TaskCommand::VerifyAgain,
+                    "agent_campaign_resolve" => TaskCommand::Resolve,
+                    _ => return Err(fail(404, "Unknown agent command")),
+                };
+                let done = driver.task_command(&id, &tid, task_command, caller).await.map_err(failure)?;
+                driver.poke();
+                Ok(done)
+            }
             _ => Err(fail(404, "Unknown agent command")),
         }
+    }
+
+    /// Start a coordinator conversation for `goal`: a runner session that has
+    /// the campaign tools and is told to plan. The campaign exists once it
+    /// calls `campaign_plan`, and still waits for a person's approval.
+    async fn start_coordinator(
+        &self,
+        runner: &Arc<Runner>,
+        host: &RunnerHost,
+        folder: &Path,
+        goal: &str,
+        options: &campaign_driver::StartOptions,
+        caller: &Caller,
+    ) -> Result<Value, Fail> {
+        let goal = campaign_driver::checked_goal(goal)?;
+        campaign_driver::check_repository(host, folder).await?;
+        let title = options.title.trim().to_string();
+        let title = if title.is_empty() {
+            format!("Coordinator: {}", goal.lines().next().unwrap_or(goal).chars().take(60).collect::<String>())
+        } else {
+            title
+        };
+        let created = runner
+            .call(
+                "agent_run_create",
+                &json!({
+                    "folder": folder.to_string_lossy(),
+                    "access": "ask",
+                    "role": "coordinator",
+                    "model": options.model,
+                    "title": title,
+                    "worktree": false,
+                }),
+                caller,
+                Some(folder.to_path_buf()),
+            )
+            .await?;
+        let id = created.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
+        let seed = format!(
+            "You coordinate a campaign on this server. The person's goal is below.\n\n\
+Split the work into independent tasks with campaign_plan (up to 12; tasks that run at the same time must not touch \
+the same paths). The plan is put to the person for approval and nothing starts before they approve it. After that, \
+follow it with campaign_status and campaign_collect, correct a task with campaign_steer, record shared decisions \
+with campaign_decide, and tell the person how it went. Do not do the tasks' work yourself.\n\n\
+<<<goal\n{}\ngoal>>>",
+            campaign_driver::defang(goal)
+        );
+        if let Err(f) = runner.start_text(&id, seed).await {
+            // A session that cannot take its first turn is not left behind.
+            let _ = runner.call("agent_run_delete", &json!({ "id": id }), caller, None).await;
+            return Err(f);
+        }
+        Ok(json!({ "coordinator": created, "campaign": Value::Null }))
     }
 
     /// The canonical form of `raw` when it names an existing path inside a root.
@@ -581,6 +712,14 @@ impl Agent {
             // Campaigns whose driver is this server (P3): created here,
             // planned by the server's model, run with no client connected.
             "runsCampaigns": ready && self.driver.is_some(),
+            // The task and gate moves a client may ask of a campaign this
+            // server drives (retry, skip, accept anyway, verify again,
+            // resolve, gate repair and retry). Empty when it drives none.
+            "campaignCommands": if ready && self.driver.is_some() {
+                json!(campaign_driver::TASK_COMMANDS)
+            } else {
+                json!([])
+            },
             "runRequested": self.run,
             "runnerPlanned": true,
             "sandbox": backend.as_str(),

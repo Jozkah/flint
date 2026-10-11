@@ -32,3 +32,9 @@ welcome for:
 - ways a model, MCP server, extension or downloaded file can run code or read files
   without the user's approval,
 - leaks of API keys or other secrets stored by the app.
+
+## PowerShell scripts always ask
+
+The agent's shell scan can prove some POSIX commands safe, but it does not try to prove PowerShell scripts safe: a script that is not a plain, single read-only command asks for approval even in the mode that lets tasks work inside their own folder.
+
+This is deliberate. A classifier that let "contained" PowerShell scripts skip the prompt was built and reviewed adversarially twice (see the reverted commits 66035d7fb and 01066c612 in the history). Each round found several confirmed bypasses, including statement separators that PowerShell treats differently from the scanner (a lone carriage return), parameter binding that turns a bare word into a method call (`ForEach-Object Delete`), working-directory desync after a failing `Set-Location`, and variable names that fold Unicode letters inside strings. PowerShell's grammar is too large to prove safe with a small interpreter, and the cost of a miss is a silent delete or secret read, so the prompt stays. The OS sandbox is still the enforcement layer for whatever the user approves.

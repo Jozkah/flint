@@ -211,3 +211,76 @@ describe('board actions', () => {
     expect(running.api.finalize).not.toHaveBeenCalled()
   })
 })
+
+describe('board actions on a campaign the server drives', () => {
+  function serverSetup(tasks: CampaignTask[]) {
+    const made = setup(tasks, { driver: 'server' })
+    const server = {
+      steer: vi.fn(async () => ({})),
+      interrupt: vi.fn(async () => ({})),
+    }
+    const extra = {
+      retryTask: vi.fn(async () => ({})),
+      acceptAnyway: vi.fn(async () => ({})),
+      verifyAgain: vi.fn(async () => ({})),
+      resolveTask: vi.fn(async () => ({})),
+      skipTask: vi.fn(async () => ({})),
+      cancel: vi.fn(async () => ({})),
+    }
+    Object.assign(made.api, extra)
+    made.deps.server = server
+    return { ...made, server, extra }
+  }
+
+  it('retries through the server driver and does not kick the local runner', async () => {
+    const { actions, extra, api, runner } = serverSetup([task('a', 'failed')])
+    expect((await actions.retryTask('c1', 'a', 'other way')).ok).toBe(true)
+    expect(extra.retryTask).toHaveBeenCalledWith('c1', 'a', 'other way')
+    expect(api.transition).not.toHaveBeenCalled()
+    expect(runner.kick).not.toHaveBeenCalled()
+  })
+
+  it('accepts anyway only with a reason, through the driver', async () => {
+    const { actions, extra, api } = serverSetup([
+      task('a', 'completed', { verdict: 'BLOCKED' }),
+    ])
+    expect((await actions.acceptAnyway('c1', 'a', 'me', '  ')).ok).toBe(false)
+    expect(extra.acceptAnyway).not.toHaveBeenCalled()
+    expect((await actions.acceptAnyway('c1', 'a', 'me', ' read it ')).ok).toBe(true)
+    expect(extra.acceptAnyway).toHaveBeenCalledWith('c1', 'a', 'me', 'read it')
+    expect(api.transition).not.toHaveBeenCalled()
+  })
+
+  it('verifies again, resolves and skips through the driver', async () => {
+    const { actions, extra, runner } = serverSetup([
+      task('a', 'completed', { verdict: 'BLOCKED' }),
+      task('b', 'conflict'),
+      task('c', 'failed'),
+    ])
+    expect((await actions.verifyAgain('c1', 'a')).ok).toBe(true)
+    expect(extra.verifyAgain).toHaveBeenCalledWith('c1', 'a')
+    expect(runner.verifyTask).not.toHaveBeenCalled()
+    expect((await actions.resolveConflict('c1', 'b')).ok).toBe(true)
+    expect(extra.resolveTask).toHaveBeenCalledWith('c1', 'b')
+    expect((await actions.skipTask('c1', 'c')).ok).toBe(true)
+    expect(extra.skipTask).toHaveBeenCalledWith('c1', 'c', 'leave')
+  })
+
+  it('steers and stops a live run through the server session, not the local mailbox', async () => {
+    const { actions, server, deps, api } = serverSetup([task('a', 'running')])
+    expect((await actions.sendNote('c1', 'a', 'mind the tests')).ok).toBe(true)
+    expect(server.steer).toHaveBeenCalledWith('s-a', 'mind the tests')
+    expect(deps.sendMessage).not.toHaveBeenCalled()
+    await actions.stopTask('c1', 'a')
+    expect(server.interrupt).toHaveBeenCalledWith('s-a')
+    expect(deps.abortRun).not.toHaveBeenCalled()
+    expect(api.transition).not.toHaveBeenCalled()
+  })
+
+  it('cancels through the server driver', async () => {
+    const { actions, extra, runner } = serverSetup([task('a', 'running')])
+    await actions.cancel('c1')
+    expect(extra.cancel).toHaveBeenCalledWith('c1')
+    expect(runner.cancel).not.toHaveBeenCalled()
+  })
+})

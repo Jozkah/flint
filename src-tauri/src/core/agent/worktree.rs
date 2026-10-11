@@ -739,15 +739,21 @@ pub(crate) fn run_status(repo: &Path, args: &[&str]) -> Result<(bool, String), S
         .arg(repo)
         .args(crate::core::agent::vcs::HARDENED)
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0");
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_AUTHOR_NAME", "Flint")
+        .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
+        .env("GIT_COMMITTER_NAME", "Flint")
+        .env("GIT_COMMITTER_EMAIL", "agent@jan.ai");
     jan_utils::system::hide_console_window(&mut cmd);
     let out = cmd
         .output()
         .map_err(|e| format!("failed to launch git: {e}"))?;
-    Ok((
-        out.status.success(),
-        String::from_utf8_lossy(&out.stdout).trim().to_string(),
-    ))
+    let mut text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !out.status.success() && text.is_empty() {
+        // A failure that printed nothing to stdout said why on stderr.
+        text = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    }
+    Ok((out.status.success(), text))
 }
 
 /// Run `git` as the user: their configured identity when they have one, and

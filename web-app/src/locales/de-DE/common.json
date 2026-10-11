@@ -113,7 +113,7 @@
   "keyboardShortcuts": "Shortcuts",
   "home": "Start",
   "cowork": "Cowork",
-  "campaign": "Campaign",
+  "campaign": "Kampagne",
   "newSession": "Neue Sitzung",
   "artifacts": "Artefakte",
   "customize": "Anpassen",
@@ -1474,7 +1474,8 @@
   "drop": {
     "openInCode": "Zum Öffnen ablegen – schreibgeschützt",
     "attachToMessage": "Zum Anhängen an deine Nachricht ablegen",
-    "releaseToAttach": "Zum Anhängen loslassen"
+    "releaseToAttach": "Zum Anhängen loslassen",
+    "releaseToAttachCount": "Loslassen, um {{count}} Dateien anzuhängen"
   },
   "coworkMode": {
     "label": "Was Flint tun darf",
@@ -2063,11 +2064,11 @@
     "movedTo": "Verschoben nach {{name}}",
     "notifications": "Benachrichtigungen",
     "approvalWaiting": "Genehmigung wartet",
-    "tabs": "Sidebar view",
+    "tabs": "Seitenleistenansicht",
     "tabChat": "Chat",
     "tabCowork": "Cowork",
     "studio": "Studio",
-    "schedules": "Schedules"
+    "schedules": "Zeitpläne"
   },
   "systemNav": {
     "label": "Diagnose",
@@ -2487,5 +2488,14 @@
     "stop": "Stopp",
     "retry": "Erneut versuchen",
     "downloading": "Wird heruntergeladen…"
+  },
+  "composerChip": {
+    "list": "Angehängte Dateien",
+    "pastedImage": "Eingefügtes Bild {{n}}",
+    "open": "Vorschau von {{name}}",
+    "noVision": "Dieses Modell kann keine Bilder lesen",
+    "details": "Details zu {{name}}",
+    "previewLoading": "Vorschau wird geladen…",
+    "previewNone": "Keine Vorschau verfügbar"
   }
 }

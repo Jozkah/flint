@@ -8,9 +8,23 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::collections::HashSet;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+
+/// Verifier markers a test has let through: a brief that holds `BLOCKME-x`
+/// gets no verdict (so its check is BLOCKED) until `x` is released here.
+static RELEASED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+fn release(marker: &str) {
+    RELEASED.lock().unwrap().get_or_insert_with(HashSet::new).insert(marker.to_owned());
+}
+
+fn is_released(marker: &str) -> bool {
+    RELEASED.lock().unwrap().as_ref().is_some_and(|set| set.contains(marker))
+}
 
 fn chunk(delta: Value, finish: Value, usage: Option<Value>) -> String {
     let mut c = json!({
@@ -41,6 +55,12 @@ fn utility_text(request: &Value) -> Option<String> {
         );
     }
     if text.contains("BEGIN UNTRUSTED EVIDENCE") {
+        if let Some(at) = text.find("BLOCKME-") {
+            let marker: String = text[at..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+            if !is_released(&marker) {
+                return Some("I cannot decide this one.".to_string());
+            }
+        }
         return Some("VERDICT: PASS\nEVIDENCE: the file is there".to_string());
     }
     None
@@ -63,7 +83,36 @@ fn answer_for(request: &Value) -> String {
         return out;
     }
     let last_text = text_of(&last);
-    if last["role"] == "user" && last_text.contains("WRITE_FILE ") {
+    if last["role"] == "user" && last_text.contains("LIST_TOOLS") {
+        let names: Vec<String> = request["tools"]
+            .as_array()
+            .map(|tools| {
+                tools.iter().filter_map(|t| t["function"]["name"].as_str().map(str::to_owned)).collect()
+            })
+            .unwrap_or_default();
+        out.push_str(&chunk(
+            json!({"role":"assistant","content":format!("TOOLS: {}", names.join(","))}),
+            Value::Null,
+            None,
+        ));
+        out.push_str(&chunk(json!({}), json!("stop"), Some(usage)));
+    } else if last["role"] == "user" && last_text.contains("COORDINATE_PLAN") {
+        let args = json!({
+            "title": "Two files",
+            "tasks": [
+                {"id": "a", "title": "write a", "brief": "WRITE_FILE a.txt", "paths": ["a.txt"]},
+                {"id": "b", "title": "write b", "brief": "WRITE_FILE b.txt", "paths": ["b.txt"], "depends_on": ["a"]}
+            ]
+        })
+        .to_string();
+        out.push_str(&chunk(
+            json!({"role":"assistant","tool_calls":[{"index":0,"id":"call_plan","type":"function",
+                "function":{"name":"host__campaign_plan","arguments": args}}]}),
+            Value::Null,
+            None,
+        ));
+        out.push_str(&chunk(json!({}), json!("tool_calls"), Some(usage)));
+    } else if last["role"] == "user" && last_text.contains("WRITE_FILE ") {
         let name = last_text
             .split("WRITE_FILE ")
             .nth(1)
@@ -1016,4 +1065,352 @@ fn a_campaign_continues_by_itself_after_the_server_restarts_mid_run() {
         events.as_array().unwrap().iter().any(|e| e["kind"] == "driver-resumed"),
         "{events}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Closing the runner's gaps: task moves, pickers, the coordinator, attachments
+// ---------------------------------------------------------------------------
+
+fn plan_of(tasks: Value) -> Value {
+    json!({ "plan": tasks })
+}
+
+fn start_campaign(server: &Server, folder: &str, goal: &str, tasks: Value) -> String {
+    let (status, made) = server.rpc(
+        "agent_campaign_start_server",
+        json!({ "goal": goal, "folder": folder, "options": plan_of(tasks) }),
+    );
+    assert_eq!(status, 200, "{made}");
+    made["id"].as_str().unwrap().to_owned()
+}
+
+fn task_of(server: &Server, id: &str, task: &str) -> Value {
+    campaign_of(server, id)["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["id"] == task)
+        .unwrap_or_else(|| panic!("no task {task}"))
+        .clone()
+}
+
+#[test]
+fn a_client_moves_tasks_of_a_server_campaign_through_the_driver_and_is_audited() {
+    let (dir, app) = git_scratch("task-moves");
+    let server = start(&dir, &["--agent-allow-bypass"]);
+    let folder = app.to_string_lossy().into_owned();
+    let (_, info) = server.rpc("agent_server_info", json!({}));
+    let commands = info["campaignCommands"].as_array().unwrap_or_else(|| panic!("{info}"));
+    for c in ["agent_campaign_skip_task", "agent_campaign_accept_task", "agent_campaign_verify_again", "agent_campaign_retry_task"] {
+        assert!(commands.iter().any(|x| x == c), "{c} in {info}");
+    }
+
+    // Not for an anonymous caller.
+    let anonymous = server
+        .client
+        .post(format!("{}/api/v1/rpc/agent_campaign_skip_task", server.base))
+        .json(&json!({ "id": "x", "taskId": "a" }))
+        .send()
+        .unwrap();
+    assert!(matches!(anonymous.status().as_u16(), 401 | 403));
+
+    // One campaign: a is blocked, b and c are ordinary.
+    let id = start_campaign(
+        &server,
+        &folder,
+        "blocked then accepted",
+        json!([
+            { "id": "a", "title": "write a", "brief": "BLOCKME-accept WRITE_FILE a.txt", "paths": ["a.txt"] },
+            { "id": "b", "title": "write b", "brief": "BLOCKME-again WRITE_FILE b.txt", "paths": ["b.txt"] },
+            { "id": "c", "title": "write c", "brief": "BLOCKME-skip WRITE_FILE c.txt", "paths": ["c.txt"] },
+            { "id": "d", "title": "write d", "brief": "WRITE_FILE d.txt", "paths": ["d.txt"], "dependsOn": ["c"] }
+        ]),
+    );
+    let (status, _) = server.rpc("agent_campaign_approve", json!({ "id": id, "access": "worktree" }));
+    assert_eq!(status, 200);
+    wait_for("three tasks to wait on a person", Duration::from_secs(240), || {
+        ["a", "b", "c"].iter().all(|t| {
+            let task = task_of(&server, &id, t);
+            task["status"] == "completed" && task["verdict"] == "BLOCKED"
+        })
+    });
+
+    // The raw task move is still not a client's.
+    let (status, _) = server.rpc(
+        "agent_campaign_transition",
+        json!({ "id": id, "input": { "task": { "id": "a", "to": "verified" } } }),
+    );
+    assert_eq!(status, 403);
+
+    // Accept anyway: a reason is required, and the record names the client.
+    let (status, _) = server.rpc("agent_campaign_accept_task", json!({ "id": id, "taskId": "a" }));
+    assert_eq!(status, 422);
+    assert_eq!(task_of(&server, &id, "a")["status"], "completed");
+    let (status, body) = server.rpc(
+        "agent_campaign_accept_task",
+        json!({ "id": id, "taskId": "a", "reason": "I read the diff" }),
+    );
+    assert_eq!(status, 200, "{body}");
+    let accepted = task_of(&server, &id, "a");
+    let by = accepted["manualOverride"]["by"].as_str().unwrap_or_else(|| panic!("{accepted}"));
+    assert!(by.starts_with("client "), "{by}");
+    assert!(!by.contains(&server.token), "the token is never recorded");
+    assert_eq!(accepted["manualOverride"]["reason"], "I read the diff");
+
+    // Verify again: the same check, now allowed through, passes and merges.
+    release("BLOCKME-again");
+    let (status, body) = server.rpc("agent_campaign_verify_again", json!({ "id": id, "taskId": "b" }));
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["started"], true);
+
+    // Skip with cascade: the dependant is cancelled with it.
+    let (status, body) = server.rpc(
+        "agent_campaign_skip_task",
+        json!({ "id": id, "taskId": "c", "dependants": "cascade" }),
+    );
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["cancelled"], json!(["d"]));
+    // A task that is not blocked has nothing to accept, and a merged one cannot be retried.
+    wait_for("a and b to merge", Duration::from_secs(120), || {
+        task_of(&server, &id, "a")["status"] == "merged" && task_of(&server, &id, "b")["status"] == "merged"
+    });
+    let (status, _) = server.rpc("agent_campaign_retry_task", json!({ "id": id, "taskId": "a" }));
+    assert_eq!(status, 422);
+    let (status, _) = server.rpc("agent_campaign_accept_task", json!({ "id": id, "taskId": "b", "reason": "x" }));
+    assert_eq!(status, 422);
+    wait_for("the campaign to reach reviewing", Duration::from_secs(120), || {
+        campaign_of(&server, &id)["status"] == "reviewing"
+    });
+
+    // Every move is in the campaign's event log with the client digest.
+    let (_, events) = server.rpc("agent_campaign_events", json!({ "id": id }));
+    let log: Vec<String> = events
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["kind"] == "client-command")
+        .map(|e| e["detail"].as_str().unwrap().to_owned())
+        .collect();
+    for what in ["accept anyway", "verify again", "skip (cascade)"] {
+        assert!(log.iter().any(|l| l.starts_with(what) && l.contains(" by client ")), "{what}: {log:?}");
+    }
+    assert!(log.iter().all(|l| !l.contains(&server.token)), "{log:?}");
+}
+
+#[test]
+fn model_and_mode_pickers_rename_and_delete_use_only_what_the_server_has() {
+    let dir = scratch("pickers");
+    let server = start(&dir, &[]);
+    let folder = dir.join("work").join("app").canonicalize().unwrap().to_string_lossy().into_owned();
+
+    // The models are the providers configured on the server: ids and sizes,
+    // never a key or an address.
+    let (status, listed) = server.rpc("agent_run_models", json!({}));
+    assert_eq!(status, 200, "{listed}");
+    let models = listed["models"].as_array().unwrap();
+    let stub = models.iter().find(|m| m["id"] == "stub-model").unwrap_or_else(|| panic!("{listed}"));
+    assert_eq!(stub["provider"], "stub");
+    assert!(stub["contextWindow"].as_u64().unwrap() >= 1000, "{stub}");
+    let raw = listed.to_string();
+    assert!(!raw.contains("test-key") && !raw.contains("127.0.0.1"), "no secret or endpoint: {raw}");
+
+    let (_, created) = server.rpc("agent_run_create", json!({ "folder": folder, "access": "ask" }));
+    let id = created["id"].as_str().unwrap().to_owned();
+    // A model the server cannot reach is refused; the session keeps its own.
+    let (status, _) = server.rpc("agent_run_set_model", json!({ "id": id, "model": "other/zzz-unknown" }));
+    assert_eq!(status, 422);
+    let (status, set) = server.rpc("agent_run_set_model", json!({ "id": id, "model": "stub-model" }));
+    assert_eq!(status, 200, "{set}");
+
+    // The mode is held to the operator's flags.
+    let (status, _) = server.rpc("agent_run_set_mode", json!({ "id": id, "access": "auto" }));
+    assert_eq!(status, 403);
+    let (status, _) = server.rpc("agent_run_set_mode", json!({ "id": id, "access": "read" }));
+    assert_eq!(status, 200);
+    let (_, row) = server.rpc("agent_run_get", json!({ "id": id }));
+    assert_eq!(row["access"], "read", "{row}");
+
+    // Rename: bounded, and not empty.
+    let (status, _) = server.rpc("agent_run_rename", json!({ "id": id, "title": "   " }));
+    assert_eq!(status, 400);
+    let (status, _) = server.rpc("agent_run_rename", json!({ "id": id, "title": "Weekly report" }));
+    assert_eq!(status, 200);
+    let (_, row) = server.rpc("agent_run_get", json!({ "id": id }));
+    assert_eq!(row["title"], "Weekly report", "{row}");
+
+    // A stored session that is not live is changed in its record too.
+    drop(server);
+    let server = start(&dir, &[]);
+    let (status, _) = server.rpc("agent_run_set_mode", json!({ "id": id, "access": "ask" }));
+    assert_eq!(status, 200);
+    let (status, _) = server.rpc("agent_run_rename", json!({ "id": id, "title": "Weekly report v2" }));
+    assert_eq!(status, 200);
+    let (status, _) = server.rpc("agent_run_set_model", json!({ "id": id, "model": "stub-model" }));
+    assert_eq!(status, 200);
+    let (_, row) = server.rpc("agent_run_get", json!({ "id": id }));
+    assert_eq!((row["access"].as_str(), row["title"].as_str()), (Some("ask"), Some("Weekly report v2")), "{row}");
+    // Delete ends it for good.
+    let (status, _) = server.rpc("agent_run_delete", json!({ "id": id }));
+    assert_eq!(status, 200);
+    let (status, _) = server.rpc("agent_run_get", json!({ "id": id }));
+    assert_eq!(status, 404);
+}
+
+#[test]
+fn a_coordinator_plans_in_process_and_only_a_coordinator_has_the_campaign_tools() {
+    let (dir, app) = git_scratch("coordinator");
+    let server = start(&dir, &["--agent-allow-bypass"]);
+    let folder = app.to_string_lossy().into_owned();
+
+    // The role is validated, and a coordinator cannot be read-only.
+    let (status, _) = server.rpc("agent_run_create", json!({ "folder": folder, "role": "boss" }));
+    assert_eq!(status, 400);
+    let (status, _) = server.rpc("agent_run_create", json!({ "folder": folder, "role": "coordinator", "access": "read" }));
+    assert_eq!(status, 400);
+
+    // An ordinary session is never offered the campaign tools.
+    let (_, plain) = server.rpc("agent_run_create", json!({ "folder": folder, "access": "ask" }));
+    let plain_id = plain["id"].as_str().unwrap().to_owned();
+    let (status, _) = server.rpc("agent_run_start", json!({ "id": plain_id, "input": "LIST_TOOLS" }));
+    assert_eq!(status, 200);
+    let seen = server.events(&plain_id, 0, Duration::from_secs(60), is_completed);
+    let said = seen.iter().map(|e| e["payload"].to_string()).collect::<Vec<_>>().join("\n");
+    assert!(said.contains("TOOLS:"), "{said}");
+    assert!(!said.contains("campaign_"), "an ordinary session has no campaign tool: {said}");
+
+    // The coordinator: a session whose model calls campaign_plan, answered
+    // here with no client attached.
+    let (status, started) = server.rpc(
+        "agent_campaign_start_server",
+        json!({ "goal": "COORDINATE_PLAN two files", "folder": folder, "coordinator": true }),
+    );
+    assert_eq!(status, 200, "{started}");
+    let coordinator = started["coordinator"]["id"].as_str().unwrap_or_else(|| panic!("{started}")).to_owned();
+    let mut found = Value::Null;
+    wait_for("the coordinator's plan to be recorded", Duration::from_secs(90), || {
+        let (_, all) = server.rpc("agent_campaign_list", json!({}));
+        found = all
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["coordinatorSession"] == coordinator.as_str())
+            .cloned()
+            .unwrap_or(Value::Null);
+        !found.is_null()
+    });
+    let id = found["id"].as_str().unwrap().to_owned();
+    assert_eq!(found["status"], "planned", "approval stays a person's: {found}");
+    assert_eq!(found["driver"], "server");
+    assert_eq!(found["tasks"].as_array().unwrap().len(), 2);
+    let (_, approvals) = server.rpc("agent_campaign_approvals", json!({}));
+    assert!(
+        approvals["approvals"].as_array().unwrap().iter().any(|a| a["campaignId"] == id.as_str() && a["kind"] == "plan"),
+        "{approvals}"
+    );
+    // The turn closed on the tool's answer, not on a client's.
+    let turn = server.events(&coordinator, 0, Duration::from_secs(60), is_completed);
+    assert!(turn.iter().any(|e| e["payload"].to_string().contains("tool finished")), "{turn:?}");
+    assert!(
+        !turn.iter().any(|e| e["payload"]["type"] == "tool_request"),
+        "the request is answered in process and never offered to a client"
+    );
+    std::thread::sleep(Duration::from_secs(4));
+    assert_eq!(campaign_of(&server, &id)["status"], "planned", "nothing runs before an approval");
+
+    // The coordinator is offered the tools, and only it.
+    let after = turn.last().unwrap()["seq"].as_u64().unwrap();
+    let (status, _) = server.rpc("agent_run_start", json!({ "id": coordinator, "input": "LIST_TOOLS" }));
+    assert_eq!(status, 200);
+    let listed = server.events(&coordinator, after, Duration::from_secs(60), is_completed);
+    let said = listed.iter().map(|e| e["payload"].to_string()).collect::<Vec<_>>().join("\n");
+    for tool in ["campaign_plan", "campaign_status", "campaign_collect", "campaign_cancel", "campaign_steer", "campaign_decide", "campaign_merge"] {
+        assert!(said.contains(&format!("host__{tool}")), "{tool}: {said}");
+    }
+
+    // A person approves; the driver runs it to review.
+    let (status, approved) = server.rpc("agent_campaign_approve", json!({ "id": id, "access": "worktree" }));
+    assert_eq!(status, 200, "{approved}");
+    wait_for("the campaign to reach reviewing", Duration::from_secs(240), || {
+        let c = campaign_of(&server, &id);
+        assert_ne!(c["status"], "failed", "{c}");
+        c["status"] == "reviewing"
+    });
+    assert_eq!(statuses(&campaign_of(&server, &id)), vec!["merged", "merged"]);
+
+    // The one-shot planner remains when no coordinator is asked for.
+    let (status, planned) = server.rpc(
+        "agent_campaign_start_server",
+        json!({ "goal": "write three files", "folder": folder }),
+    );
+    assert_eq!(status, 200, "{planned}");
+    assert_eq!(planned["status"], "planned");
+    assert_eq!(planned["coordinatorSession"], "server");
+}
+
+#[test]
+fn attachments_are_checked_stored_in_the_session_folder_and_reach_the_model() {
+    let dir = scratch("attachments");
+    let server = start(&dir, &[]);
+    let folder = dir.join("work").join("app").canonicalize().unwrap().to_string_lossy().into_owned();
+    let (_, created) = server.rpc("agent_run_create", json!({ "folder": folder, "access": "ask" }));
+    let id = created["id"].as_str().unwrap().to_owned();
+
+    use base64::Engine as _;
+    let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+    let png = base64::engine::general_purpose::STANDARD
+        .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+        .unwrap();
+
+    // Refused before anything is written: a type nobody reads, a bad payload,
+    // too many files.
+    let (status, _) = server.rpc(
+        "agent_run_start",
+        json!({ "id": id, "input": "look", "attachments": [{ "name": "a.bin", "mime": "application/zip", "data": b64(b"PK") }] }),
+    );
+    assert_eq!(status, 415);
+    let (status, _) = server.rpc(
+        "agent_run_start",
+        json!({ "id": id, "input": "look", "attachments": [{ "name": "a.txt", "mime": "text/plain", "data": "***" }] }),
+    );
+    assert_eq!(status, 400);
+    let many: Vec<Value> = (0..9)
+        .map(|i| json!({ "name": format!("{i}.txt"), "mime": "text/plain", "data": b64(b"x") }))
+        .collect();
+    let (status, _) = server.rpc("agent_run_start", json!({ "id": id, "input": "look", "attachments": many }));
+    assert_eq!(status, 400);
+    let attachments = dir.join("data").join("threads").join(&id).join("attachments");
+    assert!(!attachments.exists(), "a refused message stores nothing");
+
+    let (status, started) = server.rpc(
+        "agent_run_start",
+        json!({
+            "id": id,
+            "input": "read these",
+            "attachments": [
+                { "name": "..\\..\\notes.txt", "mime": "text/plain", "data": b64(b"remember the milk") },
+                { "name": "pixel.png", "mime": "image/png", "data": b64(&png) }
+            ]
+        }),
+    );
+    assert_eq!(status, 200, "{started}");
+    let seen = server.events(&id, 0, Duration::from_secs(60), is_completed);
+    assert_eq!(seen.last().unwrap()["payload"]["stopReason"], "completed", "{seen:?}");
+
+    // Stored in the session's own folder in the data folder: names made safe,
+    // nothing under an agent root.
+    let names: Vec<String> = std::fs::read_dir(&attachments)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert!(names.iter().all(|n| !n.contains("..") && !n.contains('\\') && !n.contains('/')), "{names:?}");
+    assert!(names.iter().any(|n| n.ends_with("notes.txt")), "{names:?}");
+    assert!(!dir.join("work").join("app").join("notes.txt").exists());
+
+    // The model got the text in its message and the image as a part.
+    let (_, got) = server.rpc("agent_run_get", json!({ "id": id }));
+    let transcript = got["turns"].to_string();
+    assert!(transcript.contains("remember the milk"), "{transcript}");
+    assert!(transcript.contains("read these"));
 }

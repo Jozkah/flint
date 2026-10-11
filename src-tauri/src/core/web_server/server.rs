@@ -765,7 +765,7 @@ async fn rpc_route(
                 "The agent review plane is off on this server. Start it with --agent-root <folder>.",
             );
         };
-        return match agent.call_campaign(command, &args).await {
+        return match agent.call_campaign(command, &args, caller).await {
             Ok(value) => json(&value),
             Err(failure) => {
                 let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
@@ -1406,7 +1406,11 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
             return text(StatusCode::BAD_REQUEST, "Invalid command");
         };
         let caller = super::runner::Caller::digest(session.unwrap_or(""), client);
-        let args = match read_json(req).await {
+        // A message with pictures or files is far over the default body; the
+        // checks that bound it (image caps, text caps, the line cap) are the
+        // runner's, so only this one command is let through at the large size.
+        let limit = if command == "agent_run_start" { MAX_LARGE_JSON_BODY } else { MAX_JSON_BODY };
+        let args = match read_json_max(req, limit).await {
             Ok(args) => args,
             Err(response) => return response,
         };

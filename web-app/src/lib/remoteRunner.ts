@@ -25,6 +25,8 @@ export type RunnerInfo = {
   runsWorktrees: boolean
   /** Campaigns can be run by the server itself, with no client attached (P3). */
   runsCampaigns: boolean
+  /** The task and gate moves a client may ask of a server campaign. */
+  campaignCommands: string[]
   runRequested: boolean
   runnerPlanned: boolean
   sandbox: string
@@ -100,6 +102,7 @@ export function parseRunnerInfo(raw: unknown): RunnerInfo {
     runsChecks: v.runsChecks === true,
     runsWorktrees: v.runsWorktrees === true,
     runsCampaigns: v.runsCampaigns === true,
+    campaignCommands: strings(v.campaignCommands),
     runRequested: v.runRequested === true,
     runnerPlanned: v.runnerPlanned === true,
     sandbox: typeof v.sandbox === 'string' ? v.sandbox : 'unknown',
@@ -290,13 +293,24 @@ export function createRun(
 /** A message is text, or the content parts the stdio protocol takes. */
 export type RunInput = string | Array<Record<string, unknown>>
 
+/** A file sent with a message: an image or a text file, base64 encoded. */
+export type RunAttachment = { name: string; mime: string; data: string }
+
+/** Most files one message may carry (the server's own cap). */
+export const MAX_RUN_ATTACHMENTS = 8
+
 /** `after` is the seq to subscribe past to see this turn from its first event. */
 export function startRun(
   id: string,
   input: RunInput,
-  fetchImpl: FetchLike = defaultFetch()
+  fetchImpl: FetchLike = defaultFetch(),
+  attachments?: RunAttachment[]
 ): Promise<{ turnId: string; after: number }> {
-  return rpc('agent_run_start', { id, input }, fetchImpl)
+  return rpc(
+    'agent_run_start',
+    attachments?.length ? { id, input, attachments } : { id, input },
+    fetchImpl
+  )
 }
 
 export function steerRun(id: string, text: string, fetchImpl: FetchLike = defaultFetch()) {
@@ -339,6 +353,39 @@ export function setRunModel(id: string, model: string, fetchImpl: FetchLike = de
 
 export function setRunAccess(id: string, access: RunAccess, fetchImpl: FetchLike = defaultFetch()) {
   return rpc<{ access: string }>('agent_run_set_mode', { id, access }, fetchImpl)
+}
+
+export function renameRun(id: string, title: string, fetchImpl: FetchLike = defaultFetch()) {
+  return rpc<{ title: string }>('agent_run_rename', { id, title }, fetchImpl)
+}
+
+/** A model the server can run, from the providers configured on it. */
+export type RunModel = {
+  id: string
+  provider: string
+  label: string
+  contextWindow: number
+  /** `null` when the server does not know. */
+  supportsTools: boolean | null
+}
+
+export async function listRunModels(
+  fetchImpl: FetchLike = defaultFetch()
+): Promise<{ models: RunModel[]; default: string | null }> {
+  const out = await rpc<{ models?: RunModel[]; default?: string | null }>(
+    'agent_run_models',
+    {},
+    fetchImpl
+  )
+  return {
+    models: Array.isArray(out?.models) ? out.models : [],
+    default: typeof out?.default === 'string' ? out.default : null,
+  }
+}
+
+/** The access levels a session may be moved to on this server. */
+export function allowedAccess(info: Pick<RunnerInfo, 'allowBypass'>): RunAccess[] {
+  return info.allowBypass ? ['read', 'ask', 'auto'] : ['read', 'ask']
 }
 
 // ---------------------------------------------------------------------------

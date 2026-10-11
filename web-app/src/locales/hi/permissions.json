@@ -39,7 +39,7 @@
     "gitLocalIn": "Flint {{workspace}} में {{command}} चलाना चाहता है",
     "gitRemote": "Flint {{command}} चलाना चाहता है, जो {{target}} को बदलता है",
     "gitDestructive": "Flint {{command}} चलाना चाहता है, जिससे काम खो सकता है",
-    "approveCampaign": "Flint wants to start the campaign \"{{title}}\" ({{count}} tasks)"
+    "approveCampaign": "Flint कैंपेन \"{{title}}\" ({{count}} कार्य) शुरू करना चाहता है"
   },
   "consequence": {
     "fileChange": "यह फ़ाइलें बना सकता है, उन्हें ओवरराइट कर सकता है या उनकी सामग्री बदल सकता है।",
@@ -57,7 +57,7 @@
     "gitLocal": "यह इस कंप्यूटर पर इस रिपॉज़िटरी की फ़ाइलें, ब्रांच या इतिहास बदलता है।",
     "gitRemote": "यह किसी रिमोट रिपॉज़िटरी में बदलाव भेजता है जिसे दूसरे लोग देख सकते हैं। Flint हर बार पूछता है, जब तक आप इस बातचीत के लिए सामान्य रिमोट Git क्रियाओं की अस्थायी अनुमति न दें।",
     "gitDestructive": "यह जो हटाता या ओवरराइट करता है, वह शायद वापस न पाया जा सके।",
-    "campaignPlan": "It starts separate sessions, each on its own worktree branch, that read and change files and use your model quota in parallel. Approving the plan does not approve any call a task makes. Flint asks every time."
+    "campaignPlan": "यह अलग-अलग सत्र शुरू करता है, हर एक अपनी वर्कट्री ब्रांच पर, जो फ़ाइलें पढ़ते और बदलते हैं और आपके मॉडल का कोटा साथ-साथ इस्तेमाल करते हैं। योजना को स्वीकृत करने से किसी कार्य की कोई कॉल स्वीकृत नहीं होती। Flint हर बार पूछता है।"
   },
   "repeat": {
     "allowedOnceBefore": "आप इस बातचीत में यह कमांड एक बार पहले ही अनुमति दे चुके हैं।"

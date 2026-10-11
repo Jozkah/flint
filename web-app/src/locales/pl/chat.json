@@ -99,10 +99,10 @@
     "newChatFailed": "Nie udało się rozpocząć nowego czatu",
     "room": "Pokój",
     "recentRooms": "Pokoje",
-    "needsApproval": "Needs approval",
-    "needsApprovalShort": "Needs approval",
-    "done": "Done",
-    "failed": "Failed"
+    "needsApproval": "Wymaga zatwierdzenia",
+    "needsApprovalShort": "Wymaga zatwierdzenia",
+    "done": "Gotowe",
+    "failed": "Niepowodzenie"
   },
   "transcriptView": {
     "steps_one": "{{count}} krok",

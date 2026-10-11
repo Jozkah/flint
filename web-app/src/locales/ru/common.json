@@ -115,7 +115,7 @@
   "keyboardShortcuts": "Сочетания клавиш",
   "home": "Главная",
   "cowork": "Cowork",
-  "campaign": "Campaign",
+  "campaign": "Кампания",
   "newSession": "Новая сессия",
   "artifacts": "Артефакты",
   "customize": "Настроить",
@@ -1523,7 +1523,8 @@
   "drop": {
     "openInCode": "Перетащите, чтобы открыть — только чтение",
     "attachToMessage": "Перетащите, чтобы прикрепить к сообщению",
-    "releaseToAttach": "Отпустите, чтобы прикрепить"
+    "releaseToAttach": "Отпустите, чтобы прикрепить",
+    "releaseToAttachCount": "Отпустите, чтобы прикрепить файлы: {{count}}"
   },
   "coworkRunSettings": {
     "label": "Настройки запуска",
@@ -2139,11 +2140,11 @@
     "movedTo": "Перемещено в {{name}}",
     "notifications": "Уведомления",
     "approvalWaiting": "Ожидает одобрения",
-    "tabs": "Sidebar view",
-    "tabChat": "Chat",
+    "tabs": "Вид боковой панели",
+    "tabChat": "Чат",
     "tabCowork": "Cowork",
     "studio": "Studio",
-    "schedules": "Schedules"
+    "schedules": "Расписания"
   },
   "systemNav": {
     "label": "Диагностика",
@@ -2574,5 +2575,14 @@
     "stop": "Остановить",
     "retry": "Повторить",
     "downloading": "Загрузка…"
+  },
+  "composerChip": {
+    "list": "Прикреплённые файлы",
+    "pastedImage": "Вставленное изображение {{n}}",
+    "open": "Просмотреть {{name}}",
+    "noVision": "Эта модель не умеет читать изображения",
+    "details": "Сведения о {{name}}",
+    "previewLoading": "Загрузка просмотра…",
+    "previewNone": "Просмотр недоступен"
   }
 }

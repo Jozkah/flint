@@ -99,10 +99,10 @@
     "newChatFailed": "无法开始新聊天",
     "room": "房间",
     "recentRooms": "房间",
-    "needsApproval": "Needs approval",
-    "needsApprovalShort": "Needs approval",
-    "done": "Done",
-    "failed": "Failed"
+    "needsApproval": "需要批准",
+    "needsApprovalShort": "需要批准",
+    "done": "已完成",
+    "failed": "失败"
   },
   "transcriptView": {
     "steps_one": "{{count}} 步",

@@ -99,10 +99,10 @@
     "newChatFailed": "No se pudo empezar un nuevo chat",
     "room": "Sala",
     "recentRooms": "Salas",
-    "needsApproval": "Needs approval",
-    "needsApprovalShort": "Needs approval",
-    "done": "Done",
-    "failed": "Failed"
+    "needsApproval": "Necesita aprobación",
+    "needsApprovalShort": "Necesita aprobación",
+    "done": "Hecho",
+    "failed": "Falló"
   },
   "transcriptView": {
     "steps_one": "{{count}} paso",

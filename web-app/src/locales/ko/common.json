@@ -113,7 +113,7 @@
   "keyboardShortcuts": "단축키",
   "home": "홈",
   "cowork": "Cowork",
-  "campaign": "Campaign",
+  "campaign": "캠페인",
   "newSession": "새 세션",
   "artifacts": "아티팩트",
   "customize": "사용자 지정",
@@ -1472,7 +1472,8 @@
   "drop": {
     "openInCode": "놓아서 열기 — 읽기 전용",
     "attachToMessage": "놓아서 메시지에 첨부",
-    "releaseToAttach": "놓아서 첨부"
+    "releaseToAttach": "놓아서 첨부",
+    "releaseToAttachCount": "{{count}}개 파일을 놓아서 첨부"
   },
   "coworkRunSettings": {
     "label": "실행 설정",
@@ -2066,11 +2067,11 @@
     "movedTo": "{{name}}(으)로 이동했습니다",
     "notifications": "알림",
     "approvalWaiting": "승인 대기 중",
-    "tabs": "Sidebar view",
-    "tabChat": "Chat",
+    "tabs": "사이드바 보기",
+    "tabChat": "채팅",
     "tabCowork": "Cowork",
     "studio": "Studio",
-    "schedules": "Schedules"
+    "schedules": "일정"
   },
   "systemNav": {
     "label": "진단",
@@ -2484,5 +2485,14 @@
     "stop": "중지",
     "retry": "다시 시도",
     "downloading": "다운로드 중…"
+  },
+  "composerChip": {
+    "list": "첨부된 파일",
+    "pastedImage": "붙여넣은 이미지 {{n}}",
+    "open": "{{name}} 미리 보기",
+    "noVision": "이 모델은 이미지를 읽을 수 없습니다",
+    "details": "{{name}} 상세 정보",
+    "previewLoading": "미리 보기를 불러오는 중…",
+    "previewNone": "미리 볼 수 없습니다"
   }
 }

@@ -37,10 +37,10 @@ use serde_json::{json, Value};
 use tokio::sync::Notify;
 
 use super::agent::Fail;
-use super::runner::{Runner, SessionView, TaskSessionSpec, TaskWorktree};
+use super::runner::{Caller, Runner, SessionView, TaskSessionSpec, TaskWorktree};
 use crate::core::agent::campaign::{
-    self, Campaign, CampaignStatus, CampaignTask, Outcome, PlanTask, SettleInput, TaskMove, TaskPatch, TaskStatus,
-    TransitionInput, DRIVER_SERVER,
+    self, Campaign, CampaignStatus, CampaignTask, ManualAccept, Outcome, PlanTask, SettleInput, SkipDependants, TaskMove,
+    TaskPatch, TaskStatus, TaskVerdict, TransitionInput, DRIVER_SERVER,
 };
 use crate::core::agent::campaign_integration::{self, IntegrateReport, ResolvePlan, VerifyRequest};
 use crate::core::agent::campaign_scheduler::{self, Action, LiveState};
@@ -69,7 +69,24 @@ pub fn handles(command: &str) -> bool {
             | "agent_campaign_finalize"
             | "agent_campaign_cancel"
             | "agent_campaign_approvals"
-    )
+    ) || is_task_command(command)
+}
+
+/// The moves a signed-in client may ask of a server-driven campaign's tasks
+/// and gate. Each is executed by the driver, never written to the record by
+/// the client, and refused for a campaign the server does not drive.
+pub const TASK_COMMANDS: &[&str] = &[
+    "agent_campaign_skip_task",
+    "agent_campaign_retry_task",
+    "agent_campaign_accept_task",
+    "agent_campaign_verify_again",
+    "agent_campaign_resolve",
+    "agent_campaign_gate_repair",
+    "agent_campaign_retry_gate",
+];
+
+pub fn is_task_command(command: &str) -> bool {
+    TASK_COMMANDS.contains(&command)
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +190,11 @@ pub trait Host: Send + Sync + 'static {
     async fn integrate(&self, id: &str) -> Result<IntegrateReport, String>;
     async fn resolve_prepare(&self, id: &str, task: &str, session: &str) -> Result<ResolvePlan, String>;
     fn ping(&self, kind: &str, payload: Value);
+    /// A message into a live task session's running turn (a coordinator's
+    /// steer). A host without sessions of its own refuses.
+    async fn steer(&self, _session: &str, _text: String) -> Result<(), HostError> {
+        Err(HostError::new("this host cannot steer a session"))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1151,6 +1173,199 @@ impl<H: Host> Driver<H> {
         Ok(cancelled)
     }
 
+    // ---- a person's moves on a task or the gate ---------------------------
+
+    fn client_event(&self, cid: &str, tid: Option<&str>, what: &str, who: &Caller) {
+        self.event(cid, "client-command", tid, &format!("{what} by client {} from {}", who.client, who.ip_hash));
+    }
+
+    /// The server's own campaign, or why it is not.
+    pub fn own_campaign(&self, cid: &str) -> Result<Campaign, String> {
+        let c = campaign::get(&self.host.data(), cid).map_err(|e| e.message)?;
+        if c.driver != DRIVER_SERVER {
+            return Err("that campaign is not run by this server".to_string());
+        }
+        Ok(c)
+    }
+
+    /// Stop and release the sessions of tasks that were just cancelled.
+    async fn stop_sessions(&self, c: &Campaign, tasks: &[String]) {
+        for id in tasks {
+            self.inner.lock().unwrap().runs.remove(&run_key(&c.id, id));
+            let Some(sid) = c.task(id).and_then(|t| t.session_id.clone()) else { continue };
+            if self.host.view(&sid).is_some() {
+                self.host.abort_turn(&sid).await;
+                self.host.close_session(&sid).await;
+            }
+        }
+    }
+
+    /// Run one move a client asked for on a task. Validated against the
+    /// campaign's state machine by the same code the renderer's moves go
+    /// through; the effect is the driver's, and the audit trail names the
+    /// client by digest.
+    pub async fn task_command(
+        self: &Arc<Self>,
+        cid: &str,
+        tid: &str,
+        command: TaskCommand,
+        who: &Caller,
+    ) -> Result<Value, String> {
+        let data = self.host.data();
+        let c = self.own_campaign(cid)?;
+        let task = c.task(tid).cloned().ok_or_else(|| format!("no task {tid} in this campaign"))?;
+        if c.status.is_terminal() {
+            return Err(format!("the campaign is {:?}; its tasks cannot change", c.status));
+        }
+        match command {
+            TaskCommand::Retry { hint } => {
+                if !matches!(task.status, TaskStatus::Failed | TaskStatus::Conflict) {
+                    return Err(format!("task {tid} is {:?} and cannot be retried", task.status));
+                }
+                let hint: String = hint.trim().chars().take(1000).collect();
+                let patch = TaskPatch {
+                    detail: (!hint.is_empty()).then(|| format!("{RETRY_HINT_PREFIX}{hint}")),
+                    ..Default::default()
+                };
+                let moved = self.move_task(cid, tid, TaskStatus::Queued, patch)?;
+                {
+                    let mut inner = self.inner.lock().unwrap();
+                    inner.restarts.remove(&run_key(cid, tid));
+                    inner.restarts.remove(&format!("resolve:{cid}/{tid}"));
+                }
+                self.client_event(cid, Some(tid), "retry", who);
+                self.wake.notify_one();
+                Ok(json!({ "campaign": moved }))
+            }
+            TaskCommand::Skip { dependants } => {
+                // A task that is being verified, merged or resolved is mid-step;
+                // wait for the step, or cancel the campaign.
+                if matches!(
+                    task.status,
+                    TaskStatus::Verifying
+                        | TaskStatus::Verified
+                        | TaskStatus::Resolving
+                        | TaskStatus::Merged
+                        | TaskStatus::Cancelled
+                ) {
+                    return Err(format!("task {tid} is {:?} and cannot be skipped now", task.status));
+                }
+                let report = campaign::skip_task(&data, cid, tid, dependants).map_err(|e| e.message)?;
+                let mut stopped = vec![tid.to_string()];
+                stopped.extend(report.cancelled.iter().cloned());
+                self.stop_sessions(&c, &stopped).await;
+                let how = match dependants {
+                    SkipDependants::Leave => "leave dependants",
+                    SkipDependants::Cascade => "cascade",
+                    SkipDependants::Release => "release dependants",
+                };
+                self.client_event(cid, Some(tid), &format!("skip ({how})"), who);
+                self.wake.notify_one();
+                serde_json::to_value(&report).map_err(|e| e.to_string())
+            }
+            TaskCommand::Accept { reason } => {
+                let reason = reason.trim().to_string();
+                if reason.is_empty() {
+                    return Err("say why this task is accepted without a passing check".to_string());
+                }
+                if task.status != TaskStatus::Completed || task.verdict != Some(TaskVerdict::Blocked) {
+                    return Err(format!("task {tid} is {:?} and has no blocked check to accept", task.status));
+                }
+                if self.job_running(&format!("verify:{cid}/{tid}")) {
+                    return Err("its check is running right now".to_string());
+                }
+                let moved = campaign::transition(
+                    &data,
+                    cid,
+                    TransitionInput {
+                        campaign: None,
+                        task: Some(TaskMove {
+                            id: tid.to_string(),
+                            to: TaskStatus::Verified,
+                            verdict: None,
+                            patch: TaskPatch {
+                                accept: Some(ManualAccept { by: format!("client {}", who.client), reason }),
+                                ..Default::default()
+                            },
+                        }),
+                        integration: None,
+                    },
+                )
+                .map_err(|e| e.message)?;
+                self.client_event(cid, Some(tid), "accept anyway", who);
+                self.wake.notify_one();
+                Ok(json!({ "campaign": moved }))
+            }
+            TaskCommand::VerifyAgain => {
+                if c.status != CampaignStatus::Running {
+                    return Err(format!("the campaign is {:?}; it checks tasks while running", c.status));
+                }
+                let key = format!("verify:{cid}/{tid}");
+                match task.status {
+                    TaskStatus::Completed => {}
+                    TaskStatus::Verifying if !self.job_running(&key) => {
+                        // A check the server lost track of: back to the claim.
+                        self.move_task(cid, tid, TaskStatus::Completed, TaskPatch::default())?;
+                    }
+                    other => {
+                        return Err(format!("task {tid} is {other:?}, so it is not waiting to be checked"));
+                    }
+                }
+                let Some(guard) = self.try_job(key) else {
+                    return Err("a check is already running for that task".to_string());
+                };
+                let (driver, cid2, tid2) = (self.clone(), cid.to_string(), tid.to_string());
+                tokio::spawn(async move {
+                    let _guard = guard;
+                    driver.verify_task(&cid2, &tid2).await;
+                });
+                self.client_event(cid, Some(tid), "verify again", who);
+                Ok(json!({ "started": true, "taskId": tid }))
+            }
+            TaskCommand::Resolve => {
+                if c.status != CampaignStatus::Running {
+                    return Err(format!("the campaign is {:?}; conflicts are resolved while running", c.status));
+                }
+                if task.status != TaskStatus::Conflict {
+                    return Err(format!("task {tid} is {:?}, not in conflict", task.status));
+                }
+                if task.resolver.is_some() {
+                    return Err(
+                        "a resolver already tried this conflict; retry the task with a hint, or skip it".to_string()
+                    );
+                }
+                self.inner.lock().unwrap().restarts.remove(&format!("resolve:{cid}/{tid}"));
+                self.client_event(cid, Some(tid), "resolve", who);
+                self.wake.notify_one();
+                Ok(json!({ "started": true, "taskId": tid }))
+            }
+        }
+    }
+
+    /// The repair task a failed final gate asks for; the campaign goes back to
+    /// running and the driver runs it like any task.
+    pub async fn gate_repair(self: &Arc<Self>, cid: &str, who: &Caller) -> Result<Campaign, String> {
+        let data = self.host.data();
+        let c = self.own_campaign(cid)?;
+        if c.status != CampaignStatus::Reviewing {
+            return Err(format!("the campaign is {:?}; a gate repair needs it in review", c.status));
+        }
+        let owned = super::session_worktree::owned_root(&data).map_err(fail_text)?;
+        let id = cid.to_string();
+        let (made, _) = tokio::task::spawn_blocking(move || campaign_integration::gate_repair(&data, &owned, &id))
+            .await
+            .map_err(|_| "the repair could not be prepared".to_string())?
+            .map_err(|e| e.message)?;
+        self.client_event(cid, None, "gate repair", who);
+        self.wake.notify_one();
+        Ok(made)
+    }
+
+    /// Put a client's campaign-level command in the campaign's event log.
+    pub fn record_client_command(&self, cid: &str, what: &str, who: &Caller) {
+        self.client_event(cid, None, what, who);
+    }
+
     /// What is waiting on a person, across server-driven campaigns.
     pub fn approvals(&self) -> Vec<Value> {
         let mut out = Vec::new();
@@ -1179,6 +1394,23 @@ impl<H: Host> Driver<H> {
             }
         }
         out
+    }
+}
+
+/// One move a client asks of a task (`Driver::task_command`).
+#[derive(Debug, Clone)]
+pub enum TaskCommand {
+    Retry { hint: String },
+    Skip { dependants: SkipDependants },
+    Accept { reason: String },
+    VerifyAgain,
+    Resolve,
+}
+
+fn fail_text(f: Fail) -> String {
+    match f.body {
+        Value::String(s) => s,
+        other => other.to_string(),
     }
 }
 
@@ -1307,12 +1539,8 @@ fn repo_facts(folder: &Path) -> Result<RepoFacts, String> {
 /// Create a campaign for a goal: the plan comes from the server's model (or
 /// the caller's own), is validated, and is stored `planned`, waiting for a
 /// person's approval. Nothing runs and no worktree exists until then.
-pub async fn start_server<H: Host>(
-    host: &H,
-    folder: &Path,
-    goal: &str,
-    options: StartOptions,
-) -> Result<Campaign, Fail> {
+/// The goal of a campaign, trimmed and bounded.
+pub fn checked_goal(goal: &str) -> Result<&str, Fail> {
     let goal = goal.trim();
     if goal.is_empty() {
         return Err(fail(400, "goal is required"));
@@ -1320,6 +1548,12 @@ pub async fn start_server<H: Host>(
     if goal.chars().count() > MAX_GOAL_CHARS {
         return Err(fail(400, format!("goal is at most {MAX_GOAL_CHARS} characters")));
     }
+    Ok(goal)
+}
+
+/// The repository `folder` is in, which must be inside a root as a session's
+/// own folder is.
+async fn facts_in_roots<H: Host>(host: &H, folder: &Path) -> Result<RepoFacts, Fail> {
     let facts = {
         let folder = folder.to_path_buf();
         tokio::task::spawn_blocking(move || repo_facts(&folder))
@@ -1327,7 +1561,6 @@ pub async fn start_server<H: Host>(
             .map_err(|_| fail(500, "the repository could not be read"))?
             .map_err(|m| fail(422, m))?
     };
-    // The repository's top level must be inside a root, as a session's is.
     let top = Path::new(&facts.root).canonicalize().map_err(|_| fail(422, "the repository could not be resolved"))?;
     if !host.roots().iter().any(|r| top.starts_with(r)) {
         return Err(fail(
@@ -1335,6 +1568,97 @@ pub async fn start_server<H: Host>(
             "that folder's repository reaches outside the folders this server allows; start at the repository root",
         ));
     }
+    Ok(facts)
+}
+
+/// Whether a campaign can be made on `folder` (a repository inside a root).
+pub async fn check_repository<H: Host>(host: &H, folder: &Path) -> Result<(), Fail> {
+    facts_in_roots(host, folder).await.map(|_| ())
+}
+
+/// Store a plan as a `planned` server campaign. Nothing runs and no worktree
+/// exists until a person approves it.
+#[allow(clippy::too_many_arguments)]
+fn record_campaign<H: Host>(
+    host: &H,
+    facts: &RepoFacts,
+    title: &str,
+    tasks: Vec<PlanTask>,
+    model: Option<String>,
+    limits: campaign::CampaignLimits,
+    coordinator_session: &str,
+    note: &str,
+) -> Result<Campaign, Fail> {
+    let id = format!("c-{}", uuid::Uuid::new_v4().simple());
+    let short = &id[2..10];
+    let created = campaign::create(
+        &host.data(),
+        campaign::CreateInput {
+            id: Some(id.clone()),
+            title: title.chars().take(120).collect(),
+            coordinator_session: coordinator_session.to_string(),
+            source_root: facts.root.clone(),
+            base_branch: facts.branch.clone(),
+            base_sha: facts.sha.clone(),
+            integration_branch: String::new(),
+            integration_worktree: String::new(),
+            mode_ceiling: "ask".to_string(),
+            model: model.unwrap_or_default(),
+            limits: Some(limits),
+            tasks,
+            driver: Some(DRIVER_SERVER.to_string()),
+        },
+    )
+    .map_err(|e| fail(422, e.message))?;
+    let note = format!("{note}; branch {short}");
+    campaign::append_event(&host.data(), &created.id, "server-plan", None, &note);
+    host.ping(
+        "agent-approval-pending",
+        json!({ "campaignId": created.id, "kind": "plan", "title": created.title }),
+    );
+    Ok(created)
+}
+
+/// A plan a coordinator session made with `campaign_plan`: recorded against
+/// that session, with the server's default limits.
+pub async fn record_coordinator_plan<H: Host>(
+    host: &H,
+    folder: &Path,
+    title: &str,
+    tasks: Vec<PlanTask>,
+    model: Option<&str>,
+    token_budget: Option<u64>,
+    session: &str,
+) -> Result<Campaign, Fail> {
+    campaign::validate_plan(&tasks).map_err(|issues| fail(422, issues.join("; ")))?;
+    let facts = facts_in_roots(host, folder).await?;
+    let limits = campaign::CampaignLimits {
+        max_parallel: campaign::DEFAULT_MAX_PARALLEL
+            .min(host.config().max_sessions)
+            .clamp(1, campaign::MAX_PARALLEL_CAP),
+        token_budget,
+        ..Default::default()
+    };
+    record_campaign(
+        host,
+        &facts,
+        title,
+        tasks,
+        model.map(str::to_owned).filter(|m| !m.is_empty()),
+        limits,
+        session,
+        &format!("coordinator session {}", session.chars().take(8).collect::<String>()),
+    )
+}
+
+pub async fn start_server<H: Host>(
+    host: &H,
+    folder: &Path,
+    goal: &str,
+    options: StartOptions,
+) -> Result<Campaign, Fail> {
+    let goal = checked_goal(goal)?;
+    let facts = facts_in_roots(host, folder).await?;
     let model = Some(options.model.trim().to_string()).filter(|m| !m.is_empty());
     let (title, tasks, tokens) = match options.plan.clone() {
         Some(tasks) => {
@@ -1349,8 +1673,6 @@ pub async fn start_server<H: Host>(
         }
     };
     let title: String = if title.trim().is_empty() { goal.lines().next().unwrap_or(goal).to_string() } else { title };
-    let id = format!("c-{}", uuid::Uuid::new_v4().simple());
-    let short = &id[2..10];
     let limits = campaign::CampaignLimits {
         max_parallel: options.max_parallel.unwrap_or(campaign::DEFAULT_MAX_PARALLEL).clamp(1, campaign::MAX_PARALLEL_CAP),
         token_budget: options.token_budget.filter(|b| *b > 0),
@@ -1359,32 +1681,8 @@ pub async fn start_server<H: Host>(
         wall_clock_secs: options.wall_clock_secs.filter(|b| *b > 0),
         ..Default::default()
     };
-    let created = campaign::create(
-        &host.data(),
-        campaign::CreateInput {
-            id: Some(id.clone()),
-            title: title.chars().take(120).collect(),
-            coordinator_session: "server".to_string(),
-            source_root: facts.root.clone(),
-            base_branch: facts.branch.clone(),
-            base_sha: facts.sha.clone(),
-            integration_branch: String::new(),
-            integration_worktree: String::new(),
-            mode_ceiling: "ask".to_string(),
-            model: model.unwrap_or_default(),
-            limits: Some(limits),
-            tasks,
-            driver: Some(DRIVER_SERVER.to_string()),
-        },
-    )
-    .map_err(|e| fail(422, e.message))?;
-    let note = format!("goal: {}; branch {short}; planner tokens {tokens}", clip(goal, 300));
-    campaign::append_event(&host.data(), &created.id, "server-plan", None, &note);
-    host.ping(
-        "agent-approval-pending",
-        json!({ "campaignId": created.id, "kind": "plan", "title": created.title }),
-    );
-    Ok(created)
+    let note = format!("goal: {}; planner tokens {tokens}", clip(goal, 300));
+    record_campaign(host, &facts, &title, tasks, model, limits, "server", &note)
 }
 
 /// A person approved the plan: make the integration branch and worktree
@@ -1644,6 +1942,10 @@ impl Host for RunnerHost {
 
     fn ping(&self, kind: &str, payload: Value) {
         self.runner.ping(kind, &payload);
+    }
+
+    async fn steer(&self, session: &str, text: String) -> Result<(), HostError> {
+        Ok(self.runner.steer_text(session, text).await?)
     }
 }
 
@@ -2249,6 +2551,216 @@ mod tests {
         assert_eq!(t.status, TaskStatus::Completed, "{t:?}");
         assert_eq!(t.verdict, Some(TaskVerdict::Blocked));
         assert_eq!(campaign::get(&f.data, "c1").unwrap().status, CampaignStatus::Running);
+    }
+
+    // ---- a client's moves on tasks ------------------------------------------
+
+    fn who() -> Caller {
+        Caller { client: "abc123def456".into(), ip_hash: "ip9".into() }
+    }
+
+    /// Run until task "a" of "c1" is completed with a BLOCKED check.
+    async fn blocked_fixture() -> (Fx, Arc<Fake>, Arc<Driver<Fake>>) {
+        let f = fx();
+        make(&f, "c1", vec![task("a", &[], "src/a")], 4);
+        approve(&f, "c1");
+        let host = Fake::new(&f.data, &f.root, 4);
+        *host.verdict.lock().unwrap() = "no verdict line here".to_string();
+        let driver = Driver::new(host.clone());
+        for _ in 0..6 {
+            pass(&driver).await;
+        }
+        let t = campaign::get(&f.data, "c1").unwrap().task("a").unwrap().clone();
+        assert_eq!(t.verdict, Some(TaskVerdict::Blocked), "{t:?}");
+        (f, host, driver)
+    }
+
+    #[tokio::test]
+    async fn accepting_a_blocked_task_needs_a_reason_and_names_the_client() {
+        let (f, _host, driver) = blocked_fixture().await;
+        let no_reason = driver.task_command("c1", "a", TaskCommand::Accept { reason: "  ".into() }, &who()).await;
+        assert!(no_reason.unwrap_err().contains("why"), "a reason is required");
+        assert_eq!(status_of(&f, "c1", "a"), TaskStatus::Completed);
+
+        driver
+            .task_command("c1", "a", TaskCommand::Accept { reason: "checked by hand".into() }, &who())
+            .await
+            .unwrap();
+        let t = campaign::get(&f.data, "c1").unwrap().task("a").unwrap().clone();
+        assert_eq!(t.status, TaskStatus::Verified);
+        let o = t.manual_override.expect("recorded");
+        assert!(o.by.contains("abc123def456"), "{o:?}");
+        assert_eq!(o.reason, "checked by hand");
+        let events = campaign::events(&f.data, "c1").unwrap();
+        assert!(events.iter().any(|e| e["kind"] == "client-command"
+            && e["detail"].as_str().unwrap().contains("accept anyway by client abc123def456")));
+        // The driver then merges it like any verified task.
+        for _ in 0..4 {
+            pass(&driver).await;
+        }
+        assert_eq!(status_of(&f, "c1", "a"), TaskStatus::Merged);
+    }
+
+    #[tokio::test]
+    async fn only_a_blocked_check_can_be_accepted() {
+        let f = fx();
+        make(&f, "c1", vec![task("a", &[], "src/a")], 4);
+        approve(&f, "c1");
+        let host = Fake::new(&f.data, &f.root, 4);
+        host.script("a", Script::Hang);
+        let driver = Driver::new(host.clone());
+        pass(&driver).await;
+        let refused = driver
+            .task_command("c1", "a", TaskCommand::Accept { reason: "just do it".into() }, &who())
+            .await;
+        assert!(refused.unwrap_err().contains("no blocked check"), "a running task is not accepted");
+        assert_eq!(status_of(&f, "c1", "a"), TaskStatus::Running);
+    }
+
+    #[tokio::test]
+    async fn verify_again_starts_the_check_and_a_pass_merges() {
+        let (f, host, driver) = blocked_fixture().await;
+        *host.verdict.lock().unwrap() = "VERDICT: PASS\nEVIDENCE: it is there".to_string();
+        let started = driver.task_command("c1", "a", TaskCommand::VerifyAgain, &who()).await.unwrap();
+        assert_eq!(started["started"], true);
+        for _ in 0..6 {
+            pass(&driver).await;
+        }
+        assert_eq!(status_of(&f, "c1", "a"), TaskStatus::Merged);
+    }
+
+    #[tokio::test]
+    async fn retry_requeues_a_failed_task_with_the_hint_and_is_audited() {
+        let f = fx();
+        make(&f, "c1", vec![task("a", &[], "src/a")], 4);
+        approve(&f, "c1");
+        let host = Fake::new(&f.data, &f.root, 4);
+        host.script("a", Script::Hang);
+        let driver = Driver::new(host.clone());
+        pass(&driver).await;
+        host.finish("a", "error");
+        pass(&driver).await;
+        assert_eq!(status_of(&f, "c1", "a"), TaskStatus::Failed);
+
+        let moved = driver
+            .task_command("c1", "a", TaskCommand::Retry { hint: "use the other API".into() }, &who())
+            .await
+            .unwrap();
+        assert_eq!(moved["campaign"]["tasks"][0]["status"], "queued");
+        let t = campaign::get(&f.data, "c1").unwrap().task("a").unwrap().clone();
+        assert_eq!(t.attempt, 1);
+        assert!(t.detail.contains("hint: use the other API"), "{}", t.detail);
+        assert!(campaign::events(&f.data, "c1")
+            .unwrap()
+            .iter()
+            .any(|e| e["kind"] == "client-command" && e["detail"].as_str().unwrap().starts_with("retry by client")));
+        // And the driver picks it up again.
+        host.script("a", Script::Finish);
+        for _ in 0..8 {
+            pass(&driver).await;
+        }
+        assert_eq!(status_of(&f, "c1", "a"), TaskStatus::Merged);
+        let again = driver.task_command("c1", "a", TaskCommand::Retry { hint: String::new() }, &who()).await;
+        assert!(again.is_err(), "a merged task cannot be retried");
+    }
+
+    #[tokio::test]
+    async fn skip_stops_the_run_and_the_dependants_follow_the_choice() {
+        let f = fx();
+        make(&f, "c1", vec![task("a", &[], "src/a"), task("b", &["a"], "src/b"), task("c", &["b"], "src/c")], 4);
+        approve(&f, "c1");
+        let host = Fake::new(&f.data, &f.root, 4);
+        host.script("a", Script::Hang);
+        let driver = Driver::new(host.clone());
+        pass(&driver).await;
+        assert_eq!(host.live_ids().len(), 1);
+        let report = driver
+            .task_command("c1", "a", TaskCommand::Skip { dependants: SkipDependants::Cascade }, &who())
+            .await
+            .unwrap();
+        assert_eq!(report["cancelled"].as_array().unwrap().len(), 2);
+        assert_eq!(status_of(&f, "c1", "a"), TaskStatus::Cancelled);
+        assert_eq!(status_of(&f, "c1", "c"), TaskStatus::Cancelled);
+        assert!(host.live_ids().is_empty(), "the skipped task's session is stopped and released");
+        assert_eq!(host.aborted.lock().unwrap().clone(), vec!["a".to_string()]);
+
+        // Release: the dependant runs without it.
+        let g = fx();
+        make(&g, "c2", vec![task("a", &[], "src/a"), task("b", &["a"], "src/b")], 4);
+        approve(&g, "c2");
+        let host = Fake::new(&g.data, &g.root, 4);
+        host.script("a", Script::Hang);
+        let driver = Driver::new(host.clone());
+        pass(&driver).await;
+        let report = driver
+            .task_command("c2", "a", TaskCommand::Skip { dependants: SkipDependants::Release }, &who())
+            .await
+            .unwrap();
+        assert_eq!(report["released"], json!(["b"]));
+        for _ in 0..8 {
+            pass(&driver).await;
+        }
+        assert_eq!(status_of(&g, "c2", "b"), TaskStatus::Merged);
+        assert_eq!(campaign::get(&g.data, "c2").unwrap().status, CampaignStatus::Reviewing);
+    }
+
+    #[tokio::test]
+    async fn a_renderer_campaign_and_a_stale_state_are_refused() {
+        let f = fx();
+        campaign::create(
+            &f.data,
+            CreateInput {
+                id: Some("r1".into()),
+                title: "Local".into(),
+                coordinator_session: "s".into(),
+                source_root: f.source.to_string_lossy().into_owned(),
+                base_branch: "main".into(),
+                base_sha: "b".repeat(40),
+                integration_branch: "flint/campaign-r".into(),
+                integration_worktree: String::new(),
+                mode_ceiling: "auto".into(),
+                model: String::new(),
+                limits: None,
+                tasks: vec![task("a", &[], "src/a")],
+                driver: None,
+            },
+        )
+        .unwrap();
+        let host = Fake::new(&f.data, &f.root, 4);
+        let driver = Driver::new(host);
+        for command in [
+            TaskCommand::Retry { hint: String::new() },
+            TaskCommand::Skip { dependants: SkipDependants::Leave },
+            TaskCommand::Accept { reason: "x".into() },
+            TaskCommand::VerifyAgain,
+            TaskCommand::Resolve,
+        ] {
+            let err = driver.task_command("r1", "a", command, &who()).await.unwrap_err();
+            assert!(err.contains("not run by this server"), "{err}");
+        }
+        assert!(driver.gate_repair("r1", &who()).await.unwrap_err().contains("not run by this server"));
+        assert_eq!(status_of(&f, "r1", "a"), TaskStatus::Pending);
+
+        // A server campaign: no such task, and a state the move does not fit.
+        make(&f, "c1", vec![task("a", &[], "src/a")], 4);
+        approve(&f, "c1");
+        assert!(driver.task_command("c1", "zzz", TaskCommand::VerifyAgain, &who()).await.unwrap_err().contains("no task"));
+        assert!(driver.task_command("c1", "a", TaskCommand::Resolve, &who()).await.unwrap_err().contains("not in conflict"));
+        assert!(driver
+            .task_command("c1", "a", TaskCommand::VerifyAgain, &who())
+            .await
+            .unwrap_err()
+            .contains("not waiting to be checked"));
+    }
+
+    #[test]
+    fn the_task_commands_are_the_listed_ones() {
+        for c in TASK_COMMANDS {
+            assert!(handles(c), "{c}");
+        }
+        assert_eq!(TASK_COMMANDS.len(), 7);
+        // The raw transition stays refused: moves go through the driver.
+        assert!(!handles("agent_campaign_transition"));
     }
 
     // ---- pure pieces -------------------------------------------------------

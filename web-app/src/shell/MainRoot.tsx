@@ -49,6 +49,7 @@ import { useBuildUpdateCheck } from '@/hooks/useBuildUpdate'
 import { RemotePairingConfirm } from '@/containers/RemotePairingConfirm'
 import { FlintServerAutoConnect } from '@/containers/FlintServerAutoConnect'
 import { detectWindowChrome } from '@/lib/titlebar'
+import { CampaignRunHost } from '@/containers/CampaignRunHost'
 
 /**
  * The app shell: the sidebar (on narrow windows a navigation sheet) beside the
@@ -88,6 +89,8 @@ const AppLayout = () => {
           <KeyboardShortcutsProvider />
           <TemporaryChatGuard />
           <RemotePairingConfirm />
+          {/* Keeps campaign task runs going on every route (R3). */}
+          {IS_TAURI && <CampaignRunHost />}
           {/* Only a borderless window draws its own caption buttons and resize
               grips. Windows has a native title bar, which owns dragging, snap,
               double-click maximise and the caption buttons; nothing here may sit
