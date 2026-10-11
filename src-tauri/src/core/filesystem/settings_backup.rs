@@ -19,7 +19,7 @@ pub struct BackupSaveReport {
 }
 
 async fn pick_save_path(file_name: &str) -> Option<PathBuf> {
-    rfd::AsyncFileDialog::new()
+    super::picker::AsyncFileDialog::new()
         .add_filter("JSON", &["json"])
         .set_file_name(file_name)
         .save_file()
@@ -28,7 +28,7 @@ async fn pick_save_path(file_name: &str) -> Option<PathBuf> {
 }
 
 async fn pick_open_path() -> Option<PathBuf> {
-    rfd::AsyncFileDialog::new()
+    super::picker::AsyncFileDialog::new()
         .add_filter("JSON", &["json"])
         .pick_file()
         .await

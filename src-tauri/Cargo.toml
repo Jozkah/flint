@@ -256,11 +256,6 @@ tokio = { version = "1", features = ["full"] }
 url = "2.5"
 uuid = { version = "1.7", features = ["v4"] }
 tempfile = "3.20.0"
-rfd = { version = "0.15.4", optional = true, default-features = false, features = [
-  "tokio",
-  "xdg-portal",
-  "common-controls-v6",
-] }
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
@@ -367,6 +362,12 @@ tauri-plugin-mlx = { path = "./plugins/tauri-plugin-mlx", optional = true }
 security-framework = "3"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# The native file picker has no iOS or Android backend (see core/filesystem/picker.rs).
+rfd = { version = "0.15.4", optional = true, default-features = false, features = [
+  "tokio",
+  "xdg-portal",
+  "common-controls-v6",
+] }
 reqwest = { version = "0.12", features = ["json", "blocking", "stream", "native-tls"] }
 # TLS backend must track `reqwest` above: reqwest features are additive across the
 # graph, so letting genai default to rustls would link both backends here.
