@@ -5,6 +5,8 @@ import { createRoot } from 'react-dom/client'
 import './mobile.css'
 import './mobile-polish.css'
 import './mobile-motion.css'
+import './ios.css'
+import { applyIosClass } from './platform'
 import { App } from './App'
 import { checkPairing } from './state/pairing'
 import { RemoteClient } from './api/client'
@@ -18,6 +20,7 @@ import { readPairingFragment } from './state/router'
 import { startTheme } from './theme'
 import { getLanguage, LANGUAGE_KEY, onLanguageChange } from './i18n'
 
+applyIosClass()
 const store = mirrorToken(localPairingStore(), (t) => idbSet(TOKEN_KEY, t))
 const client = new RemoteClient({ store })
 const socket = new EventSocket({
