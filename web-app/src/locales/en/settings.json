@@ -751,7 +751,8 @@
         "close": "Close",
         "confirm": "Confirm",
         "reviewChanges": "Review changes",
-        "openCoordinator": "Open coordinator"
+        "openCoordinator": "Open coordinator",
+        "openCowork": "Open Cowork to continue"
       },
       "note": {
         "title": "Note to {{task}}",
@@ -784,6 +785,7 @@
         "missing": "The proposal could not be found. Run Review & apply again."
       },
       "resumed": "Resumed {{n}} task(s) that were interrupted when the app stopped.",
+      "stalled": "{{n}} task(s) show as running but nothing is running them in this window. Open Cowork to continue them.",
       "noteState": {
         "sent": "Note sent",
         "delivered": "Note delivered to the task"
@@ -800,7 +802,8 @@
         "interrupted": "Stopped when the app closed: {{done}} of {{total}} tasks done",
         "done": "All done",
         "failed": "This campaign could not finish",
-        "cancelled": "Cancelled"
+        "cancelled": "Cancelled",
+        "gateFailed": "Final checks failed: the work is merged but not verified"
       },
       "progressLabel": "{{done}} of {{total}} tasks done",
       "planning": "Planning… waiting for the coordinator's plan.",
@@ -808,7 +811,8 @@
         "needsYou": "Needs you",
         "working": "Working",
         "upNext": "Up next",
-        "done": "Done"
+        "done": "Done",
+        "skipped": "Skipped"
       },
       "word": {
         "writing": "Writing code",
@@ -823,7 +827,8 @@
         "queued": "Starts soon",
         "merged": "Merged",
         "skipped": "Skipped",
-        "resolving": "Resolving a clash"
+        "resolving": "Resolving a clash",
+        "waitingSkipped": "Waiting for {{tasks}}, which was skipped"
       },
       "row": {
         "open": "Open",
@@ -933,7 +938,8 @@
           "built": "What got built",
           "tasks": "Tasks finished",
           "files": "Files changed",
-          "lines": "Lines changed"
+          "lines": "Lines changed",
+          "skipped": "{{count}} skipped"
         }
       },
       "effort": "About {{percent}}% of the work is done",
@@ -971,6 +977,42 @@
         "testsFailed": "Tests failed",
         "testsFailedTail": "Tests failed: {{tail}}",
         "tokens": "Tokens spent on checking"
+      },
+      "progressLabelSkipped": "{{done}} done · {{skipped}} skipped · {{total}} tasks",
+      "groupProgressSkipped": "{{done}} done · {{skipped}} skipped · {{status}}",
+      "effortGateFailed": "The final checks failed, so the work is not finished",
+      "stranded": {
+        "explain": "This task waits for {{tasks}}, which was skipped, so it cannot start on its own.",
+        "skipToo": "Skip this too",
+        "runWithout": "Run without it"
+      },
+      "skipConfirm": {
+        "title": "Skip \"{{task}}\"?",
+        "body_one": "{{count}} other task waits for it. Skip it as well, or let it run without this one?",
+        "body_other": "{{count}} other tasks wait for it. Skip them as well, or let them run without this one?",
+        "cascade_one": "Skip it and the task that waits for it",
+        "cascade_other": "Skip it and the {{count}} tasks that wait for it",
+        "release": "Skip it, run the others without it"
+      },
+      "gate": {
+        "title": "Checks failed",
+        "body": "The work was merged, but the final build and test check did not pass, so it is not ready to apply.",
+        "command": "Command",
+        "result": "Result",
+        "exit": "Exit code {{code}}",
+        "noExit": "Did not finish normally",
+        "timedOut": "Timed out",
+        "output": "Last lines of output",
+        "copy": "Copy",
+        "copied": "Copied",
+        "fix": "Fix it automatically",
+        "retry": "Run checks again",
+        "reviewAnyway": "Review anyway",
+        "reviewWarning": "The final checks failed. Review the changes with that in mind."
+      },
+      "recheck": {
+        "again": "Checking again…",
+        "stalled": "The check is taking longer than expected."
       }
     },
     "changes": {

@@ -32,6 +32,8 @@ pub mod protocol_schema;
 pub mod rpc;
 /// `jan cli agent rpc-schema`: the RPC request and event schemas.
 pub mod rpc_schema;
+/// The turn steps the stdio RPC loop and the HTTP session runner share.
+pub(crate) mod turn_host;
 pub mod providers;
 pub mod run_report;
 pub mod archive_cmd;
@@ -308,7 +310,7 @@ pub fn cli_delete_thread(thread_id: &str) -> Result<(), String> {
 /// has no repository in hand to drop the ref from (Jozkah/jan#143).
 pub(crate) const SNAPSHOT_REPO_KEY: &str = "snapshot_repo";
 
-fn delete_thread_at(data_folder: &std::path::Path, thread_id: &str) -> Result<(), String> {
+pub(crate) fn delete_thread_at(data_folder: &std::path::Path, thread_id: &str) -> Result<(), String> {
     use std::fs;
 
     // Read where the snapshots live before the thread's files go away.
@@ -1677,7 +1679,7 @@ fn resolve_workspace(
 
 /// Resolve project config + credentials into a ready-to-run engine handle.
 /// Shared by `run_agent_loop` (plain CLI) and `cli_agent_ui` (TUI).
-fn prepare_agent_session(
+pub(crate) fn prepare_agent_session(
     project: &str,
     model_override: Option<String>,
     overrides: ProviderOverrides,

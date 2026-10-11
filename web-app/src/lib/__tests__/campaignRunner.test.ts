@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   createCampaignRunner,
   fingerprintOf,
+  findVerdict,
   noticeFor,
   type RunnerHost,
 } from '../campaignRunner'
@@ -572,6 +573,53 @@ const settleA = async (f: Fx) => {
 }
 
 describe('campaign runner: verify and merge', () => {
+  it('finds a verdict in the shapes a reasoning model writes', () => {
+    expect(findVerdict('<think>VERDICT: FAIL</think>\nVERDICT: PASS')).toBe('PASS')
+    expect(findVerdict('**Verdict:** partial')).toBe('PARTIAL')
+    expect(findVerdict('{"verdict": "FAIL"}')).toBe('FAIL')
+    expect(findVerdict('The verdict is BLOCKED.')).toBe('BLOCKED')
+    expect(findVerdict('VERDICT: PASS\nlater\nVERDICT: FAIL')).toBe('FAIL')
+    expect(findVerdict('<think>VERDICT: PASS, cut off')).toBeNull()
+    expect(findVerdict('ship it')).toBeNull()
+  })
+
+  it('asks the verifier once more, with a reminder, when the reply had no verdict', async () => {
+    const f = fixture([task('a')])
+    const { askVerifier } = withIntegration(f, 'looks fine to me')
+    askVerifier.mockResolvedValueOnce({ text: 'looks fine to me', tokens: 5 })
+    askVerifier.mockResolvedValueOnce({
+      text: 'VERDICT: PASS\nEVIDENCE: ok',
+      tokens: 5,
+    })
+    await f.runner.kick('c1')
+    await settleA(f)
+    await vi.waitFor(() => expect(f.current().tasks[0].status).toBe('merged'))
+    expect(askVerifier).toHaveBeenCalledTimes(2)
+    const second = (askVerifier.mock.calls[1] as unknown[])[0] as {
+      messages: { role: string; content: string }[]
+    }
+    expect(second.messages.at(-1)?.content).toContain('VERDICT: PASS')
+    expect(second.messages.some((m) => m.role === 'assistant')).toBe(true)
+  })
+
+  it('after a restart, a completed task with no verdict is verified again (bounded)', async () => {
+    const f = fixture([task('a', 'completed')], { status: 'interrupted' })
+    const { askVerifier } = withIntegration(f, 'VERDICT: PASS\nEVIDENCE: ok')
+    await f.runner.resume('c1')
+    await vi.waitFor(() => expect(askVerifier).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(f.current().tasks[0].status).toBe('merged'))
+  })
+
+  it('does not verify again a task that already has a verdict', async () => {
+    const f = fixture(
+      [task('a', 'completed', [], { verdict: 'BLOCKED' })],
+      { status: 'interrupted' }
+    )
+    const { askVerifier } = withIntegration(f, 'VERDICT: PASS')
+    await f.runner.resume('c1')
+    expect(askVerifier).not.toHaveBeenCalled()
+  })
+
   it('a PASS merges the task, which releases its dependent', async () => {
     const f = fixture([task('a'), task('b', 'pending', ['a'])])
     const { askVerifier } = withIntegration(f, 'VERDICT: PASS\nEVIDENCE: fine')
@@ -1040,5 +1088,26 @@ describe('campaign runner: desktop notifications', () => {
     const again = createCampaignRunner(f.host, f.api)
     await again.sweep('c1')
     expect(shown).toHaveLength(1)
+  })
+})
+
+describe('campaign runner: a campaign the server drives', () => {
+  it('is left alone: nothing starts, sweeps, resumes or verifies here', async () => {
+    const f = fixture([task('a'), task('b', 'running', [], { sessionId: 'x' })], {
+      driver: 'server',
+    })
+    expect((await f.runner.kick('c1')).started).toEqual([])
+    await f.runner.sweep('c1')
+    expect((await f.runner.resume('c1')).started).toEqual([])
+    const verified = await f.runner.verifyTask('c1', 'b')
+    expect(verified).toEqual({ skipped: expect.stringContaining('server') })
+    expect(f.sessions.size).toBe(0)
+    expect(f.api.transition).not.toHaveBeenCalled()
+    expect(f.api.settle).not.toHaveBeenCalled()
+  })
+
+  it('still drives a record with no driver field, as before', async () => {
+    const f = fixture([task('a')])
+    expect((await f.runner.kick('c1')).started).toEqual(['a'])
   })
 })

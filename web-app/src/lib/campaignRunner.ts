@@ -30,6 +30,7 @@ import {
 } from '@/lib/campaignApi'
 import {
   isLiveTask,
+  isServerDriven,
   nextActions,
   taskModeFor,
   type Campaign,
@@ -194,6 +195,43 @@ export function noticeFor(
   }
 }
 
+/** Reasoning blocks removed, as the backend does before it reads a verdict. */
+export function stripReasoning(text: string): string {
+  let out = text.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '')
+  const close = out.toLowerCase().lastIndexOf('</think>')
+  if (close >= 0) out = out.slice(close + '</think>'.length)
+  else {
+    const open = out.toLowerCase().indexOf('<think>')
+    if (open >= 0) out = out.slice(0, open)
+  }
+  return out
+}
+
+/** The verdict a reply carries, anywhere in it; the last occurrence wins. */
+export function findVerdict(text: string): string | null {
+  const flat = stripReasoning(text).replace(/[*`#]/g, '')
+  const re =
+    /verdict["']?\s*(?:(?:[:=\-–—]|\bis\b)\s*)?["'[(]?\s*(pass|partial|fail|blocked)\b/gi
+  let found: string | null = null
+  for (const m of flat.matchAll(re)) found = m[1].toUpperCase()
+  return found
+}
+
+/** At most 300 characters of what the model said. */
+export function excerptOf(text: string): string {
+  const cleaned = stripReasoning(text).trim() ? stripReasoning(text) : text
+  const flat = cleaned.replace(/\s+/g, ' ').trim()
+  return flat.length > 300 ? `${flat.slice(0, 300)}…` : flat
+}
+
+const VERDICT_REMINDER =
+  'Your reply had no verdict line. Reply again with the first line exactly ' +
+  '`VERDICT: PASS`, `VERDICT: PARTIAL`, `VERDICT: FAIL` or `VERDICT: BLOCKED`, ' +
+  'then `EVIDENCE:` and a short justification. No thinking, no markdown, no JSON.'
+
+/** Re-verifications a resume starts for one task before leaving it to a person. */
+export const MAX_REVERIFY = 2
+
 /** How long after starting a task its run may take to appear before the pane is judged closed. */
 export const START_GRACE_MS = 15_000
 
@@ -246,6 +284,8 @@ export function createCampaignRunner(
   /** Why a run was stopped by a limit, read when its end is settled. */
   const limitReasons = new Map<string, string>()
   const verifying = new Set<string>()
+  /** Automatic re-verifications after a restart, per task, in this process. */
+  const reverified = new Map<string, number>()
   const warned = new Set<string>()
 
   /**
@@ -430,6 +470,8 @@ export function createCampaignRunner(
     const result: RunnerResult = { started: [], blocked: [] }
     let c = await api.get(id)
     if (c.status !== 'running') return result
+    // The server's driver runs this one; this app only shows it.
+    if (isServerDriven(c)) return result
     const live = host.liveSessions()
     const liveTasks = c.tasks
       .filter((t) => t.sessionId && live.has(t.sessionId))
@@ -821,6 +863,7 @@ export function createCampaignRunner(
     verifying.add(key)
     try {
       const c = await api.get(id)
+      if (isServerDriven(c)) return { skipped: 'the server verifies this campaign' }
       const task = c.tasks.find((t) => t.id === taskId)
       if (!task) return { skipped: 'no such task' }
       if (task.status !== 'completed') {
@@ -848,6 +891,21 @@ export function createCampaignRunner(
         const r = await host.askVerifier(prepared.request, c)
         reply = r.text
         tokens = r.tokens
+        // No verdict in the reply: one more try with a reminder appended.
+        if (!findVerdict(reply)) {
+          const again = await host.askVerifier(
+            {
+              messages: [
+                ...prepared.request.messages,
+                { role: 'assistant', content: excerptOf(reply) || '(no answer)' },
+                { role: 'user', content: VERDICT_REMINDER },
+              ],
+            },
+            c
+          )
+          tokens += again.tokens
+          if (findVerdict(again.text)) reply = again.text
+        }
       } catch (e) {
         error = errorText(e) || 'the verifier could not run'
       }
@@ -952,6 +1010,7 @@ export function createCampaignRunner(
   const sweep = (id: string): Promise<void> =>
     serialize(id, async () => {
       const c = await api.get(id)
+      if (isServerDriven(c)) return
       if (c.status !== 'running') {
         await announce(c).catch(() => undefined)
         return
@@ -1035,6 +1094,7 @@ export function createCampaignRunner(
   const resume = (id: string): Promise<RunnerResult> =>
     serialize(id, async () => {
       const c = await api.get(id)
+      if (isServerDriven(c)) return { started: [], blocked: [] }
       if (c.status === 'interrupted') {
         await api.transition(id, { campaign: 'running' })
       } else if (c.status !== 'running') {
@@ -1050,7 +1110,18 @@ export function createCampaignRunner(
             .catch(() => undefined)
         }
       }
-      return { ...(await tick(id)), resumed }
+      const result = { ...(await tick(id)), resumed }
+      // A restart in the middle of a verification leaves the task completed
+      // with no verdict and nothing that would ask again. Ask again, a bounded
+      // number of times for this process.
+      for (const t of fresh.tasks) {
+        if (t.status !== 'completed' || t.verdict) continue
+        const tries = reverified.get(`${id}/${t.id}`) ?? 0
+        if (tries >= MAX_REVERIFY) continue
+        reverified.set(`${id}/${t.id}`, tries + 1)
+        void verifyTask(id, t.id).catch(() => undefined)
+      }
+      return result
     })
 
   /**

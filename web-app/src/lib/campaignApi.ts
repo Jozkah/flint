@@ -181,6 +181,13 @@ export type FinalizeReport = {
   campaign: Campaign
 }
 
+/** What skipping a task did to the tasks that waited on it. */
+export type SkipReport = {
+  campaign: Campaign
+  cancelled: string[]
+  released: string[]
+}
+
 export type OrphanWorktree = {
   campaignId: string
   taskId?: string | null
@@ -250,6 +257,34 @@ export const campaignApi = {
       seconds: seconds ?? null,
     }),
   refresh: (id: string) => invoke<Campaign>('agent_campaign_refresh', { id }),
+  /** Create the one repair task a failed final gate asks for (D5). */
+  repairGate: (id: string) =>
+    invoke<Campaign>('agent_campaign_gate_repair', { id }),
+  /** Run the final gate again after a repair merged. */
+  retryGate: (id: string, seconds?: number) =>
+    invoke<FinalizeReport>('agent_campaign_retry_gate', {
+      id,
+      seconds: seconds ?? null,
+    }),
+  /** Skip a task, and with `cascade` cancel what waits on it. */
+  skipTask: (
+    id: string,
+    taskId: string,
+    dependants: 'leave' | 'cascade' | 'release' = 'leave'
+  ) =>
+    invoke<SkipReport>('agent_campaign_skip_task', { id, taskId, dependants }),
+  skipCascade: (id: string, taskId: string) =>
+    invoke<SkipReport>('agent_campaign_skip_task', {
+      id,
+      taskId,
+      dependants: 'cascade',
+    }),
+  releaseDependants: (id: string, taskId: string) =>
+    invoke<SkipReport>('agent_campaign_skip_task', {
+      id,
+      taskId,
+      dependants: 'release',
+    }),
   orphans: () => invoke<OrphanWorktree[]>('agent_campaign_orphans'),
   /** `patches: false` counts only; the board's rows poll that. */
   taskDiff: (id: string, taskId: string, patches = true) =>
@@ -273,6 +308,48 @@ export const campaignApi = {
   /** True the first time per key; recorded in the event log. */
   claimNotice: (id: string, key: string) =>
     invoke<boolean>('agent_campaign_claim_notice', { id, key }),
+  // -- A server-driven campaign (`flint serve --agent-run`, P3) -------------
+  /**
+   * Plan a campaign on the server for a goal: the server's model proposes the
+   * tasks (or `options.plan` is used as given) and the campaign is stored
+   * `planned`, waiting for `approve`. Nothing runs before that.
+   */
+  startServer: (goal: string, folder: string, options?: ServerCampaignOptions) =>
+    invoke<Campaign>('agent_campaign_start_server', {
+      goal,
+      folder,
+      options: options ?? {},
+    }),
+  /**
+   * Approve a planned server campaign. `worktree` lets tasks work unattended
+   * inside their own folder (needs the operator's `--agent-allow-bypass`);
+   * `ask` makes every action ask.
+   */
+  approve: (id: string, access: 'worktree' | 'ask') =>
+    invoke<Campaign>('agent_campaign_approve', { id, access }),
+  /** What waits on a person across the server's campaigns. */
+  approvals: () =>
+    invoke<{ approvals: ServerApproval[] }>('agent_campaign_approvals'),
+}
+
+export type ServerCampaignOptions = {
+  model?: string
+  title?: string
+  maxParallel?: number
+  tokenBudget?: number
+  taskTokens?: number
+  taskSteps?: number
+  wallClockSecs?: number
+  /** A plan to use instead of asking the model. */
+  plan?: PlanTask[]
+}
+
+export type ServerApproval = {
+  campaignId: string
+  kind: 'plan' | 'finalize' | 'task'
+  title?: string
+  taskId?: string
+  sessionId?: string | null
 }
 
 export type CampaignApi = typeof campaignApi

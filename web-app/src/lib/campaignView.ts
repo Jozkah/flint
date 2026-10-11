@@ -42,6 +42,84 @@ export function isWaitingOnDeps(
   )
 }
 
+/**
+ * The skipped (cancelled) tasks a not yet started task is waiting for. Such a
+ * task never starts by itself: a skipped dependency is not a merged one, so
+ * it needs a person to skip it too or to run it without that dependency.
+ */
+export function skippedDepsOf<
+  T extends Pick<CampaignTask, 'id' | 'status' | 'title'>,
+>(
+  task: Pick<CampaignTask, 'status' | 'dependsOn'>,
+  all: readonly T[]
+): T[] {
+  if (task.status !== 'pending' && task.status !== 'blocked') return []
+  return task.dependsOn
+    .map((d) => all.find((t) => t.id === d))
+    .filter((t): t is T => !!t && t.status === 'cancelled')
+}
+
+const CLOSED: ReadonlySet<CampaignTaskStatus> = new Set(['merged', 'cancelled'])
+
+/**
+ * The tasks that wait, directly or through another task, on `taskId` and are
+ * not over yet: what skipping it holds up or would take with it.
+ */
+export function dependantsOf<
+  T extends Pick<CampaignTask, 'id' | 'status' | 'dependsOn'>,
+>(taskId: string, all: readonly T[]): T[] {
+  const reached = new Set<string>([taskId])
+  const out: T[] = []
+  for (let grew = true; grew; ) {
+    grew = false
+    for (const t of all) {
+      if (reached.has(t.id) || CLOSED.has(t.status)) continue
+      if (t.dependsOn.some((d) => reached.has(d))) {
+        reached.add(t.id)
+        out.push(t)
+        grew = true
+      }
+    }
+  }
+  return out
+}
+
+/** Tasks merged and tasks skipped, counted apart (a skipped task is not done). */
+export function taskCounts(tasks: readonly Pick<CampaignTask, 'status'>[]): {
+  merged: number
+  skipped: number
+  total: number
+} {
+  return {
+    merged: tasks.filter((t) => t.status === 'merged').length,
+    skipped: tasks.filter((t) => t.status === 'cancelled').length,
+    total: tasks.length,
+  }
+}
+
+/**
+ * Nothing is left to run: every task is merged or skipped and at least one
+ * merged. The campaign is then finished work, whatever the record's status
+ * says in the moment before the backend moves it on.
+ */
+export function allTasksSettled(
+  c: Pick<Campaign, 'tasks'>
+): boolean {
+  return (
+    c.tasks.length > 0 &&
+    c.tasks.every((t) => CLOSED.has(t.status)) &&
+    c.tasks.some((t) => t.status === 'merged')
+  )
+}
+
+/** The final build and test check ran and failed. */
+export function gateFailedOf(c: object): boolean {
+  const o = c as { gateFailed?: unknown; gate?: unknown }
+  if (typeof o.gateFailed === 'boolean') return o.gateFailed
+  const g = o.gate as { passed?: unknown; skipped?: unknown } | null | undefined
+  return !!g && g.passed === false && g.skipped !== true
+}
+
 /** The automatic conflict resolver is working on the task. */
 export function isResolving(task: { status: string }): boolean {
   return task.status === 'resolving'
@@ -166,12 +244,13 @@ export function dotOf(
   if (isResolving(task)) return 'verifying'
   switch (s) {
     case 'pending':
+      if (skippedDepsOf(task, all as never).length > 0) return 'needs-you'
       return isWaitingOnDeps(task, all) ? 'blocked' : 'queued'
     case 'queued':
     case 'interrupted':
       return 'queued'
     case 'blocked':
-      return 'blocked'
+      return skippedDepsOf(task, all as never).length > 0 ? 'needs-you' : 'blocked'
     case 'running':
       return 'running'
     case 'awaiting_input':
@@ -224,6 +303,7 @@ export function coordinatorDotOf(
   if (c.status === 'draft' || c.status === 'planned' || c.tasks.length === 0) {
     return 'planning'
   }
+  if (allTasksSettled(c)) return 'review'
   const needs = c.tasks.some((t) => {
     const d = dotOf(t, c.tasks)
     return d === 'needs-you' || d === 'failed' || d === 'conflict'
@@ -297,6 +377,8 @@ export type TaskWord =
   | 'conflict'
   | 'resolving'
   | 'waiting'
+  /** Waits for a task that was skipped: a person decides. */
+  | 'waitingSkipped'
   | 'queued'
   | 'merged'
   | 'skipped'
@@ -312,6 +394,10 @@ export function wordOf(
     .map((t) => t!.title)
   const only = (word: TaskWord) => ({ word, waitingFor: [] as string[] })
   if (isResolving(task)) return only('resolving')
+  const skipped = skippedDepsOf(task, all)
+  if (skipped.length > 0) {
+    return { word: 'waitingSkipped', waitingFor: skipped.map((t) => t.title) }
+  }
   switch (task.status) {
     case 'pending':
     case 'blocked':
@@ -355,6 +441,8 @@ export type HeadlineKey =
   | 'working'
   | 'attention'
   | 'review'
+  /** The final build and test check failed. */
+  | 'gateFailed'
   | 'merging'
   | 'paused'
   | 'interrupted'
@@ -367,13 +455,15 @@ export type Headline = {
   /** Tasks being worked on, or needing the person, depending on the key. */
   count: number
   done: number
+  skipped: number
   total: number
 }
 
 /** The campaign in one line a person can read without knowing the states. */
-export function headlineOf(c: Pick<Campaign, 'status' | 'tasks'>): Headline {
-  const total = c.tasks.length
-  const done = c.tasks.filter((t) => t.status === 'merged').length
+export function headlineOf(
+  c: Pick<Campaign, 'status' | 'tasks'> & { gate?: unknown }
+): Headline {
+  const { merged: done, skipped, total } = taskCounts(c.tasks)
   const groups = groupTasks(c.tasks)
   const countIn = (g: TaskGroup) =>
     groups.find((x) => x.group === g)?.tasks.length ?? 0
@@ -381,8 +471,18 @@ export function headlineOf(c: Pick<Campaign, 'status' | 'tasks'>): Headline {
     key,
     count,
     done,
+    skipped,
     total,
   })
+  // A failed final check is not "ready": say so before anything else.
+  if (c.status === 'reviewing' && gateFailedOf(c)) return make('gateFailed')
+  // Only merged and skipped tasks remain: nothing is left to run.
+  if (
+    (c.status === 'running' || c.status === 'approved') &&
+    allTasksSettled(c)
+  ) {
+    return make('review')
+  }
   switch (c.status) {
     case 'done':
       return make('done')
@@ -416,6 +516,7 @@ export function primaryActionOf(
   switch (c.status) {
     case 'running':
     case 'approved':
+      if (allTasksSettled(c)) return 'review'
       // When something needs the person, the place to answer is the session
       // that is asking; pausing is a secondary choice then.
       return groupTasks(c.tasks).some((g) => g.group === 'needs-you')
@@ -480,6 +581,7 @@ export type CampaignGroup = {
   title: string
   status: CampaignStatus
   done: number
+  skipped: number
   total: number
   /** Over for good: the sidebar folds it to one line. */
   finished: boolean
@@ -577,6 +679,7 @@ export function deriveCampaignGroups(
       title: c.title,
       status: c.status,
       done: c.tasks.filter((t) => t.status === 'merged').length,
+      skipped: c.tasks.filter((t) => t.status === 'cancelled').length,
       total: c.tasks.length,
       finished: FINISHED.has(c.status),
       dot: coordinatorDotOf(c),
@@ -641,7 +744,7 @@ export function taskActionsOf(
     stop: LIVE.has(s) || s === 'queued' || s === 'blocked' || s === 'pending',
     retry:
       (s === 'failed' || s === 'conflict') && task.attempt < CAMPAIGN_MAX_RETRIES,
-    verify: s === 'completed',
+    verify: s === 'completed' || s === 'verifying',
     resolve: s === 'conflict',
     accept: isVerificationBlocked(task),
     // The same set campaign_merge skip accepts.

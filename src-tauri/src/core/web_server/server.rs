@@ -19,6 +19,7 @@ use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
 
+use super::agent;
 use super::auth::AuthStore;
 use super::data;
 use super::control;
@@ -54,6 +55,13 @@ pub struct Options {
     /// Allow browser sessions to add and start stdio MCP servers (runs programs
     /// on this machine).
     pub allow_mcp_stdio: bool,
+    /// Folders the agent review plane may touch (`--agent-root`). Empty keeps
+    /// it off.
+    pub agent_roots: Vec<PathBuf>,
+    /// `--agent-run`: let the server run agent sessions (needs a root).
+    pub agent_run: bool,
+    /// What the runner allows (`--agent-max-sessions` and the rest).
+    pub agent_runner: super::runner::RunnerOptions,
     /// Extra exact `host[:port]` values accepted in the Host header; required
     /// when binding beyond loopback.
     pub allowed_hosts: Vec<String>,
@@ -75,6 +83,7 @@ struct State {
     public_host: Option<String>,
     limiter: LoginLimiter,
     mcp: mcp::Host,
+    agent: Option<agent::Agent>,
     allowed_origins: HashSet<String>,
     engine: engine::Supervisor,
     settings: settings::Store,
@@ -743,7 +752,60 @@ fn plugin_error(error: &tauri_plugin_llamacpp::error::ServerError) -> Resp {
 /// The Tauri commands the app's extensions call, answered for a browser.
 /// Anything not listed is refused, so a command added to the desktop app does
 /// not become reachable from a browser by accident.
-async fn rpc_route(state: &State, command: &str, args: serde_json::Value) -> Resp {
+async fn rpc_route(
+    state: &State,
+    command: &str,
+    args: serde_json::Value,
+    caller: &super::runner::Caller,
+) -> Resp {
+    if super::campaign_driver::handles(command) {
+        let Some(agent) = &state.agent else {
+            return text(
+                StatusCode::FORBIDDEN,
+                "The agent review plane is off on this server. Start it with --agent-root <folder>.",
+            );
+        };
+        return match agent.call_campaign(command, &args).await {
+            Ok(value) => json(&value),
+            Err(failure) => {
+                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
+                match failure.body {
+                    serde_json::Value::String(message) => {
+                        reply(status, "text/plain; charset=utf-8", message)
+                    }
+                    other => reply(
+                        status,
+                        "application/json",
+                        serde_json::to_vec(&other).unwrap_or_default(),
+                    ),
+                }
+            }
+        };
+    }
+    if super::runner::handles(command) {
+        let Some(agent) = &state.agent else {
+            return text(
+                StatusCode::FORBIDDEN,
+                "The agent review plane is off on this server. Start it with --agent-root <folder>.",
+            );
+        };
+        return match agent.call_run(command, &args, caller).await {
+            Ok(value) => json(&value),
+            Err(failure) => {
+                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
+                match failure.body {
+                    serde_json::Value::String(message) => {
+                        reply(status, "text/plain; charset=utf-8", message)
+                    }
+                    other => reply(
+                        status,
+                        "application/json",
+                        serde_json::to_vec(&other).unwrap_or_default(),
+                    ),
+                }
+            }
+        };
+    }
     if files::handles(command) {
         let (root, command) = (state.data_folder.clone(), command.to_owned());
         return match tokio::task::spawn_blocking(move || files::call(&root, &command, &args)).await {
@@ -764,6 +826,40 @@ async fn rpc_route(state: &State, command: &str, args: serde_json::Value) -> Res
         return match settings::call(&state.settings, command, &args) {
             Ok(value) => json(&value),
             Err(message) => reply(StatusCode::BAD_REQUEST, "text/plain; charset=utf-8", message),
+        };
+    }
+    if agent::handles(command) {
+        let Some(agent) = &state.agent else {
+            // Said once, plainly, so a client can show it rather than guess.
+            if command == "agent_server_info" {
+                return json(&serde_json::json!({ "agent": false, "folders": [] }));
+            }
+            return text(
+                StatusCode::FORBIDDEN,
+                "The agent review plane is off on this server. Start it with --agent-root <folder>.",
+            );
+        };
+        let (agent, command) = (agent.clone(), command.to_owned());
+        // Reads and writes files for a proposal, so not on the async threads.
+        let outcome = match tokio::task::spawn_blocking(move || agent.call(&command, &args)).await {
+            Ok(outcome) => outcome,
+            Err(_) => return text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
+        };
+        return match outcome {
+            Ok(value) => json(&value),
+            Err(failure) => {
+                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
+                match failure.body {
+                    serde_json::Value::String(message) => {
+                        reply(status, "text/plain; charset=utf-8", message)
+                    }
+                    other => reply(
+                        status,
+                        "application/json",
+                        serde_json::to_vec(&other).unwrap_or_default(),
+                    ),
+                }
+            }
         };
     }
     match command {
@@ -1231,6 +1327,31 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
             _ => {}
         }
     }
+    if method == Method::GET && path.starts_with("/api/v1/agent/sessions/") && path.ends_with("/events") {
+        let id = path["/api/v1/agent/sessions/".len()..path.len() - "/events".len()].to_owned();
+        let Some(agent) = state.agent.clone() else {
+            return text(
+                StatusCode::FORBIDDEN,
+                "The agent review plane is off on this server. Start it with --agent-root <folder>.",
+            );
+        };
+        let after = crate::core::web_server::agent_runs::resume_point(
+            query_param(req.uri().query(), "after").as_deref(),
+            req.headers().get("last-event-id").and_then(|v| v.to_str().ok()),
+        );
+        // A session that is live here streams: replay, then the tail.
+        if let Some(live) = agent.tail(&id, after) {
+            return live;
+        }
+        return match tokio::task::spawn_blocking(move || agent.replay(&id, after)).await {
+            Ok(Ok(body)) => reply(StatusCode::OK, "text/event-stream", body),
+            Ok(Err(failure)) => {
+                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
+                reply(status, "text/plain; charset=utf-8", failure.body.as_str().unwrap_or("Request failed").to_owned())
+            }
+            Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
+        };
+    }
     if path == "/api/v1/events" && method == Method::GET {
         return events::stream(&state.events);
     }
@@ -1284,11 +1405,12 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
         let Some(command) = percent_decode(command) else {
             return text(StatusCode::BAD_REQUEST, "Invalid command");
         };
+        let caller = super::runner::Caller::digest(session.unwrap_or(""), client);
         let args = match read_json(req).await {
             Ok(args) => args,
             Err(response) => return response,
         };
-        return rpc_route(&state, &command, args).await;
+        return rpc_route(&state, &command, args, &caller).await;
     }
     if let Some(rest) = path.strip_prefix("/api/v1/mcp/") {
         return mcp_route(&state, &method, rest, req).await;
@@ -1439,9 +1561,12 @@ pub async fn serve(options: Options) -> io::Result<()> {
     // background starter use to reach it. A name an attacker controls can never
     // be this, so it does not weaken the check against DNS rebinding.
     hosts.insert(listener.local_addr()?.to_string());
+    let bus = events::Bus::new();
+    let agent = agent::Agent::open_with(&options.data_folder, &options.agent_roots, options.agent_run)
+        .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?
+        .map(|agent| agent.with_runner(options.agent_runner.clone(), bus.clone()));
     let (auth, bootstrap) = AuthStore::open(options.auth_file)?;
     let settings_store = settings::Store::new(&options.data_folder);
-    let bus = events::Bus::new();
     let shutdown = Arc::new(tokio::sync::Notify::new());
     let shutdown_token = control::new_token();
     let data_folder_for_run = options.data_folder.clone();
@@ -1453,6 +1578,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
         public_host: options.public_host.map(|host| host.to_ascii_lowercase()),
         limiter: LoginLimiter::new(),
         mcp: mcp::Host::new(options.allow_mcp_stdio),
+        agent,
         allowed_origins: options.allowed_origins.iter().map(|o| o.to_ascii_lowercase()).collect(),
         engine: engine::Supervisor::new(options.llama_worker.clone(), bus.clone()),
         events: bus,
@@ -1460,6 +1586,11 @@ pub async fn serve(options: Options) -> io::Result<()> {
         shutdown: shutdown.clone(),
         shutdown_token: shutdown_token.clone(),
     });
+    // Campaigns the records say this server drives continue on their own,
+    // with no client connected (P3 of the server runner).
+    if let Some(agent) = &state.agent {
+        agent.start_driver();
+    }
     eprintln!(
         "Flint web server listening on http://{}",
         listener.local_addr()?
@@ -1575,6 +1706,7 @@ mod tests {
             public_host: None,
             limiter: LoginLimiter::new(),
             mcp: mcp::Host::new(false),
+            agent: None,
             allowed_origins: HashSet::new(),
             engine: engine::Supervisor::new(None, events::Bus::new()),
             settings: settings::Store::new(dir.path()),
@@ -1606,6 +1738,9 @@ mod tests {
             auth_file: dir.path().join("auth.json"),
             public_host: None,
             allow_mcp_stdio: false,
+            agent_roots: Vec::new(),
+            agent_run: false,
+            agent_runner: Default::default(),
             allowed_hosts: Vec::new(),
             allowed_origins: Vec::new(),
             llama_worker: None,
@@ -1656,6 +1791,9 @@ mod tests {
             auth_file: dir.path().join("auth.json"),
             public_host: None,
             allow_mcp_stdio: false,
+            agent_roots: Vec::new(),
+            agent_run: false,
+            agent_runner: Default::default(),
             allowed_hosts: hosts.into_iter().map(String::from).collect(),
             allowed_origins: origins.into_iter().map(String::from).collect(),
             llama_worker: None,
@@ -1681,6 +1819,7 @@ mod tests {
             public_host: None,
             limiter: LoginLimiter::new(),
             mcp: mcp::Host::new(false),
+            agent: None,
             allowed_origins: HashSet::from(["http://tauri.localhost".to_string()]),
             engine: engine::Supervisor::new(None, events::Bus::new()),
             settings: settings::Store::new(dir.path()),
@@ -1715,6 +1854,7 @@ mod tests {
             public_host: Some("box.ts.net".to_string()),
             limiter: LoginLimiter::new(),
             mcp: mcp::Host::new(false),
+            agent: None,
             allowed_origins: HashSet::new(),
             engine: engine::Supervisor::new(None, events::Bus::new()),
             settings: settings::Store::new(dir.path()),

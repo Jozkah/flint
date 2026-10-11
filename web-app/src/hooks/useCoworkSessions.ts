@@ -223,6 +223,11 @@ export type CoworkSession = {
    * absent on every ordinary session and on sessions saved before campaigns.
    */
   campaign?: CampaignLink
+  /**
+   * The server runs this session (`flint serve --agent-run`): its id is the
+   * server's, and its transcript is read from there, never saved here.
+   */
+  remote?: boolean
   updated: number
   /**
    * When the session was created (epoch millis). Absent on sessions saved
@@ -990,6 +995,10 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         ...state,
         sessions: state.sessions.map((session) => {
           const saved = stripSessionToolImages(session)
+          // A server session is a pointer: its transcript lives on the server.
+          if (saved.remote) {
+            return { ...saved, turns: [], messages: [], inFlight: undefined, pendingInput: undefined }
+          }
           return saved.mode === 'bypass' ? { ...saved, mode: 'ask' as const } : saved
         }),
       }),

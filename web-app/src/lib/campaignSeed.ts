@@ -69,6 +69,13 @@ export function retryHintLead(detail: string): string | null {
   )
 }
 
+/** One line, only when the work is about Node's built-in test runner. */
+export const NODE_TEST_HINT =
+  "When running Node's built-in test runner use `node --test` (no directory argument)."
+
+export const usesNodeTest = (text: string): boolean =>
+  /node:test|node\s+--test|node's (built-in )?test runner/i.test(text)
+
 export function buildTaskSeed(input: {
   campaign: Pick<Campaign, 'title' | 'integrationBranch'>
   task: CampaignTask
@@ -95,6 +102,20 @@ export function buildTaskSeed(input: {
       'These paths are a scheduling hint, not a boundary you may not cross; ' +
         'keep changes inside them where you can.'
     )
+  }
+  if (task.skippedDeps && task.skippedDeps.length > 0) {
+    parts.push(
+      '## Skipped dependencies',
+      `A person skipped ${task.skippedDeps.join(', ')} and released this task to run without ` +
+        'it. Do not expect that work to exist; do only what you can without it and say in your handoff what is missing.'
+    )
+  }
+  if (
+    usesNodeTest(
+      [task.brief, ...task.acceptance, context.decisions].join(' ')
+    )
+  ) {
+    parts.push(NODE_TEST_HINT)
   }
   parts.push(
     '## How to finish',

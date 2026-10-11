@@ -199,6 +199,7 @@ export function WrapUp({
 }) {
   const { t } = useTranslation()
   const merged = campaign.tasks.filter((x) => x.status === 'merged').length
+  const skipped = campaign.tasks.filter((x) => x.status === 'cancelled').length
   const review = campaign.status === 'reviewing'
   return (
     <section
@@ -227,6 +228,9 @@ export function WrapUp({
           </dt>
           <dd className="tabular-nums">
             {merged} / {campaign.tasks.length}
+            {skipped > 0
+              ? ` · ${t('settings:campaigns.board.summary.wrapUp.skipped', { count: skipped })}`
+              : ''}
           </dd>
         </div>
         {totals && (

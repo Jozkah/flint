@@ -148,7 +148,7 @@ pub fn trusted_worktree(
     Ok(record)
 }
 
-fn task_record(c: &Campaign, t: &CampaignTask, roots: &Path) -> Result<WorktreeRecord, CampaignError> {
+pub fn task_record(c: &Campaign, t: &CampaignTask, roots: &Path) -> Result<WorktreeRecord, CampaignError> {
     let path = t.worktree_path.as_deref().unwrap_or_default();
     let branch = t.branch.as_deref().unwrap_or_default();
     if !c.integration_branch.is_empty() && branch == c.integration_branch {
@@ -372,6 +372,9 @@ fn task_spec(t: &CampaignTask) -> String {
         for a in &t.acceptance {
             s.push_str(&format!("- {a}\n"));
         }
+    }
+    if !t.expects_changes() {
+        s.push_str("\nThis task is not expected to change files: judge it by what it ran and reported.\n");
     }
     s
 }
@@ -947,7 +950,7 @@ pub fn verify_finish(
                             ),
                         )
                     });
-                } else if facts.empty && mentions_files(&t.acceptance) {
+                } else if facts.empty && t.expects_changes() && mentions_files(&t.acceptance) {
                     why = Some((
                         TaskVerdict::Blocked,
                         "the work changed nothing against its base, yet its acceptance criteria name files".to_string(),
@@ -1573,6 +1576,52 @@ pub fn finalize(data_folder: &Path, roots: &Path, id: &str, seconds: u64) -> Res
     Ok(FinalizeReport { gate: report, proposal_id: Some(proposal_id), files, warning, campaign: c })
 }
 
+/// The one task a failed gate asks for. Its brief carries the gate command,
+/// how it failed, the tail of its output and the files the campaign changed, so
+/// the repair session starts from what the person would otherwise copy out of
+/// the board. It runs like any task on the integration branch; when it merges
+/// the campaign is back in review and the gate runs again
+/// ([`retry_gate`]).
+pub fn gate_repair(data_folder: &Path, roots: &Path, id: &str) -> Result<(Campaign, String), CampaignError> {
+    let c = campaign::get(data_folder, id)?;
+    let gate = c
+        .gate
+        .clone()
+        .filter(|g| !g.passed && !g.skipped)
+        .ok_or_else(|| invalid("the final gate has not failed, so there is nothing to repair"))?;
+    let files: Vec<String> = campaign_diff(data_folder, roots, id, false)
+        .map(|d| d.files.into_iter().map(|f| f.path).take(40).collect())
+        .unwrap_or_default();
+    let how = if gate.timed_out {
+        "timed out".to_string()
+    } else {
+        format!("exited with {}", gate.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "no code".into()))
+    };
+    let brief = format!(
+        "The campaign's final build and test gate failed on the merged result. Make it pass.\n\n\
+Gate command: `{command}`\n\
+It {how}. The end of its output:\n```\n{output}\n```\n\n\
+Files the campaign changed ({n}): {files}\n\n\
+Run the gate command yourself in this worktree, find the cause, fix it with the smallest change \
+that makes it pass, and do not weaken or delete tests to get there.",
+        command = gate.command,
+        output = tail(&gate.output, 3000),
+        n = files.len(),
+        files = if files.is_empty() { "(unknown)".to_string() } else { files.join(", ") },
+    );
+    campaign::add_gate_repair(data_folder, id, brief)
+}
+
+/// Run the gate again after a repair merged. Same step as [`finalize`], with
+/// the extra rule that there is a failed gate on record to retry.
+pub fn retry_gate(data_folder: &Path, roots: &Path, id: &str, seconds: u64) -> Result<FinalizeReport, CampaignError> {
+    let c = campaign::get(data_folder, id)?;
+    if !c.gate.as_ref().is_some_and(|g| !g.passed && !g.skipped) {
+        return Err(invalid("the final gate did not fail, so there is nothing to retry; finalize the campaign"));
+    }
+    finalize(data_folder, roots, id, seconds)
+}
+
 fn propose_integration(
     data_folder: &Path,
     roots: &Path,
@@ -1747,6 +1796,7 @@ mod tests {
             acceptance: vec![],
             paths: vec![],
             depends_on: deps.iter().map(|s| s.to_string()).collect(),
+            kind: String::new(),
         }
     }
 
@@ -1788,6 +1838,7 @@ mod tests {
                 model: String::new(),
                 limits: None,
                 tasks,
+                driver: None,
             },
         )
         .unwrap();
@@ -2284,6 +2335,53 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_gate_is_repaired_by_one_task_and_the_gate_runs_again() {
+        let f = fixture("repair", vec![plan("a", &[])]);
+        start(&f);
+        work(&f, "a", "a.txt", "from a
+");
+        assert!(merge_task(&f.data, &f.roots, &f.id, "a").unwrap().merged);
+        // Nothing failed yet: nothing to repair or retry.
+        assert!(gate_repair(&f.data, &f.roots, &f.id).is_err());
+        assert!(retry_gate(&f.data, &f.roots, &f.id, 60).is_err());
+        let toml = Path::new(&f.integration.path).join(".jan/agent/agent.toml");
+        std::fs::create_dir_all(toml.parent().unwrap()).unwrap();
+        std::fs::write(&toml, "[campaign]
+gate = \"exit 3\"
+").unwrap();
+        let failed = finalize(&f.data, &f.roots, &f.id, 60).unwrap();
+        assert!(!failed.gate.passed);
+        // The failure is on the record, with its command and output tail.
+        let stored = campaign::get(&f.data, &f.id).unwrap();
+        let gate = stored.gate.unwrap();
+        assert!(!gate.passed && gate.command == "exit 3" && gate.exit_code == Some(3));
+
+        let (c, task_id) = gate_repair(&f.data, &f.roots, &f.id).unwrap();
+        assert_eq!(c.status, CampaignStatus::Running);
+        let t = c.task(&task_id).unwrap();
+        assert_eq!(t.kind, campaign::KIND_GATE_REPAIR);
+        assert!(t.brief.contains("exit 3") && t.brief.contains("a.txt"), "{}", t.brief);
+        // A second repair while one is open is refused.
+        assert!(gate_repair(&f.data, &f.roots, &f.id).is_err());
+
+        // The repair task merges (the fix), the campaign is back in review.
+        std::fs::write(&toml, "[campaign]
+gate = \"exit 0\"
+").unwrap();
+        campaign::update(&f.data, &f.id, |c| {
+            let t = c.task_mut(&task_id)?;
+            t.status = TaskStatus::Merged;
+            t.verdict = Some(TaskVerdict::Pass);
+            assert!(campaign::advance_to_review(c));
+            Ok(((), vec![]))
+        })
+        .unwrap();
+        let ok = retry_gate(&f.data, &f.roots, &f.id, 60).unwrap();
+        assert!(ok.gate.passed);
+        assert!(ok.proposal_id.is_some());
+    }
+
+    #[test]
     fn a_gate_with_nothing_to_run_is_skipped_with_a_warning() {
         let f = fixture("skip", vec![plan("a", &[])]);
         start(&f);
@@ -2571,25 +2669,60 @@ two
     }
 
     #[test]
-    fn a_pass_on_an_empty_diff_is_blocked_when_acceptance_names_files() {
+    fn a_pass_on_an_empty_diff_is_blocked_only_for_a_change_task_that_declares_paths() {
+        let named = PlanTask {
+            paths: vec!["src".into()],
+            ..task_with_acceptance("a", &["adds src/lib.rs with a health function"])
+        };
+        let check = PlanTask {
+            kind: campaign::KIND_CHECK.into(),
+            paths: vec!["docs".into()],
+            ..task_with_acceptance("c", &["adds docs/x.md"])
+        };
         let f = fixture(
             "empty",
-            vec![task_with_acceptance("a", &["adds src/lib.rs with a health function"]), task_with_acceptance("b", &["it is tidy"])],
+            vec![
+                named,
+                task_with_acceptance("b", &["it is tidy"]),
+                check,
+                // Names files but declares no paths: nothing says it must change any.
+                task_with_acceptance("d", &["run the suite in src/tests and report"]),
+            ],
         );
         start(&f);
-        finished(&f, "a", None);
-        finished(&f, "b", None);
-        for t in ["a", "b"] {
+        for t in ["a", "b", "c", "d"] {
+            finished(&f, t, None);
             verify_prepare(&f.data, &f.roots, &f.id, t, "m", false).unwrap();
         }
-        let a = verify_finish(&f.data, &f.id, "a", Some("VERDICT: PASS\nEVIDENCE: done"), None, 0).unwrap();
+        let pass = Some("VERDICT: PASS\nEVIDENCE: done");
+        let a = verify_finish(&f.data, &f.id, "a", pass, None, 0).unwrap();
         assert_eq!(a.next, VerifyNext::Blocked);
         assert_eq!(a.verdict, "BLOCKED");
         assert!(a.downgraded.is_some());
         assert_eq!(status(&f, "a"), TaskStatus::Completed);
-        // No file is named: the empty diff alone does not block.
-        let b = verify_finish(&f.data, &f.id, "b", Some("VERDICT: PASS\nEVIDENCE: done"), None, 0).unwrap();
-        assert_eq!(b.next, VerifyNext::Verified);
+        for t in ["b", "c", "d"] {
+            let o = verify_finish(&f.data, &f.id, t, pass, None, 0).unwrap();
+            assert_eq!(o.next, VerifyNext::Verified, "{t}");
+            assert!(o.downgraded.is_none(), "{t}");
+        }
+    }
+
+    #[test]
+    fn a_gate_repair_that_found_nothing_to_change_may_pass() {
+        let f = fixture("emptyrepair", vec![plan("a", &[])]);
+        start(&f);
+        finished(&f, "a", None);
+        campaign::update(&f.data, &f.id, |c| {
+            let x = c.task_mut("a")?;
+            x.kind = campaign::KIND_GATE_REPAIR.into();
+            x.paths = vec!["src".into()];
+            x.acceptance = vec!["`npm test` exits 0 in package.json".into()];
+            Ok(((), vec![]))
+        })
+        .unwrap();
+        verify_prepare(&f.data, &f.roots, &f.id, "a", "m", false).unwrap();
+        let o = verify_finish(&f.data, &f.id, "a", Some("VERDICT: PASS\nEVIDENCE: ok"), None, 0).unwrap();
+        assert_eq!(o.next, VerifyNext::Verified);
     }
 
     #[test]

@@ -39,7 +39,7 @@ export function CampaignGroups({
             className="flex list-none flex-col"
             data-testid={`campaign-group-${group.campaignId}`}
           >
-            <div className="flex h-7 items-center gap-0.5">
+            <div className="flex min-h-7 items-start gap-0.5">
               <button
                 type="button"
                 aria-expanded={open}
@@ -52,7 +52,7 @@ export function CampaignGroups({
                 onClick={() =>
                   setToggled((s) => ({ ...s, [group.campaignId]: !open }))
                 }
-                className="grid size-5 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                className="mt-1 grid size-5 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 <ChevronRight
                   aria-hidden
@@ -64,7 +64,7 @@ export function CampaignGroups({
               </button>
               <button
                 type="button"
-                title={t('settings:campaigns.board.openBoard')}
+                title={`${group.title}: ${t('settings:campaigns.board.openBoard')}`}
                 aria-label={`${group.title}: ${t('settings:campaigns.board.openBoard')}`}
                 onClick={() =>
                   void navigate({
@@ -72,27 +72,42 @@ export function CampaignGroups({
                     params: { campaignId: group.campaignId },
                   })
                 }
-                className="flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-1 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                className="flex min-w-0 flex-1 cursor-pointer flex-col justify-center rounded-md px-1 py-1 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
               >
-                <Workflow aria-hidden className="size-3.5 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{group.title}</span>
-                <StatusDot
-                  dot={group.dot}
-                  className={group.attention ? 'motion-safe:animate-pulse' : undefined}
-                />
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Workflow aria-hidden className="size-3.5 shrink-0" />
+                  <span
+                    className="min-w-0 flex-1 truncate"
+                    data-testid="campaign-group-title"
+                  >
+                    {group.title}
+                  </span>
+                  <StatusDot
+                    dot={group.dot}
+                    className={
+                      group.attention ? 'motion-safe:animate-pulse' : undefined
+                    }
+                  />
+                </span>
                 <span
-                  className="shrink-0 font-normal tabular-nums"
+                  className="truncate pl-5 text-[11px] font-normal tabular-nums"
                   data-testid="campaign-group-progress"
                 >
                   {group.finished
                     ? t(`settings:campaigns.board.statusWord.${group.status}`)
-                    : t('settings:campaigns.board.groupProgress', {
-                        done: group.done,
-                        total: group.total,
-                        status: t(
-                          `settings:campaigns.board.statusWord.${group.status}`
-                        ),
-                      })}
+                    : t(
+                        group.skipped > 0
+                          ? 'settings:campaigns.board.groupProgressSkipped'
+                          : 'settings:campaigns.board.groupProgress',
+                        {
+                          done: group.done,
+                          skipped: group.skipped,
+                          total: group.total,
+                          status: t(
+                            `settings:campaigns.board.statusWord.${group.status}`
+                          ),
+                        }
+                      )}
                 </span>
               </button>
             </div>

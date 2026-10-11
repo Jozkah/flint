@@ -196,7 +196,8 @@ export function createRunnerHost(): RunnerHost {
       return !r.error
     },
     askVerifier: async (request, campaign) => {
-      const [system, user] = request.messages
+      const system = request.messages.find((m) => m.role === 'system')
+      const rest = request.messages.filter((m) => m !== system)
       const ref = parseModel(campaign.model)
       const state = useModelProvider.getState()
       const providerName = ref?.provider ?? state.selectedProvider
@@ -214,15 +215,20 @@ export function createRunnerHost(): RunnerHost {
         model,
         modelId,
         system: system?.content,
-        messages: [{ role: 'user', content: user?.content ?? '' }],
-        maxOutputTokens: 2000,
+        messages: rest.map((m) => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content,
+        })),
+        maxOutputTokens: 3000,
         abortSignal: AbortSignal.timeout(180_000),
         maxRetries: 1,
       })
       // The utility call returns text only (its exact counts go to the audit
       // log), so the cost recorded on the task is an estimate from sizes, at
       // about four characters a token: honest in magnitude, not to the digit.
-      const sent = (system?.content.length ?? 0) + (user?.content.length ?? 0)
+      const sent =
+        (system?.content.length ?? 0) +
+        rest.reduce((n, m) => n + m.content.length, 0)
       return { text, tokens: Math.ceil((sent + text.length) / 4) }
     },
     runInfo: (sid) => {
@@ -373,6 +379,8 @@ export function startCampaignRunner(): () => void {
         ) {
           continue
         }
+        // A server-driven campaign is the server's to run and resume.
+        if (c.driver === 'server') continue
         trackCampaign(c.id)
         if (c.status === 'merging') {
           // Its proposal may have been applied or rejected while we were away.

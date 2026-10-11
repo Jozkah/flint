@@ -1636,6 +1636,58 @@ pub async fn agent_campaign_finalize(
     .await
 }
 
+/// Create the one repair task a failed final gate asks for. The campaign goes
+/// back to running so it runs like any other task; the gate is run again with
+/// `agent_campaign_retry_gate` once it merged.
+#[tauri::command]
+pub async fn agent_campaign_gate_repair(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<crate::core::agent::campaign::Campaign, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        let roots = team_roots(&data_folder)?;
+        crate::core::agent::campaign_integration::gate_repair(&data_folder, &roots, &id)
+            .map(|(c, _)| c)
+            .map_err(campaign_failure)
+    })
+    .await
+}
+
+/// Run the final gate again after a repair; the same step as finalize, for a
+/// campaign whose last gate failed.
+#[tauri::command]
+pub async fn agent_campaign_retry_gate(
+    app: tauri::AppHandle,
+    id: String,
+    seconds: Option<u64>,
+) -> Result<crate::core::agent::campaign_integration::FinalizeReport, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        let roots = team_roots(&data_folder)?;
+        crate::core::agent::campaign_integration::retry_gate(&data_folder, &roots, &id, seconds.unwrap_or(600))
+            .map_err(campaign_failure)
+    })
+    .await
+}
+
+/// Skip a task and settle what waits on it: `leave` (only the task), `cascade`
+/// (cancel its dependants) or `release` (they run without it).
+#[tauri::command]
+pub async fn agent_campaign_skip_task(
+    app: tauri::AppHandle,
+    id: String,
+    task_id: String,
+    dependants: Option<crate::core::agent::campaign::SkipDependants>,
+) -> Result<crate::core::agent::campaign::SkipReport, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::skip_task(&data_folder, &id, &task_id, dependants.unwrap_or_default())
+            .map_err(campaign_failure)
+    })
+    .await
+}
+
 /// Follow a merging campaign's proposal: applied is done, rejected is back
 /// to reviewing.
 #[tauri::command]

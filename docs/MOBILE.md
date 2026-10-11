@@ -107,24 +107,163 @@ Decision: the Rust loop on the server (`core::agent::loop`, the `core::cli::rpc`
 | Phase | What | State |
 | --- | --- | --- |
 | P0 | `--agent-run` flag, capability probe, read-only session list, transcript and event replay, client probe and banner | Landed |
-| P1 | Session runner: start, turn, steer, interrupt, approvals over HTTP with a per-session event stream (extracts the turn start and finish from `core/cli/rpc.rs`) | Not built |
-| P2 | Cowork UI adapter that feeds `useCoworkRun` and `useCoworkSessions` from the server | Not built |
-| P3 | Campaign tasks and verification on the server | Not built |
+| P1 | Session runner: create, start, steer, interrupt, approvals and questions over HTTP with a live per-session event stream; the Cowork adapter for one session (`remoteCowork.ts`) and a "Run on server" entry | Landed (single Cowork-style session) |
+| P2 | Worktrees and proposals for server sessions: an isolated, server-owned checkout per writing session, `agent_worktree_*` commands by session id, a proposal after each turn that changed something, the worktree panel on the page | Landed (model and mode pickers still missing) |
+| P3 | Campaign driver on the server: plan, approve, tasks on worktrees, verify, merge, resolver, limits, restart continuation; plan approval and finalize stay a person's | Landed (see "What P3 does") |
 
-`flint serve --agent-run --agent-root <folder>`: the flag needs at least one root, or the server refuses to start. In P0 it only turns the probe on: `agent_server_info` reports `runRequested`, `runnerPlanned`, `sandbox`, `enforces`, `roots`, `maxSessions` and a `missing` list in words (for example "install bubblewrap"). `runsSessions` stays false until the runner exists, the flag is on, and the command sandbox (`tools::jail` backend) enforces.
+`flint serve --agent-run --agent-root <folder>`: the flag needs at least one root, or the server refuses to start. `agent_server_info` reports `runRequested`, `sandbox`, `enforces`, `roots`, `maxSessions`, `allowBypass`, `allowAlways`, `approvalTimeoutSecs`, `liveSessions` and a `missing` list in words (for example "install bubblewrap"). `runsSessions` is true only when the flag is on, the runner is built, and the command sandbox (`tools::jail` backend) enforces; `--agent-require-sandbox=false` is the operator's explicit way to run unsandboxed anyway.
+
+Operator switches (all off or conservative by default):
+
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `--agent-max-sessions <n>` | 4 | Live sessions at once; a create past it is refused with 429. A session nobody touched for 30 minutes leaves memory (its thread is on disk and the next start resumes it). |
+| `--agent-allow-bypass` | off | Without it a session is `read` (plan mode) or `ask` (writes, shell and MCP prompt); `auto` and `bypass` are refused with 403. |
+| `--agent-allow-always` | off | Without it an approval covers one call, and the server tells the client not to offer "allow always". |
+| `--agent-approval-timeout <secs>` | 1800 | An unanswered prompt is denied, audited as `by: timeout`, and the turn goes on. |
+| `--agent-require-sandbox[=false]` | true | Sessions run only under an enforcing command sandbox. |
+
+### What P1 does
+
+Commands, over `POST /api/v1/rpc/<command>` behind the same sign-in, same-origin and host checks as everything else, and refused unless `--agent-run` is on and the probe is ready:
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `agent_run_create` | `folder` (inside a root), `access` (`read`, `ask`; `auto`/`bypass` need the flag), `mode` (a label, default `cowork`), `model`, `title` | `{ id, folder, model, access, status }` |
+| `agent_run_start` | `id`, `input` (text or content parts, within the stdio protocol's caps) | `{ turnId, after }`. One active turn per session (409); 20 turns a minute (429). A stored session that is not live is resumed first. |
+| `agent_run_steer` | `id`, `text` | Delivered at the loop's next safe point. |
+| `agent_run_interrupt` | `id` | Aborts the turn, denies pending prompts, persists what the turn had, emits `done{stop_reason: "cancelled"}` then `turn.completed{stopReason: "interrupted"}`. |
+| `agent_run_approve` | `id`, `requestId`, `decision` (`allow_once`, `deny`, `allow_always` if enabled) | The request id must belong to that session and still be pending (404 otherwise). Audited in the session's event log (`permission.decided`: request, tool, decision, a digest of the client and of its address). |
+| `agent_run_answer_ask` | `id`, `requestId`, `results` | Validated against the question before it is delivered. |
+| `agent_run_set_model`, `agent_run_set_mode` | `id`, `model` / `access` | Refused while a turn is active (409). |
+| `agent_run_delete` | `id` | Only sessions this runner started. |
+
+`agent_run_list` and `agent_run_get` (P0) lay the live state over the stored row: `live`, `status` (`idle`, `running`, `awaiting_approval`, `awaiting_answer`), `access`, `pendingApprovals`, `pendingAsks`, `lastSeq`, `turnAfter`.
+
+The event stream, `GET /api/v1/agent/sessions/<id>/events?after=<seq>` (and `Last-Event-ID`): for a live session the response is replay from a 4096-event ring, then the live tail, with a `: keepalive` comment every 15 seconds and no end until the client leaves or the session closes. Each record is `id: <seq>` and an envelope `{ seq, source: "live", kind, at, payload }`:
+
+- `kind: "stream"`: the Rust loop's `StreamEvent` unchanged (`token`, `tool_call_started`, `tool_call_args_delta`, `tool_call`, `tool_result`, `permission_request`, `ask_request`, `todo_update`, `subagent*`, `done`, `error`, ...), except that the full-history `messages_updated` is never sent.
+- `kind: "turn.started"` (with the message the turn answers), `turn.completed` (`stopReason`: `completed`, `interrupted` or `error`), `approval.resolved` (with `by`, so a prompt answered on another device or by timeout disappears), `ask.answered`, `steer.queued`, `session.model`, `session.access`, `session.closed`.
+- Named events before the data: `hello` (status, seq, waiting prompts), `gap` (the ring no longer holds what the cursor needs: refetch the transcript with `agent_run_get`), `reset` (the cursor is from an earlier life of the session, after a server restart: events start over).
+
+A session that is not live falls back to the P0 finite replay. Every payload passes the shared secret redaction on its way out. Coarse pings go on `/api/v1/events`: `agent-session-changed` and `agent-approval-pending`.
+
+Where the data lives: the thread (`<data>/threads/<id>`) is written at create and after every turn with `source: "runner"`, `folder`, `access` and `mode` in its metadata, so a restarted server lists it and can resume it. The agent loop's own event log (`<data>/events`) holds the durable record. These threads also appear in the web app's ordinary thread list.
+
+On the page: `lib/remoteRunner.ts` is the wire client (including `subscribeRun`, which reconnects with the last seq and treats a silent connection as dead). `lib/remoteCowork.ts` maps the stream into the stores Cowork reads (`useCoworkRun`, `useCoworkSessions` rows with `remote: true`, `useToolApprovalRequests`, the subagent feed), so the transcript, Stop, question cards and steering from the composer work unchanged; the server's prompts are raised directly and answered over the wire, never by this window's standing grants or permission mode. The sessions list is read through from the server and a remote row is saved without its transcript. The entry is the "Server agents" card in Settings, General.
 
 Security model, which P1 must keep:
 
 - Confinement: every session's folder must resolve inside an `--agent-root`; the data folder is never a root. A session that records no folder is not listed.
 - Sandbox required: commands run only under an enforcing backend (bubblewrap, seatbelt, AppContainer). With none, `bash` is withheld rather than run unconfined, and `runsSessions` is false.
-- Approvals: a permission request that no client answers stalls the turn (the server never auto-approves); it is surfaced as awaiting approval and ends at the session's timeout.
+- Approvals: the server never auto-approves a prompt in `read`/`ask`; an unanswered one is denied at the timeout, with the decision recorded.
 - Same auth as the rest of the server: bearer token or session cookie, same-origin and host checks.
+- A remote session gets the built-in tools only: no MCP server is connected for it and no host tool is declared. (P2: a session that may write works in its own worktree; see below.)
 
 What the P0 transcript does not carry yet: reasoning, tool images, subagent runs, goal state, plan snapshots, compaction dividers, per-turn usage (the response lists them in `notMapped`).
+
+### What P2 does: worktrees and proposals
+
+A session that may write (`ask`, `auto`, `bypass`) and whose folder is inside a git repository runs in an isolated checkout by default; `read` sessions and non-repositories run in place. `agent_run_create` takes `worktree` (`false` opts out, `true` insists and fails with 422 outside a repository) and `base` (a local branch or commit to start from; the "Merge" target). The checkout is made with `core::agent::worktree::ensure_with` under the **server's** folder (`<data>/agent-workspace/worktrees`), never a client-supplied path; the branch is `flint/<title>-<short id>` (or `jan/cowork/<id>` without a title). The thread's `metadata.worktree` stores the record (`path`, `branch`, `baseSha`, `baseBranch`, `sourceRoot`, `identity`, `notes`), and `agent_run_list|get` and the create answer show a short form. The thread's `folder` stays the source folder, so listing and confinement behave as before; the session's tools work in the checkout (the same subfolder of it, when the folder was below the repository top).
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `agent_worktree_state` | `id` | `{ state, worktree, project }`; `state` is `ready`, `missing`, `corrupt`, `branch-moved` or `identity-changed` |
+| `agent_worktree_pending` | `id` | `{ files }`: uncommitted files |
+| `agent_worktree_unmerged` | `id` | `{ commits }`: on the branch, not in the base |
+| `agent_worktree_commit_pending` | `id`, `message` | `{ committed }` (hooks skipped, `.jan/` never included) |
+| `agent_worktree_merge` | `id`, `target`, `commitMessage` | `MergeOutcome`; conflicts are found with `git merge-tree` before anything moves; uncommitted work refuses unless `commitMessage` commits it first |
+| `agent_worktree_rename` | `id`, `title` | `{ worktree }` with the branch renamed |
+| `agent_worktree_discard` | `id`, `force` | `{ discarded }`; refuses uncommitted or unmerged work without `force`; the live session ends and cannot be resumed (`worktreeDiscarded: true` on the row) |
+| `agent_worktree_list` | `project` (confined) | `{ worktrees }`: Flint's worktrees of that repository |
+
+Every command names the session. A path or record in the request is ignored: the record is read from that session's stored thread, so a client cannot point a merge or a discard at anything it did not start. On a live session the operation runs on the session's actor (serialised with turns; a state-changing one is refused with 409 while a turn is active).
+
+Proposals: when a turn ends (or is interrupted) and the worktree differs from its base commit, the server stores the change with `proposal::create` (scope `session`, `project` = the repository top level, `worktree` = the checkout), rejects the session's earlier pending proposal as superseded, and emits `proposal.created` (`proposalId`, `files`, `additions`, `deletions`) before `turn.completed`. A turn that left the same content as the last proposal makes no new one. A change the server cannot propose (a path through a link, a worktree that is not `ready`) emits `proposal.error` instead. Review is the existing plane: `agent_proposal_list` (by `project`), `agent_proposal_apply` (hash-approved approval; the destination is the stored proposal's project, confined to the roots) and `agent_proposal_reject`. Nothing reaches the source folder before an approval or an explicit `agent_worktree_merge`.
+
+On the page: `components/server/RemoteWorktreePanel.tsx` (mounted in the Cowork diff rail for a remote session) shows the branch, state and counts, "Merge into <base>" (commits pending work, then merges), "Discard" (asks first, names what it removes), the file list of the pending proposal and the ordinary `CoworkProposalReview` for apply and reject. "Run on server" gets an "own checkout" option for git folders (on by default, off is the explicit opt-out).
+
+Operator switch: `--agent-allow-checks` (default off) is reported as `runsChecks`. P2 itself runs no project command; P3 gates the verification checks and the final gate on it. `runsWorktrees` in `agent_server_info` says the capability is built, `runsCampaigns` that the campaign driver is.
+
+Security notes (P2):
+
+- The worktree root is the server's own folder. Creation refuses a repository whose top level is not inside an `--agent-root`, a base that starts with `-`, and a worktree that would sit inside the repository.
+- A stored record is trusted for nothing. Before every use it must still be listed by its repository's own git at that path on a Flint branch under the owned root (`worktree::ensure_owned`), and its repository must resolve inside a root. A forged `path` or `sourceRoot` in the thread file gets 403 on every operation (covered by `tests/web_agent_run.rs`).
+- Resuming a session after a restart re-validates the record and the worktree state; a worktree that is missing or moved refuses the start (409) instead of writing somewhere else.
+- A changed path that is, or passes through, a link out of the checkout stops the whole proposal (`ChangesError::LinkEscape`); the content is read from inside the checkout only.
+- State-changing commands are audited in the session's event log as `worktree.commit_pending|merge|rename|discard` with the digests of the client and its address (never the token), and proposal create/apply/reject are audited by the proposal store.
+- Merge writes into the source repository: a fast-forward of the base branch moves the files of the checkout that has it checked out (refused when that checkout is dirty or mid-operation), otherwise only the ref moves. It is an explicit, signed-in client action; there is no automatic merge.
+- Commit is made with hooks skipped. Git itself still runs for creation (`worktree add`), `merge --ff-only` and `worktree remove`, so the repository's own `post-checkout` and `post-merge` hooks can fire; they are the operator's repository's own scripts, run outside the command sandbox. A repository whose hooks must not run on the server should not be an `--agent-root`.
+- `.jan/` (the session's own scaffolding inside the checkout) is added to the repository's local `info/exclude` once, so it is never committed, merged or proposed. That touches one unversioned file in the source repository's git folder.
+
+Gaps after P2: no model or mode picker on the page; no `agent_worktree_optimize` (dependency links, sparse checkout, so a fresh checkout has no `node_modules`); no "work on a copy" for a folder that is not a repository; discard ends the session rather than offering a new checkout; a worktree made by the desktop is listed (`agent_worktree_list`) but only a runner session's own can be acted on; the CLI's `[agent].worktree` setting and `~/.jan/worktrees` are not used by the server (the server's own root is).
+
+### What P3 does: campaigns run by the server
+
+A campaign whose `driver` is `server` (a new additive field on the record; every record that predates it, and every campaign the desktop makes, is `renderer`) is run by the server with no client attached. One tokio task owned by the server (`web_server/campaign_driver.rs`) reads the campaign records every 3 seconds and whenever one of its jobs settles, and does what the record calls for. The decisions are the existing backend ones (`campaign_scheduler::next_actions`, `campaign_integration::*`, the verification rules); the driver only supplies the effects, behind a `Host` trait so the logic is tested with a fake.
+
+| Step | What the server does |
+| --- | --- |
+| Start | `next_actions` with the live sessions and tokens as `LiveState`; parallelism is `min(campaign limit, --agent-max-sessions)` and free session slots. A task gets a runner session on its own worktree (under the server's folder, branched from the integration branch) in the campaign's mode (`ask`, or `auto` only with `--agent-allow-bypass`; never `bypass`), seeded with the fenced brief, acceptance, decisions (8 000 characters) and upstream handoffs (24 000), a port of `campaignSeed.ts`. |
+| Watch | A prompt or a question mirrors to `awaiting_approval` or `awaiting_input` and pings `agent-approval-pending`. Per-task wall clock, steps and tokens stop the run and fail the task with the reason. A prompt is denied by the runner at `--agent-approval-timeout`; a question that nobody answers within twice that stops the task. |
+| Settle | On a turn end: commit pending work on the declared paths, write the handoff (final message, commits), `task_settle`, free the session slot. |
+| Verify | `verify_prepare` (the backend builds the evidence), one tool-free model call through the server's own provider path (300 s deadline), `verify_finish` (the objective check, the downgrade rules, one repair round). Without `--agent-allow-checks` the objective check is not run and the verifier decides from the diff alone. |
+| Merge | `integrate`: verified tasks in topological order into the integration branch. A conflict gets one resolver session (`resolve_prepare`), verified and merged like a task; a second conflict waits for a person. A merge pass that moves nothing backs off for 30 seconds. |
+| Review | When every task is merged the campaign is `reviewing` and **stops**. Finalize is a person's call. |
+| Restart | The first read after a restart reconciles the record (`interrupted`); the driver moves the campaign back to `running` and queues the interrupted tasks, which resume in the session and worktree they already have (or start again from their brief when the session is gone). A task whose session keeps vanishing fails after 3 tries. |
+| Cancel, pause | Cancel interrupts and closes every live session of the campaign; pause lets running work settle and starts nothing. A terminal campaign owns no live session. |
+
+Human gates (nothing is auto-approved, ever):
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `agent_campaign_start_server` | `goal`, `folder` (a git repository inside a root), `options` (`model`, `maxParallel`, `tokenBudget`, `taskTokens`, `taskSteps`, `wallClockSecs`, `title`, `plan`) | the campaign, `planned`, `driver: "server"`. Nothing runs and no worktree exists yet. |
+| `agent_campaign_approve` | `id`, `access` (`worktree` or `ask`) | Makes the integration branch and worktree (keyed by the campaign, under the server's folder), records the choice, and starts. `worktree` lets tasks work in auto mode inside their own folder and needs `--agent-allow-bypass` (403 otherwise). Rejecting is `agent_campaign_cancel`. |
+| `agent_campaign_finalize` | `id`, `seconds` | Runs the gate and stores ONE proposal against the user's checkout; applying it is the existing proposal plane. A gate command that would run needs `--agent-allow-checks` (403 otherwise); with no gate command it is skipped with the visible warning. |
+| `agent_campaign_cancel` | `id`, `detail` | As before, and aborts the campaign's live runs. |
+| `agent_campaign_approvals` | none | What waits on a person: `plan`, `finalize`, and `task` (a prompt or question). The same states show in the campaign record (`planned`, `reviewing`, a task `awaiting_*`) and as `agent-approval-pending` pings on `/api/v1/events`. A task's own prompt is answered with `agent_run_approve` / `agent_run_answer_ask` on its session, exactly as in P1. |
+
+Also reachable now, with the same confinement (and only with `--agent-run`, because they run `git`): `agent_campaign_plan_update` (a campaign of this server, planned or draft only, the whole plan re-validated), `_diff`, `_task_diff`, `_gate_plan`, `_refresh`, `_orphans`, `_claim_notice`. Task moves, merges, verification and settling remain refused for a client: they are the driver's.
+
+**How the plan is made (a decision).** A coordinator session with `campaign_plan` and friends as server-side host tools was not built: the Rust loop's host tools are answered by a connected client (`ToolRequest` events), and a server has none, so the tools would need an in-process executor and the approval card they carry would have to be re-modelled. What is built is a one-shot planner model call through the server's provider with a strict JSON schema, held to `validate_plan` with one repair round, whose goal and file list are fenced as untrusted data, and the plan is stored `planned` for a person to approve (or edit with `agent_campaign_plan_update`). A caller may pass its own `plan`, which skips the model. The consequence: there is no coordinator conversation on the server, so `campaign_steer`, `campaign_decide` and `campaign_collect` have no server counterpart (the board's status and the handoffs are the equivalent).
+
+On the page: `campaignApi` already runs over the server transport (the `invoke` stand-in posts to `/api/v1/rpc/<command>`), so the board, the Campaigns page and the review panel work unchanged against a server. Added: `runsCampaigns` in the probe, `campaignApi.startServer|approve|approvals`, "Plan campaign on server" in the Server agents card (a git folder, a goal), and on the board a plan approval card for a planned server campaign (the access choice, Approve and start, Reject). The renderer's campaign host, runner `kick`, `sweep`, `resume` and `verifyTask` do nothing for a campaign whose `driver` is `server`.
+
+Security notes (P3):
+
+- The driver acts only on records whose `driver` is `server` and whose `sourceRoot` still resolves inside an `--agent-root`; a record copied in from elsewhere is never driven. Worktrees are re-derived from Git before every commit, verify, merge and resolve (`trusted_worktree`), so a forged path or branch in a record is refused there.
+- Task modes: never above the campaign's recorded ceiling, never `bypass`, and `auto` only with `--agent-allow-bypass`. A task that wants something outside its folder, the network or a destructive command still asks, and the ask waits for a signed-in person.
+- Project commands (the per-task objective check, the gate) run only with `--agent-allow-checks`; with it, they run on the host with the user's shell and the deadlines of the desktop (180 s a check, 600 s the gate, at most 900 s). They are not inside the command sandbox that bash runs under.
+- The planner and the verifier are model calls through the server's configured provider and credentials, in a folder of the server's own (`<data>/agent-workspace/utility`), never in the repository. Their input includes repository text (file names, diffs, handoffs) fenced as untrusted; a verdict still goes through the backend's rules, which can only take a PASS away.
+- Per-task limits are enforced, and the project token budget stops new starts at 100 percent; running tasks are bounded by their own limits only (a campaign with no task limits and no wall clock can run up to the model's own session ceiling).
+- Handoffs and decisions travel from agent to agent as fenced data (`<upstream-handoff>`, `<campaign-decisions>` with the tags defanged), as on the desktop.
+
+Gaps after P3:
+
+- No coordinator on the server (above). A board action that is a task move from a client (retry, skip, accept anyway, verify again, a note to a running task) is refused by design; for a server campaign those buttons do nothing useful. A task whose verification was BLOCKED (the model unreachable, no verdict line) waits for a person and the server has no command to re-run it; cancel and re-plan, or accept it on the desktop that owns the data folder.
+- A resolver that fails once leaves the conflict parked; the server does not retry it (3 start attempts, then nothing).
+- Reasoning, tool images, plan snapshots and per-turn usage are still not in the transcript of a task session (see "What the P0 transcript does not carry yet").
+- The token count of a task is the provider's usage events summed over the session, and a verifier's is the provider's `usage` or an estimate from sizes.
+- Model and mode pickers are still missing: a campaign uses `options.model` or the server's default model.
+- Campaign sessions run built-in tools only (no MCP), like every server session.
+- `agent_campaign_next_actions`, `_decisions_append`, `_task_settle`, `_verify_*`, `_merge_task`, `_integrate`, `_resolve`, `_create` and `_transition` with a task move or an approval are not reachable on a server, on purpose.
+
+### Parity gaps after P1 (said by `parityGaps`, not hidden)
+
+- Plan-review UX, goal evaluation, TS-side compaction (the Rust loop compacts by its own policy), agent teams, the browser and computer panes.
+- Attachments are not sent to a server session; "resume" (regenerate) is refused.
+- Campaign tasks and verification on the server: P3, above (no coordinator conversation; the plan comes from a one-shot planner call).
+- The transcript's `notMapped` list still applies to a reopened session (reasoning, tool images, plan snapshots, per-turn usage).
+- Model and mode changes are server commands but have no picker on the page yet (P2 did not add one).
+- Server sessions are listed beside local ones; deleting one from the Cowork list removes only the local row (the server's list restores it); `agent_run_delete` is the way, and the card has no button for it yet.
+- Image tool results, content-part inputs above the 1 MB JSON body limit, and a client that dozes for longer than the 4096-event ring are covered by refetching the transcript, not by replay.
 
 ### Not verified
 
 - No device or emulator was available: opening an external HTTPS origin inside the Tauri Android WebView, the cookie persisting across app restarts, and the back button returning to the bundled app were not exercised. Unit tests cover the address handling, the stored shape, the reachability probe and the countdown.
 - The Android build itself (`yarn build:android`) was not run.
-- `cargo test` was not run for the new server module; `cargo check --tests` passes for the `cli` feature. The desktop feature set was not compiled; the module uses only code that is compiled in both.
+- The runner is covered by `tests/web_agent_run.rs`, which drives the real `flint serve` binary against a stub model: sign-in gate, confinement, the session cap, a turn, `after=` resume, a prompt denied and allowed, the approval timeout, an interrupt, a restart and resume. The sandbox was off in those tests (`--agent-require-sandbox=false`): enforcement of bash by the Windows AppContainer backend was not exercised here, and the `bwrap` and seatbelt backends not at all. The desktop feature set was not compiled for this change.
+- The page side is covered by vitest with a mocked fetch and a hand-written event stream. It was not exercised in a real browser, the Android WebView, or over a flaky mobile network, so the reconnect timing (45 seconds of silence before a reconnect) is a design choice, not a measurement.
+- A real provider and a real tool-heavy turn were not run through the server runner.
+- P3 is covered by driver unit tests with a fake host (dependency order, parallel and session caps, approvals stall, limits, pause, cancel, restart, a campaign outside the roots, a renderer campaign), and by `tests/web_agent_run.rs` against the stub model: a plan from the planner, the approval gate, three tasks with a dependency, verification, merge, finalize, a proposal applied, and a restart in the middle of a run. Not exercised: a real provider planning or verifying, a conflict resolver end to end (the fake and the backend's own fixture-repo tests cover its parts), `--agent-allow-checks` with a real build command, the Windows AppContainer or any other sandbox under a campaign task, and the board's approval card in a real browser or the Android WebView.
 - Cowork and Campaigns pages on a phone-sized viewport were not reworked. The mobile shell (`src/mobile`) is the touch UI; the desktop pages are not made usable at 390 px by this change.

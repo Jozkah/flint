@@ -201,6 +201,7 @@ export function parsePlanTasks(
       acceptance: strList(t.acceptance),
       paths: strList(t.paths),
       dependsOn: strList(t.depends_on ?? t.dependsOn),
+      ...(t.kind === 'check' ? { kind: 'check' as const } : {}),
     })
   }
   return { ok: true, tasks }

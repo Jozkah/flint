@@ -27,10 +27,14 @@ import {
   type ChangeTotals,
 } from '@/components/campaign/CampaignSummary'
 import { CampaignProposalPanel } from '@/components/campaign/ProposalPanel'
+import { ServerPlanApproval } from '@/components/campaign/ServerPlanApproval'
+import { GateBanner } from '@/components/campaign/GateBanner'
+import { useRemoteRunner } from '@/lib/remoteRunner'
 import { TaskRow, type TaskRowAction } from '@/components/campaign/TaskRow'
 import { TaskChanges } from '@/components/campaign/TaskChanges'
 import { useCampaign, useCampaignStore } from '@/hooks/useCampaigns'
 import { useCampaignResumed } from '@/hooks/useCampaignResumed'
+import { useStalledTasks } from '@/hooks/useStalledTasks'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { route } from '@/constants/routes'
@@ -42,13 +46,17 @@ import { hasWork } from '@/hooks/useCampaignTaskDiff'
 import { mergeTaskDiffs } from '@/lib/campaignDiff'
 import type { ToolActivityItem } from '@/lib/toolActivity'
 import type { BoardActions } from '@/lib/campaignBoardActions'
-import type { CampaignTask } from '@/lib/campaignModel'
+import { isServerDriven, type CampaignTask } from '@/lib/campaignModel'
 import {
+  allTasksSettled,
   canCancel,
   changedFilesOf,
+  dependantsOf,
+  gateFailedOf,
   groupTasks,
   headlineOf,
   primaryActionOf,
+  skippedDepsOf,
   type TaskGroup,
 } from '@/lib/campaignView'
 import { errorText } from '@/lib/errorText'
@@ -64,7 +72,8 @@ type Panel =
   | { kind: 'note'; task: CampaignTask }
   | { kind: 'handoff'; task: CampaignTask; text: string }
   | { kind: 'diff'; task: CampaignTask }
-  | { kind: 'changes' }
+  | { kind: 'changes'; gateFailed?: boolean }
+  | { kind: 'skipConfirm'; task: CampaignTask; count: number }
   | { kind: 'review'; command: string | null }
   | { kind: 'cancel' }
   | null
@@ -102,6 +111,7 @@ export function CampaignBoard({
   const { t } = useTranslation()
   const navigate = useNavigate()
   const campaign = useCampaign(campaignId)
+  const remote = useRemoteRunner()
   const loaded = useCampaignStore((s) => s.loaded)
   const loadError = useCampaignStore((s) => s.error)
   const sessions = useCoworkSessions((s) => s.sessions)
@@ -117,6 +127,10 @@ export function CampaignBoard({
     const timer = setInterval(() => void checkNoteDelivery(), 2_000)
     return () => clearInterval(timer)
   }, [waitingNotes])
+  const stalled = useStalledTasks(
+    campaign?.tasks ?? [],
+    !!campaign && !isServerDriven(campaign)
+  )
   const [panel, setPanel] = useState<Panel>(null)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -270,8 +284,27 @@ export function CampaignBoard({
       case 'retry':
         void run(() => actions.retryTask(campaign.id, task.id, hint))
         return
-      case 'skip':
+      case 'skip': {
+        // Tasks waiting on it would be left stranded: ask what to do with them.
+        const waiting = dependantsOf(task.id, campaign.tasks)
+        if (waiting.length > 0) {
+          setPanel({ kind: 'skipConfirm', task, count: waiting.length })
+          return
+        }
         void run(() => actions.skipTask(campaign.id, task.id))
+        return
+      }
+      case 'skipToo':
+        void run(() => actions.skipCascade(campaign.id, task.id))
+        return
+      case 'runWithout':
+        void run(async () => {
+          for (const dep of skippedDepsOf(task, campaign.tasks)) {
+            const out = await actions.releaseDependants(campaign.id, dep.id)
+            if (!out.ok) return out
+          }
+          return { ok: true as const }
+        })
         return
       case 'verify':
         void run(() => actions.verifyAgain(campaign.id, task.id))
@@ -289,7 +322,18 @@ export function CampaignBoard({
 
   const headline = headlineOf(campaign)
   const primary = primaryActionOf(campaign)
-  const percent = effortPercent(campaign.tasks)
+  const gateFailed = gateFailedOf(campaign) && status === 'reviewing'
+  // A failed final check is never "almost done": the bar stops short of full.
+  const percent = gateFailed
+    ? Math.min(effortPercent(campaign.tasks), 90)
+    : effortPercent(campaign.tasks)
+  const wrapUp =
+    !gateFailed &&
+    campaign.tasks.length > 0 &&
+    (status === 'done' ||
+      status === 'reviewing' ||
+      ((status === 'running' || status === 'approved') &&
+        allTasksSettled(campaign)))
   const primaryButton = (() => {
     switch (primary) {
       case 'pause':
@@ -323,7 +367,9 @@ export function CampaignBoard({
     }
   })()
   const menuHasPause = status === 'running' && primary !== 'pause'
-  const menuHasCoordinator = primary !== 'coordinator'
+  // A server-driven campaign has no coordinator session to open.
+  const serverDriven = isServerDriven(campaign)
+  const menuHasCoordinator = primary !== 'coordinator' && !serverDriven
   const menuHasCancel = canCancel(status)
   const changesTask = panel?.kind === 'diff' ? panel.task : null
 
@@ -349,15 +395,17 @@ export function CampaignBoard({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant={primaryButton.variant}
-              size="sm"
-              disabled={busy}
-              data-testid="campaign-primary"
-              onClick={primaryButton.run}
-            >
-              {primaryButton.label}
-            </Button>
+            {!(serverDriven && primary === 'coordinator') && !gateFailed && (
+              <Button
+                variant={primaryButton.variant}
+                size="sm"
+                disabled={busy}
+                data-testid="campaign-primary"
+                onClick={primaryButton.run}
+              >
+                {primaryButton.label}
+              </Button>
+            )}
             {(menuHasPause || menuHasCoordinator || menuHasCancel) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -411,16 +459,55 @@ export function CampaignBoard({
               data-testid="campaign-progress"
             />
             <p className="text-xs text-muted-foreground tabular-nums">
-              {t('settings:campaigns.board.progressLabel', {
-                done: headline.done,
-                total: headline.total,
-              })}
+              {t(
+                headline.skipped > 0
+                  ? 'settings:campaigns.board.progressLabelSkipped'
+                  : 'settings:campaigns.board.progressLabel',
+                {
+                  done: headline.done,
+                  skipped: headline.skipped,
+                  total: headline.total,
+                }
+              )}
               {' · '}
-              {t('settings:campaigns.board.effort', { percent })}
+              {gateFailed
+                ? t('settings:campaigns.board.effortGateFailed')
+                : t('settings:campaigns.board.effort', { percent })}
             </p>
           </div>
         )}
       </header>
+
+      {serverDriven && campaign.status === 'planned' && (
+        <ServerPlanApproval
+          campaign={campaign}
+          allowBypass={remote.state === 'ready' && remote.info.allowBypass}
+        />
+      )}
+
+      {stalled.length > 0 ? (
+        <div
+          className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2 text-xs"
+          role="status"
+          data-testid="campaign-stalled"
+        >
+          <span>
+            {t('settings:campaigns.board.stalled', { n: stalled.length })}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const sid = campaign.tasks.find((x) => x.id === stalled[0])
+                ?.sessionId
+              if (sid) useCoworkSessions.getState().selectSession(sid)
+              void navigate({ to: route.cowork })
+            }}
+          >
+            {t('settings:campaigns.board.action.openCowork')}
+          </Button>
+        </div>
+      ) : null}
 
       {resumed && resumed.length > 0 ? (
         <div
@@ -445,8 +532,22 @@ export function CampaignBoard({
         <CampaignProposalPanel campaign={campaign} />
       ) : null}
 
-      {(status === 'done' || status === 'reviewing') &&
-      campaign.tasks.length > 0 ? (
+      {gateFailed ? (
+        <GateBanner
+          gate={{
+            command: campaign.gate?.command,
+            exitCode: campaign.gate?.exitCode,
+            timedOut: campaign.gate?.timedOut,
+            output: campaign.gate?.output,
+          }}
+          busy={busy}
+          onFix={() => void run(() => actions.fixChecks(campaign.id))}
+          onRetry={() => void run(() => actions.retryGate(campaign.id))}
+          onReview={() => setPanel({ kind: 'changes', gateFailed: true })}
+        />
+      ) : null}
+
+      {wrapUp ? (
         <WrapUp
           campaign={campaign}
           totals={totals}
@@ -483,7 +584,21 @@ export function CampaignBoard({
               className="text-sm text-muted-foreground"
             >
               {t(`settings:campaigns.board.group.${GROUP_KEY[group]}`)}
-              <span className="ml-2 tabular-nums">{tasks.length}</span>
+              <span className="ml-2 tabular-nums">
+                {group === 'done'
+                  ? tasks.filter((x) => x.status !== 'cancelled').length
+                  : tasks.length}
+              </span>
+              {group === 'done' &&
+              tasks.some((x) => x.status === 'cancelled') ? (
+                <span data-testid="campaign-skipped-count">
+                  {' · '}
+                  {t('settings:campaigns.board.group.skipped')}
+                  <span className="ml-2 tabular-nums">
+                    {tasks.filter((x) => x.status === 'cancelled').length}
+                  </span>
+                </span>
+              ) : null}
             </h2>
             <ul className="flex flex-col gap-2">
               {tasks.map((task) => (
@@ -609,7 +724,9 @@ export function CampaignBoard({
               {t('settings:campaigns.board.changes.title')}
             </DialogTitle>
             <DialogDescription>
-              {t('settings:campaigns.board.changes.body')}
+              {panel?.kind === 'changes' && panel.gateFailed
+                ? t('settings:campaigns.board.gate.reviewWarning')
+                : t('settings:campaigns.board.changes.body')}
             </DialogDescription>
           </DialogHeader>
           {panel?.kind === 'changes' && (
@@ -665,6 +782,65 @@ export function CampaignBoard({
               }}
             >
               {t('settings:campaigns.board.action.review')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={panel?.kind === 'skipConfirm'}
+        onOpenChange={(o) => !o && setPanel(null)}
+      >
+        <DialogContent data-testid="campaign-skip-confirm">
+          <DialogHeader>
+            <DialogTitle>
+              {t('settings:campaigns.board.skipConfirm.title', {
+                task: panel?.kind === 'skipConfirm' ? panel.task.title : '',
+              })}
+            </DialogTitle>
+            <DialogDescription>
+              {t('settings:campaigns.board.skipConfirm.body', {
+                count: panel?.kind === 'skipConfirm' ? panel.count : 0,
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-wrap">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPanel(null)}
+            >
+              {t('common:cancel')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              data-testid="campaign-skip-cascade"
+              onClick={() => {
+                if (panel?.kind !== 'skipConfirm') return
+                const id = panel.task.id
+                setPanel(null)
+                void run(() => actions.skipCascade(campaign.id, id))
+              }}
+            >
+              {t('settings:campaigns.board.skipConfirm.cascade', {
+                count: panel?.kind === 'skipConfirm' ? panel.count : 0,
+              })}
+            </Button>
+            <Button
+              size="sm"
+              disabled={busy}
+              data-testid="campaign-skip-release"
+              onClick={() => {
+                if (panel?.kind !== 'skipConfirm') return
+                const id = panel.task.id
+                setPanel(null)
+                // The backend skips the task and releases what waited on it.
+                void run(() => actions.releaseDependants(campaign.id, id))
+              }}
+            >
+              {t('settings:campaigns.board.skipConfirm.release')}
             </Button>
           </DialogFooter>
         </DialogContent>

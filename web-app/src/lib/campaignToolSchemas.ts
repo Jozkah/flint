@@ -87,6 +87,14 @@ export function campaignToolSchemas(): CampaignToolSchema[] {
                   items: { type: 'string' },
                   description: 'Ids of tasks that must be merged first.',
                 },
+                kind: {
+                  type: 'string',
+                  enum: ['check'],
+                  description:
+                    'Set to "check" for a task that only runs or reports ' +
+                    '(a test run, an audit) and changes no files. Leave out ' +
+                    'for tasks that change files.',
+                },
               },
               required: ['id', 'title', 'brief'],
             },

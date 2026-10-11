@@ -134,27 +134,98 @@ pub fn build_request(model_id: &str, input: &VerificationInput) -> Value {
     })
 }
 
-/// Parse a verifier reply. A reply without a recognizable `VERDICT:` line is
-/// treated as BLOCKED (the safe fallback), never PASS.
-pub fn parse_report(reply: &str) -> VerificationReport {
-    let verdict = reply.lines().find_map(|line| {
-        let l = line.trim();
-        let rest = l
-            .strip_prefix("VERDICT:")
-            .or_else(|| l.strip_prefix("Verdict:"))?;
-        Verdict::parse(rest.split_whitespace().next().unwrap_or(""))
+/// The reply with reasoning blocks removed. A reasoning model served through an
+/// OpenAI-compatible endpoint often puts `<think>...</think>` in the content;
+/// a template that opens the block itself leaves a lone `</think>`. An
+/// unclosed block (cut off by the token limit) is dropped to its end: whatever
+/// it held was thinking, not the verdict.
+pub fn strip_reasoning(reply: &str) -> String {
+    static CLOSED: once_cell::sync::Lazy<regex::Regex> =
+        once_cell::sync::Lazy::new(|| regex::Regex::new(r"(?is)<think(?:ing)?>.*?</think(?:ing)?>").unwrap());
+    let mut text = CLOSED.replace_all(reply, "").into_owned();
+    let lower = text.to_ascii_lowercase();
+    if let Some(i) = lower.rfind("</think>") {
+        text = text[i + "</think>".len()..].to_string();
+    } else if let Some(i) = lower.find("<think>") {
+        text.truncate(i);
+    }
+    text
+}
+
+/// Find the verdict anywhere in a reply: `VERDICT: PASS`, `**Verdict:** FAIL`,
+/// `` `VERDICT: PARTIAL` ``, `The verdict is BLOCKED`, or a JSON object
+/// `{"verdict": "PASS"}`. The last occurrence wins, so a template echoed early
+/// in the reply cannot outvote the answer at the end.
+pub fn find_verdict(reply: &str) -> Option<Verdict> {
+    static RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(
+            r#"(?i)verdict["']?\s*(?:(?:[:=\-\x{2013}\x{2014}]|\bis\b)\s*)?["'\[(]?\s*(pass|partial|fail|blocked)\b"#,
+        )
+        .unwrap()
     });
-    let evidence = reply
-        .split_once("EVIDENCE:")
-        .map(|(_, e)| e.trim().to_string())
-        .unwrap_or_else(|| reply.trim().to_string());
+    let cleaned: String = strip_reasoning(reply)
+        .chars()
+        .filter(|c| !matches!(c, '*' | '`' | '#'))
+        .collect();
+    RE.captures_iter(&cleaned)
+        .last()
+        .and_then(|c| Verdict::parse(c.get(1)?.as_str()))
+}
+
+/// At most 300 characters of what the model said, for a message a person reads.
+pub fn excerpt(reply: &str) -> String {
+    let cleaned = strip_reasoning(reply);
+    let source = if cleaned.trim().is_empty() { reply } else { &cleaned };
+    let flat = source.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out: String = flat.chars().take(300).collect();
+    if flat.chars().count() > 300 {
+        out.push('\u{2026}');
+    }
+    out
+}
+
+/// What the verifier is told when its first reply had no verdict.
+pub const VERDICT_REMINDER: &str = "Your reply had no verdict line. Reply again with the first line exactly \
+`VERDICT: PASS`, `VERDICT: PARTIAL`, `VERDICT: FAIL` or `VERDICT: BLOCKED`, then `EVIDENCE:` and a short \
+justification. No thinking, no markdown, no JSON.";
+
+/// The request for the one automatic retry: the same evidence, the reply that
+/// lacked a verdict, and the reminder.
+pub fn retry_request(request: &Value, reply: &str) -> Value {
+    let mut next = request.clone();
+    if let Some(messages) = next.get_mut("messages").and_then(Value::as_array_mut) {
+        let shown = excerpt(reply);
+        messages.push(json!({ "role": "assistant", "content": if shown.is_empty() { "(no answer)".to_string() } else { shown } }));
+        messages.push(json!({ "role": "user", "content": VERDICT_REMINDER }));
+    }
+    next
+}
+
+/// Parse a verifier reply. A reply without a recognizable verdict is treated as
+/// BLOCKED (the safe fallback), never PASS; the reason carries a short excerpt
+/// of what the model said so a person can see why.
+pub fn parse_report(reply: &str) -> VerificationReport {
+    let verdict = find_verdict(reply);
+    let cleaned = strip_reasoning(reply);
+    let lower = cleaned.to_ascii_lowercase();
+    let evidence = match lower.rfind("evidence:") {
+        Some(i) => cleaned[i + "evidence:".len()..].trim().to_string(),
+        None => cleaned.trim().to_string(),
+    };
     match verdict {
         Some(v) => VerificationReport {
             verdict: v,
-            evidence,
+            evidence: if evidence.is_empty() { excerpt(reply) } else { evidence },
             fell_back: false,
         },
-        None => VerificationReport::blocked("the verifier did not return a VERDICT line"),
+        None => {
+            let said = excerpt(reply);
+            VerificationReport::blocked(&if said.is_empty() {
+                "the verifier did not return a VERDICT line".to_string()
+            } else {
+                format!("the verifier did not return a VERDICT line; it said: {said}")
+            })
+        }
     }
 }
 
@@ -198,6 +269,18 @@ pub(crate) async fn verify_counted(
                 .unwrap_or_default();
             if reply.trim().is_empty() {
                 return (VerificationReport::blocked("the verifier returned an empty reply"), spent);
+            }
+            if find_verdict(&reply).is_none() {
+                let again = retry_request(&request, &reply);
+                if let Ok(second) = model.invoke(&again, &sink).await {
+                    let text = extract_choice_message(&second)
+                        .and_then(|m| m.get("content").cloned())
+                        .and_then(|c| c.as_str().map(str::to_string))
+                        .unwrap_or_default();
+                    if find_verdict(&text).is_some() {
+                        return (parse_report(&text), spent);
+                    }
+                }
             }
             (parse_report(&reply), spent)
         }
@@ -310,6 +393,63 @@ mod tests {
             assert!(!r.fell_back);
             assert!(!r.evidence.is_empty());
         }
+    }
+
+    #[test]
+    fn tolerant_parsing_of_captured_like_outputs() {
+        let cases: [(&str, Option<Verdict>); 10] = [
+            ("<think>\nVERDICT: FAIL maybe?\n</think>\n\nVERDICT: PASS\nEVIDENCE: ok", Some(Verdict::Pass)),
+            ("thinking...\n</think>\n**VERDICT:** PARTIAL\n**EVIDENCE:** half", Some(Verdict::Partial)),
+            ("Final answer: `VERDICT: FAIL`", Some(Verdict::Fail)),
+            ("verdict: blocked\nevidence: none", Some(Verdict::Blocked)),
+            ("## Verdict: **PASS**", Some(Verdict::Pass)),
+            ("```json\n{\"verdict\": \"FAIL\", \"evidence\": \"x\"}\n```", Some(Verdict::Fail)),
+            ("VERDICT: PASS\n...on reflection\nVERDICT: FAIL", Some(Verdict::Fail)),
+            ("The verdict is PARTIAL because tests are thin", Some(Verdict::Partial)),
+            ("<think>VERDICT: PASS but I am cut off", None),
+            ("It passes the checks, ship it.", None),
+        ];
+        for (reply, want) in cases {
+            assert_eq!(find_verdict(reply), want, "{reply}");
+        }
+    }
+
+    #[test]
+    fn a_missing_verdict_keeps_an_excerpt_of_what_was_said() {
+        let r = parse_report("<think>hmm</think>   Looks fine overall,\n\nI would ship it.");
+        assert_eq!(r.verdict, Verdict::Blocked);
+        assert!(r.evidence.contains("it said: Looks fine overall, I would ship it."), "{}", r.evidence);
+        let long = parse_report(&"word ".repeat(200));
+        assert!(long.evidence.chars().count() < 400);
+    }
+
+    struct SecondTime {
+        calls: std::sync::atomic::AtomicUsize,
+    }
+    #[async_trait]
+    impl ModelInvoker for SecondTime {
+        async fn invoke(
+            &self,
+            request: &Value,
+            _events: &mpsc::UnboundedSender<StreamEvent>,
+        ) -> Result<Value, tauri_plugin_agent_tools::harness_error::HarnessError> {
+            let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let reply = if n == 0 {
+                "Thoughts only, no verdict.".to_string()
+            } else {
+                assert!(request["messages"].as_array().unwrap().len() >= 4, "the reminder is appended");
+                "VERDICT: PASS\nEVIDENCE: ok".to_string()
+            };
+            Ok(json!({ "choices": [{ "message": { "content": reply } }] }))
+        }
+    }
+
+    #[tokio::test]
+    async fn one_retry_with_a_reminder_recovers_a_missing_verdict() {
+        let m = SecondTime { calls: Default::default() };
+        let r = verify("m", &input(), &m).await;
+        assert_eq!(r.verdict, Verdict::Pass);
+        assert_eq!(m.calls.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 
     #[test]

@@ -514,6 +514,8 @@ import {
   type ToolOutcome,
 } from '@/lib/coworkRunner'
 import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
+import { isRemoteSession, sendRemoteTurn, useRemoteCowork } from '@/lib/remoteCowork'
+import { RemoteWorktreePanel } from '@/components/server/RemoteWorktreePanel'
 import { notifyAnswerFinished } from '@/lib/completionSound'
 import {
   listSubagents,
@@ -544,6 +546,7 @@ import { useJevSettings } from '@/hooks/useJevSettings'
 import { workProfileAsker } from '@/lib/jev'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
+import { SMALL_WINDOW_TOKENS } from '@/lib/coworkTools'
 
 
 export const Route = createFileRoute(route.cowork as any)({
@@ -772,6 +775,8 @@ export function CoworkPage() {
   // drawn under the session in view.
   const viewedId = session?.id ?? null
   const running = useCoworkRun((s) => !!(viewedId && s.runs[viewedId]))
+  // Server sessions: the list, the opened transcript, a turn still running.
+  useRemoteCowork()
   const liveTurns = useCoworkRun(
     (s) => (viewedId ? s.liveTurns[viewedId] : undefined) ?? NO_LIVE_TURNS
   )
@@ -2699,6 +2704,22 @@ export function CoworkPage() {
     const sid = ensureCurrentSession(paneSessionIdRef.current)
     // This session's run only: another session running is no reason to wait.
     if (useCoworkRun.getState().runs[sid]) return
+    // A session the server runs is driven there: this page only sends the
+    // message and mirrors the events (lib/remoteCowork.ts).
+    if (isRemoteSession(sid)) {
+      const refused = (message: string) => {
+        toast.error(message)
+        onRefused?.()
+      }
+      if (text === null) return refused('A server session cannot resume from here. Send a message instead.')
+      if (attachmentInput && (attachmentInput.docs.length > 0 || (attachmentInput.files?.length ?? 0) > 0)) {
+        return refused('Attachments are not sent to server sessions yet.')
+      }
+      void sendRemoteTurn(sid, text).catch((e) =>
+        refused(e instanceof Error ? e.message : String(e))
+      )
+      return
+    }
     // The mail this run takes in (the message that woke it, and anything that
     // reaches it at a step boundary), so the run's final answer can go back to
     // the sender when the agent did not reply itself.
@@ -3332,6 +3353,17 @@ export function CoworkPage() {
       if (loaded === STOPPED) return
       runTooling = loaded.prompt
     }
+    // A campaign coordinator or task on a window of 32K or less gets the
+    // slim tool set: the full one alone would fill most of it.
+    const campaignWindow = configuredContextTokens(modelCapabilities)
+    const campaignSlim: 'coordinator' | 'task' | undefined =
+      current?.campaign &&
+      campaignWindow != null &&
+      campaignWindow <= SMALL_WINDOW_TOKENS
+        ? current.campaign.role === 'coordinator'
+          ? 'coordinator'
+          : 'task'
+        : undefined
     const transport = new CoworkChatTransport(sid, {
       // Captured now: every step of this run uses it, whatever the picker
       // says by then (janhq/jan#8905).
@@ -3340,7 +3372,8 @@ export function CoworkPage() {
       subagentNames: runAgents.map((d) => d.name),
       // Always on at depth 0, even with nothing saved: a one-off subagent with
       // an inline `system_prompt` is first-class, as it is in Rust.
-      allowSubagents: true,
+      allowSubagents: !campaignSlim,
+      slim: campaignSlim,
       webSearch,
       // The campaign tools go to a top-level session that is not itself a
       // campaign task, and only when there is a repository to branch from.
@@ -6544,6 +6577,10 @@ export function CoworkPage() {
                   session={session.id}
                   onApplied={() => git.refresh()}
                 />
+              ) : null}
+              {/* A server session's own checkout: merge, discard, review. */}
+              {session?.id && session.remote ? (
+                <RemoteWorktreePanel sessionId={session.id} />
               ) : null}
               {/* AH-109: each isolated team child's worktree, for review. */}
               {folder && session?.id ? (

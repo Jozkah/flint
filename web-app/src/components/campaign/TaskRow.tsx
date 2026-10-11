@@ -41,6 +41,7 @@ import {
   taskActionsOf,
   wordOf,
 } from '@/lib/campaignView'
+import { RecheckNotice, StrandedNotice } from '@/components/campaign/TaskNotices'
 import { NEEDS_HELP_HINT, isNeedsHelp } from '@/lib/campaignHelp'
 import type { CampaignTask } from '@/lib/campaignModel'
 import { cn } from '@/lib/utils'
@@ -56,6 +57,10 @@ export type TaskRowAction =
   | 'verify'
   | 'accept'
   | 'resolve'
+  /** Skip this task and everything that waits on it. */
+  | 'skipToo'
+  /** Let this task run without the skipped task it waited for. */
+  | 'runWithout'
 
 const MAX_GROUPS_SHOWN = 12
 
@@ -186,8 +191,10 @@ export function TaskRow({
     steps,
   })
   const wordText =
-    word === 'waiting'
-      ? t('settings:campaigns.board.word.waiting', { tasks: waitingFor.join(', ') })
+    word === 'waiting' || word === 'waitingSkipped'
+      ? t(`settings:campaigns.board.word.${word}`, {
+          tasks: waitingFor.join(', '),
+        })
       : t(`settings:campaigns.board.word.${word}`)
 
   const stopClause = (failures: number) =>
@@ -532,6 +539,27 @@ export function TaskRow({
                 })
               : t('settings:campaigns.board.conflict.resolving')}
           </p>
+        ) : null}
+        {word === 'waitingSkipped' ? (
+          <div className="pl-8">
+            <StrandedNotice
+              taskId={task.id}
+              skipped={waitingFor}
+              busy={busy}
+              onSkipToo={() => onAction('skipToo', task)}
+              onRunWithout={() => onAction('runWithout', task)}
+            />
+          </div>
+        ) : null}
+        {word === 'checking' && !resolving ? (
+          <div className="pl-8">
+            <RecheckNotice
+              taskId={task.id}
+              stateKey={`${task.status}:${task.verdict ?? ''}:${task.attempt}`}
+              busy={busy}
+              onCheckAgain={() => onAction('verify', task)}
+            />
+          </div>
         ) : null}
         <div className="pl-8">{stuckBox}</div>
         <div className="flex flex-wrap items-center gap-1 pl-6">
