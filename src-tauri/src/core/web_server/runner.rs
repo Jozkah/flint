@@ -1452,7 +1452,13 @@ fn store_attachments_capped(data: &Path, session: &str, files: &[StoredFile], ca
     std::fs::create_dir_all(&folder).map_err(|e| fail(500, format!("attachments: {e}")))?;
     let stamp = now_ms();
     for file in files {
-        let target = folder.join(format!("{stamp}-{}", file.name));
+        // Two sends in the same millisecond must not overwrite each other.
+        let mut target = folder.join(format!("{stamp}-{}", file.name));
+        let mut n = 1;
+        while target.exists() {
+            target = folder.join(format!("{stamp}-{n}-{}", file.name));
+            n += 1;
+        }
         std::fs::write(&target, &file.bytes).map_err(|e| fail(500, format!("attachments: {e}")))?;
     }
     Ok(())
