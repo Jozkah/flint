@@ -1,6 +1,11 @@
 name: iOS Check
 on:
   workflow_dispatch:
+  # A workflow_dispatch-only file cannot be run until it is on main. Drop this
+  # trigger once the workflow has landed there.
+  push:
+    branches: [feat/ios-thin-client]
+    paths: ['.github/workflows/ios-check.yml']
 
 concurrency:
   group: ios-check-${{ github.ref }}
