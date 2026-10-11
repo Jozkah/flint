@@ -1,0 +1,347 @@
+/* iOS look (HIG) for the phone app. Loaded last and scoped to html.ios, so the
+   browser, PWA and Android appearance is untouched. `html.ios` is added early
+   by main.tsx (platform.ts). Colours are the iOS system colours; the tint is
+   systemBlue unless the computer sent its accent (--ios-accent, theme.ts). */
+
+html.ios {
+  --ios-tint: var(--ios-accent, #007aff);
+  --ios-green: #34c759;
+  --ios-red: #ff3b30;
+  --ios-label: #000;
+  --ios-label2: rgba(60, 60, 67, 0.6);
+  --ios-label3: rgba(60, 60, 67, 0.3);
+  --ios-sep: rgba(60, 60, 67, 0.29);
+  --ios-fill: rgba(120, 120, 128, 0.12);
+  --ios-bg: #f2f2f7;
+  --ios-cell: #fff;
+  --ios-bar: rgba(249, 249, 249, 0.82);
+  --ios-spring: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Remap the app's tokens so every screen picks the iOS palette up. */
+  --background: var(--ios-bg);
+  --card: var(--ios-cell);
+  --popover: var(--ios-cell);
+  --foreground: var(--ios-label);
+  --muted-foreground: var(--ios-label2);
+  --subtle-foreground: var(--ios-label3);
+  --border: var(--ios-sep);
+  --accent: var(--ios-fill);
+  --info: var(--ios-tint);
+  --destructive: var(--ios-red);
+  --success: var(--ios-green);
+  --sans: -apple-system, 'SF Pro Text', 'SF Pro Display', system-ui, 'Helvetica Neue', sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+html.ios.dark {
+  --ios-label: #fff;
+  --ios-label2: rgba(235, 235, 245, 0.6);
+  --ios-label3: rgba(235, 235, 245, 0.3);
+  --ios-sep: rgba(84, 84, 88, 0.65);
+  --ios-fill: rgba(120, 120, 128, 0.24);
+  --ios-bg: #000;
+  --ios-cell: #1c1c1e;
+  --ios-bar: rgba(29, 29, 31, 0.8);
+  --ios-tint: var(--ios-accent, #0a84ff);
+  --ios-green: #30d158;
+  --ios-red: #ff453a;
+}
+
+html.ios body {
+  font: 17px/1.3 var(--sans);
+  letter-spacing: -0.022em;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+html.ios input,
+html.ios textarea,
+html.ios [contenteditable],
+html.ios .msg,
+html.ios .md,
+html.ios code,
+html.ios pre {
+  -webkit-user-select: text;
+  user-select: text;
+}
+/* 16px+ stops Safari zooming into focused fields. */
+html.ios input,
+html.ios textarea,
+html.ios select {
+  font-size: max(16px, 1em);
+}
+html.ios .scroll,
+html.ios .drawer,
+html.ios .sheet {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Nothing depends on hover on a touch screen. */
+@media (hover: none) {
+  html.ios .ib:hover {
+    background: none;
+  }
+}
+
+/* Hit targets: 44pt minimum. */
+html.ios .ib {
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  color: var(--ios-tint);
+}
+html.ios .btn {
+  min-height: 44px;
+  border-radius: 12px;
+  font-size: 17px;
+}
+html.ios .btn.sm {
+  min-height: 36px;
+  font-size: 15px;
+}
+html.ios .btn.pri {
+  background: var(--ios-tint);
+  color: #fff;
+}
+html.ios .row,
+html.ios .opt {
+  min-height: 44px;
+}
+html.ios .chip {
+  min-height: 28px;
+  border-radius: 14px;
+}
+
+/* Navigation bar: translucent, blurred, centred inline title. */
+html.ios .top {
+  position: relative;
+  z-index: 5;
+  min-height: 44px;
+  padding: 0 4px;
+  background: var(--ios-bar);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid var(--ios-sep);
+}
+html.ios .crumb {
+  align-items: center;
+  text-align: center;
+}
+html.ios .crumb small {
+  display: none;
+}
+html.ios .crumb b {
+  font-size: 17px;
+  font-weight: 600;
+}
+/* A screen with a large title shows it in the page and fades the bar title in
+   once it scrolls away (Shell.tsx sets data-scrolled on #views). */
+html.ios #views:has(.iset h1) .top .crumb {
+  opacity: 0;
+  transition: opacity 0.2s var(--ios-spring);
+}
+html.ios #views[data-scrolled]:has(.iset h1) .top .crumb {
+  opacity: 1;
+}
+html.ios #views:has(.iset h1) .top {
+  border-bottom-color: transparent;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  transition: background 0.2s, border-color 0.2s;
+}
+html.ios #views[data-scrolled]:has(.iset h1) .top {
+  background: var(--ios-bar);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom-color: var(--ios-sep);
+}
+html.ios .ios-back {
+  width: auto;
+  min-width: 44px;
+  margin-left: -2px;
+}
+html.ios .navback {
+  min-height: 44px;
+  font-size: 17px;
+  color: var(--ios-tint);
+}
+
+/* Large titles and grouped inset lists. */
+html.ios .iset h1 {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.012em;
+  margin: 0 4px;
+}
+html.ios .iset {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+html.ios .igrp > .cap {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: -0.003em;
+  color: var(--ios-label2);
+  padding: 0 16px;
+}
+html.ios .igrp > .foot2 {
+  font-size: 13px;
+  padding: 0 16px;
+}
+html.ios .ilist {
+  border: 0;
+  border-radius: 10px;
+}
+html.ios .irow {
+  min-height: 44px;
+  font-size: 17px;
+  padding: 0 16px;
+}
+html.ios .irow + .irow::before {
+  height: 0.5px;
+  background: var(--ios-sep);
+  left: 58px;
+}
+html.ios .irow.noic + .irow::before,
+html.ios .irow.noic::before {
+  left: 16px;
+}
+html.ios .irow:active {
+  background: var(--ios-fill);
+}
+html.ios .irow .tile {
+  width: 29px;
+  height: 29px;
+  border-radius: 7px;
+}
+html.ios .irow .val {
+  font-size: 17px;
+  color: var(--ios-label2);
+}
+html.ios .irow > svg.i:last-child {
+  width: 14px;
+  color: var(--ios-label3);
+}
+html.ios .isrch {
+  height: 36px;
+  border-radius: 10px;
+  background: var(--ios-fill);
+}
+html.ios .profile {
+  border: 0;
+  border-radius: 10px;
+}
+
+/* Switch: 51x31, white knob, green when on. */
+html.ios .sw {
+  width: 51px;
+  height: 31px;
+  border-radius: 31px;
+  background: var(--ios-fill);
+  transition: background 0.25s var(--ios-spring);
+}
+html.ios .sw::after {
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  background: #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.16);
+  transition: left 0.3s var(--ios-spring), width 0.2s;
+}
+html.ios .on > .sw,
+html.ios .sw.on,
+html.ios .irow.on .sw {
+  background: var(--ios-green);
+}
+html.ios .on > .sw::after,
+html.ios .sw.on::after,
+html.ios .irow.on .sw::after {
+  left: 22px;
+}
+html.ios .sw:active::after {
+  width: 33px;
+}
+html.ios .on > .sw:active::after,
+html.ios .sw.on:active::after {
+  left: 16px;
+}
+
+/* Bottom sheets: grabber, 14px radius, spring. */
+html.ios .sheet {
+  border-radius: 14px 14px 0 0;
+  background: var(--ios-cell);
+  transition: transform 0.45s var(--ios-spring);
+}
+html.ios .grab {
+  width: 36px;
+  height: 5px;
+  background: var(--ios-label3);
+}
+html.ios .sheet h3 {
+  font-size: 17px;
+  text-align: center;
+}
+html.ios .opt {
+  border-radius: 10px;
+}
+html.ios .drawer {
+  transition: transform 0.45s var(--ios-spring);
+}
+
+/* Tab bar. */
+html.ios .ios-tabbar {
+  flex: none;
+  display: flex;
+  z-index: 6;
+  padding: 6px 0 var(--sab);
+  background: var(--ios-bar);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-top: 0.5px solid var(--ios-sep);
+}
+html.ios .ios-tabbar.hidden {
+  display: none;
+}
+html.ios .ios-tab {
+  all: unset;
+  flex: 1;
+  min-width: 0;
+  min-height: 49px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--ios-label2);
+  cursor: pointer;
+}
+html.ios .ios-tab span:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html.ios .ios-tab.on {
+  color: var(--ios-tint);
+}
+html.ios .ios-tab:active {
+  opacity: 0.6;
+}
+/* The tab bar already clears the home indicator. */
+html.ios .app:has(.ios-tabbar:not(.hidden)) .composer {
+  padding-bottom: 10px;
+}
+html.ios .toast {
+  bottom: calc(90px + var(--sab));
+}

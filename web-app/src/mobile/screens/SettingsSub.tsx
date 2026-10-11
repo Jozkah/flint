@@ -126,5 +126,5 @@ const PAGES: Record<string, Page> = {
 export default function SettingsSub({ sub }: { sub: string }) {
   const { data } = useRpc('settings.get', {})
   const page = PAGES[sub]
-  return <><div className="top"><button type="button" className="navback" onClick={() => back({ name: 'settings' })}><I n="chevl" />{t('settings.title')}</button><div className="crumb" style={{ textAlign: 'center', marginRight: 70 }}><b>{page?.[0] ?? t('settings.title')}</b></div></div><div className="scroll" style={{ padding: 0 }}><div className="ios" style={{ paddingTop: 8 }}>{page ? page[1](data) : <Empty>{t('settings.nothingHere')}</Empty>}</div></div></>
+  return <><div className="top"><button type="button" className="navback" onClick={() => back({ name: 'settings' })}><I n="chevl" />{t('settings.title')}</button><div className="crumb" style={{ textAlign: 'center', marginRight: 70 }}><b>{page?.[0] ?? t('settings.title')}</b></div></div><div className="scroll" style={{ padding: 0 }}><div className="iset" style={{ paddingTop: 8 }}>{page ? page[1](data) : <Empty>{t('settings.nothingHere')}</Empty>}</div></div></>
 }

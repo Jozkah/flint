@@ -1,9 +1,12 @@
 import { lazy, Suspense, useEffect, useRef, type ComponentType } from 'react'
 import { FlintMark, Loading } from '../ui/bits'
 import { respond } from '../ui/respond'
-import { app, closeAll, closeSheet, go, useApp } from '../state/app'
+import { app, back, closeAll, closeSheet, go, useApp } from '../state/app'
 import type { Route } from '../state/router'
 import { LeftNav } from './LeftNav'
+import { IosTabBar } from './IosTabBar'
+import { isIos } from '../platform'
+import { backFallback, isTabRoot } from './iosTabs'
 import { RightPanel } from './RightPanel'
 import { SheetBody } from './sheets'
 import Home from '../screens/Home'
@@ -86,7 +89,8 @@ function useEdgeSwipe(ref: React.RefObject<HTMLDivElement | null>) {
       const { drawer, sheet, route } = app.get()
       const hasPanel = route.name === 'chat' || route.name === 'cowork' || route.name === 'room'
       if (dy < 50 && !sheet) {
-        if (dx > 70 && sx < 30 && !drawer) app.set({ drawer: 'left' })
+        if (isIos() && !drawer && dx > 70 && sx < 30 && !isTabRoot(route)) back(backFallback(route))
+        else if (dx > 70 && sx < 30 && !drawer) app.set({ drawer: 'left' })
         else if (dx < -70 && sx > w - 30 && !drawer && hasPanel) app.set({ drawer: 'right' })
         else if (dx < -70 && drawer === 'left') closeAll()
         else if (dx > 70 && drawer === 'right') closeAll()
@@ -172,6 +176,24 @@ export function Shell() {
   const sheet = useApp((s) => s.sheet)
   const ref = useRef<HTMLDivElement>(null)
   useEdgeSwipe(ref)
+  const ios = isIos()
+
+  // Large titles collapse into the bar once the page scrolls.
+  useEffect(() => {
+    if (!ios) return
+    const el = ref.current
+    const views = el?.querySelector('#views')
+    if (!el || !views) return
+    const onScroll = (e: Event) => {
+      const t = e.target as HTMLElement
+      if (t.classList?.contains('scroll')) views.toggleAttribute('data-scrolled', t.scrollTop > 28)
+    }
+    el.addEventListener('scroll', onScroll, true)
+    return () => el.removeEventListener('scroll', onScroll, true)
+  }, [ios])
+  useEffect(() => {
+    document.querySelector('#views')?.removeAttribute('data-scrolled')
+  }, [route])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -190,6 +212,7 @@ export function Shell() {
           </section>
         </Suspense>
       </div>
+      {ios && <IosTabBar />}
       <div className={`scrim${drawer ? ' on' : ''}`} onClick={closeAll} />
       <nav className={`drawer l${drawer === 'left' ? ' open' : ''}`} aria-label={t('shell.navigation')} aria-hidden={drawer !== 'left'} inert={drawer !== 'left'}>
         <LeftNav />

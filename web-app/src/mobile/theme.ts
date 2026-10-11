@@ -21,6 +21,12 @@ function apply() {
     root.style.setProperty(k, v)
     applied.push(k)
   }
+  // iOS tint: the computer's accent when it sent one, else systemBlue (ios.css).
+  const tint = vars['--acc-text']
+  if (tint) {
+    root.style.setProperty('--ios-accent', tint)
+    applied.push('--ios-accent')
+  }
   document
     .querySelectorAll('meta[name="theme-color"]')
     .forEach((m) => m.setAttribute('content', dark ? '#0A0B0D' : '#F8F8F8'))

@@ -7,6 +7,7 @@ import { go, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { reachLabel } from '../state/sessions'
 import { THEME_WORD } from '../shell/labels'
+import { isIos } from '../platform'
 import { t } from '../i18n'
 
 const sub = (s: string) => () => go({ name: 'settings-sub', sub: s })
@@ -22,7 +23,26 @@ export default function Settings() {
   const match = (label: string) => !q || label.toLowerCase().includes(q.toLowerCase())
   const rows = <T extends { label: string }>(list: T[]) => list.filter((r) => match(r.label))
 
+  // On iOS the drawer is not the main nav, so the screens it held live here.
+  const iosMore = isIos()
+    ? [
+        {
+          cap: '',
+          rows: rows([
+            { label: t('nav.overview'), icon: 'sb-dashboard' as const, onClick: () => go({ name: 'overview' }) },
+            { label: t('library.title'), icon: 'x-library' as const, onClick: () => go({ name: 'library' }) },
+            { label: t('models.title'), icon: 'x-cube' as const, onClick: () => go({ name: 'models' }) },
+            { label: t('tools.title'), icon: 'flow' as const, onClick: () => go({ name: 'tools' }) },
+            { label: t('system.title'), icon: 'x-monitor' as const, onClick: () => go({ name: 'system' }) },
+            { label: t('archive.title'), icon: 'x-disk' as const, onClick: () => go({ name: 'archive' }) },
+            { label: t('notifications.title'), icon: 'bell' as const, onClick: () => go({ name: 'notifications' }) },
+          ]),
+        },
+      ]
+    : []
+
   const groups = [
+    ...iosMore,
     {
       cap: t('settings.groups.phone'),
       rows: rows([
@@ -94,7 +114,7 @@ export default function Settings() {
     <>
       <TopMain crumb={t('settings.title')} title={t('settings.title')} />
       <div className="scroll" style={{ padding: 0 }}>
-        <div className="ios">
+        <div className="iset">
           <h1>{t('settings.title')}</h1>
           <div className="isrch">
             <I n="search" />

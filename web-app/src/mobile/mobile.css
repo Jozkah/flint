@@ -424,8 +424,8 @@ svg.i{width:16px;height:16px;flex:none}
 .push img{image-rendering:pixelated;background:#111317;padding:4px}
 .toast{bottom:calc(90px + var(--sab))}
 /* iOS-style settings */
-.ios{padding:0 16px 24px;display:flex;flex-direction:column;gap:22px}
-.ios h1{font-size:30px;font-weight:700;letter-spacing:-.02em;margin:4px 2px 0}
+.iset{padding:0 16px 24px;display:flex;flex-direction:column;gap:22px}
+.iset h1{font-size:30px;font-weight:700;letter-spacing:-.02em;margin:4px 2px 0}
 .igrp{display:flex;flex-direction:column;gap:6px}
 .igrp>.cap{font-size:12px;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.03em;padding:0 16px}
 .igrp>.foot2{font-size:12px;color:var(--muted-foreground);padding:0 16px;line-height:1.4}
