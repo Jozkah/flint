@@ -284,6 +284,18 @@ fn usable_machine_id<E>(lookup: Result<String, E>) -> Option<String> {
     lookup.ok().filter(|id| !id.trim().is_empty())
 }
 
+/// The OS machine id. `machine-uid` has no iOS or Android backend, so phones report
+/// none and take the random per-install key, the path a failed lookup already uses.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn machine_id() -> Result<String, ()> {
+    machine_uid::get().map_err(|_| ())
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn machine_id() -> Result<String, ()> {
+    Err(())
+}
+
 /// SHA-256 of the versioned app salt and `material`, the AES-256 key bytes.
 fn key_bytes(material: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
@@ -355,7 +367,7 @@ fn current_key(
 /// Derive the 32-byte key for the fallback file.
 fn derive_cipher() -> Result<Aes256Gcm, String> {
     cipher_from(&current_key(
-        usable_machine_id(machine_uid::get()),
+        usable_machine_id(machine_id()),
         &install_key_path(),
     )?)
 }

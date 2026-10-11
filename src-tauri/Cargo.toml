@@ -285,7 +285,6 @@ keyring = { version = "3", features = [
     "crypto-rust",
 ] }
 aes-gcm = "0.10"
-machine-uid = "0.5"
 ratatui = { version = "0.30", optional = true, features = ["unstable-rendered-line-info"] }
 # Display width for the TUI's own truncation: a CJK glyph or emoji is two
 # cells wide, so counting chars overflows a bordered panel. Already in the graph
@@ -362,6 +361,8 @@ tauri-plugin-mlx = { path = "./plugins/tauri-plugin-mlx", optional = true }
 security-framework = "3"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# No iOS or Android backend; see `machine_id` in core/server/provider_secrets.rs.
+machine-uid = "0.5"
 # The native file picker has no iOS or Android backend (see core/filesystem/picker.rs).
 rfd = { version = "0.15.4", optional = true, default-features = false, features = [
   "tokio",
