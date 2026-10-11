@@ -39,7 +39,7 @@
     "gitLocalIn": "Flint 想要在 {{workspace}} 中執行 {{command}}",
     "gitRemote": "Flint 想要執行 {{command}}，這會變更 {{target}}",
     "gitDestructive": "Flint 想要執行 {{command}}，這可能會遺失工作成果",
-    "approveCampaign": "Flint wants to start the campaign \"{{title}}\" ({{count}} tasks)"
+    "approveCampaign": "Flint 想要開始戰役「{{title}}」（{{count}} 個任務）"
   },
   "consequence": {
     "fileChange": "它可以建立、覆寫或變更檔案的內容。",
@@ -57,7 +57,7 @@
     "gitLocal": "它會變更這台電腦上此儲存庫的檔案、分支或歷史記錄。",
     "gitRemote": "它會將變更傳送到其他人可見的遠端儲存庫。除非你為此對話暫時允許一般的遠端 Git 動作，否則 Flint 每次都會詢問。",
     "gitDestructive": "它刪除或覆寫的內容可能無法復原。",
-    "campaignPlan": "It starts separate sessions, each on its own worktree branch, that read and change files and use your model quota in parallel. Approving the plan does not approve any call a task makes. Flint asks every time."
+    "campaignPlan": "它會啟動各自獨立的工作階段，每個工作階段位於自己的 worktree 分支上，讀取並變更檔案，並平行消耗你的模型配額。核准計畫並不等於核准任務發出的任何呼叫。Flint 每次都會詢問。"
   },
   "repeat": {
     "allowedOnceBefore": "你已在此對話中允許過這個指令一次。"

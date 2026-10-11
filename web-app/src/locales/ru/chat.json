@@ -99,10 +99,10 @@
     "newChatFailed": "Не удалось начать новый чат",
     "room": "Комната",
     "recentRooms": "Комнаты",
-    "needsApproval": "Needs approval",
-    "needsApprovalShort": "Needs approval",
-    "done": "Done",
-    "failed": "Failed"
+    "needsApproval": "Нужно одобрение",
+    "needsApprovalShort": "Нужно одобрение",
+    "done": "Готово",
+    "failed": "Сбой"
   },
   "transcriptView": {
     "steps_one": "{{count}} шаг",

@@ -113,7 +113,7 @@
   "keyboardShortcuts": "Phím tắt",
   "home": "Trang chủ",
   "cowork": "Cowork",
-  "campaign": "Campaign",
+  "campaign": "Chiến dịch",
   "newSession": "Phiên mới",
   "artifacts": "Artifact",
   "customize": "Tùy chỉnh",
@@ -1475,7 +1475,7 @@
     "openInCode": "Thả để mở — chỉ đọc",
     "attachToMessage": "Thả để đính kèm vào tin nhắn của bạn",
     "releaseToAttach": "Thả để đính kèm",
-    "releaseToAttachCount": "Release to attach {{count}} files"
+    "releaseToAttachCount": "Thả để đính kèm {{count}} tệp"
   },
   "coworkRunSettings": {
     "label": "Cài đặt lượt chạy",
@@ -2069,11 +2069,11 @@
     "movedTo": "Đã chuyển vào {{name}}",
     "notifications": "Thông báo",
     "approvalWaiting": "Phê duyệt đang chờ",
-    "tabs": "Sidebar view",
-    "tabChat": "Chat",
+    "tabs": "Chế độ xem thanh bên",
+    "tabChat": "Trò chuyện",
     "tabCowork": "Cowork",
     "studio": "Studio",
-    "schedules": "Schedules"
+    "schedules": "Lịch trình"
   },
   "systemNav": {
     "label": "Chẩn đoán",
@@ -2490,12 +2490,12 @@
     "downloading": "Đang tải xuống…"
   },
   "composerChip": {
-    "list": "Attached files",
-    "pastedImage": "Pasted image {{n}}",
-    "open": "Preview {{name}}",
-    "noVision": "This model can't read images",
-    "details": "Details for {{name}}",
-    "previewLoading": "Loading preview…",
-    "previewNone": "No preview available"
+    "list": "Tệp đính kèm",
+    "pastedImage": "Ảnh đã dán {{n}}",
+    "open": "Xem trước {{name}}",
+    "noVision": "Mô hình này không đọc được ảnh",
+    "details": "Chi tiết về {{name}}",
+    "previewLoading": "Đang tải bản xem trước…",
+    "previewNone": "Không có bản xem trước"
   }
 }

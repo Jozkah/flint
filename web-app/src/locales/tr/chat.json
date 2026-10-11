@@ -99,10 +99,10 @@
     "newChatFailed": "Yeni sohbet başlatılamadı",
     "room": "Oda",
     "recentRooms": "Odalar",
-    "needsApproval": "Needs approval",
-    "needsApprovalShort": "Needs approval",
-    "done": "Done",
-    "failed": "Failed"
+    "needsApproval": "Onay gerekiyor",
+    "needsApprovalShort": "Onay gerekiyor",
+    "done": "Bitti",
+    "failed": "Başarısız"
   },
   "transcriptView": {
     "steps_one": "{{count}} adım",

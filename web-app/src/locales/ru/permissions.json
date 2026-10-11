@@ -39,7 +39,7 @@
     "gitLocalIn": "Flint хочет выполнить {{command}} в {{workspace}}",
     "gitRemote": "Flint хочет выполнить {{command}}, что изменяет {{target}}",
     "gitDestructive": "Flint хочет выполнить {{command}}, что может привести к потере работы",
-    "approveCampaign": "Flint wants to start the campaign \"{{title}}\" ({{count}} tasks)"
+    "approveCampaign": "Flint хочет запустить кампанию «{{title}}» (задач: {{count}})"
   },
   "consequence": {
     "fileChange": "Может создавать, перезаписывать или изменять содержимое файлов.",
@@ -57,7 +57,7 @@
     "gitLocal": "Изменяет файлы, ветки или историю этого репозитория на этом компьютере.",
     "gitRemote": "Отправляет изменения в удалённый репозиторий, который видят другие люди. Flint спрашивает каждый раз, если вы не разрешили временно обычные удалённые действия Git для этого разговора.",
     "gitDestructive": "Удалённое или перезаписанное может не подлежать восстановлению.",
-    "campaignPlan": "It starts separate sessions, each on its own worktree branch, that read and change files and use your model quota in parallel. Approving the plan does not approve any call a task makes. Flint asks every time."
+    "campaignPlan": "Запускаются отдельные сессии, каждая в своей ветке worktree, которые читают и изменяют файлы и параллельно расходуют квоту вашей модели. Одобрение плана не одобряет ни один вызов, который делает задача. Flint спрашивает каждый раз."
   },
   "repeat": {
     "allowedOnceBefore": "Вы уже один раз разрешали эту команду в этом разговоре."

@@ -99,10 +99,10 @@
     "newChatFailed": "Không thể bắt đầu cuộc trò chuyện mới",
     "room": "Phòng",
     "recentRooms": "Phòng",
-    "needsApproval": "Needs approval",
-    "needsApprovalShort": "Needs approval",
-    "done": "Done",
-    "failed": "Failed"
+    "needsApproval": "Cần phê duyệt",
+    "needsApprovalShort": "Cần phê duyệt",
+    "done": "Xong",
+    "failed": "Thất bại"
   },
   "transcriptView": {
     "steps_one": "{{count}} bước",
