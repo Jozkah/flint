@@ -271,6 +271,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_campaign_merge_task,
         core::agent::commands::agent_campaign_integrate,
         core::agent::commands::agent_campaign_gate_plan,
+        core::agent::commands::agent_campaign_task_diff,
         core::agent::commands::agent_campaign_finalize,
         core::agent::commands::agent_campaign_refresh,
         core::agent::commands::agent_campaign_orphans,

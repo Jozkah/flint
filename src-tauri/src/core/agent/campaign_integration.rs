@@ -404,6 +404,287 @@ pub fn verify_prepare(
     Ok(VerifyRequest { task_id: task_id.to_string(), request: verification::build_request(model_id, &input), evidence_note: note })
 }
 
+// ---------------------------------------------------------------------------
+// What a task changed, for the board
+// ---------------------------------------------------------------------------
+
+/// A patch for one file is cut here; the file keeps its counts.
+const MAX_FILE_PATCH: usize = 24_000;
+/// Patches stop being returned once this much has been sent.
+const MAX_TOTAL_PATCH: usize = 160_000;
+const MAX_DIFF_FILES: usize = 300;
+/// An untracked file larger than this is listed without a patch.
+const MAX_UNTRACKED_READ: u64 = 256 * 1024;
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskDiffFile {
+    pub path: String,
+    /// `added`, `modified`, `deleted` or `renamed`.
+    pub status: String,
+    /// The previous path of a renamed file.
+    pub old_path: Option<String>,
+    pub added: u32,
+    pub removed: u32,
+    pub binary: bool,
+    /// Unified diff from the first hunk on. `None` for a binary file, a pure
+    /// rename, or when the size caps were reached (`truncated` says so).
+    pub patch: Option<String>,
+    /// The patch was cut or left out because of its size.
+    pub truncated: bool,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskDiff {
+    pub files: Vec<TaskDiffFile>,
+    pub added: u32,
+    pub removed: u32,
+    /// Some patch was cut, or some files were left out, for size.
+    pub truncated: bool,
+    /// The worktree still holds changes that are not committed yet.
+    pub uncommitted: bool,
+}
+
+/// A path git reported that is safe to hand back to git and to show: relative,
+/// without parent components, not an option.
+fn safe_rel(path: &str) -> bool {
+    !path.is_empty()
+        && !path.starts_with('-')
+        && !path.starts_with('/')
+        && !path.starts_with('\\')
+        && !path.contains(':')
+        && !path.split(['/', '\\']).any(|part| part == "..")
+}
+
+fn cut_chars(text: &str, max: usize) -> (String, bool) {
+    if text.chars().count() <= max {
+        return (text.to_string(), false);
+    }
+    (text.chars().take(max).collect(), true)
+}
+
+/// Keep the unified diff from its first hunk; git's file headers repeat what
+/// the entry already says.
+fn from_first_hunk(diff: &str) -> Option<String> {
+    let at = if diff.starts_with("@@") { 0 } else { diff.find("\n@@")? + 1 };
+    Some(diff[at..].to_string())
+}
+
+struct DiffEntry {
+    path: String,
+    old: Option<String>,
+    status: &'static str,
+    added: u32,
+    removed: u32,
+    binary: bool,
+}
+
+/// `git diff -z --name-status`: a code, then one path (two for a rename).
+fn parse_name_status(out: &str) -> Vec<DiffEntry> {
+    let mut entries = Vec::new();
+    let mut parts = out.split('\0').filter(|p| !p.is_empty());
+    while let Some(code) = parts.next() {
+        match code.chars().next().unwrap_or('M') {
+            'R' | 'C' => {
+                let (Some(old), Some(new)) = (parts.next(), parts.next()) else { break };
+                entries.push(DiffEntry {
+                    path: new.to_string(),
+                    old: Some(old.to_string()),
+                    status: "renamed",
+                    added: 0,
+                    removed: 0,
+                    binary: false,
+                });
+            }
+            other => {
+                let Some(path) = parts.next() else { break };
+                let status = match other {
+                    'A' => "added",
+                    'D' => "deleted",
+                    _ => "modified",
+                };
+                entries.push(DiffEntry {
+                    path: path.to_string(),
+                    old: None,
+                    status,
+                    added: 0,
+                    removed: 0,
+                    binary: false,
+                });
+            }
+        }
+    }
+    entries
+}
+
+/// `git diff -z --numstat`: "added TAB removed TAB path NUL", or for a rename
+/// "added TAB removed TAB NUL old NUL new NUL". Returns (path, added, removed,
+/// binary) keyed by the new path.
+fn parse_numstat(out: &str) -> Vec<(String, u32, u32, bool)> {
+    let mut stats = Vec::new();
+    let mut parts = out.split('\0');
+    while let Some(part) = parts.next() {
+        if part.is_empty() {
+            continue;
+        }
+        let mut cols = part.splitn(3, '\t');
+        let (Some(a), Some(r), Some(p)) = (cols.next(), cols.next(), cols.next()) else { continue };
+        let binary = a == "-" || r == "-";
+        let (a, r) = (a.parse().unwrap_or(0), r.parse().unwrap_or(0));
+        if p.is_empty() {
+            let _old = parts.next();
+            if let Some(new) = parts.next() {
+                stats.push((new.to_string(), a, r, binary));
+            }
+        } else {
+            stats.push((p.to_string(), a, r, binary));
+        }
+    }
+    stats
+}
+
+/// What a task changed against its base: files, kind, counted lines and a
+/// capped unified diff. The worktree is re-derived from Git first, exactly as a
+/// merge does, so a record pointing elsewhere reads nothing. Includes work the
+/// worktree has not committed yet. With `patches` false only the counts are
+/// computed, which is what a row of the board polls for. Reads only; nothing
+/// is written.
+pub fn task_diff(
+    data_folder: &Path,
+    roots: &Path,
+    id: &str,
+    task_id: &str,
+    patches: bool,
+) -> Result<TaskDiff, CampaignError> {
+    campaign::check_id("task", task_id)?;
+    let c = campaign::get(data_folder, id)?;
+    let t = c
+        .task(task_id)
+        .ok_or_else(|| err(CampaignErrorKind::NotFound, format!("no task {task_id} in this campaign")))?;
+    let record = task_record(&c, t, roots)?;
+    let dir = Path::new(&record.path);
+    let base = if record.base_sha.is_empty() { c.integration_branch.clone() } else { record.base_sha.clone() };
+    if base.is_empty() || base.starts_with('-') {
+        return Err(invalid("the task has no base to compare with"));
+    }
+    let git = |extra: &[&str]| -> Result<String, CampaignError> {
+        let mut args: Vec<&str> = vec!["-c", "core.quotepath=false"];
+        args.extend_from_slice(extra);
+        worktree::run(dir, &args).map_err(io)
+    };
+
+    let names = git(&["diff", "--no-color", "-M", "-z", "--name-status", &base, "--"])?;
+    let nums = git(&["diff", "--no-color", "-M", "-z", "--numstat", &base, "--"])?;
+    let mut entries = parse_name_status(&names);
+    let stats = parse_numstat(&nums);
+    for e in &mut entries {
+        if let Some((_, a, r, b)) = stats.iter().find(|(p, ..)| *p == e.path) {
+            e.added = *a;
+            e.removed = *r;
+            e.binary = *b;
+        }
+    }
+
+    let mut files: Vec<TaskDiffFile> = Vec::new();
+    let mut truncated = false;
+    let mut budget = MAX_TOTAL_PATCH;
+    let mut take_patch = |patch: Option<String>| -> (Option<String>, bool) {
+        let Some(patch) = patch else { return (None, false) };
+        if budget == 0 {
+            return (None, true);
+        }
+        let (cut, was_cut) = cut_chars(&patch, MAX_FILE_PATCH.min(budget));
+        budget = budget.saturating_sub(cut.chars().count());
+        (Some(cut), was_cut)
+    };
+    for e in entries {
+        if !safe_rel(&e.path) || e.old.as_deref().is_some_and(|o| !safe_rel(o)) {
+            continue;
+        }
+        if files.len() >= MAX_DIFF_FILES {
+            truncated = true;
+            break;
+        }
+        let (patch, cut) = if e.binary || !patches {
+            (None, false)
+        } else {
+            let mut args: Vec<&str> = vec!["diff", "--no-color", "-M", &base, "--"];
+            if let Some(o) = &e.old {
+                args.push(o);
+            }
+            args.push(&e.path);
+            take_patch(from_first_hunk(&git(&args).unwrap_or_default()))
+        };
+        truncated |= cut;
+        files.push(TaskDiffFile {
+            path: e.path,
+            status: e.status.to_string(),
+            old_path: e.old,
+            added: e.added,
+            removed: e.removed,
+            binary: e.binary,
+            patch,
+            truncated: cut,
+        });
+    }
+
+    // Files the task made but has not added to git yet.
+    let mut uncommitted = !worktree::pending(&record).is_empty();
+    let untracked = git(&["ls-files", "-z", "--others", "--exclude-standard"]).unwrap_or_default();
+    let canon_dir = dir.canonicalize().ok();
+    for rel in untracked.split('\0').filter(|p| !p.is_empty()) {
+        if !safe_rel(rel) || files.iter().any(|f| f.path == rel) {
+            continue;
+        }
+        if files.len() >= MAX_DIFF_FILES {
+            truncated = true;
+            break;
+        }
+        uncommitted = true;
+        let full = dir.join(rel);
+        // A symlink, or anything that resolves outside the worktree, is listed
+        // and never read.
+        let readable = std::fs::symlink_metadata(&full)
+            .map(|m| m.is_file() && m.len() <= MAX_UNTRACKED_READ)
+            .unwrap_or(false)
+            && match (full.canonicalize().ok(), canon_dir.as_ref()) {
+                (Some(f), Some(d)) => f.starts_with(d),
+                _ => false,
+            };
+        let text = if readable { std::fs::read(&full).ok().and_then(|b| String::from_utf8(b).ok()) } else { None };
+        let (added, patch, cut) = match text {
+            Some(body) => {
+                let lines: Vec<&str> = body.lines().collect();
+                let patch = format!(
+                    "@@ -0,0 +1,{} @@\n{}",
+                    lines.len(),
+                    lines.iter().map(|l| format!("+{l}")).collect::<Vec<_>>().join("\n")
+                );
+                let (p, cut) = if patches { take_patch(Some(patch)) } else { (None, false) };
+                (lines.len() as u32, p, cut)
+            }
+            None => (0, None, false),
+        };
+        truncated |= cut;
+        files.push(TaskDiffFile {
+            path: rel.to_string(),
+            status: "added".to_string(),
+            old_path: None,
+            added,
+            removed: 0,
+            binary: false,
+            patch,
+            truncated: cut,
+        });
+    }
+
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    let added = files.iter().map(|f| f.added).sum();
+    let removed = files.iter().map(|f| f.removed).sum();
+    Ok(TaskDiff { files, added, removed, truncated, uncommitted })
+}
+
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum VerifyNext {
@@ -1435,5 +1716,98 @@ mod tests {
         let mine = found.iter().find(|o| o.task_id.as_deref() == Some("a")).unwrap();
         assert_eq!(mine.unmerged.len(), 1, "its commit is not in the integration branch");
         assert!(Path::new(&rec.path).exists(), "nothing was removed");
+    }
+
+    #[test]
+    fn task_diff_lists_files_kinds_counts_and_patches() {
+        let f = fixture("diff", vec![plan("a", &[])]);
+        start(&f);
+        let rec = work(&f, "a", "a.txt", "from a\nsecond\n");
+        let dir = Path::new(&rec.path);
+        std::fs::write(dir.join("shared.txt"), "1\n2\nTHREE\n4\n5\n6\n7\n8\n9\n10\n").unwrap();
+        git(dir, &["rm", "-q", "--cached", "a.txt"]);
+        git(dir, &["add", "-A"]);
+        git(dir, &["commit", "-q", "-m", "more"]);
+        std::fs::write(dir.join("a.txt"), "back\n").unwrap();
+        git(dir, &["add", "-A"]);
+        git(dir, &["commit", "-q", "-m", "back"]);
+        let d = task_diff(&f.data, &f.roots, &f.id, "a", true).unwrap();
+        let by = |p: &str| d.files.iter().find(|x| x.path == p).unwrap_or_else(|| panic!("{p} missing: {:?}", d.files));
+        assert_eq!(by("a.txt").status, "added");
+        assert_eq!(by("a.txt").added, 1);
+        assert_eq!(by("shared.txt").status, "modified");
+        assert_eq!((by("shared.txt").added, by("shared.txt").removed), (1, 1));
+        let patch = by("shared.txt").patch.clone().unwrap();
+        assert!(patch.starts_with("@@"), "{patch}");
+        assert!(patch.contains("-3") && patch.contains("+THREE"), "{patch}");
+        assert_eq!(d.added, 2);
+        assert_eq!(d.removed, 1);
+        assert!(!d.truncated && !d.uncommitted);
+    }
+
+    #[test]
+    fn task_diff_reports_deletes_renames_and_uncommitted_files() {
+        let f = fixture("diff2", vec![plan("a", &[])]);
+        start(&f);
+        let rec = work(&f, "a", "a.txt", "x\n");
+        let dir = Path::new(&rec.path);
+        git(dir, &["mv", "shared.txt", "renamed.txt"]);
+        git(dir, &["commit", "-q", "-m", "rename"]);
+        std::fs::write(dir.join("loose.txt"), "one\ntwo\n").unwrap();
+        let d = task_diff(&f.data, &f.roots, &f.id, "a", true).unwrap();
+        let by = |p: &str| d.files.iter().find(|x| x.path == p).unwrap_or_else(|| panic!("{p} missing: {:?}", d.files));
+        assert_eq!(by("renamed.txt").status, "renamed");
+        assert_eq!(by("renamed.txt").old_path.as_deref(), Some("shared.txt"));
+        assert_eq!(by("loose.txt").status, "added");
+        assert_eq!(by("loose.txt").added, 2);
+        assert!(d.uncommitted);
+    }
+
+    #[test]
+    fn task_diff_caps_the_patch_and_says_so() {
+        let f = fixture("diffcap", vec![plan("a", &[])]);
+        start(&f);
+        let big: String = (0..8000).map(|i| format!("line {i} of a very long file\n")).collect();
+        work(&f, "a", "big.txt", &big);
+        let d = task_diff(&f.data, &f.roots, &f.id, "a", true).unwrap();
+        let file = d.files.iter().find(|x| x.path == "big.txt").unwrap();
+        assert_eq!(file.added, 8000);
+        assert!(file.truncated && d.truncated);
+        assert!(file.patch.as_ref().unwrap().chars().count() <= MAX_FILE_PATCH);
+    }
+
+    #[test]
+    fn task_diff_counts_without_patches_when_asked() {
+        let f = fixture("diffsum", vec![plan("a", &[])]);
+        start(&f);
+        work(&f, "a", "a.txt", "one
+two
+");
+        let d = task_diff(&f.data, &f.roots, &f.id, "a", false).unwrap();
+        assert_eq!(d.files.len(), 1);
+        assert_eq!((d.added, d.removed), (2, 0));
+        assert!(d.files[0].patch.is_none() && !d.files[0].truncated);
+    }
+
+    #[test]
+    fn task_diff_refuses_a_worktree_outside_the_worktrees_folder() {
+        let f = fixture("diffesc", vec![plan("a", &[])]);
+        start(&f);
+        work(&f, "a", "a.txt", "a\n");
+        mv(&f, "a", TaskStatus::Conflict, None, TaskPatch::default());
+        mv(&f, "a", TaskStatus::Verified, Some(TaskVerdict::Pass), TaskPatch {
+            worktree_path: Some(f.src.to_string_lossy().to_string()),
+            ..Default::default()
+        });
+        let e = task_diff(&f.data, &f.roots, &f.id, "a", true).unwrap_err();
+        assert!(e.message.contains("not a worktree Flint manages"), "{}", e.message);
+    }
+
+    #[test]
+    fn safe_rel_rejects_escapes_and_options() {
+        for bad in ["", "../x", "a/../../x", "/etc/passwd", "-rf", "C:\\x", "a\\..\\b"] {
+            assert!(!safe_rel(bad), "{bad}");
+        }
+        assert!(safe_rel("src/a.txt"));
     }
 }

@@ -1590,6 +1590,30 @@ pub async fn agent_campaign_gate_plan(
     .await
 }
 
+/// What one task changed against its base: files, kind, counted lines and a
+/// capped unified diff. The recorded worktree is re-checked against Git first.
+#[tauri::command]
+pub async fn agent_campaign_task_diff(
+    app: tauri::AppHandle,
+    id: String,
+    task_id: String,
+    patches: Option<bool>,
+) -> Result<crate::core::agent::campaign_integration::TaskDiff, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        let roots = team_roots(&data_folder)?;
+        crate::core::agent::campaign_integration::task_diff(
+            &data_folder,
+            &roots,
+            &id,
+            &task_id,
+            patches.unwrap_or(true),
+        )
+            .map_err(campaign_failure)
+    })
+    .await
+}
+
 /// Run the build and test gate on the integration worktree and, when it
 /// passes, store one proposal for the user's checkout. Never applies it.
 #[tauri::command]
