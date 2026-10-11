@@ -2490,6 +2490,9 @@
     "list": "Attached files",
     "pastedImage": "Pasted image {{n}}",
     "open": "Preview {{name}}",
-    "noVision": "This model can't read images"
+    "noVision": "This model can't read images",
+    "details": "Details for {{name}}",
+    "previewLoading": "Loading preview…",
+    "previewNone": "No preview available"
   }
 }

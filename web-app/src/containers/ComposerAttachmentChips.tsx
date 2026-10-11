@@ -21,6 +21,11 @@ import {
   truncateMiddle,
   type ChipIcon,
 } from '@/lib/attachmentChip'
+import { displayNameOf } from '@/lib/displayName'
+import {
+  FilePreviewPopover,
+  previewLoader,
+} from '@/containers/FilePreviewPopover'
 
 const ICONS: Record<ChipIcon, typeof Paperclip> = {
   image: Paperclip,
@@ -64,11 +69,34 @@ export function ComposerAttachmentChips({
       className="flex min-w-0 items-center gap-1.5 overflow-x-auto p-2 pb-0"
     >
       {attachments.map((att, idx) => {
-        const label = labels[idx]
+        const label = displayNameOf(labels[idx])
         const Icon = ICONS[chipIcon(att)]
         const size = formatChipSize(att.size)
         const warn = imageNeedsVision(att, canSeeImages)
         const hasThumb = att.type === 'image' && !!att.dataUrl
+        const text = (
+          <span className="flex min-w-0 flex-col leading-tight">
+            <span
+              className="max-w-44 truncate font-medium"
+              data-testid="chip-name"
+            >
+              {truncateMiddle(label)}
+            </span>
+            <span className="flex items-center gap-1 text-[11px] text-muted-foreground tabular-nums">
+              {warn ? (
+                <span
+                  className="flex items-center gap-1 text-warning"
+                  role="status"
+                >
+                  <AlertTriangle aria-hidden className="size-3" />
+                  {t('common:composerChip.noVision')}
+                </span>
+              ) : (
+                size
+              )}
+            </span>
+          </span>
+        )
         return (
           <div
             key={`${att.type}-${idx}-${att.name}`}
@@ -94,32 +122,22 @@ export function ComposerAttachmentChips({
                   className="size-full object-cover"
                 />
               </button>
+            ) : null}
+            {hasThumb ? (
+              text
             ) : (
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-card text-muted-foreground">
-                <Icon aria-hidden className="size-4" />
-              </span>
-            )}
-            <span className="flex min-w-0 flex-col leading-tight">
-              <span
-                className="max-w-44 truncate font-medium"
-                data-testid="chip-name"
+              <FilePreviewPopover
+                name={att.path || att.name}
+                meta={size}
+                load={previewLoader(att)}
+                className="flex min-w-0 items-center gap-1.5 rounded-md text-start focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
               >
-                {truncateMiddle(label)}
-              </span>
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground tabular-nums">
-                {warn ? (
-                  <span
-                    className="flex items-center gap-1 text-warning"
-                    role="status"
-                  >
-                    <AlertTriangle aria-hidden className="size-3" />
-                    {t('common:composerChip.noVision')}
-                  </span>
-                ) : (
-                  size
-                )}
-              </span>
-            </span>
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-card text-muted-foreground">
+                  <Icon aria-hidden className="size-4" />
+                </span>
+                {text}
+              </FilePreviewPopover>
+            )}
             {att.processing ? (
               <Loader2
                 aria-hidden

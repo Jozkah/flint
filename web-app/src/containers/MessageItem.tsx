@@ -79,6 +79,9 @@ import { AgentMessageHeader } from '@/containers/AgentMessageHeader'
 import { DeleteMessageDialog } from '@/containers/dialogs/DeleteMessageDialog'
 import TokenSpeedIndicator from '@/containers/TokenSpeedIndicator'
 import { extractFilesFromPrompt, FileMetadata } from '@/lib/fileMetadata'
+import { displayNameOf } from '@/lib/displayName'
+import { formatChipSize } from '@/lib/attachmentChip'
+import { FilePreviewPopover } from '@/containers/FilePreviewPopover'
 import { Button } from '@/components/ui/button'
 import { PromptProgress } from '@/components/PromptProgress'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -271,7 +274,7 @@ export const MessageItem = memo(
       for (const part of message.parts) {
         const p = part as { type?: string; url?: string; mediaType?: string; filename?: string }
         if (p.type === 'file' && p.url && p.mediaType?.startsWith('image/')) {
-          out.push({ url: p.url, name: p.filename })
+          out.push({ url: p.url, name: p.filename ? displayNameOf(p.filename) : p.filename })
         }
       }
       return out
@@ -510,20 +513,25 @@ export const MessageItem = memo(
                     {attachedFiles.map((file: FileMetadata, idx: number) => (
                       <div
                         key={`file-${idx}-${file.id}`}
-                        className="flex min-w-0 max-w-full items-center gap-1.5 px-2 py-1 rounded-md bg-card text-foreground border-[0.8px] border-border text-xs"
+                        data-testid="sent-file-chip"
+                        title={file.name}
+                        className="flex min-w-0 max-w-full items-center rounded-md bg-card text-foreground border-[0.8px] border-border text-xs"
                       >
-                        <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
-                        <span
-                          className="min-w-0 truncate font-medium"
-                          title={file.name}
+                        <FilePreviewPopover
+                          name={file.name}
+                          meta={formatChipSize(file.size)}
+                          className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-start focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
                         >
-                          {file.name}
-                        </span>
-                        {file.injectionMode && (
-                          <span className="text-muted-foreground">
-                            ({file.injectionMode})
+                          <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 truncate font-medium">
+                            {displayNameOf(file.name)}
                           </span>
-                        )}
+                          {file.injectionMode && (
+                            <span className="text-muted-foreground">
+                              ({file.injectionMode})
+                            </span>
+                          )}
+                        </FilePreviewPopover>
                       </div>
                     ))}
                   </div>
