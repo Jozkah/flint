@@ -36,6 +36,7 @@ import { useMessageQueue } from '@/stores/message-queue-store'
 import { beginRun, endRun, getRunHandle } from '@/lib/coworkRunner'
 import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
 import { RustSubagentFeed } from '@/lib/rustSubagentFeed'
+import { useRemoteWorktrees } from '@/lib/remoteWorktree'
 import { isServerTransport } from '@/lib/serverTransportFlag'
 import {
   answerRunAsk,
@@ -178,7 +179,14 @@ function commitTurns(
 
 /** Start a session in `folder` on the server and open it as the current one. */
 export async function startRemoteSession(
-  input: { folder: string; access?: RunAccess; title?: string; model?: string },
+  input: {
+    folder: string
+    access?: RunAccess
+    title?: string
+    model?: string
+    /** Omitted: isolated when it may write and the folder is a repository. */
+    worktree?: boolean
+  },
   fetchImpl?: FetchLike
 ): Promise<string> {
   const info = await runnerInfo(fetchImpl, 0)
@@ -330,6 +338,17 @@ class RemoteRun {
         return
       case 'turn.completed':
         void this.finish(payload)
+        useRemoteWorktrees.getState().bump(this.sid)
+        return
+      case 'proposal.created':
+        useRemoteWorktrees.getState().proposalCreated(this.sid, payload)
+        return
+      case 'proposal.error':
+        useRemoteWorktrees.getState().proposalFailed(this.sid, String(payload.message ?? ''))
+        return
+      case 'worktree.changed':
+      case 'worktree.discarded':
+        useRemoteWorktrees.getState().bump(this.sid)
         return
       default:
         return

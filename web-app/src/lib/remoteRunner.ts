@@ -21,6 +21,8 @@ export type RunnerInfo = {
   /** The server runs sessions: flag on, runner built, sandbox enforced. */
   runsSessions: boolean
   runsChecks: boolean
+  /** Sessions that may write get an isolated checkout the server owns (P2). */
+  runsWorktrees: boolean
   runRequested: boolean
   runnerPlanned: boolean
   sandbox: string
@@ -55,6 +57,18 @@ export type RemoteSession = {
   pendingApprovals?: Array<Record<string, unknown>>
   pendingAsks?: Array<Record<string, unknown>>
   lastSeq?: number
+  /** The isolated checkout the session works in, when it has one (P2). */
+  worktree?: RemoteWorktreeSummary | null
+  worktreeDiscarded?: boolean
+}
+
+export type RemoteWorktreeSummary = {
+  path: string
+  branch: string
+  baseBranch: string | null
+  baseSha: string
+  /** The repository the changes are proposed to; proposals are listed by it. */
+  sourceRoot: string
 }
 
 export type RemoteTranscript = RemoteSession & {
@@ -82,6 +96,7 @@ export function parseRunnerInfo(raw: unknown): RunnerInfo {
     agent: v.agent === true,
     runsSessions: v.runsSessions === true,
     runsChecks: v.runsChecks === true,
+    runsWorktrees: v.runsWorktrees === true,
     runRequested: v.runRequested === true,
     runnerPlanned: v.runnerPlanned === true,
     sandbox: typeof v.sandbox === 'string' ? v.sandbox : 'unknown',
@@ -249,10 +264,21 @@ export type CreatedRun = {
   mode?: string
   status: string
   lastSeq: number
+  worktree?: Record<string, unknown> | null
 }
 
 export function createRun(
-  input: { folder: string; access?: RunAccess; mode?: string; model?: string; title?: string },
+  input: {
+    folder: string
+    access?: RunAccess
+    mode?: string
+    model?: string
+    title?: string
+    /** Omitted: isolated when the session may write and the folder is a git repository. */
+    worktree?: boolean
+    /** A branch to start the isolated checkout from. */
+    base?: string
+  },
   fetchImpl: FetchLike = defaultFetch()
 ): Promise<CreatedRun> {
   return rpc<CreatedRun>('agent_run_create', input, fetchImpl)
@@ -310,6 +336,108 @@ export function setRunModel(id: string, model: string, fetchImpl: FetchLike = de
 
 export function setRunAccess(id: string, access: RunAccess, fetchImpl: FetchLike = defaultFetch()) {
   return rpc<{ access: string }>('agent_run_set_mode', { id, access }, fetchImpl)
+}
+
+// ---------------------------------------------------------------------------
+// P2: a session's worktree. Every command names the session, never a path.
+// ---------------------------------------------------------------------------
+
+export type WorktreeStateWord =
+  | 'ready'
+  | 'missing'
+  | 'corrupt'
+  | 'branch-moved'
+  | 'identity-changed'
+
+export type RemoteWorktreeState = {
+  state: WorktreeStateWord
+  worktree: {
+    path: string
+    branch: string
+    baseBranch: string | null
+    baseSha: string
+    sourceRoot: string
+  }
+  project: string
+}
+
+export type MergeOutcome = {
+  merged: boolean
+  fastForward: boolean
+  alreadyMerged: boolean
+  target: string
+  newTip: string | null
+  conflicts: string[]
+  committedPending: boolean
+}
+
+export function worktreeState(id: string, fetchImpl: FetchLike = defaultFetch()) {
+  return rpc<RemoteWorktreeState>('agent_worktree_state', { id }, fetchImpl)
+}
+
+/** Files the worktree holds that are not committed. */
+export async function worktreePending(
+  id: string,
+  fetchImpl: FetchLike = defaultFetch()
+): Promise<string[]> {
+  const out = await rpc<{ files?: string[] }>('agent_worktree_pending', { id }, fetchImpl)
+  return strings(out?.files)
+}
+
+/** Commits on the session's branch its base branch does not have. */
+export async function worktreeUnmerged(
+  id: string,
+  fetchImpl: FetchLike = defaultFetch()
+): Promise<string[]> {
+  const out = await rpc<{ commits?: string[] }>('agent_worktree_unmerged', { id }, fetchImpl)
+  return strings(out?.commits)
+}
+
+export function commitWorktree(
+  id: string,
+  message?: string,
+  fetchImpl: FetchLike = defaultFetch()
+) {
+  return rpc<{ committed: boolean }>('agent_worktree_commit_pending', { id, message }, fetchImpl)
+}
+
+/** Merge into the base branch (or `target`). Uncommitted work refuses unless `commitMessage` is given. */
+export function mergeWorktree(
+  id: string,
+  options: { target?: string; commitMessage?: string } = {},
+  fetchImpl: FetchLike = defaultFetch()
+) {
+  return rpc<MergeOutcome>('agent_worktree_merge', { id, ...options }, fetchImpl)
+}
+
+/** Remove the checkout and its branch. Refuses unmerged or uncommitted work unless `force`. */
+export function discardWorktree(
+  id: string,
+  force = false,
+  fetchImpl: FetchLike = defaultFetch()
+) {
+  return rpc<{ discarded: boolean }>('agent_worktree_discard', { id, force }, fetchImpl)
+}
+
+export function renameWorktree(id: string, title: string, fetchImpl: FetchLike = defaultFetch()) {
+  return rpc<{ worktree: RemoteWorktreeState['worktree'] }>(
+    'agent_worktree_rename',
+    { id, title },
+    fetchImpl
+  )
+}
+
+/** Flint's worktrees of the repository at `project` (a folder inside a root). */
+export async function listWorktrees(
+  project: string,
+  fetchImpl: FetchLike = defaultFetch()
+): Promise<Array<Record<string, unknown>>> {
+  const out = await rpc<{ worktrees?: Array<Record<string, unknown>> }>(
+    'agent_worktree_list',
+    { project },
+    fetchImpl
+  )
+  return Array.isArray(out?.worktrees) ? out.worktrees : []
 }
 
 export type ServerFolder = { name: string; path: string; git: boolean }

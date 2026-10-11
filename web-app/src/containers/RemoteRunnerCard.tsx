@@ -28,6 +28,11 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
   const [entries, setEntries] = useState<ServerFolder[]>([])
   const [access, setAccess] = useState<RunAccess>('ask')
   const [busy, setBusy] = useState(false)
+  // Whether the folder in view is a git repository, and whether this session
+  // may work in its own checkout of it (the server's default for a session
+  // that can write; "off" is the explicit opt-out).
+  const [isGit, setIsGit] = useState(false)
+  const [isolate, setIsolate] = useState(true)
 
   useEffect(() => {
     let live = true
@@ -47,7 +52,11 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
     if (!path) return
     setBusy(true)
     try {
-      await startRemoteSession({ folder: path, access })
+      await startRemoteSession({
+        folder: path,
+        access,
+        ...(isGit && info.runsWorktrees && !isolate ? { worktree: false } : {}),
+      })
       void navigate({ to: route.cowork })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
@@ -64,14 +73,28 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
       <ul className="max-h-40 space-y-1 overflow-auto text-xs">
         {path && (
           <li>
-            <button type="button" className="underline" onClick={() => setPath(parent)}>
+            <button
+              type="button"
+              className="underline"
+              onClick={() => {
+                setPath(parent)
+                setIsGit(false)
+              }}
+            >
               Up
             </button>
           </li>
         )}
         {entries.map((entry) => (
           <li key={entry.path}>
-            <button type="button" className="underline" onClick={() => setPath(entry.path)}>
+            <button
+              type="button"
+              className="underline"
+              onClick={() => {
+                setPath(entry.path)
+                setIsGit(entry.git)
+              }}
+            >
               {entry.name}
             </button>
             {entry.git && <span className="ml-1 text-muted-foreground">git</span>}
@@ -93,6 +116,17 @@ function RunOnServer({ info }: { info: RunnerInfo }) {
           Run on server
         </Button>
       </div>
+      {isGit && info.runsWorktrees && access !== 'read' && (
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={isolate}
+            onChange={(e) => setIsolate(e.target.checked)}
+            data-testid="run-on-server-isolate"
+          />
+          Work in its own checkout (changes reach the folder only when you apply or merge them)
+        </label>
+      )}
     </div>
   )
 }
@@ -150,7 +184,10 @@ export function RemoteRunnerCard() {
             {sessions.map((s) => (
               <li key={s.id} className="flex justify-between gap-2">
                 <span className="truncate">{s.title}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">{s.status}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {s.worktree && !s.worktreeDiscarded ? s.worktree.branch + ' · ' : ''}
+                  {s.status}
+                </span>
               </li>
             ))}
           </ul>

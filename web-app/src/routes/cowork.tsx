@@ -515,6 +515,7 @@ import {
 } from '@/lib/coworkRunner'
 import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
 import { isRemoteSession, sendRemoteTurn, useRemoteCowork } from '@/lib/remoteCowork'
+import { RemoteWorktreePanel } from '@/components/server/RemoteWorktreePanel'
 import { notifyAnswerFinished } from '@/lib/completionSound'
 import {
   listSubagents,
@@ -6563,6 +6564,10 @@ export function CoworkPage() {
                   session={session.id}
                   onApplied={() => git.refresh()}
                 />
+              ) : null}
+              {/* A server session's own checkout: merge, discard, review. */}
+              {session?.id && session.remote ? (
+                <RemoteWorktreePanel sessionId={session.id} />
               ) : null}
               {/* AH-109: each isolated team child's worktree, for review. */}
               {folder && session?.id ? (
