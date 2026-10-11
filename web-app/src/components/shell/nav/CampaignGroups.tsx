@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronRight, Workflow } from 'lucide-react'
+import { StatusDot } from '@/components/campaign/StatusDot'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { route } from '@/constants/routes'
 import { cn } from '@/lib/utils'
@@ -75,6 +76,10 @@ export function CampaignGroups({
               >
                 <Workflow aria-hidden className="size-3.5 shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{group.title}</span>
+                <StatusDot
+                  dot={group.dot}
+                  className={group.attention ? 'motion-safe:animate-pulse' : undefined}
+                />
                 <span
                   className="shrink-0 font-normal tabular-nums"
                   data-testid="campaign-group-progress"
