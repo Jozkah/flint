@@ -103,7 +103,7 @@ jobs:
             exit 1
           fi
           echo "app: $app"
-          plutil -p "$app/Info.plist" | head -40
+          plutil -p "$app/Info.plist"
           rm -rf ipa && mkdir -p ipa/Payload
           cp -R "$app" ipa/Payload/
           (cd ipa && zip -qry ../Flint-unsigned.ipa Payload)

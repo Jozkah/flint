@@ -7,6 +7,9 @@
   <!-- Shown by macOS when voice input first asks to use the microphone. -->
   <key>NSMicrophoneUsageDescription</key>
   <string>Flint uses the microphone only while you dictate a message, and turns your speech into text on this computer.</string>
+  <!-- Shown by iOS the first time the phone app opens a connection to a computer on the local network. -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Flint connects to Flint running on your computer over your local network.</string>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
