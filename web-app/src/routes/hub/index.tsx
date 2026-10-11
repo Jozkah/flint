@@ -31,6 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { HuggingFaceAvatar } from '@/containers/HuggingFaceAvatar'
 import { Segmented } from '@/components/ui/segmented'
 import { HuggingFaceLogo } from '@/components/icons/HuggingFaceLogo'
+import { HubVariantList } from '@/containers/HubVariantList'
 import { HubTaskChips } from '@/containers/HubTaskChips'
 import { matchesTask, type HubTaskId } from '@/lib/hubTasks'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -361,8 +362,16 @@ function ModelDiscoverRoute() {
 
   const toggleExpanded = async (repo: string) => {
     const opening = !expanded[repo]
-    setExpanded((state) => ({ ...state, [repo]: opening }))
+    // One card open at a time, so long variant lists never stack.
+    setExpanded(opening ? { [repo]: true } : {})
     if (!opening) return
+    const index = visible.findIndex((m) => m.id === repo)
+    if (index >= 0) {
+      window.setTimeout(
+        () => rowVirtualizer.scrollToIndex(index, { align: 'auto' }),
+        60
+      )
+    }
     const files = await loadFiles(repo).catch(() => [] as HuggingFaceFile[])
     // The model's own header gives its context memory exactly; until it
     // arrives (or if it cannot be read) the estimate stands.
@@ -787,6 +796,7 @@ function ModelDiscoverRoute() {
                               variant="ghost"
                               size="sm"
                               onClick={() => void toggleExpanded(model.id)}
+                              aria-expanded={opened}
                               title={opened ? 'Hide variants' : 'Show variants'}
                             >
                               <FileCode2 className="size-3.5" />
@@ -840,8 +850,10 @@ function ModelDiscoverRoute() {
                               No downloadable GGUF variants were found in this repository.
                             </p>
                           ) : (
-                            <div className="space-y-1">
-                              {variants.map((group) => {
+                            <HubVariantList
+                              variants={variants}
+                              recommendedId={recommended?.id}
+                              renderRow={(group) => {
                                 const fit = fitOfGroup(group, groups, fitContext)
                                 const isRecommended = recommended?.id === group.id
                                 return (
@@ -861,7 +873,7 @@ function ModelDiscoverRoute() {
                                         </span>
                                         {isRecommended && (
                                           <Chip tone="info">
-                                            <Sparkles /> Recommended
+                                            <Sparkles /> Recommended for this computer
                                           </Chip>
                                         )}
                                         <span className="text-xs text-muted-foreground tabular-nums">
@@ -897,8 +909,8 @@ function ModelDiscoverRoute() {
                                     </div>
                                   </div>
                                 )
-                              })}
-                            </div>
+                              }}
+                            />
                           )}
                         </div>
                       )}
