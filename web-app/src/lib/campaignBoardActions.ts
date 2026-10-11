@@ -9,15 +9,31 @@
  */
 import type { CampaignApi } from '@/lib/campaignApi'
 import type { Campaign } from '@/lib/campaignModel'
-import { taskActionsOf } from '@/lib/campaignView'
+import { dependantsOf, taskActionsOf } from '@/lib/campaignView'
 import { messageIdOf } from '@/lib/campaignNotes'
 import { retryHintDetail } from '@/lib/campaignSeed'
+
+/**
+ * Backend commands that arrive with the campaign recovery work. Each one is
+ * used when the api has it; the board says so plainly when it does not.
+ */
+export type RecoveryApi = Partial<{
+  /** Run the final build and test check again on the integration branch. */
+  retryGate: (id: string) => Promise<unknown>
+  /** Create the repair task for a failed final check. */
+  repairGate: (id: string) => Promise<unknown>
+  /** Skip a task and everything that waits on it. */
+  skipCascade: (id: string, taskId: string) => Promise<unknown>
+  /** Let the tasks that wait on a skipped task run without it. */
+  releaseDependants: (id: string, taskId: string) => Promise<unknown>
+}>
 
 export type BoardDeps = {
   api: Pick<
     CampaignApi,
     'get' | 'transition' | 'context' | 'gatePlan' | 'finalize' | 'refresh'
-  >
+  > &
+    RecoveryApi
   runner: {
     kick: (id: string) => Promise<unknown>
     cancel: (id: string, detail?: string) => Promise<Campaign>
@@ -197,6 +213,67 @@ export function createBoardActions(deps: BoardDeps) {
     return { ok: true }
   }
 
+  /**
+   * "Skip this too": skips the task and every task that waits on it, so
+   * nothing is left waiting for work that will never merge.
+   */
+  const skipCascade = async (id: string, taskId: string): Promise<ActionResult> => {
+    if (deps.api.skipCascade) {
+      await deps.api.skipCascade(id, taskId)
+      await deps.runner.kick(id)
+      return { ok: true }
+    }
+    const { c, task } = await taskOf(id, taskId)
+    if (!task) return fail(`no task ${taskId}`)
+    if (task.status !== 'cancelled') {
+      const can = taskActionsOf(task)
+      if (!can.skip && !can.stop) {
+        return fail(`task ${taskId} is ${task.status} and cannot be skipped`)
+      }
+      await deps.api.transition(id, { task: { id: taskId, to: 'cancelled' } })
+    }
+    for (const t of dependantsOf(taskId, c.tasks)) {
+      await deps.api.transition(id, { task: { id: t.id, to: 'cancelled' } })
+    }
+    await deps.runner.kick(id)
+    return { ok: true }
+  }
+
+  /**
+   * "Run without it": the tasks that waited on a skipped task stop waiting
+   * for it and start.
+   */
+  const releaseDependants = async (
+    id: string,
+    taskId: string
+  ): Promise<ActionResult> => {
+    if (!deps.api.releaseDependants) {
+      return fail('this version cannot run a task without the one it waited for')
+    }
+    await deps.api.releaseDependants(id, taskId)
+    await deps.runner.kick(id)
+    return { ok: true }
+  }
+
+  /** "Run checks again": the final build and test check, once more. */
+  const retryGate = async (id: string): Promise<ActionResult> => {
+    if (!deps.api.retryGate) {
+      return fail('this version cannot run the checks again from here')
+    }
+    await deps.api.retryGate(id)
+    return { ok: true }
+  }
+
+  /** "Fix it automatically": a repair task for what the final check found. */
+  const fixChecks = async (id: string): Promise<ActionResult> => {
+    if (!deps.api.repairGate) {
+      return fail('this version cannot start the repair from here')
+    }
+    await deps.api.repairGate(id)
+    await deps.runner.kick(id)
+    return { ok: true }
+  }
+
   const handoff = async (id: string, taskId: string): Promise<string> => {
     const ctx = await deps.api.context(id, [taskId])
     return ctx.handoffs.find((h) => h.taskId === taskId)?.text ?? ''
@@ -241,6 +318,10 @@ export function createBoardActions(deps: BoardDeps) {
     sendNote,
     stopTask,
     skipTask,
+    skipCascade,
+    releaseDependants,
+    retryGate,
+    fixChecks,
     retryTask,
     verifyAgain,
     acceptAnyway,

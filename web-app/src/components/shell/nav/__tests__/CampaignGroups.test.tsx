@@ -52,7 +52,7 @@ describe('CampaignGroups', () => {
         <CampaignGroups groups={[group]} renderRow={() => null} />
       </ul>
     )
-    fireEvent.click(screen.getByTitle('settings:campaigns.board.openBoard'))
+    fireEvent.click(screen.getByTitle(/openBoard/))
     expect(navigate).toHaveBeenCalledWith({
       to: '/campaign/$campaignId',
       params: { campaignId: 'c1' },
