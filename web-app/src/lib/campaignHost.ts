@@ -26,6 +26,9 @@ import { pushNotice } from '@/lib/coworkRunNotices'
 import { abortRun } from '@/lib/coworkRunner'
 import { executeAgentTool } from '@/lib/agentTools'
 import { campaignApi } from '@/lib/campaignApi'
+import { accountPanes } from '@/lib/campaignPanes'
+import { useCampaignResumed } from '@/hooks/useCampaignResumed'
+import { useCampaignNotes } from '@/lib/campaignNotes'
 import {
   createCampaignRunner,
   parseModel,
@@ -39,16 +42,34 @@ import { errorText } from '@/lib/errorText'
 const dataFolder = async (): Promise<string> =>
   (await getServiceHub().app().getJanDataFolder()) ?? ''
 
+/** When this process opened each task's pane: a start in flight is not idle. */
+const openedAt = new Map<string, number>()
+const PANE_START_GRACE_MS = 30_000
+
+function paneAccounting(busy?: ReadonlySet<string>) {
+  const { panes, maxPanes } = useSplitConversation.getState()
+  const sessions = useCoworkSessions.getState().sessions
+  const queue = useMessageQueue.getState()
+  const t = Date.now()
+  const recent = new Set(
+    [...openedAt].filter(([, at]) => t - at < PANE_START_GRACE_MS).map(([s]) => s)
+  )
+  return accountPanes({
+    panes,
+    maxPanes,
+    liveSessions: new Set(Object.keys(useCoworkRun.getState().runs)),
+    isTaskSession: (sid) =>
+      sessions.find((s) => s.id === sid)?.campaign?.role === 'task',
+    hasQueued: (sid) => queue.getQueue(sid).length > 0,
+    busy: new Set([...(busy ?? []), ...recent]),
+  })
+}
+
 export function createRunnerHost(): RunnerHost {
   return {
     maxParallel: () => useCampaignSettings.getState().maxParallel,
     liveSessions: () => new Set(Object.keys(useCoworkRun.getState().runs)),
-    freePanes: () => {
-      const { panes, maxPanes } = useSplitConversation.getState()
-      // The main pane is not one of `panes`; an empty pane can take a session.
-      const empty = panes.filter((p) => !p.refId).length
-      return Math.max(0, maxPanes - 1 - panes.length + empty)
-    },
+    freePanes: (busy) => paneAccounting(busy).free,
     dataFolder,
     linkOf: (sid) =>
       useCoworkSessions.getState().sessions.find((s) => s.id === sid)?.campaign,
@@ -80,8 +101,21 @@ export function createRunnerHost(): RunnerHost {
       return id
     },
     deleteSession: (sid) => useCoworkSessions.getState().deleteSession(sid),
-    openPane: (sid) =>
-      useSplitConversation.getState().addPane({ kind: 'cowork', refId: sid }),
+    openPane: (sid) => {
+      const split = useSplitConversation.getState()
+      const target = { kind: 'cowork' as const, refId: sid }
+      let result = split.addPane(target)
+      if (result === 'full') {
+        // Recycle a pane that only shows a finished campaign task, then retry.
+        const victim = paneAccounting().recyclable[0]
+        if (victim) {
+          useSplitConversation.getState().closePane(victim)
+          result = useSplitConversation.getState().addPane(target)
+        }
+      }
+      if (result !== 'full') openedAt.set(sid, Date.now())
+      return result
+    },
     ensureWorktree: (sid, project, folder, options) =>
       useCoworkWorktrees.getState().ensure(sid, project, folder, options),
     attachWorktree: async (sid, path, folder) => {
@@ -323,7 +357,11 @@ export function startCampaignRunner(): () => void {
           await campaignApi.refresh(c.id).catch(() => undefined)
         }
         if (c.status === 'running' || c.status === 'interrupted') {
-          await r.resume(c.id).catch(() => undefined)
+          const out = await r.resume(c.id).catch(() => undefined)
+          // Interrupted tasks restart on their own; the board says so.
+          if (out?.resumed?.length) {
+            useCampaignResumed.getState().record(c.id, out.resumed)
+          }
         }
         await r.repushNotices(c.id).catch(() => undefined)
       }
@@ -348,5 +386,11 @@ export function createLiveBoardActions() {
     sendMessage: createToolDeps(r).sendMessage,
     abortRun: (sid) => abortRun(sid, 'cancelled'),
     liveSessions: () => new Set(Object.keys(useCoworkRun.getState().runs)),
+    noteSent: (campaignId, taskId, sessionId, messageId) =>
+      useCampaignNotes.getState().record(campaignId, taskId, sessionId, messageId),
   })
 }
+
+/** Re-read which notes the task runs have taken in (the board polls this). */
+export const checkNoteDelivery = () =>
+  useCampaignNotes.getState().settle((sid) => sessionMailbox.pending(sid))

@@ -1029,3 +1029,57 @@ export function CoworkSplitWorkspace({ children }: { children: ReactNode }) {
   )
   return <SplitWorkspace primary={primary}>{() => children}</SplitWorkspace>
 }
+
+/**
+ * Keeps the runs of Cowork panes going while another route is on screen.
+ *
+ * A Cowork run is driven by the Cowork page of its session, so it only
+ * progresses while that page is mounted. The campaign board is a different
+ * route, so without this a task opened in a pane would sit "running" with no
+ * run until the user went back to Cowork. This mounts the same page for every
+ * Cowork pane (and the current session when it belongs to a campaign), hidden.
+ * Only the campaign route mounts it, never beside the real Cowork route, so a
+ * session is never driven twice.
+ */
+export function CoworkRunHost() {
+  const panes = useSplitConversation((s) => s.panes)
+  const currentId = useCoworkSessions((s) => s.currentId)
+  const currentIsCampaign = useCoworkSessions((s) =>
+    s.sessions.some((x) => x.id === s.currentId && !!x.campaign)
+  )
+  const targets = useMemo(() => {
+    const out: { key: string; paneId: SplitPaneId; sessionId: string }[] = []
+    const seen = new Set<string>()
+    for (const p of panes) {
+      if (p.kind !== 'cowork' || !p.refId || seen.has(p.refId)) continue
+      seen.add(p.refId)
+      out.push({ key: p.id, paneId: p.id, sessionId: p.refId })
+    }
+    if (currentIsCampaign && currentId && !seen.has(currentId)) {
+      out.push({
+        key: `host-primary-${currentId}`,
+        paneId: PRIMARY_PANE,
+        sessionId: currentId,
+      })
+    }
+    return out
+  }, [panes, currentId, currentIsCampaign])
+  if (targets.length === 0) return null
+  return (
+    <div
+      hidden
+      aria-hidden
+      data-testid="cowork-run-host"
+      className="pointer-events-none fixed size-0 overflow-hidden"
+    >
+      {targets.map((t) => (
+        <CoworkPane
+          key={t.key}
+          paneId={t.paneId}
+          sessionId={t.sessionId}
+          isActive={false}
+        />
+      ))}
+    </div>
+  )
+}

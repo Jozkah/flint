@@ -44,8 +44,12 @@ export type RunnerHost = {
   maxParallel: () => number
   /** Session ids with a run in progress. */
   liveSessions: () => ReadonlySet<string>
-  /** Panes that may still be opened. */
-  freePanes: () => number
+  /**
+   * Panes new work may use. `busy` names the sessions of this campaign's
+   * live-status tasks: their panes are occupied even before a run shows.
+   * Panes of settled tasks and of other campaigns' idle tasks count as free.
+   */
+  freePanes: (busy?: ReadonlySet<string>) => number
   dataFolder: () => Promise<string>
   /** The session's campaign pointer, if it has one. */
   linkOf: (sessionId: string) => CampaignLink | undefined
@@ -126,7 +130,12 @@ export type RunnerHost = {
 /** How long after starting a task its run may take to appear before the pane is judged closed. */
 export const START_GRACE_MS = 15_000
 
-export type RunnerResult = { started: string[]; blocked: string[] }
+export type RunnerResult = {
+  started: string[]
+  blocked: string[]
+  /** Tasks an earlier process left interrupted that this resume queued again. */
+  resumed?: string[]
+}
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}...` : s)
 
@@ -340,9 +349,16 @@ export function createCampaignRunner(
         )
       }
     }
+    // Panes of live-status tasks are occupied even before a run shows; every
+    // other task pane (settled, or another campaign's idle one) is recycled.
+    const busy = new Set(
+      c.tasks
+        .filter((t) => t.sessionId && isLiveTask(t.status))
+        .map((t) => t.sessionId as string)
+    )
     const actions = nextActions(
       counted,
-      { liveTasks, freePanes: host.freePanes() },
+      { liveTasks, freePanes: host.freePanes(busy) },
       host.maxParallel()
     )
     for (const a of actions) {
@@ -717,14 +733,16 @@ export function createCampaignRunner(
         return { started: [], blocked: [] }
       }
       const fresh = await api.get(id)
+      const resumed: string[] = []
       for (const t of fresh.tasks) {
         if (t.status === 'interrupted') {
           await api
             .transition(id, { task: { id: t.id, to: 'queued' } })
+            .then(() => resumed.push(t.id))
             .catch(() => undefined)
         }
       }
-      return tick(id)
+      return { ...(await tick(id)), resumed }
     })
 
   /**

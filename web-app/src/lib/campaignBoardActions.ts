@@ -10,6 +10,7 @@
 import type { CampaignApi } from '@/lib/campaignApi'
 import type { Campaign } from '@/lib/campaignModel'
 import { taskActionsOf } from '@/lib/campaignView'
+import { messageIdOf } from '@/lib/campaignNotes'
 
 export type BoardDeps = {
   api: Pick<
@@ -29,6 +30,13 @@ export type BoardDeps = {
   ) => Promise<{ ok: true; output: string } | { ok: false; error: string }>
   abortRun: (sessionId: string) => void
   liveSessions: () => Set<string>
+  /** A note left the board: remember it so the card can show it arriving. */
+  noteSent?: (
+    campaignId: string,
+    taskId: string,
+    sessionId: string,
+    messageId: string
+  ) => void
 }
 
 export type ActionResult = { ok: true; note?: string } | { ok: false; error: string }
@@ -54,7 +62,10 @@ export function createBoardActions(deps: BoardDeps) {
       return fail(`task ${taskId} is ${task.status}, so there is nothing to steer`)
     }
     const sent = await deps.sendMessage(c.coordinatorSession, task.sessionId, note)
-    return sent.ok ? { ok: true, note: sent.output } : fail(sent.error)
+    if (!sent.ok) return fail(sent.error)
+    const messageId = messageIdOf(sent.output)
+    if (messageId) deps.noteSent?.(c.id, taskId, task.sessionId, messageId)
+    return { ok: true, note: sent.output }
   }
 
   /**

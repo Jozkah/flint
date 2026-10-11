@@ -378,6 +378,8 @@ describe('campaign runner: restart and cancel', () => {
     const res = await f.runner.resume('c1')
     expect(f.current().status).toBe('running')
     expect(res.started.sort()).toEqual(['a', 'b'])
+    // The restart's auto-resume is reported so the board can say so.
+    expect(res.resumed).toEqual(['a'])
     const a = f.current().tasks[0]
     expect(a.status).toBe('running')
     expect(a.sessionId).toBe('sess-old')
