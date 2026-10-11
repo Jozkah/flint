@@ -29,5 +29,11 @@ if (!html.includes(CONNECT)) {
   process.exit(1)
 }
 html = html.replace(CONNECT, `${CONNECT} http://127.0.0.1:*`)
+// Visible until React renders: a blank screen cannot tell "page did not load"
+// from "script threw", this can.
+html = html.replace(
+  '<div id="root"></div>',
+  '<div id="root"><p id="boot" style="font:16px -apple-system,sans-serif;text-align:center;margin-top:30vh;color:#888">Starting Flint…</p></div>'
+)
 writeFileSync(join(out, 'index.html'), html)
 console.log(`build-ios-shell: wrote ${out}`)

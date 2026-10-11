@@ -144,6 +144,9 @@ tauri-app = [
     "tauri-plugin-agent-tools/tauri",
 ]
 mobile = [
+    # Without it tauri-build marks the build `dev` and the webview looks for a dev
+    # server instead of the bundled frontend (a black screen on a phone).
+    "tauri/custom-protocol",
     "tauri/protocol-asset",
     "tauri/test",
     "tauri/wry",

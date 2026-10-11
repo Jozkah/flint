@@ -104,6 +104,8 @@ jobs:
           mkdir -p shots
           xcrun simctl io "$udid" screenshot shots/connect.png
           xcrun simctl spawn "$udid" launchctl list | grep -i "$bundle" || true
+          xcrun simctl spawn "$udid" log show --style compact --last 3m --predicate 'process == "Flint"' > shots/app.log 2>&1 || true
+          wc -l shots/app.log; tail -60 shots/app.log | cut -c1-240
           echo "udid=$udid" >> "$GITHUB_ENV"
           echo "bundle=$bundle" >> "$GITHUB_ENV"
 
