@@ -31,7 +31,14 @@ import {
   type HeadlineKind,
   type StepGroup,
 } from '@/lib/campaignStory'
-import { dotOf, groupOf, taskActionsOf, wordOf } from '@/lib/campaignView'
+import {
+  dotOf,
+  groupOf,
+  recoveryOf,
+  taskActionsOf,
+  wordOf,
+} from '@/lib/campaignView'
+import { NEEDS_HELP_HINT, isNeedsHelp } from '@/lib/campaignHelp'
 import type { CampaignTask } from '@/lib/campaignModel'
 import { cn } from '@/lib/utils'
 
@@ -43,6 +50,8 @@ export type TaskRowAction =
   | 'skip'
   | 'handoff'
   | 'diff'
+  | 'verify'
+  | 'accept'
 
 const MAX_GROUPS_SHOWN = 12
 
@@ -132,7 +141,15 @@ export function TaskRow({
   const { t } = useTranslation()
   const [story, setStory] = useState(defaultOpen ?? false)
   const [open, setOpen] = useState(false)
-  const [hint, setHint] = useState('')
+  const needsHelp = isNeedsHelp(task)
+  // A task that needs help comes with the hint that gets it past the block.
+  const [hint, setHint] = useState(needsHelp ? NEEDS_HELP_HINT : '')
+  const [accepting, setAccepting] = useState(false)
+  const [acceptReason, setAcceptReason] = useState('')
+  const recovery = recoveryOf(task, all)
+  const blockedTitles = (recovery?.blocks ?? [])
+    .map((id) => all.find((x) => x.id === id)?.title)
+    .filter((x): x is string => !!x)
   const can = taskActionsOf(task)
   const { word, waitingFor } = wordOf(task, all)
   const summary = useTaskDiffSummary(campaignId, task, loadSummary)
@@ -238,7 +255,11 @@ export function TaskRow({
     return <SquareTerminal aria-hidden className={cls} />
   }
 
-  const reason = failure?.error || (failed || stuck ? task.detail : '')
+  const reason = recovery
+    ? recovery.reason
+    : needsHelp
+      ? task.detail
+      : failure?.error || (failed || stuck ? task.detail : '')
   const stuckBox = stuck ? (
     <div
       data-testid={`campaign-stuck-${task.id}`}
@@ -255,7 +276,17 @@ export function TaskRow({
       <p className="text-xs text-foreground">
         {t(`settings:campaigns.board.story.next.${next}`)}
       </p>
-      {next === 'retry' && (
+      {blockedTitles.length > 0 && (
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid={`campaign-blocks-${task.id}`}
+        >
+          {t('settings:campaigns.board.recovery.blocks', {
+            tasks: blockedTitles.join(', '),
+          })}
+        </p>
+      )}
+      {(next === 'retry' || next === 'help') && (
         <Textarea
           value={hint}
           onChange={(e) => setHint(e.target.value)}
@@ -267,18 +298,78 @@ export function TaskRow({
           className="min-h-0 text-xs"
         />
       )}
+      {accepting && (
+        <div
+          className="flex flex-col gap-1.5"
+          data-testid={`campaign-accept-form-${task.id}`}
+        >
+          <label className="text-xs text-foreground" htmlFor={`accept-${task.id}`}>
+            {t('settings:campaigns.board.recovery.acceptWhy')}
+          </label>
+          <input
+            id={`accept-${task.id}`}
+            value={acceptReason}
+            maxLength={200}
+            onChange={(e) => setAcceptReason(e.target.value)}
+            className="h-8 rounded-md border-[0.8px] border-border bg-background px-2 text-xs"
+            data-testid={`campaign-accept-reason-${task.id}`}
+          />
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              disabled={busy}
+              data-testid={`campaign-accept-confirm-${task.id}`}
+              onClick={() => {
+                onAction('accept', task, acceptReason.trim() || undefined)
+                setAccepting(false)
+                setAcceptReason('')
+              }}
+            >
+              {t('settings:campaigns.board.recovery.acceptConfirm')}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setAccepting(false)}
+            >
+              {t('common:cancel')}
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1">
+        {can.verify && recovery && (
+          <Button
+            size="sm"
+            disabled={busy}
+            data-testid={`campaign-verify-${task.id}`}
+            onClick={() => onAction('verify', task)}
+          >
+            {t('settings:campaigns.board.recovery.checkAgain')}
+          </Button>
+        )}
+        {can.accept && !accepting && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            data-testid={`campaign-accept-${task.id}`}
+            onClick={() => setAccepting(true)}
+          >
+            {t('settings:campaigns.board.recovery.accept')}
+          </Button>
+        )}
         {can.retry && (
           <Button
             size="sm"
-            variant={next === 'retry' ? 'default' : 'ghost'}
+            variant={next === 'retry' || next === 'help' ? 'default' : 'ghost'}
             disabled={busy}
             onClick={() => onAction('retry', task, hint.trim() || undefined)}
           >
             {t('settings:campaigns.board.action.retry')}
           </Button>
         )}
-        {can.skip && failed && (
+        {can.skip && (failed || recovery) && (
           <Button
             variant="ghost"
             size="sm"
@@ -359,6 +450,18 @@ export function TaskRow({
         {!stuck && failed && task.detail ? (
           <p className="line-clamp-2 pl-8 text-xs text-muted-foreground">
             {task.detail}
+          </p>
+        ) : null}
+        {task.manualOverride ? (
+          <p
+            className="pl-8 text-xs text-muted-foreground"
+            data-testid={`campaign-override-${task.id}`}
+          >
+            {task.manualOverride.reason
+              ? t('settings:campaigns.board.recovery.acceptedWhy', {
+                  reason: task.manualOverride.reason,
+                })
+              : t('settings:campaigns.board.recovery.accepted')}
           </p>
         ) : null}
         {note ? (
@@ -528,7 +631,7 @@ export function TaskRow({
                 {t('settings:campaigns.board.action.handoff')}
               </Button>
             )}
-            {can.skip && !failed && (
+            {can.skip && !failed && !recovery && (
               <Button
                 variant="ghost"
                 size="sm"

@@ -21,15 +21,18 @@ export type NeedsHelp = {
 
 const TEST_RUNNER = /test runner cannot start in the sandbox/i
 
+/** The retry hint the board offers for a task that needs help. */
+export const NEEDS_HELP_HINT =
+  'Do not run `node --test` the plain way here: its per-file child ' +
+  'processes cannot start in the sandbox. Run the tests in this process with ' +
+  '`node --test --test-isolation=none <files>` (or one file with `node <file>`), ' +
+  'and if that is not enough, say which command the user should run.'
+
 /** What a stopped run's notice says it needs, or `null` for an ordinary stop. */
 export function needsHelpFrom(errorText: string | undefined): NeedsHelp | null {
   if (!errorText || !TEST_RUNNER.test(errorText)) return null
   const shell = errorText.match(/\(shell: ([^)]+)\)/)?.[1]
-  const hint =
-    'Do not run `node --test` the plain way here: its per-file child ' +
-    'processes cannot start in the sandbox. Run the tests in this process with ' +
-    '`node --test --test-isolation=none <files>` (or one file with `node <file>`), ' +
-    'and if that is not enough, say which command the user should run.'
+  const hint = NEEDS_HELP_HINT
   return {
     detail:
       `${NEEDS_HELP_PREFIX} the test runner cannot start in the sandbox` +

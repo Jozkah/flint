@@ -236,6 +236,14 @@ export function CampaignBoard({
       case 'skip':
         void run(() => actions.skipTask(campaign.id, task.id))
         return
+      case 'verify':
+        void run(() => actions.verifyAgain(campaign.id, task.id))
+        return
+      case 'accept':
+        void run(() =>
+          actions.acceptAnyway(campaign.id, task.id, 'you', hint)
+        )
+        return
     }
   }
 

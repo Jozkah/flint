@@ -1046,7 +1046,8 @@
           "queued": "Starts as soon as there is room.",
           "needsInput": "Paused: it asked you a question.",
           "needsApproval": "Paused: it needs your approval to go on.",
-          "skipped": "Skipped."
+          "skipped": "Skipped.",
+          "verifyBlocked": "Finished, but the check could not tell whether it is right."
         },
         "took": "Took {{time}}",
         "running": "Running for {{time}}",
@@ -1074,7 +1075,9 @@
           "conflict": "Open the conversation and ask it to rebuild on the latest results, or skip it.",
           "open": "It has used its retries. Open the conversation to see where it got stuck, or skip it.",
           "answer": "Open the conversation and answer its question.",
-          "approve": "Open the conversation and approve or deny the request."
+          "approve": "Open the conversation and approve or deny the request.",
+          "verify": "Check it again, or accept it yourself if you can see it is fine.",
+          "help": "This needs a different approach. The suggested hint is filled in; change it if you like and retry."
         },
         "hintLabel": "Tell it what to do differently",
         "openConversation": "Open conversation"
@@ -1106,7 +1109,16 @@
           "lines": "Lines changed"
         }
       },
-      "effort": "About {{percent}}% of the work is done"
+      "effort": "About {{percent}}% of the work is done",
+      "recovery": {
+        "checkAgain": "Check again",
+        "accept": "Accept anyway",
+        "acceptWhy": "Why is it fine to accept? One line, kept with the task.",
+        "acceptConfirm": "Accept it",
+        "accepted": "Accepted by you",
+        "acceptedWhy": "Accepted by you: {{reason}}",
+        "blocks": "Waiting on this: {{tasks}}."
+      }
     },
     "changes": {
       "loading": "Looking at the changes…",

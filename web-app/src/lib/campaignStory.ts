@@ -114,6 +114,7 @@ export type HeadlineKind =
   | 'working'
   | 'starting'
   | 'conflict'
+  | 'verifyBlocked'
   | 'waiting'
   | 'queued'
   | 'needsInput'
@@ -144,7 +145,8 @@ export type StoryInput = {
 }
 
 export function headlineOf(
-  task: Pick<CampaignTask, 'status' | 'dependsOn'>,
+  task: Pick<CampaignTask, 'status' | 'dependsOn'> &
+    Partial<Pick<CampaignTask, 'verdict'>>,
   all: readonly Pick<CampaignTask, 'id' | 'status' | 'title'>[],
   story: StoryInput
 ): StoryHeadline {
@@ -175,6 +177,8 @@ export function headlineOf(
       return make('needsApproval')
     case 'conflict':
       return make('conflict')
+    case 'verifyBlocked':
+      return make('verifyBlocked')
     case 'writing':
       return make(story.steps.length > 0 ? 'working' : 'starting')
     case 'failed':
@@ -190,13 +194,25 @@ export function headlineOf(
 // What to do about a stuck task
 // ---------------------------------------------------------------------------
 
-export type NextStep = 'retry' | 'conflict' | 'open' | 'answer' | 'approve'
+export type NextStep =
+  | 'retry'
+  | 'conflict'
+  | 'open'
+  | 'answer'
+  | 'approve'
+  | 'verify'
+  | 'help'
 
 /** The one action worth recommending, or null when nothing is stuck. */
 export function nextStepOf(
-  task: Pick<CampaignTask, 'status' | 'attempt'>,
+  task: Pick<CampaignTask, 'status' | 'attempt'> &
+    Partial<Pick<CampaignTask, 'verdict' | 'detail'>>,
   canRetry: boolean
 ): NextStep | null {
+  if (task.status === 'completed' && task.verdict === 'BLOCKED') return 'verify'
+  if (task.status === 'failed' && task.detail?.startsWith('needs help:')) {
+    return canRetry ? 'help' : 'open'
+  }
   switch (task.status) {
     case 'awaiting_input':
       return 'answer'

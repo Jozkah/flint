@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
 vi.mock('@/i18n/react-i18next-compat', async () => await import('@/test/englishI18n'))
@@ -50,6 +50,8 @@ const campaign = (tasks: CampaignTask[], over: Partial<Campaign> = {}): Campaign
 const actions = {
   pause: vi.fn(async () => ({ ok: true })),
   retryTask: vi.fn(async () => ({ ok: true })),
+  verifyAgain: vi.fn(async () => ({ ok: true })),
+  acceptAnyway: vi.fn(async () => ({ ok: true })),
   resume: vi.fn(async () => ({ ok: true })),
 } as unknown as BoardActions
 
@@ -241,5 +243,73 @@ describe('CampaignBoard', () => {
     expect(await screen.findByText('Read src/a.ts')).toBeInTheDocument()
     expect(screen.getByText('Wrote src/b.ts')).toBeInTheDocument()
     expect(screen.getByText('Do the thing')).toBeInTheDocument()
+  })
+
+  it('offers Check again and Accept anyway for a blocked check, and names what waits', async () => {
+    show(
+      campaign([
+        task('a', {
+          status: 'completed',
+          verdict: 'BLOCKED',
+          sessionId: 's-a',
+          detail: 'verification blocked: the model could not be reached',
+        }),
+        task('b', { status: 'pending', dependsOn: ['a'] }),
+      ])
+    )
+    const section = screen.getByTestId('campaign-section-needs-you')
+    expect(section).toHaveTextContent('the model could not be reached')
+    expect(screen.getByTestId('campaign-blocks-a')).toHaveTextContent('Task b')
+    fireEvent.click(screen.getByTestId('campaign-verify-a'))
+    expect(actions.verifyAgain).toHaveBeenCalledWith('c1', 'a')
+
+    await waitFor(() =>
+      expect(screen.getByTestId('campaign-accept-a')).not.toBeDisabled()
+    )
+    fireEvent.click(screen.getByTestId('campaign-accept-a'))
+    fireEvent.change(screen.getByTestId('campaign-accept-reason-a'), {
+      target: { value: 'tests pass locally' },
+    })
+    fireEvent.click(screen.getByTestId('campaign-accept-confirm-a'))
+    expect(actions.acceptAnyway).toHaveBeenCalledWith(
+      'c1',
+      'a',
+      'you',
+      'tests pass locally'
+    )
+  })
+
+  it('shows who accepted a task and why', () => {
+    show(
+      campaign([
+        task('a', {
+          status: 'verified',
+          manualOverride: {
+            by: 'you',
+            reason: 'checked by hand',
+            at: '2026-01-01T00:00:00Z',
+            previousVerdict: 'BLOCKED',
+          },
+        }),
+      ])
+    )
+    expect(screen.getByTestId('campaign-override-a')).toHaveTextContent(
+      'Accepted by you: checked by hand'
+    )
+  })
+
+  it('prefills the retry hint for a task that needs help', () => {
+    show(
+      campaign([
+        task('a', {
+          status: 'failed',
+          attempt: 0,
+          detail: 'needs help: the test runner cannot start in the sandbox',
+        }),
+      ])
+    )
+    expect(
+      (screen.getByTestId('campaign-hint-a') as HTMLTextAreaElement).value
+    ).toContain('--test-isolation=none')
   })
 })
