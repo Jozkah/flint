@@ -598,7 +598,7 @@ impl Agent {
     fn folders(&self, args: &Value) -> Result<Value, Fail> {
         let wanted = args.get("path").and_then(Value::as_str).filter(|p| !p.is_empty());
         let Some(wanted) = wanted else {
-            let entries: Vec<Value> = self.roots.iter().map(entry).collect();
+            let entries: Vec<Value> = self.roots.iter().map(|p| entry(p)).collect();
             return Ok(json!({ "path": null, "parent": null, "entries": entries }));
         };
         let dir = self.confine(wanted)?;
@@ -629,7 +629,7 @@ impl Agent {
     }
 }
 
-fn entry(path: &PathBuf) -> Value {
+fn entry(path: &Path) -> Value {
     json!({
         "name": path.file_name().map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.to_string_lossy().into_owned()),

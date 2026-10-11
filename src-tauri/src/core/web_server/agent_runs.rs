@@ -196,7 +196,7 @@ fn message_text(content: Option<&Value>) -> String {
         Some(Value::String(s)) => s.clone(),
         Some(Value::Array(parts)) => parts
             .iter()
-            .filter(|p| p.get("type").and_then(Value::as_str).map_or(true, |t| t == "text"))
+            .filter(|p| p.get("type").and_then(Value::as_str).is_none_or(|t| t == "text"))
             .filter_map(|p| match p.get("text") {
                 Some(Value::String(s)) => Some(s.as_str()),
                 Some(obj) => obj.get("value").and_then(Value::as_str),
@@ -412,15 +412,15 @@ mod tests {
         let (data, _work, root) = fixture();
         write_thread(data.path(), "in", Some(&root.join("app")), &msgs());
         write_thread(data.path(), "out", Some(data.path()), &msgs());
-        let got = get(data.path(), &[root.clone()], "in").unwrap();
+        let got = get(data.path(), std::slice::from_ref(&root), "in").unwrap();
         let turns = got["turns"].as_array().unwrap();
         assert_eq!(turns.len(), 3);
         assert_eq!(turns[0]["content"], "hi");
         assert_eq!(turns[2]["role"], "tool");
         assert_eq!(turns[2]["name"], "read");
         assert_eq!(turns[2]["result"], "data");
-        assert_eq!(get(data.path(), &[root.clone()], "out").unwrap_err().status, 403);
-        assert_eq!(get(data.path(), &[root.clone()], "nope").unwrap_err().status, 404);
+        assert_eq!(get(data.path(), std::slice::from_ref(&root), "out").unwrap_err().status, 403);
+        assert_eq!(get(data.path(), std::slice::from_ref(&root), "nope").unwrap_err().status, 404);
         assert_eq!(get(data.path(), &[root], "../x").unwrap_err().status, 400);
     }
 
@@ -428,13 +428,13 @@ mod tests {
     fn replay_resumes_after_a_seq() {
         let (data, _work, root) = fixture();
         write_thread(data.path(), "in", Some(&root.join("app")), &msgs());
-        let all = replay(data.path(), &[root.clone()], "in", 0).unwrap();
+        let all = replay(data.path(), std::slice::from_ref(&root), "in", 0).unwrap();
         assert_eq!(all.matches("\nid: ").count() + usize::from(all.starts_with("id: ")), 3);
         assert!(all.contains("\"last\":3"));
-        let rest = replay(data.path(), &[root.clone()], "in", 2).unwrap();
+        let rest = replay(data.path(), std::slice::from_ref(&root), "in", 2).unwrap();
         assert!(rest.contains("id: 3\n"));
         assert!(!rest.contains("id: 2\n"));
-        let none = replay(data.path(), &[root.clone()], "in", 3).unwrap();
+        let none = replay(data.path(), std::slice::from_ref(&root), "in", 3).unwrap();
         assert!(!none.contains("id: "));
         assert!(none.contains("\"more\":false"));
         assert_eq!(resume_point(Some("2"), Some("5")), 5);

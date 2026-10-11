@@ -762,10 +762,10 @@ impl<H: Host> Driver<H> {
         if !matches!(task.status, TaskStatus::Pending | TaskStatus::Queued) {
             return;
         }
-        if task.status == TaskStatus::Pending {
-            if self.move_task(cid, tid, TaskStatus::Queued, TaskPatch::default()).is_err() {
-                return;
-            }
+        if task.status == TaskStatus::Pending
+            && self.move_task(cid, tid, TaskStatus::Queued, TaskPatch::default()).is_err()
+        {
+            return;
         }
         if c.integration_branch.is_empty() {
             self.park(cid, tid, "the campaign has no integration branch");
