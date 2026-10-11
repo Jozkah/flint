@@ -219,6 +219,7 @@ export function planChanged(
         t.acceptance ?? [],
         t.paths ?? [],
         t.dependsOn ?? [],
+        t.kind ?? '',
       ])
     )
   return key(a) !== key(b)
@@ -233,6 +234,7 @@ export const planTasksOf = (c: Pick<Campaign, 'tasks'>): PlanTask[] =>
     acceptance: [...t.acceptance],
     paths: [...t.paths],
     dependsOn: [...t.dependsOn],
+    ...(t.kind === 'check' ? { kind: 'check' as const } : {}),
   }))
 
 /** Saves an edited plan while the campaign is still `planned`. */

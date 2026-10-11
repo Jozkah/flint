@@ -232,6 +232,8 @@ export type PlanTask = {
   acceptance?: string[]
   paths?: string[]
   dependsOn?: string[]
+  /** `check`: runs or reports, no files expected. Absent: a change task. */
+  kind?: 'check'
 }
 
 /** Occupies a pane: the worker is running or waiting on a person. */

@@ -223,6 +223,8 @@ pub struct CampaignTask {
 }
 
 pub const KIND_GATE_REPAIR: &str = "gate_repair";
+/// A planned task that runs or reports and is not expected to change files.
+pub const KIND_CHECK: &str = "check";
 
 impl CampaignTask {
     pub(crate) fn from_plan(t: PlanTask) -> Self {
@@ -249,9 +251,15 @@ impl CampaignTask {
             verify_tokens: 0,
             evidence: None,
             resolver: None,
-            kind: String::new(),
+            kind: t.kind,
             skipped_deps: Vec::new(),
         }
+    }
+
+    /// Whether a run that changed nothing is a failure of this task: only a
+    /// change task that declared paths.
+    pub fn expects_changes(&self) -> bool {
+        self.kind != KIND_CHECK && self.kind != KIND_GATE_REPAIR && !self.paths.is_empty()
     }
 
     /// Worker and verifier tokens together: what this task cost.
@@ -539,6 +547,10 @@ pub struct PlanTask {
     pub paths: Vec<String>,
     #[serde(default)]
     pub depends_on: Vec<String>,
+    /// Empty for a change task; `check` for a task that runs, reads or reports
+    /// and is not expected to change files (a test run, an audit).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
 }
 
 /// Case-folded, slash-normalised, relative. `.` means the whole tree.
@@ -578,6 +590,9 @@ pub fn validate_plan(tasks: &[PlanTask]) -> Result<(), Vec<String>> {
             issues.push(format!("task id {:?} is not 1-{MAX_ID_LEN} characters of letters, digits, '_' or '-'", t.id));
         } else if !ids.insert(t.id.as_str()) {
             issues.push(format!("task id {} is used more than once", t.id));
+        }
+        if !t.kind.is_empty() && t.kind != KIND_CHECK {
+            issues.push(format!("task {} has kind {:?}; use \"check\" or leave it out", t.id, t.kind));
         }
         if t.brief.trim().is_empty() {
             issues.push(format!("task {} has an empty brief", t.id));
@@ -680,6 +695,9 @@ fn parallel_overlaps(tasks: &[PlanTask]) -> Vec<String> {
     for (i, a) in tasks.iter().enumerate() {
         let a_anc = ancestors(&a.id);
         for b in &tasks[i + 1..] {
+            if a.kind == KIND_CHECK || b.kind == KIND_CHECK {
+                continue;
+            }
             if a_anc.contains(&b.id) || ancestors(&b.id).contains(&a.id) {
                 continue;
             }
@@ -1623,6 +1641,7 @@ fn as_plan(t: &CampaignTask) -> PlanTask {
         acceptance: t.acceptance.clone(),
         paths: t.paths.clone(),
         depends_on: t.depends_on.clone(),
+        kind: if t.kind == KIND_CHECK { t.kind.clone() } else { String::new() },
     }
 }
 
@@ -1874,6 +1893,7 @@ pub fn add_gate_repair(data_folder: &Path, id: &str, brief: String) -> Result<(C
         acceptance: vec![format!("`{}` exits 0 in your worktree", gate.command)],
         paths: Vec::new(),
         depends_on: Vec::new(),
+        kind: String::new(),
     });
     task.kind = KIND_GATE_REPAIR.to_string();
     c.tasks.push(task);
@@ -1913,6 +1933,7 @@ pub(crate) mod tests {
             acceptance: vec![],
             paths: paths.iter().map(|s| s.to_string()).collect(),
             depends_on: deps.iter().map(|s| s.to_string()).collect(),
+            kind: String::new(),
         }
     }
 

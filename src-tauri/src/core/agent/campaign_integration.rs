@@ -373,6 +373,9 @@ fn task_spec(t: &CampaignTask) -> String {
             s.push_str(&format!("- {a}\n"));
         }
     }
+    if !t.expects_changes() {
+        s.push_str("\nThis task is not expected to change files: judge it by what it ran and reported.\n");
+    }
     s
 }
 
@@ -947,7 +950,7 @@ pub fn verify_finish(
                             ),
                         )
                     });
-                } else if facts.empty && mentions_files(&t.acceptance) {
+                } else if facts.empty && t.expects_changes() && mentions_files(&t.acceptance) {
                     why = Some((
                         TaskVerdict::Blocked,
                         "the work changed nothing against its base, yet its acceptance criteria name files".to_string(),
@@ -1793,6 +1796,7 @@ mod tests {
             acceptance: vec![],
             paths: vec![],
             depends_on: deps.iter().map(|s| s.to_string()).collect(),
+            kind: String::new(),
         }
     }
 
@@ -2665,25 +2669,60 @@ two
     }
 
     #[test]
-    fn a_pass_on_an_empty_diff_is_blocked_when_acceptance_names_files() {
+    fn a_pass_on_an_empty_diff_is_blocked_only_for_a_change_task_that_declares_paths() {
+        let named = PlanTask {
+            paths: vec!["src".into()],
+            ..task_with_acceptance("a", &["adds src/lib.rs with a health function"])
+        };
+        let check = PlanTask {
+            kind: campaign::KIND_CHECK.into(),
+            paths: vec!["docs".into()],
+            ..task_with_acceptance("c", &["adds docs/x.md"])
+        };
         let f = fixture(
             "empty",
-            vec![task_with_acceptance("a", &["adds src/lib.rs with a health function"]), task_with_acceptance("b", &["it is tidy"])],
+            vec![
+                named,
+                task_with_acceptance("b", &["it is tidy"]),
+                check,
+                // Names files but declares no paths: nothing says it must change any.
+                task_with_acceptance("d", &["run the suite in src/tests and report"]),
+            ],
         );
         start(&f);
-        finished(&f, "a", None);
-        finished(&f, "b", None);
-        for t in ["a", "b"] {
+        for t in ["a", "b", "c", "d"] {
+            finished(&f, t, None);
             verify_prepare(&f.data, &f.roots, &f.id, t, "m", false).unwrap();
         }
-        let a = verify_finish(&f.data, &f.id, "a", Some("VERDICT: PASS\nEVIDENCE: done"), None, 0).unwrap();
+        let pass = Some("VERDICT: PASS\nEVIDENCE: done");
+        let a = verify_finish(&f.data, &f.id, "a", pass, None, 0).unwrap();
         assert_eq!(a.next, VerifyNext::Blocked);
         assert_eq!(a.verdict, "BLOCKED");
         assert!(a.downgraded.is_some());
         assert_eq!(status(&f, "a"), TaskStatus::Completed);
-        // No file is named: the empty diff alone does not block.
-        let b = verify_finish(&f.data, &f.id, "b", Some("VERDICT: PASS\nEVIDENCE: done"), None, 0).unwrap();
-        assert_eq!(b.next, VerifyNext::Verified);
+        for t in ["b", "c", "d"] {
+            let o = verify_finish(&f.data, &f.id, t, pass, None, 0).unwrap();
+            assert_eq!(o.next, VerifyNext::Verified, "{t}");
+            assert!(o.downgraded.is_none(), "{t}");
+        }
+    }
+
+    #[test]
+    fn a_gate_repair_that_found_nothing_to_change_may_pass() {
+        let f = fixture("emptyrepair", vec![plan("a", &[])]);
+        start(&f);
+        finished(&f, "a", None);
+        campaign::update(&f.data, &f.id, |c| {
+            let x = c.task_mut("a")?;
+            x.kind = campaign::KIND_GATE_REPAIR.into();
+            x.paths = vec!["src".into()];
+            x.acceptance = vec!["`npm test` exits 0 in package.json".into()];
+            Ok(((), vec![]))
+        })
+        .unwrap();
+        verify_prepare(&f.data, &f.roots, &f.id, "a", "m", false).unwrap();
+        let o = verify_finish(&f.data, &f.id, "a", Some("VERDICT: PASS\nEVIDENCE: ok"), None, 0).unwrap();
+        assert_eq!(o.next, VerifyNext::Verified);
     }
 
     #[test]
