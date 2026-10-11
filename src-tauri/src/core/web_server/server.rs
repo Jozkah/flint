@@ -58,6 +58,8 @@ pub struct Options {
     /// Folders the agent review plane may touch (`--agent-root`). Empty keeps
     /// it off.
     pub agent_roots: Vec<PathBuf>,
+    /// `--agent-run`: let the server run agent sessions (needs a root).
+    pub agent_run: bool,
     /// Extra exact `host[:port]` values accepted in the Host header; required
     /// when binding beyond loopback.
     pub allowed_hosts: Vec<String>,
@@ -1270,6 +1272,27 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
             _ => {}
         }
     }
+    if method == Method::GET && path.starts_with("/api/v1/agent/sessions/") && path.ends_with("/events") {
+        let id = path["/api/v1/agent/sessions/".len()..path.len() - "/events".len()].to_owned();
+        let Some(agent) = state.agent.clone() else {
+            return text(
+                StatusCode::FORBIDDEN,
+                "The agent review plane is off on this server. Start it with --agent-root <folder>.",
+            );
+        };
+        let after = crate::core::web_server::agent_runs::resume_point(
+            query_param(req.uri().query(), "after").as_deref(),
+            req.headers().get("last-event-id").and_then(|v| v.to_str().ok()),
+        );
+        return match tokio::task::spawn_blocking(move || agent.replay(&id, after)).await {
+            Ok(Ok(body)) => reply(StatusCode::OK, "text/event-stream", body),
+            Ok(Err(failure)) => {
+                let status = StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST);
+                reply(status, "text/plain; charset=utf-8", failure.body.as_str().unwrap_or("Request failed").to_owned())
+            }
+            Err(_) => text(StatusCode::INTERNAL_SERVER_ERROR, "Request failed"),
+        };
+    }
     if path == "/api/v1/events" && method == Method::GET {
         return events::stream(&state.events);
     }
@@ -1478,7 +1501,7 @@ pub async fn serve(options: Options) -> io::Result<()> {
     // background starter use to reach it. A name an attacker controls can never
     // be this, so it does not weaken the check against DNS rebinding.
     hosts.insert(listener.local_addr()?.to_string());
-    let agent = agent::Agent::open(&options.data_folder, &options.agent_roots)
+    let agent = agent::Agent::open_with(&options.data_folder, &options.agent_roots, options.agent_run)
         .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
     let (auth, bootstrap) = AuthStore::open(options.auth_file)?;
     let settings_store = settings::Store::new(&options.data_folder);
@@ -1650,6 +1673,7 @@ mod tests {
             public_host: None,
             allow_mcp_stdio: false,
             agent_roots: Vec::new(),
+            agent_run: false,
             allowed_hosts: Vec::new(),
             allowed_origins: Vec::new(),
             llama_worker: None,
@@ -1701,6 +1725,7 @@ mod tests {
             public_host: None,
             allow_mcp_stdio: false,
             agent_roots: Vec::new(),
+            agent_run: false,
             allowed_hosts: hosts.into_iter().map(String::from).collect(),
             allowed_origins: origins.into_iter().map(String::from).collect(),
             llama_worker: None,

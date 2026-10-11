@@ -25,8 +25,10 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
+use super::agent_runs;
 use crate::core::agent::campaign;
 use tauri_plugin_agent_tools::proposal;
+use tauri_plugin_agent_tools::tools::jail;
 
 /// A refusal: an HTTP status and a body (a string, or the object the page's
 /// error handling reads).
@@ -78,6 +80,8 @@ pub fn handles(command: &str) -> bool {
         command,
         "agent_server_info"
             | "agent_server_folders"
+            | "agent_run_list"
+            | "agent_run_get"
             | "agent_campaign_list"
             | "agent_campaign_get"
             | "agent_campaign_context"
@@ -94,7 +98,25 @@ pub fn handles(command: &str) -> bool {
 pub struct Agent {
     data_folder: PathBuf,
     roots: Vec<PathBuf>,
+    /// `--agent-run`: the operator asked this server to run agent sessions.
+    run: bool,
 }
+
+/// Whether the session runner is built into this release. P0 ships the probe,
+/// the flag and the read-only session views; the runner is phase P1.
+const RUNNER_READY: bool = false;
+/// Sessions the runner will allow at once (reported so a client can say so).
+const MAX_SESSIONS: u32 = 4;
+
+/// What the Rust loop on the server does not match yet, said to the client
+/// instead of left to be discovered.
+const PARITY_GAPS: &[&str] = &[
+    "plan-review UX",
+    "goal evaluation",
+    "TS-side compaction",
+    "agent teams",
+    "browser and computer panes",
+];
 
 /// A folder worth listing: skips what a person would not pick a project from.
 fn listable(name: &str) -> bool {
@@ -107,7 +129,20 @@ impl Agent {
     /// filesystem root, or overlaps the data folder is an error the operator
     /// sees at start-up rather than a silently narrower server.
     pub fn open(data_folder: &Path, roots: &[PathBuf]) -> Result<Option<Agent>, String> {
+        Self::open_with(data_folder, roots, false)
+    }
+
+    /// As [`Agent::open`], with `--agent-run`. Running sessions needs roots to
+    /// confine them to, so the flag without one is an error.
+    pub fn open_with(
+        data_folder: &Path,
+        roots: &[PathBuf],
+        run: bool,
+    ) -> Result<Option<Agent>, String> {
         if roots.is_empty() {
+            if run {
+                return Err("--agent-run needs at least one --agent-root <folder>".into());
+            }
             return Ok(None);
         }
         let data = data_folder
@@ -137,6 +172,7 @@ impl Agent {
         Ok(Some(Agent {
             data_folder: data_folder.to_path_buf(),
             roots: canonical,
+            run,
         }))
     }
 
@@ -157,14 +193,12 @@ impl Agent {
 
     pub fn call(&self, command: &str, args: &Value) -> Result<Value, Fail> {
         match command {
-            "agent_server_info" => Ok(json!({
-                "agent": true,
-                "folders": self.roots.iter().map(|r| r.to_string_lossy()).collect::<Vec<_>>(),
-                // What this server will not do, so a client can say so rather
-                // than offer a button that fails.
-                "runsSessions": false,
-                "runsChecks": false,
-            })),
+            "agent_server_info" => Ok(self.info()),
+            "agent_run_list" => Ok(agent_runs::list(&self.data_folder, &self.roots)),
+            "agent_run_get" => {
+                let id = text(args, "id")?;
+                agent_runs::get(&self.data_folder, &self.roots, id)
+            }
             "agent_server_folders" => self.folders(args),
             "agent_campaign_list" => to_json(campaign::list(&self.data_folder)),
             "agent_campaign_get" => {
@@ -246,6 +280,52 @@ impl Agent {
             }
             _ => Err(fail(404, "Unknown agent command")),
         }
+    }
+
+    /// The server-sent-events replay of one session (`GET
+    /// /api/v1/agent/sessions/<id>/events?after=<seq>`), as a finite body.
+    pub fn replay(&self, id: &str, after: u64) -> Result<String, Fail> {
+        agent_runs::replay(&self.data_folder, &self.roots, id, after)
+    }
+
+    /// What this server will and will not do, for the client's probe. `missing`
+    /// is in words a person can act on.
+    fn info(&self) -> Value {
+        let backend = jail::backend();
+        let ready = self.run && RUNNER_READY && backend.enforces();
+        let mut missing: Vec<&str> = Vec::new();
+        if !self.run {
+            missing.push("start the server with --agent-run");
+        }
+        if !RUNNER_READY {
+            missing.push("the session runner is not in this release yet (phase P1)");
+        }
+        if !backend.enforces() {
+            missing.push(if cfg!(target_os = "linux") {
+                "install bubblewrap (bwrap) so commands run in a sandbox"
+            } else if cfg!(target_os = "macos") {
+                "the macOS sandbox (sandbox-exec) is unavailable"
+            } else {
+                "the Windows AppContainer sandbox helper is unavailable"
+            });
+        }
+        let folders: Vec<_> = self.roots.iter().map(|r| r.to_string_lossy()).collect();
+        json!({
+            "agent": true,
+            "folders": folders,
+            "roots": folders,
+            // What this server will not do, so a client can say so rather
+            // than offer a button that fails.
+            "runsSessions": ready,
+            "runsChecks": false,
+            "runRequested": self.run,
+            "runnerPlanned": true,
+            "sandbox": backend.as_str(),
+            "enforces": backend.enforces(),
+            "maxSessions": MAX_SESSIONS,
+            "missing": missing,
+            "parityGaps": PARITY_GAPS,
+        })
     }
 
     fn folders(&self, args: &Value) -> Result<Value, Fail> {
@@ -380,6 +460,43 @@ mod tests {
             .collect();
         assert_eq!(names, vec!["app"]);
         assert_eq!(listed["entries"][0]["git"], true);
+    }
+
+    #[test]
+    fn run_flag_needs_a_root_and_is_reported_not_ready() {
+        let (data, work) = pair();
+        assert!(Agent::open_with(data.path(), &[], true).is_err());
+        assert!(Agent::open_with(data.path(), &[], false).unwrap().is_none());
+        let agent = Agent::open_with(data.path(), &[work.path().to_path_buf()], true)
+            .unwrap()
+            .unwrap();
+        let info = agent.call("agent_server_info", &json!({})).unwrap();
+        assert_eq!(info["runRequested"], true);
+        // P0 has no runner: never advertised as running sessions.
+        assert_eq!(info["runsSessions"], false);
+        assert_eq!(info["runnerPlanned"], true);
+        assert!(info["sandbox"].is_string());
+        assert!(info["enforces"].is_boolean());
+        assert_eq!(info["maxSessions"], 4);
+        assert!(!info["missing"].as_array().unwrap().is_empty());
+        assert!(!info["parityGaps"].as_array().unwrap().is_empty());
+        let off = Agent::open(data.path(), &[work.path().to_path_buf()]).unwrap().unwrap();
+        assert_eq!(off.call("agent_server_info", &json!({})).unwrap()["runRequested"], false);
+    }
+
+    #[test]
+    fn run_views_are_confined_and_require_an_id() {
+        let (data, work) = pair();
+        let agent = Agent::open(data.path(), &[work.path().to_path_buf()]).unwrap().unwrap();
+        let listed = agent.call("agent_run_list", &json!({})).unwrap();
+        assert!(listed["sessions"].as_array().unwrap().is_empty());
+        assert_eq!(agent.call("agent_run_get", &json!({})).unwrap_err().status, 400);
+        assert_eq!(
+            agent.call("agent_run_get", &json!({ "id": "missing" })).unwrap_err().status,
+            404
+        );
+        assert!(agent.replay("../etc", 0).is_err());
+        assert!(handles("agent_run_list") && handles("agent_run_get"));
     }
 
     #[test]
