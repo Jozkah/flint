@@ -108,7 +108,7 @@ Decision: the Rust loop on the server (`core::agent::loop`, the `core::cli::rpc`
 | --- | --- | --- |
 | P0 | `--agent-run` flag, capability probe, read-only session list, transcript and event replay, client probe and banner | Landed |
 | P1 | Session runner: create, start, steer, interrupt, approvals and questions over HTTP with a live per-session event stream; the Cowork adapter for one session (`remoteCowork.ts`) and a "Run on server" entry | Landed (single Cowork-style session) |
-| P2 | Worktrees and proposals for server sessions: an isolated, server-owned checkout per writing session, `agent_worktree_*` commands by session id, a proposal after each turn that changed something, the worktree panel on the page | Landed (model and mode pickers still missing) |
+| P2 | Worktrees and proposals for server sessions: an isolated, server-owned checkout per writing session, `agent_worktree_*` commands by session id, a proposal after each turn that changed something, the worktree panel on the page | Landed (model, mode, rename and delete controls came later: see "Closing the gaps") |
 | P3 | Campaign driver on the server: plan, approve, tasks on worktrees, verify, merge, resolver, limits, restart continuation; plan approval and finalize stay a person's | Landed (see "What P3 does") |
 
 `flint serve --agent-run --agent-root <folder>`: the flag needs at least one root, or the server refuses to start. `agent_server_info` reports `runRequested`, `sandbox`, `enforces`, `roots`, `maxSessions`, `allowBypass`, `allowAlways`, `approvalTimeoutSecs`, `liveSessions` and a `missing` list in words (for example "install bubblewrap"). `runsSessions` is true only when the flag is on, the runner is built, and the command sandbox (`tools::jail` backend) enforces; `--agent-require-sandbox=false` is the operator's explicit way to run unsandboxed anyway.
@@ -129,13 +129,15 @@ Commands, over `POST /api/v1/rpc/<command>` behind the same sign-in, same-origin
 
 | Command | Arguments | Result |
 | --- | --- | --- |
-| `agent_run_create` | `folder` (inside a root), `access` (`read`, `ask`; `auto`/`bypass` need the flag), `mode` (a label, default `cowork`), `model`, `title` | `{ id, folder, model, access, status }` |
-| `agent_run_start` | `id`, `input` (text or content parts, within the stdio protocol's caps) | `{ turnId, after }`. One active turn per session (409); 20 turns a minute (429). A stored session that is not live is resumed first. |
+| `agent_run_create` | `folder` (inside a root), `access` (`read`, `ask`; `auto`/`bypass` need the flag), `mode` (a label, default `cowork`), `model`, `title`, `role` (`coordinator`, see below) | `{ id, folder, model, access, status }` |
+| `agent_run_start` | `id`, `input` (text or content parts, within the stdio protocol's caps), `attachments` (optional, see "Closing the gaps") | `{ turnId, after }`. One active turn per session (409); 20 turns a minute (429). A stored session that is not live is resumed first. |
 | `agent_run_steer` | `id`, `text` | Delivered at the loop's next safe point. |
 | `agent_run_interrupt` | `id` | Aborts the turn, denies pending prompts, persists what the turn had, emits `done{stop_reason: "cancelled"}` then `turn.completed{stopReason: "interrupted"}`. |
 | `agent_run_approve` | `id`, `requestId`, `decision` (`allow_once`, `deny`, `allow_always` if enabled) | The request id must belong to that session and still be pending (404 otherwise). Audited in the session's event log (`permission.decided`: request, tool, decision, a digest of the client and of its address). |
 | `agent_run_answer_ask` | `id`, `requestId`, `results` | Validated against the question before it is delivered. |
-| `agent_run_set_model`, `agent_run_set_mode` | `id`, `model` / `access` | Refused while a turn is active (409). |
+| `agent_run_set_model`, `agent_run_set_mode` | `id`, `model` / `access` | Refused while a turn is active (409). A model the server cannot reach is 422; `auto`/`bypass` need `--agent-allow-bypass` (403). A stored session that is not live is changed in its record and takes the change when it resumes. |
+| `agent_run_models` | none | `{ models: [{ id, provider, label, contextWindow, contextSource, supportsTools }], default }` from the providers configured on the server. Ids, names and sizes only: never a key, header or endpoint. `supportsTools` is `null`: the server does not know a model's tool support. |
+| `agent_run_rename` | `id`, `title` | `{ title }`; at most 80 characters, no control characters. |
 | `agent_run_delete` | `id` | Only sessions this runner started. |
 
 `agent_run_list` and `agent_run_get` (P0) lay the live state over the stored row: `live`, `status` (`idle`, `running`, `awaiting_approval`, `awaiting_answer`), `access`, `pendingApprovals`, `pendingAsks`, `lastSeq`, `turnAfter`.
@@ -158,7 +160,7 @@ Security model, which P1 must keep:
 - Sandbox required: commands run only under an enforcing backend (bubblewrap, seatbelt, AppContainer). With none, `bash` is withheld rather than run unconfined, and `runsSessions` is false.
 - Approvals: the server never auto-approves a prompt in `read`/`ask`; an unanswered one is denied at the timeout, with the decision recorded.
 - Same auth as the rest of the server: bearer token or session cookie, same-origin and host checks.
-- A remote session gets the built-in tools only: no MCP server is connected for it and no host tool is declared. (P2: a session that may write works in its own worktree; see below.)
+- A remote session gets the built-in tools only: no MCP server is connected for it and no host tool is declared, except that a session created with `role: "coordinator"` is declared the campaign tools, which this process answers itself (see "Closing the gaps"). (P2: a session that may write works in its own worktree; see below.)
 
 What the P0 transcript does not carry yet: reasoning, tool images, subagent runs, goal state, plan snapshots, compaction dividers, per-turn usage (the response lists them in `notMapped`).
 
@@ -223,9 +225,9 @@ Human gates (nothing is auto-approved, ever):
 | `agent_campaign_cancel` | `id`, `detail` | As before, and aborts the campaign's live runs. |
 | `agent_campaign_approvals` | none | What waits on a person: `plan`, `finalize`, and `task` (a prompt or question). The same states show in the campaign record (`planned`, `reviewing`, a task `awaiting_*`) and as `agent-approval-pending` pings on `/api/v1/events`. A task's own prompt is answered with `agent_run_approve` / `agent_run_answer_ask` on its session, exactly as in P1. |
 
-Also reachable now, with the same confinement (and only with `--agent-run`, because they run `git`): `agent_campaign_plan_update` (a campaign of this server, planned or draft only, the whole plan re-validated), `_diff`, `_task_diff`, `_gate_plan`, `_refresh`, `_orphans`, `_claim_notice`. Task moves, merges, verification and settling remain refused for a client: they are the driver's.
+Also reachable now, with the same confinement (and only with `--agent-run`, because they run `git`): `agent_campaign_plan_update` (a campaign of this server, planned or draft only, the whole plan re-validated), `_diff`, `_task_diff`, `_gate_plan`, `_refresh`, `_orphans`, `_claim_notice`. The raw task move (`agent_campaign_transition` with a task), settling, verification and merging stay refused for a client: they are the driver's. A person's moves on a task (retry, skip, accept anyway, verify again, resolve, gate repair and retry) are separate, audited driver commands, below.
 
-**How the plan is made (a decision).** A coordinator session with `campaign_plan` and friends as server-side host tools was not built: the Rust loop's host tools are answered by a connected client (`ToolRequest` events), and a server has none, so the tools would need an in-process executor and the approval card they carry would have to be re-modelled. What is built is a one-shot planner model call through the server's provider with a strict JSON schema, held to `validate_plan` with one repair round, whose goal and file list are fenced as untrusted data, and the plan is stored `planned` for a person to approve (or edit with `agent_campaign_plan_update`). A caller may pass its own `plan`, which skips the model. The consequence: there is no coordinator conversation on the server, so `campaign_steer`, `campaign_decide` and `campaign_collect` have no server counterpart (the board's status and the handoffs are the equivalent).
+**How the plan is made.** By default a one-shot planner: a model call through the server's provider with a strict JSON schema, held to `validate_plan` with one repair round, whose goal and file list are fenced as untrusted data; the plan is stored `planned` for a person to approve (or edit with `agent_campaign_plan_update`). A caller may pass its own `plan`, which skips the model. With `coordinator: true` the server instead starts a coordinator conversation (below) and falls back to the planner when it cannot.
 
 On the page: `campaignApi` already runs over the server transport (the `invoke` stand-in posts to `/api/v1/rpc/<command>`), so the board, the Campaigns page and the review panel work unchanged against a server. Added: `runsCampaigns` in the probe, `campaignApi.startServer|approve|approvals`, "Plan campaign on server" in the Server agents card (a git folder, a goal), and on the board a plan approval card for a planned server campaign (the access choice, Approve and start, Reject). The renderer's campaign host, runner `kick`, `sweep`, `resume` and `verifyTask` do nothing for a campaign whose `driver` is `server`.
 
@@ -240,22 +242,60 @@ Security notes (P3):
 
 Gaps after P3:
 
-- No coordinator on the server (above). A board action that is a task move from a client (retry, skip, accept anyway, verify again, a note to a running task) is refused by design; for a server campaign those buttons do nothing useful. A task whose verification was BLOCKED (the model unreachable, no verdict line) waits for a person and the server has no command to re-run it; cancel and re-plan, or accept it on the desktop that owns the data folder.
-- A resolver that fails once leaves the conflict parked; the server does not retry it (3 start attempts, then nothing).
+- (Closed, see "Closing the gaps".) A task move from a client used to be refused; a blocked verification had no server command to run it again.
+- A resolver that fails once leaves the conflict parked; a person asks for another attempt with `agent_campaign_resolve` only until the record shows a resolver was started once, after that it is retry with a hint or skip.
 - Reasoning, tool images, plan snapshots and per-turn usage are still not in the transcript of a task session (see "What the P0 transcript does not carry yet").
 - The token count of a task is the provider's usage events summed over the session, and a verifier's is the provider's `usage` or an estimate from sizes.
-- Model and mode pickers are still missing: a campaign uses `options.model` or the server's default model.
+- A campaign uses `options.model` or the server's default model; there is no per-task model.
 - Campaign sessions run built-in tools only (no MCP), like every server session.
-- `agent_campaign_next_actions`, `_decisions_append`, `_task_settle`, `_verify_*`, `_merge_task`, `_integrate`, `_resolve`, `_create` and `_transition` with a task move or an approval are not reachable on a server, on purpose.
+- `agent_campaign_next_actions`, `_decisions_append`, `_task_settle`, `_verify_*`, `_merge_task`, `_integrate`, `_create` and `_transition` with a task move or an approval are not reachable on a server, on purpose. (`agent_campaign_resolve` is answered, with a different meaning: see below.)
+
+### Closing the gaps: task moves, pickers, coordinator, attachments
+
+#### Task and gate moves from a client (S1)
+
+`agent_server_info` lists the moves a client may ask of a campaign this server drives in `campaignCommands` (empty when the server drives none). Each one is executed by the driver (`Driver::task_command`, `gate_repair`), through the same state machine the renderer's moves go through (`campaign::transition_task`, `skip_task`, `accept_manually`), and each is refused with 403 when the campaign's `driver` is not `server`. The client never writes task state: `agent_campaign_transition` with a task still answers 403.
+
+| Command | Arguments | What the driver does |
+| --- | --- | --- |
+| `agent_campaign_retry_task` | `id`, `taskId`, `hint` | A `failed` or `conflict` task goes back to `queued` (the retry cap applies); a hint is recorded fenced as the person's direction and leads the next seed. |
+| `agent_campaign_skip_task` | `id`, `taskId`, `dependants` (`leave`, `cascade`, `release`) | Cancels the task and, as chosen, its dependants or releases them to run without it; the sessions of what was cancelled are interrupted and closed. A task that is verifying, verified, resolving or already finished is refused. |
+| `agent_campaign_accept_task` | `id`, `taskId`, `reason` | Only a `completed` task whose verdict is `BLOCKED`, and only with a non-empty reason. Recorded as `manualOverride` with `by: "client <digest>"` and the reason; the driver then merges it like a verified task. |
+| `agent_campaign_verify_again` | `id`, `taskId` | Starts the check again in the background (`{ started: true }`); the verdict is read from the record. Needs the campaign `running`. |
+| `agent_campaign_resolve` | `id`, `taskId` | A `conflict` task with no resolver yet gets the driver's resolver started (one attempt per conflict). Not the desktop command of that name: no session id is taken. |
+| `agent_campaign_gate_repair` | `id` | The one repair task a failed final gate asks for; the campaign goes back to `running`. |
+| `agent_campaign_retry_gate` | `id`, `seconds` | The final gate again after a repair merged; the same `--agent-allow-checks` rule as finalize. |
+
+Audit: every move appends `client-command` to the campaign's event log (`<what> by client <digest> from <address digest>`, never a token), and accept anyway also writes `task-accepted-manually`. `campaignApi` (`retryTask`, `acceptAnyway`, `verifyAgain`, `resolveTask`, `skipTask`, `repairGate`, `retryGate`) calls these by name on a server page and the desktop's transitions otherwise, and the board's actions (`createBoardActions`) route a server campaign's retry, skip, accept, verify again, resolve, note (to the session's `agent_run_steer`), stop (`agent_run_interrupt`) and cancel there. The objective check is still opt-in: a verification re-run runs the project's check command only when the server was started with `--agent-allow-checks` (see `docs/CAMPAIGNS.md`, "Objective checks"); without it the verifier decides from the diff alone and a thin diff stays BLOCKED, which "accept anyway" with a reason is for.
+
+#### Pickers, rename, delete (S2)
+
+The "Server agents" card lists each session with a model select (from `agent_run_models`), an access select limited by `allowBypass`, an inline rename (`agent_run_rename`) and a Delete button that asks first (`agent_run_delete`). Model and access are disabled while a turn is active. A session at rest is changed in its stored record and uses the change when it resumes; `agent_run_get` now returns its `access` and `role` for that.
+
+#### Coordinator conversation (S3)
+
+`agent_run_create` with `role: "coordinator"` (or `agent_campaign_start_server` with `coordinator: true`) makes a session that is declared nine campaign tools: `campaign_plan`, `campaign_status`, `campaign_collect`, `campaign_cancel`, `campaign_steer`, `campaign_decide`, `campaign_verify`, `campaign_merge`, `campaign_orphans` (the declarations are a port of `campaignToolSchemas.ts`, and a test pins the names). They are host tools whose host is the server process: the session's actor answers every `ToolRequest` itself against the campaign record and the driver (`web_server/coordinator.rs`), and the request is never published to a client. A non-coordinator session is never declared them, and a request from anything but the coordinator's own main run (a subagent) is refused.
+
+- Scope: a coordinator sees and steers only campaigns whose `coordinatorSession` is itself and whose driver is the server; another session's campaign reads as absent. A read-only (`read`) session cannot be a coordinator and the tools refuse in plan mode.
+- `campaign_plan` records a `planned` campaign (the server's limits, the session's model) and returns at once. **Plan approval stays a person's**: `agent_campaign_approve`, the same endpoint and the same `agent-approval-pending` ping. One open plan per session; a revision (`campaign_id`) replaces the tasks of a plan still `planned`.
+- `campaign_merge finalize` never runs the gate: it reports `awaiting_user` and raises the finalize approval (`agent_campaign_finalize`). Merge, skip and resolve go through the driver.
+- `campaign_steer` goes into the task session's running turn (`agent_run_steer`), fenced as coming from the coordinator. `campaign_verify` starts the checks in the background. `campaign_orphans` lists only.
+- The coordinator is not woken when a task finishes (the desktop pushes notices into its mailbox): it reads `campaign_status` and `campaign_collect` when the person asks or on its next turn.
+- Fallback: `coordinator: true` falls back to the one-shot planner (the answer is a campaign, with `coordinatorError`) when the session cannot start (the session cap, no model); a refusal (bad folder, outside the roots) is final. The answer on success is `{ coordinator: { id, ... }, campaign: null }`; the campaign appears when the coordinator calls `campaign_plan`.
+- The card's "Plan in a conversation" option opens the coordinator in Cowork.
+
+#### Attachments (S4)
+
+`agent_run_start` takes `attachments: [{ name, mime, data }]` (base64, at most 8, the message at most the large JSON body of 64 MB, otherwise the stdio caps: 5 MB per image, 10 MB of images, 16 MB a line). Images become `image_url` content parts, the shape the CLI sends; text files (`text/*`, JSON, XML, YAML, TOML or a known source extension) of at most 512 KB each and 1 MB together are folded into the message as fenced text marked as data. Everything is checked before anything is written (415 for a type nobody reads, 400 for bad base64, 413 for size). The files are kept under `<data>/threads/<session>/attachments/<n>-<name>` (the session's own folder in the server's data folder, never under an agent root; names are reduced to `[A-Za-z0-9._-]`, so a path in a name goes nowhere). The Cowork composer sends staged documents as message text (the same inlining as a local run) and images as attachments; audio and video are refused with a message.
 
 ### Parity gaps after P1 (said by `parityGaps`, not hidden)
 
 - Plan-review UX, goal evaluation, TS-side compaction (the Rust loop compacts by its own policy), agent teams, the browser and computer panes.
-- Attachments are not sent to a server session; "resume" (regenerate) is refused.
-- Campaign tasks and verification on the server: P3, above (no coordinator conversation; the plan comes from a one-shot planner call).
+- Images and text documents are sent to a server session (see "Attachments"); audio and video are not. "Resume" (regenerate) is refused.
+- Campaign tasks and verification on the server: P3, above, and "Closing the gaps" (coordinator conversation, task moves).
 - The transcript's `notMapped` list still applies to a reopened session (reasoning, tool images, plan snapshots, per-turn usage).
-- Model and mode changes are server commands but have no picker on the page yet (P2 did not add one).
-- Server sessions are listed beside local ones; deleting one from the Cowork list removes only the local row (the server's list restores it); `agent_run_delete` is the way, and the card has no button for it yet.
+- Model, access, rename and delete are controls of the "Server agents" card; the Cowork page's own model picker is the desktop's and does not change a server session.
+- Server sessions are listed beside local ones; deleting one from the Cowork list removes only the local row (the server's list restores it); the Delete button on the card calls `agent_run_delete`.
 - Image tool results, content-part inputs above the 1 MB JSON body limit, and a client that dozes for longer than the 4096-event ring are covered by refetching the transcript, not by replay.
 
 ### Not verified
@@ -266,4 +306,5 @@ Gaps after P3:
 - The page side is covered by vitest with a mocked fetch and a hand-written event stream. It was not exercised in a real browser, the Android WebView, or over a flaky mobile network, so the reconnect timing (45 seconds of silence before a reconnect) is a design choice, not a measurement.
 - A real provider and a real tool-heavy turn were not run through the server runner.
 - P3 is covered by driver unit tests with a fake host (dependency order, parallel and session caps, approvals stall, limits, pause, cancel, restart, a campaign outside the roots, a renderer campaign), and by `tests/web_agent_run.rs` against the stub model: a plan from the planner, the approval gate, three tasks with a dependency, verification, merge, finalize, a proposal applied, and a restart in the middle of a run. Not exercised: a real provider planning or verifying, a conflict resolver end to end (the fake and the backend's own fixture-repo tests cover its parts), `--agent-allow-checks` with a real build command, the Windows AppContainer or any other sandbox under a campaign task, and the board's approval card in a real browser or the Android WebView.
+- The gap closures are covered by `tests/web_agent_run.rs` (task moves with the audit trail and the blocked-then-accepted and verify-again paths, the pickers on a live and a stored session, a coordinator that plans through an in-process tool and is the only session offered the tools, attachments stored in the session folder), by driver unit tests with the fake host, and by vitest for `campaignApi`, the board's server routing, the card's session row and the media conversion. Not exercised: a real provider calling the campaign tools, the coordinator across a server restart mid-plan, and the card in a real browser or the WebView.
 - Cowork and Campaigns pages on a phone-sized viewport were not reworked. The mobile shell (`src/mobile`) is the touch UI; the desktop pages are not made usable at 390 px by this change.
