@@ -14,27 +14,35 @@ import {
 import { route } from '@/constants/routes'
 import { useCampaignSettings } from '@/hooks/useCampaignSettings'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
-import { useMessageQueue } from '@/stores/message-queue-store'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { resolveCoworkModel } from '@/lib/coworkModelChoice'
 import {
   CAMPAIGN_GOAL_MAX,
   cleanGoal,
   startCampaign,
+  useCampaignLaunch,
   type StartDeps,
 } from '@/lib/campaignStart'
 
 const liveDeps = (): StartDeps => {
   const store = useCoworkSessions.getState()
   return {
+    // The model in the picker, held to what a Cowork run needs: it has to
+    // resolve among the active providers and call tools.
+    resolveModel: () => {
+      const picked = resolveCoworkModel(null, useModelProvider.getState())
+      if (!picked.choice || !picked.model) return null
+      const caps = (picked.model as { capabilities?: string[] }).capabilities
+      if (!caps?.includes('tools')) return null
+      return picked.choice
+    },
     createSession: () => store.createSession(),
     setFolder: (id, folder) => store.setFolder(id, folder),
     setTitle: (id, title) => store.setTitle(id, title),
-    enqueue: (id, text) =>
-      useMessageQueue.getState().enqueue(id, {
-        id: `campaign-start-${id}`,
-        text,
-        createdAt: Date.now(),
-      }),
+    setModel: (id, model) => store.setModel(id, model),
+    launch: (id, text) => useCampaignLaunch.getState().request(id, text),
     select: (id) => store.selectSession(id),
+    remove: (id) => store.deleteSession(id),
   }
 }
 
@@ -59,11 +67,16 @@ export function StartCampaignDialog({
   const navigate = useNavigate()
   const maxParallel = useCampaignSettings((s) => s.maxParallel)
   const [goal, setGoal] = useState('')
+  const [problem, setProblem] = useState<'no-model' | 'failed' | null>(null)
   const ready = cleanGoal(goal).length > 0 && !!folder
   const start = () => {
     if (!ready) return
     const out = startCampaign({ goal, folder }, deps ?? liveDeps())
-    if (!out.ok) return
+    if (!out.ok) {
+      setProblem(out.reason === 'no-model' || out.reason === 'failed' ? out.reason : null)
+      return
+    }
+    setProblem(null)
     setGoal('')
     onOpenChange(false)
     void navigate({ to: route.cowork })
@@ -81,7 +94,10 @@ export function StartCampaignDialog({
           autoFocus
           value={goal}
           maxLength={CAMPAIGN_GOAL_MAX}
-          onChange={(e) => setGoal(e.target.value)}
+          onChange={(e) => {
+            setGoal(e.target.value)
+            setProblem(null)
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault()
@@ -108,6 +124,15 @@ export function StartCampaignDialog({
             {t('settings:campaigns.start.noFolder')}
           </p>
         )}
+        {problem ? (
+          <p
+            role="alert"
+            className="text-xs text-destructive"
+            data-testid="campaign-start-error"
+          >
+            {t(`settings:campaigns.start.error.${problem}`)}
+          </p>
+        ) : null}
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             {t('common:cancel')}

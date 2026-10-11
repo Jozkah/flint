@@ -356,6 +356,7 @@ import {
   isCoordinatorEligible,
 } from '@/lib/campaignTools'
 import { createToolDeps, getCampaignRunner } from '@/lib/campaignHost'
+import { useCampaignLaunchSend } from '@/hooks/useCampaignLaunchSend'
 import { askedFromParts } from '@/lib/askedSessions'
 import { SessionStopNotice } from '@/containers/SessionStopNotice'
 import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
@@ -4941,6 +4942,15 @@ export function CoworkPage() {
     }),
     []
   )
+  // The opening message of a campaign started from "New campaign" is sent
+  // through the same path as the Send button once the session is idle.
+  useCampaignLaunchSend({
+    sessionId: session?.id,
+    running,
+    draftScope: coworkPane?.draftScope,
+    submit: (text, onRefused) =>
+      widgetSubmitRef.current(text, undefined, onRefused),
+  })
   // Cowork's own `/` built-ins; `/help` is added by the composer.
   /**
    * Compact this session now: fold its older messages into a summary written

@@ -15,8 +15,11 @@ const fakeDeps = (): StartDeps => ({
   createSession: vi.fn(() => 's1'),
   setFolder: vi.fn(),
   setTitle: vi.fn(),
-  enqueue: vi.fn(),
+  resolveModel: vi.fn(() => ({ provider: 'p', id: 'm' })),
+  setModel: vi.fn(),
+  launch: vi.fn(),
   select: vi.fn(),
+  remove: vi.fn(),
 })
 
 describe('StartCampaignDialog', () => {
@@ -50,9 +53,24 @@ describe('StartCampaignDialog', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
     expect(deps.setFolder).toHaveBeenCalledWith('s1', '/repo')
-    expect(vi.mocked(deps.enqueue).mock.calls[0][1]).toContain('campaign_plan')
+    expect(vi.mocked(deps.launch).mock.calls[0][1]).toContain('campaign_plan')
     expect(deps.select).toHaveBeenCalledWith('s1')
     expect(close).toHaveBeenCalledWith(false)
     expect(navigate).toHaveBeenCalledWith({ to: '/cowork' })
+  })
+
+  it('shows an inline error and creates nothing when no model is usable', () => {
+    const deps = { ...fakeDeps(), resolveModel: vi.fn(() => null) }
+    const close = vi.fn()
+    render(
+      <StartCampaignDialog open onOpenChange={close} folder="/repo" deps={deps} />
+    )
+    fireEvent.change(screen.getByTestId('campaign-goal'), {
+      target: { value: 'add dark mode' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    expect(screen.getByTestId('campaign-start-error')).toBeInTheDocument()
+    expect(deps.createSession).not.toHaveBeenCalled()
+    expect(close).not.toHaveBeenCalled()
   })
 })

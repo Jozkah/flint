@@ -1008,7 +1008,11 @@
       "hint": "Up to {{n}} threads work at the same time. You can change this in Settings.",
       "folder": "In {{folder}}",
       "go": "Start",
-      "noFolder": "Open a git folder to start a campaign"
+      "noFolder": "Open a git folder to start a campaign",
+      "error": {
+        "no-model": "Choose a model that can use tools first (Models in the sidebar, or the model picker), then start again.",
+        "failed": "Flint could not open the campaign session. Nothing was started; try again."
+      }
     },
     "nav": "Campaigns",
     "list": {
