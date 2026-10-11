@@ -5,14 +5,15 @@
 //! answer. `max_parallel` is passed in, not read from the record, so a changed
 //! setting applies to a running campaign at once.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::core::agent::campaign::{Campaign, CampaignStatus, TaskStatus, MAX_PARALLEL_CAP};
 
 /// What the renderer knows that the record does not.
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct LiveState {
     /// Task ids with a run actually going on screen right now. Counted in
     /// addition to tasks the record says are live, never twice.
@@ -20,6 +21,9 @@ pub struct LiveState {
     /// Panes that are free to open, when that is a tighter limit than
     /// `max_parallel`.
     pub free_panes: Option<u32>,
+    /// Tokens live runs have used so far, by task id. The budget counts the
+    /// larger of this and what the record holds.
+    pub live_tokens: BTreeMap<String, u64>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -64,7 +68,14 @@ pub fn next_actions(campaign: &Campaign, live: &LiveState, max_parallel: u32) ->
     }
 
     if let Some(budget) = campaign.limits.token_budget {
-        let spent: u64 = campaign.tasks.iter().map(|t| t.tokens_used).sum();
+        let spent: u64 = campaign
+            .tasks
+            .iter()
+            .map(|t| {
+                let worker = t.tokens_used.max(live.live_tokens.get(&t.id).copied().unwrap_or(0));
+                worker.saturating_add(t.verify_tokens)
+            })
+            .sum();
         if spent >= budget {
             return actions;
         }
@@ -148,7 +159,7 @@ mod tests {
     fn live_runs_the_record_does_not_know_about_count_once() {
         let mut c = five_independent();
         set(&mut c, "t0", TaskStatus::Running);
-        let live = LiveState { live_tasks: vec!["t0".into(), "t1".into()], free_panes: None };
+        let live = LiveState { live_tasks: vec!["t0".into(), "t1".into()], free_panes: None, ..Default::default() };
         // t0 is in both and counts once; t1 is live but still queued in the record.
         assert_eq!(starts(&next_actions(&c, &live, 3)), ["t2"]);
     }
@@ -208,9 +219,9 @@ mod tests {
         let c = campaign((0..8).map(|i| plan(&format!("t{i}"), &[], &[&format!("p{i}")])).collect());
         assert_eq!(starts(&next_actions(&c, &LiveState::default(), 50)).len(), 6);
         assert_eq!(starts(&next_actions(&c, &LiveState::default(), 0)).len(), 1);
-        let live = LiveState { live_tasks: vec![], free_panes: Some(2) };
+        let live = LiveState { live_tasks: vec![], free_panes: Some(2), ..Default::default() };
         assert_eq!(starts(&next_actions(&c, &live, 6)).len(), 2);
-        let none = LiveState { live_tasks: vec![], free_panes: Some(0) };
+        let none = LiveState { live_tasks: vec![], free_panes: Some(0), ..Default::default() };
         assert!(next_actions(&c, &none, 6).is_empty());
     }
 
@@ -241,5 +252,36 @@ mod tests {
         let a = next_actions(&c, &LiveState::default(), 4);
         assert_eq!(starts(&a), ["z"]);
         assert!(a.contains(&Action::Block { task_id: "b".into(), because: "dependency a was cancelled".into() }));
+    }
+
+    /// The same fixtures the renderer's fallback is driven with
+    /// (`web-app/src/lib/__tests__/campaignScheduler.parity.test.ts`).
+    #[test]
+    fn the_shared_fixtures_decide_the_same_way() {
+        let raw = include_str!("../../../../web-app/src/lib/campaignScheduler.fixtures.json");
+        let cases: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+        assert!(cases.len() >= 8);
+        for case in cases {
+            let name = case["name"].as_str().unwrap().to_string();
+            let tasks = case["tasks"].as_array().unwrap();
+            let plans = tasks
+                .iter()
+                .map(|t| {
+                    let deps: Vec<&str> = t["dependsOn"].as_array().unwrap().iter().map(|d| d.as_str().unwrap()).collect();
+                    plan(t["id"].as_str().unwrap(), &deps, &[])
+                })
+                .collect();
+            let mut c = campaign(plans);
+            c.status = serde_json::from_value(case["status"].clone()).unwrap();
+            c.limits.token_budget = case["tokenBudget"].as_u64();
+            for (i, t) in tasks.iter().enumerate() {
+                c.tasks[i].status = serde_json::from_value(t["status"].clone()).unwrap();
+                c.tasks[i].tokens_used = t["tokensUsed"].as_u64().unwrap_or(0);
+                c.tasks[i].verify_tokens = t["verifyTokens"].as_u64().unwrap_or(0);
+            }
+            let live: LiveState = serde_json::from_value(case["live"].clone()).unwrap();
+            let got = next_actions(&c, &live, case["maxParallel"].as_u64().unwrap() as u32);
+            assert_eq!(serde_json::to_value(&got).unwrap(), case["expect"], "{name}");
+        }
     }
 }

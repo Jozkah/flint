@@ -80,6 +80,9 @@ pub enum TaskStatus {
     Cancelled,
     Interrupted,
     Conflict,
+    /// A resolver session is merging the conflicting task into the integration
+    /// branch's current state. Not live (no pane yet); `running` follows.
+    Resolving,
 }
 
 impl TaskStatus {
@@ -96,7 +99,13 @@ impl TaskStatus {
     pub fn is_unfinished(self) -> bool {
         matches!(
             self,
-            Self::Pending | Self::Blocked | Self::Queued | Self::Running | Self::AwaitingInput | Self::AwaitingApproval
+            Self::Pending
+                | Self::Blocked
+                | Self::Queued
+                | Self::Running
+                | Self::AwaitingInput
+                | Self::AwaitingApproval
+                | Self::Resolving
         )
     }
 }
@@ -191,6 +200,104 @@ pub struct CampaignTask {
     /// who decided it and why, and what the verifier had said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manual_override: Option<ManualOverride>,
+    /// Tokens the verifier's own model calls cost for this task, over every
+    /// verification. Kept apart from `tokens_used` (the worker's run), which a
+    /// later settle overwrites; both count against the project budget.
+    #[serde(default)]
+    pub verify_tokens: u64,
+    /// What the last verification found out by itself, independent of the
+    /// verifier model's verdict: the objective check, an empty diff, markers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<TaskEvidence>,
+    /// Set once a resolver session was started for this task's conflict.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolver: Option<ResolverRecord>,
+}
+
+impl CampaignTask {
+    pub(crate) fn from_plan(t: PlanTask) -> Self {
+        CampaignTask {
+            id: t.id,
+            title: t.title.chars().take(200).collect(),
+            brief: t.brief,
+            acceptance: t.acceptance,
+            paths: t.paths,
+            depends_on: t.depends_on,
+            session_id: None,
+            branch: None,
+            worktree_path: None,
+            base_sha: None,
+            status: TaskStatus::Pending,
+            attempt: 0,
+            verdict: None,
+            tokens_used: 0,
+            handoff_path: None,
+            merged_sha: None,
+            fingerprint: None,
+            detail: String::new(),
+            manual_override: None,
+            verify_tokens: 0,
+            evidence: None,
+            resolver: None,
+        }
+    }
+
+    /// Worker and verifier tokens together: what this task cost.
+    pub fn tokens_total(&self) -> u64 {
+        self.tokens_used.saturating_add(self.verify_tokens)
+    }
+}
+
+/// The objective check a verification ran in the task's worktree.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskCheck {
+    pub command: String,
+    /// `agent_toml`, `agent_toml_checkout` or `detected`.
+    pub source: String,
+    pub exit_code: Option<i32>,
+    pub timed_out: bool,
+    pub passed: bool,
+    /// The tail of the output, size-capped.
+    pub output: String,
+    pub at: String,
+}
+
+/// Facts the backend established about a task's work during verification.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskEvidence {
+    /// Nothing changed against the base: no diff, no new file, no pending work.
+    #[serde(default)]
+    pub empty: bool,
+    /// Files that still hold merge conflict markers (a resolver's output).
+    #[serde(default)]
+    pub markers: Vec<String>,
+    /// The build or test command run in the worktree, when one exists.
+    #[serde(default)]
+    pub check: Option<TaskCheck>,
+    #[serde(default)]
+    pub at: String,
+}
+
+/// A resolver session for a task's merge conflict. One attempt per conflict.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolverRecord {
+    /// Resolver sessions started for this task (the cap is 1).
+    pub attempts: u32,
+    pub files: Vec<String>,
+    /// The task's own session, branch, worktree and base before the resolver
+    /// took the record over.
+    pub original_session_id: Option<String>,
+    pub original_branch: Option<String>,
+    pub original_worktree_path: Option<String>,
+    pub original_base_sha: Option<String>,
+    /// The resolver's worktree (a fresh branch from the integration branch, the
+    /// task's branch merged in and left for the resolver to finish).
+    pub worktree_path: String,
+    pub branch: String,
+    pub at: String,
 }
 
 /// A task accepted by a person instead of by a passing verification.
@@ -247,6 +354,62 @@ pub struct Campaign {
     /// The proposal handed to the user's checkout, once the gate passed.
     #[serde(default)]
     pub proposal_id: Option<String>,
+    /// A rough token cost of the plan, made when it is recorded or edited.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimate: Option<CostEstimate>,
+}
+
+/// A rough, honest cost range for a plan, shown before approval.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CostEstimate {
+    pub tasks: u32,
+    pub per_task_low: u64,
+    pub per_task_expected: u64,
+    pub per_task_high: u64,
+    pub low: u64,
+    pub expected: u64,
+    pub high: u64,
+    /// `history` (average of earlier campaigns' tasks) or `default`.
+    pub basis: String,
+    /// Earlier tasks the average came from.
+    pub samples: u32,
+}
+
+/// Conservative per-task tokens (worker plus one verification) used until
+/// there is history to average.
+pub const DEFAULT_TASK_TOKENS: u64 = 60_000;
+const MIN_HISTORY_SAMPLES: usize = 3;
+
+/// `tasks` x tokens per task, with a range. The per-task figure is the mean of
+/// finished tasks in `history` when there are at least three, else a constant.
+pub fn estimate_cost(tasks: usize, history: &[Campaign]) -> CostEstimate {
+    let samples: Vec<u64> = history
+        .iter()
+        .flat_map(|c| c.tasks.iter())
+        .filter(|t| matches!(t.status, TaskStatus::Merged | TaskStatus::Verified | TaskStatus::Completed))
+        .map(|t| t.tokens_total())
+        .filter(|n| *n > 0)
+        .collect();
+    let (expected, basis) = if samples.len() >= MIN_HISTORY_SAMPLES {
+        (samples.iter().sum::<u64>() / samples.len() as u64, "history")
+    } else {
+        (DEFAULT_TASK_TOKENS, "default")
+    };
+    let low = expected * 6 / 10;
+    let high = expected * 18 / 10;
+    let n = tasks as u64;
+    CostEstimate {
+        tasks: tasks as u32,
+        per_task_low: low,
+        per_task_expected: expected,
+        per_task_high: high,
+        low: low * n,
+        expected: expected * n,
+        high: high * n,
+        basis: basis.to_string(),
+        samples: if basis == "history" { samples.len() as u32 } else { 0 },
+    }
 }
 
 /// What the final build and test gate did.
@@ -541,7 +704,8 @@ fn task_edge(from: TaskStatus, to: TaskStatus) -> bool {
             // Back to the claim: the verifier was interrupted.
             | (Verifying, Completed | Verified | Failed | Queued)
             | (Verified, Merged | Conflict)
-            | (Conflict, Verified | Queued | Failed)
+            | (Conflict, Verified | Queued | Failed | Resolving)
+            | (Resolving, Running | Failed | Conflict | Interrupted)
             | (Failed, Queued)
             | (Interrupted, Queued | Failed)
     )
@@ -593,6 +757,12 @@ pub fn transition_task(
     }
     if to == TaskStatus::Queued && from == TaskStatus::Interrupted {
         task.verdict = None;
+    }
+    if to == TaskStatus::Resolving {
+        // The resolver's result is verified afresh.
+        task.verdict = None;
+        task.fingerprint = None;
+        task.manual_override = None;
     }
     task.status = to;
     Ok(())
@@ -751,6 +921,8 @@ pub(crate) fn load_reconciled(data_folder: &Path, id: &str) -> Result<Campaign, 
     for t in &mut c.tasks {
         let to = match t.status {
             s if s.is_live() => TaskStatus::Interrupted,
+            // The resolver's pane is gone with the process.
+            TaskStatus::Resolving => TaskStatus::Interrupted,
             // The worker finished; only the verifier was cut off.
             TaskStatus::Verifying => TaskStatus::Completed,
             _ => continue,
@@ -834,6 +1006,8 @@ pub fn create(data_folder: &Path, input: CreateInput) -> Result<Campaign, Campai
     limits.max_parallel = limits.max_parallel.clamp(1, MAX_PARALLEL_CAP);
     limits.max_tasks = MAX_TASKS as u32;
 
+    let estimate = estimate_cost(input.tasks.len(), &list(data_folder));
+
     let _held = lock();
     if campaign_dir(data_folder, &id)?.join("campaign.json").exists() {
         return Err(CampaignError::new(CampaignErrorKind::Exists, format!("campaign {id} already exists")));
@@ -856,33 +1030,10 @@ pub fn create(data_folder: &Path, input: CreateInput) -> Result<Campaign, Campai
         process_epoch: epoch(),
         created_at: stamp.clone(),
         updated_at: stamp,
-        tasks: input
-            .tasks
-            .into_iter()
-            .map(|t| CampaignTask {
-                id: t.id,
-                title: t.title.chars().take(200).collect(),
-                brief: t.brief,
-                acceptance: t.acceptance,
-                paths: t.paths,
-                depends_on: t.depends_on,
-                session_id: None,
-                branch: None,
-                worktree_path: None,
-                base_sha: None,
-                status: TaskStatus::Pending,
-                attempt: 0,
-                verdict: None,
-                tokens_used: 0,
-                handoff_path: None,
-                merged_sha: None,
-                fingerprint: None,
-                detail: String::new(),
-                manual_override: None,
-            })
-            .collect(),
+        tasks: input.tasks.into_iter().map(CampaignTask::from_plan).collect(),
         gate: None,
         proposal_id: None,
+        estimate: Some(estimate),
     };
     save(data_folder, &c)?;
     append_event(data_folder, &id, "campaign-created", None, &format!("{} tasks", c.tasks.len()));
@@ -1304,6 +1455,9 @@ pub struct CampaignContext {
     /// The tail of `decisions.md`.
     pub decisions: String,
     pub handoffs: Vec<HandoffText>,
+    /// For a task with a resolver: the brief written when the resolver was
+    /// prepared (both handoffs, files, conflict regions, fenced).
+    pub resolutions: Vec<HandoffText>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -1315,6 +1469,7 @@ pub struct HandoffText {
 
 const MAX_CONTEXT_DECISIONS: usize = 16_000;
 const MAX_CONTEXT_HANDOFF: usize = 12_000;
+const MAX_CONTEXT_RESOLUTION: usize = 48_000;
 
 fn tail_chars(text: &str, n: usize) -> String {
     let count = text.chars().count();
@@ -1333,6 +1488,7 @@ pub fn context(data_folder: &Path, id: &str, task_ids: &[String]) -> Result<Camp
     }
     let decisions = std::fs::read_to_string(dir.join("decisions.md")).unwrap_or_default();
     let mut handoffs = Vec::new();
+    let mut resolutions = Vec::new();
     for task_id in task_ids {
         check_id("task", task_id)?;
         let path = dir.join("tasks").join(task_id).join("handoff.md");
@@ -1342,8 +1498,189 @@ pub fn context(data_folder: &Path, id: &str, task_ids: &[String]) -> Result<Camp
                 text: text.chars().take(MAX_CONTEXT_HANDOFF).collect(),
             });
         }
+        if let Ok(text) = std::fs::read_to_string(dir.join("tasks").join(task_id).join("resolve.md")) {
+            resolutions.push(HandoffText {
+                task_id: task_id.clone(),
+                text: text.chars().take(MAX_CONTEXT_RESOLUTION).collect(),
+            });
+        }
     }
-    Ok(CampaignContext { decisions: tail_chars(&decisions, MAX_CONTEXT_DECISIONS), handoffs })
+    Ok(CampaignContext { decisions: tail_chars(&decisions, MAX_CONTEXT_DECISIONS), handoffs, resolutions })
+}
+
+/// `tasks/<id>/resolve.md`, replaced atomically.
+pub(crate) fn write_resolution(data_folder: &Path, id: &str, task_id: &str, text: &str) -> Result<(), CampaignError> {
+    check_id("task", task_id)?;
+    let dir = campaign_dir(data_folder, id)?.join("tasks").join(task_id);
+    std::fs::create_dir_all(&dir).map_err(io)?;
+    tauri_plugin_agent_tools::atomic_file::write_atomic(&dir.join("resolve.md"), text.as_bytes()).map_err(io)
+}
+
+/// Claim the right to show one desktop notification. `true` once per `key`
+/// per campaign, recorded in the event log so a restart does not repeat it.
+pub fn claim_notice(data_folder: &Path, id: &str, key: &str) -> Result<bool, CampaignError> {
+    let key = clip_text(key.trim(), 300);
+    if key.is_empty() {
+        return Ok(false);
+    }
+    let _held = lock();
+    let c = load_reconciled(data_folder, id)?;
+    let seen = events(data_folder, &c.id)?
+        .iter()
+        .any(|e| e["kind"] == "desktop-notified" && e["detail"] == key.as_str());
+    if seen {
+        return Ok(false);
+    }
+    append_event(data_folder, id, "desktop-notified", None, &key);
+    Ok(true)
+}
+
+// ---------------------------------------------------------------------------
+// Editing a plan that is not approved yet
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum PlanOp {
+    /// Append a task (or insert it `at` an index).
+    Add {
+        task: PlanTask,
+        #[serde(default)]
+        at: Option<usize>,
+    },
+    /// Replace the given fields of an existing task.
+    #[serde(rename_all = "camelCase")]
+    Update {
+        id: String,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        brief: Option<String>,
+        #[serde(default)]
+        acceptance: Option<Vec<String>>,
+        #[serde(default)]
+        paths: Option<Vec<String>>,
+        #[serde(default)]
+        depends_on: Option<Vec<String>>,
+    },
+    /// Drop a task; it is also removed from other tasks' dependencies.
+    Remove { id: String },
+    /// Put the tasks in this order; ids not named keep their relative order after.
+    Reorder { ids: Vec<String> },
+    /// Replace the whole task list.
+    Replace { tasks: Vec<PlanTask> },
+}
+
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanEdit {
+    #[serde(default)]
+    pub ops: Vec<PlanOp>,
+    #[serde(default)]
+    pub title: Option<String>,
+    /// `Some(0)` clears the token budget.
+    #[serde(default)]
+    pub token_budget: Option<u64>,
+}
+
+fn as_plan(t: &CampaignTask) -> PlanTask {
+    PlanTask {
+        id: t.id.clone(),
+        title: t.title.clone(),
+        brief: t.brief.clone(),
+        acceptance: t.acceptance.clone(),
+        paths: t.paths.clone(),
+        depends_on: t.depends_on.clone(),
+    }
+}
+
+/// Apply `edit` to a `planned` (or `draft`) campaign. The result is validated
+/// as a whole with `validate_plan`; nothing is saved when it does not hold.
+/// Recorded as a `plan-updated` event. Once the plan is approved the tasks are
+/// fixed: an edit then is an illegal transition.
+pub fn plan_update(data_folder: &Path, id: &str, edit: PlanEdit) -> Result<Campaign, CampaignError> {
+    let history: Vec<Campaign> = list(data_folder).into_iter().filter(|c| c.id != id).collect();
+    let _held = lock();
+    let mut c = load_reconciled(data_folder, id)?;
+    if !matches!(c.status, CampaignStatus::Planned | CampaignStatus::Draft) {
+        return Err(illegal("the plan of a campaign (it is edited only before approval)", c.status, "an edit"));
+    }
+    let mut tasks: Vec<PlanTask> = c.tasks.iter().map(as_plan).collect();
+    let mut summary = Vec::new();
+    let bad = |m: String| CampaignError::new(CampaignErrorKind::InvalidPlan, m);
+    for op in edit.ops {
+        match op {
+            PlanOp::Add { task, at } => {
+                summary.push(format!("add {}", task.id));
+                let i = at.unwrap_or(tasks.len()).min(tasks.len());
+                tasks.insert(i, task);
+            }
+            PlanOp::Update { id: tid, title, brief, acceptance, paths, depends_on } => {
+                let t = tasks
+                    .iter_mut()
+                    .find(|t| t.id == tid)
+                    .ok_or_else(|| bad(format!("no task {tid} in this plan")))?;
+                if let Some(v) = title {
+                    t.title = v;
+                }
+                if let Some(v) = brief {
+                    t.brief = v;
+                }
+                if let Some(v) = acceptance {
+                    t.acceptance = v;
+                }
+                if let Some(v) = paths {
+                    t.paths = v;
+                }
+                if let Some(v) = depends_on {
+                    t.depends_on = v;
+                }
+                summary.push(format!("update {tid}"));
+            }
+            PlanOp::Remove { id: tid } => {
+                if !tasks.iter().any(|t| t.id == tid) {
+                    return Err(bad(format!("no task {tid} in this plan")));
+                }
+                tasks.retain(|t| t.id != tid);
+                for t in &mut tasks {
+                    t.depends_on.retain(|d| *d != tid);
+                }
+                summary.push(format!("remove {tid}"));
+            }
+            PlanOp::Reorder { ids } => {
+                let mut ordered: Vec<PlanTask> = Vec::new();
+                for want in &ids {
+                    let at = tasks
+                        .iter()
+                        .position(|t| t.id == *want)
+                        .ok_or_else(|| bad(format!("no task {want} in this plan")))?;
+                    ordered.push(tasks.remove(at));
+                }
+                ordered.append(&mut tasks);
+                tasks = ordered;
+                summary.push("reorder".to_string());
+            }
+            PlanOp::Replace { tasks: next } => {
+                tasks = next;
+                summary.push("replace".to_string());
+            }
+        }
+    }
+    validate_plan(&tasks).map_err(|issues| bad(issues.join("; ")))?;
+    c.tasks = tasks.into_iter().map(CampaignTask::from_plan).collect();
+    if let Some(title) = edit.title.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        c.title = title.chars().take(200).collect();
+        summary.push("title".to_string());
+    }
+    if let Some(b) = edit.token_budget {
+        c.limits.token_budget = (b > 0).then_some(b);
+        summary.push("budget".to_string());
+    }
+    c.estimate = Some(estimate_cost(c.tasks.len(), &history));
+    c.updated_at = now();
+    save(data_folder, &c)?;
+    append_event(data_folder, id, "plan-updated", None, &summary.join(", "));
+    Ok(c)
 }
 
 /// Record that the coordinator was told how a task ended, so a restart does
@@ -1417,10 +1754,14 @@ pub(crate) mod tests {
                     fingerprint: None,
                     detail: String::new(),
                     manual_override: None,
+                    verify_tokens: 0,
+                    evidence: None,
+                    resolver: None,
                 })
                 .collect(),
             gate: None,
             proposal_id: None,
+            estimate: None,
         }
     }
 
@@ -2039,5 +2380,111 @@ pub(crate) mod tests {
         assert!(list(&d).is_empty());
         assert_eq!(get(&d, "zzz").unwrap_err().kind, CampaignErrorKind::NotFound);
         std::fs::remove_dir_all(&d).ok();
+    }
+
+    // --- editable plan, estimate, notices ----------------------------------
+
+    fn edit(ops: Vec<PlanOp>) -> PlanEdit {
+        PlanEdit { ops, ..Default::default() }
+    }
+
+    #[test]
+    fn a_planned_campaign_can_be_edited_and_is_revalidated_whole() {
+        let d = data_dir("planedit");
+        create(&d, input(Some("c"), vec![plan("a", &[], &["src/a"]), plan("b", &["a"], &["src/b"])])).unwrap();
+        let c = plan_update(
+            &d,
+            "c",
+            PlanEdit {
+                ops: vec![
+                    PlanOp::Add { task: plan("z", &[], &["docs"]), at: Some(0) },
+                    PlanOp::Update {
+                        id: "b".into(),
+                        title: Some("renamed".into()),
+                        brief: Some("new brief".into()),
+                        acceptance: Some(vec!["touches src/b".into()]),
+                        paths: None,
+                        depends_on: None,
+                    },
+                ],
+                title: Some("New title".into()),
+                token_budget: Some(500_000),
+            },
+        )
+        .unwrap();
+        assert_eq!(c.tasks.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["z", "a", "b"]);
+        assert_eq!(c.task("b").unwrap().title, "renamed");
+        assert_eq!(c.title, "New title");
+        assert_eq!(c.limits.token_budget, Some(500_000));
+        assert_eq!(c.estimate.as_ref().unwrap().tasks, 3);
+        // Reorder, then removing a task also drops it from dependencies.
+        let c = plan_update(&d, "c", edit(vec![PlanOp::Reorder { ids: vec!["b".into()] }])).unwrap();
+        assert_eq!(c.tasks[0].id, "b");
+        let c = plan_update(&d, "c", edit(vec![PlanOp::Remove { id: "a".into() }])).unwrap();
+        assert!(c.task("b").unwrap().depends_on.is_empty());
+        assert_eq!(get(&d, "c").unwrap().tasks.len(), 2);
+        assert!(events(&d, "c").unwrap().iter().any(|e| e["kind"] == "plan-updated"));
+    }
+
+    #[test]
+    fn a_bad_edit_changes_nothing_and_an_approved_plan_cannot_be_edited() {
+        let d = data_dir("planbad");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[]), plan("b", &["a"], &[])])).unwrap();
+        let cycle = edit(vec![PlanOp::Update {
+            id: "a".into(),
+            title: None,
+            brief: None,
+            acceptance: None,
+            paths: None,
+            depends_on: Some(vec!["b".into()]),
+        }]);
+        let e = plan_update(&d, "c", cycle).unwrap_err();
+        assert_eq!(e.kind, CampaignErrorKind::InvalidPlan);
+        assert!(e.message.contains("cycle"), "{}", e.message);
+        assert!(get(&d, "c").unwrap().task("a").unwrap().depends_on.is_empty());
+        let e = plan_update(&d, "c", edit(vec![PlanOp::Remove { id: "nope".into() }])).unwrap_err();
+        assert!(e.message.contains("no task nope"));
+        let too_many: Vec<PlanTask> = (0..13).map(|i| plan(&format!("t{i}"), &[], &[&format!("p{i}")])).collect();
+        assert!(plan_update(&d, "c", edit(vec![PlanOp::Replace { tasks: too_many }])).is_err());
+        transition(&d, "c", TransitionInput { campaign: Some(CampaignStatus::Approved), task: None, integration: None })
+            .unwrap();
+        let e = plan_update(&d, "c", edit(vec![PlanOp::Remove { id: "b".into() }])).unwrap_err();
+        assert_eq!(e.kind, CampaignErrorKind::IllegalTransition);
+        assert_eq!(get(&d, "c").unwrap().tasks.len(), 2);
+    }
+
+    #[test]
+    fn the_estimate_uses_a_constant_until_there_is_history() {
+        let none = estimate_cost(4, &[]);
+        assert_eq!((none.basis.as_str(), none.samples), ("default", 0));
+        assert_eq!(none.expected, 4 * DEFAULT_TASK_TOKENS);
+        assert!(none.low < none.expected && none.expected < none.high);
+        let mut old = campaign(vec![plan("a", &[], &[]), plan("b", &[], &[]), plan("c", &[], &[])]);
+        for t in &mut old.tasks {
+            t.status = TaskStatus::Merged;
+            t.tokens_used = 9_000;
+            t.verify_tokens = 1_000;
+        }
+        let hist = estimate_cost(2, &[old]);
+        assert_eq!((hist.basis.as_str(), hist.samples, hist.per_task_expected), ("history", 3, 10_000));
+        assert_eq!(hist.expected, 20_000);
+    }
+
+    #[test]
+    fn a_new_campaign_carries_an_estimate() {
+        let d = data_dir("est");
+        let c = create(&d, input(Some("c"), vec![plan("a", &[], &[]), plan("b", &[], &[])])).unwrap();
+        let e = c.estimate.unwrap();
+        assert_eq!((e.tasks, e.basis.as_str()), (2, "default"));
+    }
+
+    #[test]
+    fn a_desktop_notice_is_claimed_once_across_restarts() {
+        let d = data_dir("notice");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[])])).unwrap();
+        assert!(claim_notice(&d, "c", "reviewing").unwrap());
+        assert!(!claim_notice(&d, "c", "reviewing").unwrap());
+        assert!(claim_notice(&d, "c", "done").unwrap());
+        assert!(!claim_notice(&d, "c", "  ").unwrap());
     }
 }

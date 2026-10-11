@@ -1665,6 +1665,87 @@ pub async fn agent_campaign_orphans(
     .unwrap_or_default()
 }
 
+/// Edit a plan that is not approved yet (add, update, remove, reorder tasks,
+/// title, budget). The whole plan is validated again; approved plans refuse.
+#[tauri::command]
+pub async fn agent_campaign_plan_update(
+    app: tauri::AppHandle,
+    id: String,
+    edit: crate::core::agent::campaign::PlanEdit,
+) -> Result<crate::core::agent::campaign::Campaign, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::plan_update(&data_folder, &id, edit).map_err(campaign_failure)
+    })
+    .await
+}
+
+/// What the scheduler would do now, decided by the Rust scheduler (the single
+/// source of truth). `live` is what only the renderer knows.
+#[tauri::command]
+pub async fn agent_campaign_next_actions(
+    app: tauri::AppHandle,
+    id: String,
+    live: crate::core::agent::campaign_scheduler::LiveState,
+    max_parallel: u32,
+) -> Result<Vec<crate::core::agent::campaign_scheduler::Action>, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        let c = crate::core::agent::campaign::get(&data_folder, &id).map_err(campaign_failure)?;
+        Ok(crate::core::agent::campaign_scheduler::next_actions(&c, &live, max_parallel))
+    })
+    .await
+}
+
+/// Start a resolver for a conflicted task in the session the renderer made.
+#[tauri::command]
+pub async fn agent_campaign_resolve(
+    app: tauri::AppHandle,
+    id: String,
+    task_id: String,
+    session_id: String,
+) -> Result<crate::core::agent::campaign_integration::ResolvePlan, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        let roots = team_roots(&data_folder)?;
+        crate::core::agent::campaign_integration::resolve_prepare(&data_folder, &roots, &id, &task_id, &session_id)
+            .map_err(campaign_failure)
+    })
+    .await
+}
+
+/// The integration branch's whole change against the campaign's base: files,
+/// counts and capped patches, for one campaign-level "Review changes".
+#[tauri::command]
+pub async fn agent_campaign_diff(
+    app: tauri::AppHandle,
+    id: String,
+    patches: Option<bool>,
+) -> Result<crate::core::agent::campaign_integration::TaskDiff, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        let roots = team_roots(&data_folder)?;
+        crate::core::agent::campaign_integration::campaign_diff(&data_folder, &roots, &id, patches.unwrap_or(true))
+            .map_err(campaign_failure)
+    })
+    .await
+}
+
+/// Claim one desktop notification: `true` the first time per key (recorded in
+/// the event log, so a restart does not show it twice).
+#[tauri::command]
+pub async fn agent_campaign_claim_notice(
+    app: tauri::AppHandle,
+    id: String,
+    key: String,
+) -> Result<bool, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        crate::core::agent::campaign::claim_notice(&data_folder, &id, &key).map_err(campaign_failure)
+    })
+    .await
+}
+
 /// Commit what a session left uncommitted in its worktree, on its own branch.
 /// The record is checked against the repository's worktree list first, like
 /// merge and discard. Returns `false` when there was nothing to commit.
