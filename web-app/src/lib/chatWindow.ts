@@ -37,6 +37,8 @@ export const SOLO_EVENT = {
   assign: 'solo-assign',
   /** spare -> main: the conversation is on screen (payload: SoloShown). */
   shown: 'solo-shown',
+  /** spare -> main: could not show the conversation (payload: its label). */
+  failed: 'solo-failed',
 } as const
 
 /** `label` names the spare the assignment is for: events reach every window. */
@@ -139,7 +141,7 @@ let nextTimer: ReturnType<typeof setTimeout> | undefined
 /** How long a spare has to show the conversation before it is given up on. */
 const ASSIGN_TIMEOUT_MS = 4000
 /** Pause before the next spare is built, so opening a window stays smooth. */
-const NEXT_SPARE_DELAY_MS = 2500
+const NEXT_SPARE_DELAY_MS = 1200
 
 const freshLabel = () => `${CHAT_WINDOW_LABEL_PREFIX}${Date.now().toString(36)}`
 
@@ -188,12 +190,20 @@ async function assignToSpare(
   t0: number
 ): Promise<boolean> {
   let unlisten: UnlistenFn | undefined
+  let unlistenFailed: UnlistenFn | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
   const shown = new Promise<boolean>((resolve) => {
     void listen<SoloShown>(SOLO_EVENT.shown, (e) => {
       if (e.payload?.label === label) resolve(true)
     }).then((u) => {
       unlisten = u
+    })
+    // A spare that cannot show itself says so, and the open falls back at
+    // once instead of waiting out the timeout.
+    void listen<string>(SOLO_EVENT.failed, (e) => {
+      if (e.payload === label) resolve(false)
+    }).then((u) => {
+      unlistenFailed = u
     })
     timer = setTimeout(() => resolve(false), ASSIGN_TIMEOUT_MS)
   })
@@ -203,11 +213,13 @@ async function assignToSpare(
   } catch {
     clearTimeout(timer)
     unlisten?.()
+    unlistenFailed?.()
     return false
   }
   const ok = await shown
   clearTimeout(timer)
   unlisten?.()
+  unlistenFailed?.()
   return ok
 }
 

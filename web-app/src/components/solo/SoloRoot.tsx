@@ -37,6 +37,7 @@ import {
   type SoloAssignment,
 } from '@/lib/chatWindow'
 import { SoloTitleBar } from '@/components/solo/SoloTitleBar'
+import { bootMark } from '@/lib/bootMarks'
 
 /**
  * The root of a "New window": one conversation and nothing else.
@@ -80,8 +81,14 @@ function useSpareHandshake() {
       } catch (err) {
         console.warn('Solo window could not open its conversation:', err)
       }
-      await win.show()
-      await win.setFocus()
+      try {
+        await win.show()
+        await win.setFocus()
+      } catch (err) {
+        console.warn('Solo window could not show itself:', err)
+        await emitTo('main', SOLO_EVENT.failed, win.label).catch(() => {})
+        return
+      }
       await emitTo('main', SOLO_EVENT.shown, { label: win.label })
     }).then((u) => {
       if (disposed) u()
@@ -123,6 +130,7 @@ export function SoloShell() {
   useEffect(() => {
     if (!allowed || !target || reported.current) return
     reported.current = true
+    bootMark('solo:conversation-mounted')
     console.info(
       `[solo] conversation mounted ${Math.round(performance.now())}ms after the window began loading`
     )

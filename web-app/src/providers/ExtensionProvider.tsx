@@ -7,6 +7,7 @@ import { emit } from '@tauri-apps/api/event'
 import { PropsWithChildren, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { isChatWindow } from '@/lib/soloFlag'
+import { bootMark } from '@/lib/bootMarks'
 
 // A "New window" shows one conversation. It needs the stored conversation and
 // its attachments, not the inference engines (the main window owns those: a
@@ -105,6 +106,7 @@ export function ExtensionProvider({ children }: PropsWithChildren) {
   // click. Controls look present, focus fine, and do nothing.
   useEffect(() => {
     if (!finishedSetup) return
+    bootMark('ext:setup-finished')
     if (isMainWindow()) emit('app-ready').catch(() => {})
     // Synchronously, so the loader stops taking clicks (`.loaded` sets
     // `pointer-events: none`) even if nothing after this runs.
