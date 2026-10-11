@@ -7,6 +7,13 @@
     "beforeBuildCommand": "yarn build:ios:shell"
   },
   "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Flint",
+        "dragDropEnabled": false
+      }
+    ],
     "security": {
       "capabilities": ["mobile"]
     }
