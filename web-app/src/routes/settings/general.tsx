@@ -27,6 +27,7 @@ import { toast } from 'sonner'
 import { SystemEvent } from '@/types/events'
 import { Input } from '@/components/ui/input'
 import { FlintServerSettings } from '@/containers/FlintServerSettings'
+import { RemoteRunnerCard } from '@/containers/RemoteRunnerCard'
 import { isPlatformAndroid, isPlatformIOS } from '@/lib/platform/utils'
 import { useHardware } from '@/hooks/useHardware'
 import LanguageSwitcher from '@/containers/LanguageSwitcher'
@@ -699,6 +700,8 @@ function General() {
 
         {/* The phone builds have no agent of their own: they open a Flint server. */}
         {(isPlatformAndroid() || isPlatformIOS()) && <FlintServerSettings />}
+        {/* A page served by flint serve: can this server run agents? */}
+        <RemoteRunnerCard />
 
         {/* Credits */}
         <Card title={t('settings:general.credits')}>
