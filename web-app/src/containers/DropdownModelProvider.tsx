@@ -14,7 +14,6 @@ import {
   isLocalProvider,
 } from '@/lib/utils'
 import { classifyModelLocation } from '@/lib/modelLocation'
-import { highlightFzfMatch } from '@/utils/highlight'
 import Capabilities from './Capabilities'
 import { ArrowUpDown, Search, Settings, X } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
@@ -30,7 +29,6 @@ import { ModelAvatar } from '@/containers/ModelAvatar'
 import { ModelSupportStatus } from '@/containers/ModelSupportStatus'
 import { ModelEvidenceBadges } from '@/containers/ModelEvidenceBadges'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
-import { Fzf } from 'fzf'
 import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
@@ -96,7 +94,6 @@ interface SearchableModel {
   model: Model
   searchStr: string
   value: string
-  highlightedId?: string
 }
 
 /** A section heading in the picker: Favorites, local, cloud. */
@@ -556,17 +553,6 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     [searchableItems]
   )
 
-  // Create Fzf instance for fuzzy search over what a model is called. The
-  // remote it sits behind is matched separately (below), as plain text: folded
-  // into this string, fuzzy matching let "mmm" find models through the letters
-  // of an unrelated provider's name.
-  const fzfInstance = useMemo(() => {
-    return new Fzf(searchableItems, {
-      selector: (item) =>
-        `${getModelDisplayName(item.model)} ${item.model.id}`.toLowerCase(),
-    })
-  }, [searchableItems])
-
   // Get favorite models that are currently available
   const favoriteItems = useMemo(() => {
     return searchableItems.filter((item) =>
@@ -580,35 +566,21 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   const filteredItems = useMemo(() => {
     if (!searchValue) return searchableItems
 
-    // Each word must hit the model's name (fuzzy) or its remote (substring):
-    // "gpt-4o work" is the copy of gpt-4o behind the remote called "work".
-    // Order follows the first word's fuzzy ranking, then the rest as listed.
+    // Each word must appear verbatim (case-insensitive) in the model's name or
+    // id, or in its remote: "gpt-4o work" is the copy of gpt-4o behind the
+    // remote called "work". Fuzzy subsequence matching let "gpt" find
+    // "gemini-pro-turbo". Order is the list order.
     const words = searchValue.toLowerCase().split(/\s+/).filter(Boolean)
-    const nameHits = words.map((w) => fzfInstance.find(w))
-    const nameSets = nameHits.map((hits) => new Set(hits.map((h) => h.item)))
+    const modelText = (item: SearchableModel) =>
+      `${getModelDisplayName(item.model)} ${item.model.id}`.toLowerCase()
     const remoteText = (item: SearchableModel) =>
       `${getProviderTitle(item.provider.provider)} ${item.provider.provider} ${hostOf(item.provider.base_url)}`.toLowerCase()
-    const matches = (item: SearchableModel) =>
-      words.every(
-        (w, i) => nameSets[i].has(item) || remoteText(item).includes(w)
-      )
-    const ranked = (nameHits[0] ?? []).map((h) => h.item)
-    const rankedSet = new Set(ranked)
-    const ordered = [
-      ...ranked,
-      ...searchableItems.filter((item) => !rankedSet.has(item)),
-    ].filter(matches)
-
-    return ordered.map((item) => {
-      const hit = nameHits[0]?.find((h) => h.item === item)
-      const highlightedId = highlightFzfMatch(
-        item.model.id,
-        hit ? Array.from(hit.positions) : [],
-        'text-acc-text'
-      )
-      return { ...item, highlightedId }
+    return searchableItems.filter((item) => {
+      const name = modelText(item)
+      const remote = remoteText(item)
+      return words.every((w) => name.includes(w) || remote.includes(w))
     })
-  }, [searchableItems, searchValue, fzfInstance])
+  }, [searchableItems, searchValue])
 
   /**
    * Provider sections are one of the orders, and a search has an order of its
