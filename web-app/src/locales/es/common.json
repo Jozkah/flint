@@ -2544,5 +2544,6 @@
     "details": "Detalles de {{name}}",
     "previewLoading": "Cargando la vista previa…",
     "previewNone": "No hay vista previa disponible"
-  }
+  },
+  "dropAttachFailed": "No se pudieron adjuntar los archivos soltados"
 }

@@ -2455,5 +2455,6 @@
     "details": "Detail untuk {{name}}",
     "previewLoading": "Memuat pratinjau…",
     "previewNone": "Pratinjau tidak tersedia"
-  }
+  },
+  "dropAttachFailed": "Tidak dapat melampirkan file yang dijatuhkan"
 }

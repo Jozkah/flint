@@ -2,6 +2,7 @@
   "limitedSupport": "Ce fournisseur n'est peut-être pas entièrement pris en charge. Les capacités (outils, vision, audio) ne sont pas détectées automatiquement : ajoutez les modèles manuellement et configurez les capacités par modèle.",
   "mlxExperimental": "La prise en charge de MLX est expérimentale. Les embeddings sont indisponibles, le bouton de raisonnement n'est pas encore relié et certaines architectures de modèles récentes peuvent ne pas se charger. Signalez les problèmes sur GitHub pour que nous puissions les prioriser.",
   "engineBundled": "Le moteur d'inférence est intégré à Jan, il n'y a donc rien à télécharger ni à mettre à jour séparément. Indiquez cette version quand vous signalez un modèle qui ne se charge pas.",
+  "engineOtherVersion": "Besoin d'une autre version de llama.cpp ? Lancez votre propre llama-server et ajoutez-le comme fournisseur personnalisé compatible OpenAI.",
   "engineReleaseNotes": "Notes de version",
   "engineBuild": "Build",
   "engineCommit": "Commit",
@@ -146,6 +147,7 @@
     "title": "URL de base",
     "openaiDescription": "Utilisez un proxy ou une passerelle compatible avec l'API OpenAI. La valeur par défaut est https://api.openai.com/v1.",
     "azureDescription": "Votre point de terminaison Azure OpenAI. Remplacez YOUR-RESOURCE-NAME par le nom de votre ressource Azure.",
+    "litellmDescription": "L'adresse de votre proxy LiteLLM, /v1 inclus. La valeur par défaut est http://localhost:4000/v1.",
     "qwenDescription": "Votre point de terminaison Model Studio. Une clé ne fonctionne que dans la région où elle a été créée : utilisez https://dashscope-intl.aliyuncs.com/compatible-mode/v1 pour Singapour ou https://dashscope.aliyuncs.com/compatible-mode/v1 pour la Chine continentale."
   },
   "apiKeys": {

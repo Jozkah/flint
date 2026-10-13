@@ -2586,5 +2586,6 @@
     "details": "Szczegóły: {{name}}",
     "previewLoading": "Wczytywanie podglądu…",
     "previewNone": "Podgląd niedostępny"
-  }
+  },
+  "dropAttachFailed": "Nie udało się dołączyć upuszczonych plików"
 }

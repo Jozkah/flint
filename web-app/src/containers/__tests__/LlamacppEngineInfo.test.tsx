@@ -51,6 +51,15 @@ describe('LlamacppEngineInfo', () => {
     )
   })
 
+  // The bundled engine has no version picker, so the panel names the way out
+  // when that one version regresses a model: the user's own llama-server.
+  it('points to running another llama.cpp version as a custom provider', async () => {
+    getEngineVersion.mockResolvedValue(PIN)
+    render(<LlamacppEngineInfo />)
+
+    expect(await screen.findByText('providers:engineOtherVersion')).toBeInTheDocument()
+  })
+
   // A panel with blanks in it makes a weaker claim than no panel: on a build
   // with no engine there is nothing truthful to show.
   it('renders nothing when the version is unavailable', async () => {

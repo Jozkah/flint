@@ -2,6 +2,7 @@
   "limitedSupport": "Nhà cung cấp này có thể chưa được hỗ trợ đầy đủ. Các khả năng (công cụ, thị giác, âm thanh) không được tự động phát hiện - hãy thêm mô hình thủ công và cấu hình khả năng cho từng mô hình.",
   "mlxExperimental": "Hỗ trợ MLX còn mang tính thử nghiệm. Không có embedding, công tắc suy luận chưa được nối, và một số kiến trúc mô hình mới hơn có thể không tải được. Hãy báo lỗi trên GitHub để chúng tôi ưu tiên xử lý.",
   "engineBundled": "Engine suy luận được tích hợp sẵn trong Jan, nên không có gì cần tải xuống hay cập nhật riêng. Hãy nêu phiên bản này khi báo cáo một mô hình không tải được.",
+  "engineOtherVersion": "Cần phiên bản llama.cpp khác? Hãy tự chạy llama-server và thêm nó làm nhà cung cấp tùy chỉnh tương thích OpenAI.",
   "engineReleaseNotes": "Ghi chú phát hành",
   "engineBuild": "Bản dựng",
   "engineCommit": "Commit",
@@ -146,6 +147,7 @@
     "title": "URL gốc",
     "openaiDescription": "Dùng proxy hoặc cổng kết nối tương thích với API OpenAI. Mặc định là https://api.openai.com/v1.",
     "azureDescription": "Điểm cuối Azure OpenAI của bạn. Thay YOUR-RESOURCE-NAME bằng tên tài nguyên Azure của bạn.",
+    "litellmDescription": "Địa chỉ proxy LiteLLM của bạn, bao gồm /v1. Mặc định là http://localhost:4000/v1.",
     "qwenDescription": "Điểm cuối Model Studio của bạn. Một khóa chỉ hoạt động ở khu vực nó được tạo: dùng https://dashscope-intl.aliyuncs.com/compatible-mode/v1 cho Singapore hoặc https://dashscope.aliyuncs.com/compatible-mode/v1 cho Trung Quốc đại lục."
   },
   "apiKeys": {

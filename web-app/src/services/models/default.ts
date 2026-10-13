@@ -674,6 +674,9 @@ export class DefaultModelsService implements ModelsService {
               : Array.isArray(msg.content) && msg.content.length > 0
           ) // Filter out empty messages
 
+        // Chat templates reject a prompt made only of assistant turns
+        if (!transformedMessages.some((m) => m.role !== 'assistant')) return 0
+
         return await engine.getTokensCount({
           model: modelId,
           messages: transformedMessages,

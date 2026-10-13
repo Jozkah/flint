@@ -2,6 +2,7 @@
   "limitedSupport": "Aquest proveïdor pot no ser totalment compatible. Les capacitats (eines, visió, àudio) no es detecten automàticament: afegeix els models manualment i configura les capacitats per model.",
   "mlxExperimental": "El suport per a MLX és experimental. Les incrustacions no estan disponibles, l'interruptor de raonament encara no està connectat i algunes arquitectures de models més noves poden no carregar-se. Informa dels problemes a GitHub perquè els puguem prioritzar.",
   "engineBundled": "El motor d'inferència està integrat a Jan, de manera que no hi ha res per descarregar ni actualitzar per separat. Cita aquesta versió quan informis d'un model que no es carrega.",
+  "engineOtherVersion": "Necessites una altra versió de llama.cpp? Executa el teu propi llama-server i afegeix-lo com a proveïdor personalitzat compatible amb OpenAI.",
   "engineReleaseNotes": "Notes de la versió",
   "engineBuild": "Compilació",
   "engineCommit": "Commit",
@@ -146,6 +147,7 @@
     "title": "URL base",
     "openaiDescription": "Usa un servidor intermediari o una passarel·la que parli l'API d'OpenAI. El valor per defecte és https://api.openai.com/v1.",
     "azureDescription": "El teu endpoint d'Azure OpenAI. Substitueix YOUR-RESOURCE-NAME pel nom del teu recurs d'Azure.",
+    "litellmDescription": "L'adreça del teu servidor intermediari LiteLLM, amb /v1. El valor per defecte és http://localhost:4000/v1.",
     "qwenDescription": "El teu endpoint de Model Studio. Una clau només funciona a la regió on es va crear: usa https://dashscope-intl.aliyuncs.com/compatible-mode/v1 per a Singapur o https://dashscope.aliyuncs.com/compatible-mode/v1 per a la Xina continental."
   },
   "apiKeys": {

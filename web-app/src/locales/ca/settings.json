@@ -78,6 +78,8 @@
   "others": {
     "spellCheck": "Revisió ortogràfica",
     "spellCheckDesc": "Activa la correcció ortogràfica als teus fils.",
+    "enterKeyNewline": "Intro afegeix una línia nova",
+    "enterKeyNewlineDesc": "Prémer Intro al quadre del xat afegeix una línia nova en lloc d'enviar. Envia amb el botó d'enviar o Ctrl/Cmd+Intro. Útil si escrius amb un mètode d'entrada (IME), on Intro confirma una conversió.",
     "resetFactory": "Restableix als valors d’origen",
     "resetFactoryDesc": "Restaura l’aplicació a l’estat inicial, suprimint tots els models i l’historial de xats. Aquesta acció és irreversible i només es recomana si l’aplicació està malmesa."
   },
@@ -663,10 +665,12 @@
     "completionSoundOff": "Desactivat",
     "completionSoundBackground": "Quan és en segon pla",
     "completionSoundAlways": "Sempre",
+    "completionSoundApproval": "Només quan cal aprovació",
     "completionSoundVolume": "Volum",
     "completionSoundPreview": "Reprodueix",
     "reduceMotion": "Redueix el moviment",
-    "reduceMotionDesc": "Desactiva les animacions de Flint. Flint no segueix la configuració del sistema, de manera que el moviment continua activat tret que ho canviïs."
+    "reduceMotionDesc": "Desactiva les animacions de Flint. Flint no segueix la configuració del sistema, de manera que el moviment continua activat tret que ho canviïs.",
+    "completionSoundApproval": "Només quan cal aprovació"
   },
   "pageDesc": {
     "general": "Idioma, carpeta de dades, registres i opcions de tota l'aplicació.",

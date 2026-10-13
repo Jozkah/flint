@@ -763,6 +763,33 @@ const NESTED_SHELL: &str = r#"function global:__JanNestedShell {
 }
 foreach ($n in 'powershell', 'powershell.exe', 'pwsh', 'pwsh.exe') { Set-Item -Path "function:global:$n" -Value ${function:__JanNestedShell} }"#;
 
+/// Windows PowerShell 5.1 cannot autoload its inbox modules inside the
+/// AppContainer (`Write-Output` is "not recognized" although `Import-Module`
+/// of the same module succeeds), so the core ones are imported explicitly.
+pub(crate) const POWERSHELL_CORE_MODULES: &str = "Microsoft.PowerShell.Management,      Microsoft.PowerShell.Utility, Microsoft.PowerShell.Security, Microsoft.PowerShell.Archive";
+
+/// The assemblies behind the Management, Utility and Security cmdlets on
+/// PowerShell 7, as a PowerShell array literal. pwsh finds an inbox module
+/// through the `C:` drive, which an AppContainer whose token cannot open the
+/// drive root never gets, so nothing autoloads and `Write-Output` is "not
+/// recognized"; a cmdlet assembly loads without that lookup. Archive has no
+/// assembly, so it is not here.
+pub(crate) const POWERSHELL_CORE_ASSEMBLIES: &str = "'Microsoft.PowerShell.Commands.Management.dll',      'Microsoft.PowerShell.Commands.Utility.dll', 'Microsoft.PowerShell.Security.dll'";
+
+/// First line of the PowerShell script: makes the inbox cmdlets available
+/// before anything else (even `New-PSDrive`) runs. 5.1 imports the core
+/// modules; pwsh 7 autoloads when its token can open the `C:` drive root, and
+/// only when it did not (no `Write-Output`) loads the cmdlet assemblies
+/// directly, reporting a failed load on stderr. That restores everything but
+/// `Expand-Archive`/`Compress-Archive`, which are a script module there.
+fn powershell_core_prelude() -> String {
+    format!(
+        "if ($PSVersionTable.PSVersion.Major -lt 6) {{ Import-Module {POWERSHELL_CORE_MODULES} -ErrorAction SilentlyContinue }}
+         elseif (-not (Get-Command Write-Output -ErrorAction SilentlyContinue)) {{ foreach ($dll in {POWERSHELL_CORE_ASSEMBLIES}) {{ try {{ Import-Module -Assembly ([System.Reflection.Assembly]::LoadFrom([System.IO.Path]::Combine($PSHOME, $dll))) -ErrorAction Stop }} catch {{ [Console]::Error.WriteLine('jan: could not load ' + $dll + ': ' + $_.Exception.Message) }} }} }}
+"
+    )
+}
+
 /// The command as the shell should receive it, starting where it is meant to.
 ///
 /// Windows PowerShell inside an AppContainer does not take its location from
@@ -822,8 +849,9 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
             let shims = POWERSHELL_CMD_SHIMS;
             let files = POWERSHELL_WORKSPACE_FILE_CMDS;
             let node = super::node_runner::POWERSHELL_NODE_TEST_SHIM;
+            let prelude = powershell_core_prelude();
             format!(
-                "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{ws}' -Scope Global; \
+                "{prelude}$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{ws}' -Scope Global; \
                  Set-Location JanWorkspace:\\; [Environment]::CurrentDirectory = '{ws}'; \
                  $env:JAN_WORKSPACE = '{ws}'; $global:__JanOk = $true; $global:__JanErrors = $Error.Count\n\
                  {web}\n\
@@ -1000,6 +1028,20 @@ pub(crate) fn ps_literal(text: &str) -> String {
 #[cfg(test)]
 mod located_tests {
     use super::*;
+
+    #[test]
+    fn the_script_makes_inbox_cmdlets_available_before_anything_else() {
+        let script = located(ShellFlavor::PowerShell, "Write-Output hi", Path::new(r"C:\ws"));
+        assert!(
+            script.starts_with("if ($PSVersionTable.PSVersion.Major -lt 6) { Import-Module Microsoft.PowerShell.Management,"),
+            "5.1 imports the core modules it cannot autoload in the sandbox"
+        );
+        let load = script.find("elseif (-not (Get-Command Write-Output").expect("pwsh 7 fallback");
+        assert!(script[load..].contains("Import-Module -Assembly"));
+        assert!(script[load..].contains("Microsoft.PowerShell.Commands.Management.dll"));
+        let drive = script.find("New-PSDrive").unwrap();
+        assert!(load < drive, "cmdlets load before New-PSDrive needs them");
+    }
 
     #[test]
     fn verbatim_prefix_is_dropped() {

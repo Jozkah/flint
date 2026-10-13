@@ -38,6 +38,8 @@ export function getProviderLogo(provider: string) {
       return `${IMAGES}/minimax.svg`
     case 'nvidia':
       return `${IMAGES}/nvidia.svg`
+    case 'litellm':
+      return `${IMAGES}/litellm.svg`
     default:
       return undefined
   }

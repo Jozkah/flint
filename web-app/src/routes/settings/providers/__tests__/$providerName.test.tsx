@@ -306,6 +306,7 @@ vi.mock('@/lib/utils', () => ({
 }))
 
 vi.mock('@/constants/providers', () => ({
+  AZURE_BASE_URL_PLACEHOLDER: 'https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1',
   predefinedProviders: [{ provider: 'openai' }],
 }))
 

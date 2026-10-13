@@ -2589,5 +2589,6 @@
     "details": "Podrobnosti o {{name}}",
     "previewLoading": "Načítání náhledu…",
     "previewNone": "Náhled není k dispozici"
-  }
+  },
+  "dropAttachFailed": "Přetažené soubory se nepodařilo připojit"
 }

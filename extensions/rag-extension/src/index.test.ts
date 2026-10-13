@@ -564,3 +564,53 @@ describe('configure', () => {
     expect(cfg.overlapChars).toBe(64)
   })
 })
+
+describe('retrieve file_ids resolution', () => {
+  const embedding = () =>
+    extMgr().getByName.mockReturnValue({
+      embed: vi.fn().mockResolvedValue({ data: [{ embedding: [1], index: 0 }] }),
+    })
+
+  beforeEach(() => vi.clearAllMocks())
+
+  it('maps a file named by its name to its id before searching', async () => {
+    const searchCollection = vi.fn().mockResolvedValue([])
+    const listAttachments = vi.fn().mockResolvedValue([
+      { id: 'f1', name: 'Report.PDF', chunk_count: 3 },
+    ])
+    extMgr().get.mockReturnValue({ searchCollection, listAttachments })
+    embedding()
+    const res = await makeExt().callTool('retrieve', {
+      thread_id: 't1',
+      query: 'q',
+      file_ids: ['report.pdf'],
+    })
+    expect(searchCollection).toHaveBeenCalledWith('t1', [1], 3, 0.3, 'auto', ['f1'])
+    expect(parsePayload(res).note).toBeUndefined()
+  })
+
+  it('drops a filter that matches nothing and says so', async () => {
+    const searchCollection = vi.fn().mockResolvedValue([])
+    const listAttachments = vi.fn().mockResolvedValue([
+      { id: 'f1', name: 'a.txt', chunk_count: 1 },
+    ])
+    extMgr().get.mockReturnValue({ searchCollection, listAttachments })
+    embedding()
+    const res = await makeExt().callTool('retrieve', {
+      thread_id: 't1',
+      query: 'q',
+      file_ids: ['nope.pdf'],
+    })
+    expect(searchCollection).toHaveBeenCalledWith('t1', [1], 3, 0.3, 'auto', undefined)
+    expect(parsePayload(res).note).toContain('nope.pdf')
+  })
+
+  it('passes ids through when attachments cannot be listed', async () => {
+    const searchCollection = vi.fn().mockResolvedValue([])
+    const listAttachments = vi.fn().mockRejectedValue(new Error('boom'))
+    extMgr().get.mockReturnValue({ searchCollection, listAttachments })
+    embedding()
+    await makeExt().callTool('retrieve', { thread_id: 't1', query: 'q', file_ids: ['x'] })
+    expect(searchCollection).toHaveBeenCalledWith('t1', [1], 3, 0.3, 'auto', ['x'])
+  })
+})

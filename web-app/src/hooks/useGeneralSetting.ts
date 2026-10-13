@@ -63,6 +63,8 @@ type GeneralSettingState = {
   /** `provider::modelId` entries tried in order when the chosen model fails to answer. */
   fallbackModels: string[]
   spellCheckChatInput: boolean
+  /** Enter adds a new line in the chat input; the send button (or Ctrl/Cmd+Enter) sends. */
+  enterKeyInsertsNewline: boolean
   tokenCounterCompact: boolean
   stripReasoningFromContext: boolean
   /** Hide to the tray instead of quitting when the window is closed. */
@@ -74,6 +76,7 @@ type GeneralSettingState = {
   huggingfaceToken?: string
   setHuggingfaceToken: (token: string) => void
   setSpellCheckChatInput: (value: boolean) => void
+  setEnterKeyInsertsNewline: (value: boolean) => void
   setTokenCounterCompact: (value: boolean) => void
   setStripReasoningFromContext: (value: boolean) => void
   setCurrentLanguage: (value: Language) => void
@@ -88,6 +91,7 @@ export const useGeneralSetting = create<GeneralSettingState>()(
       replyLanguage: '',
       fallbackModels: [],
       spellCheckChatInput: true,
+      enterKeyInsertsNewline: false,
       tokenCounterCompact: true,
       stripReasoningFromContext: false,
       closeToTray: false,
@@ -99,6 +103,8 @@ export const useGeneralSetting = create<GeneralSettingState>()(
         }),
       huggingfaceToken: undefined,
       setSpellCheckChatInput: (value) => set({ spellCheckChatInput: value }),
+      setEnterKeyInsertsNewline: (value) =>
+        set({ enterKeyInsertsNewline: value }),
       setTokenCounterCompact: (value) => set({ tokenCounterCompact: value }),
       setStripReasoningFromContext: (value) =>
         set({ stripReasoningFromContext: value }),
@@ -139,6 +145,7 @@ export const useGeneralSetting = create<GeneralSettingState>()(
         replyLanguage: state.replyLanguage,
         fallbackModels: state.fallbackModels,
         spellCheckChatInput: state.spellCheckChatInput,
+        enterKeyInsertsNewline: state.enterKeyInsertsNewline,
         tokenCounterCompact: state.tokenCounterCompact,
         stripReasoningFromContext: state.stripReasoningFromContext,
         closeToTray: state.closeToTray,

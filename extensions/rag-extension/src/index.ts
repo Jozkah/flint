@@ -14,6 +14,7 @@ import './env.d'
 import { getRAGTools, RETRIEVE, LIST_ATTACHMENTS, GET_CHUNKS } from './tools'
 import { coerceIntegerArg, coerceStringArrayArg } from './args'
 import { jevBridge, retrieveWithRerank, type Citation } from './rerank'
+import { resolveFileFilter, unmatchedNote, type FileFilter } from './retrieval'
 import * as ragApi from '@janhq/tauri-plugin-rag-api'
 
 export default class RagExtension extends RAGExtension {
@@ -191,7 +192,7 @@ export default class RagExtension extends RAGExtension {
     const threadId = String(args['thread_id'] || '')
     const projectId = String(args['project_id'] || '')
     const query = String(args['query'] || '')
-    const fileIds = coerceStringArrayArg(args['file_ids'])
+    const requestedFileIds = coerceStringArrayArg(args['file_ids'])
     const scope = String(args['scope'] || 'thread')
 
     // Use project_id as threadId when scope is project
@@ -233,6 +234,30 @@ export default class RagExtension extends RAGExtension {
           ],
         }
       }
+
+      // A model may name a file the way the user did rather than by id; map
+      // those to real ids, or drop a filter that matches nothing. Without a way
+      // to list the attachments the ids go through as given.
+      let filter: FileFilter = {
+        fileIds: requestedFileIds?.length ? requestedFileIds : undefined,
+        unmatched: [],
+      }
+      if (requestedFileIds?.length) {
+        try {
+          const attached =
+            scope === 'project' && vec.listAttachmentsForProject
+              ? await vec.listAttachmentsForProject(effectiveThreadId)
+              : vec.listAttachments
+                ? await vec.listAttachments(effectiveThreadId)
+                : undefined
+          if (Array.isArray(attached)) {
+            filter = resolveFileFilter(requestedFileIds, attached)
+          }
+        } catch (e) {
+          logger.warn('[RAG] Could not list attachments to resolve file_ids:', e)
+        }
+      }
+      const fileIds = filter.fileIds
 
       const queryEmb = (await embedTexts([query]))?.[0]
       if (!queryEmb) {
@@ -286,6 +311,7 @@ export default class RagExtension extends RAGExtension {
             chunk_file_order: r.chunk_file_order,
           })) ?? [],
         mode,
+        ...(unmatchedNote(filter) ? { note: unmatchedNote(filter) } : {}),
       }
       return {
         error: '',

@@ -76,6 +76,8 @@
   "others": {
     "spellCheck": "Pemeriksaan Ejaan",
     "spellCheckDesc": "Aktifkan pemeriksaan ejaan untuk utas Anda.",
+    "enterKeyNewline": "Enter Menambah Baris Baru",
+    "enterKeyNewlineDesc": "Menekan Enter di kotak obrolan menambah baris baru, bukan mengirim. Kirim dengan tombol kirim atau Ctrl/Cmd+Enter. Berguna saat mengetik dengan metode input (IME), di mana Enter mengonfirmasi konversi.",
     "resetFactory": "Setel Ulang ke Pengaturan Pabrik",
     "resetFactoryDesc": "Kembalikan aplikasi ke keadaan semula, menghapus semua model dan riwayat obrolan. Tindakan ini tidak dapat diurungkan dan hanya disarankan jika aplikasi rusak."
   },
@@ -657,10 +659,12 @@
     "completionSoundOff": "Mati",
     "completionSoundBackground": "Saat di latar belakang",
     "completionSoundAlways": "Selalu",
+    "completionSoundApproval": "Hanya saat persetujuan diperlukan",
     "completionSoundVolume": "Volume",
     "completionSoundPreview": "Putar",
     "reduceMotion": "Kurangi gerakan",
-    "reduceMotionDesc": "Matikan animasi di Flint. Flint tidak mengikuti pengaturan sistem, jadi gerakan tetap aktif kecuali Anda mengubahnya."
+    "reduceMotionDesc": "Matikan animasi di Flint. Flint tidak mengikuti pengaturan sistem, jadi gerakan tetap aktif kecuali Anda mengubahnya.",
+    "completionSoundApproval": "Hanya saat persetujuan diperlukan"
   },
   "pageDesc": {
     "general": "Bahasa, folder data, log, dan opsi seluruh aplikasi.",

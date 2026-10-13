@@ -152,6 +152,8 @@ export const getDefaultProviderTitle = (provider: string) => {
       return 'MiniMax'
     case 'nvidia':
       return 'NVIDIA NIM'
+    case 'litellm':
+      return 'LiteLLM'
     case 'deepseek':
       return 'DeepSeek'
     case 'moonshot':

@@ -223,6 +223,17 @@ describe('TauriProvidersService', () => {
       expect(result).toEqual(['model-1', 'model-2'])
     })
 
+    it('returns each model id once when listed twice', async () => {
+      vi.mocked(fetchTauri).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          data: [{ id: 'a' }, { id: 'b' }, { id: 'a' }],
+        }),
+      } as any)
+      expect(await svc.fetchModelsFromProvider(baseProvider)).toEqual(['a', 'b'])
+    })
+
     it('returns model ids from array format', async () => {
       vi.mocked(fetchTauri).mockResolvedValueOnce({
         ok: true,

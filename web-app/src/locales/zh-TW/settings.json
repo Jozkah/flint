@@ -77,6 +77,8 @@
   "others": {
     "spellCheck": "拼字檢查",
     "spellCheckDesc": "為您的執行緒啟用拼字檢查。",
+    "enterKeyNewline": "Enter 鍵換行",
+    "enterKeyNewlineDesc": "在聊天輸入框中按 Enter 會換行而不是傳送。使用傳送按鈕或 Ctrl/Cmd+Enter 傳送。適合使用輸入法（IME）時，Enter 用於確認轉換的情況。",
     "resetFactory": "恢復原廠設定",
     "resetFactoryDesc": "將應用程式還原至其初始狀態，清除所有模型和聊天記錄。此操作不可逆，僅在應用程式損毀時建議使用。"
   },
@@ -659,10 +661,12 @@
     "completionSoundOff": "關",
     "completionSoundBackground": "在背景時",
     "completionSoundAlways": "一律",
+    "completionSoundApproval": "僅在需要核准時",
     "completionSoundVolume": "音量",
     "completionSoundPreview": "播放",
     "reduceMotion": "減少動態效果",
-    "reduceMotionDesc": "關閉 Flint 中的動畫。Flint 不會跟隨系統設定，因此除非你切換此項，否則動態效果保持開啟。"
+    "reduceMotionDesc": "關閉 Flint 中的動畫。Flint 不會跟隨系統設定，因此除非你切換此項，否則動態效果保持開啟。",
+    "completionSoundApproval": "僅在需要核准時"
   },
   "pageDesc": {
     "general": "語言、資料夾、記錄和應用程式範圍的選項。",

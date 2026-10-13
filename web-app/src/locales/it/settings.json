@@ -78,6 +78,8 @@
   "others": {
     "spellCheck": "Controllo ortografico",
     "spellCheckDesc": "Abilita il controllo ortografico per le tue conversazioni.",
+    "enterKeyNewline": "Invio aggiunge una nuova riga",
+    "enterKeyNewlineDesc": "Premere Invio nella casella della chat aggiunge una nuova riga invece di inviare. Invia con il pulsante di invio o Ctrl/Cmd+Invio. Utile se scrivi con un metodo di input (IME), dove Invio conferma una conversione.",
     "resetFactory": "Ripristina impostazioni di fabbrica",
     "resetFactoryDesc": "Ripristina l'applicazione al suo stato iniziale, cancellando tutti i modelli e la cronologia delle chat. Questa azione è irreversibile ed è consigliata solo se l'applicazione è corrotta."
   },
@@ -661,10 +663,12 @@
     "completionSoundOff": "Off",
     "completionSoundBackground": "Quando in background",
     "completionSoundAlways": "Sempre",
+    "completionSoundApproval": "Solo quando serve un'approvazione",
     "completionSoundVolume": "Volume",
     "completionSoundPreview": "Riproduci",
     "reduceMotion": "Riduci movimento",
-    "reduceMotionDesc": "Disattiva le animazioni in Flint. Flint non segue l'impostazione di sistema, quindi il movimento resta attivo a meno che tu non lo cambi qui."
+    "reduceMotionDesc": "Disattiva le animazioni in Flint. Flint non segue l'impostazione di sistema, quindi il movimento resta attivo a meno che tu non lo cambi qui.",
+    "completionSoundApproval": "Solo quando serve l'approvazione"
   },
   "pageDesc": {
     "general": "Lingua, cartella dati, log e opzioni dell'intera app.",
