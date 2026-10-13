@@ -44,13 +44,23 @@ const cut = (text: string): string =>
     ? `${text.slice(0, MAX_FEED_TEXT)}\n[... ${text.length - MAX_FEED_TEXT} more characters not kept ...]`
     : text
 
+/**
+ * Turns already stored (bounded and redacted). The reducer keeps the object of
+ * every turn an event did not touch, so a long run only pays for the turn that
+ * changed instead of redacting all kept turns again on every event.
+ */
+const stored = new WeakSet<CoworkTurn>()
+
 /** A turn as it is stored: bounded, with secrets redacted. */
 function bound(turn: CoworkTurn): CoworkTurn {
-  return {
+  if (stored.has(turn)) return turn
+  const out: CoworkTurn = {
     ...turn,
     content: cut(redactSecrets(turn.content)),
     ...(turn.result !== undefined ? { result: cut(redactSecrets(turn.result)) } : {}),
   }
+  stored.add(out)
+  return out
 }
 
 export class RustSubagentFeed {
