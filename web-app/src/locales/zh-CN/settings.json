@@ -77,6 +77,8 @@
   "others": {
     "spellCheck": "拼写检查",
     "spellCheckDesc": "为您的线程启用拼写检查。",
+    "enterKeyNewline": "回车键换行",
+    "enterKeyNewlineDesc": "在聊天输入框中按回车键将换行而不是发送。使用发送按钮或 Ctrl/Cmd+回车发送。适合使用输入法（IME）时，回车用于确认转换的情况。",
     "resetFactory": "恢复出厂设置",
     "resetFactoryDesc": "将应用程序恢复到其初始状态，清除所有模型和聊天记录。此操作不可逆，仅在应用程序损坏时建议使用。"
   },

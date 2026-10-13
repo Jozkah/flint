@@ -79,6 +79,8 @@
   "others": {
     "spellCheck": "Kontrola pravopisu",
     "spellCheckDesc": "Povolit kontrolu pravopisu pro vaše vlákna.",
+    "enterKeyNewline": "Enter vloží nový řádek",
+    "enterKeyNewlineDesc": "Stisk Enter v poli chatu vloží nový řádek místo odeslání. Odesílejte tlačítkem odeslat nebo Ctrl/Cmd+Enter. Hodí se při psaní pomocí vstupní metody (IME), kde Enter potvrzuje převod.",
     "resetFactory": "Obnovit tovární nastavení",
     "resetFactoryDesc": "Obnoví aplikaci do původního stavu, vymaže všechny modely a historii chatů. Tato akce je nevratná a doporučuje se pouze v případě, že je aplikace poškozena."
   },

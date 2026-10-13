@@ -41,6 +41,25 @@ describe('RichComposerEditor', () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
+  it('leaves plain Enter to the editor when Enter adds a new line, still sends on Ctrl+Enter', async () => {
+    const onSend = vi.fn()
+    render(
+      <RichComposerEditor
+        value="hello"
+        onChange={vi.fn()}
+        onSend={onSend}
+        onPaste={vi.fn()}
+        enterInsertsNewline
+        placeholder="Message"
+      />
+    )
+    const input = await screen.findByRole('textbox', { name: 'Message' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onSend).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith(expect.stringContaining('hello'), true))
+  })
+
   it('passes an empty draft to composer send handler for attachment-only messages', async () => {
     const onSend = vi.fn()
     render(

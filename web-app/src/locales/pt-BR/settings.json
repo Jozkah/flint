@@ -78,6 +78,8 @@
   "others": {
     "spellCheck": "Verificação Ortográfica",
     "spellCheckDesc": "Habilitar verificação ortográfica para suas conversas.",
+    "enterKeyNewline": "Enter adiciona uma nova linha",
+    "enterKeyNewlineDesc": "Pressionar Enter na caixa do chat adiciona uma nova linha em vez de enviar. Envie com o botão de enviar ou Ctrl/Cmd+Enter. Útil ao digitar com um método de entrada (IME), em que Enter confirma uma conversão.",
     "resetFactory": "Redefinir para Configurações Originais",
     "resetFactoryDesc": "Restaurar aplicação ao seu estado inicial, apagando todos os modelos e histórico de chat. Esta ação é irreversível e recomendada apenas se a aplicação estiver corrompida."
   },

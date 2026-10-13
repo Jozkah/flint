@@ -79,6 +79,8 @@
   "others": {
     "spellCheck": "Sprawdzanie Pisowni",
     "spellCheckDesc": "Włącz sprawdzanie pisowni w wątkach.",
+    "enterKeyNewline": "Enter dodaje nowy wiersz",
+    "enterKeyNewlineDesc": "Naciśnięcie Enter w polu czatu dodaje nowy wiersz zamiast wysyłać. Wysyłaj przyciskiem wysyłania lub Ctrl/Cmd+Enter. Przydatne przy pisaniu metodą wprowadzania (IME), gdzie Enter zatwierdza konwersję.",
     "resetFactory": "Przywróć Ustawienia Fabryczne",
     "resetFactoryDesc": "Przywróć aplikację do stanu początkowego, wymazując wszystkie modele i historię czatów. Tej operacji nie można cofnąć. Zalecane tylko przy uszkodzeniach danych aplikacji."
   },

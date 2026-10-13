@@ -77,6 +77,8 @@
   "others": {
     "spellCheck": "Rechtschreibprüfung",
     "spellCheckDesc": "Aktiviere die Rechtschreibprüfung für Deine Threads.",
+    "enterKeyNewline": "Eingabetaste fügt Zeilenumbruch ein",
+    "enterKeyNewlineDesc": "Die Eingabetaste im Chatfeld fügt einen Zeilenumbruch ein, statt zu senden. Gesendet wird mit der Senden-Schaltfläche oder Strg/Cmd+Eingabe. Nützlich bei Eingabemethoden (IME), bei denen die Eingabetaste eine Umwandlung bestätigt.",
     "resetFactory": "Auf Werkseinstellungen zurücksetzen",
     "resetFactoryDesc": "Setzt die Anwendung in den ursprünglichen Zustand zurück und löscht dabei alle Modelle und den Chatverlauf. Diese Aktion ist irreversibel und wird nur empfohlen, wenn die Anwendung beschädigt ist."
   },
