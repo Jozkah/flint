@@ -35,5 +35,6 @@
   "serverInvalidModelPath": "Model yolu geçersiz veya erişilemiyor",
   "serverStartModelFailed": "Model başlatılamadı",
   "serverStartFailed": "Sunucu başlatılamadı",
-  "azureEndpointMissing": "{{provider}} için yapılandırılmış bir uç nokta yok. Temel URL'yi Ayarlar > Model Sağlayıcıları bölümünde belirleyin."
+  "azureEndpointMissing": "{{provider}} için yapılandırılmış bir uç nokta yok. Temel URL'yi Ayarlar > Model Sağlayıcıları bölümünde belirleyin.",
+  "emptyReply": "Model yanıt döndürmeden bitti. Yeniden oluşturmayı deneyin veya sağlayıcı ayarlarını kontrol edin."
 }

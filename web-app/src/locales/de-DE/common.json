@@ -2498,5 +2498,6 @@
     "details": "Details zu {{name}}",
     "previewLoading": "Vorschau wird geladen…",
     "previewNone": "Keine Vorschau verfügbar"
-  }
+  },
+  "dropAttachFailed": "Die abgelegten Dateien konnten nicht angehängt werden"
 }

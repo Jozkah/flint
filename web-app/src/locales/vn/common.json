@@ -2498,5 +2498,6 @@
     "details": "Chi tiết về {{name}}",
     "previewLoading": "Đang tải bản xem trước…",
     "previewNone": "Không có bản xem trước"
-  }
+  },
+  "dropAttachFailed": "Không thể đính kèm các tệp đã thả"
 }

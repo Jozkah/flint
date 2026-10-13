@@ -664,7 +664,8 @@
     "completionSoundVolume": "볼륨",
     "completionSoundPreview": "재생",
     "reduceMotion": "동작 줄이기",
-    "reduceMotionDesc": "Flint의 애니메이션을 끕니다. Flint는 시스템 설정을 따르지 않으므로 이 설정을 바꾸지 않으면 동작 효과가 유지됩니다."
+    "reduceMotionDesc": "Flint의 애니메이션을 끕니다. Flint는 시스템 설정을 따르지 않으므로 이 설정을 바꾸지 않으면 동작 효과가 유지됩니다.",
+    "completionSoundApproval": "승인이 필요할 때만"
   },
   "pageDesc": {
     "general": "언어, 데이터 폴더, 로그, 앱 전체 옵션입니다.",

@@ -664,7 +664,8 @@
     "completionSoundVolume": "Âm lượng",
     "completionSoundPreview": "Phát",
     "reduceMotion": "Giảm chuyển động",
-    "reduceMotionDesc": "Tắt hoạt ảnh trong Flint. Flint không theo cài đặt hệ thống, nên chuyển động vẫn bật trừ khi bạn đổi mục này."
+    "reduceMotionDesc": "Tắt hoạt ảnh trong Flint. Flint không theo cài đặt hệ thống, nên chuyển động vẫn bật trừ khi bạn đổi mục này.",
+    "completionSoundApproval": "Chỉ khi cần phê duyệt"
   },
   "pageDesc": {
     "general": "Ngôn ngữ, thư mục dữ liệu, nhật ký và các tùy chọn toàn ứng dụng.",

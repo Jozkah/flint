@@ -664,7 +664,8 @@
     "completionSoundVolume": "音量",
     "completionSoundPreview": "播放",
     "reduceMotion": "减少动效",
-    "reduceMotionDesc": "关闭 Flint 中的动画。Flint 不会跟随系统设置，因此除非你切换此项，否则动效保持开启。"
+    "reduceMotionDesc": "关闭 Flint 中的动画。Flint 不会跟随系统设置，因此除非你切换此项，否则动效保持开启。",
+    "completionSoundApproval": "仅在需要批准时"
   },
   "pageDesc": {
     "general": "语言、数据文件夹、日志和应用范围的选项。",

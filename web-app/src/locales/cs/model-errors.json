@@ -35,5 +35,6 @@
   "serverInvalidModelPath": "Neplatná nebo nedostupná cesta k modelu",
   "serverStartModelFailed": "Model se nepodařilo spustit",
   "serverStartFailed": "Server se nepodařilo spustit",
-  "azureEndpointMissing": "Pro {{provider}} není nastaven žádný endpoint. Nastavte základní URL v Nastavení > Poskytovatelé modelů."
+  "azureEndpointMissing": "Pro {{provider}} není nastaven žádný endpoint. Nastavte základní URL v Nastavení > Poskytovatelé modelů.",
+  "emptyReply": "Model skončil bez odpovědi. Zkuste ji vygenerovat znovu nebo zkontrolujte nastavení poskytovatele."
 }

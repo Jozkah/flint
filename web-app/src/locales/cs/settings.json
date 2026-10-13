@@ -668,7 +668,8 @@
     "completionSoundVolume": "Hlasitost",
     "completionSoundPreview": "Přehrát",
     "reduceMotion": "Omezit animace",
-    "reduceMotionDesc": "Vypne animace ve Flintu. Flint se neřídí systémovým nastavením, takže animace zůstávají zapnuté, dokud to nepřepnete."
+    "reduceMotionDesc": "Vypne animace ve Flintu. Flint se neřídí systémovým nastavením, takže animace zůstávají zapnuté, dokud to nepřepnete.",
+    "completionSoundApproval": "Jen když je potřeba schválení"
   },
   "pageDesc": {
     "general": "Jazyk, datová složka, protokoly a možnosti celé aplikace.",

@@ -666,7 +666,8 @@
     "completionSoundVolume": "Volume",
     "completionSoundPreview": "Riproduci",
     "reduceMotion": "Riduci movimento",
-    "reduceMotionDesc": "Disattiva le animazioni in Flint. Flint non segue l'impostazione di sistema, quindi il movimento resta attivo a meno che tu non lo cambi qui."
+    "reduceMotionDesc": "Disattiva le animazioni in Flint. Flint non segue l'impostazione di sistema, quindi il movimento resta attivo a meno che tu non lo cambi qui.",
+    "completionSoundApproval": "Solo quando serve l'approvazione"
   },
   "pageDesc": {
     "general": "Lingua, cartella dati, log e opzioni dell'intera app.",

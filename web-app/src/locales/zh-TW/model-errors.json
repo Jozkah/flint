@@ -35,5 +35,6 @@
   "serverInvalidModelPath": "模型路徑無效或無法存取",
   "serverStartModelFailed": "無法啟動模型",
   "serverStartFailed": "無法啟動伺服器",
-  "azureEndpointMissing": "尚未為 {{provider}} 設定端點。請在 設定 > 模型供應商 中設定基礎 URL。"
+  "azureEndpointMissing": "尚未為 {{provider}} 設定端點。請在 設定 > 模型供應商 中設定基礎 URL。",
+  "emptyReply": "模型結束時沒有回傳回覆。請嘗試重新產生，或檢查提供者設定。"
 }

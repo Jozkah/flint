@@ -664,7 +664,8 @@
     "completionSoundVolume": "Ses düzeyi",
     "completionSoundPreview": "Çal",
     "reduceMotion": "Hareketi azalt",
-    "reduceMotionDesc": "Flint'teki animasyonları kapatın. Flint sistem ayarını izlemez, bu nedenle bunu değiştirmediğiniz sürece hareket açık kalır."
+    "reduceMotionDesc": "Flint'teki animasyonları kapatın. Flint sistem ayarını izlemez, bu nedenle bunu değiştirmediğiniz sürece hareket açık kalır.",
+    "completionSoundApproval": "Yalnızca onay gerektiğinde"
   },
   "pageDesc": {
     "general": "Dil, veri klasörü, günlükler ve uygulama genelindeki seçenekler.",

@@ -664,7 +664,8 @@
     "completionSoundVolume": "Lautstärke",
     "completionSoundPreview": "Abspielen",
     "reduceMotion": "Bewegung reduzieren",
-    "reduceMotionDesc": "Schaltet Animationen in Flint aus. Flint folgt nicht der Systemeinstellung, daher bleiben Animationen an, sofern du das nicht umstellst."
+    "reduceMotionDesc": "Schaltet Animationen in Flint aus. Flint folgt nicht der Systemeinstellung, daher bleiben Animationen an, sofern du das nicht umstellst.",
+    "completionSoundApproval": "Nur wenn eine Freigabe nötig ist"
   },
   "pageDesc": {
     "general": "Sprache, Datenordner, Protokolle und App-weite Optionen.",

@@ -35,5 +35,6 @@
   "serverInvalidModelPath": "Nieprawidłowa lub niedostępna ścieżka modelu",
   "serverStartModelFailed": "Nie udało się uruchomić modelu",
   "serverStartFailed": "Nie udało się uruchomić serwera",
-  "azureEndpointMissing": "Nie skonfigurowano punktu końcowego dla {{provider}}. Ustaw bazowy adres URL w Ustawienia > Dostawcy modeli."
+  "azureEndpointMissing": "Nie skonfigurowano punktu końcowego dla {{provider}}. Ustaw bazowy adres URL w Ustawienia > Dostawcy modeli.",
+  "emptyReply": "Model zakończył bez zwrócenia odpowiedzi. Spróbuj wygenerować ją ponownie lub sprawdź ustawienia dostawcy."
 }

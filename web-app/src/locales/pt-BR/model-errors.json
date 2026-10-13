@@ -35,5 +35,6 @@
   "serverInvalidModelPath": "Caminho do modelo inválido ou inacessível",
   "serverStartModelFailed": "Falha ao iniciar o modelo",
   "serverStartFailed": "Falha ao iniciar o servidor",
-  "azureEndpointMissing": "Nenhum endpoint configurado para {{provider}}. Defina a URL base em Configurações > Provedores de modelos."
+  "azureEndpointMissing": "Nenhum endpoint configurado para {{provider}}. Defina a URL base em Configurações > Provedores de modelos.",
+  "emptyReply": "O modelo terminou sem retornar uma resposta. Tente gerar novamente ou verifique as configurações do provedor."
 }

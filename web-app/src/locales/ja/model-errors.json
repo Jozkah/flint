@@ -35,5 +35,6 @@
   "serverInvalidModelPath": "モデルのパスが無効、またはアクセスできません",
   "serverStartModelFailed": "モデルを起動できませんでした",
   "serverStartFailed": "サーバーを起動できませんでした",
-  "azureEndpointMissing": "{{provider}} のエンドポイントが設定されていません。設定 > モデルプロバイダ でベース URL を設定してください。"
+  "azureEndpointMissing": "{{provider}} のエンドポイントが設定されていません。設定 > モデルプロバイダ でベース URL を設定してください。",
+  "emptyReply": "モデルが応答を返さずに終了しました。再生成するか、プロバイダー設定を確認してください。"
 }

@@ -695,7 +695,8 @@
     "resetCodeBlockStyle": "Redefinir Estilo do Bloco de Código",
     "resetCodeBlockStyleDesc": "Redefinir estilo do bloco de código para padrão.",
     "resetCodeBlockSuccess": "Estilo do bloco de código redefinido com sucesso",
-    "resetCodeBlockSuccessDesc": "Estilo do bloco de código foi restaurado para padrão."
+    "resetCodeBlockSuccessDesc": "Estilo do bloco de código foi restaurado para padrão.",
+    "completionSoundApproval": "Somente quando for necessária aprovação"
   },
   "pageDesc": {
     "general": "Idioma, a pasta de dados, logs e opções de todo o app.",

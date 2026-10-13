@@ -664,7 +664,8 @@
     "completionSoundVolume": "वॉल्यूम",
     "completionSoundPreview": "चलाएँ",
     "reduceMotion": "गति कम करें",
-    "reduceMotionDesc": "Flint में एनिमेशन बंद करें। Flint सिस्टम सेटिंग का पालन नहीं करता, इसलिए जब तक आप इसे नहीं बदलते गति चालू रहती है।"
+    "reduceMotionDesc": "Flint में एनिमेशन बंद करें। Flint सिस्टम सेटिंग का पालन नहीं करता, इसलिए जब तक आप इसे नहीं बदलते गति चालू रहती है।",
+    "completionSoundApproval": "केवल जब अनुमोदन आवश्यक हो"
   },
   "pageDesc": {
     "general": "भाषा, डेटा फ़ोल्डर, लॉग और ऐप-व्यापी विकल्प।",

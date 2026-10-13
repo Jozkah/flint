@@ -2541,5 +2541,6 @@
     "details": "Detalhes de {{name}}",
     "previewLoading": "Carregando pré-visualização…",
     "previewNone": "Nenhuma pré-visualização disponível"
-  }
+  },
+  "dropAttachFailed": "Não foi possível anexar os arquivos soltos"
 }

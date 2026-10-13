@@ -664,7 +664,8 @@
     "completionSoundVolume": "音量",
     "completionSoundPreview": "再生",
     "reduceMotion": "視覚効果を減らす",
-    "reduceMotionDesc": "Flint のアニメーションをオフにします。Flint はシステム設定に従わないため、これを切り替えない限り、アニメーションはオンのままです。"
+    "reduceMotionDesc": "Flint のアニメーションをオフにします。Flint はシステム設定に従わないため、これを切り替えない限り、アニメーションはオンのままです。",
+    "completionSoundApproval": "承認が必要なときのみ"
   },
   "pageDesc": {
     "general": "言語、データフォルダー、ログ、アプリ全体のオプションです。",

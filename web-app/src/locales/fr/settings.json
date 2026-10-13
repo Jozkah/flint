@@ -666,7 +666,8 @@
     "completionSoundVolume": "Volume",
     "completionSoundPreview": "Lire",
     "reduceMotion": "Réduire les animations",
-    "reduceMotionDesc": "Désactiver les animations dans Flint. Flint ne suit pas le réglage du système : les animations restent actives tant que vous ne changez pas ceci."
+    "reduceMotionDesc": "Désactiver les animations dans Flint. Flint ne suit pas le réglage du système : les animations restent actives tant que vous ne changez pas ceci.",
+    "completionSoundApproval": "Uniquement lorsqu'une approbation est requise"
   },
   "pageDesc": {
     "general": "Langue, dossier de données, journaux et options de toute l'application.",

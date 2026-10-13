@@ -664,7 +664,8 @@
     "completionSoundVolume": "音量",
     "completionSoundPreview": "播放",
     "reduceMotion": "減少動態效果",
-    "reduceMotionDesc": "關閉 Flint 中的動畫。Flint 不會跟隨系統設定，因此除非你切換此項，否則動態效果保持開啟。"
+    "reduceMotionDesc": "關閉 Flint 中的動畫。Flint 不會跟隨系統設定，因此除非你切換此項，否則動態效果保持開啟。",
+    "completionSoundApproval": "僅在需要核准時"
   },
   "pageDesc": {
     "general": "語言、資料夾、記錄和應用程式範圍的選項。",
