@@ -11,6 +11,7 @@ import {
   Globe,
   Binary,
   Headphones,
+  TextCursorInput,
 } from 'lucide-react'
 import { Fragment, memo } from 'react'
 
@@ -55,6 +56,8 @@ const Capabilities = memo(function Capabilities({
           icon = <Atom className="size-3.5" />
         } else if (capability === 'embeddings' || isEmbedding) {
           icon = <Binary className="size-3.5" />
+        } else if (capability === 'raw_completion') {
+          icon = <TextCursorInput className="size-3.5" />
         } else if (capability === 'web_search') {
           icon = <Globe className="size-3.5" />
         } else {
@@ -83,7 +86,9 @@ const Capabilities = memo(function Capabilities({
                         ? 'Web Search'
                         : capability === 'embeddings'
                           ? 'Embedding Model (for RAG/vectors, not chat)'
-                          : capability}
+                          : capability === 'raw_completion'
+                            ? 'Raw completion (continues your text, no chat or tools)'
+                            : capability}
                     </p>
                   </TooltipContent>
                 </Tooltip>

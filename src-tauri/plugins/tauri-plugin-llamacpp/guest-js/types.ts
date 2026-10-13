@@ -138,6 +138,8 @@ export interface ModelConfig {
   mmproj_sha256?: string
   mmproj_size_bytes?: number
   embedding?: boolean
+  /** No chat template in the GGUF: serve via /v1/completions, not chat. */
+  completion_only?: boolean
   template_kwargs?: TemplateKwarg[]
   template_kwargs_check_v?: number
 }

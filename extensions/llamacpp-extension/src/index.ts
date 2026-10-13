@@ -1403,6 +1403,57 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     return isEmbedding
   }
 
+  /**
+   * A GGUF with no embedded chat template (GPT-2 style base models) cannot
+   * serve /chat/completions: llama.cpp falls back to chatml and the model
+   * emits template garbage. Such models are flagged `completion_only` so chat
+   * goes to /v1/completions instead. A user-set `chat_template` in model.yml
+   * wins, and the result is cached in model.yml.
+   */
+  private async resolveCompletionOnlyConfig(
+    modelId: string,
+    modelConfig: ModelConfig,
+    isEmbedding: boolean
+  ): Promise<boolean> {
+    if (isEmbedding) return false
+    const cfg = modelConfig as ModelConfig & { chat_template?: string }
+    if (typeof cfg.chat_template === 'string' && cfg.chat_template.trim()) {
+      return false
+    }
+    if (typeof cfg.completion_only === 'boolean') return cfg.completion_only
+
+    let completionOnly = false
+    try {
+      const fullModelPath = await joinPath([
+        await getJanDataFolderPath(),
+        modelConfig.model_path,
+      ])
+      if (!(await fs.existsSync(fullModelPath))) return false
+      const { metadata } = await readGgufMetadata(fullModelPath)
+      const template = metadata?.['tokenizer.chat_template']
+      completionOnly = !(typeof template === 'string' && template.trim())
+    } catch (e) {
+      logger.warn(`Failed to check chat template for ${modelId}`, e)
+      return false
+    }
+
+    try {
+      cfg.completion_only = completionOnly
+      await invoke<void>('write_yaml', {
+        data: cfg,
+        savePath: await joinPath([
+          await this.getProviderPath(),
+          'models',
+          modelId,
+          'model.yml',
+        ]),
+      })
+    } catch (e) {
+      logger.warn(`Failed to persist completion_only for ${modelId}`, e)
+    }
+    return completionOnly
+  }
+
   private async resolveMtpLayersConfig(
     modelId: string,
     modelConfig: ModelConfig
@@ -1581,6 +1632,15 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         )
 
         const capabilities: string[] = []
+        if (
+          await this.resolveCompletionOnlyConfig(
+            modelId,
+            modelConfig,
+            isEmbedding
+          )
+        ) {
+          capabilities.push('raw_completion')
+        }
         if (modelConfig.mmproj_path) {
           const caps = await this.readMmprojCapabilities(
             modelConfig.mmproj_path

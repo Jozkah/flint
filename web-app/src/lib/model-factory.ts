@@ -58,7 +58,9 @@ import {
   createOpenAICompatible,
   MetadataExtractor,
   OpenAICompatibleChatLanguageModel,
+  OpenAICompatibleCompletionLanguageModel,
 } from '@ai-sdk/openai-compatible'
+import { ModelCapabilities } from '@/types/models'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createXai } from '@ai-sdk/xai'
 import { createMistral } from '@ai-sdk/mistral'
@@ -1289,18 +1291,31 @@ export class ModelFactory {
       customFetch = withAssistantReasoningStripped(customFetch)
     }
 
-    const llamaModel = new OpenAICompatibleChatLanguageModel(modelId, {
+    const llamaConfig = {
       provider: 'llamacpp',
       headers: () => ({
         Authorization: `Bearer ${sessionInfo.api_key}`,
         Origin: 'tauri://localhost',
       }),
-      url: ({ path }) => {
+      url: ({ path }: { path: string }) => {
         const url = new URL(`http://localhost:${sessionInfo.port}/v1${path}`)
         return url.toString()
       },
       includeUsage: true,
       fetch: customFetch,
+    }
+
+    // A template-less base model (GPT-2 style) can only continue text, so it
+    // goes to /v1/completions. It has no tool calls to repair.
+    const rawCompletion = provider?.models
+      ?.find((m) => m.id === modelId)
+      ?.capabilities?.includes(ModelCapabilities.RAW_COMPLETION)
+    if (rawCompletion) {
+      return new OpenAICompatibleCompletionLanguageModel(modelId, llamaConfig)
+    }
+
+    const llamaModel = new OpenAICompatibleChatLanguageModel(modelId, {
+      ...llamaConfig,
       metadataExtractor: providerMetadataExtractor,
     })
 
