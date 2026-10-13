@@ -58,6 +58,8 @@ macro_rules! invoke_commands_with_extras {
         core::diffusion::commands::diffusion_remove_custom_model,
         core::filesystem::asset_scope::allow_asset_path,
         core::filesystem::commands::join_path,
+        // Saving files dropped onto the chat as attachments
+        core::attachments::commands::save_attachment_file,
         core::filesystem::commands::mkdir,
         core::filesystem::commands::exists_sync,
         core::filesystem::commands::readdir_sync,

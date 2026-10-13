@@ -111,6 +111,10 @@ import type { ChatStatus } from 'ai'
 import { useRouter } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
+  DOCUMENT_ATTACHMENT_EXTENSIONS,
+  isDocumentAttachmentName,
+} from '@/constants/attachments'
+import {
   TEMPORARY_CHAT_ID,
   TEMPORARY_CHAT_QUERY_ID,
   SESSION_STORAGE_KEY,
@@ -1555,6 +1559,117 @@ const ChatInput = memo(function ChatInput({
     ]
   )
 
+  /** Attach files on disk as documents; shared by the picker and drag-and-drop. */
+  const attachDocumentPaths = async (paths: string[]) => {
+    // Prepare attachments with file sizes
+    const preparedAttachments: Attachment[] = []
+    for (const p of paths) {
+      const name = p.split(/[\\/]/).pop() || p
+      const fileType = name.split('.').pop()?.toLowerCase()
+      let size: number | undefined = undefined
+      try {
+        const stat = await fs.fileStat(p)
+        size = stat?.size ? Number(stat.size) : undefined
+      } catch (e) {
+        console.warn('Failed to read file size for', p, e)
+      }
+      preparedAttachments.push(
+        createDocumentAttachment({
+          name,
+          path: p,
+          fileType,
+          size,
+          parseMode: parsePreference,
+        })
+      )
+    }
+
+    const maxFileSizeBytes =
+      typeof maxFileSizeMB === 'number' && maxFileSizeMB > 0
+        ? maxFileSizeMB * 1024 * 1024
+        : undefined
+
+    if (maxFileSizeBytes !== undefined) {
+      const hasOversized = preparedAttachments.some(
+        (att) => typeof att.size === 'number' && att.size > maxFileSizeBytes
+      )
+      if (hasOversized) {
+        toast.error('File too large', {
+          description: `One or more files exceed the ${maxFileSizeMB}MB limit`,
+        })
+        return
+      }
+    }
+
+    let duplicates: string[] = []
+    let newDocAttachments: Attachment[] = []
+
+    setAttachmentsForThread(attachmentsKey, (currentAttachments) => {
+      const existingPaths = new Set(
+        currentAttachments
+          .filter((a) => a.type === 'document' && a.path)
+          .map((a) => a.path)
+      )
+
+      duplicates = []
+      newDocAttachments = []
+
+      for (const att of preparedAttachments) {
+        if (existingPaths.has(att.path)) {
+          duplicates.push(att.name)
+          continue
+        }
+        newDocAttachments.push(att)
+      }
+
+      return newDocAttachments.length > 0
+        ? [...currentAttachments, ...newDocAttachments]
+        : currentAttachments
+    })
+
+    if (duplicates.length > 0) {
+      toast.warning('Files already attached', {
+        description: `${duplicates.join(', ')} ${duplicates.length === 1 ? 'is' : 'are'} already in the list`,
+      })
+    }
+
+    if (newDocAttachments.length > 0) {
+      await processNewDocumentAttachments(newDocAttachments)
+    }
+  }
+
+  /** Save dropped documents to disk, then attach them like picked files. */
+  const attachDroppedDocuments = async (files: File[]) => {
+    if (!attachmentsEnabled) {
+      toast.info('Attachments are disabled in Settings')
+      return
+    }
+    const limitBytes =
+      typeof maxFileSizeMB === 'number' && maxFileSizeMB > 0
+        ? maxFileSizeMB * 1024 * 1024
+        : undefined
+    const withinLimit = files.filter(
+      (f) => limitBytes === undefined || f.size <= limitBytes
+    )
+    if (withinLimit.length < files.length) {
+      toast.error('File too large', {
+        description: `One or more files exceed the ${maxFileSizeMB}MB limit`,
+      })
+    }
+    if (withinLimit.length === 0) return
+    try {
+      const paths = await Promise.all(
+        withinLimit.map((f) => serviceHub.uploads().saveDroppedFile(f))
+      )
+      await attachDocumentPaths(paths)
+    } catch (e) {
+      console.error('Failed to attach dropped documents:', e)
+      toast.error(t('common:dropAttachFailed'), {
+        description: e instanceof Error ? e.message : JSON.stringify(e),
+      })
+    }
+  }
+
   const handleAttachDocsIngest = async () => {
     try {
       if (!attachmentsEnabled) {
@@ -1566,143 +1681,7 @@ const ChatInput = memo(function ChatInput({
         filters: [
           {
             name: 'Documents & Code',
-            extensions: [
-              // Documents
-              'pdf',
-              'docx',
-              'txt',
-              'md',
-              'csv',
-              'xlsx',
-              'xls',
-              'ods',
-              'pptx',
-              'html',
-              'htm',
-              // JavaScript / TypeScript
-              'js',
-              'mjs',
-              'cjs',
-              'ts',
-              'mts',
-              'cts',
-              'jsx',
-              'tsx',
-              // Python
-              'py',
-              'pyw',
-              'pyi',
-              // C / C++
-              'c',
-              'h',
-              'cpp',
-              'cc',
-              'cxx',
-              'hpp',
-              'hh',
-              // Systems languages
-              'rs',
-              'go',
-              'swift',
-              'zig',
-              // JVM languages
-              'java',
-              'kt',
-              'kts',
-              'scala',
-              'groovy',
-              // Scripting languages
-              'rb',
-              'php',
-              'lua',
-              'pl',
-              'r',
-              'jl',
-              // .NET
-              'cs',
-              'fs',
-              'vb',
-              'xaml',
-              'csproj',
-              'sln',
-              // CUDA
-              'cu',
-              'cuh',
-              // Shaders
-              'hlsl',
-              'glsl',
-              'cg',
-              'shader',
-              // Shell
-              'sh',
-              'bash',
-              'zsh',
-              'fish',
-              'ps1',
-              'bat',
-              'cmd',
-              'vbs',
-              // More languages
-              'asm',
-              's',
-              'm',
-              'mm',
-              'pas',
-              'pp',
-              'erl',
-              'hrl',
-              'ex',
-              'exs',
-              'clj',
-              'cljs',
-              'hs',
-              'lhs',
-              'ml',
-              'mli',
-              'f',
-              'f90',
-              // Web
-              'css',
-              'scss',
-              'sass',
-              'less',
-              'vue',
-              'svelte',
-              'astro',
-              'php',
-              'asp',
-              'aspx',
-              'jsp',
-              // Data / config formats
-              'json',
-              'jsonc',
-              'yaml',
-              'yml',
-              'toml',
-              'xml',
-              'ini',
-              'cfg',
-              'conf',
-              'env',
-              'properties',
-              'dockerfile',
-              'makefile',
-              'cmake',
-              'lock',
-              // Query / markup
-              'sql',
-              'graphql',
-              'gql',
-              'tex',
-              'rst',
-              'adoc',
-              'textile',
-              // Misc text
-              'log',
-              'diff',
-              'patch',
-              'gitignore',
-            ],
+            extensions: [...DOCUMENT_ATTACHMENT_EXTENSIONS],
           },
           {
             name: 'All Files',
@@ -1713,82 +1692,7 @@ const ChatInput = memo(function ChatInput({
       if (!selection) return
       const paths = Array.isArray(selection) ? selection : [selection]
       if (!paths.length) return
-
-      // Prepare attachments with file sizes
-      const preparedAttachments: Attachment[] = []
-      for (const p of paths) {
-        const name = p.split(/[\\/]/).pop() || p
-        const fileType = name.split('.').pop()?.toLowerCase()
-        let size: number | undefined = undefined
-        try {
-          const stat = await fs.fileStat(p)
-          size = stat?.size ? Number(stat.size) : undefined
-        } catch (e) {
-          console.warn('Failed to read file size for', p, e)
-        }
-        preparedAttachments.push(
-          createDocumentAttachment({
-            name,
-            path: p,
-            fileType,
-            size,
-            parseMode: parsePreference,
-          })
-        )
-      }
-
-      const maxFileSizeBytes =
-        typeof maxFileSizeMB === 'number' && maxFileSizeMB > 0
-          ? maxFileSizeMB * 1024 * 1024
-          : undefined
-
-      if (maxFileSizeBytes !== undefined) {
-        const hasOversized = preparedAttachments.some(
-          (att) => typeof att.size === 'number' && att.size > maxFileSizeBytes
-        )
-        if (hasOversized) {
-          toast.error('File too large', {
-            description: `One or more files exceed the ${maxFileSizeMB}MB limit`,
-          })
-          return
-        }
-      }
-
-      let duplicates: string[] = []
-      let newDocAttachments: Attachment[] = []
-
-      setAttachmentsForThread(attachmentsKey, (currentAttachments) => {
-        const existingPaths = new Set(
-          currentAttachments
-            .filter((a) => a.type === 'document' && a.path)
-            .map((a) => a.path)
-        )
-
-        duplicates = []
-        newDocAttachments = []
-
-        for (const att of preparedAttachments) {
-          if (existingPaths.has(att.path)) {
-            duplicates.push(att.name)
-            continue
-          }
-          newDocAttachments.push(att)
-        }
-
-        return newDocAttachments.length > 0
-          ? [...currentAttachments, ...newDocAttachments]
-          : currentAttachments
-      })
-
-      if (duplicates.length > 0) {
-        toast.warning('Files already attached', {
-          description: `${duplicates.join(', ')} ${duplicates.length === 1 ? 'is' : 'are'} already in the list`,
-        })
-      }
-
-      if (newDocAttachments.length > 0) {
-        await processNewDocumentAttachments(newDocAttachments)
-      }
+      await attachDocumentPaths(paths)
     } catch (e) {
       console.error('Failed to attach documents:', e)
       const desc = e instanceof Error ? e.message : JSON.stringify(e)
@@ -2697,10 +2601,15 @@ const ChatInput = memo(function ChatInput({
     const missing: EnableableCapability[] = []
     if (audioOnes.length > 0 && !audioSupported) missing.push('audio')
     if (videoOnes.length > 0 && !videoSupported) missing.push('video')
+    // Documents take the same path as the + button once saved to disk;
+    // anything else keeps going to the image path.
+    const documentOnes = otherOnes.filter((f) => isDocumentAttachmentName(f.name))
+    const imageOnes = otherOnes.filter((f) => !documentOnes.includes(f))
     const attachMedia = () => {
-      if (otherOnes.length > 0) {
+      if (documentOnes.length > 0) void attachDroppedDocuments(documentOnes)
+      if (imageOnes.length > 0) {
         const dt = new DataTransfer()
-        otherOnes.forEach((f) => dt.items.add(f))
+        imageOnes.forEach((f) => dt.items.add(f))
         const syntheticEvent = {
           target: { files: dt.files },
         } as React.ChangeEvent<HTMLInputElement>
