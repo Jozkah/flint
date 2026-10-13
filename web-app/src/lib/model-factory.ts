@@ -1194,7 +1194,17 @@ export class ModelFactory {
     parameters: Record<string, unknown> = {}
   ): Promise<LanguageModel> {
     const providerName = provider.provider.toLowerCase()
-    if (providerName === 'azure') requireAzureEndpoint(provider)
+    if (providerName === 'azure') {
+      requireAzureEndpoint(provider)
+      // Azure's v1 API serves the OpenAI Responses API at the same base URL,
+      // and its reasoning deployments reject function tools on
+      // /chat/completions. Legacy deployments-style endpoints (path with
+      // /deployments, or an api-version query) only speak Chat Completions
+      // and keep the compatible route below. janhq/jan#9206.
+      if (isAzureV1Endpoint(provider.base_url)) {
+        return this.createOpenAIModel(modelId, provider, parameters)
+      }
+    }
     parameters = stripUnsupportedSamplers(parameters, provider, modelId)
 
     // Wire-format dispatch wins over name-based dispatch — custom providers
@@ -1220,15 +1230,6 @@ export class ModelFactory {
       case 'gemini':
         return this.createGoogleModel(modelId, provider, parameters)
       case 'azure':
-        // Azure's v1 API serves the OpenAI Responses API at the same base URL,
-        // and its reasoning deployments reject function tools on
-        // /chat/completions. Legacy deployments-style endpoints (path with
-        // /deployments, or an api-version query) only speak Chat Completions
-        // and keep the compatible route below. janhq/jan#9206.
-        if (isAzureV1Endpoint(provider.base_url)) {
-          return this.createOpenAIModel(modelId, provider, parameters)
-        }
-      // falls through
       case 'groq':
       case 'together':
       case 'fireworks':
