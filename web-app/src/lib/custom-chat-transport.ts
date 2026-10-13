@@ -235,6 +235,7 @@ import {
   type TokenUsage,
 } from '@/lib/tokenUsage'
 import { createDecodeClock, generationSpeed } from '@/lib/tokenSpeed'
+import { addToReplySpeed, earlierTokenSpeed } from '@/lib/replyTokenSpeed'
 import { createReasoningClock } from '@/lib/reasoningClock'
 
 export type TokenUsageCallback = (
@@ -3346,6 +3347,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       },
     })
 
+    // The reply this request continues, if it does: its speed block covers
+    // every request of the reply, while `usage` stays the last request's.
+    const earlierSpeed = earlierTokenSpeed(options.messages)
     let tokensPerSecond = 0
     let promptPerSecond = 0
     let draftTokens = 0
@@ -3591,12 +3595,21 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               return {}
             })(),
             tokenSpeed: {
-              tokenSpeed: Math.round(tokenSpeed * 100) / 100,
+              ...(() => {
+                const reply = addToReplySpeed(earlierSpeed, {
+                  tokenSpeed,
+                  tokenCount: generation?.tokenCount ?? outputTokens,
+                  durationMs: generation?.durationMs ?? durationMs,
+                })
+                return {
+                  tokenSpeed: Math.round(reply.tokenSpeed * 100) / 100,
+                  tokenCount: reply.tokenCount,
+                  durationMs: reply.durationMs,
+                }
+              })(),
               promptSpeed: promptPerSecond
                 ? Math.round(promptPerSecond * 100) / 100
                 : undefined,
-              tokenCount: generation?.tokenCount ?? outputTokens,
-              durationMs: generation?.durationMs ?? durationMs,
               ...(generation ? { source: generation.source } : {}),
               ...(draftTokens > 0
                 ? { draftTokens, draftAccepted: Math.min(draftAccepted, draftTokens) }
