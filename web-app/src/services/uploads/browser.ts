@@ -26,6 +26,12 @@ const EMBEDDINGS_UNAVAILABLE =
   'Embedding-based document search needs the local embedding model, which the browser build of Flint does not have yet. Attach the document inline instead.'
 
 export class BrowserUploadsService extends DefaultUploadsService {
+  // No Tauri command in the browser build: the server stores the file and its
+  // path stands in for a desktop path.
+  async saveDroppedFile(file: File): Promise<string> {
+    return (await uploadFile(file)).path
+  }
+
   async ingestFileAttachment(_threadId: string, attachment: Attachment): Promise<UploadResult> {
     void attachment
     throw new Error(EMBEDDINGS_UNAVAILABLE)

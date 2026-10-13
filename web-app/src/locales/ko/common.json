@@ -2495,5 +2495,6 @@
     "details": "{{name}} 상세 정보",
     "previewLoading": "미리 보기를 불러오는 중…",
     "previewNone": "미리 볼 수 없습니다"
-  }
+  },
+  "dropAttachFailed": "끌어다 놓은 파일을 첨부할 수 없습니다"
 }

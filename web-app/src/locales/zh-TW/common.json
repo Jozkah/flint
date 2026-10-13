@@ -2498,5 +2498,6 @@
     "details": "{{name}} 的詳細資料",
     "previewLoading": "正在載入預覽…",
     "previewNone": "沒有可用的預覽"
-  }
+  },
+  "dropAttachFailed": "無法附加拖放的檔案"
 }

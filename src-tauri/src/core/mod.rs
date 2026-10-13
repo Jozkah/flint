@@ -8,6 +8,9 @@ pub mod archive {
     pub mod store;
 }
 pub mod app;
+// Saving files dropped onto the chat so they can be attached; desktop-only.
+#[cfg(not(feature = "cli"))]
+pub mod attachments;
 // Local image and video generation (stable-diffusion.cpp sidecar); desktop-only.
 #[cfg(not(feature = "cli"))]
 pub mod diffusion;

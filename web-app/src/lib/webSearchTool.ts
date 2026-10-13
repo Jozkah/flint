@@ -99,9 +99,13 @@ export function resetWebFetchFailures(): void {
  * One window of a fetched page's text: at most WEB_FETCH_MAX_CHARS from
  * `offset`, with a note saying how much is left and how to read on.
  */
-export function pageWindow(content: string, offset: number): string {
+export function pageWindow(
+  content: string,
+  offset: number,
+  maxChars: number = WEB_FETCH_MAX_CHARS
+): string {
   const start = Math.min(Math.max(0, Math.floor(offset)), content.length)
-  const end = Math.min(content.length, start + WEB_FETCH_MAX_CHARS)
+  const end = Math.min(content.length, start + maxChars)
   const slice = content.slice(start, end)
   const more = content.length - end
   if (more <= 0) return slice
@@ -115,7 +119,9 @@ type WebToolResult = { content?: unknown; error?: string }
  */
 export async function executeWebTool(
   toolName: string,
-  input: WebToolInput
+  input: WebToolInput,
+  /** Char budget one result may occupy for this model (deriveToolOutputCap). */
+  maxOutputChars?: number
 ): Promise<WebToolResult> {
   const { apiKeys, endpoints, searchProvider } = useWebSearchConfig.getState()
   const apiKey = apiKeys[searchProvider] || undefined
@@ -148,7 +154,7 @@ export async function executeWebTool(
       return {
         content: images
           .map((img, i) => {
-            const alt = img.title.replace(/[\[\]\s]+/g, ' ').trim() || query
+            const alt = img.title.replace(/[[\]\s]+/g, ' ').trim() || query
             return `${i + 1}. ${alt}\n   image: ${img.image_url}\n   page: ${img.source_url}`
           })
           .join('\n'),
@@ -172,7 +178,13 @@ export async function executeWebTool(
         throw e
       }
       failedFetches.delete(key)
-      const body = pageWindow(page.content ?? '', offset)
+      // A small window cannot take a full page window: scale it down, with a
+      // floor so a tiny cap still returns something readable.
+      const windowChars =
+        typeof maxOutputChars === 'number' && maxOutputChars > 0
+          ? Math.min(WEB_FETCH_MAX_CHARS, Math.max(1_000, maxOutputChars))
+          : WEB_FETCH_MAX_CHARS
+      const body = pageWindow(page.content ?? '', offset, windowChars)
       const text = `Title: ${page.title}\nURL: ${page.url}\n\n${body}${
         page.truncated ? '\n\n[content truncated at the source]' : ''
       }`

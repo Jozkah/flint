@@ -79,6 +79,8 @@
   "others": {
     "spellCheck": "Sprawdzanie Pisowni",
     "spellCheckDesc": "Włącz sprawdzanie pisowni w wątkach.",
+    "enterKeyNewline": "Enter dodaje nowy wiersz",
+    "enterKeyNewlineDesc": "Naciśnięcie Enter w polu czatu dodaje nowy wiersz zamiast wysyłać. Wysyłaj przyciskiem wysyłania lub Ctrl/Cmd+Enter. Przydatne przy pisaniu metodą wprowadzania (IME), gdzie Enter zatwierdza konwersję.",
     "resetFactory": "Przywróć Ustawienia Fabryczne",
     "resetFactoryDesc": "Przywróć aplikację do stanu początkowego, wymazując wszystkie modele i historię czatów. Tej operacji nie można cofnąć. Zalecane tylko przy uszkodzeniach danych aplikacji."
   },
@@ -666,7 +668,8 @@
     "completionSoundVolume": "Głośność",
     "completionSoundPreview": "Odtwórz",
     "reduceMotion": "Ogranicz animacje",
-    "reduceMotionDesc": "Wyłącza animacje we Flint. Flint nie podąża za ustawieniem systemowym, więc animacje pozostają włączone, dopóki tego nie zmienisz."
+    "reduceMotionDesc": "Wyłącza animacje we Flint. Flint nie podąża za ustawieniem systemowym, więc animacje pozostają włączone, dopóki tego nie zmienisz.",
+    "completionSoundApproval": "Tylko gdy wymagana jest zgoda"
   },
   "pageDesc": {
     "general": "Język, folder danych, dzienniki i opcje całej aplikacji.",

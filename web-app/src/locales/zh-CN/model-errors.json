@@ -34,5 +34,7 @@
   "serverPortFallbackDescription": "端口 {{requested}} 不可用，因此本地 API 服务器正在监听端口 {{actual}}。已保存的端口设置保持不变。",
   "serverInvalidModelPath": "模型路径无效或无法访问",
   "serverStartModelFailed": "启动模型失败",
-  "serverStartFailed": "启动服务器失败"
+  "serverStartFailed": "启动服务器失败",
+  "azureEndpointMissing": "尚未为 {{provider}} 配置端点。请在 设置 > 模型提供商 中设置基础 URL。",
+  "emptyReply": "模型结束时没有返回回复。请尝试重新生成，或检查提供商设置。"
 }

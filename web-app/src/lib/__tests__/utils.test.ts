@@ -33,6 +33,10 @@ describe('getProviderLogo', () => {
 })
 
 describe('getProviderTitle', () => {
+  it('names litellm', () => {
+    expect(getProviderTitle('litellm')).toBe('LiteLLM')
+  })
+
   it('returns formatted titles for special providers', () => {
     expect(getProviderTitle('llamacpp')).toBe('Llama.cpp')
     expect(getProviderTitle('openai')).toBe('OpenAI')

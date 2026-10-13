@@ -2,6 +2,7 @@
   "limitedSupport": "Tento poskytovatel nemusí být plně podporován. Schopnosti (nástroje, vidění, zvuk) se nezjišťují automaticky - přidejte modely ručně a nastavte schopnosti pro každý model.",
   "mlxExperimental": "Podpora MLX je experimentální. Embeddingy nejsou dostupné, přepínač uvažování zatím není zapojen a některé novější architektury modelů se nemusí načíst. Hlaste problémy na GitHubu, abychom je mohli upřednostnit.",
   "engineBundled": "Inferenční engine je zabudován do Janu, takže není nic, co by bylo třeba stahovat nebo aktualizovat zvlášť. Tuto verzi uveďte při hlášení modelu, který se nenačte.",
+  "engineOtherVersion": "Potřebujete jinou verzi llama.cpp? Spusťte vlastní llama-server a přidejte jej jako vlastního poskytovatele kompatibilního s OpenAI.",
   "engineReleaseNotes": "Poznámky k vydání",
   "engineBuild": "Sestavení",
   "engineCommit": "Commit",
@@ -146,6 +147,7 @@
     "title": "Základní URL",
     "openaiDescription": "Použijte proxy nebo bránu, která mluví API OpenAI. Výchozí hodnota je https://api.openai.com/v1.",
     "azureDescription": "Váš koncový bod Azure OpenAI. Nahraďte YOUR-RESOURCE-NAME názvem svého prostředku Azure.",
+    "litellmDescription": "Adresa vašeho proxy LiteLLM včetně /v1. Výchozí je http://localhost:4000/v1.",
     "qwenDescription": "Váš koncový bod Model Studio. Klíč funguje jen v regionu, ve kterém byl vytvořen: použijte https://dashscope-intl.aliyuncs.com/compatible-mode/v1 pro Singapur nebo https://dashscope.aliyuncs.com/compatible-mode/v1 pro pevninskou Čínu."
   },
   "apiKeys": {

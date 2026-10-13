@@ -2493,5 +2493,6 @@
     "details": "{{name}} の詳細",
     "previewLoading": "プレビューを読み込んでいます…",
     "previewNone": "プレビューはありません"
-  }
+  },
+  "dropAttachFailed": "ドロップしたファイルを添付できませんでした"
 }

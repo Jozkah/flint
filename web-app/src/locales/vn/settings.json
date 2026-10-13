@@ -77,6 +77,8 @@
   "others": {
     "spellCheck": "Kiểm tra chính tả",
     "spellCheckDesc": "Bật kiểm tra chính tả cho các chủ đề của bạn.",
+    "enterKeyNewline": "Enter xuống dòng",
+    "enterKeyNewlineDesc": "Nhấn Enter trong khung chat sẽ xuống dòng thay vì gửi. Gửi bằng nút gửi hoặc Ctrl/Cmd+Enter. Hữu ích khi gõ bằng bộ gõ (IME), nơi Enter xác nhận chuyển đổi.",
     "resetFactory": "Đặt lại về cài đặt gốc",
     "resetFactoryDesc": "Khôi phục ứng dụng về trạng thái ban đầu, xóa tất cả các mô hình và lịch sử trò chuyện. Hành động này không thể đảo ngược và chỉ được khuyến nghị nếu ứng dụng bị hỏng."
   },
@@ -662,7 +664,8 @@
     "completionSoundVolume": "Âm lượng",
     "completionSoundPreview": "Phát",
     "reduceMotion": "Giảm chuyển động",
-    "reduceMotionDesc": "Tắt hoạt ảnh trong Flint. Flint không theo cài đặt hệ thống, nên chuyển động vẫn bật trừ khi bạn đổi mục này."
+    "reduceMotionDesc": "Tắt hoạt ảnh trong Flint. Flint không theo cài đặt hệ thống, nên chuyển động vẫn bật trừ khi bạn đổi mục này.",
+    "completionSoundApproval": "Chỉ khi cần phê duyệt"
   },
   "pageDesc": {
     "general": "Ngôn ngữ, thư mục dữ liệu, nhật ký và các tùy chọn toàn ứng dụng.",

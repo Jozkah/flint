@@ -72,6 +72,11 @@ export function LlamacppEngineInfo() {
       <p className="mt-1 mb-2 text-[12.5px] leading-normal text-muted-foreground">
         {t('providers:engineBundled')}
       </p>
+      {/* The way out when the bundled version regresses a model: the user's
+          own llama-server, added as a custom provider. */}
+      <p className="mb-2 text-[12.5px] leading-normal text-muted-foreground">
+        {t('providers:engineOtherVersion')}
+      </p>
       <dl className="flex flex-wrap gap-x-6 gap-y-1">
         <Fact label={t('providers:engineBuild')} value={engine.tag} />
         <Fact

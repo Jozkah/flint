@@ -51,7 +51,10 @@ import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { toast } from 'sonner'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { takeFirstModelFetch } from '@/lib/pendingFirstModelFetch'
-import { predefinedProviders } from '@/constants/providers'
+import {
+  AZURE_BASE_URL_PLACEHOLDER,
+  predefinedProviders,
+} from '@/constants/providers'
 import { useModelLoad } from '@/hooks/useModelLoad'
 import { useAppState } from '@/hooks/useAppState'
 import { useShallow } from 'zustand/shallow'
@@ -110,7 +113,11 @@ const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: stri
   },
   azure: {
     description: 'providers:baseUrl.azureDescription',
-    placeholder: 'https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1',
+    placeholder: AZURE_BASE_URL_PLACEHOLDER,
+  },
+  litellm: {
+    description: 'providers:baseUrl.litellmDescription',
+    placeholder: 'http://localhost:4000/v1',
   },
   qwen: {
     description: 'providers:baseUrl.qwenDescription',

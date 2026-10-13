@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import type { ClipboardEvent, KeyboardEvent, ReactNode } from 'react'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -30,6 +30,8 @@ type Props = {
   onSend: (markdown: string, steer: boolean) => void
   onPaste: (event: ClipboardEvent) => void
   onKeyDownCapture?: (event: KeyboardEvent) => void
+  /** Plain Enter adds a new line; only Ctrl/Cmd+Enter or the send button sends. */
+  enterInsertsNewline?: boolean
   placeholder: string
   className?: string
   /** Extra attributes for the editable element (aria, spellcheck, test id). */
@@ -38,7 +40,10 @@ type Props = {
 
 /** Inline formatting with Markdown as the saved and sent message format. */
 export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
-  function RichComposerEditor({ value, onChange, onSend, onPaste, onKeyDownCapture, placeholder, className, domAttributes }, ref) {
+  function RichComposerEditor({ value, onChange, onSend, onPaste, onKeyDownCapture, enterInsertsNewline, placeholder, className, domAttributes }, ref) {
+    // Read at key time: the editor's key handler is created once.
+    const enterNewlineRef = useRef(enterInsertsNewline)
+    enterNewlineRef.current = enterInsertsNewline
     const editor = useEditor({
       extensions: [StarterKit, Markdown],
       content: value,
@@ -59,6 +64,10 @@ export const RichComposerEditor = forwardRef<RichComposerHandle, Props>(
             return false
           }
           if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+            // With "Enter adds a new line" on, leave plain Enter to the editor.
+            if (enterNewlineRef.current && !event.ctrlKey && !event.metaKey) {
+              return false
+            }
             event.preventDefault()
             const markdown = editor?.getMarkdown() ?? ''
             onSend(markdown, event.ctrlKey || event.metaKey)

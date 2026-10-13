@@ -2553,3 +2553,10 @@ fn test_seeded_default_config_has_no_placeholder_dir() {
     let value: serde_json::Value = serde_json::from_str(&seeded).expect("seeded config is JSON");
     assert!(value["mcpServers"]["filesystem"]["args"][2].is_string());
 }
+
+#[test]
+fn flint_client_info_names_flint_with_package_version() {
+    let info = super::helpers::flint_client_info();
+    assert_eq!(info.client_info.name, "Flint");
+    assert_eq!(info.client_info.version, env!("CARGO_PKG_VERSION"));
+}

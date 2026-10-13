@@ -264,7 +264,11 @@ export class TauriProvidersService extends DefaultProvidersService {
         // One parser for every shape. llama.cpp answers with a non-standard
         // `models` array whose entries carry `name`/`model` but no `id`, which
         // the previous branch turned into a list of `undefined`.
-        const ids = parseModelList(Array.isArray(data) ? { data } : data)
+        // Some catalogs list an id twice (Azure: one entry per version); the
+        // id is the model's identity, so keep the first.
+        const ids = [
+          ...new Set(parseModelList(Array.isArray(data) ? { data } : data)),
+        ]
         // The list carries each model's window (vLLM `max_model_len`); the ids
         // alone would throw it away.
         recordListedWindows(provider.base_url, data)

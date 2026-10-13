@@ -51,6 +51,13 @@ export const openAIProviderSettings = [
     },
   },
 ]
+/**
+ * Example Azure endpoint, shown only as input placeholder text. Never use it as
+ * a value: `your-resource-name` is a resource name anyone can register.
+ */
+export const AZURE_BASE_URL_PLACEHOLDER =
+  'https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1'
+
 export const predefinedProviders = [
   {
     active: true,
@@ -78,7 +85,10 @@ export const predefinedProviders = [
   {
     active: true,
     api_key: '',
-    base_url: 'https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1',
+    // Azure endpoints are per resource, so there is no usable default: an
+    // example URL here would receive requests (and the key) before the user
+    // sets their own endpoint.
+    base_url: '',
     explore_models_url: 'https://oai.azure.com/deployments',
     provider: 'azure',
     settings: [
@@ -99,11 +109,11 @@ export const predefinedProviders = [
         key: 'base-url',
         title: 'Base URL',
         description:
-          'Your Azure OpenAI resource endpoint, e.g. https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1',
+          `Your Azure OpenAI resource endpoint, e.g. ${AZURE_BASE_URL_PLACEHOLDER}`,
         controller_type: 'input',
         controller_props: {
-          placeholder: 'https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1',
-          value: 'https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1',
+          placeholder: AZURE_BASE_URL_PLACEHOLDER,
+          value: '',
         },
       },
     ],
@@ -716,6 +726,29 @@ export const predefinedProviders = [
         controller_props: {
           placeholder: 'http://localhost:11434/v1',
           value: 'http://localhost:11434/v1',
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'http://localhost:4000/v1',
+    explore_models_url: 'https://docs.litellm.ai/docs/proxy/quick_start',
+    provider: 'litellm',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          'A LiteLLM virtual key or the master key authenticates requests. Leave it empty if your proxy runs without authentication. See [Virtual Keys](https://docs.litellm.ai/docs/proxy/virtual_keys) for details.',
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key (optional)',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
         },
       },
     ],

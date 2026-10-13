@@ -34,5 +34,7 @@
   "serverPortFallbackDescription": "El puerto {{requested}} no está disponible, así que el servidor de API local escucha en el puerto {{actual}}. El ajuste de puerto guardado no ha cambiado.",
   "serverInvalidModelPath": "Ruta del modelo no válida o inaccesible",
   "serverStartModelFailed": "No se pudo iniciar el modelo",
-  "serverStartFailed": "No se pudo iniciar el servidor"
+  "serverStartFailed": "No se pudo iniciar el servidor",
+  "azureEndpointMissing": "No hay ningún endpoint configurado para {{provider}}. Define la URL base en Ajustes > Proveedores de modelos.",
+  "emptyReply": "El modelo terminó sin devolver una respuesta. Prueba a regenerarla o revisa los ajustes del proveedor."
 }

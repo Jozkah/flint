@@ -51,6 +51,8 @@ function General() {
   const {
     spellCheckChatInput,
     setSpellCheckChatInput,
+    enterKeyInsertsNewline,
+    setEnterKeyInsertsNewline,
     huggingfaceToken,
     setHuggingfaceToken,
   } = useGeneralSetting()
@@ -611,6 +613,20 @@ function General() {
               <Switch
                 checked={spellCheckChatInput}
                 onCheckedChange={(e) => setSpellCheckChatInput(e)}
+              />
+            }
+          />
+          <CardItem
+            title={t('settings:others.enterKeyNewline', {
+              ns: 'settings',
+            })}
+            description={t('settings:others.enterKeyNewlineDesc', {
+              ns: 'settings',
+            })}
+            actions={
+              <Switch
+                checked={enterKeyInsertsNewline}
+                onCheckedChange={(e) => setEnterKeyInsertsNewline(e)}
               />
             }
           />

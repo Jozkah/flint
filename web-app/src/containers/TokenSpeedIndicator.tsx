@@ -62,7 +62,8 @@ export const TokenSpeedIndicator = memo(
         : []
     const memoryIds = ids(memory?.injectedIds)
     const withheldIds = ids(memory?.conflictIds)
-    const displayTokenCount = usage?.outputTokens ?? persisted?.tokenCount ?? 0
+    // The speed block counts the whole reply; `usage` is only its last request.
+    const displayTokenCount = persisted?.tokenCount || usage?.outputTokens || 0
     const durationMs =
       typeof persisted?.durationMs === 'number'
         ? persisted.durationMs

@@ -274,13 +274,68 @@ fn parse_csv(file_path: &str) -> Result<String, RagError> {
         .flexible(true)
         .from_path(file_path)
         .map_err(|e| RagError::ParseError(e.to_string()))?;
-    let mut out = String::new();
+    // Re-serialise through the csv writer so a cell holding the delimiter, a
+    // quote or a newline stays one cell instead of shifting the columns after it.
+    let mut wtr = csv_crate::WriterBuilder::new()
+        .flexible(true)
+        .from_writer(Vec::new());
     for rec in rdr.records() {
         let rec = rec.map_err(|e| RagError::ParseError(e.to_string()))?;
-        out.push_str(&rec.iter().collect::<Vec<_>>().join(", "));
-        out.push('\n');
+        wtr.write_record(&rec)
+            .map_err(|e| RagError::ParseError(e.to_string()))?;
     }
-    Ok(out)
+    let bytes = wtr
+        .into_inner()
+        .map_err(|e| RagError::ParseError(e.to_string()))?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Renders a cell for the model. Date cells arrive as Excel serial numbers,
+/// which a model cannot read as dates, so they become ISO 8601 text.
+/// calamine 0.36 already resolves the 1900/1904 epoch in `to_ymd_hms_milli`.
+fn format_cell(cell: &Data) -> String {
+    match cell {
+        Data::DateTime(dt) if dt.is_duration() => excel_duration(dt.as_f64()),
+        Data::DateTime(dt) => excel_datetime(dt),
+        other => other.to_string(),
+    }
+}
+
+fn excel_datetime(dt: &calamine::ExcelDateTime) -> String {
+    let serial = dt.as_f64();
+    if !serial.is_finite() || serial < 0.0 {
+        return serial.to_string();
+    }
+    let (y, mo, d, h, mi, s, ms) = dt.to_ymd_hms_milli();
+    // Round to whole seconds: 10:00:00 as a float sits just below the exact value.
+    let total_secs = (h as u32 * 3600 + mi as u32 * 60 + s as u32) + u32::from(ms >= 500);
+    let time = format!(
+        "{:02}:{:02}:{:02}",
+        (total_secs / 3600) % 24,
+        total_secs % 3600 / 60,
+        total_secs % 60
+    );
+    // A serial below one is a bare time of day; the date part is Excel's "day 0".
+    if serial < 1.0 {
+        return time;
+    }
+    let date = format!("{:04}-{:02}-{:02}", y, mo, d);
+    if total_secs == 0 {
+        date
+    } else {
+        format!("{}T{}", date, time)
+    }
+}
+
+/// Renders an Excel duration (fractional days) as elapsed `[h]:mm:ss`.
+fn excel_duration(days: f64) -> String {
+    if !days.is_finite() {
+        return days.to_string();
+    }
+    let total_secs = (days * 86_400.0).round() as i64;
+    let sign = if total_secs < 0 { "-" } else { "" };
+    let secs = total_secs.abs();
+    format!("{}{}:{:02}:{:02}", sign, secs / 3600, secs % 3600 / 60, secs % 60)
 }
 
 fn parse_spreadsheet(file_path: &str) -> Result<String, RagError> {
@@ -297,14 +352,7 @@ fn parse_spreadsheet(file_path: &str) -> Result<String, RagError> {
             for row in range.rows() {
                 let cells = row
                     .iter()
-                    .map(|c| match c {
-                        Data::Empty => "".to_string(),
-                        Data::String(s) => s.to_string(),
-                        Data::Float(f) => format!("{}", f),
-                        Data::Int(i) => i.to_string(),
-                        Data::Bool(b) => b.to_string(),
-                        other => other.to_string(),
-                    })
+                    .map(format_cell)
                     .collect::<Vec<_>>()
                     .join("\t");
                 out.push_str(&cells);
@@ -527,11 +575,40 @@ mod tests {
     }
 
     #[test]
-    fn parse_csv_joins_cells_and_tolerates_ragged_rows() {
+    fn parse_csv_quotes_cells_and_tolerates_ragged_rows() {
         let dir = TempDir::new("csv");
         let path = dir.file("a.csv", b"name,qty\napple,3\n\"b, c\",4,extra\n");
         let text = parse_document(&path, "csv").unwrap();
-        assert_eq!(text, "name, qty\napple, 3\nb, c, 4, extra\n");
+        assert_eq!(text, "name,qty\napple,3\n\"b, c\",4,extra\n");
+    }
+
+    fn dt(v: f64) -> Data {
+        Data::DateTime(calamine::ExcelDateTime::new(v, calamine::ExcelDateTimeType::DateTime, false))
+    }
+
+    #[test]
+    fn excel_dates_render_as_iso() {
+        assert_eq!(format_cell(&dt(45123.0)), "2023-07-16");
+        assert_eq!(format_cell(&dt(45123.5)), "2023-07-16T12:00:00");
+        assert_eq!(format_cell(&dt(0.75)), "18:00:00");
+        assert_eq!(format_cell(&dt(44927.0 + 10.0 / 24.0)), "2023-01-01T10:00:00");
+    }
+
+    #[test]
+    fn excel_durations_render_as_elapsed_time() {
+        let d = Data::DateTime(calamine::ExcelDateTime::new(
+            1.5,
+            calamine::ExcelDateTimeType::TimeDelta,
+            false,
+        ));
+        assert_eq!(format_cell(&d), "36:00:00");
+    }
+
+    #[test]
+    fn non_date_cells_pass_through() {
+        assert_eq!(format_cell(&Data::Float(2.5)), "2.5");
+        assert_eq!(format_cell(&Data::Empty), "");
+        assert_eq!(format_cell(&Data::DateTimeIso("2024-02-29".into())), "2024-02-29");
     }
 
     #[test]

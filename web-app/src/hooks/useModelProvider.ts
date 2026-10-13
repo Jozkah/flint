@@ -7,7 +7,10 @@ import { backendStorage } from '@/lib/backendStorage'
 import { modelSettings } from '@/lib/predefined'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { forgetAllServerLimits } from '@/lib/contextLimitRecovery'
-import { predefinedProviders } from '@/constants/providers'
+import {
+  AZURE_BASE_URL_PLACEHOLDER,
+  predefinedProviders,
+} from '@/constants/providers'
 import { isLocalProvider } from '@/lib/utils'
 import { API_KEY_FALLBACKS_SETTING_KEY } from '@/lib/provider-api-keys'
 import { withoutSecretValues } from '@/lib/customHeaders'
@@ -38,6 +41,17 @@ export function stripProviderSecrets(provider: ModelProvider): ModelProvider {
       ? { custom_header: withoutSecretValues(provider.custom_header) }
       : {}),
   }
+}
+
+// A model's id is its identity within a provider: lookups find by id and the
+// model lists key rows on it. Keep the first occurrence (carries user edits).
+function uniqueModelsById(models: Model[]): Model[] {
+  const seen = new Set<string>()
+  return models.filter((model) => {
+    if (seen.has(model.id)) return false
+    seen.add(model.id)
+    return true
+  })
 }
 
 type ModelProviderState = {
@@ -223,7 +237,9 @@ export const useModelProvider = create<ModelProviderState>()(
             // keyring-seeded incoming provider (DataProvider).
             return {
               ...provider,
-              models: provider.persist ? updatedModels : mergedModels,
+              models: uniqueModelsById(
+                provider.persist ? updatedModels : mergedModels
+              ),
               settings: mergedSettings,
               api_key: existingProvider?.api_key || provider.api_key,
               api_key_fallbacks:
@@ -274,6 +290,9 @@ export const useModelProvider = create<ModelProviderState>()(
               return {
                 ...provider,
                 ...data,
+                ...(Array.isArray(data.models)
+                  ? { models: uniqueModelsById(data.models) }
+                  : {}),
               }
             }
             return provider
@@ -899,9 +918,25 @@ export const useModelProvider = create<ModelProviderState>()(
           })
         }
 
+        if (version <= 21 && state?.providers) {
+          // Azure used to ship its example endpoint as the default base_url, so
+          // an unconfigured install sent requests (and any key entered) to
+          // `your-resource-name`, a resource name anyone can register. Treat
+          // that stored example as "not configured". janhq/jan#9210.
+          state.providers.forEach((provider) => {
+            if (provider.provider !== 'azure') return
+            if (provider.base_url === AZURE_BASE_URL_PLACEHOLDER) {
+              provider.base_url = ''
+            }
+            const props = provider.settings?.find((s) => s.key === 'base-url')
+              ?.controller_props as { value?: unknown } | undefined
+            if (props?.value === AZURE_BASE_URL_PLACEHOLDER) props.value = ''
+          })
+        }
+
         return state
       },
-      version: 21,
+      version: 22,
     }
   )
 )

@@ -10,6 +10,7 @@ import {
   useChat as useChatSDK,
 } from '@ai-sdk/react'
 import { type ChatInit } from 'ai'
+import { settleStoppedToolCalls } from '@/lib/stopped-tool-calls'
 import { useEffect, useMemo, useRef, useCallback } from 'react'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
@@ -33,6 +34,40 @@ type CustomChatOptions = Omit<ChatInit<UIMessage>, 'transport'> &
     >[0]
   }
 
+/**
+ * The callbacks a session's Chat is built with. Each one resolves the view's
+ * latest handler when it is called (see `ChatCallbacks`), so a Chat that
+ * outlives the component that made it never runs that component's stale
+ * closures. A stopped turn is settled first: its unfinished tool calls become
+ * errors before the handler stores the message.
+ */
+function sessionCallbacks(sessionId: string): ChatInit<UIMessage> {
+  const latest = () => useChatSessions.getState().sessions[sessionId]?.callbacks
+  return {
+    onFinish: (event) => {
+      const settled = event.isAbort
+        ? settleStoppedToolCalls(event.messages, event.message.id)
+        : event.messages
+      let next = event
+      if (settled !== event.messages) {
+        next = {
+          ...event,
+          messages: settled,
+          message:
+            settled.find((m) => m.id === event.message.id) ?? event.message,
+        }
+        // The live copy too, so the card stops saying "Running" at once.
+        const session = useChatSessions.getState().sessions[sessionId]
+        if (session) session.chat.messages = settled
+      }
+      return latest()?.onFinish?.(next)
+    },
+    onToolCall: (event) => latest()?.onToolCall?.(event),
+    onError: (error) => latest()?.onError?.(error),
+    onData: (part) => latest()?.onData?.(part),
+  }
+}
+
 // This is a wrapper around the AI SDK's useChat hook
 // It implements model switching and uses the custom chat transport,
 // making a nice reusable hook for chat functionality.
@@ -46,6 +81,11 @@ export function useChat(
     systemMessage,
     onTokenUsage,
     resolveModelSelection,
+    // Resolved from the session at each call, never frozen into the Chat.
+    onFinish,
+    onToolCall,
+    onError,
+    onData,
     ...chatInitOptions
   } = options ?? {}
   const ensureSession = useChatSessions((state) => state.ensureSession)
@@ -122,11 +162,25 @@ export function useChat(
     return ensureSession(
       sessionId,
       transportRef.current,
-      () => new Chat({ ...chatInitOptions, transport: transportRef.current }),
+      () =>
+        new Chat({
+          ...chatInitOptions,
+          ...sessionCallbacks(sessionId),
+          transport: transportRef.current,
+        }),
       sessionTitle
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, ensureSession])
+
+  // The Chat was built for the first view of this session; a later view (the
+  // page remounted, a handler's closure changed) has newer callbacks. Record
+  // them on the session so the Chat's next event calls these, not the old ones.
+  if (sessionId) {
+    useChatSessions
+      .getState()
+      .setSessionCallbacks(sessionId, { onFinish, onToolCall, onError, onData })
+  }
 
   useEffect(() => {
     if (sessionId && sessionTitle) {
@@ -137,10 +191,26 @@ export function useChat(
   const chatResult = useChatSDK({
     ...(chat
       ? { chat }
-      : { transport: transportRef.current, ...chatInitOptions }),
+      : {
+          transport: transportRef.current,
+          ...chatInitOptions,
+          onFinish,
+          onToolCall,
+          onError,
+          onData,
+        }),
     experimental_throttle: options?.experimental_throttle,
     resume: false,
   })
+
+  // Stop aborts the stream, but a tool call that was still being written or
+  // waiting to run is never answered, so its card would read "Running" for the
+  // rest of the conversation. Settle it as stopped once the abort is in.
+  const { stop: stopChat, setMessages: setChatMessages } = chatResult
+  const stop = useCallback(async () => {
+    await stopChat()
+    setChatMessages((messages) => settleStoppedToolCalls(messages))
+  }, [stopChat, setChatMessages])
 
   useEffect(() => {
     if (sessionId) {
@@ -193,6 +263,7 @@ export function useChat(
 
   return {
     ...chatResult,
+    stop,
     updateRagToolsAvailability,
     setContinueFromContent,
     compactNow,

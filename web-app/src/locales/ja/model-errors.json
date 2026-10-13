@@ -34,5 +34,7 @@
   "serverPortFallbackDescription": "ポート {{requested}} は使用できないため、ローカル API サーバーはポート {{actual}} で待ち受けています。保存されているポート設定は変更されていません。",
   "serverInvalidModelPath": "モデルのパスが無効、またはアクセスできません",
   "serverStartModelFailed": "モデルを起動できませんでした",
-  "serverStartFailed": "サーバーを起動できませんでした"
+  "serverStartFailed": "サーバーを起動できませんでした",
+  "azureEndpointMissing": "{{provider}} のエンドポイントが設定されていません。設定 > モデルプロバイダ でベース URL を設定してください。",
+  "emptyReply": "モデルが応答を返さずに終了しました。再生成するか、プロバイダー設定を確認してください。"
 }

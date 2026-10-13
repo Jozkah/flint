@@ -123,6 +123,18 @@ describe('useGeneralSetting', () => {
     })
   })
 
+  // Off by default: Enter sends, as it always has.
+  describe('setEnterKeyInsertsNewline', () => {
+    it('starts off and can be turned on and back off', () => {
+      const { result } = renderHook(() => useGeneralSetting())
+      expect(result.current.enterKeyInsertsNewline).toBe(false)
+      act(() => result.current.setEnterKeyInsertsNewline(true))
+      expect(result.current.enterKeyInsertsNewline).toBe(true)
+      act(() => result.current.setEnterKeyInsertsNewline(false))
+      expect(result.current.enterKeyInsertsNewline).toBe(false)
+    })
+  })
+
   describe('setSpellCheckChatInput', () => {
     it('should enable spell check', () => {
       const { result } = renderHook(() => useGeneralSetting())

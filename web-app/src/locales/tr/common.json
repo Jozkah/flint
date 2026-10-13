@@ -2496,5 +2496,6 @@
     "details": "{{name}} ayrıntıları",
     "previewLoading": "Önizleme yükleniyor…",
     "previewNone": "Önizleme yok"
-  }
+  },
+  "dropAttachFailed": "Bırakılan dosyalar eklenemedi"
 }

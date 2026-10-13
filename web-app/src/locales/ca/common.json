@@ -2543,5 +2543,6 @@
     "details": "Detalls de {{name}}",
     "previewLoading": "Carregant la previsualització…",
     "previewNone": "No hi ha cap previsualització disponible"
-  }
+  },
+  "dropAttachFailed": "No s'han pogut adjuntar els fitxers deixats anar"
 }
