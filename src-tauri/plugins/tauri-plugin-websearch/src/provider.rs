@@ -41,6 +41,8 @@ const TAVILY_EXTRACT_URL: &str = "https://api.tavily.com/extract";
 
 const BRAVE_SEARCH_URL: &str = "https://api.search.brave.com/res/v1/web/search";
 const SERPER_SEARCH_URL: &str = "https://google.serper.dev/search";
+const BRAVE_IMAGES_URL: &str = "https://api.search.brave.com/res/v1/images/search";
+const SERPER_IMAGES_URL: &str = "https://google.serper.dev/images";
 
 // DuckDuckGo has no search API. Its HTML results page is what its own lite
 // clients and every open-source integration read; it answers browsers, and
@@ -82,12 +84,32 @@ pub struct FetchedPage {
     pub truncated: bool,
 }
 
+/// One image found for a query. `image_url` is the full image, `thumbnail_url`
+/// a smaller one when the backend gives it; `source_url` is the page it sits on.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ImageResult {
+    pub title: String,
+    pub image_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumbnail_url: Option<String>,
+    pub source_url: String,
+}
+
 /// A pluggable web search backend. Implementors turn a query into normalized
 /// [`SearchResult`]s and a URL into a bounded [`FetchedPage`].
 #[async_trait]
 pub trait SearchProvider: Send + Sync {
     async fn search(&self, query: &str, count: u32) -> Result<Vec<SearchResult>, String>;
     async fn fetch(&self, url: &str) -> Result<FetchedPage, String>;
+
+    /// Find images for `query`. Backends with a native image API override this;
+    /// the default searches the web and reads each result page's `og:image`, so
+    /// every provider (keyless ones included) can answer.
+    async fn search_images(&self, query: &str, count: u32) -> Result<Vec<ImageResult>, String> {
+        let wanted = count.saturating_mul(2).min(SEARCH_MAX_COUNT);
+        let results = self.search(query, wanted).await?;
+        Ok(og_images_for(results, count).await)
+    }
 }
 
 /// Build the backend for `provider` (case-insensitive; empty/absent selects the
@@ -1112,6 +1134,32 @@ impl SearchProvider for BraveProvider {
     async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
         http_get_page(&self.client, url, "Brave").await
     }
+
+    async fn search_images(&self, query: &str, count: u32) -> Result<Vec<ImageResult>, String> {
+        let resp = self
+            .client
+            .get(BRAVE_IMAGES_URL)
+            .header("X-Subscription-Token", &self.api_key)
+            .header("Accept", "application/json")
+            .query(&[("q", query.to_string()), ("count", count.to_string())])
+            .send()
+            .await
+            .map_err(|e| format!("Brave request failed: {e}"))?;
+        let status = resp.status();
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
+            .await
+            .map_err(|e| format!("Brave: failed to read response body: {e}"))?;
+        if !status.is_success() {
+            return Err(format!(
+                "Brave failed with HTTP {}: {}",
+                status.as_u16(),
+                text.chars().take(400).collect::<String>()
+            ));
+        }
+        let parsed: Value = serde_json::from_str(&text)
+            .map_err(|e| format!("Brave: invalid JSON response: {e}"))?;
+        Ok(normalize_brave_images(&parsed, count))
+    }
 }
 
 fn normalize_brave_search(body: &Value, count: u32) -> Vec<SearchResult> {
@@ -1195,6 +1243,32 @@ impl SearchProvider for SerperProvider {
 
     async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
         http_get_page(&self.client, url, "Serper").await
+    }
+
+    async fn search_images(&self, query: &str, count: u32) -> Result<Vec<ImageResult>, String> {
+        let resp = self
+            .client
+            .post(SERPER_IMAGES_URL)
+            .header("X-API-KEY", &self.api_key)
+            .header("content-type", "application/json")
+            .json(&json!({ "q": query, "num": count }))
+            .send()
+            .await
+            .map_err(|e| format!("Serper request failed: {e}"))?;
+        let status = resp.status();
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
+            .await
+            .map_err(|e| format!("Serper: failed to read response body: {e}"))?;
+        if !status.is_success() {
+            return Err(format!(
+                "Serper failed with HTTP {}: {}",
+                status.as_u16(),
+                text.chars().take(400).collect::<String>()
+            ));
+        }
+        let parsed: Value = serde_json::from_str(&text)
+            .map_err(|e| format!("Serper: invalid JSON response: {e}"))?;
+        Ok(normalize_serper_images(&parsed, count))
     }
 }
 
@@ -1521,6 +1595,130 @@ fn extract_html_title(html: &str) -> Option<String> {
     }
 }
 
+/// Only https image addresses are handed to the renderer: an http image is
+/// blocked as mixed content in the app and exposes the read to the network.
+fn https_url(s: &str) -> Option<String> {
+    let s = s.trim();
+    let scheme_ok = s.get(..8).is_some_and(|p| p.eq_ignore_ascii_case("https://"));
+    (scheme_ok && s.len() <= 2048).then(|| s.to_string())
+}
+
+fn normalize_brave_images(body: &Value, count: u32) -> Vec<ImageResult> {
+    let Some(results) = body.get("results").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    results
+        .iter()
+        .filter_map(|r| {
+            let image_url = r
+                .get("properties")
+                .and_then(|p| p.get("url"))
+                .and_then(|v| v.as_str())
+                .and_then(https_url)?;
+            let thumbnail_url = r
+                .get("thumbnail")
+                .and_then(|t| t.get("src"))
+                .and_then(|v| v.as_str())
+                .and_then(https_url);
+            Some(ImageResult {
+                title: r.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                image_url,
+                thumbnail_url,
+                source_url: r.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            })
+        })
+        .take(count as usize)
+        .collect()
+}
+
+fn normalize_serper_images(body: &Value, count: u32) -> Vec<ImageResult> {
+    let Some(results) = body.get("images").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    results
+        .iter()
+        .filter_map(|r| {
+            let image_url = r.get("imageUrl").and_then(|v| v.as_str()).and_then(https_url)?;
+            Some(ImageResult {
+                title: r.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                image_url,
+                thumbnail_url: r.get("thumbnailUrl").and_then(|v| v.as_str()).and_then(https_url),
+                source_url: r.get("link").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            })
+        })
+        .take(count as usize)
+        .collect()
+}
+
+/// The first `og:image` / `twitter:image` `<meta>` content in `html`, resolved
+/// against `base`. Only an https result is returned.
+fn extract_meta_image(html: &str, base: &str) -> Option<String> {
+    let lower = html.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(rel) = lower[from..].find("<meta") {
+        let start = from + rel;
+        let end = start + lower[start..].find('>')?;
+        from = end;
+        let tag_lower = &lower[start..end];
+        let wanted = ["og:image:secure_url", "og:image", "twitter:image"]
+            .iter()
+            .any(|k| {
+                tag_lower.contains(&format!("property=\"{k}\""))
+                    || tag_lower.contains(&format!("name=\"{k}\""))
+            });
+        if !wanted {
+            continue;
+        }
+        if let Some(content) = html_attr(&html[start..end], "content") {
+            let resolved = reqwest::Url::parse(base)
+                .ok()
+                .and_then(|b| b.join(content.trim()).ok())
+                .and_then(|u| https_url(u.as_str()));
+            if resolved.is_some() {
+                return resolved;
+            }
+        }
+    }
+    None
+}
+
+/// Read each result page's `og:image`, all pages at once, keeping the order of
+/// `results`. A page that fails, or has no image, is skipped.
+async fn og_images_for(results: Vec<SearchResult>, count: u32) -> Vec<ImageResult> {
+    let mut set = tokio::task::JoinSet::new();
+    for (i, r) in results.into_iter().enumerate() {
+        set.spawn(async move {
+            let found = async {
+                let resp = public_get(&r.url, "image").await.ok()?;
+                if !resp.status().is_success() {
+                    return None;
+                }
+                // The tags live in <head>; a quarter megabyte is plenty.
+                let html = read_body_capped(resp, 256 * 1024).await.ok()?;
+                extract_meta_image(&html, &r.url)
+            }
+            .await;
+            (
+                i,
+                found.map(|image_url| ImageResult {
+                    title: r.title,
+                    image_url,
+                    thumbnail_url: None,
+                    source_url: r.url,
+                }),
+            )
+        });
+    }
+    let mut found: Vec<(usize, ImageResult)> = Vec::new();
+    while let Some(joined) = set.join_next().await {
+        if let Ok((i, Some(img))) = joined {
+            found.push((i, img));
+        }
+    }
+    found.sort_by_key(|(i, _)| *i);
+    found.into_iter().map(|(_, img)| img).take(count as usize).collect()
+}
+
 fn clip_chars(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
@@ -1683,6 +1881,52 @@ mod tests {
             assert!(check_public_url(&reqwest::Url::parse(refused).unwrap()).is_err(), "{refused}");
         }
         assert!(check_public_url(&reqwest::Url::parse("https://example.com/").unwrap()).is_ok());
+    }
+
+
+    #[test]
+    fn brave_images_keep_only_https_and_cap() {
+        let body = json!({"results": [
+            {"title": "A", "url": "https://a.test/p", "thumbnail": {"src": "https://t.test/a.jpg"}, "properties": {"url": "https://i.test/a.jpg"}},
+            {"title": "B", "url": "https://b.test/p", "properties": {"url": "http://i.test/b.jpg"}},
+            {"title": "C", "url": "https://c.test/p", "properties": {"url": "https://i.test/c.jpg"}}
+        ]});
+        let got = normalize_brave_images(&body, 5);
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].image_url, "https://i.test/a.jpg");
+        assert_eq!(got[0].thumbnail_url.as_deref(), Some("https://t.test/a.jpg"));
+        assert_eq!(got[1].source_url, "https://c.test/p");
+        assert_eq!(normalize_brave_images(&body, 1).len(), 1);
+    }
+
+    #[test]
+    fn serper_images_map_contract() {
+        let body = json!({"images": [
+            {"title": "Cover", "imageUrl": "https://i.test/c.jpg", "thumbnailUrl": "https://t.test/c.jpg", "link": "https://s.test/book"},
+            {"title": "Bad", "imageUrl": "data:image/png;base64,AAAA", "link": "https://s.test/x"}
+        ]});
+        let got = normalize_serper_images(&body, 5);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].title, "Cover");
+        assert_eq!(got[0].source_url, "https://s.test/book");
+        assert!(normalize_serper_images(&json!({}), 5).is_empty());
+    }
+
+    #[test]
+    fn meta_image_is_read_resolved_and_https_only() {
+        let html = r#"<html><head><meta property="og:title" content="T"><meta property="og:image" content="/img/cover.jpg"></head>"#;
+        assert_eq!(
+            extract_meta_image(html, "https://books.test/ugly-love").as_deref(),
+            Some("https://books.test/img/cover.jpg")
+        );
+        let twitter = r#"<meta name="twitter:image" content="https://cdn.test/x.png">"#;
+        assert_eq!(
+            extract_meta_image(twitter, "https://a.test/").as_deref(),
+            Some("https://cdn.test/x.png")
+        );
+        let http = r#"<meta property="og:image" content="http://cdn.test/x.png">"#;
+        assert_eq!(extract_meta_image(http, "https://a.test/"), None);
+        assert_eq!(extract_meta_image("<p>nothing</p>", "https://a.test/"), None);
     }
 
     #[test]

@@ -3,4 +3,5 @@ description = "Default permissions for the web search plugin"
 permissions = [
     "allow-web-search",
     "allow-web-fetch",
+    "allow-image-search",
 ]

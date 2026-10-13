@@ -1,7 +1,7 @@
-import { webSearch, webFetch } from '@janhq/tauri-plugin-websearch-api'
+import { webSearch, webFetch, imageSearch } from '@janhq/tauri-plugin-websearch-api'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 
-export const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch'])
+export const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch', 'image_search'])
 
 /**
  * Whether a call named `web_search` / `web_fetch` is Flint's own native web tool.
@@ -38,6 +38,18 @@ export const WEB_SEARCH_INPUT_SCHEMA = {
       type: 'integer',
       description: 'Maximum number of results to return (default 5, max 20).',
     },
+  },
+  required: ['query'],
+} as const
+
+export const IMAGE_SEARCH_DESCRIPTION =
+  'Find images for a query (covers, products, places). Returns image URLs and their source pages. Show one with ![alt](image URL) only when it helps.'
+
+export const IMAGE_SEARCH_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    query: { type: 'string', description: 'What to find, e.g. "Ugly Love book cover".' },
+    count: { type: 'integer', description: 'Max images (default 5).' },
   },
   required: ['query'],
 } as const
@@ -130,6 +142,22 @@ export async function executeWebTool(
             published_date: r.published_at,
           })),
         },
+      }
+    }
+    if (toolName === 'image_search') {
+      const query = typeof input?.query === 'string' ? input.query : ''
+      const count = typeof input?.count === 'number' ? input.count : undefined
+      const images = await imageSearch(query, count, apiKey, searchProvider, endpoint)
+      if (images.length === 0) {
+        return { content: `No images found for "${query}". Answer without one.` }
+      }
+      return {
+        content: images
+          .map((img, i) => {
+            const alt = img.title.replace(/[\[\]\s]+/g, ' ').trim() || query
+            return `${i + 1}. ${alt}\n   image: ${img.image_url}\n   page: ${img.source_url}`
+          })
+          .join('\n'),
       }
     }
     if (toolName === 'web_fetch') {

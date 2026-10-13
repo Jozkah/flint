@@ -5,6 +5,13 @@ export interface SearchResult {
   published_at?: string
 }
 
+export interface ImageResult {
+  title: string
+  image_url: string
+  thumbnail_url?: string
+  source_url: string
+}
+
 export interface FetchedPage {
   url: string
   title: string

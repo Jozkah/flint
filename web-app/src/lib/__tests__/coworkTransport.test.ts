@@ -235,7 +235,7 @@ describe('CoworkChatTransport', () => {
     expect(buildCoworkTools).toHaveBeenCalledTimes(1)
 
     t.setWebSearch(true)
-    expect(Object.keys(t.advertisedTools).sort()).toEqual(['read', 'web_fetch', 'web_search'])
+    expect(Object.keys(t.advertisedTools).sort()).toEqual(['image_search', 'read', 'web_fetch', 'web_search'])
     expect(buildCoworkTools).toHaveBeenCalledTimes(1)
 
     // The next run re-reads the setting from scratch. Toggled back to what the
