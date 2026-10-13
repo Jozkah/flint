@@ -67,6 +67,8 @@ import {
   WEB_SEARCH_INPUT_SCHEMA,
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
+  IMAGE_SEARCH_DESCRIPTION,
+  IMAGE_SEARCH_INPUT_SCHEMA,
 } from '@/lib/webSearchTool'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
@@ -1819,6 +1821,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         toolsRecord['web_fetch'] = {
           description: WEB_FETCH_DESCRIPTION,
           inputSchema: jsonSchema(WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>),
+        } as Tool
+        toolsRecord['image_search'] = {
+          description: IMAGE_SEARCH_DESCRIPTION,
+          inputSchema: jsonSchema(IMAGE_SEARCH_INPUT_SCHEMA as Record<string, unknown>),
         } as Tool
       }
 
@@ -3807,6 +3813,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return [
       '# Web Access',
       'You can search the web with web_search and read pages with web_fetch.',
+      'Use image_search for a cover, product or place photo when it helps.',
       'Use them whenever the request needs current, external, or verifiable',
       'information, then base your answer on what you find. When a statement',
       'relies on a web source, cite it inline immediately after that statement',

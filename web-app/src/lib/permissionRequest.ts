@@ -130,7 +130,7 @@ const BROWSER_ACTION_TOOLS = new Set([
   'browser_select',
 ])
 const COMMAND_TOOLS = new Set(['bash', 'shell', 'run_command', 'execute_command'])
-const NETWORK_TOOLS = new Set(['web_fetch', 'web_search'])
+const NETWORK_TOOLS = new Set(['web_fetch', 'web_search', 'image_search'])
 const READ_TOOLS = new Set([
   'read',
   'ls',

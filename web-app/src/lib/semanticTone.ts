@@ -110,6 +110,7 @@ const READING = new Set([
   'search',
   'web_search',
   'web_fetch',
+  'image_search',
   'project_list_dir',
   'project_read_file',
 ])

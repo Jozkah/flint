@@ -1,4 +1,4 @@
-use crate::provider::{clamp_count, create_provider, FetchedPage, SearchResult};
+use crate::provider::{clamp_count, create_provider, FetchedPage, ImageResult, SearchResult};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize, thiserror::Error)]
@@ -39,6 +39,24 @@ pub async fn web_search(
     let backend = create_provider(provider.as_deref(), api_key, endpoint)?;
     let results = backend.search(query, clamp_count(count)).await?;
     Ok(results)
+}
+
+/// Find images for a query: the backend's own image search where it has one,
+/// otherwise the `og:image` of the pages a web search returns.
+#[tauri::command]
+pub async fn image_search(
+    query: String,
+    count: Option<u64>,
+    provider: Option<String>,
+    api_key: Option<String>,
+    endpoint: Option<String>,
+) -> Result<Vec<ImageResult>, WebSearchError> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Err(WebSearchError::new("image_search 'query' must not be empty."));
+    }
+    let backend = create_provider(provider.as_deref(), api_key, endpoint)?;
+    Ok(backend.search_images(query, clamp_count(count)).await?)
 }
 
 /// Fetch a web page by URL and return normalized, bounded readable content.

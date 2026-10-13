@@ -38,6 +38,8 @@ import { campaignToolSchemas } from '@/lib/campaignToolSchemas'
 import {
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
+  IMAGE_SEARCH_DESCRIPTION,
+  IMAGE_SEARCH_INPUT_SCHEMA,
   WEB_SEARCH_DESCRIPTION,
   WEB_SEARCH_INPUT_SCHEMA,
 } from '@/lib/webSearchTool'
@@ -620,9 +622,14 @@ export function applyWebSearchToTools(
       description: WEB_FETCH_DESCRIPTION,
       inputSchema: jsonSchema(WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>),
     } as Tool
+    next['image_search'] = {
+      description: IMAGE_SEARCH_DESCRIPTION,
+      inputSchema: jsonSchema(IMAGE_SEARCH_INPUT_SCHEMA as Record<string, unknown>),
+    } as Tool
   } else {
     delete next['web_search']
     delete next['web_fetch']
+    delete next['image_search']
   }
   return next
 }
@@ -766,6 +773,12 @@ export function coworkToolsFromSchemas(
       description: WEB_FETCH_DESCRIPTION,
       inputSchema: jsonSchema(
         WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>
+      ),
+    } as Tool
+    tools['image_search'] = {
+      description: IMAGE_SEARCH_DESCRIPTION,
+      inputSchema: jsonSchema(
+        IMAGE_SEARCH_INPUT_SCHEMA as Record<string, unknown>
       ),
     } as Tool
   }

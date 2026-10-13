@@ -31,6 +31,7 @@ import { InlinePathLink } from '@/containers/message/InlinePathLink'
 import { PATH_HREF_PREFIX } from '@/lib/pathOpen'
 import { remarkFileRefs, FILE_REF_HREF_PREFIX } from '@/lib/coworkFileRefs'
 import { MarkdownTable } from '@/components/MarkdownTable'
+import { MarkdownImage } from '@/components/MarkdownImage'
 import { rehypeSafeInlineHtml } from '@/lib/rehypeSafeInlineHtml'
 import { decodeWebCiteHref } from '@/lib/webUrl'
 
@@ -344,9 +345,22 @@ function RenderMarkdownComponent({
         if (!url) return <>{children}</>
         return <WebCitationChip messageId={messageId} url={url} />
       }
+      // A web link opens outside the app, never replacing the chat.
+      if (typeof href === 'string' && /^https?:\/\//i.test(href)) {
+        return (
+          <a {...props} target="_blank" rel="noreferrer noopener">
+            {children}
+          </a>
+        )
+      }
       return <a {...props}>{children}</a>
     }
-    return { a: Anchor, table: MarkdownTable, ...(components ?? {}) } as Components
+    return {
+      a: Anchor,
+      table: MarkdownTable,
+      img: MarkdownImage,
+      ...(components ?? {}),
+    } as Components
   }, [components, messageId])
 
   // Interactive HTML artifacts: only when the user opted in and the stream is
