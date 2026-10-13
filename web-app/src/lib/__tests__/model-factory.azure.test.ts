@@ -72,6 +72,13 @@ describe('Azure OpenAI endpoints (janhq/jan#451)', () => {
     expect(cfg.queryParams).toEqual({ 'api-version': '2024-10-21' })
   })
 
+  it.each([[''], ['   ']])('refuses to build an Azure model when base_url is %j', async (url) => {
+    await expect(
+      ModelFactory.createModel('m', provider('azure', url), {})
+    ).rejects.toThrow(/endpoint/i)
+    expect(h.cfgs).toHaveLength(0)
+  })
+
   it('leaves non-Azure providers untouched', async () => {
     await ModelFactory.createModel('m', provider('custom', 'https://api.example.com/v1'), {})
     const cfg = h.cfgs.at(-1)!

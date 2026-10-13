@@ -34,5 +34,6 @@
   "serverPortFallbackDescription": "Port {{requested}} jest niedostępny, więc lokalny serwer API nasłuchuje na porcie {{actual}}. Zapisane ustawienie portu pozostało bez zmian.",
   "serverInvalidModelPath": "Nieprawidłowa lub niedostępna ścieżka modelu",
   "serverStartModelFailed": "Nie udało się uruchomić modelu",
-  "serverStartFailed": "Nie udało się uruchomić serwera"
+  "serverStartFailed": "Nie udało się uruchomić serwera",
+  "azureEndpointMissing": "Nie skonfigurowano punktu końcowego dla {{provider}}. Ustaw bazowy adres URL w Ustawienia > Dostawcy modeli."
 }

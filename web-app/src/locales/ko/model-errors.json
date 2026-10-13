@@ -34,5 +34,6 @@
   "serverPortFallbackDescription": "{{requested}} 포트를 사용할 수 없어 로컬 API 서버가 {{actual}} 포트에서 수신 대기 중입니다. 저장된 포트 설정은 변경되지 않았습니다.",
   "serverInvalidModelPath": "모델 경로가 올바르지 않거나 접근할 수 없습니다",
   "serverStartModelFailed": "모델을 시작하지 못했습니다",
-  "serverStartFailed": "서버를 시작하지 못했습니다"
+  "serverStartFailed": "서버를 시작하지 못했습니다",
+  "azureEndpointMissing": "{{provider}}에 구성된 엔드포인트가 없습니다. 설정 > 모델 제공자에서 기본 URL을 설정하세요."
 }

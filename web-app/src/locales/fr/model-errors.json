@@ -34,5 +34,6 @@
   "serverPortFallbackDescription": "Le port {{requested}} n'est pas disponible ; le serveur d'API local écoute donc sur le port {{actual}}. Le paramètre de port enregistré reste inchangé.",
   "serverInvalidModelPath": "Chemin du modèle invalide ou inaccessible",
   "serverStartModelFailed": "Échec du démarrage du modèle",
-  "serverStartFailed": "Échec du démarrage du serveur"
+  "serverStartFailed": "Échec du démarrage du serveur",
+  "azureEndpointMissing": "Aucun point de terminaison n'est configuré pour {{provider}}. Définissez l'URL de base dans Paramètres > Fournisseurs de modèles."
 }
