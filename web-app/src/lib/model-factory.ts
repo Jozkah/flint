@@ -1112,6 +1112,16 @@ function requireRemoteApiKey(
   return key
 }
 
+/** True for the `/openai/v1` style Azure endpoint (no deployment path or query). */
+export function isAzureV1Endpoint(baseUrl: string | undefined): boolean {
+  try {
+    const url = new URL(baseUrl ?? '')
+    return !url.search && !/\/deployments(\/|$)/i.test(url.pathname)
+  } catch {
+    return false
+  }
+}
+
 // Azure endpoints are per resource and have no safe default: the
 // OpenAI-compatible route would fall back to api.openai.com and a relative URL
 // would post to the app's own origin, either way carrying the Azure key. Fail
@@ -1210,6 +1220,15 @@ export class ModelFactory {
       case 'gemini':
         return this.createGoogleModel(modelId, provider, parameters)
       case 'azure':
+        // Azure's v1 API serves the OpenAI Responses API at the same base URL,
+        // and its reasoning deployments reject function tools on
+        // /chat/completions. Legacy deployments-style endpoints (path with
+        // /deployments, or an api-version query) only speak Chat Completions
+        // and keep the compatible route below. janhq/jan#9206.
+        if (isAzureV1Endpoint(provider.base_url)) {
+          return this.createOpenAIModel(modelId, provider, parameters)
+        }
+      // falls through
       case 'groq':
       case 'together':
       case 'fireworks':
@@ -1502,8 +1521,8 @@ export class ModelFactory {
       fetch: fetchImpl,
     })
 
-    // The genuine OpenAI provider always supports the Responses API, so use it
-    // unconditionally: it is a superset of Chat Completions and the only surface
+    // The genuine OpenAI provider (and Azure's v1 API) always supports the
+    // Responses API, so use it unconditionally: it is a superset of Chat Completions and the only surface
     // that returns reasoning summaries. Custom OpenAI-compatible providers route
     // through createOpenAICompatibleModel, not here, so this cannot hit a proxy
     // that only implements /chat/completions.
