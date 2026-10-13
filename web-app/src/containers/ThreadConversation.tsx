@@ -123,10 +123,12 @@ import { useToolAvailable } from '@/hooks/useToolAvailable'
 import {
   OUT_OF_CONTEXT_SIZE,
   isContextOverflowMessage,
+  isLocalContextOverflowMessage,
   parseContextOverflow,
 } from '@/utils/error'
 import { PREFLIGHT_CONTEXT_ERROR_PREFIX } from '@/lib/contextEstimate'
-import { useTranslation } from '@/i18n/react-i18next-compat'
+import { useTranslation, i18n } from '@/i18n/react-i18next-compat'
+import { isEmptyReply } from '@/lib/chatFinish'
 import { toast } from 'sonner'
 import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionDivider'
 import {
@@ -538,6 +540,7 @@ export function ThreadConversation({
         request: info.requestTokens.toLocaleString(),
         context: info.contextTokens.toLocaleString(),
       })
+    if (!isLocalContextOverflowMessage(raw)) return raw
     return t('model-errors:contextOverflowGeneric')
   }, [contextLimitError, t])
 
@@ -679,6 +682,24 @@ export function ThreadConversation({
       }
 
       if (!isAbort && message.parts.length) setPendingContinueMessage(null)
+
+      // Nothing would be persisted for an empty reply, so without this the
+      // turn silently vanishes and the user cannot tell it failed. The error
+      // goes on the user turn it answers: that message is persisted, and the
+      // errorEntries effect copies the error into its metadata.error.
+      if (
+        !isDisconnect &&
+        isEmptyReply({ message, isAbort, isError, finishReason })
+      ) {
+        const userTurnId =
+          pendingAssistantParentId.current ?? resolveAssistantParent(undefined)
+        pendingAssistantParentId.current = null
+        if (userTurnId) {
+          useMessageErrors
+            .getState()
+            .setError(userTurnId, i18n.t('model-errors:emptyReply'))
+        }
+      }
 
       // The turn ended before completion (user hit Stop, or the model hit its
       // output-token cap). Persist the partial marked `stopped` so the UI can
