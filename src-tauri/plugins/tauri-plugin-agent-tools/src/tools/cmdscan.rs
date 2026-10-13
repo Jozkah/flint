@@ -56,11 +56,38 @@ const REDEFINING: &[&str] = &[
     "alias", "shopt", "function", "filter", "hash", "enable", "trap", "bind", "complete",
     "compgen", "compopt", "fc", "declare", "typeset", "local", "readonly", "let", "getopts",
     "mapfile", "readarray", "doskey", "path", "set-alias", "sal", "new-alias", "nal",
-    "set-item", "si", "new-item", "ni", "rename-item", "rni", "move-item", "set-content",
-    "add-content", "ac", "import-module", "ipmo", "set-variable", "sv", "new-variable", "nv",
+    "set-item", "si", "new-item", "ni", "copy-item", "cpi", "rename-item", "rni", "move-item",
+    "mi", "set-content", "add-content", "ac", "clear-content", "clc", "new-psdrive", "ndr",
+    "import-module", "ipmo", "set-variable", "sv", "new-variable", "nv",
     "add-type", "update-typedata", "invoke-expression", "iex", "invoke-command", "icm",
     "powershell", "pwsh", "cmd", "wsl",
 ];
+/// PowerShell's aliases for the item cmdlets above. Under bash or cmd these
+/// are ordinary file commands a grant may cover; only PowerShell turns them
+/// into `Copy-Item`/`Move-Item`/`Rename-Item`, whose path can be built at run
+/// time (`cp x "${a}:ls"`) to write into the Function or Alias provider.
+const POWERSHELL_ITEM_ALIASES: &[&str] = &["cp", "copy", "mv", "move", "ren"];
+
+#[cfg(test)]
+thread_local! {
+    static POWERSHELL_OVERRIDE: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+/// Whether the `shell` tool's command language is PowerShell.
+fn shell_is_powershell() -> bool {
+    #[cfg(test)]
+    if let Some(forced) = POWERSHELL_OVERRIDE.with(|c| c.get()) {
+        return forced;
+    }
+    super::proc::shell().flavor == super::proc::ShellFlavor::PowerShell
+}
+
+/// Whether `name` (already [`canon`]ed) redefines a command or runs text.
+fn is_redefining(name: &str) -> bool {
+    REDEFINING.contains(&name)
+        || (POWERSHELL_ITEM_ALIASES.contains(&name) && shell_is_powershell())
+}
+
 /// Builtins that assign to the names in their arguments. Plain when every name
 /// is an ordinary one: not a [`RESOLUTION_VARS`] entry and with no `[...]`
 /// subscript, which bash evaluates as arithmetic. `setx` is cmd's persistent
@@ -660,7 +687,7 @@ fn scan_segment(seg: &str, bases: &mut BTreeSet<String>, depth: usize) -> bool {
         let name = canon(&base);
         if OPAQUE.contains(&base.as_str())
             || OPAQUE.contains(&name.as_str())
-            || REDEFINING.contains(&name.as_str())
+            || is_redefining(&name)
         {
             return false;
         }
@@ -894,7 +921,7 @@ fn walk_segment(seg: &str, out: &mut Vec<String>, depth: usize, unplain: &mut bo
         if tokens.iter().any(|t| is_drive_ref(t))
             || command_word_is_dynamic(first)
             || OPAQUE.contains(&name.as_str()) && !matches!(base.as_str(), "sudo" | "doas")
-            || REDEFINING.contains(&name.as_str())
+            || is_redefining(&name)
             || (ASSIGNING_BUILTINS.contains(&name.as_str())
                 && assigns_unsafely(&tokens[idx + 1..]))
             || names_a_variable(&name, &tokens[idx + 1..])
@@ -1364,5 +1391,43 @@ mod plain_invocation_tests {
             assert!(!marked(command), "{command} -> {:?}", simple_commands(command));
         }
         plain("ls", &["ls"]);
+    }
+
+    fn as_powershell<T>(ps: bool, f: impl FnOnce() -> T) -> T {
+        POWERSHELL_OVERRIDE.with(|c| c.set(Some(ps)));
+        let out = f();
+        POWERSHELL_OVERRIDE.with(|c| c.set(None));
+        out
+    }
+
+    #[test]
+    fn item_cmdlets_and_psdrive_are_not_plain() {
+        for command in [
+            "New-PSDrive F -PSProvider Function -Root .",
+            "ndr F -PSProvider Alias -Root .",
+            "Copy-Item x \"${a}:ls\"",
+            "cpi x y",
+            "Clear-Content function:ls",
+            "clc x",
+            "Move-Item x y",
+            "mi x y",
+        ] {
+            opaque(command);
+            assert!(marked(command), "{command} -> {:?}", simple_commands(command));
+        }
+    }
+
+    #[test]
+    fn cp_mv_aliases_are_redefining_only_under_powershell() {
+        for command in ["cp a b", "copy a b", "mv a b", "move a b", "ren a b", "mv x \"${a}:ls\""] {
+            as_powershell(true, || {
+                opaque(command);
+                assert!(marked(command), "{command}");
+            });
+            as_powershell(false, || {
+                assert!(!marked(command), "{command} must stay plain under bash");
+                assert!(matches!(scan_command(command), CommandScan::Bases(_)), "{command}");
+            });
+        }
     }
 }
