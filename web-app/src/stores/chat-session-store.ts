@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { create } from "zustand";
 import type { Chat, UIMessage } from "@ai-sdk/react";
-import type { ChatStatus } from "ai";
+import type { ChatInit, ChatStatus } from "ai";
 import { CustomChatTransport } from "@/lib/custom-chat-transport";
 import { useMessageQueue } from "@/stores/message-queue-store";
 
@@ -11,8 +11,20 @@ export type SessionData = {
   idMap: Map<string, string>;
 };
 
+/**
+ * The Chat's event callbacks as the view last supplied them. A Chat outlives
+ * the component that made it (it lives on the session), so it must not call
+ * the closures that component had when the Chat was built: each call resolves
+ * the latest ones from here.
+ */
+export type ChatCallbacks = Pick<
+  ChatInit<UIMessage>,
+  "onFinish" | "onToolCall" | "onError" | "onData"
+>;
+
 export type ChatSession = {
   chat: Chat<UIMessage>;
+  callbacks?: ChatCallbacks;
   transport: CustomChatTransport;
   status: ChatStatus;
   title?: string;
@@ -32,6 +44,8 @@ interface ChatSessionState {
     title?: string,
   ) => Chat<UIMessage>;
   getSessionData: (sessionId: string) => SessionData;
+  /** Record the callbacks the Chat should call next. Changes nothing a subscriber reads. */
+  setSessionCallbacks: (sessionId: string, callbacks: ChatCallbacks) => void;
   updateStatus: (sessionId: string, status: ChatStatus) => void;
   setSessionTitle: (sessionId: string, title?: string) => void;
   removeSession: (sessionId: string) => void;
@@ -131,6 +145,12 @@ export const useChatSessions = create<ChatSessionState>((set, get) => ({
     notifyAfterRender(set);
 
     return chat;
+  },
+  setSessionCallbacks: (sessionId, callbacks) => {
+    // In place, like ensureSession: this runs during a render and no
+    // subscriber reads the callbacks, so there is nothing to notify.
+    const existing = get().sessions[sessionId];
+    if (existing) existing.callbacks = callbacks;
   },
   getSessionData: (sessionId) => {
     const existing = get().sessions[sessionId];
