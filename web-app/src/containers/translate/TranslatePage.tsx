@@ -155,15 +155,15 @@ export function TranslatePage() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={t('common:translate.inputPlaceholder')}
-          className="min-h-48 resize-none"
+          className="h-full min-h-48 resize-none field-sizing-fixed"
           data-testid="translate-input"
         />
-        <div className="relative">
+        <div className="relative h-full min-h-48">
           <Textarea
             value={output}
             readOnly
             placeholder={t('common:translate.outputPlaceholder')}
-            className="min-h-48 resize-none"
+            className="h-full min-h-48 resize-none field-sizing-fixed"
             data-testid="translate-output"
           />
           {output && !running && (
