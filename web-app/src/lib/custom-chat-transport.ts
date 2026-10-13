@@ -1,4 +1,8 @@
 import { hasAgentToolImages } from '@/lib/toolOutputImages'
+import {
+  hasToolImageSentinel,
+  stripToolImageSentinels,
+} from '@/lib/tool-image-sentinel'
 import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
 import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
 import { buildContextBreakdown } from '@/lib/contextBreakdown'
@@ -692,11 +696,25 @@ export function stripUnsupportedImageParts(
         }
       }
       return true
+    }).map((part) => {
+      // A tool image sentinel would decode into an image_url part on the tool
+      // message; a text-only model rejects that.
+      const output = (part as { output?: unknown }).output
+      if (typeof output !== 'string' || !hasToolImageSentinel(output)) {
+        return part
+      }
+      touched = true
+      return {
+        ...part,
+        output: stripToolImageSentinels(output, TOOL_IMAGE_OMITTED),
+      } as typeof part
     })
     if (!touched) return message
     return { ...message, parts: nextParts } as UIMessage
   })
 }
+
+const TOOL_IMAGE_OMITTED = ' (image omitted: the model has no vision)'
 
 const RESOLVED_TOOL_STATES = new Set([
   'output-available',
