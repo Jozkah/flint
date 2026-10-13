@@ -146,6 +146,7 @@
     "title": "बेस URL",
     "openaiDescription": "OpenAI API के साथ काम करने वाला प्रॉक्सी या गेटवे इस्तेमाल करें। डिफ़ॉल्ट https://api.openai.com/v1 है।",
     "azureDescription": "आपका Azure OpenAI एंडपॉइंट। YOUR-RESOURCE-NAME की जगह अपने Azure रिसोर्स का नाम डालें।",
+    "litellmDescription": "आपके LiteLLM प्रॉक्सी का पता, /v1 सहित। डिफ़ॉल्ट http://localhost:4000/v1 है।",
     "qwenDescription": "आपका Model Studio एंडपॉइंट। कुंजी केवल उसी क्षेत्र में काम करती है जहाँ बनाई गई थी: सिंगापुर के लिए https://dashscope-intl.aliyuncs.com/compatible-mode/v1 या मुख्य भूमि चीन के लिए https://dashscope.aliyuncs.com/compatible-mode/v1 उपयोग करें।"
   },
   "apiKeys": {

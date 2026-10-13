@@ -146,6 +146,7 @@
     "title": "기본 URL",
     "openaiDescription": "OpenAI API와 호환되는 프록시나 게이트웨이를 사용합니다. 기본값은 https://api.openai.com/v1입니다.",
     "azureDescription": "Azure OpenAI 엔드포인트입니다. YOUR-RESOURCE-NAME을 Azure 리소스 이름으로 바꾸세요.",
+    "litellmDescription": "/v1을 포함한 LiteLLM 프록시 주소입니다. 기본값은 http://localhost:4000/v1입니다.",
     "qwenDescription": "Model Studio 엔드포인트입니다. 키는 생성된 리전에서만 동작합니다. 싱가포르는 https://dashscope-intl.aliyuncs.com/compatible-mode/v1, 중국 본토는 https://dashscope.aliyuncs.com/compatible-mode/v1을 사용하세요."
   },
   "apiKeys": {

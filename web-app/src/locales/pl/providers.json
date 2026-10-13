@@ -146,6 +146,7 @@
     "title": "Bazowy adres URL",
     "openaiDescription": "Użyj serwera proxy lub bramki obsługującej API OpenAI. Domyślnie jest to https://api.openai.com/v1.",
     "azureDescription": "Twój punkt końcowy Azure OpenAI. Zastąp YOUR-RESOURCE-NAME nazwą zasobu Azure.",
+    "litellmDescription": "Adres Twojego serwera proxy LiteLLM wraz z /v1. Domyślnie http://localhost:4000/v1.",
     "qwenDescription": "Twój punkt końcowy Model Studio. Klucz działa tylko w regionie, w którym został utworzony: użyj https://dashscope-intl.aliyuncs.com/compatible-mode/v1 dla Singapuru lub https://dashscope.aliyuncs.com/compatible-mode/v1 dla Chin kontynentalnych."
   },
   "apiKeys": {

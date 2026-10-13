@@ -146,6 +146,7 @@
     "title": "URL base",
     "openaiDescription": "Usa un proxy o una pasarela compatible con la API de OpenAI. El valor predeterminado es https://api.openai.com/v1.",
     "azureDescription": "Tu endpoint de Azure OpenAI. Sustituye YOUR-RESOURCE-NAME por el nombre de tu recurso de Azure.",
+    "litellmDescription": "La dirección de tu proxy LiteLLM, incluyendo /v1. El valor por defecto es http://localhost:4000/v1.",
     "qwenDescription": "Tu endpoint de Model Studio. Una clave solo funciona en la región donde se creó: usa https://dashscope-intl.aliyuncs.com/compatible-mode/v1 para Singapur o https://dashscope.aliyuncs.com/compatible-mode/v1 para China continental."
   },
   "apiKeys": {

@@ -146,6 +146,7 @@
     "title": "Базовый URL",
     "openaiDescription": "Используйте прокси или шлюз, поддерживающий API OpenAI. По умолчанию: https://api.openai.com/v1.",
     "azureDescription": "Ваша конечная точка Azure OpenAI. Замените YOUR-RESOURCE-NAME на имя вашего ресурса Azure.",
+    "litellmDescription": "Адрес вашего прокси LiteLLM, включая /v1. По умолчанию http://localhost:4000/v1.",
     "qwenDescription": "Ваша конечная точка Model Studio. Ключ работает только в регионе, где он был создан: используйте https://dashscope-intl.aliyuncs.com/compatible-mode/v1 для Сингапура или https://dashscope.aliyuncs.com/compatible-mode/v1 для материкового Китая."
   },
   "apiKeys": {

@@ -146,6 +146,7 @@
     "title": "Base URL",
     "openaiDescription": "Gunakan proxy atau gateway yang kompatibel dengan API OpenAI. Defaultnya adalah https://api.openai.com/v1.",
     "azureDescription": "Endpoint Azure OpenAI Anda. Ganti YOUR-RESOURCE-NAME dengan nama resource Azure Anda.",
+    "litellmDescription": "Alamat proxy LiteLLM Anda, termasuk /v1. Bawaannya adalah http://localhost:4000/v1.",
     "qwenDescription": "Endpoint Model Studio Anda. Kunci hanya berfungsi di wilayah tempat kunci dibuat: gunakan https://dashscope-intl.aliyuncs.com/compatible-mode/v1 untuk Singapura atau https://dashscope.aliyuncs.com/compatible-mode/v1 untuk Tiongkok daratan."
   },
   "apiKeys": {

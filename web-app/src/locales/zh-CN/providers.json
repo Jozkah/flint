@@ -146,6 +146,7 @@
     "title": "Base URL",
     "openaiDescription": "使用兼容 OpenAI API 的代理或网关。默认值为 https://api.openai.com/v1。",
     "azureDescription": "你的 Azure OpenAI 端点。请将 YOUR-RESOURCE-NAME 替换为你的 Azure 资源名称。",
+    "litellmDescription": "你的 LiteLLM 代理地址，包含 /v1。默认为 http://localhost:4000/v1。",
     "qwenDescription": "你的 Model Studio 端点。密钥只在其创建的区域内有效：新加坡请使用 https://dashscope-intl.aliyuncs.com/compatible-mode/v1，中国大陆请使用 https://dashscope.aliyuncs.com/compatible-mode/v1。"
   },
   "apiKeys": {

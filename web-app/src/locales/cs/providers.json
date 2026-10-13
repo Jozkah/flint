@@ -146,6 +146,7 @@
     "title": "Základní URL",
     "openaiDescription": "Použijte proxy nebo bránu, která mluví API OpenAI. Výchozí hodnota je https://api.openai.com/v1.",
     "azureDescription": "Váš koncový bod Azure OpenAI. Nahraďte YOUR-RESOURCE-NAME názvem svého prostředku Azure.",
+    "litellmDescription": "Adresa vašeho proxy LiteLLM včetně /v1. Výchozí je http://localhost:4000/v1.",
     "qwenDescription": "Váš koncový bod Model Studio. Klíč funguje jen v regionu, ve kterém byl vytvořen: použijte https://dashscope-intl.aliyuncs.com/compatible-mode/v1 pro Singapur nebo https://dashscope.aliyuncs.com/compatible-mode/v1 pro pevninskou Čínu."
   },
   "apiKeys": {

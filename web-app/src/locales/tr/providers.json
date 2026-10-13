@@ -146,6 +146,7 @@
     "title": "Temel URL",
     "openaiDescription": "OpenAI API'sini konuşan bir proxy veya ağ geçidi kullanın. Varsayılan https://api.openai.com/v1 adresidir.",
     "azureDescription": "Azure OpenAI uç noktanız. YOUR-RESOURCE-NAME'i Azure kaynak adınızla değiştirin.",
+    "litellmDescription": "LiteLLM proxy adresiniz, /v1 dahil. Varsayılan http://localhost:4000/v1'dir.",
     "qwenDescription": "Model Studio uç noktanız. Bir anahtar yalnızca oluşturulduğu bölgede çalışır: Singapur için https://dashscope-intl.aliyuncs.com/compatible-mode/v1, anakara Çin için https://dashscope.aliyuncs.com/compatible-mode/v1 kullanın."
   },
   "apiKeys": {

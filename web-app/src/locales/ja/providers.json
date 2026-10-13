@@ -146,6 +146,7 @@
     "title": "ベースURL",
     "openaiDescription": "OpenAI API 互換のプロキシまたはゲートウェイを使用します。デフォルトは https://api.openai.com/v1 です。",
     "azureDescription": "あなたのAzure OpenAIエンドポイント。YOUR-RESOURCE-NAMEをAzureリソース名に置き換えてください。",
+    "litellmDescription": "LiteLLM プロキシのアドレス（/v1 を含む）。デフォルトは http://localhost:4000/v1 です。",
     "qwenDescription": "Model Studio のエンドポイントです。キーは、作成されたリージョンでのみ機能します。シンガポールの場合は https://dashscope-intl.aliyuncs.com/compatible-mode/v1、中国本土の場合は https://dashscope.aliyuncs.com/compatible-mode/v1 を使用してください。"
   },
   "apiKeys": {

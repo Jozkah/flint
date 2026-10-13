@@ -146,6 +146,7 @@
     "title": "URL base",
     "openaiDescription": "Usa un servidor intermediari o una passarel·la que parli l'API d'OpenAI. El valor per defecte és https://api.openai.com/v1.",
     "azureDescription": "El teu endpoint d'Azure OpenAI. Substitueix YOUR-RESOURCE-NAME pel nom del teu recurs d'Azure.",
+    "litellmDescription": "L'adreça del teu servidor intermediari LiteLLM, amb /v1. El valor per defecte és http://localhost:4000/v1.",
     "qwenDescription": "El teu endpoint de Model Studio. Una clau només funciona a la regió on es va crear: usa https://dashscope-intl.aliyuncs.com/compatible-mode/v1 per a Singapur o https://dashscope.aliyuncs.com/compatible-mode/v1 per a la Xina continental."
   },
   "apiKeys": {

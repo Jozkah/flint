@@ -115,6 +115,10 @@ const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: stri
     description: 'providers:baseUrl.azureDescription',
     placeholder: AZURE_BASE_URL_PLACEHOLDER,
   },
+  litellm: {
+    description: 'providers:baseUrl.litellmDescription',
+    placeholder: 'http://localhost:4000/v1',
+  },
   qwen: {
     description: 'providers:baseUrl.qwenDescription',
     placeholder: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',

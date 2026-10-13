@@ -146,6 +146,7 @@
     "title": "URL gốc",
     "openaiDescription": "Dùng proxy hoặc cổng kết nối tương thích với API OpenAI. Mặc định là https://api.openai.com/v1.",
     "azureDescription": "Điểm cuối Azure OpenAI của bạn. Thay YOUR-RESOURCE-NAME bằng tên tài nguyên Azure của bạn.",
+    "litellmDescription": "Địa chỉ proxy LiteLLM của bạn, bao gồm /v1. Mặc định là http://localhost:4000/v1.",
     "qwenDescription": "Điểm cuối Model Studio của bạn. Một khóa chỉ hoạt động ở khu vực nó được tạo: dùng https://dashscope-intl.aliyuncs.com/compatible-mode/v1 cho Singapore hoặc https://dashscope.aliyuncs.com/compatible-mode/v1 cho Trung Quốc đại lục."
   },
   "apiKeys": {
