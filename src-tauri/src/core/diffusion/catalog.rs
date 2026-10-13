@@ -114,6 +114,8 @@ pub enum Role {
     Llm,
     T5xxl,
     ClipL,
+    /// The vision projector beside a vision-language text encoder (`--llm_vision`).
+    LlmVision,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]

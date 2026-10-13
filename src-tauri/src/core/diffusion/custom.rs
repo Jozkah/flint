@@ -68,20 +68,34 @@ const Z_IMAGE_COMPANIONS: &[FileDef] = &[
     },
 ];
 
-const QWEN_IMAGE_COMPANIONS: &[FileDef] = &[
+const QWEN_IMAGE_VAE: FileDef = FileDef {
+    role: Role::Vae,
+    repo: "Comfy-Org/Qwen-Image_ComfyUI",
+    filename: "split_files/vae/qwen_image_vae.safetensors",
+    size: 253_806_246,
+    sha256: "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+};
+
+const QWEN_IMAGE_LLM: FileDef = FileDef {
+    role: Role::Llm,
+    repo: "mradermacher/Qwen2.5-VL-7B-Instruct-GGUF",
+    filename: "Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf",
+    size: 4_683_072_512,
+    sha256: "0f00a930ba3108b6861ddadf74d8ebbd82e257c63eba728e62c3e8970f5eed94",
+};
+
+const QWEN_IMAGE_COMPANIONS: &[FileDef] = &[QWEN_IMAGE_VAE, QWEN_IMAGE_LLM];
+
+const QWEN_IMAGE_EDIT_2509_COMPANIONS: &[FileDef] = &[
+    QWEN_IMAGE_VAE,
+    QWEN_IMAGE_LLM,
+    // 2509 reads the picture through the encoder's own vision tower.
     FileDef {
-        role: Role::Vae,
-        repo: "Comfy-Org/Qwen-Image_ComfyUI",
-        filename: "split_files/vae/qwen_image_vae.safetensors",
-        size: 253_806_246,
-        sha256: "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
-    },
-    FileDef {
-        role: Role::Llm,
+        role: Role::LlmVision,
         repo: "mradermacher/Qwen2.5-VL-7B-Instruct-GGUF",
-        filename: "Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf",
-        size: 4_683_072_512,
-        sha256: "0f00a930ba3108b6861ddadf74d8ebbd82e257c63eba728e62c3e8970f5eed94",
+        filename: "Qwen2.5-VL-7B-Instruct.mmproj-Q8_0.gguf",
+        size: 853_119_712,
+        sha256: "2185ca0adf339f96845318c7b666f5d242f86bbace5657a89cb834785d0cea57",
     },
 ];
 
@@ -203,6 +217,25 @@ pub const FAMILIES: &[Family] = &[
         description: "Edits pictures by instruction: the original Qwen-Image-Edit, not 2509 or 2511. Also downloads a 7B text encoder (4.7 GB) and a VAE (0.3 GB).",
         hints: &["qwen-image-edit", "qwen_image_edit"],
         companions: QWEN_IMAGE_COMPANIONS,
+        defaults: Defaults {
+            steps: 20,
+            cfg_scale: 2.5,
+            sample_method: Some("euler"),
+            flow_shift: Some(3.0),
+            width: 1024,
+            height: 1024,
+        },
+        min_side: 16,
+        max_side: 2048,
+        edit: true,
+        extra_args: &[],
+    },
+    Family {
+        id: "qwen-image-edit-2509",
+        label: "Qwen-Image-Edit 2509",
+        description: "Edits pictures by instruction: the 2509 release only. Also downloads a 7B text encoder (4.7 GB), its vision part (0.9 GB) and a VAE (0.3 GB).",
+        hints: &["qwen-image-edit-2509", "qwen_image_edit_2509", "qwen-image-edit2509"],
+        companions: QWEN_IMAGE_EDIT_2509_COMPANIONS,
         defaults: Defaults {
             steps: 20,
             cfg_scale: 2.5,
@@ -489,6 +522,7 @@ mod tests {
         assert_eq!(roles("qwen-image"), vec![Role::Vae, Role::Llm]);
         assert_eq!(roles("qwen-image-2.1"), vec![Role::Vae, Role::Llm]);
         assert_eq!(roles("flux1"), vec![Role::Vae, Role::ClipL, Role::T5xxl]);
+        assert_eq!(roles("qwen-image-edit-2509"), vec![Role::Vae, Role::Llm, Role::LlmVision]);
     }
 
     #[test]
@@ -556,6 +590,7 @@ mod tests {
         assert_eq!(guess_family("x/FLUX.1-Kontext-dev-gguf", "flux1-kontext-dev-Q4_K_M.gguf"), None);
         // An edit family exists for these two, so they are offered for it...
         assert_eq!(guess_family("x/Qwen-Image-Edit-GGUF", "qwen-image-edit-Q4_K_M.gguf"), Some("qwen-image-edit"));
+        assert_eq!(guess_family("QuantStack/Qwen-Image-Edit-2509-GGUF", "Qwen-Image-Edit-2509-Q4_K_M.gguf"), Some("qwen-image-edit-2509"));
         assert_eq!(guess_family("unsloth/Qwen-Image-Edit-2511-GGUF", "qwen-image-edit-2511-Q4_K_M.gguf"), Some("qwen-image-edit-2511"));
         // ...but a fill variant of a plain family is still not a picture model.
         assert_eq!(guess_family("x/FLUX.1-Fill-dev-gguf", "flux1-fill-dev-Q4_K_M.gguf"), None);

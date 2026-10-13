@@ -142,6 +142,7 @@ fn files_for<R: Runtime>(app: &tauri::AppHandle<R>, def: &ModelDef) -> Result<Mo
         llm: find(Role::Llm),
         t5xxl: find(Role::T5xxl),
         clip_l: find(Role::ClipL),
+        llm_vision: find(Role::LlmVision),
     })
 }
 

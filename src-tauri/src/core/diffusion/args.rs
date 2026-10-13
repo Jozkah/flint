@@ -18,6 +18,8 @@ pub struct ModelFiles {
     pub t5xxl: Option<PathBuf>,
     /// The CLIP-L text encoder FLUX.1 takes beside its T5 (`--clip_l`).
     pub clip_l: Option<PathBuf>,
+    /// The vision projector of a text encoder that reads pictures (`--llm_vision`).
+    pub llm_vision: Option<PathBuf>,
 }
 
 /// Where the weights sit while generating, trading speed for memory.
@@ -84,6 +86,10 @@ pub fn build_server_args(
     if let Some(llm) = &files.llm {
         args.push("--llm".into());
         args.push(path_arg(llm));
+    }
+    if let Some(vision) = &files.llm_vision {
+        args.push("--llm_vision".into());
+        args.push(path_arg(vision));
     }
     if let Some(t5) = &files.t5xxl {
         args.push("--t5xxl".into());
@@ -305,6 +311,7 @@ mod tests {
             llm: Some("C:\\m\\Qwen3-4B-Instruct-2507-Q4_K_M.gguf".into()),
             t5xxl: None,
             clip_l: None,
+            llm_vision: None,
         }
     }
 
@@ -352,6 +359,7 @@ mod tests {
             llm: None,
             t5xxl: Some("m/t5.gguf".into()),
             clip_l: Some("m/clip_l.safetensors".into()),
+            llm_vision: None,
         };
         let args = build_server_args(&flux, 9, Path::new("s"), Offload::None, None, &[]);
         let at = args.iter().position(|a| a == "--clip_l").expect("--clip_l");
@@ -564,5 +572,15 @@ mod tests {
         // Odd sides snap to a multiple of 16 and stay inside the limits.
         assert_eq!(edit_size((1000, 1000), (1024, 1024), 16, 2048), (1008, 1008));
         assert_eq!(edit_size((10, 10), (1024, 1024), 64, 2048), (64, 64));
+    }
+
+    #[test]
+    fn a_vision_projector_is_passed_as_llm_vision() {
+        let with_vision = ModelFiles { llm_vision: Some("m/mmproj.gguf".into()), ..files() };
+        let p = pairs(&build_server_args(&with_vision, 1, Path::new("s"), Offload::None, None, &[]))
+            .into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<Vec<_>>();
+        assert!(p.contains(&("--llm_vision".to_string(), "m/mmproj.gguf".to_string())));
+        let none = build_server_args(&files(), 1, Path::new("s"), Offload::None, None, &[]);
+        assert!(!none.contains(&"--llm_vision".to_string()));
     }
 }
