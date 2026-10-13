@@ -154,7 +154,7 @@ export async function executeWebTool(
       return {
         content: images
           .map((img, i) => {
-            const alt = img.title.replace(/[\[\]\s]+/g, ' ').trim() || query
+            const alt = img.title.replace(/[[\]\s]+/g, ' ').trim() || query
             return `${i + 1}. ${alt}\n   image: ${img.image_url}\n   page: ${img.source_url}`
           })
           .join('\n'),
