@@ -178,6 +178,7 @@ import {
 } from '@/containers/ThreadStatusMark'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
+import { isImageTool, runImageTool } from '@/lib/chatImageTools'
 import {
   countOutputImages,
   isImageBlock,
@@ -277,6 +278,7 @@ function isAutoAllowedTool(toolName: string): boolean {
     useAppState.getState().ragToolNames.has(toolName) ||
     isNativeWebTool(toolName) ||
     isVisualizeTool(toolName) ||
+    isImageTool(toolName) ||
     AGENT_TOOL_NAMES.has(toolName) ||
     // Handing a job to a subagent asks for nothing itself; what the child then
     // does is gated call by call, in Ask mode.
@@ -1127,6 +1129,8 @@ export function ThreadConversation({
               )
             } else if (isVisualizeTool(toolName)) {
               result = executeVisualizeTool(toolName, toolCall.input, threadId)
+            } else if (isImageTool(toolName)) {
+              result = await runImageTool(toolName, toolCall.input, threadId)
             } else if (AGENT_TOOL_NAMES.has(toolName)) {
               const agentResult = await executeAgentTool(
                 toolName,
