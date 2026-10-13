@@ -768,8 +768,8 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
-                "name": "generate_image",
-                "description": "Generate an image from a text prompt with the image model loaded in Flint's Studio, and show it in the conversation. Use it when the user asks you to draw, make or illustrate a picture. It does not load a model: if none is loaded the result says so, and the user loads one in Studio. Generation can take a minute or more. The picture is kept in the Studio gallery. Describe the subject, style and composition in the prompt.",
+                "name": "image_gen",
+                "description": "Generate an image from a text prompt with the image model loaded in Flint's Studio, and show it in the conversation. Use it when the user asks you to draw, make or illustrate a picture. It does not load a model: if none is loaded the result says so, and the user loads one in Studio. Generation can take a minute or more. Each picture is kept in the Studio gallery and named img_1, img_2, ... for this conversation; use those names with image_view and image_edit. Describe the subject, style and composition in the prompt.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -781,6 +781,42 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                         "seed": { "type": "integer", "description": "Optional seed, to repeat a result." }
                     },
                     "required": ["prompt"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "image_edit",
+                "description": "Change a picture made earlier in this conversation with the image model loaded in Flint's Studio. `image` is the picture to start from (image-to-image; `strength` says how much it may change). `references` are pictures an instruction-edit model should follow. Give `image`, `references`, or both. The result is a new picture with its own name; the original is kept. It does not load a model.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": { "type": "string", "description": "What the result should look like, or the change to make." },
+                        "image": { "type": "string", "description": "Name of the picture to start from, like img_1." },
+                        "strength": { "type": "number", "description": "0 keeps the picture, 1 ignores it. Default 0.6. Only used with `image`." },
+                        "references": { "type": "array", "items": { "type": "string" }, "description": "Names of pictures to follow, like [\"img_1\", \"img_2\"]." },
+                        "negative_prompt": { "type": "string", "description": "Optional. What to keep out of the image." },
+                        "width": { "type": "integer", "description": "Optional width in pixels. Omit to keep the source's shape." },
+                        "height": { "type": "integer", "description": "Optional height in pixels. Omit to keep the source's shape." },
+                        "count": { "type": "integer", "description": "Optional number of images, 1 to 4. Default 1." },
+                        "seed": { "type": "integer", "description": "Optional seed, to repeat a result." }
+                    },
+                    "required": ["prompt"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "image_view",
+                "description": "Look at a picture made earlier in this conversation, for example to check a result before describing it or editing it again. Takes the name from image_gen or image_edit.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "image": { "type": "string", "description": "Name of the picture, like img_1." }
+                    },
+                    "required": ["image"]
                 }
             }
         }),
@@ -833,7 +869,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 55);
+        assert_eq!(schemas.len(), 57);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

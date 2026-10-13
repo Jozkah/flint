@@ -1,4 +1,5 @@
 import { memo, useMemo, type ReactNode } from 'react'
+import { Download } from 'lucide-react'
 import {
   Tool,
   ToolApprovalActions,
@@ -28,6 +29,7 @@ import {
   imagesOfOutput,
   outputTextWithoutImages,
 } from '@/lib/toolOutputImages'
+import { canSaveToolImage, saveToolImageWithToast } from '@/lib/exportImage'
 import { RagToolWidget } from './RagToolWidget'
 import { WebToolWidget } from './WebToolWidget'
 import { AgentToolWidget, TerminalWidget } from './AgentToolWidget'
@@ -493,13 +495,26 @@ export const ToolCallCard = memo(
             // What a `read` of an image file showed the model. Display only.
             <div className="flex flex-wrap gap-2" data-testid="tool-images">
               {cardImages.map((img, n) => (
-                <img
-                  key={`${img.name}-${n}`}
-                  alt={img.name}
-                  title={img.name}
-                  src={img.dataUrl}
-                  className="max-h-32 max-w-[12rem] rounded-md border border-border bg-muted object-contain"
-                />
+                <div key={`${img.name}-${n}`} className="group relative">
+                  <img
+                    alt={img.name}
+                    title={img.name}
+                    src={img.dataUrl}
+                    className="max-h-32 max-w-[12rem] rounded-md border border-border bg-muted object-contain"
+                  />
+                  {canSaveToolImage(img) && (
+                    <button
+                      type="button"
+                      data-testid="tool-image-save"
+                      aria-label={`Save ${img.name}`}
+                      title={`Save ${img.name}`}
+                      onClick={() => void saveToolImageWithToast(img)}
+                      className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-md bg-background/80 text-foreground opacity-0 transition-opacity hover:bg-background focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      <Download className="size-3.5" />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           ) : null}

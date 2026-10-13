@@ -38,7 +38,7 @@ import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 import { runAccessRequest } from '@/lib/accessRequests'
 import { listPluginsForModel } from '@/lib/pluginInventory'
 import { runOpenInBrowser } from '@/lib/browserOpen'
-import { runGenerateImage } from '@/lib/generateImageTool'
+import { IMAGE_TOOL_NAMES, isImageTool, runImageTool } from '@/lib/chatImageTools'
 import { HOST_ASKED, hostCallNeedsAsking } from '@/lib/hostAsked'
 import { similarToolCall } from '@/lib/similarToolCall'
 import {
@@ -100,8 +100,9 @@ export const AGENT_TOOL_NAMES = new Set([
   'request_access',
   'list_plugins',
   'open_in_browser',
-  // Makes a picture with the image model loaded in Studio. See `runGenerateImage`.
-  'generate_image',
+  // Make, change and look at pictures with the image model loaded in Studio.
+  // See `runImageTool`.
+  ...IMAGE_TOOL_NAMES,
   // Read and drive the built-in browser pane. Answered by the desktop, and
   // gated there (domain prompt, action approval): see lib/browserAgent.ts.
   ...BROWSER_TOOL_NAMES,
@@ -788,7 +789,7 @@ export async function executeAgentTool(
       }
     }
     if (toolName === 'open_in_browser') return runOpenInBrowser(input)
-    if (toolName === 'generate_image') return runGenerateImage(input)
+    if (isImageTool(toolName)) return runImageTool(toolName, input, threadId)
     if (toolName === 'list_plugins') {
       return { content: await listPluginsForModel(options.readOnlyProject) }
     }

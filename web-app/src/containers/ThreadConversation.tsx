@@ -25,6 +25,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery'
 
 import HeaderPage from '@/containers/HeaderPage'
 import { ExportItems, ExportSubmenu } from '@/components/ExportMenu'
+import { SaveChatPicturesItem } from '@/components/SaveChatPicturesItem'
 import { docFromThread } from '@/lib/exportDoc'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
@@ -178,6 +179,7 @@ import {
 } from '@/containers/ThreadStatusMark'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
+import { isImageTool, runImageTool } from '@/lib/chatImageTools'
 import {
   countOutputImages,
   isImageBlock,
@@ -277,6 +279,7 @@ function isAutoAllowedTool(toolName: string): boolean {
     useAppState.getState().ragToolNames.has(toolName) ||
     isNativeWebTool(toolName) ||
     isVisualizeTool(toolName) ||
+    isImageTool(toolName) ||
     AGENT_TOOL_NAMES.has(toolName) ||
     // Handing a job to a subagent asks for nothing itself; what the child then
     // does is gated call by call, in Ask mode.
@@ -1127,6 +1130,8 @@ export function ThreadConversation({
               )
             } else if (isVisualizeTool(toolName)) {
               result = executeVisualizeTool(toolName, toolCall.input, threadId)
+            } else if (isImageTool(toolName)) {
+              result = await runImageTool(toolName, toolCall.input, threadId)
             } else if (AGENT_TOOL_NAMES.has(toolName)) {
               const agentResult = await executeAgentTool(
                 toolName,
@@ -2964,7 +2969,11 @@ export function ThreadConversation({
                 <PanelRight className="size-4" />
                 <span>{t('context:details')}</span>
               </DropdownMenuItem>
-              <ExportSubmenu build={buildExportDoc} versions />
+              <ExportSubmenu
+                build={buildExportDoc}
+                versions
+                extra={<SaveChatPicturesItem threadId={threadId} />}
+              />
               {extra && (
                 <DropdownMenuItem
                   onSelect={() => useSplitConversation.getState().addPane()}
@@ -2990,7 +2999,11 @@ export function ThreadConversation({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <ExportItems build={buildExportDoc} versions />
+              <ExportItems
+                build={buildExportDoc}
+                versions
+                extra={<SaveChatPicturesItem threadId={threadId} />}
+              />
             </DropdownMenuContent>
           </DropdownMenu>
         )}

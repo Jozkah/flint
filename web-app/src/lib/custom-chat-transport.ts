@@ -79,6 +79,8 @@ import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
 import { chatDelegationEnabled, chatDelegationTools } from '@/lib/chatDelegation'
 import { subagentGuide } from '@/lib/coworkPrompt'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
+import { isImageTool } from '@/lib/chatImageTools'
+import { studioApi } from '@/lib/studio/studio'
 import { visualizeSchemas } from '@/lib/visualize/tools'
 import { truncateStaleWidgetCode } from '@/lib/visualize/history'
 import { SESSION_MESSAGING_TOOLS } from '@/lib/sessionMessagingTools'
@@ -1856,6 +1858,23 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             inputSchema: jsonSchema(schema.function.parameters),
           } as Tool
         }
+      }
+
+      // Picture tools, offered only while Studio has an image model loaded: they
+      // never load one, so without it every call would just fail.
+      try {
+        const studio = await studioApi.status()
+        if (studio.supported && studio.resident?.kind === 'image') {
+          for (const schema of await getAgentToolSchemas()) {
+            if (!isImageTool(schema.function?.name)) continue
+            toolsRecord[schema.function.name] = {
+              description: schema.function.description,
+              inputSchema: jsonSchema(schema.function.parameters),
+            } as Tool
+          }
+        }
+      } catch {
+        // Studio is not available here (no desktop engine): no picture tools.
       }
 
       // Built-in agent tools (filesystem reads plus skills/memory), provided by

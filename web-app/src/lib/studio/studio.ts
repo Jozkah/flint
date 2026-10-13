@@ -117,6 +117,12 @@ export const studioApi = {
     seed?: number
     steps?: number
     lora?: StudioLora[]
+    /** Gallery id of a picture to start from (image-to-image). */
+    init_image_id?: string
+    /** How far the result may drift from `init_image_id`, 0 to 1. */
+    strength?: number
+    /** Gallery ids of pictures an edit model should follow. */
+    reference_ids?: string[]
   }) => invoke<Generated>('diffusion_generate_image', { params }),
   generateVideo: (params: {
     model: string

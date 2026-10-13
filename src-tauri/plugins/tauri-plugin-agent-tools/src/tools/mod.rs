@@ -842,7 +842,17 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
     // Like `open_in_browser` the desktop answers it; no other surface has the
     // engine. It reads and writes no project file (results go to the gallery).
     BuiltinTool {
-        name: "generate_image",
+        name: "image_gen",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "image_edit",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "image_view",
         capability: Capability::Read,
         path_args: &[],
     },
@@ -938,12 +948,18 @@ pub fn browser_unavailable_result() -> String {
 /// everywhere (the handler, the tests, the loop) so a model sees one message.
 pub const BROWSER_NEEDS_DESKTOP: &str = "Browser tools need the Flint desktop app: they drive its built-in browser pane, which this surface (the command line or a background job) does not have. Nothing was opened or read. Use web_fetch to read a page, or tell the user what you needed the browser for.";
 
+/// The picture tools. Like `open_in_browser` the desktop answers them: only it
+/// has the image engine and the gallery.
+pub fn is_image_tool(name: &str) -> bool {
+    matches!(name, "image_gen" | "image_edit" | "image_view")
+}
+
 /// Host tools a headless surface can only answer with "unavailable", so it
 /// should not advertise them at all. `request_access` is left out: the CLI
 /// answers it through its own prompt. `list_plugins` reads the desktop's
 /// store; the CLI lists plugins in its system prompt instead.
 pub fn is_desktop_only_tool(name: &str) -> bool {
-    matches!(name, "open_in_browser" | "generate_image" | "list_plugins") || is_browser_tool(name)
+    matches!(name, "open_in_browser" | "list_plugins") || is_image_tool(name) || is_browser_tool(name)
 }
 
 /// Tools the desktop answers itself (a prompt, or a store only the app can
@@ -951,8 +967,9 @@ pub fn is_desktop_only_tool(name: &str) -> bool {
 pub fn is_host_tool(name: &str) -> bool {
     matches!(
         name,
-        "request_access" | "list_plugins" | "open_in_browser" | "generate_image"
-    ) || is_browser_tool(name)
+        "request_access" | "list_plugins" | "open_in_browser"
+    ) || is_image_tool(name)
+        || is_browser_tool(name)
 }
 
 /// Tools whose every call is put to a person, and which the backend refuses
@@ -1031,7 +1048,7 @@ mod tests {
         // The seventh memory tool is `memory_propose`: the typed path by which
         // a model says a fact is worth remembering, so that Jan decides rather
         // than the app parsing an intention out of prose.
-        // + request_access, list_plugins, open_in_browser and generate_image, which the desktop answers itself.
+        // + request_access, list_plugins, open_in_browser and image_gen, image_edit and image_view, which the desktop answers itself.
         // + git_inspect and git_clone, host Git the bash sandbox cannot run.
         // + windows_events, the host's Event Log reader the sandbox is refused.
         // + host_query, local_http and docker: read-only host facts, loopback HTTP and Docker.
@@ -1043,7 +1060,7 @@ mod tests {
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
         // + browser, the interactive confined browser.
-        assert_eq!(BUILTIN_TOOLS.len(), 55);
+        assert_eq!(BUILTIN_TOOLS.len(), 57);
     }
 
     #[test]

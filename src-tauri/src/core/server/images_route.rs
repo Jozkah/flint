@@ -153,6 +153,9 @@ pub async fn generate(body: &Value) -> Result<Value, ApiError> {
             seed: parsed.seed,
             steps: None,
             lora: Vec::new(),
+            init_image_id: None,
+            strength: None,
+            reference_ids: Vec::new(),
         },
     )
     .await
