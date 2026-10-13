@@ -107,17 +107,28 @@ import {
   useChatAttachments,
   NEW_THREAD_ATTACHMENT_KEY,
 } from '@/hooks/useChatAttachments'
-import { processAttachmentsForSend } from '@/lib/attachmentProcessing'
+import {
+  applyIngestionChoices,
+  estimateAttachmentTokens,
+  needsIngestionChoice,
+  processAttachmentsForSend,
+  promptIngestionChoices,
+  resolveAutoInlineBudget,
+} from '@/lib/attachmentProcessing'
+import { estimateTokens as estimateTextTokens } from '@/lib/context-manager'
+import { usePrompt } from '@/hooks/usePrompt'
 import { useAttachments } from '@/hooks/useAttachments'
 import { PromptProgress } from '@/components/PromptProgress'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import {
   OUT_OF_CONTEXT_SIZE,
   isContextOverflowMessage,
+  isLocalContextOverflowMessage,
   parseContextOverflow,
 } from '@/utils/error'
 import { PREFLIGHT_CONTEXT_ERROR_PREFIX } from '@/lib/contextEstimate'
-import { useTranslation } from '@/i18n/react-i18next-compat'
+import { useTranslation, i18n } from '@/i18n/react-i18next-compat'
+import { isEmptyReply } from '@/lib/chatFinish'
 import { toast } from 'sonner'
 import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionDivider'
 import {
@@ -384,6 +395,9 @@ export function ThreadConversation({
   const clearAttachmentsForThread = useChatAttachments(
     (state) => state.clearAttachments
   )
+  const setAttachmentsForThread = useChatAttachments(
+    (state) => state.setAttachments
+  )
 
   // Session data for tool call tracking
   const getSessionData = useChatSessions((state) => state.getSessionData)
@@ -526,6 +540,7 @@ export function ThreadConversation({
         request: info.requestTokens.toLocaleString(),
         context: info.contextTokens.toLocaleString(),
       })
+    if (!isLocalContextOverflowMessage(raw)) return raw
     return t('model-errors:contextOverflowGeneric')
   }, [contextLimitError, t])
 
@@ -667,6 +682,24 @@ export function ThreadConversation({
       }
 
       if (!isAbort && message.parts.length) setPendingContinueMessage(null)
+
+      // Nothing would be persisted for an empty reply, so without this the
+      // turn silently vanishes and the user cannot tell it failed. The error
+      // goes on the user turn it answers: that message is persisted, and the
+      // errorEntries effect copies the error into its metadata.error.
+      if (
+        !isDisconnect &&
+        isEmptyReply({ message, isAbort, isError, finishReason })
+      ) {
+        const userTurnId =
+          pendingAssistantParentId.current ?? resolveAssistantParent(undefined)
+        pendingAssistantParentId.current = null
+        if (userTurnId) {
+          useMessageErrors
+            .getState()
+            .setError(userTurnId, i18n.t('model-errors:emptyReply'))
+        }
+      }
 
       // The turn ended before completion (user hit Stop, or the model hit its
       // output-token cap). Persist the partial marked `stopped` so the UI can
@@ -1073,7 +1106,25 @@ export function ThreadConversation({
             if (deadRefusal) return { error: deadRefusal }
 
             if (isNativeWebTool(toolName)) {
-              result = await executeWebTool(toolName, toolCall.input)
+              // Bound a fetched page to the window this model has, as for MCP
+              // results below, so a small-context model is not flooded.
+              const webSelection = getModelSelection()
+              result = await executeWebTool(
+                toolName,
+                toolCall.input,
+                deriveToolOutputCap(
+                  knownContextWindow(
+                    webSelection.selectedModel as unknown as Parameters<
+                      typeof knownContextWindow
+                    >[0],
+                    useModelProvider
+                      .getState()
+                      .getProviderByName(
+                        webSelection.selectedProvider
+                      ) as unknown as Parameters<typeof knownContextWindow>[1]
+                  ) ?? undefined
+                )
+              )
             } else if (isVisualizeTool(toolName)) {
               result = executeVisualizeTool(toolName, toolCall.input, threadId)
             } else if (AGENT_TOOL_NAMES.has(toolName)) {
@@ -1841,10 +1892,64 @@ export function ThreadConversation({
         : storeMediaAttachments
 
       // Combine media attachments with document attachments from the store
-      const combinedAttachments = [
+      let combinedAttachments = [
         ...mediaAttachments,
         ...allAttachments.filter((a) => a.type === 'document'),
       ]
+
+      const projectId = thread?.metadata?.project?.id
+      const { parseMode: parsePreference, autoInlineContextRatio } =
+        useAttachments.getState()
+      const hasUnprocessedDocs = combinedAttachments.some(
+        (a) => a.type === 'document' && !a.processed
+      )
+      let contextThreshold: number | undefined
+      if (hasUnprocessedDocs && !projectId) {
+        const modelState = useModelProvider.getState()
+        // What the conversation already occupies: a document that fits the
+        // bare window can still overflow it on top of a long thread.
+        const usedTokens = useMessages
+          .getState()
+          .getMessages(threadId)
+          .reduce(
+            (sum, m) =>
+              sum +
+              (m.content ?? []).reduce(
+                (n, c) => n + estimateTextTokens(c.text?.value ?? ''),
+                0
+              ),
+            0
+          )
+        contextThreshold = resolveAutoInlineBudget(
+          modelState.selectedModel,
+          modelState.getProviderByName(selectedProvider),
+          autoInlineContextRatio,
+          usedTokens
+        )
+      }
+      // The budget can be gone since attach time (model switched, window
+      // unknown), so 'auto' documents that would silently fall back to
+      // embeddings are put to the user. Project files always embed.
+      const unrouted =
+        projectId || contextThreshold !== undefined
+          ? []
+          : combinedAttachments.filter((a) =>
+              needsIngestionChoice(a, parsePreference, false)
+            )
+      if (unrouted.length > 0) {
+        const choices = await promptIngestionChoices(unrouted)
+        if (!choices) {
+          // ChatInput cleared the input on submit; hand the draft back so
+          // cancelling only cancels the send.
+          setAttachmentsForThread(attachmentsKey, () => allAttachments)
+          usePrompt.getState().setPrompt(text)
+          return
+        }
+        combinedAttachments = applyIngestionChoices(
+          combinedAttachments,
+          choices
+        )
+      }
 
       const messageId = generateId()
       const hasDocuments = combinedAttachments.some(
@@ -1878,14 +1983,12 @@ export function ThreadConversation({
 
       // Process attachments (ingest images, parse/index documents)
       let processedAttachments = combinedAttachments
-      const projectId = thread?.metadata?.project?.id
       if (combinedAttachments.length > 0) {
         if (hasEmbeddingDocuments) {
           useAppState.getState().setThreadEmbedding(threadId, true)
           useAppState.getState().setThreadBusy(threadId, true)
         }
         try {
-          const parsePreference = useAttachments.getState().parseMode
           const result = await processAttachmentsForSend({
             attachments: combinedAttachments,
             threadId,
@@ -1893,6 +1996,8 @@ export function ThreadConversation({
             serviceHub,
             selectedProvider,
             parsePreference,
+            contextThreshold,
+            estimateTokens: estimateAttachmentTokens,
           })
           processedAttachments = result.processedAttachments
 
@@ -1989,6 +2094,7 @@ export function ThreadConversation({
       addMessage,
       getAttachments,
       attachmentsKey,
+      setAttachmentsForThread,
       setChatMessages,
       clearAttachmentsForThread,
       serviceHub,

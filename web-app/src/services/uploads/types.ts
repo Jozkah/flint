@@ -8,6 +8,11 @@ export type UploadResult = {
 }
 
 export interface UploadsService {
+  // Save a file dropped onto the chat (which has no path on disk) into the
+  // data folder and return the saved file's path, so it can be attached like
+  // a file picked with the dialog
+  saveDroppedFile(file: File): Promise<string>
+
   // Ingest an image attachment (placeholder upload)
   ingestImage(threadId: string, attachment: Attachment): Promise<UploadResult>
 

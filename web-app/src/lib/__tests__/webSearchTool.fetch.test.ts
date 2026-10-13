@@ -29,6 +29,15 @@ describe('web_fetch output', () => {
     expect(text).toContain(`offset ${WEB_FETCH_MAX_CHARS}`)
   })
 
+  it('shrinks the window to the model output cap', async () => {
+    const content = 'a'.repeat(5000)
+    webFetch.mockResolvedValue({ title: 'T', url: 'https://x', content, truncated: false })
+    const res = await executeWebTool('web_fetch', { url: 'https://x' }, 2000)
+    const text = String(res.content)
+    expect(text).toContain('truncated, 3000 chars more')
+    expect(text).toContain('offset 2000')
+  })
+
   it('reads a later window from an offset', () => {
     expect(pageWindow('abcdef', 4)).toBe('ef')
     expect(pageWindow('abc', 0)).toBe('abc')

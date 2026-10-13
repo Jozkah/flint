@@ -15,6 +15,17 @@ export function isContextOverflowMessage(message: string): boolean {
   )
 }
 
+// llama-server's own wording, which the banner localizes; anything else that
+// matched isContextOverflowMessage came from a cloud provider (Anthropic
+// "prompt is too long", OpenAI "maximum context length") and already says
+// what to cut, so the banner shows it as is.
+export function isLocalContextOverflowMessage(message: string): boolean {
+  return (
+    /exceeds the available context size/i.test(message) ||
+    /larger than the max context size/i.test(message)
+  )
+}
+
 export interface ContextOverflowInfo {
   requestTokens: number
   contextTokens: number
