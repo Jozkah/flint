@@ -12,7 +12,9 @@
 #include "llama.h"
 #include "ggml-backend.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -372,6 +374,59 @@ jan_llama_engine * jan_llama_engine_start_from_preset(const char *       ini_pat
         // [*] first, then the named section overrides it.
         global.apply_to_params(engine->params);
         it->second.apply_to_params(engine->params);
+
+        // With several GPU backends loaded, one physical GPU shows up once per
+        // backend (CUDA0 and Vulkan0). Left to auto-pick, llama.cpp may place
+        // layers on the Vulkan twin, which has no CUDA unified-memory spill and
+        // fails to allocate once VRAM is full. Pin auto-pick to one device per
+        // GPU, preferring the vendor-native backend. An explicit `device` wins.
+        if (engine->params.devices.empty()) {
+            auto rank = [](const std::string & reg) {
+                std::string r;
+                for (char c : reg) r += (char) std::tolower((unsigned char) c);
+                static const char * order[] = {"cuda", "hip", "rocm", "sycl", "metal", "vulkan"};
+                for (size_t k = 0; k < sizeof(order) / sizeof(order[0]); ++k) {
+                    if (r.find(order[k]) != std::string::npos) return (int) k;
+                }
+                return 100;
+            };
+            std::vector<ggml_backend_dev_t> gpus, igpus;
+            for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+                ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+                auto t = ggml_backend_dev_type(dev);
+                if (t == GGML_BACKEND_DEVICE_TYPE_GPU) gpus.push_back(dev);
+                else if (t == GGML_BACKEND_DEVICE_TYPE_IGPU) igpus.push_back(dev);
+            }
+            const auto & pool = gpus.empty() ? igpus : gpus;
+            // description -> backend name -> devices in enumeration order
+            std::map<std::string, std::map<std::string, std::vector<ggml_backend_dev_t>>> by_gpu;
+            for (auto dev : pool) {
+                const char * reg = ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev));
+                by_gpu[ggml_backend_dev_description(dev)][reg ? reg : ""].push_back(dev);
+            }
+            bool duplicated = false;
+            for (auto & g : by_gpu) duplicated = duplicated || g.second.size() > 1;
+            if (duplicated) {
+                std::vector<ggml_backend_dev_t> picked;
+                for (auto & g : by_gpu) {
+                    size_t units = 0;
+                    for (auto & b : g.second) units = std::max(units, b.second.size());
+                    for (size_t u = 0; u < units; ++u) {
+                        ggml_backend_dev_t best = nullptr;
+                        int best_rank = 1 << 30;
+                        for (auto & b : g.second) {
+                            if (u < b.second.size() && rank(b.first) < best_rank) {
+                                best_rank = rank(b.first);
+                                best      = b.second[u];
+                            }
+                        }
+                        if (best) picked.push_back(best);
+                    }
+                }
+                picked.push_back(nullptr);  // terminator, as parse_device_list leaves it
+                engine->params.devices = std::move(picked);
+            }
+        }
 
         // common_params_parse does this at arg.cpp:892-896; apply_to_params does
         // not. Without it n_threads stays 0 and ggml_threadpool_new_impl
