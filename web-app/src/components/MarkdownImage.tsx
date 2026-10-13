@@ -25,7 +25,8 @@ export const MarkdownImage = memo(function MarkdownImage({
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          'my-2 block max-w-full overflow-hidden rounded-lg border border-border/60 bg-muted align-top',
+          // leading-[0] drops the line-box strut that would otherwise leave a gap under the picture.
+          'my-2 block w-fit max-w-full overflow-hidden rounded-lg border border-border/60 bg-muted align-top leading-[0]',
           state === 'loading' && 'h-40 w-28 animate-pulse',
           className
         )}
@@ -40,7 +41,7 @@ export const MarkdownImage = memo(function MarkdownImage({
           onLoad={() => setState('ready')}
           onError={() => setState('failed')}
           className={cn(
-            'block max-h-72 max-w-full object-contain',
+            '!block h-auto max-h-72 w-auto max-w-full',
             state === 'loading' && 'opacity-0'
           )}
         />
