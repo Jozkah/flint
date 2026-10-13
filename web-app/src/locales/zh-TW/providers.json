@@ -2,6 +2,7 @@
   "limitedSupport": "此供應商可能未受到完整支援。功能（工具、視覺、音訊）不會自動偵測 - 請手動新增模型，並為每個模型設定功能。",
   "mlxExperimental": "MLX 支援仍屬實驗性質。無法使用嵌入，推理切換尚未串接，且部分較新的模型架構可能無法載入。請在 GitHub 上回報問題，以便我們排定優先順序。",
   "engineBundled": "推論引擎已內建於 Jan，因此無需另外下載或更新。回報無法載入的模型時，請註明此版本。",
+  "engineOtherVersion": "需要其他版本的 llama.cpp？執行你自己的 llama-server，並將其新增為自訂的 OpenAI 相容供應商。",
   "engineReleaseNotes": "版本資訊",
   "engineBuild": "建置",
   "engineCommit": "提交",
@@ -146,6 +147,7 @@
     "title": "基礎 URL",
     "openaiDescription": "使用相容 OpenAI API 的代理伺服器或閘道。預設值為 https://api.openai.com/v1。",
     "azureDescription": "你的 Azure OpenAI 端點。請將 YOUR-RESOURCE-NAME 取代為你的 Azure 資源名稱。",
+    "litellmDescription": "你的 LiteLLM 代理位址，包含 /v1。預設為 http://localhost:4000/v1。",
     "qwenDescription": "你的 Model Studio 端點。金鑰只在其建立的區域內有效：新加坡請使用 https://dashscope-intl.aliyuncs.com/compatible-mode/v1，中國大陸請使用 https://dashscope.aliyuncs.com/compatible-mode/v1。"
   },
   "apiKeys": {

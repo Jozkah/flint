@@ -34,5 +34,6 @@
   "serverPortFallbackDescription": "A porta {{requested}} não está disponível, então o servidor de API local está escutando na porta {{actual}}. A configuração de porta salva não foi alterada.",
   "serverInvalidModelPath": "Caminho do modelo inválido ou inacessível",
   "serverStartModelFailed": "Falha ao iniciar o modelo",
-  "serverStartFailed": "Falha ao iniciar o servidor"
+  "serverStartFailed": "Falha ao iniciar o servidor",
+  "azureEndpointMissing": "Nenhum endpoint configurado para {{provider}}. Defina a URL base em Configurações > Provedores de modelos."
 }

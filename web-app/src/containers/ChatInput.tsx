@@ -541,6 +541,9 @@ const ChatInput = memo(function ChatInput({
   const spellCheckChatInput = useGeneralSetting(
     (state) => state.spellCheckChatInput
   )
+  const enterKeyInsertsNewline = useGeneralSetting(
+    (state) => state.enterKeyInsertsNewline
+  )
   const tokenCounterCompact = useGeneralSetting(
     (state) => state.tokenCounterCompact
   )
@@ -3106,6 +3109,7 @@ const ChatInput = memo(function ChatInput({
                 }
               }}
               onPaste={handlePaste}
+              enterInsertsNewline={enterKeyInsertsNewline}
               onKeyDownCapture={(event) => {
                 largePaste.noteKeyDown(event)
                 if (event.nativeEvent.isComposing) return

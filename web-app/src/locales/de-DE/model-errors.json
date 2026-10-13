@@ -34,5 +34,6 @@
   "serverPortFallbackDescription": "Port {{requested}} ist nicht verfügbar, daher lauscht der lokale API-Server auf Port {{actual}}. Die gespeicherte Port-Einstellung bleibt unverändert.",
   "serverInvalidModelPath": "Ungültiger oder nicht zugänglicher Modellpfad",
   "serverStartModelFailed": "Modell konnte nicht gestartet werden",
-  "serverStartFailed": "Server konnte nicht gestartet werden"
+  "serverStartFailed": "Server konnte nicht gestartet werden",
+  "azureEndpointMissing": "Für {{provider}} ist kein Endpunkt konfiguriert. Lege die Basis-URL unter Einstellungen > Modellanbieter fest."
 }

@@ -77,6 +77,8 @@
   "others": {
     "spellCheck": "맞춤법 검사",
     "spellCheckDesc": "스레드의 맞춤법 검사를 활성화합니다.",
+    "enterKeyNewline": "Enter 키로 줄바꿈",
+    "enterKeyNewlineDesc": "채팅 입력란에서 Enter를 누르면 전송하지 않고 줄바꿈합니다. 전송은 전송 버튼 또는 Ctrl/Cmd+Enter로 합니다. Enter가 변환을 확정하는 입력기(IME)를 사용할 때 유용합니다.",
     "resetFactory": "초기 설정으로 재설정",
     "resetFactoryDesc": "애플리케이션을 초기 상태로 복원하여 모든 모델과 채팅 기록을 지웁니다. 이 작업은 되돌릴 수 없으며 애플리케이션이 손상된 경우에만 권장됩니다."
   },

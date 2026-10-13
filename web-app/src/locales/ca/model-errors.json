@@ -34,5 +34,6 @@
   "serverPortFallbackDescription": "El port {{requested}} no està disponible, així que el servidor d'API local escolta al port {{actual}}. El port desat a la configuració no ha canviat.",
   "serverInvalidModelPath": "Ruta del model no vàlida o inaccessible",
   "serverStartModelFailed": "No s'ha pogut iniciar el model",
-  "serverStartFailed": "No s'ha pogut iniciar el servidor"
+  "serverStartFailed": "No s'ha pogut iniciar el servidor",
+  "azureEndpointMissing": "No hi ha cap punt final configurat per a {{provider}}. Defineix l'URL base a Configuració > Proveïdors de models."
 }

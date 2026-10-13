@@ -34,5 +34,6 @@
   "serverPortFallbackDescription": "連接埠 {{requested}} 無法使用，因此本機 API 伺服器正在監聽連接埠 {{actual}}。已儲存的連接埠設定維持不變。",
   "serverInvalidModelPath": "模型路徑無效或無法存取",
   "serverStartModelFailed": "無法啟動模型",
-  "serverStartFailed": "無法啟動伺服器"
+  "serverStartFailed": "無法啟動伺服器",
+  "azureEndpointMissing": "尚未為 {{provider}} 設定端點。請在 設定 > 模型供應商 中設定基礎 URL。"
 }

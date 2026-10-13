@@ -76,6 +76,8 @@
   "others": {
     "spellCheck": "Pemeriksaan Ejaan",
     "spellCheckDesc": "Aktifkan pemeriksaan ejaan untuk utas Anda.",
+    "enterKeyNewline": "Enter Menambah Baris Baru",
+    "enterKeyNewlineDesc": "Menekan Enter di kotak obrolan menambah baris baru, bukan mengirim. Kirim dengan tombol kirim atau Ctrl/Cmd+Enter. Berguna saat mengetik dengan metode input (IME), di mana Enter mengonfirmasi konversi.",
     "resetFactory": "Setel Ulang ke Pengaturan Pabrik",
     "resetFactoryDesc": "Kembalikan aplikasi ke keadaan semula, menghapus semua model dan riwayat obrolan. Tindakan ini tidak dapat diurungkan dan hanya disarankan jika aplikasi rusak."
   },

@@ -77,6 +77,8 @@
   "others": {
     "spellCheck": "Kiểm tra chính tả",
     "spellCheckDesc": "Bật kiểm tra chính tả cho các chủ đề của bạn.",
+    "enterKeyNewline": "Enter xuống dòng",
+    "enterKeyNewlineDesc": "Nhấn Enter trong khung chat sẽ xuống dòng thay vì gửi. Gửi bằng nút gửi hoặc Ctrl/Cmd+Enter. Hữu ích khi gõ bằng bộ gõ (IME), nơi Enter xác nhận chuyển đổi.",
     "resetFactory": "Đặt lại về cài đặt gốc",
     "resetFactoryDesc": "Khôi phục ứng dụng về trạng thái ban đầu, xóa tất cả các mô hình và lịch sử trò chuyện. Hành động này không thể đảo ngược và chỉ được khuyến nghị nếu ứng dụng bị hỏng."
   },
