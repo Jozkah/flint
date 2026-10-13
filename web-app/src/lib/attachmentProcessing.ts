@@ -2,6 +2,9 @@ import { ServiceHub } from '@/services'
 import { Attachment } from '@/types/attachment'
 import { toast } from 'sonner'
 import { embedImageDescriptions } from '@/lib/imageDescription'
+import { estimateTokens } from '@/lib/context-manager'
+import { knownContextWindow } from '@/lib/knownContextWindow'
+import { useAttachmentIngestionPrompt } from '@/hooks/useAttachmentIngestionPrompt'
 
 type AttachmentProcessingStatus = 'processing' | 'done' | 'error' | 'clear_all'
 
@@ -75,6 +78,80 @@ const formatAttachmentError = (err: unknown): string => {
   }
   return String(err)
 }
+
+type ParsePreference = AttachmentProcessingOptions['parsePreference']
+export type IngestionChoice = 'inline' | 'embeddings'
+
+/** Async token estimator in the shape processAttachmentsForSend expects. */
+export const estimateAttachmentTokens = async (
+  text: string
+): Promise<number | undefined> => estimateTokens(text)
+
+/**
+ * Token budget an 'auto' document may use to be inlined: the model's known
+ * context window times the user's auto-inline ratio, minus what the
+ * conversation already occupies. Undefined when the window is unknown, so the
+ * caller asks the user instead of guessing.
+ */
+export const resolveAutoInlineBudget = (
+  model: unknown,
+  provider: unknown,
+  ratio: number | undefined,
+  usedTokens = 0
+): number | undefined => {
+  if (!model || typeof ratio !== 'number' || !(ratio > 0)) return undefined
+  const window = knownContextWindow(
+    model as Parameters<typeof knownContextWindow>[0],
+    provider as Parameters<typeof knownContextWindow>[1]
+  )
+  if (!window) return undefined
+  const budget = Math.floor(window * ratio) - usedTokens
+  return budget > 0 ? budget : undefined
+}
+
+/**
+ * Whether the user must pick inline vs embeddings for a document. 'auto' only
+ * asks when there is no budget to decide by size.
+ */
+export const needsIngestionChoice = (
+  doc: Attachment,
+  parsePreference: ParsePreference,
+  hasInlineBudget: boolean
+): boolean => {
+  if (doc.type !== 'document' || doc.processed || doc.injectionMode) return false
+  const preference = doc.parseMode ?? parsePreference
+  return preference === 'prompt' || (preference === 'auto' && !hasInlineBudget)
+}
+
+/**
+ * Asks the user, one document at a time, whether to inline or embed it.
+ * Resolves to each choice keyed by document path, or undefined as soon as the
+ * user cancels.
+ */
+export const promptIngestionChoices = async (
+  docs: Attachment[]
+): Promise<Map<string, IngestionChoice> | undefined> => {
+  const choices = new Map<string, IngestionChoice>()
+  for (let i = 0; i < docs.length; i++) {
+    const doc = docs[i]
+    const choice = await useAttachmentIngestionPrompt
+      .getState()
+      .showPrompt(doc, 0, i, docs.length)
+    if (!choice) return undefined
+    if (doc.path) choices.set(doc.path, choice)
+  }
+  return choices
+}
+
+/** Records each choice as its document's parseMode, which send time honours. */
+export const applyIngestionChoices = (
+  attachments: Attachment[],
+  choices: Map<string, IngestionChoice>
+): Attachment[] =>
+  attachments.map((att) => {
+    const mode = att.path ? choices.get(att.path) : undefined
+    return mode ? { ...att, parseMode: mode } : att
+  })
 
 export const processAttachmentsForSend = async (
   options: AttachmentProcessingOptions

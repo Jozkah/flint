@@ -253,3 +253,49 @@ describe('processAttachmentsForSend', () => {
     })
   })
 })
+
+describe('ingestion routing helpers', () => {
+  it('needsIngestionChoice asks for auto only without a budget', async () => {
+    const { needsIngestionChoice } = await import('../attachmentProcessing')
+    const doc = docAttachment()
+    expect(needsIngestionChoice(doc, 'auto', false)).toBe(true)
+    expect(needsIngestionChoice(doc, 'auto', true)).toBe(false)
+    expect(needsIngestionChoice(doc, 'prompt', true)).toBe(true)
+    expect(needsIngestionChoice(doc, 'inline', false)).toBe(false)
+    expect(
+      needsIngestionChoice(docAttachment({ processed: true }), 'prompt', false)
+    ).toBe(false)
+    expect(
+      needsIngestionChoice(docAttachment({ parseMode: 'inline' }), 'auto', false)
+    ).toBe(false)
+  })
+
+  it('resolveAutoInlineBudget is undefined without a window or ratio', async () => {
+    const { resolveAutoInlineBudget } = await import('../attachmentProcessing')
+    expect(resolveAutoInlineBudget(null, undefined, 0.75)).toBeUndefined()
+    expect(resolveAutoInlineBudget({ id: 'm' }, undefined, 0)).toBeUndefined()
+  })
+
+  it('applyIngestionChoices records the pick as parseMode by path', async () => {
+    const { applyIngestionChoices } = await import('../attachmentProcessing')
+    const out = applyIngestionChoices(
+      [docAttachment({ path: '/a' }), docAttachment({ path: '/b' })],
+      new Map([['/a', 'inline']])
+    )
+    expect(out[0].parseMode).toBe('inline')
+    expect(out[1].parseMode).toBeUndefined()
+  })
+
+  it('auto inlines a small document when a threshold and estimator are given', async () => {
+    const hub = createMockServiceHub()
+    const result = await processAttachmentsForSend({
+      attachments: [docAttachment()],
+      threadId: 't',
+      serviceHub: hub as any,
+      parsePreference: 'auto',
+      contextThreshold: 1000,
+      estimateTokens: async () => 10,
+    })
+    expect(result.processedAttachments[0].injectionMode).toBe('inline')
+  })
+})

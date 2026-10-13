@@ -107,7 +107,16 @@ import {
   useChatAttachments,
   NEW_THREAD_ATTACHMENT_KEY,
 } from '@/hooks/useChatAttachments'
-import { processAttachmentsForSend } from '@/lib/attachmentProcessing'
+import {
+  applyIngestionChoices,
+  estimateAttachmentTokens,
+  needsIngestionChoice,
+  processAttachmentsForSend,
+  promptIngestionChoices,
+  resolveAutoInlineBudget,
+} from '@/lib/attachmentProcessing'
+import { estimateTokens as estimateTextTokens } from '@/lib/context-manager'
+import { usePrompt } from '@/hooks/usePrompt'
 import { useAttachments } from '@/hooks/useAttachments'
 import { PromptProgress } from '@/components/PromptProgress'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
@@ -383,6 +392,9 @@ export function ThreadConversation({
   const getAttachments = useChatAttachments((state) => state.getAttachments)
   const clearAttachmentsForThread = useChatAttachments(
     (state) => state.clearAttachments
+  )
+  const setAttachmentsForThread = useChatAttachments(
+    (state) => state.setAttachments
   )
 
   // Session data for tool call tracking
@@ -1841,10 +1853,64 @@ export function ThreadConversation({
         : storeMediaAttachments
 
       // Combine media attachments with document attachments from the store
-      const combinedAttachments = [
+      let combinedAttachments = [
         ...mediaAttachments,
         ...allAttachments.filter((a) => a.type === 'document'),
       ]
+
+      const projectId = thread?.metadata?.project?.id
+      const { parseMode: parsePreference, autoInlineContextRatio } =
+        useAttachments.getState()
+      const hasUnprocessedDocs = combinedAttachments.some(
+        (a) => a.type === 'document' && !a.processed
+      )
+      let contextThreshold: number | undefined
+      if (hasUnprocessedDocs && !projectId) {
+        const modelState = useModelProvider.getState()
+        // What the conversation already occupies: a document that fits the
+        // bare window can still overflow it on top of a long thread.
+        const usedTokens = useMessages
+          .getState()
+          .getMessages(threadId)
+          .reduce(
+            (sum, m) =>
+              sum +
+              (m.content ?? []).reduce(
+                (n, c) => n + estimateTextTokens(c.text?.value ?? ''),
+                0
+              ),
+            0
+          )
+        contextThreshold = resolveAutoInlineBudget(
+          modelState.selectedModel,
+          modelState.getProviderByName(selectedProvider),
+          autoInlineContextRatio,
+          usedTokens
+        )
+      }
+      // The budget can be gone since attach time (model switched, window
+      // unknown), so 'auto' documents that would silently fall back to
+      // embeddings are put to the user. Project files always embed.
+      const unrouted =
+        projectId || contextThreshold !== undefined
+          ? []
+          : combinedAttachments.filter((a) =>
+              needsIngestionChoice(a, parsePreference, false)
+            )
+      if (unrouted.length > 0) {
+        const choices = await promptIngestionChoices(unrouted)
+        if (!choices) {
+          // ChatInput cleared the input on submit; hand the draft back so
+          // cancelling only cancels the send.
+          setAttachmentsForThread(attachmentsKey, () => allAttachments)
+          usePrompt.getState().setPrompt(text)
+          return
+        }
+        combinedAttachments = applyIngestionChoices(
+          combinedAttachments,
+          choices
+        )
+      }
 
       const messageId = generateId()
       const hasDocuments = combinedAttachments.some(
@@ -1878,14 +1944,12 @@ export function ThreadConversation({
 
       // Process attachments (ingest images, parse/index documents)
       let processedAttachments = combinedAttachments
-      const projectId = thread?.metadata?.project?.id
       if (combinedAttachments.length > 0) {
         if (hasEmbeddingDocuments) {
           useAppState.getState().setThreadEmbedding(threadId, true)
           useAppState.getState().setThreadBusy(threadId, true)
         }
         try {
-          const parsePreference = useAttachments.getState().parseMode
           const result = await processAttachmentsForSend({
             attachments: combinedAttachments,
             threadId,
@@ -1893,6 +1957,8 @@ export function ThreadConversation({
             serviceHub,
             selectedProvider,
             parsePreference,
+            contextThreshold,
+            estimateTokens: estimateAttachmentTokens,
           })
           processedAttachments = result.processedAttachments
 
@@ -1989,6 +2055,7 @@ export function ThreadConversation({
       addMessage,
       getAttachments,
       attachmentsKey,
+      setAttachmentsForThread,
       setChatMessages,
       clearAttachmentsForThread,
       serviceHub,
