@@ -1106,7 +1106,25 @@ export function ThreadConversation({
             if (deadRefusal) return { error: deadRefusal }
 
             if (isNativeWebTool(toolName)) {
-              result = await executeWebTool(toolName, toolCall.input)
+              // Bound a fetched page to the window this model has, as for MCP
+              // results below, so a small-context model is not flooded.
+              const webSelection = getModelSelection()
+              result = await executeWebTool(
+                toolName,
+                toolCall.input,
+                deriveToolOutputCap(
+                  knownContextWindow(
+                    webSelection.selectedModel as unknown as Parameters<
+                      typeof knownContextWindow
+                    >[0],
+                    useModelProvider
+                      .getState()
+                      .getProviderByName(
+                        webSelection.selectedProvider
+                      ) as unknown as Parameters<typeof knownContextWindow>[1]
+                  ) ?? undefined
+                )
+              )
             } else if (isVisualizeTool(toolName)) {
               result = executeVisualizeTool(toolName, toolCall.input, threadId)
             } else if (AGENT_TOOL_NAMES.has(toolName)) {
