@@ -5,6 +5,7 @@ export const route = {
   cowork: '/cowork',
   artifacts: '/artifacts',
   studio: '/studio',
+  translate: '/translate',
   archive: '/archive',
   extensions: '/extensions',
   appLogs: '/logs',

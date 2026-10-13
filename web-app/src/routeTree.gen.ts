@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SystemMonitorRouteImport } from './routes/system-monitor'
 import { Route as StudioRouteImport } from './routes/studio'
+import { Route as TranslateRouteImport } from './routes/translate'
 import { Route as OverviewRouteImport } from './routes/overview'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as ExtensionsRouteImport } from './routes/extensions'
@@ -55,6 +56,11 @@ const SystemMonitorRoute = SystemMonitorRouteImport.update({
 const StudioRoute = StudioRouteImport.update({
   id: '/studio',
   path: '/studio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TranslateRoute = TranslateRouteImport.update({
+  id: '/translate',
+  path: '/translate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OverviewRoute = OverviewRouteImport.update({
@@ -243,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/logs': typeof LogsRoute
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
+  '/translate': typeof TranslateRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/hub/$modelId': typeof HubModelIdRoute
@@ -282,6 +289,7 @@ export interface FileRoutesByTo {
   '/logs': typeof LogsRoute
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
+  '/translate': typeof TranslateRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/hub/$modelId': typeof HubModelIdRoute
@@ -322,6 +330,7 @@ export interface FileRoutesById {
   '/logs': typeof LogsRoute
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
+  '/translate': typeof TranslateRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/campaign/$campaignId': typeof CampaignCampaignIdRoute
   '/hub/$modelId': typeof HubModelIdRoute
@@ -363,6 +372,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/overview'
     | '/studio'
+    | '/translate'
     | '/system-monitor'
     | '/campaign/$campaignId'
     | '/hub/$modelId'
@@ -402,6 +412,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/overview'
     | '/studio'
+    | '/translate'
     | '/system-monitor'
     | '/campaign/$campaignId'
     | '/hub/$modelId'
@@ -441,6 +452,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/overview'
     | '/studio'
+    | '/translate'
     | '/system-monitor'
     | '/campaign/$campaignId'
     | '/hub/$modelId'
@@ -481,6 +493,7 @@ export interface RootRouteChildren {
   LogsRoute: typeof LogsRoute
   OverviewRoute: typeof OverviewRoute
   StudioRoute: typeof StudioRoute
+  TranslateRoute: typeof TranslateRoute
   SystemMonitorRoute: typeof SystemMonitorRoute
   CampaignCampaignIdRoute: typeof CampaignCampaignIdRoute
   HubModelIdRoute: typeof HubModelIdRoute
@@ -526,6 +539,13 @@ declare module '@tanstack/react-router' {
       path: '/studio'
       fullPath: '/studio'
       preLoaderRoute: typeof StudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/translate': {
+      id: '/translate'
+      path: '/translate'
+      fullPath: '/translate'
+      preLoaderRoute: typeof TranslateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/overview': {
@@ -785,6 +805,7 @@ const rootRouteChildren: RootRouteChildren = {
   LogsRoute: LogsRoute,
   OverviewRoute: OverviewRoute,
   StudioRoute: StudioRoute,
+  TranslateRoute: TranslateRoute,
   SystemMonitorRoute: SystemMonitorRoute,
   CampaignCampaignIdRoute: CampaignCampaignIdRoute,
   HubModelIdRoute: HubModelIdRoute,

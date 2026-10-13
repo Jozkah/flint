@@ -65,7 +65,9 @@ export function crumbForPath(pathname: string): Crumb {
   if (path === route.archive) return { ...ws, currentKey: 'archive:nav' }
   if (path === '/hub' || path.startsWith('/hub/'))
     return { ...ws, currentKey: 'common:shell.discover' }
-  if (path === route.studio) return { ...ws, currentKey: 'archive:kind.studio' }
+  if (path === route.translate)
+    return { ...ws, currentKey: 'common:translate.title' }
+  if (path === route.studio)return { ...ws, currentKey: 'archive:kind.studio' }
   if (path === route.rooms) return { ...ws, currentKey: 'common:appRail.rooms' }
   if (path.startsWith(`${route.rooms}/`))
     return {

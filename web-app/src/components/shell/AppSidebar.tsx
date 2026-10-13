@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import {
   Activity,
   ChevronRight,
+  Languages,
   Pencil,
   MoreHorizontal,
   Server,
@@ -363,6 +364,14 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       icon: 'x-library',
       active: within(route.artifacts),
       testId: 'rail-library',
+    },
+    {
+      to: route.translate,
+      label: t('common:translate.title'),
+      icon: 'x-library',
+      lucide: Languages,
+      active: pathname === route.translate,
+      testId: 'rail-translate',
     },
   ]
   // Cowork tab only.

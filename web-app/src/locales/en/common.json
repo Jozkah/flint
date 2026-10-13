@@ -1925,6 +1925,23 @@
       "interrupted": "Interrupted"
     }
   },
+  "translate": {
+    "title": "Translate",
+    "usingModel": "Using {{model}}",
+    "noModel": "Pick a model in the model selector",
+    "from": "Translate from",
+    "to": "Translate to",
+    "detect": "Detect language",
+    "swap": "Swap languages",
+    "translate": "Translate",
+    "stop": "Stop",
+    "copy": "Copy translation",
+    "copied": "Translation copied",
+    "copyFailed": "Could not copy the translation",
+    "failed": "Translation failed",
+    "inputPlaceholder": "Text to translate",
+    "outputPlaceholder": "The translation appears here"
+  },
   "appRail": {
     "label": "Global navigation",
     "resize": "Resize sidebar",
