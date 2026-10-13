@@ -665,6 +665,7 @@
     "completionSoundOff": "Desactivat",
     "completionSoundBackground": "Quan és en segon pla",
     "completionSoundAlways": "Sempre",
+    "completionSoundApproval": "Només quan cal aprovació",
     "completionSoundVolume": "Volum",
     "completionSoundPreview": "Reprodueix",
     "reduceMotion": "Redueix el moviment",

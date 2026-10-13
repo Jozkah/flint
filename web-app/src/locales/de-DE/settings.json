@@ -661,6 +661,7 @@
     "completionSoundOff": "Aus",
     "completionSoundBackground": "Wenn im Hintergrund",
     "completionSoundAlways": "Immer",
+    "completionSoundApproval": "Nur wenn eine Freigabe nötig ist",
     "completionSoundVolume": "Lautstärke",
     "completionSoundPreview": "Abspielen",
     "reduceMotion": "Bewegung reduzieren",

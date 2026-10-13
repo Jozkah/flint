@@ -661,6 +661,7 @@
     "completionSoundOff": "Tắt",
     "completionSoundBackground": "Khi ở nền",
     "completionSoundAlways": "Luôn luôn",
+    "completionSoundApproval": "Chỉ khi cần phê duyệt",
     "completionSoundVolume": "Âm lượng",
     "completionSoundPreview": "Phát",
     "reduceMotion": "Giảm chuyển động",

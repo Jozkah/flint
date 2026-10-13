@@ -661,6 +661,7 @@
     "completionSoundOff": "Kapalı",
     "completionSoundBackground": "Arka plandayken",
     "completionSoundAlways": "Her zaman",
+    "completionSoundApproval": "Yalnızca onay gerektiğinde",
     "completionSoundVolume": "Ses düzeyi",
     "completionSoundPreview": "Çal",
     "reduceMotion": "Hareketi azalt",

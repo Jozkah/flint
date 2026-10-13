@@ -661,6 +661,7 @@
     "completionSoundOff": "बंद",
     "completionSoundBackground": "बैकग्राउंड में होने पर",
     "completionSoundAlways": "हमेशा",
+    "completionSoundApproval": "केवल जब अनुमोदन की आवश्यकता हो",
     "completionSoundVolume": "वॉल्यूम",
     "completionSoundPreview": "चलाएँ",
     "reduceMotion": "गति कम करें",

@@ -663,6 +663,7 @@
     "completionSoundOff": "Desativado",
     "completionSoundBackground": "Quando em segundo plano",
     "completionSoundAlways": "Sempre",
+    "completionSoundApproval": "Somente quando for necessária aprovação",
     "completionSoundVolume": "Volume",
     "completionSoundPreview": "Tocar",
     "reduceMotion": "Reduzir movimento",
