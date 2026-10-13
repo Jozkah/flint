@@ -659,6 +659,7 @@
     "completionSoundOff": "オフ",
     "completionSoundBackground": "バックグラウンドのとき",
     "completionSoundAlways": "常に",
+    "completionSoundApproval": "承認が必要なときのみ",
     "completionSoundVolume": "音量",
     "completionSoundPreview": "再生",
     "reduceMotion": "視覚効果を減らす",

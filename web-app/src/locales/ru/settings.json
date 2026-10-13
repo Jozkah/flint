@@ -663,6 +663,7 @@
     "completionSoundOff": "Выкл.",
     "completionSoundBackground": "В фоновом режиме",
     "completionSoundAlways": "Всегда",
+    "completionSoundApproval": "Только когда нужно подтверждение",
     "completionSoundVolume": "Громкость",
     "completionSoundPreview": "Воспроизвести",
     "reduceMotion": "Уменьшить анимацию",

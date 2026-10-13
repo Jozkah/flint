@@ -659,6 +659,7 @@
     "completionSoundOff": "끔",
     "completionSoundBackground": "백그라운드일 때",
     "completionSoundAlways": "항상",
+    "completionSoundApproval": "승인이 필요할 때만",
     "completionSoundVolume": "볼륨",
     "completionSoundPreview": "재생",
     "reduceMotion": "동작 줄이기",

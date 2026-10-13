@@ -659,6 +659,7 @@
     "completionSoundOff": "關",
     "completionSoundBackground": "在背景時",
     "completionSoundAlways": "一律",
+    "completionSoundApproval": "僅在需要核准時",
     "completionSoundVolume": "音量",
     "completionSoundPreview": "播放",
     "reduceMotion": "減少動態效果",

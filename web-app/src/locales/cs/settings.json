@@ -663,6 +663,7 @@
     "completionSoundOff": "Vypnuto",
     "completionSoundBackground": "Při běhu na pozadí",
     "completionSoundAlways": "Vždy",
+    "completionSoundApproval": "Pouze když je potřeba schválení",
     "completionSoundVolume": "Hlasitost",
     "completionSoundPreview": "Přehrát",
     "reduceMotion": "Omezit animace",
