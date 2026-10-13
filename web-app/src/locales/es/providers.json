@@ -2,6 +2,7 @@
   "limitedSupport": "Es posible que este proveedor no sea totalmente compatible. Las capacidades (herramientas, visión, audio) no se detectan automáticamente: añade los modelos manualmente y configura las capacidades de cada modelo.",
   "mlxExperimental": "La compatibilidad con MLX es experimental. Los embeddings no están disponibles, el interruptor de razonamiento aún no está conectado y algunas arquitecturas de modelos más recientes pueden no cargarse. Informa de los problemas en GitHub para que podamos priorizarlos.",
   "engineBundled": "El motor de inferencia está integrado en Jan, así que no hay nada que descargar ni actualizar por separado. Indica esta versión al informar de un modelo que no se carga.",
+  "engineOtherVersion": "¿Necesitas otra versión de llama.cpp? Ejecuta tu propio llama-server y añádelo como proveedor personalizado compatible con OpenAI.",
   "engineReleaseNotes": "Notas de la versión",
   "engineBuild": "Compilación",
   "engineCommit": "Commit",

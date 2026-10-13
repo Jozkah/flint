@@ -2,6 +2,7 @@
   "limitedSupport": "Nhà cung cấp này có thể chưa được hỗ trợ đầy đủ. Các khả năng (công cụ, thị giác, âm thanh) không được tự động phát hiện - hãy thêm mô hình thủ công và cấu hình khả năng cho từng mô hình.",
   "mlxExperimental": "Hỗ trợ MLX còn mang tính thử nghiệm. Không có embedding, công tắc suy luận chưa được nối, và một số kiến trúc mô hình mới hơn có thể không tải được. Hãy báo lỗi trên GitHub để chúng tôi ưu tiên xử lý.",
   "engineBundled": "Engine suy luận được tích hợp sẵn trong Jan, nên không có gì cần tải xuống hay cập nhật riêng. Hãy nêu phiên bản này khi báo cáo một mô hình không tải được.",
+  "engineOtherVersion": "Cần phiên bản llama.cpp khác? Hãy tự chạy llama-server và thêm nó làm nhà cung cấp tùy chỉnh tương thích OpenAI.",
   "engineReleaseNotes": "Ghi chú phát hành",
   "engineBuild": "Bản dựng",
   "engineCommit": "Commit",

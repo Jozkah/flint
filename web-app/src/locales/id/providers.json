@@ -2,6 +2,7 @@
   "limitedSupport": "Provider ini mungkin tidak sepenuhnya didukung. Kemampuan (alat, visi, audio) tidak terdeteksi otomatis - tambahkan model secara manual dan konfigurasikan kemampuan per model.",
   "mlxExperimental": "Dukungan MLX bersifat eksperimental. Embedding tidak tersedia, sakelar penalaran belum tersambung, dan beberapa arsitektur model yang lebih baru mungkin gagal dimuat. Laporkan masalah di GitHub agar kami dapat memprioritaskannya.",
   "engineBundled": "Engine inferensi sudah tertanam di Jan, jadi tidak ada yang perlu diunduh atau diperbarui terpisah. Sebutkan versi ini saat melaporkan model yang gagal dimuat.",
+  "engineOtherVersion": "Perlu versi llama.cpp yang berbeda? Jalankan llama-server Anda sendiri dan tambahkan sebagai penyedia kustom yang kompatibel dengan OpenAI.",
   "engineReleaseNotes": "Catatan rilis",
   "engineBuild": "Build",
   "engineCommit": "Commit",

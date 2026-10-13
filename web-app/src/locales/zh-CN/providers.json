@@ -2,6 +2,7 @@
   "limitedSupport": "此提供商可能未被完全支持。功能（tools、vision、audio）不会自动检测——请手动添加模型并逐个配置其功能。",
   "mlxExperimental": "MLX 支持尚处于实验阶段。Embeddings 不可用，reasoning 开关尚未接入，部分较新的模型架构可能无法加载。请在 GitHub 上报告问题，以便我们优先处理。",
   "engineBundled": "推理引擎已内置于 Jan 中，无需单独下载或更新。报告模型加载失败时请附上此版本号。",
+  "engineOtherVersion": "需要其他版本的 llama.cpp？运行你自己的 llama-server，并将其添加为自定义的 OpenAI 兼容提供商。",
   "engineReleaseNotes": "发行说明",
   "engineBuild": "Build",
   "engineCommit": "Commit",

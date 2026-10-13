@@ -2,6 +2,7 @@
   "limitedSupport": "Dieser Anbieter wird möglicherweise nicht vollständig unterstützt. Fähigkeiten (Tools, Bildverarbeitung, Audio) werden nicht automatisch erkannt – füge Modelle manuell hinzu und konfiguriere die Fähigkeiten pro Modell.",
   "mlxExperimental": "Die MLX-Unterstützung ist experimentell. Embeddings sind nicht verfügbar, der Reasoning-Schalter ist noch nicht angebunden, und einige neuere Modellarchitekturen lassen sich möglicherweise nicht laden. Melde Probleme auf GitHub, damit wir sie priorisieren können.",
   "engineBundled": "Die Inferenz-Engine ist in Jan integriert, daher muss nichts separat heruntergeladen oder aktualisiert werden. Nenne diese Version, wenn du ein Modell meldest, das sich nicht laden lässt.",
+  "engineOtherVersion": "Du brauchst eine andere llama.cpp-Version? Starte deinen eigenen llama-server und füge ihn als benutzerdefinierten OpenAI-kompatiblen Anbieter hinzu.",
   "engineReleaseNotes": "Release Notes",
   "engineBuild": "Build",
   "engineCommit": "Commit",
