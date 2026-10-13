@@ -262,6 +262,13 @@ describe('DefaultModelsService - additional coverage', () => {
       expect(await svc.getTokensCount('m1', [imageMsg()] as any)).toBe(10)
     })
 
+    it('returns 0 without calling engine when only assistant messages remain', async () => {
+      mockEngine.getTokensCount.mockClear()
+      const a = { role: 'assistant', content: [{ type: ContentType.Text, text: { value: 'hi' } }] }
+      expect(await svc.getTokensCount('m1', [a] as any)).toBe(0)
+      expect(mockEngine.getTokensCount).not.toHaveBeenCalled()
+    })
+
     it('filters out empty messages', async () => {
       mockEngine.getTokensCount.mockResolvedValue(5)
       await svc.getTokensCount('m1', [textMsg(''), textMsg('hi')] as any)
@@ -304,7 +311,7 @@ describe('DefaultModelsService - additional coverage', () => {
     it('appends tool context to string content', async () => {
       mockExtractContent.mockReturnValue('tool output here')
       mockEngine.getTokensCount.mockResolvedValue(20)
-      await svc.getTokensCount('m1', [{ role: 'assistant', content: [{ type: ContentType.Text, text: { value: 'response' } }] }] as any)
+      await svc.getTokensCount('m1', [{ role: 'user', content: [{ type: ContentType.Text, text: { value: 'response' } }] }] as any)
       expect(mockEngine.getTokensCount.mock.calls[0][0].messages[0].content).toContain('tool output here')
     })
 
@@ -319,7 +326,7 @@ describe('DefaultModelsService - additional coverage', () => {
     it('uses metadata context when content context is empty', async () => {
       mockExtractMetadata.mockReturnValue('metadata tool context')
       mockEngine.getTokensCount.mockResolvedValue(15)
-      await svc.getTokensCount('m1', [{ role: 'assistant', content: [{ type: ContentType.Text, text: { value: 'resp' } }] }] as any)
+      await svc.getTokensCount('m1', [{ role: 'user', content: [{ type: ContentType.Text, text: { value: 'resp' } }] }] as any)
       expect(mockEngine.getTokensCount.mock.calls[0][0].messages[0].content).toContain('metadata tool context')
     })
 
