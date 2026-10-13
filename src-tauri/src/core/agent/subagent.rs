@@ -2339,6 +2339,54 @@ Roles: {}.",
     out
 }
 
+/// Tools a child never gets whatever its allowlist says: it cannot dispatch
+/// (nesting is capped at one) and has no `ask` client or todo list of its own.
+fn never_delegated(name: &str) -> bool {
+    is_subagent_tool(name) || matches!(name, "ask" | "todo")
+}
+
+/// Pin every `allowed_tools` array in the subagent schemas to the tools this
+/// run can actually hand a child, as a JSON-schema `enum`.
+///
+/// Left free-form, models filled the optional array with names that match
+/// nothing (`bash`, `search`, `read_file`), which silently narrowed the child
+/// to the forced skill tools. With the names fixed a strict provider cannot
+/// emit a stray one, and every other provider is at least shown the set.
+/// `offered` is the run's final tool array, so MCP, plugin and host tools are
+/// included. The names are sorted and derived from per-run inputs alone, so
+/// the array stays byte-identical across the run's turns (prompt cache).
+pub fn constrain_tool_names(offered: &mut [serde_json::Value]) {
+    let mut names: Vec<String> = offered
+        .iter()
+        .filter_map(|t| t["function"]["name"].as_str())
+        .filter(|n| !never_delegated(n))
+        .map(str::to_string)
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    for tool in offered.iter_mut() {
+        let name = tool["function"]["name"].as_str().unwrap_or_default();
+        if !matches!(name, "dispatch_subagent" | "create_subagent") {
+            continue;
+        }
+        let Some(properties) = tool["function"]["parameters"]["properties"].as_object_mut()
+        else {
+            continue;
+        };
+        // Nothing to hand a child: an empty `enum` is invalid JSON Schema that
+        // some providers reject, failing every request, so the field is
+        // dropped and a child simply inherits the (empty) set.
+        if names.is_empty() {
+            properties.remove("allowed_tools");
+        } else if let Some(items) = properties
+            .get_mut("allowed_tools")
+            .and_then(|field| field.get_mut("items"))
+        {
+            items["enum"] = serde_json::json!(names);
+        }
+    }
+}
+
 /// OpenAI tool schemas for the subagent tools. The dispatch tool's description
 /// lists the roles and saved subagents so the model can pick one without a
 /// separate discovery call.
@@ -5231,5 +5279,34 @@ auto_compact_window = 9000
         assert!(reg.create(def, SubagentScope::Plugin, false).is_err());
         assert!(subagent_dir_for(&root, SubagentScope::Plugin).is_err());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Every `allowed_tools` array is pinned to the names the run offers, minus
+    /// the tools no child can get, sorted so the schema is cache-stable.
+    #[test]
+    fn allowed_tools_are_pinned_to_the_offered_names() {
+        let reg = SubagentRegistry::load(&unique_root("tool_enum"));
+        let mut tools = subagent_tool_schemas(&reg, DEFAULT_MAX_PARALLEL_SUBAGENTS);
+        for n in ["shell", "grep", "ask", "todo", "plugin__p__echo", "grep"] {
+            tools.push(serde_json::json!({ "type": "function", "function": { "name": n } }));
+        }
+        constrain_tool_names(&mut tools);
+        let expected = serde_json::json!(["grep", "plugin__p__echo", "shell"]);
+        let enum_of = |name: &str| {
+            let tool = tools.iter().find(|s| s["function"]["name"] == name).unwrap();
+            tool["function"]["parameters"]["properties"]["allowed_tools"]["items"]["enum"].clone()
+        };
+        assert_eq!(enum_of("dispatch_subagent"), expected);
+        assert_eq!(enum_of("create_subagent"), expected);
+
+        // Nothing delegable: no `allowed_tools` at all, never an empty enum.
+        let mut bare = subagent_tool_schemas(&reg, DEFAULT_MAX_PARALLEL_SUBAGENTS);
+        constrain_tool_names(&mut bare);
+        for tool in &bare {
+            assert!(
+                tool["function"]["parameters"]["properties"].get("allowed_tools").is_none(),
+                "{tool}"
+            );
+        }
     }
 }

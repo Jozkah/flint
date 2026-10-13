@@ -5135,6 +5135,8 @@ fn advertise_local_tools(
             openai_tools.push(tool.schema());
         }
     }
+    // Last, so the names a child may be given are drawn from the whole array.
+    crate::core::agent::subagent::constrain_tool_names(openai_tools);
 }
 
 fn stop_reason_of(completion: &serde_json::Value) -> String {
