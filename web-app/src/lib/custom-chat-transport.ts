@@ -1,4 +1,8 @@
 import { hasAgentToolImages } from '@/lib/toolOutputImages'
+import {
+  hasToolImageSentinel,
+  stripToolImageSentinels,
+} from '@/lib/tool-image-sentinel'
 import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
 import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
 import { buildContextBreakdown } from '@/lib/contextBreakdown'
@@ -231,6 +235,7 @@ import {
   type TokenUsage,
 } from '@/lib/tokenUsage'
 import { createDecodeClock, generationSpeed } from '@/lib/tokenSpeed'
+import { addToReplySpeed, earlierTokenSpeed } from '@/lib/replyTokenSpeed'
 import { createReasoningClock } from '@/lib/reasoningClock'
 
 export type TokenUsageCallback = (
@@ -692,11 +697,25 @@ export function stripUnsupportedImageParts(
         }
       }
       return true
+    }).map((part) => {
+      // A tool image sentinel would decode into an image_url part on the tool
+      // message; a text-only model rejects that.
+      const output = (part as { output?: unknown }).output
+      if (typeof output !== 'string' || !hasToolImageSentinel(output)) {
+        return part
+      }
+      touched = true
+      return {
+        ...part,
+        output: stripToolImageSentinels(output, TOOL_IMAGE_OMITTED),
+      } as typeof part
     })
     if (!touched) return message
     return { ...message, parts: nextParts } as UIMessage
   })
 }
+
+const TOOL_IMAGE_OMITTED = ' (image omitted: the model has no vision)'
 
 const RESOLVED_TOOL_STATES = new Set([
   'output-available',
@@ -3328,6 +3347,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       },
     })
 
+    // The reply this request continues, if it does: its speed block covers
+    // every request of the reply, while `usage` stays the last request's.
+    const earlierSpeed = earlierTokenSpeed(options.messages)
     let tokensPerSecond = 0
     let promptPerSecond = 0
     let draftTokens = 0
@@ -3573,12 +3595,21 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               return {}
             })(),
             tokenSpeed: {
-              tokenSpeed: Math.round(tokenSpeed * 100) / 100,
+              ...(() => {
+                const reply = addToReplySpeed(earlierSpeed, {
+                  tokenSpeed,
+                  tokenCount: generation?.tokenCount ?? outputTokens,
+                  durationMs: generation?.durationMs ?? durationMs,
+                })
+                return {
+                  tokenSpeed: Math.round(reply.tokenSpeed * 100) / 100,
+                  tokenCount: reply.tokenCount,
+                  durationMs: reply.durationMs,
+                }
+              })(),
               promptSpeed: promptPerSecond
                 ? Math.round(promptPerSecond * 100) / 100
                 : undefined,
-              tokenCount: generation?.tokenCount ?? outputTokens,
-              durationMs: generation?.durationMs ?? durationMs,
               ...(generation ? { source: generation.source } : {}),
               ...(draftTokens > 0
                 ? { draftTokens, draftAccepted: Math.min(draftAccepted, draftTokens) }

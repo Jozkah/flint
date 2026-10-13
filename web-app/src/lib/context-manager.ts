@@ -6,6 +6,7 @@ import {
   outputEstimateChars,
   outputForEstimate,
 } from './toolOutputImages'
+import { stripToolImageSentinels } from './tool-image-sentinel'
 
 /**
  * Approximate token count using a character-based heuristic.
@@ -87,6 +88,9 @@ export function deriveToolOutputCap(
   )
 }
 
+// A tool image sentinel costs the model a small fixed amount, not its base64.
+const TOOL_IMAGE_STAND_IN = 'x'.repeat(Math.ceil(2_000 * CHARS_PER_TOKEN))
+
 function messageToText(message: UIMessage): string {
   const parts: string[] = []
   for (const part of message.parts) {
@@ -98,7 +102,11 @@ function messageToText(message: UIMessage): string {
       parts.push(
         countOutputImages(record.output) > 0
           ? JSON.stringify({ ...part, output: outputForEstimate(record.output) })
-          : JSON.stringify(part)
+          : JSON.stringify(part, (_key, value) =>
+              typeof value === 'string'
+                ? stripToolImageSentinels(value, TOOL_IMAGE_STAND_IN)
+                : value
+            )
       )
     }
   }

@@ -80,6 +80,10 @@ const httpFetch = providerFetch
 import { hasAudioSentinel, splitAudioSentinels } from './audio-sentinel'
 import { hasVideoSentinel, splitVideoSentinels } from './video-sentinel'
 import {
+  hasToolImageSentinel,
+  splitToolImageSentinels,
+} from './tool-image-sentinel'
+import {
   filterDefaultSseEvents,
   sanitizeOpenAiToolCallSseEvents,
 } from './sseEventTypeFilter'
@@ -609,6 +613,7 @@ export function createCustomFetch(
     if (!includeOurParams) {
       decodeAudioSentinelsInBody(rawBody)
       decodeVideoSentinelsInBody(rawBody)
+      decodeToolImageSentinelsInBody(rawBody)
       return rawBody
     }
     const normalised: Record<string, unknown> = {}
@@ -665,6 +670,7 @@ export function createCustomFetch(
     }
     decodeAudioSentinelsInBody(merged)
     decodeVideoSentinelsInBody(merged)
+    decodeToolImageSentinelsInBody(merged)
     return merged
   }
 
@@ -1041,6 +1047,24 @@ export function decodeVideoSentinelsInBody(body: Record<string, unknown>): void 
       next.push(part)
     }
     if (touched) m.content = next
+  }
+}
+
+// Rewrites a sentinel-bearing `role: tool` message (a tool that returned an
+// image) into a text part plus OpenAI `image_url` parts. Mutates
+// `body.messages` in place.
+export function decodeToolImageSentinelsInBody(
+  body: Record<string, unknown>
+): void {
+  const messages = body.messages
+  if (!Array.isArray(messages)) return
+  for (const msg of messages) {
+    if (!msg || typeof msg !== 'object') continue
+    const m = msg as { role?: string; content?: unknown }
+    if (m.role !== 'tool' || typeof m.content !== 'string') continue
+    if (!hasToolImageSentinel(m.content)) continue
+    const split = splitToolImageSentinels(m.content)
+    if (split) m.content = split
   }
 }
 
