@@ -554,7 +554,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
             );
         }
         let handler =
-            JanClientHandler::new(client_info("Jan Streamable Client"), name.clone(), app.clone());
+            JanClientHandler::new(flint_client_info(), name.clone(), app.clone());
 
         let client = match authorized {
             Some(c) => serve_http(c, &url, handler).await,
@@ -727,9 +727,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
                 pids.insert(name.clone(), pid);
             }
 
-            // ClientInfo::default() is exactly what the previous `()` handler
-            // sent on initialize, so the handshake is unchanged.
-            let handler = JanClientHandler::new(ClientInfo::default(), name.clone(), app.clone());
+            let handler = JanClientHandler::new(flint_client_info(), name.clone(), app.clone());
             match handler.serve(process).await {
                 Ok(server) => break (server, stderr),
                 Err(e) => {
@@ -951,10 +949,12 @@ fn header_map(headers: &serde_json::Map<String, Value>) -> reqwest13::header::He
     map
 }
 
-fn client_info(label: &str) -> ClientInfo {
+/// Identity sent on `initialize` for every transport, so servers see one
+/// consistent "Flint" client with the real app version.
+pub(super) fn flint_client_info() -> ClientInfo {
     ClientInfo::new(
         ClientCapabilities::default(),
-        Implementation::new(label, "0.0.1"),
+        Implementation::new("Flint", env!("CARGO_PKG_VERSION")),
     )
 }
 
