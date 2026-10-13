@@ -40,6 +40,17 @@ export function stripProviderSecrets(provider: ModelProvider): ModelProvider {
   }
 }
 
+// A model's id is its identity within a provider: lookups find by id and the
+// model lists key rows on it. Keep the first occurrence (carries user edits).
+function uniqueModelsById(models: Model[]): Model[] {
+  const seen = new Set<string>()
+  return models.filter((model) => {
+    if (seen.has(model.id)) return false
+    seen.add(model.id)
+    return true
+  })
+}
+
 type ModelProviderState = {
   providers: ModelProvider[]
   selectedProvider: string
@@ -223,7 +234,9 @@ export const useModelProvider = create<ModelProviderState>()(
             // keyring-seeded incoming provider (DataProvider).
             return {
               ...provider,
-              models: provider.persist ? updatedModels : mergedModels,
+              models: uniqueModelsById(
+                provider.persist ? updatedModels : mergedModels
+              ),
               settings: mergedSettings,
               api_key: existingProvider?.api_key || provider.api_key,
               api_key_fallbacks:
@@ -274,6 +287,9 @@ export const useModelProvider = create<ModelProviderState>()(
               return {
                 ...provider,
                 ...data,
+                ...(Array.isArray(data.models)
+                  ? { models: uniqueModelsById(data.models) }
+                  : {}),
               }
             }
             return provider
