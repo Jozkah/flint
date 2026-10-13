@@ -440,6 +440,15 @@ pub struct ImageParams {
     pub steps: Option<u32>,
     #[serde(default)]
     pub lora: Vec<LoraChoice>,
+    /// Gallery id of a picture to start from (image-to-image).
+    #[serde(default)]
+    pub init_image_id: Option<String>,
+    /// How far the result may drift from `init_image_id`, 0 to 1.
+    #[serde(default)]
+    pub strength: Option<f64>,
+    /// Gallery ids of pictures an edit model should follow.
+    #[serde(default)]
+    pub reference_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -708,6 +717,20 @@ fn random_seed() -> u32 {
     rand::random::<u32>()
 }
 
+/// A gallery picture as a data URL, with its size when it is a PNG.
+fn gallery_image<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    id: &str,
+) -> Result<(String, Option<(u32, u32)>), String> {
+    let url = gallery::media_data_url(app, Kind::Image, id)
+        .map_err(|_| format!("Image {id} is not in the gallery."))?;
+    let size = url
+        .split_once(',')
+        .and_then(|(_, data)| base64::engine::general_purpose::STANDARD.decode(data).ok())
+        .and_then(|bytes| args::png_dimensions(&bytes));
+    Ok((url, size))
+}
+
 /// Make `count` images from a prompt and save them to the gallery.
 pub async fn generate_image<R: Runtime>(
     app: &tauri::AppHandle<R>,
@@ -721,8 +744,16 @@ pub async fn generate_image<R: Runtime>(
     if prompt.is_empty() {
         return Err("The prompt is empty.".to_string());
     }
-    let width = params.width.unwrap_or(def.defaults.width);
-    let height = params.height.unwrap_or(def.defaults.height);
+    let init_image = params.init_image_id.as_deref().map(|id| gallery_image(app, id)).transpose()?;
+    let ref_images = params.reference_ids.iter().map(|id| gallery_image(app, id)).collect::<Result<Vec<_>, _>>()?;
+    // An edit keeps the source's shape unless the caller sized it.
+    let source_size = init_image.as_ref().or(ref_images.first()).and_then(|(_, size)| *size);
+    let (default_width, default_height) = match source_size {
+        Some(size) => args::edit_size(size, (def.defaults.width, def.defaults.height), def.min_side, def.max_side),
+        None => (def.defaults.width, def.defaults.height),
+    };
+    let width = params.width.unwrap_or(default_width);
+    let height = params.height.unwrap_or(default_height);
     if let Some(problem) = args::size_problem(width, height, def.min_side, def.max_side) {
         return Err(problem);
     }
@@ -741,6 +772,9 @@ pub async fn generate_image<R: Runtime>(
         seed,
         sampling,
         lora: resolve_loras(app, &params.lora)?,
+        init_image: init_image.map(|(url, _)| url),
+        strength: params.strength,
+        ref_images: ref_images.into_iter().map(|(url, _)| url).collect(),
     };
     let started = Instant::now();
     let (job_id, result) = run_job_with_fallback(

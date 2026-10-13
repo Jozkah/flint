@@ -163,6 +163,12 @@ pub struct ImageRequest {
     pub seed: u32,
     pub sampling: Sampling,
     pub lora: Vec<(String, f64)>,
+    /// A picture to start from (image-to-image), as a data URL.
+    pub init_image: Option<String>,
+    /// How far `init_image` may change, 0 (keep) to 1 (ignore).
+    pub strength: Option<f64>,
+    /// Pictures an edit model is told to follow, as data URLs.
+    pub ref_images: Vec<String>,
 }
 
 /// Bigger than this and the VAE decodes in tiles, or it runs out of memory.
@@ -194,7 +200,38 @@ pub fn build_img_gen_request(req: &ImageRequest) -> Value {
     if u64::from(req.width) * u64::from(req.height) > TILING_PIXELS {
         body["vae_tiling_params"] = json!({ "enabled": true });
     }
+    if let Some(init) = &req.init_image {
+        body["init_image"] = json!(init);
+        if let Some(strength) = req.strength {
+            body["strength"] = json!(strength.clamp(0.0, 1.0));
+        }
+    }
+    if !req.ref_images.is_empty() {
+        body["ref_images"] = json!(req.ref_images);
+        body["auto_resize_ref_image"] = json!(true);
+    }
     body
+}
+
+/// Width and height of a PNG, read from its header.
+pub fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    if bytes.len() < 24 || bytes[..8] != SIGNATURE || &bytes[12..16] != b"IHDR" {
+        return None;
+    }
+    let width = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
+    let height = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
+    (width > 0 && height > 0).then_some((width, height))
+}
+
+/// The size to make an edit at when the caller gave none: the source picture's
+/// shape, scaled down to fit the model's usual size (never up), each side a
+/// multiple of 16 and inside the model's limits.
+pub fn edit_size(source: (u32, u32), fit: (u32, u32), min: u32, max: u32) -> (u32, u32) {
+    let (w, h) = (f64::from(source.0), f64::from(source.1));
+    let scale = (f64::from(fit.0) / w).min(f64::from(fit.1) / h).min(1.0);
+    let snap = |side: f64| (((side * scale) / 16.0).round() as u32 * 16).clamp(min.max(16), max);
+    (snap(w), snap(h))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -381,6 +418,9 @@ mod tests {
             seed: 42,
             sampling: sampling(),
             lora: vec![],
+            init_image: None,
+            strength: None,
+            ref_images: vec![],
         });
         assert_eq!(body["prompt"], "a cat");
         assert_eq!(body["batch_count"], 2);
@@ -403,6 +443,9 @@ mod tests {
             seed: 1,
             sampling: Sampling { sample_method: Some("euler".into()), flow_shift: Some(3.0), ..sampling() },
             lora: vec![("style.safetensors".into(), 0.7)],
+            init_image: None,
+            strength: None,
+            ref_images: vec![],
         });
         assert_eq!(body["vae_tiling_params"]["enabled"], true);
         assert_eq!(body["negative_prompt"], "blurry");
@@ -448,5 +491,78 @@ mod tests {
         assert!(size_problem(255, 1024, 256, 2048).unwrap().contains("width"));
         assert!(size_problem(1024, 2064, 256, 2048).unwrap().contains("height"));
         assert!(size_problem(1000, 1024, 256, 2048).unwrap().contains("multiple of 16"));
+    }
+
+    fn plain_request() -> ImageRequest {
+        ImageRequest {
+            prompt: "x".into(),
+            negative_prompt: String::new(),
+            width: 512,
+            height: 512,
+            batch: 1,
+            seed: 1,
+            sampling: sampling(),
+            lora: vec![],
+            init_image: None,
+            strength: None,
+            ref_images: vec![],
+        }
+    }
+
+    #[test]
+    fn a_plain_request_sends_no_image_fields() {
+        let body = build_img_gen_request(&plain_request());
+        for key in ["init_image", "strength", "ref_images", "auto_resize_ref_image"] {
+            assert!(body.get(key).is_none(), "{key}");
+        }
+    }
+
+    #[test]
+    fn an_image_to_image_request_sends_the_picture_and_a_clamped_strength() {
+        let body = build_img_gen_request(&ImageRequest {
+            init_image: Some("data:image/png;base64,AAAA".into()),
+            strength: Some(1.7),
+            ..plain_request()
+        });
+        assert_eq!(body["init_image"], "data:image/png;base64,AAAA");
+        assert_eq!(body["strength"], 1.0);
+    }
+
+    #[test]
+    fn strength_without_a_picture_is_not_sent() {
+        let body = build_img_gen_request(&ImageRequest { strength: Some(0.5), ..plain_request() });
+        assert!(body.get("strength").is_none());
+    }
+
+    #[test]
+    fn reference_pictures_are_sent_and_resized_by_the_engine() {
+        let body = build_img_gen_request(&ImageRequest {
+            ref_images: vec!["data:image/png;base64,AA".into(), "data:image/png;base64,BB".into()],
+            ..plain_request()
+        });
+        assert_eq!(body["ref_images"].as_array().map(Vec::len), Some(2));
+        assert_eq!(body["auto_resize_ref_image"], true);
+    }
+
+    #[test]
+    fn png_dimensions_read_the_header_and_refuse_anything_else() {
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13];
+        png.extend_from_slice(b"IHDR");
+        png.extend_from_slice(&640u32.to_be_bytes());
+        png.extend_from_slice(&480u32.to_be_bytes());
+        assert_eq!(png_dimensions(&png), Some((640, 480)));
+        assert_eq!(png_dimensions(&png[..20]), None);
+        assert_eq!(png_dimensions(b"GIF89a-not-a-png-at-all-really"), None);
+    }
+
+    #[test]
+    fn an_edit_keeps_the_source_shape_and_never_scales_up() {
+        // Larger than the model's size: scaled down, aspect kept, multiples of 16.
+        assert_eq!(edit_size((2000, 1000), (1024, 1024), 16, 2048), (1024, 512));
+        // Smaller: left alone.
+        assert_eq!(edit_size((512, 768), (1024, 1024), 16, 2048), (512, 768));
+        // Odd sides snap to a multiple of 16 and stay inside the limits.
+        assert_eq!(edit_size((1000, 1000), (1024, 1024), 16, 2048), (1008, 1008));
+        assert_eq!(edit_size((10, 10), (1024, 1024), 64, 2048), (64, 64));
     }
 }
