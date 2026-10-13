@@ -10,7 +10,9 @@ import {
 /**
  * Picture tools for a chat with a text model: it can make a picture
  * (`image_gen`), change one (`image_edit`) and look at one (`image_view`).
- * Pictures are named `img_1`, `img_2`, ... per conversation (`chatImages.ts`);
+ * Their schemas live in Rust (agent-tools `tools/schema.rs`), the one list every
+ * surface advertises from. Pictures are named `img_1`, `img_2`, ... per
+ * conversation (`chatImages.ts`);
  * the pixels stay in the Studio gallery and are never swapped out by a call,
  * because these never load a model: they use the one resident in Studio.
  */
@@ -32,116 +34,6 @@ type Result = { content?: string; images?: ToolImage[]; error?: string }
 
 const MAX_COUNT = 4
 const DEFAULT_EDIT_STRENGTH = 0.6
-
-export type ImageToolSchema = {
-  type: 'function'
-  function: {
-    name: string
-    description: string
-    parameters: Record<string, unknown>
-  }
-}
-
-const SIZE_PROPS = {
-  width: {
-    type: 'integer',
-    description: 'Width in pixels, a multiple of 16. Omit for the default.',
-  },
-  height: {
-    type: 'integer',
-    description: 'Height in pixels, a multiple of 16. Omit for the default.',
-  },
-  count: {
-    type: 'integer',
-    description: `How many pictures to make, 1 to ${MAX_COUNT}. Default 1.`,
-  },
-  seed: { type: 'integer', description: 'Seed, for a repeatable result.' },
-}
-
-export function imageToolSchemas(): ImageToolSchema[] {
-  return [
-    {
-      type: 'function',
-      function: {
-        name: IMAGE_GEN_TOOL,
-        description:
-          'Make a picture from a text description with the image model loaded in Studio. ' +
-          'Each picture is shown to the user and named img_1, img_2, ...; use those names with ' +
-          `${IMAGE_VIEW_TOOL} and ${IMAGE_EDIT_TOOL}. Fails if no image model is loaded.`,
-        parameters: {
-          type: 'object',
-          properties: {
-            prompt: {
-              type: 'string',
-              description: 'What the picture should show.',
-            },
-            negative_prompt: {
-              type: 'string',
-              description: 'What to keep out of the picture.',
-            },
-            ...SIZE_PROPS,
-          },
-          required: ['prompt'],
-        },
-      },
-    },
-    {
-      type: 'function',
-      function: {
-        name: IMAGE_EDIT_TOOL,
-        description:
-          'Change a picture made earlier in this conversation. `image` is the one to start from ' +
-          '(image-to-image: `strength` says how much it may change). `references` are pictures an ' +
-          'instruction-edit model should follow ("put this logo on that shirt"). Give `image`, ' +
-          '`references`, or both. The result is a new picture with its own name; the original is kept.',
-        parameters: {
-          type: 'object',
-          properties: {
-            prompt: {
-              type: 'string',
-              description: 'What the result should look like, or the change to make.',
-            },
-            image: {
-              type: 'string',
-              description: 'Name of the picture to start from, like img_1.',
-            },
-            strength: {
-              type: 'number',
-              description: `0 keeps the picture, 1 ignores it. Default ${DEFAULT_EDIT_STRENGTH}. Only used with \`image\`.`,
-            },
-            references: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Names of pictures to follow, like ["img_1", "img_2"].',
-            },
-            negative_prompt: { type: 'string' },
-            ...SIZE_PROPS,
-          },
-          required: ['prompt'],
-        },
-      },
-    },
-    {
-      type: 'function',
-      function: {
-        name: IMAGE_VIEW_TOOL,
-        description:
-          'Look at a picture made earlier in this conversation, for example to check a result ' +
-          'before describing it or editing it again. Takes the name from image_gen or image_edit.',
-        parameters: {
-          type: 'object',
-          properties: {
-            image: {
-              type: 'string',
-              description: 'Name of the picture, like img_1.',
-            },
-          },
-          required: ['image'],
-        },
-      },
-    },
-  ]
-}
 
 const text = (v: unknown): string | undefined =>
   typeof v === 'string' && v.trim() ? v.trim() : undefined
@@ -171,10 +63,16 @@ async function residentImageModel(): Promise<
 }
 
 function unknownImage(threadId: string, name: string): string {
-  const known = listChatImages(threadId).map((i) => i.id)
+  const known = listChatImages(threadId)
+    .filter((i) => !i.deleted)
+    .map((i) => i.id)
   return known.length
     ? `There is no picture named ${name} in this conversation. Pictures so far: ${known.join(', ')}.`
     : `There is no picture named ${name}: no picture has been made in this conversation yet.`
+}
+
+function deletedImage(name: string): string {
+  return `${name} was deleted from the Studio gallery, so it can no longer be viewed or edited. Make a new picture instead.`
 }
 
 async function pictureOf(galleryId: string, name: string): Promise<ToolImage> {
@@ -246,6 +144,7 @@ async function runEdit(
   const start = text(args.image)
   const startPicture = start ? findChatImage(threadId, start) : undefined
   if (start && !startPicture) return { error: unknownImage(threadId, start) }
+  if (startPicture?.deleted) return { error: deletedImage(startPicture.id) }
 
   const names = Array.isArray(args.references)
     ? args.references.filter((r): r is string => typeof r === 'string')
@@ -254,6 +153,7 @@ async function runEdit(
   for (const name of names) {
     const found = findChatImage(threadId, name)
     if (!found) return { error: unknownImage(threadId, name) }
+    if (found.deleted) return { error: deletedImage(found.id) }
     references.push(found)
   }
   if (!startPicture && references.length === 0) {
@@ -291,12 +191,13 @@ async function runView(
   if (!name) return { error: `${IMAGE_VIEW_TOOL} needs \`image\`: a picture name like img_1.` }
   const found = findChatImage(threadId, name)
   if (!found) return { error: unknownImage(threadId, name) }
+  if (found.deleted) return { error: deletedImage(found.id) }
   let image: ToolImage
   try {
     image = await pictureOf(found.galleryId, found.id)
   } catch {
     return {
-      error: `${found.id} is no longer in the Studio gallery (it was deleted).`,
+      error: deletedImage(found.id),
     }
   }
   return {

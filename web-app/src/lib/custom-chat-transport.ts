@@ -79,7 +79,7 @@ import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
 import { chatDelegationEnabled, chatDelegationTools } from '@/lib/chatDelegation'
 import { subagentGuide } from '@/lib/coworkPrompt'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
-import { imageToolSchemas } from '@/lib/chatImageTools'
+import { isImageTool } from '@/lib/chatImageTools'
 import { studioApi } from '@/lib/studio/studio'
 import { visualizeSchemas } from '@/lib/visualize/tools'
 import { truncateStaleWidgetCode } from '@/lib/visualize/history'
@@ -1865,7 +1865,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       try {
         const studio = await studioApi.status()
         if (studio.supported && studio.resident?.kind === 'image') {
-          for (const schema of imageToolSchemas()) {
+          for (const schema of await getAgentToolSchemas()) {
+            if (!isImageTool(schema.function?.name)) continue
             toolsRecord[schema.function.name] = {
               description: schema.function.description,
               inputSchema: jsonSchema(schema.function.parameters),

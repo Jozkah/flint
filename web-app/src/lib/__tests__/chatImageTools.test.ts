@@ -12,16 +12,14 @@ vi.mock('@/lib/studio/studio', () => ({
   },
 }))
 
-import {
-  imageToolSchemas,
-  isImageTool,
-  runImageTool,
-} from '../chatImageTools'
+import { isImageTool, runImageTool } from '../chatImageTools'
 import {
   addChatImages,
+  chatsUsingGalleryImage,
   clearChatImages,
   findChatImage,
   listChatImages,
+  markGalleryImageDeleted,
 } from '../chatImages'
 
 const loaded = {
@@ -69,15 +67,44 @@ describe('chat image names', () => {
   })
 })
 
+describe('a picture deleted from the gallery', () => {
+  it('is found only in the chats that used it, and keeps its name', () => {
+    const a = thread()
+    const b = thread()
+    addChatImages(a, [{ galleryId: 'shared', prompt: 'p' }])
+    addChatImages(b, [{ galleryId: 'other', prompt: 'p' }])
+    expect(chatsUsingGalleryImage('shared')).toEqual([a])
+    markGalleryImageDeleted('shared')
+    expect(findChatImage(a, 'img_1')?.deleted).toBe(true)
+    expect(findChatImage(b, 'img_1')?.deleted).toBeUndefined()
+    // The name is not handed to the next picture.
+    expect(addChatImages(a, [{ galleryId: 'new', prompt: 'p' }])[0].id).toBe('img_2')
+    expect(chatsUsingGalleryImage('shared')).toEqual([])
+  })
+
+  it('is refused by view and edit with a clear reason', async () => {
+    const t = thread()
+    addChatImages(t, [{ galleryId: 'g1', prompt: 'a' }])
+    markGalleryImageDeleted('g1')
+    for (const [tool, input] of [
+      ['image_view', { image: 'img_1' }],
+      ['image_edit', { prompt: 'x', image: 'img_1' }],
+      ['image_edit', { prompt: 'x', references: ['img_1'] }],
+    ] as const) {
+      expect(await runImageTool(tool, input, t)).toMatchObject({
+        error: expect.stringContaining('was deleted from the Studio gallery'),
+      })
+    }
+    expect(generateImage).not.toHaveBeenCalled()
+  })
+})
+
 describe('picture tools', () => {
-  it('are named and only those three', () => {
-    expect(imageToolSchemas().map((s) => s.function.name)).toEqual([
-      'image_gen',
-      'image_edit',
-      'image_view',
-    ])
-    expect(isImageTool('image_view')).toBe(true)
-    expect(isImageTool('generate_image')).toBe(false)
+  it('are named image_gen, image_edit and image_view only', () => {
+    for (const name of ['image_gen', 'image_edit', 'image_view']) {
+      expect(isImageTool(name)).toBe(true)
+    }
+    expect(isImageTool('generate_image')).toBe(false) // the old name is gone
   })
 
   it('image_gen makes pictures, names them and returns them', async () => {
@@ -160,7 +187,7 @@ describe('picture tools', () => {
     expect(r.images?.[0].dataUrl).toBe('data:image/png;base64,g1')
     media.mockRejectedValue(new Error('missing'))
     expect(await runImageTool('image_view', { image: 'img_1' }, t)).toMatchObject({
-      error: expect.stringContaining('no longer in the Studio gallery'),
+      error: expect.stringContaining('was deleted from the Studio gallery'),
     })
   })
 })

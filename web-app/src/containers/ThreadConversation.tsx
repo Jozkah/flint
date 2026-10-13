@@ -25,6 +25,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery'
 
 import HeaderPage from '@/containers/HeaderPage'
 import { ExportItems, ExportSubmenu } from '@/components/ExportMenu'
+import { SaveChatPicturesItem } from '@/components/SaveChatPicturesItem'
 import { docFromThread } from '@/lib/exportDoc'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
@@ -2968,7 +2969,11 @@ export function ThreadConversation({
                 <PanelRight className="size-4" />
                 <span>{t('context:details')}</span>
               </DropdownMenuItem>
-              <ExportSubmenu build={buildExportDoc} versions />
+              <ExportSubmenu
+                build={buildExportDoc}
+                versions
+                extra={<SaveChatPicturesItem threadId={threadId} />}
+              />
               {extra && (
                 <DropdownMenuItem
                   onSelect={() => useSplitConversation.getState().addPane()}
@@ -2994,7 +2999,11 @@ export function ThreadConversation({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <ExportItems build={buildExportDoc} versions />
+              <ExportItems
+                build={buildExportDoc}
+                versions
+                extra={<SaveChatPicturesItem threadId={threadId} />}
+              />
             </DropdownMenuContent>
           </DropdownMenu>
         )}

@@ -14,6 +14,8 @@ export type ChatImage = {
   galleryId: string
   /** The prompt that made it, for the model's memory and an export's filename. */
   prompt: string
+  /** Set when the picture was deleted from the Studio gallery. */
+  deleted?: boolean
 }
 
 const KEY = 'flint:chat-images:'
@@ -62,13 +64,7 @@ export function addChatImages(
     galleryId: m.galleryId,
     prompt: m.prompt,
   }))
-  const all = [...existing, ...added]
-  memory.set(threadId, all)
-  try {
-    window.localStorage.setItem(KEY + threadId, JSON.stringify(all))
-  } catch {
-    // Not persisted; the names still work for this session.
-  }
+  persist(threadId, [...existing, ...added])
   return added
 }
 
@@ -79,6 +75,47 @@ export function findChatImage(
 ): ChatImage | undefined {
   const wanted = id.trim().toLowerCase()
   return listChatImages(threadId).find((img) => img.id === wanted)
+}
+
+const persist = (threadId: string, all: ChatImage[]) => {
+  memory.set(threadId, all)
+  try {
+    window.localStorage.setItem(KEY + threadId, JSON.stringify(all))
+  } catch {
+    // Not persisted; the names still work for this session.
+  }
+}
+
+/** The threads whose pictures include this gallery picture. */
+export function chatsUsingGalleryImage(galleryId: string): string[] {
+  const threads = new Set<string>()
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i)
+      if (key?.startsWith(KEY)) threads.add(key.slice(KEY.length))
+    }
+  } catch {
+    // Storage unavailable: only this session's names are known.
+  }
+  for (const id of memory.keys()) threads.add(id)
+  return [...threads].filter((t) =>
+    listChatImages(t).some((img) => img.galleryId === galleryId && !img.deleted)
+  )
+}
+
+/**
+ * Note that a gallery picture is gone. The name stays (so `img_N` is never
+ * reused for another picture) but the tools report it as deleted.
+ */
+export function markGalleryImageDeleted(galleryId: string): void {
+  for (const threadId of chatsUsingGalleryImage(galleryId)) {
+    persist(
+      threadId,
+      listChatImages(threadId).map((img) =>
+        img.galleryId === galleryId ? { ...img, deleted: true } : img
+      )
+    )
+  }
 }
 
 /** Forget a thread's pictures' names (its pictures stay in the gallery). */

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { toast } from 'sonner'
+import { chatsUsingGalleryImage, markGalleryImageDeleted } from '@/lib/chatImages'
 import { listen } from '@tauri-apps/api/event'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { allowNotifications, notifyInBackground } from '@/lib/notify'
@@ -253,7 +254,14 @@ export const useStudio = create<StudioState>((set, get) => ({
 
   remove: async (kind, id) => {
     try {
+      const usedBy = kind === 'image' ? chatsUsingGalleryImage(id) : []
       await studioApi.remove(kind, id)
+      if (usedBy.length) {
+        markGalleryImageDeleted(id)
+        toast.warning(
+          'That picture is used in a chat. The chat can no longer view or edit it.'
+        )
+      }
       await get().refreshGallery(kind)
     } catch (error) {
       set({ error: message(error) })
