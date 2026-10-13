@@ -315,9 +315,9 @@ pub async fn load<R: Runtime>(
     std::fs::create_dir_all(&scratch).map_err(|e| format!("Could not create the scratch folder: {e}"))?;
     std::fs::create_dir_all(&lora_dir).map_err(|e| format!("Could not create the LoRA folder: {e}"))?;
     let port = free_port()?;
-    let argv = build_server_args(&files, port, &scratch, offload, None, &[
-        "--lora-model-dir".to_string(), lora_dir.to_string_lossy().into_owned(),
-    ]);
+    let mut extra = vec!["--lora-model-dir".to_string(), lora_dir.to_string_lossy().into_owned()];
+    extra.extend(def.extra_args.iter().map(|a| a.to_string()));
+    let argv = build_server_args(&files, port, &scratch, offload, None, &extra);
 
     let mut command = Command::new(dir.join(engine::SERVER_EXE));
     command
@@ -743,6 +743,12 @@ pub async fn generate_image<R: Runtime>(
     let prompt = params.prompt.trim().to_string();
     if prompt.is_empty() {
         return Err("The prompt is empty.".to_string());
+    }
+    if !params.reference_ids.is_empty() && !def.edit {
+        return Err(format!(
+            "{} cannot follow reference pictures. Use image-to-image on one picture instead, or load an instruction-edit model such as Qwen-Image-Edit.",
+            def.display_name
+        ));
     }
     let init_image = params.init_image_id.as_deref().map(|id| gallery_image(app, id)).transpose()?;
     let ref_images = params.reference_ids.iter().map(|id| gallery_image(app, id)).collect::<Result<Vec<_>, _>>()?;

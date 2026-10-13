@@ -35,6 +35,11 @@ pub struct Family {
     pub defaults: Defaults,
     pub min_side: u32,
     pub max_side: u32,
+    /// An instruction-edit family: it follows reference pictures.
+    pub edit: bool,
+    /// Extra `sd-server` arguments every model of the family needs.
+    #[serde(skip)]
+    pub extra_args: &'static [&'static str],
 }
 
 impl Family {
@@ -132,6 +137,8 @@ pub const FAMILIES: &[Family] = &[
         },
         min_side: 16,
         max_side: 2048,
+        edit: false,
+        extra_args: &[],
     },
     Family {
         id: "qwen-image-2.1",
@@ -149,6 +156,8 @@ pub const FAMILIES: &[Family] = &[
         },
         min_side: 16,
         max_side: 2048,
+        edit: false,
+        extra_args: &[],
     },
     Family {
         id: "qwen-image",
@@ -166,6 +175,8 @@ pub const FAMILIES: &[Family] = &[
         },
         min_side: 16,
         max_side: 2048,
+        edit: false,
+        extra_args: &[],
     },
     Family {
         id: "flux1",
@@ -183,6 +194,47 @@ pub const FAMILIES: &[Family] = &[
         },
         min_side: 16,
         max_side: 2048,
+        edit: false,
+        extra_args: &[],
+    },
+    Family {
+        id: "qwen-image-edit",
+        label: "Qwen-Image-Edit",
+        description: "Edits pictures by instruction: the original Qwen-Image-Edit, not 2509 or 2511. Also downloads a 7B text encoder (4.7 GB) and a VAE (0.3 GB).",
+        hints: &["qwen-image-edit", "qwen_image_edit"],
+        companions: QWEN_IMAGE_COMPANIONS,
+        defaults: Defaults {
+            steps: 20,
+            cfg_scale: 2.5,
+            sample_method: Some("euler"),
+            flow_shift: Some(3.0),
+            width: 1024,
+            height: 1024,
+        },
+        min_side: 16,
+        max_side: 2048,
+        edit: true,
+        extra_args: &[],
+    },
+    Family {
+        id: "qwen-image-edit-2511",
+        label: "Qwen-Image-Edit 2511",
+        description: "Edits pictures by instruction: the 2511 release only. Also downloads a 7B text encoder (4.7 GB) and a VAE (0.3 GB).",
+        hints: &["qwen-image-edit-2511", "qwen_image_edit_2511", "qwen-image-edit2511"],
+        companions: QWEN_IMAGE_COMPANIONS,
+        defaults: Defaults {
+            steps: 20,
+            cfg_scale: 2.5,
+            sample_method: Some("euler"),
+            flow_shift: Some(3.0),
+            width: 1024,
+            height: 1024,
+        },
+        min_side: 16,
+        max_side: 2048,
+        edit: true,
+        // Without this the engine's edit quality degrades badly (its docs).
+        extra_args: &["--model-args", "qwen_image_zero_cond_t=true"],
     },
 ];
 
@@ -248,6 +300,8 @@ pub fn def_of(record: &CustomModel) -> Option<ModelDef> {
         video: None,
         min_side: family.min_side,
         max_side: family.max_side,
+        edit: family.edit,
+        extra_args: family.extra_args,
     })
 }
 
@@ -338,17 +392,19 @@ pub fn id_for(repo: &str, filename: &str) -> String {
 /// The family whose hints appear in a repo or file name, for the picker's default.
 pub fn guess_family(repo: &str, filename: &str) -> Option<&'static str> {
     let haystack = format!("{repo} {filename}").to_ascii_lowercase();
+    // The longest matching hint wins, so "qwen-image-2.1" is not taken for "qwen-image".
+    let best = FAMILIES
+        .iter()
+        .flat_map(|f| f.hints.iter().filter(|h| haystack.contains(*h)).map(move |h| (h.len(), f)))
+        .max_by_key(|(len, _)| *len)
+        .map(|(_, f)| f)?;
     // Editing and fill variants of a family need a reference image and other
-    // arguments, so they are not offered as a plain picture model.
-    if ["kontext", "-fill", "_fill", "edit", "redux", "inpaint"].iter().any(|w| haystack.contains(w)) {
+    // arguments, so only a family that is made for them is offered for one.
+    let variant = ["kontext", "-fill", "_fill", "edit", "redux", "inpaint"].iter().any(|w| haystack.contains(w));
+    if variant && !best.edit {
         return None;
     }
-    // The longest matching hint wins, so "qwen-image-2.1" is not taken for "qwen-image".
-    FAMILIES
-        .iter()
-        .flat_map(|f| f.hints.iter().filter(|h| haystack.contains(*h)).map(move |h| (h.len(), f.id)))
-        .max_by_key(|(len, _)| *len)
-        .map(|(_, id)| id)
+    Some(best.id)
 }
 
 /// A weights file a person may add: GGUF or safetensors, a plain path, no more than ~60 GB.
@@ -436,6 +492,21 @@ mod tests {
     }
 
     #[test]
+    fn only_the_edit_families_follow_references_and_2511_gets_its_flag() {
+        for f in FAMILIES {
+            assert_eq!(f.edit, f.id.contains("-edit"), "{}", f.id);
+        }
+        let edit = def_of(&record("qwen-image-edit", "qwen-image-edit-Q4_K_M.gguf")).unwrap();
+        assert!(edit.edit && edit.extra_args.is_empty());
+        let edit_2511 = def_of(&record("qwen-image-edit-2511", "qwen-image-edit-2511-Q4_K_M.gguf")).unwrap();
+        assert!(edit_2511.edit);
+        assert_eq!(edit_2511.extra_args, ["--model-args", "qwen_image_zero_cond_t=true"]);
+        assert!(!def_of(&record("qwen-image", "Qwen_Image-Q4_K_M.gguf")).unwrap().edit);
+        // Its text encoder and VAE are the plain Qwen-Image ones.
+        assert_eq!(edit.files.len(), 3);
+    }
+
+    #[test]
     fn a_record_becomes_the_weights_plus_its_family_companions() {
         let def = def_of(&record("qwen-image", "Qwen_Image-Q4_K_M.gguf")).unwrap();
         assert_eq!(def.files.len(), 3);
@@ -483,7 +554,11 @@ mod tests {
         assert_eq!(guess_family("unsloth/Qwen-Image-2512-GGUF", "qwen-image-2512-Q4_K_M.gguf"), Some("qwen-image"));
         // Editing variants need other arguments and are not guessed.
         assert_eq!(guess_family("x/FLUX.1-Kontext-dev-gguf", "flux1-kontext-dev-Q4_K_M.gguf"), None);
-        assert_eq!(guess_family("x/Qwen-Image-Edit-GGUF", "qwen-image-edit-Q4_K_M.gguf"), None);
+        // An edit family exists for these two, so they are offered for it...
+        assert_eq!(guess_family("x/Qwen-Image-Edit-GGUF", "qwen-image-edit-Q4_K_M.gguf"), Some("qwen-image-edit"));
+        assert_eq!(guess_family("unsloth/Qwen-Image-Edit-2511-GGUF", "qwen-image-edit-2511-Q4_K_M.gguf"), Some("qwen-image-edit-2511"));
+        // ...but a fill variant of a plain family is still not a picture model.
+        assert_eq!(guess_family("x/FLUX.1-Fill-dev-gguf", "flux1-fill-dev-Q4_K_M.gguf"), None);
     }
 
     #[test]

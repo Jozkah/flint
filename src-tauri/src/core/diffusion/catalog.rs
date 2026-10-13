@@ -160,6 +160,10 @@ pub struct ModelDef {
     pub video: Option<VideoDefaults>,
     pub min_side: u32,
     pub max_side: u32,
+    /// Follows reference pictures (an instruction-edit model).
+    pub edit: bool,
+    /// Extra `sd-server` arguments this model needs, appended after the rest.
+    pub extra_args: &'static [&'static str],
 }
 
 impl ModelDef {
@@ -207,6 +211,8 @@ pub const Z_IMAGE_TURBO: ModelDef = ModelDef {
     video: None,
     min_side: 16,
     max_side: 2048,
+    edit: false,
+    extra_args: &[],
 };
 
 pub const WAN_22_TI2V_5B: ModelDef = ModelDef {
@@ -248,6 +254,8 @@ pub const WAN_22_TI2V_5B: ModelDef = ModelDef {
     video: Some(VideoDefaults { fps: 24, frames: 121, min_frames: 5, max_frames: 241 }),
     min_side: 16,
     max_side: 1280,
+    edit: false,
+    extra_args: &[],
 };
 
 pub const MODELS: &[ModelDef] = &[Z_IMAGE_TURBO, WAN_22_TI2V_5B];
