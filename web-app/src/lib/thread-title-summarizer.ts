@@ -268,6 +268,9 @@ async function runUtilityText(
       return null
     }
 
+    // A raw-completion model continues text instead of following a prompt.
+    if (selectedModel.capabilities?.includes('raw_completion')) return null
+
     // The chosen model first, then the user's fallback chain, as chat does
     // (`shouldFallback`: only a failure another model could fix). A hover
     // summary never leaves the machine, so its chain is local engines only.

@@ -3170,6 +3170,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // the model is known to accept one; otherwise it stays a user message,
     // which every template takes (`lib/compactionSystemRole.ts`).
     let requestSystem = effectiveSystem
+    // A raw-completion model just continues the text it is given, so a system
+    // prompt would be read as part of that text.
+    if (selectedModel?.capabilities?.includes('raw_completion')) {
+      requestSystem = undefined
+    }
     if (acceptsSystemRole(providerId, selectedModel)) {
       const folded = foldSummaryIntoSystem(requestSystem, effectiveMessages)
       requestSystem = folded.system
