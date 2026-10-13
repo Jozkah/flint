@@ -400,7 +400,7 @@ const WEB_BLOCK = [
   'whenever the task needs current or external information. When a statement',
   'rests on a source, cite it inline right after that statement as',
   '[[cite:URL]], using the full URL from a `web_search` result. Do not add a',
-  'separate sources section.',
+  'separate sources section. `image_search` finds a cover or photo to show.',
 ].join('\n')
 
 function workspaceBlock(opts: CoworkPromptOptions): string {

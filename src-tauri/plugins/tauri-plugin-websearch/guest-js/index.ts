@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
-import { SearchResult, FetchedPage } from './types'
+import { SearchResult, FetchedPage, ImageResult } from './types'
 
-export { SearchResult, FetchedPage } from './types'
+export { SearchResult, FetchedPage, ImageResult } from './types'
 
 export async function webSearch(
   query: string,
@@ -11,6 +11,22 @@ export async function webSearch(
   endpoint?: string
 ): Promise<SearchResult[]> {
   return await invoke('plugin:websearch|web_search', {
+    query,
+    count,
+    provider,
+    apiKey,
+    endpoint,
+  })
+}
+
+export async function imageSearch(
+  query: string,
+  count?: number,
+  apiKey?: string,
+  provider?: string,
+  endpoint?: string
+): Promise<ImageResult[]> {
+  return await invoke('plugin:websearch|image_search', {
     query,
     count,
     provider,

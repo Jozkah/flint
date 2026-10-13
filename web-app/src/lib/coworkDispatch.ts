@@ -578,7 +578,7 @@ export async function dispatchCoworkTool(
 
 const READ_ONLY_TIMEOUT_MS = 45_000
 const BOUNDED_READ_TOOLS = new Set([
-  'read', 'ls', 'find', 'grep', 'web_search', 'web_fetch',
+  'read', 'ls', 'find', 'grep', 'web_search', 'web_fetch', 'image_search',
 ])
 
 /** Stop waiting when the run stops; bound reads that can otherwise hold a turn forever. */

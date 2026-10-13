@@ -178,6 +178,7 @@ const CAPABILITIES: Record<string, string> = {
   team: 'exec',
   web_search: 'net',
   web_fetch: 'net',
+  image_search: 'net',
 }
 
 /** The shape of the thing acted on, which is what makes a resource canonical. */
@@ -189,6 +190,7 @@ const KINDS: Record<string, string> = {
   ask: 'unknown',
   web_search: 'net',
   web_fetch: 'net',
+  image_search: 'net',
 }
 
 /**
