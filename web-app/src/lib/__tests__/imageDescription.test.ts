@@ -14,6 +14,7 @@ vi.mock('sonner', () => ({ toast: toastFn }))
 import {
   clearImageDescriptionCache,
   describeImagesInMessages,
+  describeRunAttachments,
   embedImageDescriptions,
   fingerprint,
   pickDescriber,
@@ -200,5 +201,25 @@ describe('embedImageDescriptions', () => {
     useImageDescription.setState({ embed: true, enabled: false })
     const { serviceHub } = hub()
     expect(await embedImageDescriptions({ images: [image(1)], threadId: 't', serviceHub })).toEqual([])
+  })
+})
+
+describe('describeRunAttachments', () => {
+  const att = (n: number) => ({ name: `image-${n}.png`, mime: 'image/png', data: `${'A'.repeat(20)}${n}` })
+
+  it('turns images headed for a server session into numbered text', async () => {
+    run.mockResolvedValueOnce('a cat').mockResolvedValueOnce('a dog')
+    const out = await describeRunAttachments([att(1), att(2)], describer, { session: 's' })
+    expect(out.failed).toBe(0)
+    expect(out.text).toContain('[Attached image 1, described because this model cannot see images]\na cat')
+    expect(out.text).toContain('[Attached image 2, described because this model cannot see images]\na dog')
+    expect(out.text.startsWith('\n\n')).toBe(true)
+  })
+
+  it('reports an image it could not describe once and leaves it out', async () => {
+    run.mockRejectedValue(new Error('boom'))
+    const out = await describeRunAttachments([att(1), att(2)], describer, { session: 's' })
+    expect(out).toEqual({ text: '', failed: 2 })
+    expect(toastFn.error).toHaveBeenCalledTimes(1)
   })
 })

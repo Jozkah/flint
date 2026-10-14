@@ -3209,40 +3209,40 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const modelSupportsVision =
       (selectedModel?.capabilities?.includes('vision') ?? false) &&
       imageLimit !== 0
-    let withInlineAttachments = attachToolScreenshots(
-      this.mapUserInlineAttachments(effectiveMessages),
-      { supportsVision: modelSupportsVision }
-    )
     // A model that cannot see gets a written description of each image, made by
-    // one that can, in the image's place. With no such model (or the feature
-    // off) the images are stripped below, as before.
-    if (!modelSupportsVision) {
-      const describer = currentDescriber()
-      if (describer) {
-        withInlineAttachments = await describeImagesInMessages(
-          withInlineAttachments,
-          describer,
-          { session: threadId, signal: options.abortSignal }
-        )
-      }
-    }
+    // one that can, in the image's place: the images the user attached, and
+    // those a tool returned (a screenshot, a file read). Tool images are hoisted
+    // as for a model that sees and then described below. With no such model (or
+    // the feature off) the images are stripped, as before.
+    const describer = modelSupportsVision ? null : currentDescriber()
+    const imagesReachModel = modelSupportsVision || describer !== null
+    const withInlineAttachments = attachToolScreenshots(
+      this.mapUserInlineAttachments(effectiveMessages),
+      { supportsVision: imagesReachModel }
+    )
     // A local model reads a tool result as text, so an image in one (an MCP
     // screenshot tool) would arrive as its full base64 and flood the context.
     // The image is swapped for a note and, for a model that can see, attached
     // again as an image. Remote providers get the same treatment so a vision
     // model sees the image and any other gets a short note, not base64 text.
     // llama.cpp cannot decode WebP, so a WebP image goes to it as PNG.
-    const attachmentsReady = LOCAL_ENGINE_PROVIDERS.has(providerId ?? '')
+    const preparedImages = LOCAL_ENGINE_PROVIDERS.has(providerId ?? '')
       ? await transcodeWebpImages(
           prepareToolResultImagesForModel(withInlineAttachments, {
-            supportsVision: modelSupportsVision,
+            supportsVision: imagesReachModel,
           })
         )
       : this.hoistsToolImages() || hasAgentToolImages(withInlineAttachments)
         ? prepareToolResultImagesForModel(withInlineAttachments, {
-            supportsVision: modelSupportsVision,
+            supportsVision: imagesReachModel,
           })
         : withInlineAttachments
+    const attachmentsReady = describer
+      ? await describeImagesInMessages(preparedImages, describer, {
+          session: threadId,
+          signal: options.abortSignal,
+        })
+      : preparedImages
     const baseMessages = await convertToModelMessages(
       coalesceMessagesForAlternation(
         resolveOrphanToolCalls(

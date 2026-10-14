@@ -139,6 +139,7 @@ import {
 } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { currentDescriber, describeRunAttachments } from '@/lib/imageDescription'
 import { enableModelCapabilities } from '@/lib/modelCapabilityEnable'
 import { parseServerContextLimit, rememberServerLimit } from '@/lib/contextLimitRecovery'
 import { selectionForThreadModel } from '@/hooks/useConversationPane'
@@ -2737,6 +2738,21 @@ export function CoworkPage() {
             return refused(`A message can carry at most ${MAX_RUN_ATTACHMENTS} files.`)
           }
           sentFiles = media.attachments
+          // The server runs the session's model, which may not see. Its images
+          // are described here, by a model that can, and travel as text.
+          const sessionModel = resolveCoworkModel(
+            useCoworkSessions.getState().sessions.find((s) => s.id === sid)?.model,
+            useModelProvider.getState()
+          ).model
+          const describer =
+            sentFiles.length > 0 && sessionModel && !sessionModel.capabilities?.includes('vision')
+              ? currentDescriber()
+              : null
+          if (describer) {
+            const described = await describeRunAttachments(sentFiles, describer, { session: sid })
+            outgoing += described.text
+            sentFiles = undefined
+          }
         } catch (e) {
           return refused(e instanceof Error ? e.message : String(e))
         }

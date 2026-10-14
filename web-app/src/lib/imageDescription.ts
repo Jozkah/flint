@@ -7,6 +7,7 @@ import { useImageDescription } from '@/hooks/useImageDescription'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import type { ServiceHub } from '@/services'
 import type { Attachment } from '@/types/attachment'
+import type { RunAttachment } from '@/lib/remoteRunner'
 
 /**
  * Images for models that cannot see them.
@@ -208,6 +209,37 @@ export async function describeImagesInMessages(
     })
     return { ...message, parts } as UIMessage
   })
+}
+
+/**
+ * Describe the images headed for a session run elsewhere (a server session
+ * takes them as files), as text to append to the message. An image that cannot
+ * be described is reported once and left out of the text; the caller decides
+ * what to do with it.
+ */
+export async function describeRunAttachments(
+  attachments: readonly RunAttachment[],
+  describer: Describer,
+  opts: { session: string; signal?: AbortSignal }
+): Promise<{ text: string; failed: number }> {
+  const parts: string[] = []
+  let failed = 0
+  let told = false
+  for (const [i, a] of attachments.entries()) {
+    try {
+      const description = await describeDataUrl(`data:${a.mime};base64,${a.data}`, describer, opts)
+      parts.push(descriptionPart(i + 1, description).text)
+    } catch (e) {
+      failed += 1
+      if (!told && !opts.signal?.aborted) {
+        told = true
+        toast.error(
+          `Could not describe an attached image with ${describer.modelId}: ${e instanceof Error ? e.message : String(e)}`
+        )
+      }
+    }
+  }
+  return { text: parts.length ? `\n\n${parts.join('\n\n')}` : '', failed }
 }
 
 /**
