@@ -167,7 +167,7 @@ export function quantizationFromFilename(filename: string): string | null {
     // Ternary and Q*_0 first: 'TQ1_0' contains 'Q1_0'.
     'TQ1_0', 'TQ2_0', 'Q1_0', 'Q2_0', 'MXFP4', 'NVFP4', 'IQ1_S', 'IQ1_M', 'IQ2_XXS', 'IQ2_XS', 'IQ2_S', 'IQ2_M',
     'IQ3_XXS', 'IQ3_XS', 'IQ3_S', 'IQ3_M', 'IQ4_XS', 'IQ4_NL',
-    'Q2_K', 'Q2_K_S', 'Q3_K_S', 'Q3_K_M', 'Q3_K_L',
+    'Q2_K_S', 'Q2_K', 'Q3_K_S', 'Q3_K_M', 'Q3_K_L',
     'Q4_0', 'Q4_1', 'Q4_K_S', 'Q4_K_M', 'Q4_K_L',
     'Q5_0', 'Q5_1', 'Q5_K_S', 'Q5_K_M', 'Q5_K_L',
     'Q6_K', 'Q6_K_L', 'Q8_0', 'Q8_K', 'F16', 'F32', 'BF16',

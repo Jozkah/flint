@@ -113,6 +113,7 @@ describe('quantization parsing', () => {
     expect(quantizationFromFilename('foo-q4_k_m.gguf')).toBe('Q4_K_M')
     expect(quantizationFromFilename('Bonsai-27B-Q1_0.gguf')).toBe('Q1_0')
     expect(quantizationFromFilename('m-TQ1_0.gguf')).toBe('TQ1_0')
+    expect(quantizationFromFilename('m-Q2_K_S.gguf')).toBe('Q2_K_S')
     expect(quantizationFromFilename('gpt-oss-MXFP4.gguf')).toBe('MXFP4')
   })
 
