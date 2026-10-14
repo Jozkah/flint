@@ -89,6 +89,7 @@ describe('GPUs switched off in Settings', () => {
 
 describe('fitOfGroup', () => {
   it('sizes a file the listing gave no length for from its parameters', () => {
+    expect(approxWeightsBytes(27, 'Q1_0')!).toBeCloseTo((27e9 * 1.125) / 8, -6)
     const bytes = approxWeightsBytes(8, 'Q4_K_M')!
     expect(bytes / GB).toBeGreaterThan(4.3)
     expect(bytes / GB).toBeLessThan(5.2)

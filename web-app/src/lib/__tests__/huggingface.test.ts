@@ -111,6 +111,7 @@ describe('quantization parsing', () => {
   it('recognizes common K quants', () => {
     expect(quantizationFromFilename('foo-Q5_K_M.gguf')).toBe('Q5_K_M')
     expect(quantizationFromFilename('foo-q4_k_m.gguf')).toBe('Q4_K_M')
+    expect(quantizationFromFilename('Bonsai-27B-Q1_0.gguf')).toBe('Q1_0')
   })
 
   it('recognizes split file names', () => {
