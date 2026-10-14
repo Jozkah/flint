@@ -164,7 +164,8 @@ export function repoFromDeepLink(link: string): string | null {
 export function quantizationFromFilename(filename: string): string | null {
   const upper = filename.toUpperCase()
   const known = [
-    'Q1_0', 'IQ1_S', 'IQ1_M', 'IQ2_XXS', 'IQ2_XS', 'IQ2_S', 'IQ2_M',
+    // Ternary and Q*_0 first: 'TQ1_0' contains 'Q1_0'.
+    'TQ1_0', 'TQ2_0', 'Q1_0', 'Q2_0', 'MXFP4', 'NVFP4', 'IQ1_S', 'IQ1_M', 'IQ2_XXS', 'IQ2_XS', 'IQ2_S', 'IQ2_M',
     'IQ3_XXS', 'IQ3_XS', 'IQ3_S', 'IQ3_M', 'IQ4_XS', 'IQ4_NL',
     'Q2_K', 'Q2_K_S', 'Q3_K_S', 'Q3_K_M', 'Q3_K_L',
     'Q4_0', 'Q4_1', 'Q4_K_S', 'Q4_K_M', 'Q4_K_L',
@@ -182,9 +183,9 @@ export function explainQuantization(quant: string | null): string {
   if (q.startsWith('Q6')) return 'Very high quality with moderate compression'
   if (q.startsWith('Q5')) return 'High quality and a strong quality/size trade-off'
   if (q === 'Q4_K_M' || q === 'IQ4_XS' || q === 'Q4_K_L') return 'Recommended balance of quality, speed, and memory for most systems'
-  if (q.startsWith('Q4')) return 'Balanced size and quality for everyday local inference'
+  if (q.startsWith('Q4') || q.endsWith('FP4')) return 'Balanced size and quality for everyday local inference'
   if (q.startsWith('Q3') || q.startsWith('IQ3')) return 'Smaller and faster, with a noticeable quality trade-off'
-  if (q.startsWith('Q2') || q.startsWith('IQ2') || q.startsWith('IQ1') || q.startsWith('Q1')) return 'Very small footprint with the largest quality trade-off'
+  if (q.startsWith('Q2') || q.startsWith('IQ2') || q.startsWith('IQ1') || q.startsWith('Q1') || q.startsWith('TQ')) return 'Very small footprint with the largest quality trade-off'
   return 'Quantized GGUF model'
 }
 
@@ -279,6 +280,11 @@ export function groupHuggingFaceFiles(files: HuggingFaceFile[]): HuggingFaceFile
  */
 const BITS_PER_WEIGHT: Array<[RegExp, number]> = [
   [/^Q1_0/, 1.125],
+  [/^TQ1_0/, 1.69],
+  [/^TQ2_0/, 2.06],
+  [/^Q2_0/, 2.25],
+  [/^MXFP4/, 4.25],
+  [/^NVFP4/, 4.5],
   [/^IQ1/, 1.8],
   [/^(IQ2|Q2)/, 2.7],
   [/^(IQ3|Q3)/, 3.6],
