@@ -700,6 +700,19 @@ export type AgentToolOptions = {
   onOutput?: (text: string) => void
 }
 
+/**
+ * Why a chat may not run this agent tool, or null when it may. The chat only
+ * offers the agent tools while the setting is on (`list_plugins` excepted), but
+ * a call can still arrive from a replayed history, so the dispatcher asks here
+ * rather than trusting the tool list. Cowork has its own gate and does not.
+ */
+export function chatAgentToolRefusal(toolName: string): string | null {
+  if (toolName === 'list_plugins') return null
+  if (!AGENT_TOOL_NAMES.has(toolName)) return null
+  if (useAgentToolsConfig.getState().agentToolsEnabled) return null
+  return 'Agent tools are turned off in Settings > Agent tools, so this was not run.'
+}
+
 export async function executeAgentTool(
   toolName: string,
   input: unknown,

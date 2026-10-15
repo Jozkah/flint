@@ -320,6 +320,8 @@ fn lookup_blocking(project: &Path, pr: Option<&str>) -> PrLookup {
         }
     }
     let mut cmd = Command::new(&gh);
+    // `gh` is the host's program: keep an AppImage's bundled libs out of it.
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     // A URL names its repository; the folder is only a working directory.
     if project.is_dir() {
         cmd.current_dir(project);
@@ -558,6 +560,7 @@ pub(crate) fn run_gh_bounded(
     deadline: std::time::Instant,
 ) -> GhOutput {
     let mut cmd = Command::new(gh);
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     if let Some(cwd) = cwd.filter(|p| p.is_dir()) {
         cmd.current_dir(cwd);
     }

@@ -45,6 +45,7 @@ import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useFitContext } from '@/hooks/useFitContext'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { modelIdKey } from '@/lib/modelIdPath'
+import { pinQueryMatches } from '@/lib/huggingfaceSearch'
 import {
   cleanHuggingFaceRepo,
   pinExactRepo,
@@ -57,7 +58,7 @@ import {
   inferParameterCount,
   mlxWeightsBytes,
   repoLooksMlx,
-  searchHuggingFaceModels,
+  searchHuggingFaceModelsByWords,
   type HuggingFaceFile,
   type HuggingFaceFormat,
   type HuggingFaceModel,
@@ -186,14 +187,14 @@ function ModelDiscoverRoute() {
         let result: HuggingFaceModel[]
         if (format === 'all' && IS_MACOS) {
           const [gguf, mlx] = await Promise.all([
-            searchHuggingFaceModels(debouncedQuery, token, 'gguf'),
-            searchHuggingFaceModels(debouncedQuery, token, 'mlx'),
+            searchHuggingFaceModelsByWords(debouncedQuery, token, 'gguf'),
+            searchHuggingFaceModelsByWords(debouncedQuery, token, 'mlx'),
           ])
           const byId = new Map<string, HuggingFaceModel>()
           for (const model of [...gguf, ...mlx]) byId.set(model.id, model)
           result = [...byId.values()]
         } else {
-          result = await searchHuggingFaceModels(
+          result = await searchHuggingFaceModelsByWords(
             debouncedQuery,
             token,
             format
@@ -327,7 +328,7 @@ function ModelDiscoverRoute() {
       return b.downloads - a.downloads
     })
     // A pasted exact repo id comes first, whatever the sort says.
-    return pinExactRepo(sorted, debouncedQuery)
+    return pinExactRepo(pinQueryMatches(sorted, debouncedQuery), debouncedQuery)
   }, [
     debouncedQuery,
     models,

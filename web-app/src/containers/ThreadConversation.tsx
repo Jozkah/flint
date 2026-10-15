@@ -188,6 +188,7 @@ import {
 } from '@/lib/toolOutputImages'
 import {
   AGENT_TOOL_NAMES,
+  chatAgentToolRefusal,
   executeAgentTool,
   notifyToolBatch,
 } from '@/lib/agentTools'
@@ -1132,6 +1133,8 @@ export function ThreadConversation({
               result = executeVisualizeTool(toolName, toolCall.input, threadId)
             } else if (isImageTool(toolName)) {
               result = await runImageTool(toolName, toolCall.input, threadId)
+            } else if (chatAgentToolRefusal(toolName)) {
+              result = { error: chatAgentToolRefusal(toolName) ?? '' }
             } else if (AGENT_TOOL_NAMES.has(toolName)) {
               const agentResult = await executeAgentTool(
                 toolName,

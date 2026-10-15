@@ -29,6 +29,8 @@ type ModelYaml = ModelConfig & {
   cache_type_k?: string
   cache_type_v?: string
   parallel?: number
+  /** false: no extra slots beyond `parallel`, so `parallel = 1` is one slot. */
+  reserve_background_slots?: boolean
   cont_batching?: boolean
   pooling?: 'none' | 'mean' | 'cls' | 'last' | 'rank'
   ubatch_size?: number
@@ -324,7 +326,9 @@ export async function generatePreset(
   const reservedBackgroundSlots =
     typeof opts.reservedBackgroundSlots === 'number'
       ? opts.reservedBackgroundSlots
-      : RESERVED_BACKGROUND_SLOTS
+      : config.reserve_background_slots === false
+        ? 0
+        : RESERVED_BACKGROUND_SLOTS
   const modelsDir = await joinPath([providerPath, 'models'])
 
   // Ensure the directory exists; an empty install is fine — we still emit a

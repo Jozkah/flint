@@ -127,6 +127,7 @@ const PRESET_AFFECTING_KEYS = new Set<string>([
   'cache_type_k',
   'cache_type_v',
   'parallel',
+  'reserve_background_slots',
   'cont_batching',
   'threads',
   'threads_batch',

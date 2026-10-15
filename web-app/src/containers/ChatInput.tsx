@@ -818,6 +818,7 @@ const ChatInput = memo(function ChatInput({
         return { text, resolvedContents: '' }
 
       const parts: string[] = []
+      const unresolved = new Set<string>()
       for (const ref of refs) {
         const typed = typedReference(ref)
         // A skill reference is acted on by the skill machinery, which reads
@@ -853,6 +854,7 @@ const ChatInput = memo(function ChatInput({
         if (resolved.ok) {
           parts.push(resolved.content)
         } else {
+          unresolved.add(ref)
           // Said in the message, not dropped: the model should know a
           // reference was refused, and why, rather than miss it silently.
           parts.push(
@@ -865,7 +867,7 @@ const ChatInput = memo(function ChatInput({
 
       // Remove @ references from the prompt text (they'll be replaced by the
       // resolved contents above so the model sees the content directly)
-      const cleanText = stripPromptReferences(text)
+      const cleanText = stripPromptReferences(text, unresolved)
 
       return { text: cleanText, resolvedContents }
     },

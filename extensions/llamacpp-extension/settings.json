@@ -301,6 +301,15 @@
     }
   },
   {
+    "key": "reserve_background_slots",
+    "title": "Reserve Background Slots",
+    "description": "Keep two extra internal slots beyond Parallel Sequences for background requests (thread auto-titling, Cowork, subagents) so they do not evict your chat's KV cache. Turn off to run exactly Parallel Sequences slots (set it to 1 for a single slot); background requests then share your chat's slot and can evict its cache. Reloads the model.",
+    "controllerType": "checkbox",
+    "controllerProps": {
+      "value": true
+    }
+  },
+  {
     "key": "cont_batching",
     "title": "Continuous Batching",
     "description": "Enable continuous batching (a.k.a dynamic batching) for concurrent requests. Enabled by default, matching llama.cpp.",
