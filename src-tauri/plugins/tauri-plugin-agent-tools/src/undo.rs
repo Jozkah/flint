@@ -668,7 +668,7 @@ mod tests {
     use super::*;
 
     fn dirs(name: &str) -> (PathBuf, PathBuf) {
-        let base = std::env::temp_dir().join(format!(
+        let base = crate::test_temp_root().join(format!(
             "jan-undo-{name}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()

@@ -3281,6 +3281,7 @@ mod tests {
     /// A shell that cannot find its own coreutils is a shell that fails on the
     /// second command, so the installation's directories go on `PATH`.
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn a_shells_own_runtime_directories_are_offered_for_path() {
         let dirs = shell_runtime_dirs(Path::new(r"C:\Program Files\Git\bin\bash.exe"));
         for expected in [

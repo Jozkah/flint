@@ -2494,7 +2494,7 @@ mod tests {
     /// A temp dir standing in for the Jan data folder.
     fn unique_data_folder() -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-        std::env::temp_dir().join(format!("jan_cmd_test_{}_{}", std::process::id(), n))
+        crate::test_temp_root().join(format!("jan_cmd_test_{}_{}", std::process::id(), n))
     }
 
     /// A folder that is *not* under the host temp dir. On Linux an absolute
@@ -2745,7 +2745,7 @@ mod tests {
         assert!(edit.contains("-") && edit.contains("edited"), "{edit}");
 
         // Outside every root this session may write: no preview.
-        let outside = data.join("outside-secret.txt");
+        let outside = repo_outside_tmp("preview").join("outside-secret.txt");
         std::fs::write(&outside, "SECRET\n").unwrap();
         for path in [outside.to_string_lossy().to_string(), "../../../outside-secret.txt".into()] {
             let none = preview_change(
@@ -4156,7 +4156,7 @@ mod tests {
     async fn a_chat_thread_reads_its_attached_folders_read_only() {
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
-        let outside = unique_data_folder();
+        let outside = repo_outside_tmp("attached");
         let a = outside.join("a");
         let b = outside.join("b");
         std::fs::create_dir_all(&a).unwrap();

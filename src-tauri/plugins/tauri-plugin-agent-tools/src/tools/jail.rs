@@ -2540,6 +2540,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn a_denial_in_a_package_cache_names_the_cache_root() {
         use crate::tools::shell_diag::FailureClass;
         let (root, what) = toolchain_cache_root(Path::new(

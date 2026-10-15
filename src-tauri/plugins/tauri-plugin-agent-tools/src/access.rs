@@ -537,6 +537,12 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
 }
 
 fn is_system_location(path: &Path) -> bool {
+    // macOS keeps each user's temp and cache folders under /var/folders; they are
+    // the user's, not the system's, though /var as a whole is.
+    #[cfg(target_os = "macos")]
+    if within(path, &canonical_or_self(Path::new("/var/folders"))) {
+        return false;
+    }
     let mut roots: Vec<PathBuf> = Vec::new();
     #[cfg(windows)]
     for var in [
@@ -968,7 +974,7 @@ mod tests {
     }
 
     fn fixture(tag: &str) -> Fixture {
-        let base = std::env::temp_dir().join(format!(
+        let base = crate::test_temp_root().join(format!(
             "jan_access_{tag}_{}_{}",
             std::process::id(),
             now_secs()

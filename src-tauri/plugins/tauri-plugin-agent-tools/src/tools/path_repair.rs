@@ -152,6 +152,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn a_new_file_in_an_existing_folder_is_repaired_too() {
         let exists = |p: &str| p == "C:\\tmp";
         assert_eq!(

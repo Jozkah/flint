@@ -1481,6 +1481,15 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
     use nix::sys::signal::{kill, killpg, Signal};
     use nix::unistd::Pid;
 
+    // `killpg(1)` is `kill(-1)`: SIGKILL to every process this user may signal,
+    // including the app, its terminal and a CI runner. No job is ever pid 0 or 1.
+    if pid <= 1 {
+        return KillOutcome::Failed("refusing to signal pid 0 or 1".into());
+    }
+    // Above i32::MAX is no process id at all: nothing to signal.
+    if pid > i32::MAX as u32 {
+        return KillOutcome::Gone;
+    }
     let target = Pid::from_raw(pid as i32);
     match killpg(target, Signal::SIGKILL) {
         Ok(()) => KillOutcome::Signalled,
@@ -2460,6 +2469,7 @@ mod origin_tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn git_under_program_files_is_a_system_install() {
         assert_eq!(
             origin(r"C:\Program Files\Git\bin\bash.exe"),
@@ -2478,6 +2488,7 @@ mod origin_tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn git_under_the_profile_is_a_user_install() {
         assert_eq!(
             origin(r"C:\Users\me\AppData\Local\Programs\Git\bin\bash.exe"),
@@ -2496,6 +2507,7 @@ mod origin_tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn the_windows_shells_are_windows_system() {
         assert_eq!(
             origin(r"C:\Windows\System32\cmd.exe"),
@@ -2707,6 +2719,7 @@ mod chaining_tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn windows_powershell_5_cannot_chain_but_pwsh_and_cmd_can() {
         // Windows PowerShell 5.1: no chaining.
         assert!(!supports_and_or_chaining(&ps("powershell.exe")));
