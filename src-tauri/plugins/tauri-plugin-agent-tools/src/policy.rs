@@ -57,6 +57,10 @@ pub struct ProjectPolicy {
     pub network: NetworkPolicy,
     /// `[tools].nul_programs`: added to the programs known to open NUL.
     pub nul_programs: Vec<String>,
+    /// Set when `agent.toml` exists but could not be parsed and the policy
+    /// failed closed. Callers show it so the user learns why every write is
+    /// refused, instead of it only reaching stderr.
+    pub load_error: Option<String>,
 }
 
 impl Default for ProjectPolicy {
@@ -68,6 +72,7 @@ impl Default for ProjectPolicy {
             permissions: ToolPermissions::allow_all(),
             network: NetworkPolicy::open(),
             nul_programs: Vec::new(),
+            load_error: None,
         }
     }
 }
@@ -135,6 +140,10 @@ pub fn load_under(
                     deny_domains: Vec::new(),
                 },
                 nul_programs: Vec::new(),
+                load_error: Some(format!(
+                    "{} could not be read, so this project runs read-only and offline until it is fixed: {e}",
+                    agent_toml_path(root).display()
+                )),
             };
         }
     };
@@ -171,6 +180,7 @@ pub fn load_under(
             deny_domains: org.clamp_deny_domains(&tools.deny_domains),
         },
         nul_programs: tools.nul_programs,
+        load_error: None,
     }
 }
 
@@ -192,6 +202,7 @@ fn clamp(policy: ProjectPolicy, org: &crate::org_policy::OrgPolicy) -> ProjectPo
             deny_domains: org.clamp_deny_domains(&policy.network.deny_domains),
         },
         nul_programs: policy.nul_programs,
+        load_error: policy.load_error,
     }
 }
 
@@ -223,6 +234,7 @@ allow = [\"bash\"
         assert_eq!(policy.permissions.default_mode(), PermissionDefault::ReadOnly);
         assert!(!policy.permissions.is_allowed("bash", &crate::subject::Subject::MainAgent));
         assert!(!policy.network.allowed);
+        assert!(policy.load_error.as_deref().is_some_and(|e| e.contains("agent.toml")));
     }
 
     #[test]
