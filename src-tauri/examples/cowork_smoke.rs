@@ -3452,6 +3452,7 @@ fn scenario_team_review_second(ctx: &Ctx) -> ScenarioResult {
 
 /// A file a shell wrote, as text: Windows PowerShell's `>` writes UTF-16 with
 /// a byte-order mark, cmd and bash write bytes as given.
+#[allow(clippy::chunks_exact_to_as_chunks)]
 fn shell_text(path: &Path) -> String {
     let Ok(bytes) = std::fs::read(path) else {
         return String::new();

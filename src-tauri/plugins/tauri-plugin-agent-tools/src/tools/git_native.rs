@@ -893,7 +893,7 @@ mod tests {
         assert!(validate_clone_dest(&project, None, &[], "../outside/r").is_err());
         let g = granted.join("r").display().to_string();
         assert!(validate_clone_dest(&project, None, &[], &g).is_err());
-        assert!(validate_clone_dest(&project, None, &[granted.clone()], &g).is_ok());
+        assert!(validate_clone_dest(&project, None, std::slice::from_ref(&granted), &g).is_ok());
         assert!(validate_clone_dest(&project, None, &[], "  ").is_err());
         let _ = std::fs::remove_dir_all(&base);
     }

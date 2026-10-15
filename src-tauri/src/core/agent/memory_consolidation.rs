@@ -396,6 +396,7 @@ pub(crate) struct MergedNote {
 /// Given the source notes, return the consolidated set. The one seam the whole
 /// feature turns on: a deterministic default ships today, a model-backed
 /// implementation drops in unchanged.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub(crate) trait Merger: Send + Sync {
     async fn merge(&self, notes: &[Note]) -> Result<MergeResult, String>;

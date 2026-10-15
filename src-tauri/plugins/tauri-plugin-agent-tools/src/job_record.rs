@@ -395,7 +395,32 @@ pub fn creation_time_of(pid: u32) -> Option<u64> {
     crate::tools::proc::creation_time_of_pid(pid)
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub fn creation_time_of(pid: u32) -> Option<u64> {
+    // macOS has no /proc: the kernel reports the start time through
+    // proc_pidinfo, in microseconds since the epoch.
+    let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+    let got = unsafe {
+        libc::proc_pidinfo(
+            pid as libc::c_int,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            &mut info as *mut libc::proc_bsdinfo as *mut libc::c_void,
+            size,
+        )
+    };
+    if got != size {
+        return None;
+    }
+    let micros = info
+        .pbi_start_tvsec
+        .checked_mul(1_000_000)?
+        .checked_add(info.pbi_start_tvusec)?;
+    (micros != 0).then_some(micros)
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
 pub fn creation_time_of(pid: u32) -> Option<u64> {
     // /proc/<pid>/stat field 22 is the process's start time in clock ticks
     // since boot: stable for the life of the process and different for a

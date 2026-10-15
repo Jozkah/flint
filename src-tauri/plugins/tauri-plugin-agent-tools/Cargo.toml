@@ -6,7 +6,7 @@ description = "Built-in agent toolset (filesystem, shell, skills, memory, web) s
 license = "Apache-2.0"
 repository = "https://github.com/Jozkah/flint"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.82"
 exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
 links = "tauri-plugin-agent-tools"
 

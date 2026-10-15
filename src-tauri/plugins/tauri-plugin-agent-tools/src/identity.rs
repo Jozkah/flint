@@ -149,6 +149,7 @@ macro_rules! id_type {
             /// Why it was refused, for a test that needs to be sure which rule
             /// fired rather than that some rule did.
             #[cfg(test)]
+            #[allow(dead_code)]
             fn refusal(raw: &str) -> Option<Refusal> {
                 check($kind, raw).err().map(|(r, _)| r)
             }

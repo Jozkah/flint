@@ -2576,6 +2576,7 @@ mod user_memory_tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::field_reassign_with_default)]
     async fn user_memory_reaches_any_chat_and_recall_off_withholds_it_without_deleting() {
         let dir = root("recall");
         let user = put(&dir, "The user signs off as Quill.", Scope::User, None);
@@ -2617,6 +2618,7 @@ mod user_memory_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[allow(clippy::field_reassign_with_default)]
     async fn user_off_async(dir: &Path) {
         let mut recall = settings::Recall::default();
         recall.user = false;
@@ -2756,6 +2758,7 @@ mod proposal_tests {
     }
 
     /// Put a proposal in the store the way the tool does.
+    #[allow(dead_code)]
     async fn propose(dir: &std::path::Path, content: &str) -> Vec<PendingProposalView> {
         let _ = memory_record_propose_inferred(
             at(dir),

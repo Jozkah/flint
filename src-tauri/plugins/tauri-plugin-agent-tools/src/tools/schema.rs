@@ -858,6 +858,16 @@ fn browser_tool_schemas() -> Vec<Value> {
     ]
 }
 
+/// Search tools a model is *not* offered but an MCP peer is (upstream #9011).
+///
+/// Upstream withholds `ls`/`find`/`grep` from models and serves them to MCP
+/// peers through this list. This fork already offers them to models in
+/// [`builtin_tool_schemas`], so the MCP server gets them from there and this
+/// list is empty -- chaining both never advertises a tool twice.
+pub fn search_tool_schemas() -> Vec<Value> {
+    Vec::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1074,14 +1084,4 @@ mod tests {
             }
         }
     }
-}
-
-/// Search tools a model is *not* offered but an MCP peer is (upstream #9011).
-///
-/// Upstream withholds `ls`/`find`/`grep` from models and serves them to MCP
-/// peers through this list. This fork already offers them to models in
-/// [`builtin_tool_schemas`], so the MCP server gets them from there and this
-/// list is empty -- chaining both never advertises a tool twice.
-pub fn search_tool_schemas() -> Vec<Value> {
-    Vec::new()
 }

@@ -54,7 +54,7 @@ fn extract_pdf_text_lenient(bytes: &[u8]) -> Result<String, String> {
                     }
                 }
             }
-            out.push_str("\n");
+            out.push('\n');
         }
         if out.chars().all(char::is_whitespace) {
             if let Some(e) = first_err {
@@ -667,10 +667,10 @@ mod tests {
     fn read_text_auto_decodes_a_legacy_encoding() {
         let dir = TempDir::new("latin");
         // windows-1252 French text: not valid UTF-8.
-        let bytes: &[u8] = b"Le caf\xE9 cr\xE8me de la r\xE9gion est tr\xE8s appr\xE9ci\xE9 \
-            par les habitu\xE9s du march\xE9, \xE0 c\xF4t\xE9 de l'\xE9glise.\n";
-        assert!(std::str::from_utf8(bytes).is_err());
-        let path = dir.file("latin.txt", bytes);
+        let bytes: Vec<u8> = b"Le caf\xE9 cr\xE8me de la r\xE9gion est tr\xE8s appr\xE9ci\xE9 \
+            par les habitu\xE9s du march\xE9, \xE0 c\xF4t\xE9 de l'\xE9glise.\n".to_vec();
+        assert!(std::str::from_utf8(&bytes).is_err());
+        let path = dir.file("latin.txt", &bytes);
         let text = read_text_auto(&path).unwrap();
         assert!(text.contains("caf\u{00E9}"), "{text}");
     }

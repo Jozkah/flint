@@ -415,7 +415,7 @@ mod tests {
         let mut w = marks(&[("a", "2026-05-02T08:59:00Z")]);
         let mut seen = Vec::new();
         for now in ["2026-05-02T09:00:20Z", "2026-05-02T09:30:20Z", "2026-05-02T17:00:20Z"] {
-            let d = run(now, &[t.clone()], &w);
+            let d = run(now, std::slice::from_ref(&t), &w);
             seen.extend(d.fires.iter().map(|f| f.scheduled_for));
             w.extend(d.watermarks);
         }

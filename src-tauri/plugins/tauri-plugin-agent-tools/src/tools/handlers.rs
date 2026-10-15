@@ -3897,6 +3897,7 @@ async fn grep(
 
         let is_file = base.is_file();
         // Grouped per file, in walk order: (relative path, [(line no, is match, text)]).
+        #[allow(clippy::type_complexity)]
         let mut groups: Vec<(String, Vec<(usize, bool, String)>)> = Vec::new();
         let mut count = 0usize;
         let mut truncated = false;
@@ -4097,6 +4098,7 @@ fn walked_secret(path: &Path) -> bool {
 /// Model-facing grep output: a header line per file (its relative path), then
 /// its lines as `  N: text` for matches and `  N- text` for context, with a
 /// blank line between files. Gaps inside one file are marked by `  --`.
+#[allow(clippy::type_complexity)]
 fn format_grep_groups(groups: &[(String, Vec<(usize, bool, String)>)]) -> String {
     let mut out = String::new();
     for (gi, (file, entries)) in groups.iter().enumerate() {
@@ -4846,7 +4848,7 @@ mod tests {
             let out = run_git_inspect(
                 "https://github.com/Jozkah/streamer",
                 &root,
-                &[clone.clone()],
+                std::slice::from_ref(&clone),
             )
             .await;
             assert!(out.contains("Recovered locally"), "{out}");
@@ -5094,6 +5096,7 @@ two
         Sleep { seconds: u32 },
         /// Print a line, then wait. The line has to arrive before the deadline
         /// does, which is the whole point of the tests that use it.
+        #[allow(dead_code)]
         PrintThenSleep { text: &'static str, seconds: u32 },
         /// Wait, then print a line.
         SleepThenPrint { seconds: u32, text: &'static str },
@@ -5103,8 +5106,8 @@ two
         PrintPidThenSleep { text: &'static str, seconds: u32 },
     }
 
-    /// The command language the sandboxed shell for `root` actually speaks.
-    ///
+    // The command language the sandboxed shell for `root` actually speaks.
+    //
     // ---- AH-040: a skill declares the tools it needs, and the gate says ---
 
     /// A skill's declared tools are checked against what this run may do. It
@@ -7589,20 +7592,20 @@ on_failure = \"warn\"
         let user_repo = data.join("user-repo");
         std::fs::create_dir_all(&user_repo).unwrap();
 
-        assert_eq!(managed_worktree_start(&[wt.clone()], Some(&owned)), Some(wt.clone()));
+        assert_eq!(managed_worktree_start(std::slice::from_ref(&wt), Some(&owned)), Some(wt.clone()));
         // Review-only: no write roots.
         assert_eq!(managed_worktree_start(&[], Some(&owned)), None);
         // Direct edit: a root that is not Jan's.
-        assert_eq!(managed_worktree_start(&[user_repo.clone()], Some(&owned)), None);
+        assert_eq!(managed_worktree_start(std::slice::from_ref(&user_repo), Some(&owned)), None);
         // The owned dir itself, several roots, no mask root, a missing root.
-        assert_eq!(managed_worktree_start(&[owned.clone()], Some(&owned)), None);
+        assert_eq!(managed_worktree_start(std::slice::from_ref(&owned), Some(&owned)), None);
         assert_eq!(managed_worktree_start(&[user_repo.clone(), wt.clone()], Some(&owned)), None);
         // Extra attached folders after the worktree keep the shell in it.
         assert_eq!(
             managed_worktree_start(&[wt.clone(), user_repo], Some(&owned)),
             Some(wt.clone())
         );
-        assert_eq!(managed_worktree_start(&[wt.clone()], None), None);
+        assert_eq!(managed_worktree_start(std::slice::from_ref(&wt), None), None);
         assert_eq!(managed_worktree_start(&[owned.join("gone")], Some(&owned)), None);
 
         // The policy carries it through to where the shell starts.
@@ -7630,7 +7633,7 @@ on_failure = \"warn\"
             std::slice::from_ref(&wt),
             Some(&owned),
         );
-        assert_eq!(working_folder(&[wt.clone()], &data).is_some(), expect_wt);
+        assert_eq!(working_folder(std::slice::from_ref(&wt), &data).is_some(), expect_wt);
         assert_eq!(working_folder(&[], &data), None);
         assert_eq!(working_folder(&[user_repo], &data), None);
 

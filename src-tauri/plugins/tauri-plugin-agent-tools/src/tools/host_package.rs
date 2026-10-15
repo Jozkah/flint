@@ -18,6 +18,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 const READ_TIMEOUT_SECS: u64 = 90;
+#[cfg_attr(not(windows), allow(dead_code))]
 const CHANGE_TIMEOUT_SECS: u64 = 900;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

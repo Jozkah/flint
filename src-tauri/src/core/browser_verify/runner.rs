@@ -689,6 +689,12 @@ mod tests {
     }
 
     fn browser_or_skip() -> Option<BrowserInfo> {
+        // A cold Chrome on a shared Windows CI runner sometimes misses the 15 s
+        // navigation deadline; that job opts out rather than flake.
+        if std::env::var_os("FLINT_SKIP_BROWSER_TESTS").is_some() {
+            eprintln!("skipped: FLINT_SKIP_BROWSER_TESTS is set");
+            return None;
+        }
         let b = find_browser();
         if !b.found {
             eprintln!("skipped: no Chromium-based browser installed (set FLINT_BROWSER_PATH)");

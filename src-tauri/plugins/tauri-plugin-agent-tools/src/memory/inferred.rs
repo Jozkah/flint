@@ -203,6 +203,21 @@ pub fn conflict_ids(conflicts: &[Conflict]) -> Vec<String> {
         .collect()
 }
 
+impl std::fmt::Debug for Decision {
+    /// Never prints the proposed content: a `Decision` is logged in
+    /// diagnostics, and the thing being proposed may be the reason it was
+    /// refused.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Decision::Save(_) => write!(f, "Save(<content>)"),
+            Decision::Pending { reason, .. } => {
+                write!(f, "Pending({})", reason.as_str())
+            }
+            Decision::Refused { reason } => write!(f, "Refused({reason})"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,21 +317,6 @@ mod tests {
             assert!(text.len() > 20, "{text}");
             assert!(!text.to_lowercase().contains("needs approval"), "{text}");
             assert!(!reason.as_str().is_empty());
-        }
-    }
-}
-
-impl std::fmt::Debug for Decision {
-    /// Never prints the proposed content: a `Decision` is logged in
-    /// diagnostics, and the thing being proposed may be the reason it was
-    /// refused.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Decision::Save(_) => write!(f, "Save(<content>)"),
-            Decision::Pending { reason, .. } => {
-                write!(f, "Pending({})", reason.as_str())
-            }
-            Decision::Refused { reason } => write!(f, "Refused({reason})"),
         }
     }
 }

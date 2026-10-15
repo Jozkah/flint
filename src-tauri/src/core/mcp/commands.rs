@@ -819,6 +819,7 @@ pub async fn mcp_allow_once(
 /// 5. Supports cancellation via cancellation_token
 /// 6. Returns error if no server has the requested tool or if specified server not found
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn call_tool<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,

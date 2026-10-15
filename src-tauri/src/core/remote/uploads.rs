@@ -199,11 +199,10 @@ pub fn decide_mime(claimed: &str, name: &str, head: &[u8]) -> Result<String, &'s
         }
         Some(m) => {
             let family = |s: &str| s.split('/').next().unwrap_or("").to_string();
-            if claimed.starts_with("image/") || claimed.starts_with("audio/") || claimed.starts_with("video/") {
-                if family(&claimed) != family(m) && !(family(m) == "video" && claimed.starts_with("audio/")) {
+            if (claimed.starts_with("image/") || claimed.starts_with("audio/") || claimed.starts_with("video/"))
+                && family(&claimed) != family(m) && !(family(m) == "video" && claimed.starts_with("audio/")) {
                     return Err("The file's contents don't match its type");
                 }
-            }
             Ok(m.to_string())
         }
         None if looks_like_text(head) => {
@@ -261,6 +260,7 @@ impl UploadBook {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         &mut self,
         root: &Path,

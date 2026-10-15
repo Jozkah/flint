@@ -2448,7 +2448,12 @@ mod tests {
         let found = list(&f.repo, &f.worktrees);
 
         assert_eq!(found.len(), 1, "{found:?}");
-        assert_eq!(found[0].path, mine.path);
+        // The same folder under whichever spelling git and the temp dir use: a
+        // macOS /var -> /private/var link, or a Windows 8.3 short name.
+        let same_folder = |a: &str, b: &str| {
+            std::fs::canonicalize(a).unwrap() == std::fs::canonicalize(b).unwrap()
+        };
+        assert!(same_folder(&found[0].path, &mine.path), "{} vs {}", found[0].path, mine.path);
         assert_eq!(found[0].branch, mine.branch);
         assert_eq!(found[0].base_sha, mine.base_sha);
         // A worktree Flint did not make is not Flint's to list, offer to delete, or

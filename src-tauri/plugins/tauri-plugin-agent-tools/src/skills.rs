@@ -209,7 +209,7 @@ struct Frontmatter {
 fn parse_triggers(value: Option<serde_yaml::Value>) -> Vec<String> {
     let raw: Vec<String> = match value {
         Some(serde_yaml::Value::String(s)) => s
-            .split(|c| c == ',' || c == '\n')
+            .split([',', '\n'])
             .map(str::to_string)
             .collect(),
         Some(serde_yaml::Value::Sequence(items)) => items

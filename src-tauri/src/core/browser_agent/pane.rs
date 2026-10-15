@@ -369,6 +369,7 @@ pub fn explain_unresponsive(mut resp: CallResponse, window: WindowState) -> Call
     resp
 }
 
+#[allow(clippy::result_large_err)]
 fn str_arg(v: &Option<String>, name: &str, max: usize) -> Result<String, CallResponse> {
     match v.as_deref() {
         Some(s) if s.chars().count() <= max => Ok(s.to_string()),
@@ -999,6 +1000,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn motion_never_adds_more_than_the_cap() {
         assert!(MAX_MOTION_WAIT_MS <= 900);
         assert_eq!(10_000u64.min(MAX_MOTION_WAIT_MS), 900);

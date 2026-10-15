@@ -209,6 +209,7 @@ pub(crate) fn transform_anthropic_to_openai(body: &serde_json::Value) -> Option<
 ///   Flint. Forwarding them made a CORS-strict backend -- Ollama behind nginx, or
 ///   with `OLLAMA_ORIGINS` set -- answer 403 to a request it would otherwise
 ///   serve (janhq/jan#8792, adapted from janhq/jan#8849).
+///
 /// Whether an inbound header is copied onto the upstream request. Both headers
 /// that authenticate the caller to this local server (`Authorization` and
 /// `X-Api-Key`) are consumed here: forwarding them handed the local server's

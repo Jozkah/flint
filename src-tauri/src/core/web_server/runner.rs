@@ -352,6 +352,7 @@ struct Active {
 /// Where a coordinator session's campaign tool calls are answered. Set once
 /// by the agent plane after the driver exists; the runner never talks to the
 /// driver any other way.
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait CoordinatorBackend: Send + Sync {
     async fn call(&self, ctx: CoordinatorCall, name: &str, args: Value) -> Result<String, String>;

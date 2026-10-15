@@ -292,3 +292,17 @@ mod permission_tests {
         );
     }
 }
+
+/// The temp folder tests build their fixtures in. On macOS it is reached through
+/// the `/var` -> `/private/var` link, and the sandbox and grant checks compare
+/// real paths, so the fixtures must start from the real one.
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+pub(crate) fn test_temp_root() -> std::path::PathBuf {
+    let tmp = std::env::temp_dir();
+    if cfg!(target_os = "macos") {
+        std::fs::canonicalize(&tmp).unwrap_or(tmp)
+    } else {
+        tmp
+    }
+}

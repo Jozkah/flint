@@ -334,7 +334,7 @@ pub(crate) fn delete_thread_at(data_folder: &std::path::Path, thread_id: &str) -
     }
     // What the thread's runs recorded goes with it, as on the desktop
     // (Jozkah/jan#294): snapshots, usage, diffs, decisions, undo journal.
-    if let Err(e) = tauri_plugin_agent_tools::retention::delete_session(&data_folder, thread_id) {
+    if let Err(e) = tauri_plugin_agent_tools::retention::delete_session(data_folder, thread_id) {
         eprintln!("could not remove the records of thread {thread_id}: {e}");
     }
     // Its agent scratch dir goes too (Jozkah/jan#186).

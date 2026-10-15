@@ -65,9 +65,7 @@ static AT_REF: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 fn base_name(path: &str) -> String {
-    path.split(['/', '\\'])
-        .filter(|s| !s.is_empty())
-        .last()
+    path.split(['/', '\\']).rfind(|s| !s.is_empty())
         .filter(|s| !(s.len() == 2 && s.ends_with(':')))
         .unwrap_or("[path]")
         .to_string()
@@ -283,7 +281,7 @@ pub fn file_name(title: &str, ext: &str) -> String {
         .collect();
     stem = one_line(&stem);
     stem = stem.trim_matches(|c| c == '.' || c == ' ').chars().take(80).collect();
-    stem = stem.trim_end_matches(|c| c == '.' || c == ' ').to_string();
+    stem = stem.trim_end_matches(['.', ' ']).to_string();
     if stem.is_empty() {
         stem = "export".to_string();
     }

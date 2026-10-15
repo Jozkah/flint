@@ -218,6 +218,7 @@ fn too_large() -> Resp {
 
 /// A request body of up to `limit` bytes, within [`BODY_DEADLINE`]. A client
 /// that trickles a byte a second would otherwise hold its task for ever.
+#[allow(clippy::result_large_err)]
 async fn read_bytes(body: Incoming, limit: usize) -> Result<Bytes, Resp> {
     match tokio::time::timeout(BODY_DEADLINE, Limited::new(body, limit).collect()).await {
         Ok(Ok(collected)) => Ok(collected.to_bytes()),
@@ -236,11 +237,13 @@ const SOCKET_IDLE_LIMIT: Duration = Duration::from_secs(70);
 /// How long a request body may take to arrive in full.
 const BODY_DEADLINE: Duration = Duration::from_secs(30);
 
+#[allow(clippy::result_large_err)]
 fn parse_json<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, Resp> {
     serde_json::from_slice(bytes)
         .map_err(|_| error(StatusCode::BAD_REQUEST, "bad_request", "Malformed JSON"))
 }
 
+#[allow(clippy::result_large_err)]
 async fn read_json<T: for<'de> Deserialize<'de>>(body: Incoming, limit: usize) -> Result<T, Resp> {
     parse_json(&read_bytes(body, limit).await?)
 }

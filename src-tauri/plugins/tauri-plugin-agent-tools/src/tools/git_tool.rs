@@ -1578,10 +1578,9 @@ fn remote_identity(url: &str) -> Option<(&str, &str)> {
     let url = url.trim();
     let (host, path) = if let Some(rest) = url.strip_prefix("https://") {
         rest.split_once('/')?
-    } else if let Some(rest) = url.strip_prefix("git@") {
-        rest.split_once(':')?
     } else {
-        return None;
+        let rest = url.strip_prefix("git@")?;
+        rest.split_once(':')?
     };
     let host = host.rsplit('@').next()?;
     let path = path.trim_end_matches(".git");
@@ -1744,7 +1743,7 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
                             o.lines()
                                 .map(str::trim)
                                 .filter(|l| !l.is_empty())
-                                .map(|l| crate::secrets::redact_secrets(l))
+                                .map(crate::secrets::redact_secrets)
                                 .collect()
                         })
                         .unwrap_or_default();
