@@ -2701,6 +2701,13 @@ impl App {
         self.workspace = workspace;
     }
 
+    /// Where the agent's tools read and write: the session's worktree when it
+    /// has one, else the project. Relative tool paths and `@path` refs resolve
+    /// here, not against the original checkout.
+    fn work_root(&self) -> &std::path::Path {
+        self.workspace.as_ref().map_or(self.project_root.as_path(), |w| w.path.as_path())
+    }
+
     /// Drop the current conversation and all transient turn state, detaching from
     /// the saved thread so the next message starts a fresh one. Backs `/clear` and
     /// `/new`; the model/MCP setup and picker state are untouched.
@@ -3938,7 +3945,7 @@ impl App {
             return;
         };
 
-        let entries = path_refs::search_files_sync(&self.project_root, &query, 30);
+        let entries = path_refs::search_files_sync(self.work_root(), &query, 30);
         self.path_hints = entries
             .into_iter()
             .map(|(path, name, is_dir)| PathHintItem { path, name, is_dir })
@@ -4158,7 +4165,7 @@ impl App {
         let names: Vec<String> = images.iter().map(|i| i.name.clone()).collect();
         // Resolve @path file references before sending
         let (clean_text, injected_contents) =
-            path_refs::resolve_references(&text, &self.project_root);
+            path_refs::resolve_references(&text, self.work_root());
         let final_text = if injected_contents.is_empty() {
             clean_text
         } else {
@@ -4233,6 +4240,29 @@ impl App {
         self.persist();
     }
 
+    /// While a turn runs, queue a skill or command invocation like a chat
+    /// message instead of pushing it into a history the run will overwrite.
+    /// Returns whether it was queued.
+    fn queue_invocation(&mut self, name: &str, args: &str, msg: &str, description: &str) -> bool {
+        if self.status != Status::Running {
+            return false;
+        }
+        let args = args.trim();
+        self.message_queue.push_back(PendingMessage {
+            text: format!("/{name} {args}").trim_end().to_string(),
+            message: serde_json::json!({ "role": "user", "content": msg }),
+            images: Vec::new(),
+            display: true,
+            invocation: Some((name.to_string(), args.to_string(), description.to_string())),
+            run_mode: Some(self.run_mode),
+        });
+        self.note(&format!(
+            "message pending for next agent step ({} pending)",
+            self.message_queue.len()
+        ));
+        true
+    }
+
     /// Invoke an enabled project skill by name: load its full instructions and
     /// submit them as the user message so the agent follows the procedure
     /// directly (no `skill_read` round trip). The transcript shows one compact
@@ -4253,6 +4283,9 @@ impl App {
         // message gets in `submit_user_text` (#141).
         if self.model.is_empty() {
             self.note("not signed in — run /login to choose a provider first");
+            return true;
+        }
+        if self.queue_invocation(name, args, &msg, &description) {
             return true;
         }
         self.ensure_base_snapshot();
@@ -4287,6 +4320,9 @@ impl App {
         // message gets in `submit_user_text` (#141).
         if self.model.is_empty() {
             self.note("not signed in — run /login to choose a provider first");
+            return true;
+        }
+        if self.queue_invocation(name, args, &msg, &description) {
             return true;
         }
         self.ensure_base_snapshot();
@@ -5252,7 +5288,7 @@ impl App {
                     // Record the touched path so the next checkpoint snapshots
                     // exactly this file instead of scanning the whole repo.
                     if let Some(p) = args.get("path").and_then(|v| v.as_str()) {
-                        self.turn_touched.push(self.project_root.join(p));
+                        self.turn_touched.push(self.work_root().join(p));
                         self.diff_paths.insert(id.clone(), p.to_string());
                     }
                     // Diff-producing tools render standalone (call row & panel).
@@ -8242,6 +8278,20 @@ fn drain_trailing_sgr_mouse_reports(buf: &mut String, cursor: &mut usize) {
     }
 }
 
+/// The args a new run starts from: the session's, with the approval mode
+/// `/mode` set on `app.args` (a copy-on-write clone the session's args never
+/// see), so `/mode ask` actually gates the next run.
+fn run_args(app: &App, args: &Arc<OrchestrationArgs>) -> Arc<OrchestrationArgs> {
+    match app.args.as_ref() {
+        Some(set) if set.auto_approve != args.auto_approve => {
+            let mut next = (**args).clone();
+            next.auto_approve = set.auto_approve;
+            Arc::new(next)
+        }
+        _ => Arc::clone(args),
+    }
+}
+
 fn spawn_run(args: &Arc<OrchestrationArgs>, body: serde_json::Value) -> CurrentRun {
     let (tx, rx) = mpsc::unbounded_channel::<StreamEvent>();
     let (steering_tx, steering) = mpsc::unbounded_channel();
@@ -9180,7 +9230,7 @@ async fn chat_loop<B: Backend>(
                 // The submission itself is one human turn toward the aging
                 // grace period; model roundtrips count via `Step` events.
                 age_closed_todos(app).await;
-                current = Some(spawn_run(args, app.body()));
+                current = Some(spawn_run(&run_args(app, args), app.body()));
             } else if !loading_noted && !mcp_ready {
                 // The base snapshot gates silently; only the MCP connect notes.
                 loading_noted = true;
@@ -11596,6 +11646,10 @@ async fn run_command(
             for (keys, description) in KEY_BINDINGS {
                 app.system_detail_text(&format!("{keys:18} {description}"));
             }
+        }
+        // The running turn would bring the old conversation back when it ends.
+        "clear" | "new" if app.status != Status::Idle => {
+            app.note("a turn is running; press Esc to stop it first");
         }
         "clear" => {
             app.reset_session();
@@ -15756,6 +15810,11 @@ async fn apply_resume(app: &mut App, request: &ResumeRequest) {
 /// are not persisted as messages). `verb` names how the thread was opened, so a
 /// fork does not report itself as a resume.
 async fn load_thread(app: &mut App, thread: &serde_json::Value, verb: &str) {
+    // The running turn would save its conversation over the thread opened
+    // here when it finishes.
+    if app.status != Status::Idle {
+        return app.note("a turn is running; press Esc to stop it before switching threads");
+    }
     let full_id = thread
         .get("id")
         .and_then(|v| v.as_str())
@@ -34007,6 +34066,13 @@ mod tests {
             "compact row: {}",
             transcript_text(&app)
         );
+        // Typed while that turn runs: queued, not pushed into its history.
+        let before = app.history.len();
+        run_command(&mut app, "feature-dev mid turn", &no_mcp()).await;
+        assert_eq!(app.history.len(), before);
+        assert_eq!(app.message_queue.len(), 1);
+        app.message_queue.clear();
+        app.status = Status::Idle;
         // Explicit qualified form.
         run_command(
             &mut app,
