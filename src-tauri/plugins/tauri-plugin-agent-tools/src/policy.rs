@@ -76,7 +76,8 @@ pub fn agent_toml_path(project_root: &Path) -> std::path::PathBuf {
     project_root.join(".jan").join("agent").join("agent.toml")
 }
 
-/// Read the policy for a project, falling back to the permissive default.
+/// Read the policy for a project, falling back to the permissive default when
+/// there is no file, and to read-only and offline when the file is unreadable.
 ///
 /// A file that will not parse is *not* treated as no policy: half a policy
 /// enforces unpredictably, and a syntax error in a deny list must not quietly
@@ -117,8 +118,24 @@ pub fn load_under(
     let parsed: AgentToml = match toml::from_str(&raw) {
         Ok(parsed) => parsed,
         Err(e) => {
-            eprintln!("agent.toml: could not read the tool policy: {e}");
-            return clamp(policy, &org);
+            // Fail closed: a file that says something about the policy and
+            // cannot be read must not grant everything with the network on.
+            // Read-only, offline, until the file is fixed.
+            eprintln!("agent.toml: could not read the tool policy, running read-only: {e}");
+            return ProjectPolicy {
+                permissions: ToolPermissions::new(
+                    org.clamp_default(PermissionDefault::ReadOnly),
+                    &[],
+                    &org.clamp_deny(&[]),
+                    &[],
+                ),
+                network: NetworkPolicy {
+                    allowed: false,
+                    allow_domains: Vec::new(),
+                    deny_domains: Vec::new(),
+                },
+                nul_programs: Vec::new(),
+            };
         }
     };
 
@@ -127,10 +144,9 @@ pub fn load_under(
         .default
         .as_deref()
         .map(PermissionDefault::from_str_lenient)
-        // No `default` key is the historical behaviour, not read-only: a
-        // project that lists a couple of denies has not asked for everything
-        // else to stop working.
-        .unwrap_or(PermissionDefault::Allow);
+        // The same answer the CLI and policy export give (MED-8): a file
+        // that wrote a policy without a default reads as read-only everywhere.
+        .unwrap_or(PermissionDefault::UNSET);
 
     // AH-187: the project may tighten what the machine allows and may never
     // loosen it. The clamping happens on the lists, before they are compiled,
@@ -195,6 +211,18 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, config).unwrap();
         root
+    }
+
+    #[test]
+    fn a_policy_file_that_cannot_be_read_fails_closed() {
+        let root = project_with("[tools]
+default = \"allow\"
+allow = [\"bash\"
+");
+        let policy = load_under(Some(&root), Some(true), &crate::org_policy::OrgPolicy::default());
+        assert_eq!(policy.permissions.default_mode(), PermissionDefault::ReadOnly);
+        assert!(!policy.permissions.is_allowed("bash", &crate::subject::Subject::MainAgent));
+        assert!(!policy.network.allowed);
     }
 
     #[test]
