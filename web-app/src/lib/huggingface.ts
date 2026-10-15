@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { mergeById, searchVariants } from '@/lib/huggingfaceSearch'
 
 export type HuggingFaceFormat = 'gguf' | 'mlx' | 'all' | 'image' | 'video'
 
@@ -63,6 +64,27 @@ export async function searchHuggingFaceModels(
   format: HuggingFaceFormat = 'gguf'
 ): Promise<HuggingFaceModel[]> {
   return call<HuggingFaceModel[]>('search', { query, token, format })
+}
+
+/**
+ * `searchHuggingFaceModels` for a query typed as words: also asks with the
+ * words joined the way a repository id spells them, and merges the answers.
+ * A variant that fails is dropped; only the query as typed can fail the search.
+ */
+export async function searchHuggingFaceModelsByWords(
+  query: string,
+  token?: string,
+  format: HuggingFaceFormat = 'gguf'
+): Promise<HuggingFaceModel[]> {
+  const [typed, ...variants] = searchVariants(query)
+  const first = searchHuggingFaceModels(typed, token, format)
+  const rest = await Promise.allSettled(
+    variants.map((variant) => searchHuggingFaceModels(variant, token, format))
+  )
+  return mergeById([
+    await first,
+    ...rest.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : [])),
+  ])
 }
 
 export async function getHuggingFaceFiles(
