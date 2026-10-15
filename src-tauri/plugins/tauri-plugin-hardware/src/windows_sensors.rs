@@ -200,17 +200,54 @@ mod cache {
     fn query() -> Vec<SensorDetails> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let out = std::process::Command::new("powershell.exe")
+        // A hung WMI provider would otherwise block this forever and leave
+        // `running` set, so no refresh is ever tried again.
+        const DEADLINE: Duration = Duration::from_secs(20);
+        let child = std::process::Command::new("powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
             .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        match out {
-            Ok(o) => parse_output(&String::from_utf8_lossy(&o.stdout)),
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        let mut child = match child {
+            Ok(c) => c,
             Err(e) => {
                 log::warn!("Temperature query failed: {e}");
-                Vec::new()
+                return Vec::new();
+            }
+        };
+        // Drain stdout on a thread so a large output cannot block the child.
+        let mut stdout = child.stdout.take();
+        let reader = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(out) = stdout.as_mut() {
+                let _ = std::io::Read::read_to_end(out, &mut buf);
+            }
+            buf
+        });
+        let started = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if started.elapsed() < DEADLINE => {
+                    std::thread::sleep(Duration::from_millis(200))
+                }
+                Ok(None) => {
+                    log::warn!("Temperature query timed out; killing it");
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Vec::new();
+                }
+                Err(e) => {
+                    log::warn!("Temperature query failed: {e}");
+                    let _ = child.kill();
+                    return Vec::new();
+                }
             }
         }
+        let stdout = reader.join().unwrap_or_default();
+        parse_output(&String::from_utf8_lossy(&stdout))
     }
 
     /// Cached sensors; starts a background refresh when stale.
