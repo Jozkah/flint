@@ -327,18 +327,16 @@ fn lookup_blocking(project: &Path, pr: Option<&str>) -> PrLookup {
     cmd.args(view_args(pr));
     // Never prompt: a missing login must fail, not wait for input.
     cmd.env("GH_PROMPT_DISABLED", "1");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = match cmd.output() {
-        Ok(out) => out,
-        Err(e) => return PrLookup::Failed { message: e.to_string() },
-    };
-    if out.status.success() {
-        return match parse_pr(&String::from_utf8_lossy(&out.stdout)) {
+    // Bounded and killed on the deadline: the caller's own timeout only stops
+    // waiting, it would leave a hung `gh` and this thread behind.
+    let out = run_bounded(cmd, 1024 * 1024, std::time::Instant::now() + GH_TIMEOUT);
+    if out.ok && !out.truncated {
+        return match parse_pr(&out.stdout) {
             Ok(pr) => PrLookup::Found { pr },
             Err(message) => PrLookup::Failed { message },
         };
     }
-    let err = String::from_utf8_lossy(&out.stderr).to_ascii_lowercase();
+    let err = out.stderr.to_ascii_lowercase();
     if err.contains("no pull requests found") {
         PrLookup::NoPullRequest
     } else if err.contains("gh auth login") || err.contains("not logged") {
@@ -349,7 +347,7 @@ fn lookup_blocking(project: &Path, pr: Option<&str>) -> PrLookup {
         PrLookup::GhSignedOut
     } else {
         PrLookup::Failed {
-            message: String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            message: out.stderr.trim().to_string(),
         }
     }
 }

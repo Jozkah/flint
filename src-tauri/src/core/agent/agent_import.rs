@@ -167,6 +167,14 @@ fn map_tools(value: Option<&serde_yaml::Value>, notes: &mut Vec<String>) -> Opti
             None
         }
     };
+    // Whether the author named any tool at all. Naming only tools Jan does not
+    // have means "none of mine", not "inherit everything".
+    let named = match value {
+        serde_yaml::Value::String(list) => list.split(',').any(|t| !t.trim().is_empty()),
+        serde_yaml::Value::Sequence(items) => items.iter().any(|i| i.as_str().is_some()),
+        serde_yaml::Value::Mapping(switches) => !switches.is_empty(),
+        _ => false,
+    };
     let mapped: Vec<String> = match value {
         serde_yaml::Value::String(list) => list.split(',').filter_map(&mut take).collect(),
         serde_yaml::Value::Sequence(items) => items
@@ -175,6 +183,10 @@ fn map_tools(value: Option<&serde_yaml::Value>, notes: &mut Vec<String>) -> Opti
             .filter_map(&mut take)
             .collect(),
         serde_yaml::Value::Mapping(switches) => {
+            // Additive or subtractive is decided by what was written, before
+            // unknown names are dropped: `{unknown: true, write: false}` is
+            // an allow-list, not "everything but write".
+            let any_on = switches.iter().any(|(_, v)| v.as_bool() == Some(true));
             let on: Vec<String> = switches
                 .iter()
                 .filter(|(_, v)| v.as_bool() == Some(true))
@@ -187,7 +199,8 @@ fn map_tools(value: Option<&serde_yaml::Value>, notes: &mut Vec<String>) -> Opti
                 .filter_map(|(k, _)| k.as_str())
                 .filter_map(take)
                 .collect();
-            if on.is_empty() && !off.is_empty() {
+            let any_off = switches.iter().any(|(_, v)| v.as_bool() == Some(false));
+            if !any_on && any_off {
                 notes.push(format!(
                     "tools were written as switches that only turn things off ({}); imported as \
                      every tool an imported agent can name, except those",
@@ -211,7 +224,7 @@ fn map_tools(value: Option<&serde_yaml::Value>, notes: &mut Vec<String>) -> Opti
             unknown.join(", ")
         ));
     }
-    (!mapped.is_empty()).then(|| {
+    named.then(|| {
         let mut tools = mapped;
         tools.sort();
         tools.dedup();
@@ -611,6 +624,24 @@ pub fn render(report: &ImportReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unknown_tool_names_never_widen_what_an_agent_may_use() {
+        let mut notes = Vec::new();
+        let yaml = |s: &str| serde_yaml::from_str::<serde_yaml::Value>(s).unwrap();
+        // Only tools Jan lacks: no tools, not "inherit everything".
+        assert_eq!(map_tools(Some(&yaml("[frobnicate]")), &mut notes), Some(vec![]));
+        assert_eq!(map_tools(Some(&yaml("\"frobnicate\"")), &mut notes), Some(vec![]));
+        // An unknown switch turned on makes it an allow-list, not a deny-list.
+        assert_eq!(
+            map_tools(Some(&yaml("{frobnicate: true, write: false}")), &mut notes),
+            Some(vec![])
+        );
+        // Only switches off, even unknown ones: everything but those.
+        let all = map_tools(Some(&yaml("{frobnicate: false}")), &mut notes).unwrap();
+        assert!(all.contains(&"write".to_string()));
+        assert_eq!(map_tools(None, &mut notes), None);
+    }
 
     fn temp_root(tag: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(

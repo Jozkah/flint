@@ -1178,8 +1178,13 @@ async fn run_once(
                 // resending the whole buffer is quadratic in a file-sized write.
                 if progress.started {
                     if let Some(acc) = tc.fn_arguments.as_str() {
-                        if acc.len() > progress.forwarded {
-                            let delta = acc[progress.forwarded..].to_string();
+                        // `get`: a buffer that did not grow by appending can
+                        // leave the old length mid-character; skip, not panic.
+                        if let Some(delta) = acc
+                            .get(progress.forwarded..)
+                            .filter(|d| !d.is_empty())
+                        {
+                            let delta = delta.to_string();
                             progress.forwarded = acc.len();
                             let _ = events.send(StreamEvent::ToolCallArgsDelta {
                                 id: tc.call_id,

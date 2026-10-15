@@ -887,15 +887,89 @@ fn campaign_dir(data_folder: &Path, id: &str) -> Result<PathBuf, CampaignError> 
     Ok(root(data_folder).join(id))
 }
 
-/// Read-modify-write of one record must not interleave.
+/// Read-modify-write of one record must not interleave, within this process
+/// (the mutex) or across processes sharing the data folder (the desktop app
+/// and `flint serve`: a lock file next to the records).
 static RECORDS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-pub(crate) fn lock() -> std::sync::MutexGuard<'static, ()> {
-    RECORDS.lock().unwrap_or_else(|p| p.into_inner())
+/// How long to wait for another process's lock before going ahead anyway.
+const FILE_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+/// A lock file older than this is left over from a crash.
+const FILE_LOCK_STALE: std::time::Duration = std::time::Duration::from_secs(60);
+
+pub(crate) struct Held {
+    _mutex: std::sync::MutexGuard<'static, ()>,
+    file: Option<PathBuf>,
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        if let Some(path) = &self.file {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+pub(crate) fn lock(data_folder: &Path) -> Held {
+    let mutex = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
+    let dir = root(data_folder);
+    if std::fs::create_dir_all(&dir).is_err() {
+        return Held { _mutex: mutex, file: None };
+    }
+    let path = dir.join(".records.lock");
+    let me = epoch();
+    let deadline = std::time::Instant::now() + FILE_LOCK_WAIT;
+    loop {
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut f) => {
+                let _ = f.write_all(me.as_bytes());
+                return Held { _mutex: mutex, file: Some(path) };
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                let owner = std::fs::read_to_string(&path).unwrap_or_default();
+                let owner = owner.trim();
+                let old = std::fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.elapsed().ok())
+                    .is_some_and(|age| age > FILE_LOCK_STALE);
+                let dead = !owner.is_empty() && (owner == me || !epoch_alive(owner));
+                if old || dead {
+                    let _ = std::fs::remove_file(&path);
+                    continue;
+                }
+                if std::time::Instant::now() >= deadline {
+                    // Better a rare lost update than a wedged campaign.
+                    return Held { _mutex: mutex, file: None };
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(_) => return Held { _mutex: mutex, file: None },
+        }
+    }
 }
 
 fn epoch() -> String {
     tauri_plugin_agent_tools::session_mailbox::process_epoch().to_string()
+}
+
+/// Whether the process that took `epoch` (`<start ms hex>-<pid hex>`) is
+/// still running. A pid since reused by a process started after the epoch was
+/// taken does not count.
+fn epoch_alive(epoch: &str) -> bool {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+    let Some((ms, pid)) = epoch.split_once('-') else { return false };
+    let (Ok(ms), Ok(pid)) = (u64::from_str_radix(ms, 16), u32::from_str_radix(pid, 16)) else {
+        return false;
+    };
+    if pid == std::process::id() {
+        // Not this process's epoch (checked by callers), so an earlier one.
+        return false;
+    }
+    let pid = Pid::from_u32(pid);
+    let mut system = System::new();
+    system.refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), true, ProcessRefreshKind::nothing());
+    system.process(pid).is_some_and(|p| p.start_time() <= ms / 1000 + 2)
 }
 
 pub(crate) fn now() -> String {
@@ -957,7 +1031,9 @@ fn read_raw(data_folder: &Path, id: &str) -> Result<Campaign, CampaignError> {
 pub(crate) fn load_reconciled(data_folder: &Path, id: &str) -> Result<Campaign, CampaignError> {
     let mut c = read_raw(data_folder, id)?;
     let me = epoch();
-    if c.process_epoch == me {
+    // Another live process (the desktop app and `flint serve` share a data
+    // folder) is driving it: its running work is not interrupted.
+    if c.process_epoch == me || epoch_alive(&c.process_epoch) {
         return Ok(c);
     }
     let mut changed = Vec::new();
@@ -1054,7 +1130,7 @@ pub fn create(data_folder: &Path, input: CreateInput) -> Result<Campaign, Campai
 
     let estimate = estimate_cost(input.tasks.len(), &list(data_folder));
 
-    let _held = lock();
+    let _held = lock(data_folder);
     if campaign_dir(data_folder, &id)?.join("campaign.json").exists() {
         return Err(CampaignError::new(CampaignErrorKind::Exists, format!("campaign {id} already exists")));
     }
@@ -1091,13 +1167,13 @@ pub fn create(data_folder: &Path, input: CreateInput) -> Result<Campaign, Campai
 }
 
 pub fn get(data_folder: &Path, id: &str) -> Result<Campaign, CampaignError> {
-    let _held = lock();
+    let _held = lock(data_folder);
     load_reconciled(data_folder, id)
 }
 
 /// Every readable campaign, newest first. Reconciles each as it goes.
 pub fn list(data_folder: &Path) -> Vec<Campaign> {
-    let _held = lock();
+    let _held = lock(data_folder);
     let Ok(entries) = std::fs::read_dir(root(data_folder)) else {
         return Vec::new();
     };
@@ -1250,7 +1326,7 @@ pub struct TransitionInput {
 }
 
 pub fn transition(data_folder: &Path, id: &str, input: TransitionInput) -> Result<Campaign, CampaignError> {
-    let _held = lock();
+    let _held = lock(data_folder);
     let mut c = load_reconciled(data_folder, id)?;
     match (input.campaign, input.task) {
         (Some(to), None) => {
@@ -1337,13 +1413,16 @@ pub(crate) fn update<T>(
     id: &str,
     f: impl FnOnce(&mut Campaign) -> Result<(T, Vec<(String, Option<String>, String)>), CampaignError>,
 ) -> Result<(Campaign, T), CampaignError> {
-    let _held = lock();
+    let _held = lock(data_folder);
     let mut c = load_reconciled(data_folder, id)?;
     if c.status.is_terminal() {
         return Err(illegal("a finished campaign", c.status, "a change"));
     }
     let (value, events) = f(&mut c)?;
     c.updated_at = now();
+    // The last writer owns it: while that process lives, no other reads its
+    // running work as interrupted.
+    c.process_epoch = epoch();
     save(data_folder, &c)?;
     for (kind, task, detail) in events {
         append_event(data_folder, id, &kind, task.as_deref(), &detail);
@@ -1403,7 +1482,7 @@ pub fn task_settle(
     input: SettleInput,
 ) -> Result<Campaign, CampaignError> {
     check_id("task", task_id)?;
-    let _held = lock();
+    let _held = lock(data_folder);
     let mut c = load_reconciled(data_folder, id)?;
     let t = c.task_mut(task_id)?;
     let from = t.status;
@@ -1455,7 +1534,7 @@ pub fn task_settle(
 /// Cancel the campaign and every task that has not finished. Running ones are
 /// marked here; aborting their runs is the renderer's job.
 pub fn cancel(data_folder: &Path, id: &str, detail: &str) -> Result<Campaign, CampaignError> {
-    let _held = lock();
+    let _held = lock(data_folder);
     let mut c = load_reconciled(data_folder, id)?;
     if c.status == CampaignStatus::Cancelled {
         return Ok(c);
@@ -1481,7 +1560,7 @@ pub fn decisions_append(data_folder: &Path, id: &str, text: &str) -> Result<(), 
             format!("a decision is 1-{MAX_TEXT} characters"),
         ));
     }
-    let _held = lock();
+    let _held = lock(data_folder);
     let dir = campaign_dir(data_folder, id)?;
     if !dir.join("campaign.json").exists() {
         return Err(CampaignError::new(CampaignErrorKind::NotFound, format!("no campaign {id} was recorded")));
@@ -1573,7 +1652,7 @@ pub fn claim_notice(data_folder: &Path, id: &str, key: &str) -> Result<bool, Cam
     if key.is_empty() {
         return Ok(false);
     }
-    let _held = lock();
+    let _held = lock(data_folder);
     let c = load_reconciled(data_folder, id)?;
     let seen = events(data_folder, &c.id)?
         .iter()
@@ -1651,7 +1730,7 @@ fn as_plan(t: &CampaignTask) -> PlanTask {
 /// fixed: an edit then is an illegal transition.
 pub fn plan_update(data_folder: &Path, id: &str, edit: PlanEdit) -> Result<Campaign, CampaignError> {
     let history: Vec<Campaign> = list(data_folder).into_iter().filter(|c| c.id != id).collect();
-    let _held = lock();
+    let _held = lock(data_folder);
     let mut c = load_reconciled(data_folder, id)?;
     if !matches!(c.status, CampaignStatus::Planned | CampaignStatus::Draft) {
         return Err(illegal("the plan of a campaign (it is edited only before approval)", c.status, "an edit"));
@@ -1787,7 +1866,7 @@ pub fn skip_task(
     dependants: SkipDependants,
 ) -> Result<SkipReport, CampaignError> {
     check_id("task", task_id)?;
-    let _held = lock();
+    let _held = lock(data_folder);
     let mut c = load_reconciled(data_folder, id)?;
     if c.status.is_terminal() {
         return Err(illegal("a task of a finished campaign", c.status, "a skip"));
@@ -1867,7 +1946,7 @@ const MAX_GATE_REPAIRS: usize = 3;
 /// else may be added to a campaign that is under review: this is not a plan
 /// edit. `brief` is built by the caller from the gate output and changed files.
 pub fn add_gate_repair(data_folder: &Path, id: &str, brief: String) -> Result<(Campaign, String), CampaignError> {
-    let _held = lock();
+    let _held = lock(data_folder);
     let mut c = load_reconciled(data_folder, id)?;
     if c.status != CampaignStatus::Reviewing {
         return Err(illegal("a gate repair (it is added while the campaign is reviewing)", c.status, "a repair task"));
@@ -1909,7 +1988,7 @@ pub fn add_gate_repair(data_folder: &Path, id: &str, brief: String) -> Result<(C
 /// not tell it twice and does not forget to.
 pub fn note_notified(data_folder: &Path, id: &str, task_id: &str) -> Result<(), CampaignError> {
     check_id("task", task_id)?;
-    let _held = lock();
+    let _held = lock(data_folder);
     let c = load_reconciled(data_folder, id)?;
     c.task(task_id)
         .ok_or_else(|| CampaignError::new(CampaignErrorKind::NotFound, format!("no task {task_id} in this campaign")))?;
@@ -2640,6 +2719,45 @@ pub(crate) mod tests {
         assert!(note_notified(&d, "c", "zzz").is_err());
         let seen = events(&d, "c").unwrap().iter().filter(|e| e["kind"] == "coordinator-notified").count();
         assert_eq!(seen, 1);
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn work_driven_by_another_live_process_is_left_running() {
+        let mut child = if cfg!(windows) {
+            let mut c = std::process::Command::new("ping");
+            c.args(["-n", "30", "127.0.0.1"]).stdout(std::process::Stdio::null());
+            c
+        } else {
+            let mut c = std::process::Command::new("sleep");
+            c.arg("30");
+            c
+        };
+        let mut child = child.spawn().unwrap();
+        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+        let theirs = format!("{ms:x}-{:x}", child.id());
+        assert!(epoch_alive(&theirs));
+        // The same pid with an epoch from before it started is a reused pid.
+        assert!(!epoch_alive(&format!("0-{:x}", child.id())));
+
+        let d = data_dir("live-epoch");
+        create(&d, input(Some("c"), vec![plan("a", &[], &[])])).unwrap();
+        let mut c = read_raw(&d, "c").unwrap();
+        c.status = CampaignStatus::Running;
+        c.tasks[0].status = TaskStatus::Running;
+        c.process_epoch = theirs.clone();
+        save(&d, &c).unwrap();
+        let got = reconcile(&d, "c").unwrap();
+        assert_eq!(got.status, CampaignStatus::Running);
+        assert_eq!(got.tasks[0].status, TaskStatus::Running);
+        assert_eq!(got.process_epoch, theirs);
+
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(!epoch_alive(&theirs));
+        assert_eq!(reconcile(&d, "c").unwrap().status, CampaignStatus::Interrupted);
+        // The cross-process lock file is gone once released.
+        assert!(!root(&d).join(".records.lock").exists());
         std::fs::remove_dir_all(&d).ok();
     }
 

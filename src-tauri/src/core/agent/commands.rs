@@ -594,8 +594,19 @@ pub async fn agent_projects_register(
 /// folder is not inside a git repo (or git is not installed). Used by the Code
 /// UI to display the current branch alongside the working directory.
 #[tauri::command]
-pub fn agent_git_branch(project: String) -> Option<String> {
-    git::current_branch(std::path::Path::new(&project))
+pub async fn agent_git_branch(project: String) -> Option<String> {
+    blocking(move || git::current_branch(std::path::Path::new(&project)))
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Run blocking git or filesystem work off the main thread, so a slow
+/// repository or disk does not freeze the window.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// The cap, in bytes, for a single lazily-loaded file diff. Larger diffs come
@@ -745,27 +756,32 @@ pub async fn agent_subagent_list<R: tauri::Runtime>(
 /// show, because each of them means something happened outside Flint that a
 /// silently chosen alternative would hide.
 #[tauri::command]
-pub fn agent_worktree_ensure(
+pub async fn agent_worktree_ensure(
     data_folder: String,
     session_id: String,
     project: String,
     title: Option<String>,
     base: Option<String>,
 ) -> Result<worktree::WorktreeRecord, String> {
-    let roots = owned_worktrees_root(&data_folder)?;
-    worktree::ensure_with(
-        std::path::Path::new(&project),
-        &roots,
-        &session_id,
-        &worktree::EnsureOptions { title, base },
-    )
+    blocking(move || {
+        let roots = owned_worktrees_root(&data_folder)?;
+        worktree::ensure_with(
+            std::path::Path::new(&project),
+            &roots,
+            &session_id,
+            &worktree::EnsureOptions { title, base },
+        )
+    })
+    .await?
 }
 
 /// Whether a folder is inside a Git working tree. Asked before a new session
 /// is put in its own worktree, so a plain folder is offered a copy instead.
 #[tauri::command]
-pub fn agent_is_git_repo(folder: String) -> bool {
-    worktree::identity(std::path::Path::new(&folder)).is_ok()
+pub async fn agent_is_git_repo(folder: String) -> bool {
+    blocking(move || worktree::identity(std::path::Path::new(&folder)).is_ok())
+        .await
+        .unwrap_or(false)
 }
 
 /// Merge a session's worktree branch into its base branch (or `target`).
@@ -774,47 +790,58 @@ pub fn agent_is_git_repo(folder: String) -> bool {
 /// same boundary as discarding, so a crafted record cannot move another
 /// repository's branches.
 #[tauri::command]
-pub fn agent_worktree_merge(
+pub async fn agent_worktree_merge(
     data_folder: String,
     record: WorktreeRecordInput,
     target: Option<String>,
     commit_message: Option<String>,
 ) -> Result<worktree::MergeOutcome, String> {
-    let roots = owned_worktrees_root(&data_folder)?;
-    let record: worktree::WorktreeRecord = record.into();
-    worktree::ensure_owned(&record, &roots)?;
-    worktree::merge(&record, target.as_deref(), commit_message.as_deref())
+    blocking(move || {
+        let roots = owned_worktrees_root(&data_folder)?;
+        let record: worktree::WorktreeRecord = record.into();
+        worktree::ensure_owned(&record, &roots)?;
+        worktree::merge(&record, target.as_deref(), commit_message.as_deref())
+    })
+    .await?
 }
 
 /// Rename a session's worktree branch after its title.
 #[tauri::command]
-pub fn agent_worktree_rename(
+pub async fn agent_worktree_rename(
     data_folder: String,
     record: WorktreeRecordInput,
     session_id: String,
     title: String,
 ) -> Result<worktree::WorktreeRecord, String> {
-    let roots = owned_worktrees_root(&data_folder)?;
-    let record: worktree::WorktreeRecord = record.into();
-    worktree::ensure_owned(&record, &roots)?;
-    worktree::rename_branch(&record, &session_id, &title)
+    blocking(move || {
+        let roots = owned_worktrees_root(&data_folder)?;
+        let record: worktree::WorktreeRecord = record.into();
+        worktree::ensure_owned(&record, &roots)?;
+        worktree::rename_branch(&record, &session_id, &title)
+    })
+    .await?
 }
 
 /// The commits on a session's branch that its base branch does not have.
 #[tauri::command]
-pub fn agent_worktree_unmerged(record: WorktreeRecordInput) -> Vec<String> {
-    worktree::unmerged_commits(&record.into(), None)
+pub async fn agent_worktree_unmerged(record: WorktreeRecordInput) -> Vec<String> {
+    blocking(move || worktree::unmerged_commits(&record.into(), None))
+        .await
+        .unwrap_or_default()
 }
 
 /// Copy a plain folder for a session ("Work on a copy").
 #[tauri::command]
-pub fn agent_copy_create(
+pub async fn agent_copy_create(
     data_folder: String,
     session_id: String,
     folder: String,
 ) -> Result<crate::core::agent::session_copy::CopyRecord, String> {
-    let roots = owned_worktrees_root(&data_folder)?;
-    crate::core::agent::session_copy::create(std::path::Path::new(&folder), &roots, &session_id)
+    blocking(move || {
+        let roots = owned_worktrees_root(&data_folder)?;
+        crate::core::agent::session_copy::create(std::path::Path::new(&folder), &roots, &session_id)
+    })
+    .await?
 }
 
 fn owned_copy(
@@ -827,38 +854,45 @@ fn owned_copy(
 
 /// What differs between a session's copy and its original.
 #[tauri::command]
-pub fn agent_copy_changes(
+pub async fn agent_copy_changes(
     data_folder: String,
     path: String,
 ) -> Result<Vec<crate::core::agent::session_copy::CopyChange>, String> {
-    crate::core::agent::session_copy::changes(&owned_copy(&data_folder, &path)?)
+    blocking(move || crate::core::agent::session_copy::changes(&owned_copy(&data_folder, &path)?)).await?
 }
 
 /// Both sides of one changed file, for the diff review.
 #[tauri::command]
-pub fn agent_copy_file_pair(
+pub async fn agent_copy_file_pair(
     data_folder: String,
     path: String,
     file: String,
 ) -> Result<crate::core::agent::session_copy::FilePair, String> {
-    crate::core::agent::session_copy::file_pair(&owned_copy(&data_folder, &path)?, &file)
+    blocking(move || {
+        crate::core::agent::session_copy::file_pair(&owned_copy(&data_folder, &path)?, &file)
+    })
+    .await?
 }
 
 /// Apply chosen files from a session's copy back to the original.
 #[tauri::command]
-pub fn agent_copy_apply(
+pub async fn agent_copy_apply(
     data_folder: String,
     path: String,
     files: Vec<String>,
     force: bool,
 ) -> Result<crate::core::agent::session_copy::ApplyOutcome, String> {
-    crate::core::agent::session_copy::apply(&owned_copy(&data_folder, &path)?, &files, force)
+    blocking(move || {
+        crate::core::agent::session_copy::apply(&owned_copy(&data_folder, &path)?, &files, force)
+    })
+    .await?
 }
 
 /// Remove a session's copy.
 #[tauri::command]
-pub fn agent_copy_discard(data_folder: String, path: String, force: bool) -> Result<(), String> {
-    crate::core::agent::session_copy::discard(&owned_copy(&data_folder, &path)?, force)
+pub async fn agent_copy_discard(data_folder: String, path: String, force: bool) -> Result<(), String> {
+    blocking(move || crate::core::agent::session_copy::discard(&owned_copy(&data_folder, &path)?, force))
+        .await?
 }
 
 /// Flint's worktree folder, absolute. See [`worktree::absolute`]: a relative
@@ -873,8 +907,8 @@ fn owned_worktrees_root(data_folder: &str) -> Result<std::path::PathBuf, String>
 /// Asked before a run uses one, so a worktree deleted, moved or moved-off-branch
 /// between sessions is reported rather than written into.
 #[tauri::command]
-pub fn agent_worktree_state(record: WorktreeRecordInput) -> worktree::WorktreeState {
-    worktree::state(&record.into())
+pub async fn agent_worktree_state(record: WorktreeRecordInput) -> Result<worktree::WorktreeState, String> {
+    blocking(move || worktree::state(&record.into())).await
 }
 
 /// Component-wise prefix check that also refuses `..`: `Path::starts_with` is
@@ -910,12 +944,16 @@ mod under_root_tests {
 /// stale value, anything — would be a request to delete an arbitrary directory
 /// and its branch.
 #[tauri::command]
-pub fn agent_worktree_discard(
+pub async fn agent_worktree_discard(
     data_folder: String,
     record: WorktreeRecordInput,
     force: bool,
 ) -> Result<(), String> {
-    let roots = owned_worktrees_root(&data_folder)?;
+    blocking(move || worktree_discard(&data_folder, record, force)).await?
+}
+
+fn worktree_discard(data_folder: &str, record: WorktreeRecordInput, force: bool) -> Result<(), String> {
+    let roots = owned_worktrees_root(data_folder)?;
     let record: worktree::WorktreeRecord = record.into();
     if !is_under_root(std::path::Path::new(&record.path), &roots) {
         return Err(format!(
@@ -979,8 +1017,10 @@ pub fn agent_destructive_reason(command: String, roots: Vec<String>) -> Option<S
 /// Asked before offering to remove one, so the confirmation names the work
 /// rather than asking about a path.
 #[tauri::command]
-pub fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> {
-    worktree::pending(&record.into())
+pub async fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> {
+    blocking(move || worktree::pending(&record.into()))
+        .await
+        .unwrap_or_default()
 }
 
 /// Route one `jan-desktop` bridge tool call. The runtime entry point for the
@@ -1033,8 +1073,14 @@ pub fn agent_desktop_bridge(
 /// listed worktree is a place, and writing to one still requires the user to
 /// authorize it again.
 #[tauri::command]
-pub fn agent_worktree_list(data_folder: String, project: String) -> Vec<worktree::WorktreeRecord> {
-    let Ok(roots) = owned_worktrees_root(&data_folder) else {
+pub async fn agent_worktree_list(data_folder: String, project: String) -> Vec<worktree::WorktreeRecord> {
+    blocking(move || worktree_list(&data_folder, &project))
+        .await
+        .unwrap_or_default()
+}
+
+fn worktree_list(data_folder: &str, project: &str) -> Vec<worktree::WorktreeRecord> {
+    let Ok(roots) = owned_worktrees_root(data_folder) else {
         return Vec::new();
     };
     let repo = std::path::Path::new(&project);
@@ -1057,13 +1103,22 @@ pub fn agent_worktree_list(data_folder: String, project: String) -> Vec<worktree
 /// owns before anything is done to it — the same boundary [`agent_worktree_discard`]
 /// uses, not a new one.
 #[tauri::command]
-pub fn agent_worktree_optimize(
+pub async fn agent_worktree_optimize(
     data_folder: String,
     record: WorktreeRecordInput,
     symlink_directories: Vec<String>,
     sparse_paths: Vec<String>,
 ) -> Result<(), String> {
-    let roots = owned_worktrees_root(&data_folder)?;
+    blocking(move || worktree_optimize(&data_folder, record, &symlink_directories, &sparse_paths)).await?
+}
+
+fn worktree_optimize(
+    data_folder: &str,
+    record: WorktreeRecordInput,
+    symlink_directories: &[String],
+    sparse_paths: &[String],
+) -> Result<(), String> {
+    let roots = owned_worktrees_root(data_folder)?;
     let record: worktree::WorktreeRecord = record.into();
     if !is_under_root(std::path::Path::new(&record.path), &roots) {
         return Err(format!(
@@ -1825,18 +1880,41 @@ pub async fn agent_campaign_claim_notice(
 /// The record is checked against the repository's worktree list first, like
 /// merge and discard. Returns `false` when there was nothing to commit.
 #[tauri::command]
-pub fn agent_worktree_commit_pending(
+pub async fn agent_worktree_commit_pending(
     data_folder: String,
     record: WorktreeRecordInput,
     message: String,
     declared: Option<Vec<String>>,
 ) -> Result<bool, String> {
-    let roots = owned_worktrees_root(&data_folder)?;
-    let record: worktree::WorktreeRecord = record.into();
-    worktree::ensure_owned(&record, &roots)?;
-    // Tool-cache files (a PowerShell module cache, `__pycache__`, ...) are
-    // left out unless a path the plan declared covers them.
-    worktree::commit_pending_declared(&record, &message, &declared.unwrap_or_default())
+    blocking(move || {
+        let roots = owned_worktrees_root(&data_folder)?;
+        let record: worktree::WorktreeRecord = record.into();
+        worktree::ensure_owned(&record, &roots)?;
+        // Tool-cache files (a PowerShell module cache, `__pycache__`, ...) are
+        // left out unless a path the plan declared covers them.
+        worktree::commit_pending_declared(&record, &message, &declared.unwrap_or_default())
+    })
+    .await?
+}
+
+/// `destination` as the tree's location says it is, not as the renderer
+/// claims: only a tree under Flint's own worktree folder is managed, so a
+/// crafted `managed` can never turn a rewind of the user's checkout into a
+/// hard restore.
+fn trusted_destination(root: &str, claimed: checkpoint::Destination) -> checkpoint::Destination {
+    let data_folder = crate::core::app::commands::resolve_jan_data_folder();
+    let managed = owned_worktrees_root(&data_folder.to_string_lossy())
+        .is_ok_and(|roots| is_under_root(std::path::Path::new(root), &roots));
+    if managed {
+        claimed
+    } else {
+        checkpoint::Destination::UserCheckout
+    }
+}
+
+fn trusted_checkpoint(mut cp: checkpoint::Checkpoint) -> checkpoint::Checkpoint {
+    cp.destination = trusted_destination(&cp.root, cp.destination);
+    cp
 }
 
 /// Take a checkpoint of the tree a run is about to change.
@@ -1850,7 +1928,7 @@ pub fn agent_worktree_commit_pending(
 /// discard anything — so it is recorded with the checkpoint rather than
 /// supplied at rewind time by whoever happens to be asking.
 #[tauri::command]
-pub fn agent_checkpoint_capture(
+pub async fn agent_checkpoint_capture(
     root: String,
     thread_id: String,
     parent: Option<String>,
@@ -1858,16 +1936,19 @@ pub fn agent_checkpoint_capture(
     changed: Vec<String>,
     destination: checkpoint::Destination,
 ) -> Result<checkpoint::Checkpoint, String> {
-    let changed: Vec<std::path::PathBuf> =
-        changed.into_iter().map(std::path::PathBuf::from).collect();
-    checkpoint::capture(
-        std::path::Path::new(&root),
-        &thread_id,
-        parent.as_deref(),
-        &label,
-        &changed,
-        destination,
-    )
+    blocking(move || {
+        let changed: Vec<std::path::PathBuf> =
+            changed.into_iter().map(std::path::PathBuf::from).collect();
+        checkpoint::capture(
+            std::path::Path::new(&root),
+            &thread_id,
+            parent.as_deref(),
+            &label,
+            &changed,
+            trusted_destination(&root, destination),
+        )
+    })
+    .await?
 }
 
 /// What rewinding to a checkpoint would do, without doing it.
@@ -1875,18 +1956,18 @@ pub fn agent_checkpoint_capture(
 /// In a managed tree, a restore. In the user's own checkout, a patch and never
 /// anything else — there is no argument to this that turns it into one.
 #[tauri::command]
-pub fn agent_checkpoint_plan(
+pub async fn agent_checkpoint_plan(
     checkpoint: checkpoint::Checkpoint,
     latest: String,
 ) -> Result<checkpoint::RewindPlan, String> {
-    checkpoint::plan(&checkpoint, &latest)
+    blocking(move || checkpoint::plan(&trusted_checkpoint(checkpoint), &latest)).await?
 }
 
 /// The diff a restore to `checkpoint` would apply to the tree as it stands.
 /// Changes nothing; refuses a checkpoint in the user's own checkout.
 #[tauri::command]
-pub fn agent_checkpoint_preview_diff(checkpoint: checkpoint::Checkpoint) -> Result<String, String> {
-    checkpoint::preview_restore_diff(&checkpoint)
+pub async fn agent_checkpoint_preview_diff(checkpoint: checkpoint::Checkpoint) -> Result<String, String> {
+    blocking(move || checkpoint::preview_restore_diff(&trusted_checkpoint(checkpoint))).await?
 }
 
 /// Roll a Flint-owned tree back to a checkpoint.
@@ -1901,26 +1982,29 @@ pub fn agent_checkpoint_preview_diff(checkpoint: checkpoint::Checkpoint) -> Resu
 /// names paths the caller has explicitly agreed to lose. Both are optional, so
 /// a caller that predates them gets the strict check rather than none.
 #[tauri::command]
-pub fn agent_checkpoint_restore(
+pub async fn agent_checkpoint_restore(
     checkpoint: checkpoint::Checkpoint,
     latest: String,
     safety: Option<String>,
     allow_overwrite: Option<Vec<String>>,
 ) -> Result<(), String> {
-    checkpoint::restore(
-        &checkpoint,
-        &latest,
-        &checkpoint::RestoreGuard {
-            safety,
-            allow_overwrite: allow_overwrite.unwrap_or_default(),
-        },
-    )
+    blocking(move || {
+        checkpoint::restore(
+            &trusted_checkpoint(checkpoint),
+            &latest,
+            &checkpoint::RestoreGuard {
+                safety,
+                allow_overwrite: allow_overwrite.unwrap_or_default(),
+            },
+        )
+    })
+    .await?
 }
 
 /// Forget a session's snapshot chain.
 #[tauri::command]
-pub fn agent_checkpoint_forget(root: String, thread_id: String) {
-    checkpoint::forget(std::path::Path::new(&root), &thread_id)
+pub async fn agent_checkpoint_forget(root: String, thread_id: String) {
+    let _ = blocking(move || checkpoint::forget(std::path::Path::new(&root), &thread_id)).await;
 }
 
 /// A record as it comes back from the renderer.
@@ -1997,7 +2081,7 @@ mod worktree_command_tests {
         let data = std::env::temp_dir().join(format!("jan_wt_cmd_{}", std::process::id()));
         for path in ["/etc", "/home/someone/important-project", "../../elsewhere"] {
             let err =
-                agent_worktree_discard(data.to_string_lossy().to_string(), record(path), true)
+                worktree_discard(&data.to_string_lossy(), record(path), true)
                     .expect_err("must refuse");
             assert!(err.contains("not a worktree Flint manages"), "{err}");
         }
@@ -2008,9 +2092,9 @@ mod worktree_command_tests {
     #[test]
     fn lists_nothing_for_a_folder_that_is_not_a_repository() {
         let data = std::env::temp_dir().join(format!("jan_wt_list_{}", std::process::id()));
-        let listed = agent_worktree_list(
-            data.to_string_lossy().to_string(),
-            std::env::temp_dir().to_string_lossy().to_string(),
+        let listed = worktree_list(
+            &data.to_string_lossy(),
+            &std::env::temp_dir().to_string_lossy(),
         );
         assert!(listed.is_empty());
     }
@@ -2359,45 +2443,6 @@ pub async fn agent_run_tree(
     .map_err(|e| {
         tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
             "the run tree did not finish: {e}"
-        ))
-    })?
-}
-
-/// Start background work that outlives the app. AH-101/AH-102.
-///
-/// The job is run by a supervisor process of its own, so closing the window
-/// leaves it running and a later app process can find it, read it and stop it.
-#[tauri::command]
-pub async fn agent_job_start(
-    app: tauri::AppHandle,
-    session: String,
-    command: String,
-    run: Option<String>,
-    invocation: Option<String>,
-    agent: Option<String>,
-) -> Result<
-    tauri_plugin_agent_tools::job_record::JobRecord,
-    tauri_plugin_agent_tools::harness_error::HarnessError,
-> {
-    let data_folder = get_jan_data_folder_path(app);
-    tokio::task::spawn_blocking(move || {
-        let supervisor = tauri_plugin_agent_tools::worker::supervisor_binary()?;
-        tauri_plugin_agent_tools::worker::start(
-            &data_folder,
-            &supervisor,
-            &session,
-            &command,
-            (
-                run.as_deref().unwrap_or_default(),
-                invocation.as_deref().unwrap_or_default(),
-                agent.as_deref().unwrap_or_default(),
-            ),
-        )
-    })
-    .await
-    .map_err(|e| {
-        tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
-            "the job could not be started: {e}"
         ))
     })?
 }

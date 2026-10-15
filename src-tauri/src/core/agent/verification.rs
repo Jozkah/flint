@@ -254,15 +254,18 @@ pub(crate) async fn verify_counted(
     let (sink, _rx) = mpsc::unbounded_channel();
     match model.invoke(&request, &sink).await {
         Ok(completion) => {
-            let spent = crate::core::agent::events::Usage::from_completion(&completion)
-                .and_then(|u| {
-                    u.total_tokens.or_else(|| {
-                        u.prompt_tokens
-                            .zip(u.completion_tokens)
-                            .map(|(p, c)| p.saturating_add(c))
+            let cost = |completion: &serde_json::Value| {
+                crate::core::agent::events::Usage::from_completion(completion)
+                    .and_then(|u| {
+                        u.total_tokens.or_else(|| {
+                            u.prompt_tokens
+                                .zip(u.completion_tokens)
+                                .map(|(p, c)| p.saturating_add(c))
+                        })
                     })
-                })
-                .unwrap_or(0);
+                    .unwrap_or(0)
+            };
+            let mut spent = cost(&completion);
             let reply = extract_choice_message(&completion)
                 .and_then(|m| m.get("content").cloned())
                 .and_then(|c| c.as_str().map(str::to_string))
@@ -273,6 +276,8 @@ pub(crate) async fn verify_counted(
             if find_verdict(&reply).is_none() {
                 let again = retry_request(&request, &reply);
                 if let Ok(second) = model.invoke(&again, &sink).await {
+                    // The retry is charged too, not only the first request.
+                    spent = spent.saturating_add(cost(&second));
                     let text = extract_choice_message(&second)
                         .and_then(|m| m.get("content").cloned())
                         .and_then(|c| c.as_str().map(str::to_string))

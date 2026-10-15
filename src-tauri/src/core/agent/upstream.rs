@@ -1327,7 +1327,9 @@ pub(crate) async fn execute_mcp_tool_calls(
             settings.tool_output_cap(None),
         )
     };
-    let servers = mcp_servers.lock().await;
+    // Handles, not the map: the lock is not held across a tool call, so one
+    // slow server cannot stall every other MCP user until it answers.
+    let servers = mcp_peers(mcp_servers).await;
 
     let mut results = Vec::with_capacity(tool_calls.len());
 
@@ -1445,6 +1447,29 @@ pub(crate) async fn execute_mcp_tool_calls(
 /// The most resources listed, and the most characters kept from one.
 pub(crate) const MAX_RESOURCES: usize = 200;
 pub(crate) const MAX_RESOURCE_CHARS: usize = 32 * 1024;
+/// How long one server may take to list or read its resources.
+const RESOURCE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+#[cfg(not(feature = "cli"))]
+fn peer_of(service: &crate::core::state::RunningMcpService) -> rmcp::Peer<rmcp::RoleClient> {
+    service.peer().clone()
+}
+
+#[cfg(feature = "cli")]
+fn peer_of(service: &crate::core::state::RunningServiceEnum) -> rmcp::Peer<rmcp::RoleClient> {
+    use crate::core::state::RunningServiceEnum;
+    match service {
+        RunningServiceEnum::NoInit(s) => s.peer().clone(),
+        RunningServiceEnum::WithInit(s) => s.peer().clone(),
+    }
+}
+
+/// A handle to every connected server, taken under the lock and returned
+/// without it, so awaiting a server never holds the shared map.
+async fn mcp_peers(mcp_servers: &SharedMcpServers) -> HashMap<String, rmcp::Peer<rmcp::RoleClient>> {
+    let servers = mcp_servers.lock().await;
+    servers.iter().map(|(name, s)| (name.clone(), peer_of(s))).collect()
+}
 
 /// What an MCP server offers to read, across every connected server.
 ///
@@ -1452,11 +1477,15 @@ pub(crate) const MAX_RESOURCE_CHARS: usize = 32 * 1024;
 /// still content this harness did not write, so what comes back is bounded,
 /// scrubbed and labelled as the server's words rather than as instructions.
 pub(crate) async fn list_mcp_resources(mcp_servers: &SharedMcpServers) -> String {
-    let servers = mcp_servers.lock().await;
+    let servers = mcp_peers(mcp_servers).await;
     let mut out = String::new();
     let mut seen = 0usize;
     for (name, service) in servers.iter() {
-        match service.list_all_resources().await {
+        let listed = match tokio::time::timeout(RESOURCE_TIMEOUT, service.list_all_resources()).await {
+            Ok(listed) => listed.map_err(|e| e.to_string()),
+            Err(_) => Err(format!("timed out after {}s", RESOURCE_TIMEOUT.as_secs())),
+        };
+        match listed {
             Ok(resources) => {
                 for resource in resources {
                     if seen >= MAX_RESOURCES {
@@ -1511,15 +1540,22 @@ pub(crate) async fn read_mcp_resource(
         return "ERROR [invalid_input]: reading a resource needs a `server` and a `uri`."
             .to_string();
     }
-    let servers = mcp_servers.lock().await;
-    let Some(service) = servers.get(server) else {
+    let service = {
+        let servers = mcp_servers.lock().await;
+        servers.get(server).map(peer_of)
+    };
+    let Some(service) = service else {
         return format!(
             "ERROR [tool_unavailable]: no MCP server called '{server}' is connected here."
         );
     };
     let read =
         service.read_resource(rmcp::model::ReadResourceRequestParams::new(uri.to_string()));
-    match read.await {
+    let read = match tokio::time::timeout(RESOURCE_TIMEOUT, read).await {
+        Ok(read) => read.map_err(|e| e.to_string()),
+        Err(_) => Err(format!("timed out after {}s", RESOURCE_TIMEOUT.as_secs())),
+    };
+    match read {
         Ok(result) => {
             let mut text = String::new();
             for content in result.contents {

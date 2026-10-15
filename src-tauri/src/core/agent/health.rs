@@ -244,6 +244,27 @@ pub fn checks(project_root: &Path) -> Vec<Check> {
     out
 }
 
+/// The program to start for a bare command name. On Windows `npm`, `yarn` and
+/// `pnpm` are `.cmd` shims, which CreateProcess does not find by bare name, so
+/// the name is looked up on PATH with each PATHEXT extension. A name that is
+/// not found is returned as given, so starting it fails as before.
+fn program_path(name: &str) -> PathBuf {
+    #[cfg(windows)]
+    if Path::new(name).extension().is_none() && !name.contains(['/', '\\']) {
+        let exts = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        for dir in std::env::split_paths(&path) {
+            for ext in exts.split(';').filter(|e| !e.is_empty()) {
+                let candidate = dir.join(format!("{name}{ext}"));
+                if candidate.is_file() {
+                    return candidate;
+                }
+            }
+        }
+    }
+    PathBuf::from(name)
+}
+
 /// Run one check, bounded.
 fn run(check: &Check, project_root: &Path) -> Result_ {
     run_within(check, project_root, CHECK_DEADLINE)
@@ -251,7 +272,7 @@ fn run(check: &Check, project_root: &Path) -> Result_ {
 
 fn run_within(check: &Check, project_root: &Path, deadline: Duration) -> Result_ {
     let started = Instant::now();
-    let mut command = std::process::Command::new(&check.command[0]);
+    let mut command = std::process::Command::new(program_path(&check.command[0]));
     command
         .args(&check.command[1..])
         .current_dir(project_root)

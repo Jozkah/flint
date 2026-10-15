@@ -122,6 +122,10 @@ fn walk(root: &Path, dir: &Path, hasher: &mut DefaultHasher) {
         }
         let path = entry.path();
         if path.is_dir() {
+            // Not through a linked folder: a link back up the tree would loop.
+            if entry.file_type().is_ok_and(|t| t.is_symlink()) {
+                continue;
+            }
             walk(root, &path, hasher);
         } else if path.is_file() {
             stamp(root, &path, hasher);
