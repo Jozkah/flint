@@ -49,6 +49,11 @@ async fn tree_paths(client: &reqwest::Client) -> Result<Vec<String>, String> {
         .get("tree")
         .and_then(|t| t.as_array())
         .ok_or("ERROR: unexpected skill hub index shape")?;
+    // GitHub cuts a large recursive tree short and says so: a partial list
+    // would quietly hide skills, so it is reported instead.
+    if json.get("truncated").and_then(|t| t.as_bool()) == Some(true) {
+        log::warn!("skill hub index was truncated by GitHub; some skills may be missing");
+    }
     Ok(tree
         .iter()
         .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("blob"))

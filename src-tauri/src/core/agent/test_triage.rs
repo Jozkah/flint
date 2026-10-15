@@ -102,6 +102,12 @@ fn run(command: &[String], project_root: &Path) -> Result<(bool, String), Harnes
         use jan_process::CommandConsole;
         process.background();
     }
+    // Its own process group, so the deadline can stop the whole tree.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        process.process_group(0);
+    }
     let mut child = process.spawn().map_err(|e| {
         failed(
             ErrorKind::ToolUnavailable,
@@ -125,6 +131,9 @@ fn run(command: &[String], project_root: &Path) -> Result<(bool, String), Harnes
         match child.try_wait() {
             Ok(Some(status)) => break Some(status),
             Ok(None) if started.elapsed() >= RUN_DEADLINE => {
+                // The whole tree: a grandchild (a test runner's workers) that
+                // survived would hold the pipes open and the drains never end.
+                let _ = tauri_plugin_agent_tools::tools::proc::kill_tree_child(&mut child);
                 let _ = child.kill();
                 let _ = child.wait();
                 break None;

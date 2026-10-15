@@ -433,9 +433,31 @@ pub fn report(
     period: Option<&str>,
     session: Option<&str>,
 ) -> Result<Report, SpendError> {
-    let cutoff = since(period)?;
+    let mut reports = reports(data_folder, &[period], session)?;
+    Ok(reports.remove(0))
+}
+
+/// One report per period, from a single read of the ledger: the quota check
+/// asks for four windows every turn, and each read parses the whole log.
+pub(crate) fn reports(
+    data_folder: &Path,
+    periods: &[Option<&str>],
+    session: Option<&str>,
+) -> Result<Vec<Report>, SpendError> {
     let prices = prices(data_folder)?;
     let all = counted(data_folder);
+    periods
+        .iter()
+        .map(|period| report_of(&all, &prices, since(*period)?, session))
+        .collect()
+}
+
+fn report_of(
+    all: &[Counted],
+    prices: &BTreeMap<String, Price>,
+    cutoff: Option<String>,
+    session: Option<&str>,
+) -> Result<Report, SpendError> {
     let truncated = all.len() > MAX_RECORDS;
 
     let mut by_model: BTreeMap<String, ModelSpend> = BTreeMap::new();
