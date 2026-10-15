@@ -5,7 +5,7 @@
   <project_license>Apache-2.0</project_license>
   <developer_name>Jozkah</developer_name>
 
-  <name>Jan</name>
+  <name>Flint</name>
   <icon type="stock">ai.jan.Jan</icon>
 
   <summary>Private offline AI assistant</summary>
@@ -20,10 +20,10 @@
 
   <description>
     <p>
-      Jan is an open source alternative to ChatGPT that runs 100% offline on your computer.
+      Flint is a local-first AI desktop app that runs models on your own computer.
     </p>
     <p xml:lang="pl">
-      Jan to otwartoźródłowa alternatywa dla ChatGPT, która działa w 100% bez dostępu do sieci na Twoim komputerze.
+      Flint to lokalna aplikacja SI, która uruchamia modele na Twoim komputerze.
     </p>
 
     <p>Features</p>
@@ -38,21 +38,21 @@
       <li xml:lang="pl">Własne asystenty: Twórz asystenty wyspecjalizowane do pisania, kodowania, podsumowywania itd.</li>
 
       <li>OpenAI-compatible API: Includes a local API server at localhost:1337 for tools expecting the OpenAI format</li>
-      <li xml:lang="pl">Interfejs API kompatybilny z OpenAI: Jan posiada lokalny serwer API, dostępny pod adresem localhost:1337, dla narzędzi zgodnych z formatem OpenAI.</li>
+      <li xml:lang="pl">Interfejs API kompatybilny z OpenAI: Flint posiada lokalny serwer API, dostępny pod adresem localhost:1337, dla narzędzi zgodnych z formatem OpenAI.</li>
 
       <li>MCP support: Integrates the Model Context Protocol for enhanced workflows and tooling</li>
-      <li xml:lang="pl">Obsługa MCP: Jan obsługuje Model Context Protocol dla lepszego przepływu pracy i obsługi narzędzi.</li>
+      <li xml:lang="pl">Obsługa MCP: Flint obsługuje Model Context Protocol dla lepszego przepływu pracy i obsługi narzędzi.</li>
 
-      <li>Privacy-aware design: Jan works offline by default. Cloud access is optional and user-controlled</li>
-      <li xml:lang="pl">Projekt uwzględniający prywatność: Jan domyślnie działa w trybie bez dostępu do sieci. Dostęp do chmury jest opcjonalny i pozostaje pod kontrolą użytkownika.</li>
+      <li>Privacy-aware design: Flint works offline by default. Cloud access is optional and user-controlled</li>
+      <li xml:lang="pl">Projekt uwzględniający prywatność: Flint domyślnie działa w trybie bez dostępu do sieci. Dostęp do chmury jest opcjonalny i pozostaje pod kontrolą użytkownika.</li>
     </ul>
 
     <p>
-      Jan is actively maintained by Jozkah.
+      Flint is actively maintained by Jozkah.
       Feedback, bug reports and feature requests are welcomed through GitHub.
     </p>
     <p xml:lang="pl">
-      Aplikacja Jan jest aktywnie utrzymywana przez Jozkah.
+      Aplikacja Flint jest aktywnie utrzymywana przez Jozkah.
       Informacje zwrotne, zgłoszenia błędów i prośby o nowe funkcje są mile widziane za pośrednictwem platformy GitHub.
     </p>
   </description>
@@ -69,6 +69,11 @@
   </keywords>
 
   <releases>
+    <release version="0.9.0" date="2026-10-04">
+      <description>
+        <p>The Flint redesign: new interface, local-first defaults, and agent, browser and MCP tooling improvements</p>
+      </description>
+    </release>
     <release version="0.8.3" date="2026-06-24">
       <description>
         <p>A visible assistant switcher with a Cmd/Ctrl+J cycle shortcut, a unified reasoning and tool-call trace timeline, per-model sampling defaults for the local API server, a larger 100MB attachment limit, plus a batch of chat, citation, markdown/LaTeX rendering, factory-reset, and Linux fixes</p>

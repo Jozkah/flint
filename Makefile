@@ -151,6 +151,8 @@ lint: install-and-build
 test-prepare: lint
 	yarn download:bin
 	$(MAKE) stub-resources
+	# localOnly.test.ts scans web-app/dist and silently skips when it is absent.
+	yarn workspace @janhq/web-app build
 	yarn test
 	yarn copy:assets:tauri
 	yarn build:icon

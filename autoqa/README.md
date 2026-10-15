@@ -1,10 +1,10 @@
 # E2E Test Runner with ReportPortal Integration
 
-🚀 An automated end-to-end test runner for Jan application with ReportPortal integration, screen recording, and comprehensive test monitoring.
+🚀 An automated end-to-end test runner for the Flint application with ReportPortal integration, screen recording, and comprehensive test monitoring.
 
 ## Features
 
-- ✅ **Automated Jan App Testing**: Automatically starts/stops Jan application
+- ✅ **Automated Flint App Testing**: Automatically starts/stops the Flint application
 - 🖥️ **Auto Computer Server**: Automatically starts computer server in background
 - 📹 **Screen Recording**: Records test execution for debugging
 - 📊 **ReportPortal Integration**: Optional test results upload to ReportPortal
@@ -16,7 +16,7 @@
 ## Prerequisites
 
 - Python 3.11+ (CI runs 3.13; `cua-computer~=0.3.5` in `requirements.txt` requires 3.11)
-- Jan application installed
+- Flint application installed
 - Windows Sandbox (for computer provider)
 - Computer server package installed
 - Required Python packages (see requirements.txt)
@@ -37,7 +37,7 @@ cd autoqa
 pip install -r requirements.txt
 ```
 
-3. Ensure Jan application is installed in one of the default locations:
+3. Ensure the Flint application is installed. The product is now Flint (binary `Flint-Desktop`), but the auto-detection defaults below and `--jan-process-name` still use the old `Jan-Desktop` names, so pass `--jan-app-path` and `--jan-process-name Flint-Desktop` explicitly. This suite is not wired to any CI workflow. Legacy default locations:
    - Windows: `%LOCALAPPDATA%\Programs\jan\Jan-Desktop.exe`
    - macOS: `~/Applications/Jan.app/Contents/MacOS/Jan-Desktop`
    - Linux: `Jan-Desktop` (in PATH, installed to `/usr/bin` by the .deb and AppImage)

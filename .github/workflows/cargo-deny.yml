@@ -1,0 +1,36 @@
+name: Cargo Deny
+# Advisory scan only, never a PR gate: a new RustSec entry should not block an
+# unrelated change. Weekly plus manual, results land in the job summary.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: cargo-deny-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    name: advisories
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --version 0.18.3
+
+      - name: cargo deny check advisories
+        run: |
+          for m in src-tauri/Cargo.toml src-tauri/utils/Cargo.toml \
+            src-tauri/plugins/tauri-plugin-hardware/Cargo.toml \
+            src-tauri/plugins/tauri-plugin-llamacpp/Cargo.toml; do
+            echo "### $m" >> "$GITHUB_STEP_SUMMARY"
+            cargo deny --manifest-path "$m" --config deny.toml check advisories 2>&1 \
+              | tee -a "$GITHUB_STEP_SUMMARY" || true
+          done

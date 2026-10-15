@@ -1,0 +1,13 @@
+# cargo-deny policy. Advisories only for now: licenses, bans and sources are
+# not enforced, so this cannot block a build on policy that was never decided.
+# Run by .github/workflows/cargo-deny.yml (weekly + manual, non-blocking):
+#   cargo deny --manifest-path src-tauri/Cargo.toml check advisories
+
+[advisories]
+version = 2
+yanked = "warn"
+ignore = [
+  # rsa Marvin Attack timing side channel. No patched release exists upstream;
+  # revisit when rsa publishes a fix or the dependency is dropped.
+  { id = "RUSTSEC-2023-0071", reason = "no patched rsa release available; track upstream" },
+]

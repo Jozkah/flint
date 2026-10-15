@@ -203,13 +203,18 @@ async function main() {
     // Expect EEXIST error if the directory already exists
   }
 
-  // Adjust these URLs based on latest releases
-  const bunUrl = `https://github.com/oven-sh/bun/releases/latest/download/bun-${bunPlatform}.zip`
-
-  let uvUrl = `https://github.com/astral-sh/uv/releases/latest/download/uv-${uvPlatform}.tar.gz`
-  if (platform === 'win32') {
-    uvUrl = `https://github.com/astral-sh/uv/releases/latest/download/uv-${uvPlatform}.zip`
-  }
+  // bun and uv are pinned to a release with a sha256 per asset (sidecar-manifest.json).
+  const sidecars = JSON.parse(
+    fs.readFileSync(new URL('./sidecar-manifest.json', import.meta.url), 'utf8')
+  )
+  const bunAsset = `bun-${bunPlatform}.zip`
+  const uvAsset = `uv-${uvPlatform}.${platform === 'win32' ? 'zip' : 'tar.gz'}`
+  const bunSha = sidecars.bun.assets[bunAsset]
+  const uvSha = sidecars.uv.assets[uvAsset]
+  if (!bunSha) throw new Error(`No pinned bun asset for ${bunAsset}`)
+  if (!uvSha) throw new Error(`No pinned uv asset for ${uvAsset}`)
+  const bunUrl = `${sidecars.bun.baseUrl}/${bunAsset}`
+  const uvUrl = `${sidecars.uv.baseUrl}/${uvAsset}`
 
   console.log(`Downloading Bun for ${bunPlatform}...`)
   const bunSaveDir = path.join(tempBinDir, `bun-${bunPlatform}.zip`)

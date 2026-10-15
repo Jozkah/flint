@@ -1,0 +1,43 @@
+{
+  "_comment": "Pinned bun/uv sidecar releases with sha256 per asset, copied from each release SHASUMS256.txt / sha256.sum. Bump the version and hashes together.",
+  "bun": {
+    "version": "1.4.3",
+    "tag": "bun-v1.4.3",
+    "baseUrl": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.3",
+    "assets": {
+      "bun-darwin-aarch64.zip": "80afd4c069b46a6fa8f3ec520bebc750a7843e4a8d5b9583d29ad436c00a3403",
+      "bun-darwin-x64.zip": "62660e6438eb872278877acca77e1152d5d031324df368d4a81b428211489d2d",
+      "bun-linux-aarch64-musl.zip": "8de8a0003cc2707bb555887e3d450e24e1edf3f605f491393e89ed61a8853420",
+      "bun-linux-aarch64.zip": "efa9813da5ed72423bf847f916e8d2c47c0d776add972354026a75e10da9aa21",
+      "bun-linux-x64-musl.zip": "6e9ea98554ea0d05efda5840ae292618aaa3adefd66b0853520c5c86a37eac9c",
+      "bun-linux-x64.zip": "3e730528d89775f03f87f05c06787c4df4099d0a37f3f252e7b829cb23816e18",
+      "bun-windows-aarch64.zip": "5e8f142ef722cbc9f67dc068a166e46ee72be8307b38cac7186589d2face668f",
+      "bun-windows-x64.zip": "0bf84e808552beea67bf1202a287a35c6c825d837b287b3f8e9dd513dba35d3d"
+    }
+  },
+  "uv": {
+    "version": "0.13.1",
+    "tag": "0.13.1",
+    "baseUrl": "https://github.com/astral-sh/uv/releases/download/0.13.1",
+    "assets": {
+      "uv-aarch64-apple-darwin.tar.gz": "cfe454573412ff7380d15fc7dae5997ab53ffce72fce0a78e91ddbc84001acd2",
+      "uv-aarch64-pc-windows-msvc.zip": "ec7846a5939b4654afee24f2d82bf6fde71bd7a6952d7748f1135ab301dd0a49",
+      "uv-aarch64-unknown-linux-gnu.tar.gz": "9041c73c99fdc5892cf128140beb354eca9231d502068cc36e6cb53a8e59ad14",
+      "uv-aarch64-unknown-linux-musl.tar.gz": "345a8308e4d1835cdfaadf692836fd3137a6d45864773f05ad7bf59442b1ba16",
+      "uv-arm-unknown-linux-musleabihf.tar.gz": "68d35d155ed7555da1fa811e16b1f8711227e5bcf0c5d45bbc7282333ec82970",
+      "uv-armv7-unknown-linux-gnueabihf.tar.gz": "833bb2b4a47ba2aa4356e577eb52be2deb15d145d79e559dfe8fcc3bf546017b",
+      "uv-armv7-unknown-linux-musleabihf.tar.gz": "443b8bc3e4ef03b20b38aa1b03bc0604f55dfa74e091b7acc4851bcd5e5d6c58",
+      "uv-i686-pc-windows-msvc.zip": "fcebe7cd3be7e2b1b4b5802bac36c85eeb724837c48be48d41a226367ef7d4a3",
+      "uv-i686-unknown-linux-gnu.tar.gz": "99645fd8923859e74a8f481d4f949318dae47beb65adc4b13a73f2582da9f853",
+      "uv-i686-unknown-linux-musl.tar.gz": "8fd67e5a8d3ef4ec75acda39d16df00821e2b0728f1f0e7f8aef24101ba88ddf",
+      "uv-powerpc64le-unknown-linux-gnu.tar.gz": "66b890c75291de97617705dcc275a3e4ed99446e73b93c7748c6ca28d6793203",
+      "uv-riscv64gc-unknown-linux-gnu.tar.gz": "52d9f0677840c20a14ed037a6cba515cc2f20a03001aaa605f928e80f4b55ec2",
+      "uv-riscv64gc-unknown-linux-musl.tar.gz": "b60c852c5a072640a624438935ffc1eddc4c38842c8422db890d6912e5d586d3",
+      "uv-s390x-unknown-linux-gnu.tar.gz": "d04236f6631a514824e06ce45f1b4832edfb43648d2e9fed2188c9fc66d8c95f",
+      "uv-x86_64-apple-darwin.tar.gz": "bb7b805bdcf3d0bc8c74ceb94569e6b3e8aa35bd492acdbb9d46bf46d9d4ff6b",
+      "uv-x86_64-pc-windows-msvc.zip": "3b2661a463a5baea7f5076ea2b25ab71d77f36a6c0d809e5350651792f80a672",
+      "uv-x86_64-unknown-linux-gnu.tar.gz": "eadd9d27c134ab5ac1ffd4473b97a741407f3ea238288f03121fc4deddf90220",
+      "uv-x86_64-unknown-linux-musl.tar.gz": "6c86040a8f045ab9adc9e3ec4cdafa03fd00e9a988ed2bf28971c7fc2d0debd0"
+    }
+  }
+}

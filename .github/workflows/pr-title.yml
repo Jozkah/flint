@@ -15,6 +15,7 @@ jobs:
   title:
     name: Conventional Commit title
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Check the PR title
         env:
