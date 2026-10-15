@@ -194,6 +194,25 @@ describe('generatePreset MTP emission', () => {
 })
 
 describe('generatePreset parallel reservation', () => {
+  it('runs exactly the configured slots when the reservation is off', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', {
+      parallel: 1,
+      reserve_background_slots: false,
+    } as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('parallel = 1')
+    expect(ini).not.toContain('parallel = 3')
+  })
+
+  it('applies the same to a per-model override', async () => {
+    setupModel('llama', { parallel: 2 })
+    await generatePreset('/p', '/jan', {
+      reserve_background_slots: false,
+    } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('parallel = 2')
+  })
+
   it('adds the reserved background slots on top of the global parallel value', async () => {
     setupModel('llama', {})
     await generatePreset('/p', '/jan', { parallel: 1 } as any, {
