@@ -675,6 +675,7 @@ pub async fn spawn_with_offload(
 ) -> Result<WorkerHandle, WorkerError> {
     let args = worker_args(preset_path, port, models_max, slot_cache_mib);
     log::info!("starting {} {}", exe.display(), args.join(" "));
+    let envs = with_engine_env_defaults(envs);
 
     let mut cmd = Command::new(exe);
     // Without this the worker flashes a console window on Windows, the way
@@ -866,9 +867,37 @@ pub fn sidecar_path() -> Option<PathBuf> {
     candidate.is_file().then_some(candidate)
 }
 
+/// Vulkan's lazily grown scratch buffers are allocated on the first decode,
+/// after auto-fit has sized the model, so fit cannot leave room for them; with
+/// VRAM full the allocation fails with `ErrorOutOfDeviceMemory` because
+/// ggml-vulkan has no system-memory fallback unless asked. With the fallback a
+/// tight fit runs slower instead of failing. A value the user set wins.
+const VK_SYSMEM_FALLBACK_ENV: &str = "GGML_VK_ALLOW_SYSMEM_FALLBACK";
+
+fn with_engine_env_defaults(mut envs: HashMap<String, String>) -> HashMap<String, String> {
+    if !envs.contains_key(VK_SYSMEM_FALLBACK_ENV)
+        && std::env::var_os(VK_SYSMEM_FALLBACK_ENV).is_none()
+    {
+        envs.insert(VK_SYSMEM_FALLBACK_ENV.to_string(), "1".to_string());
+    }
+    envs
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vulkan_sysmem_fallback_is_on_unless_the_user_set_it() {
+        if std::env::var_os(VK_SYSMEM_FALLBACK_ENV).is_none() {
+            let envs = with_engine_env_defaults(HashMap::new());
+            assert_eq!(envs.get(VK_SYSMEM_FALLBACK_ENV).map(String::as_str), Some("1"));
+        }
+        let mut user = HashMap::new();
+        user.insert(VK_SYSMEM_FALLBACK_ENV.to_string(), "0".to_string());
+        let envs = with_engine_env_defaults(user);
+        assert_eq!(envs.get(VK_SYSMEM_FALLBACK_ENV).map(String::as_str), Some("0"));
+    }
 
     // Restored with the marker lists intact: each entry came from a real crash
     // report, and a fault the classifier misses is a silent hang for the user.
