@@ -242,6 +242,21 @@ describe('settings.set', () => {
     expect(a.setChatReasoning).toHaveBeenCalledWith('c1', 'off')
   })
 
+  it('never sets bypass from a phone, and auto only when it may approve', async () => {
+    expect(await call('settings.set', { scope: 'cowork', id: 'w1', mode: 'bypass' })).toMatchObject({
+      error: { code: 'desktop_only' },
+    })
+    expect(
+      await call('cowork.send', { clientId: 'm-cw0009', text: 'x', new: true, mode: 'bypass' })
+    ).toMatchObject({ error: { code: 'desktop_only' } })
+    vi.mocked(a.permissions).mockResolvedValue({ approvals: false, alwaysAllow: false })
+    expect(await call('settings.set', { scope: 'cowork', id: 'w1', mode: 'auto' })).toMatchObject({
+      error: { code: 'forbidden' },
+    })
+    expect(a.setCoworkMode).not.toHaveBeenCalled()
+    expect(a.createCowork).not.toHaveBeenCalled()
+  })
+
   it('narrows access to review-only, never widens it', async () => {
     await call('settings.set', { scope: 'cowork', id: 'w1', access: 'review-only' })
     expect(a.setCoworkReviewOnly).toHaveBeenCalledWith('w1')
