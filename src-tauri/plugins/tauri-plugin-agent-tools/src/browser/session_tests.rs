@@ -115,6 +115,11 @@ fn serve() -> App {
 }
 
 fn browser_or_skip(test: &str) -> bool {
+    // A shared CI runner opts out: opening a page there is not reliable.
+    if std::env::var_os("FLINT_SKIP_BROWSER_TESTS").is_some() {
+        println!("SKIPPED {test}: FLINT_SKIP_BROWSER_TESTS is set");
+        return false;
+    }
     match crate::browser_discovery::find_browser_path() {
         Some(p) => {
             println!("RAN {test}: driving {}", p.display());

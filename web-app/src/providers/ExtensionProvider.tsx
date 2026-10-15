@@ -107,7 +107,7 @@ export function ExtensionProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (!finishedSetup) return
     bootMark('ext:setup-finished')
-    if (isMainWindow()) emit('app-ready').catch(() => {})
+    if (isMainWindow()) Promise.resolve(emit('app-ready')).catch(() => {})
     // Synchronously, so the loader stops taking clicks (`.loaded` sets
     // `pointer-events: none`) even if nothing after this runs.
     document.body.classList.add('loaded')

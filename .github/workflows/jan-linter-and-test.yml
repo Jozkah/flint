@@ -234,6 +234,7 @@ jobs:
         # not carry it, and the suite's documented opt-out is this variable.
         env:
           JAN_SKIP_LSP_TESTS: '1'
+          FLINT_SKIP_BROWSER_TESTS: '1'
           NODE_OPTIONS: '--max-old-space-size=4096'
           # Debug info is most of a test build's size and nothing here reads it.
           CARGO_PROFILE_DEV_DEBUG: '0'
