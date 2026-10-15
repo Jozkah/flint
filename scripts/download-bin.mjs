@@ -88,6 +88,20 @@ function assertSha256(filePath, expected) {
   }
 }
 
+// Downloads url to dest unless a cached copy with the pinned hash is already
+// there. A cached file with the wrong hash is deleted and fetched again.
+// Returns true when a fresh copy was downloaded.
+async function fetchPinned(url, dest, expected) {
+  if (fs.existsSync(dest)) {
+    if (sha256File(dest) === String(expected).toLowerCase()) return false
+    console.log(`Cached ${dest} does not match its pinned sha256; refetching`)
+    fs.rmSync(dest, { force: true })
+  }
+  await download(url, dest)
+  assertSha256(dest, expected)
+  return true
+}
+
 async function validateZipArchive(filePath, targetDir) {
   const archive = await unzipper.Open.file(filePath)
   for (const entry of archive.files) {
@@ -218,8 +232,7 @@ async function main() {
 
   console.log(`Downloading Bun for ${bunPlatform}...`)
   const bunSaveDir = path.join(tempBinDir, `bun-${bunPlatform}.zip`)
-  if (!fs.existsSync(bunSaveDir)) {
-    await download(bunUrl, bunSaveDir)
+  if (await fetchPinned(bunUrl, bunSaveDir, bunSha)) {
     await decompress(bunPath, tempBinDir)
   }
   try {
@@ -303,8 +316,7 @@ async function main() {
   console.log(`Downloading UV for ${uvPlatform}...`)
   const uvExt = platform === 'win32' ? `zip` : `tar.gz`
   const uvSaveDir = path.join(tempBinDir, `uv-${uvPlatform}.${uvExt}`)
-  if (!fs.existsSync(uvSaveDir)) {
-    await download(uvUrl, uvSaveDir)
+  if (await fetchPinned(uvUrl, uvSaveDir, uvSha)) {
     await decompress(uvPath, tempBinDir)
   }
   try {
