@@ -94,7 +94,6 @@ type FilePickerPopoverProps = {
   onActiveChange: (index: number) => void
   onSelect: (entry: ReferenceEntry) => void
   onClose: () => void
-  textareaRef: React.RefObject<HTMLTextAreaElement | null>
   listId: string
   /** The file or folder being named as an alias, while the name is typed. */
   aliasDraft: ReferenceEntry | null
@@ -113,7 +112,6 @@ export function FilePickerPopover({
   onActiveChange,
   onSelect,
   onClose,
-  textareaRef,
   listId,
   aliasDraft,
   aliasError,
@@ -131,11 +129,10 @@ export function FilePickerPopover({
   }, [aliasDraft])
 
   const popoverStyle = useMemo(() => {
-    if (!position || !textareaRef.current) {
-      return { top: 0, left: 0, opacity: 0 as const }
-    }
+    // Never hide an open menu: an invisible one still catches clicks.
+    if (!position) return { bottom: '100%', left: 0 }
     return { top: position.top, left: position.left }
-  }, [position, textareaRef])
+  }, [position])
 
   useEffect(() => {
     itemRefs.current.get(activeIndex)?.scrollIntoView?.({ block: 'nearest' })
