@@ -1,4 +1,4 @@
-import type { AskOption, AskQuestion } from '@/types/coworkSession'
+import type { AskAnswer, AskOption, AskQuestion } from '@/types/coworkSession'
 
 /**
  * One list of choices for a question, with exactly one custom-answer row.
@@ -141,15 +141,21 @@ export function answerFor(
   question: AskQuestion,
   rows: readonly NormalizedOption[],
   selectedIds: readonly string[],
-  customText: string
-): { id: string; selected: string[]; custom_input?: string } {
+  customText: string,
+  images: { dataUrl: string; name: string }[] = []
+): AskAnswer {
   const byId = new Map(rows.map((r) => [r.id, r]))
   const chosen = selectedIds
     .map((id) => byId.get(id))
     .filter((r): r is NormalizedOption => Boolean(r))
 
   if (chosen.some((r) => r.isCustom)) {
-    return { id: question.id, selected: [], custom_input: customText.trim() }
+    return {
+      id: question.id,
+      selected: [],
+      custom_input: customText.trim(),
+      ...(images.length > 0 ? { images } : {}),
+    }
   }
   return { id: question.id, selected: chosen.map((r) => r.label) }
 }

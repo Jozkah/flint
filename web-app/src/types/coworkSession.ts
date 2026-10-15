@@ -298,6 +298,8 @@ export type AskAnswer = {
   id: string
   selected: string[]
   custom_input?: string
+  /** Pictures pasted into a written answer. Sent to the model, not saved. */
+  images?: { dataUrl: string; name: string }[]
 }
 
 /**

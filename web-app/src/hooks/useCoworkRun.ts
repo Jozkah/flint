@@ -744,7 +744,14 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
           st.liveTurns[sid] ?? [],
           requestId,
           state,
-          answers
+          // Pasted pictures go to the model, not into the saved transcript.
+          answers?.map((a) => ({
+            id: a.id,
+            selected: a.selected,
+            ...(a.custom_input !== undefined
+              ? { custom_input: a.custom_input }
+              : {}),
+          }))
         ),
       },
     })),
