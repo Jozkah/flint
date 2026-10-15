@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
 Installs the `jan` agent CLI on Windows: either a published build from
-delta.jan.ai (default) or one compiled from this checkout (-Source).
+Flint's GitHub releases (default) or one compiled from this checkout (-Source).
 
 .DESCRIPTION
 The PowerShell counterpart of install-jan-agent.sh. The CLI has no
@@ -11,7 +11,7 @@ self-update command: re-run this script to update.
 .EXAMPLE
 .\scripts\install-jan-agent.ps1
 .EXAMPLE
-.\scripts\install-jan-agent.ps1 -Version 0.8.4-6 -AddToPath
+.\scripts\install-jan-agent.ps1 -Version 0.9.0 -AddToPath
 .EXAMPLE
 .\scripts\install-jan-agent.ps1 -Source
 #>
@@ -20,7 +20,6 @@ param(
   # Install directory. Defaults to $env:JAN_INSTALL_DIR, else a per-user
   # location that needs no elevation.
   [string]$Dir,
-  [string]$Channel = 'agent-nightly',
   [string]$Version = '',
   [switch]$Source,
   # Append the install directory to the user PATH (persisted, not just this session).
@@ -32,7 +31,8 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $BinaryName = 'flint.exe'
-$PlatformKey = 'windows-x86_64'
+$Target = 'x86_64-pc-windows-msvc'
+$Repo = 'Jozkah/flint'
 
 if (-not $Dir) {
   if ($env:JAN_INSTALL_DIR) {
@@ -49,7 +49,7 @@ if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
   Write-Warning 'no native ARM64 build is published; the x86_64 build runs under emulation'
 }
 
-# PowerShell 5.1 defaults to TLS 1.0, which delta.jan.ai rejects.
+# PowerShell 5.1 defaults to TLS 1.0, which GitHub rejects.
 if ([Net.ServicePointManager]::SecurityProtocol -notmatch 'Tls12') {
   [Net.ServicePointManager]::SecurityProtocol =
     [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -137,47 +137,56 @@ function Install-FromSource {
 }
 
 function Install-Published {
-  $base = "https://delta.jan.ai/$Channel"
-  $url = ''
-  $expected = ''
-  $resolved = $Version
-
-  if ($resolved) {
-    $url = "$base/jan-agent-$PlatformKey-$resolved.zip"
+  if ($Version) {
+    $tag = 'v' + $Version.TrimStart('v')
   } else {
-    Write-Host "resolving the latest $Channel build"
+    Write-Host "resolving the latest release of $Repo"
     try {
-      $manifest = Invoke-RestMethod -Uri "$base/manifest.json" -UseBasicParsing
+      $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -UseBasicParsing
     } catch {
-      throw "cannot fetch $base/manifest.json : $($_.Exception.Message)"
+      throw "cannot resolve the latest release of $Repo : $($_.Exception.Message)"
     }
-    $resolved = $manifest.version
-    $entry = $manifest.platforms.$PlatformKey
-    if (-not $entry -or -not $entry.url) {
-      throw "the $Channel manifest has no build for $PlatformKey"
-    }
-    $url = $entry.url
-    if ($entry.PSObject.Properties.Name -contains 'sha256') { $expected = $entry.sha256 }
+    $tag = [string]$release.tag_name
+    if (-not $tag) { throw "cannot resolve the latest release of $Repo" }
   }
+  $resolved = $tag.TrimStart('v')
+  $base = "https://github.com/$Repo/releases/download/$tag"
+  $asset = "flint-$resolved-$Target.zip"
+  $url = "$base/$asset"
 
-  $tmp = Join-Path ([IO.Path]::GetTempPath()) ("jan-agent-" + [Guid]::NewGuid().ToString('N'))
+  $tmp = Join-Path ([IO.Path]::GetTempPath()) ("flint-cli-" + [Guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Force -Path $tmp | Out-Null
   try {
-    $archive = Join-Path $tmp 'jan-agent.zip'
-    Write-Host "downloading $resolved from $url"
+    # Every release publishes sha256sums.txt; an archive without a matching
+    # line is refused rather than installed unverified.
+    $sumsPath = Join-Path $tmp 'sha256sums.txt'
+    try {
+      Invoke-WebRequest -Uri "$base/sha256sums.txt" -OutFile $sumsPath -UseBasicParsing
+    } catch {
+      throw "cannot fetch $base/sha256sums.txt : $($_.Exception.Message)"
+    }
+    $expected = ''
+    foreach ($line in Get-Content -LiteralPath $sumsPath) {
+      if ($line -match '^([0-9a-fA-F]{64})\s+\*?(\S+)$' -and $Matches[2] -eq $asset) {
+        $expected = $Matches[1]
+        break
+      }
+    }
+    if (-not $expected) { throw "release $tag has no checksum for $asset" }
+
+    $archive = Join-Path $tmp $asset
+    Write-Host "downloading $tag from $url"
     try {
       Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
     } catch {
       throw "download failed: $url : $($_.Exception.Message)"
     }
 
-    if ($expected) {
-      $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
-      if ($actual -ne $expected.ToUpperInvariant()) {
-        throw "checksum mismatch: expected $expected, got $actual"
-      }
-      Write-Host 'sha256 verified'
+    $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+    if ($actual -ne $expected.ToUpperInvariant()) {
+      throw "checksum mismatch: expected $expected, got $actual"
     }
+    Write-Host 'sha256 verified'
 
     Expand-Archive -LiteralPath $archive -DestinationPath $tmp -Force
     # Published zips keep flint.exe at the root; search anyway so a packaging
@@ -186,7 +195,7 @@ function Install-Published {
       Select-Object -First 1
     if (-not $extracted) { throw "no $BinaryName inside the archive" }
 
-    Install-Binary -Source $extracted.FullName -Label "$Channel $resolved"
+    Install-Binary -Source $extracted.FullName -Label $resolved
   } finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
   }
