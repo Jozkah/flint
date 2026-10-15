@@ -330,7 +330,7 @@ fn cargo_source(v: &toml::Value) -> String {
 fn split_requirement(spec: &str) -> (String, String) {
     let spec = spec.split(';').next().unwrap_or(spec).trim();
     let at = spec
-        .find(|c: char| matches!(c, '=' | '<' | '>' | '~' | '!' | '@' | ' ' | '['))
+        .find(['=', '<', '>', '~', '!', '@', ' ', '['])
         .unwrap_or(spec.len());
     let name = spec[..at].trim().to_ascii_lowercase().replace('_', "-");
     let rest = spec[at..].trim();

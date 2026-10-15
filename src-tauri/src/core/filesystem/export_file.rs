@@ -58,7 +58,7 @@ pub fn sanitize_file_name(name: &str, ext: &str) -> String {
         .chars()
         .take(80)
         .collect();
-    let mut stem = stem.trim_end_matches(|c| c == '.' || c == ' ').to_string();
+    let mut stem = stem.trim_end_matches(['.', ' ']).to_string();
     if stem.is_empty() {
         stem = "export".to_string();
     }

@@ -1164,6 +1164,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn rustup_proxy_is_not_reported_as_runnable_cargo() {
         let home = TempDir::new("rustup-proxy");
         let proxy_bin = home.path().join(".cargo").join("bin");
@@ -1242,7 +1243,7 @@ mod tests {
         assert_eq!(got, vec![ok.clone()]);
         // Already on the sandbox PATH: not added twice.
         assert!(
-            usable_host_dirs(&host, Some(&prof), &[ok.clone()], &[], |_| Some(true))
+            usable_host_dirs(&host, Some(&prof), std::slice::from_ref(&ok), &[], |_| Some(true))
                 .iter()
                 .all(|d| d != &ok)
         );
@@ -1278,6 +1279,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn hint_names_the_path_the_reason_and_forbids_substitutes() {
         let profile = Path::new(r"C:\Users\me");
         let blocked = unavailable_hint(

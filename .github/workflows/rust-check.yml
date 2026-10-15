@@ -22,6 +22,7 @@ jobs:
         include:
           - name: desktop
             features: test-tauri
+            default_flag: --no-default-features
             targets: --all-targets
             tauri: true
           # --all-targets matters here: modules like core::agent::global_config
@@ -29,6 +30,7 @@ jobs:
           # and --lib --bins would leave them unlinted.
           - name: cli
             features: cli
+            default_flag: --no-default-features
             targets: --all-targets
             tauri: false
           # `cowork-smoke` is a third config, not a variation of the desktop
@@ -42,7 +44,7 @@ jobs:
           - name: cowork-smoke
             features: cowork-smoke
             targets: --all-targets
-            default_features: true
+            default_flag: ''
             tauri: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,13 +75,13 @@ jobs:
       - name: cargo check
         run: |
           cargo check --locked --manifest-path src-tauri/Cargo.toml \
-            ${{ matrix.default_features && '' || '--no-default-features' }} \
+            ${{ matrix.default_flag }} \
             --features ${{ matrix.features }} ${{ matrix.targets }}
 
       - name: cargo clippy
         run: |
           cargo clippy --locked --manifest-path src-tauri/Cargo.toml \
-            ${{ matrix.default_features && '' || '--no-default-features' }} \
+            ${{ matrix.default_flag }} \
             --features ${{ matrix.features }} ${{ matrix.targets }} \
             -- -D warnings
 

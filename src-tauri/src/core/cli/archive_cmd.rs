@@ -68,7 +68,7 @@ pub fn list(kind: Option<&str>, json: bool) -> Result<(), String> {
     let data = data_folder();
     let items: Vec<_> = store::list(&data)
         .into_iter()
-        .filter(|i| kind.map_or(true, |k| k == i.meta.kind))
+        .filter(|i| kind.is_none_or(|k| k == i.meta.kind))
         .collect();
     if json {
         println!("{}", serde_json::to_string_pretty(&items).map_err(|e| e.to_string())?);

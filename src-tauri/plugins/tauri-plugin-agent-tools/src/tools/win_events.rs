@@ -129,6 +129,7 @@ pub fn plan(args: &Value) -> Result<Vec<String>, String> {
 }
 
 /// Cut `text` to the output cap on a character boundary, saying so.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn bounded(text: &str) -> String {
     if text.len() <= OUTPUT_CAP {
         return text.to_string();

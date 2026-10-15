@@ -615,6 +615,7 @@ impl RemoteHub {
     }
 
     /// The client for the live preview (loopback, no proxy, no redirects).
+    #[allow(clippy::misnamed_getters)]
     pub fn http(&self) -> &reqwest::Client {
         &self.local_http
     }
@@ -649,7 +650,7 @@ impl RemoteHub {
         devices
             .list()
             .iter()
-            .filter(|d| only.map_or(true, |o| o == d.id))
+            .filter(|d| only.is_none_or(|o| o == d.id))
             .filter_map(|d| {
                 let sub = d.push.subscription.clone()?;
                 if only.is_none() && self.is_visible(&d.id) {

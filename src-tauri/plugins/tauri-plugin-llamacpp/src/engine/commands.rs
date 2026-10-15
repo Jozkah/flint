@@ -670,7 +670,7 @@ pub async fn reload_engine_models(
     slot_cache_mib: Option<u64>,
     idle_unload_minutes: Option<u32>,
 ) -> Result<ReloadReport, String> {
-    reload_models(&**state, preset_path, models_max, slot_cache_mib, idle_unload_minutes).await
+    reload_models(&state, preset_path, models_max, slot_cache_mib, idle_unload_minutes).await
 }
 
 #[cfg(feature = "tauri")]
@@ -679,7 +679,7 @@ pub async fn engine_slots_idle(
     state: State<'_, Arc<LlamacppState>>,
     model_id: Option<String>,
 ) -> Result<bool, String> {
-    slots_idle(&**state, model_id).await
+    slots_idle(&state, model_id).await
 }
 
 #[cfg(feature = "tauri")]
@@ -690,7 +690,7 @@ pub async fn erase_thread_slot_state(
     model_id: Option<String>,
     cache_dir: Option<String>,
 ) -> Result<u32, String> {
-    erase_slot_state(&**state, thread_id, model_id, cache_dir).await
+    erase_slot_state(&state, thread_id, model_id, cache_dir).await
 }
 
 #[cfg(test)]

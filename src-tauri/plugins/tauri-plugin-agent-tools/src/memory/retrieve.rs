@@ -465,7 +465,6 @@ mod tests {
         let mut session = rec("s", "0123456789", Scope::Session);
         session.session_id = Some("s1".into());
         // Deliberately different content so deduplication does not do the work.
-        let mut session = session;
         session.content = "abcdefghij".into();
         session.content_hash = crate::memory::record::content_hash(&session.content);
 

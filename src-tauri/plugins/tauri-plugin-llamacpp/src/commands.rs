@@ -830,7 +830,7 @@ pub async fn load_llama_model<R: Runtime>(
     is_embedding: bool,
 ) -> ServerResult<SessionInfo> {
     let state: State<TauriArc<LlamacppState>> = app_handle.state();
-    load_model(&app_handle, &**state, model_id, is_embedding).await
+    load_model(&app_handle, &state, model_id, is_embedding).await
 }
 
 /// What `cancel_model_load` did.
@@ -931,7 +931,7 @@ pub async fn unload_llama_model<R: Runtime>(
     model_id: String,
 ) -> ServerResult<UnloadResult> {
     let state: State<TauriArc<LlamacppState>> = app_handle.state();
-    unload_model(&**state, model_id).await
+    unload_model(&state, model_id).await
 }
 
 #[cfg(feature = "tauri")]
@@ -942,7 +942,7 @@ pub async fn ensure_session_ready<R: Runtime>(
     is_embedding: bool,
 ) -> Result<SessionInfo, String> {
     let state: State<TauriArc<LlamacppState>> = app_handle.state();
-    ensure_session(&app_handle, &**state, model_id, is_embedding).await
+    ensure_session(&app_handle, &state, model_id, is_embedding).await
 }
 
 #[cfg(feature = "tauri")]
@@ -952,7 +952,7 @@ pub async fn find_session_by_model<R: Runtime>(
     model_id: String,
 ) -> Result<Option<SessionInfo>, String> {
     let state: State<TauriArc<LlamacppState>> = app_handle.state();
-    find_session(&**state, model_id).await
+    find_session(&state, model_id).await
 }
 
 #[cfg(feature = "tauri")]
@@ -961,7 +961,7 @@ pub async fn get_loaded_models<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
 ) -> Result<Vec<String>, String> {
     let state: State<TauriArc<LlamacppState>> = app_handle.state();
-    loaded_models(&**state).await
+    loaded_models(&state).await
 }
 
 #[cfg(test)]

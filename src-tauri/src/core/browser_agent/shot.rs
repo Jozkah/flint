@@ -95,7 +95,7 @@ pub fn prune(dir: &Path) {
         .filter(|e| e.file_name().to_string_lossy().starts_with("shot-"))
         .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
         .collect();
-    files.sort_by(|a, b| b.0.cmp(&a.0));
+    files.sort_by_key(|f| std::cmp::Reverse(f.0));
     for (_, path) in files.into_iter().skip(KEEP_FILES) {
         let _ = std::fs::remove_file(path);
     }

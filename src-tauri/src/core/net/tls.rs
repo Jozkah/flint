@@ -576,6 +576,10 @@ pub fn certificate_failure(err: &(dyn std::error::Error + 'static)) -> Option<St
         ("self-signed certificate", "the server's certificate is self-signed and not trusted"),
         ("certificate has expired", "the certificate has expired"),
         ("hostname mismatch", "the certificate is not valid for this host name"),
+        ("host name mismatch", "the certificate is not valid for this host name"),
+        // Security.framework (macOS) for a chain whose issuer is not in the keychain
+        // (errSecNoSuchCertificate / -25318), as captured from a real refusal.
+        ("certificates required to validate this certificate cannot be found", "the certificate chain ends in a root certificate that is not trusted"),
         // OpenSSL names the verdict for an IP-address URL this way.
         ("ip address mismatch", "the certificate is not valid for this host name"),
         ("notvalidforname", "the certificate is not valid for this host name"),
@@ -658,7 +662,13 @@ pub(crate) mod tests {
     /// installed. A machine without Python or that package fails these tests
     /// loudly rather than skipping them.
     pub(crate) fn make_ca() -> tempfile::TempDir {
-        let dir = tempfile::tempdir().unwrap();
+        // Under a canonical root: on macOS the temp folder is reached through the
+        // /var -> /private/var link, which the loader rightly refuses in a bundle path.
+        #[cfg(unix)]
+        let root = std::fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| std::env::temp_dir());
+        #[cfg(not(unix))]
+        let root = std::env::temp_dir();
+        let dir = tempfile::tempdir_in(root).unwrap();
         let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mock_tls_server.py");
         let python = ["python3", "python"]
             .into_iter()

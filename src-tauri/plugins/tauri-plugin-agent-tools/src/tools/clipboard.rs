@@ -93,6 +93,7 @@ pub fn summary(action: &Action) -> String {
     }
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn bounded(text: &str) -> String {
     if text.len() <= MAX_READ_BYTES {
         return text.to_string();

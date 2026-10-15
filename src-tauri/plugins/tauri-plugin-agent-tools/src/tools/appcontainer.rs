@@ -63,12 +63,14 @@ const PATH_DIR: &str = "--path-dir=";
 /// replace the shell's (see [`union_roots`]).
 pub(crate) const OWN_HOLDER: &str = "--own-grant-holder";
 /// The holder every shell command of a session records its grants under.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) const SHELL_HOLDER: &str = "shell";
 
 /// The holder name a long-lived spawn records its grants under: its helper's
 /// process id and that process's start time. The start time is what makes a
 /// record die with its process: Windows reuses process ids, and a record keyed
 /// by the id alone would be honoured again once any unrelated process got it.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn process_holder(pid: u32, started: u64) -> String {
     format!("mcp-{pid}-{started}")
 }
@@ -76,6 +78,7 @@ pub(crate) fn process_holder(pid: u32, started: u64) -> String {
 /// The process id and start time a [`process_holder`] name records. A name
 /// with no start time (written before it was recorded) yields `None` for it:
 /// such a record cannot be told apart from a reused id, so it is not live.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn parse_process_holder(name: &str) -> Option<(u32, Option<u64>)> {
     let rest = name.strip_prefix("mcp-")?;
     match rest.split_once('-') {
@@ -134,6 +137,7 @@ pub fn helper_args(
 /// [`helper_args`], with the shell started in `start` rather than the
 /// workspace. Used for a run whose write destination is a managed worktree, so
 /// relative commands (`npm test`, `.\x.ps1`) run against the project.
+#[allow(clippy::too_many_arguments)]
 pub fn helper_args_at(
     workspace: &Path,
     start: Option<&Path>,
@@ -2642,7 +2646,7 @@ mod tests {
     #[test]
     fn the_roots_record_round_trips_and_reads_the_old_format() {
         let (w, r) = (PathBuf::from("C:\\w"), PathBuf::from("C:\\r"));
-        let text = roots_record(&[w.clone()], &[r.clone(), w.clone()]);
+        let text = roots_record(std::slice::from_ref(&w), &[r.clone(), w.clone()]);
         assert_eq!(parse_roots_record(&text), (vec![w.clone()], vec![r.clone()]));
         // What an earlier build wrote: bare paths, all write roots.
         assert_eq!(parse_roots_record("C:\\w\n"), (vec![w], vec![]));
@@ -2655,7 +2659,7 @@ mod tests {
             &ws(),
             None,
             None,
-            &[w.clone()],
+            std::slice::from_ref(&w),
             &[r.clone(), w.clone()],
             false,
             Path::new("bash.exe"),
@@ -3277,6 +3281,7 @@ mod tests {
     /// A shell that cannot find its own coreutils is a shell that fails on the
     /// second command, so the installation's directories go on `PATH`.
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn a_shells_own_runtime_directories_are_offered_for_path() {
         let dirs = shell_runtime_dirs(Path::new(r"C:\Program Files\Git\bin\bash.exe"));
         for expected in [

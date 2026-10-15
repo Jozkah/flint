@@ -23,6 +23,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 const TIMEOUT_SECS: u64 = 60;
+#[cfg_attr(not(windows), allow(dead_code))]
 const OUTPUT_CAP: usize = 4 * 1024;
 
 /// Processes that are never ended: ending one crashes or logs out the machine,
@@ -183,6 +184,7 @@ pub fn summary(action: &Action) -> String {
     }
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn cut(text: &str) -> String {
     let text = text.trim();
     if text.len() <= OUTPUT_CAP {

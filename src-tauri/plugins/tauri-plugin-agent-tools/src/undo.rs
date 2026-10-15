@@ -527,6 +527,7 @@ fn swap(
         return Err(UndoError::OutOfScope(outside));
     }
 
+    #[allow(clippy::type_complexity)]
     let mut plan: Vec<(PathBuf, Option<Vec<u8>>, Option<Vec<u8>>)> = Vec::new();
     let mut conflicts = Vec::new();
     for file in &turn.files {
@@ -559,6 +560,7 @@ fn swap(
         return Err(UndoError::Conflicts(conflicts));
     }
 
+    #[allow(clippy::type_complexity)]
     let mut done: Vec<&(PathBuf, Option<Vec<u8>>, Option<Vec<u8>>)> = Vec::new();
     for step in &plan {
         // Judged again right before the write: a link swapped in after the
@@ -666,7 +668,7 @@ mod tests {
     use super::*;
 
     fn dirs(name: &str) -> (PathBuf, PathBuf) {
-        let base = std::env::temp_dir().join(format!(
+        let base = crate::test_temp_root().join(format!(
             "jan-undo-{name}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
@@ -777,7 +779,7 @@ mod tests {
         let turn = load(&data, "s1").turns.remove(0);
         assert_eq!(turn.files.len(), 1);
         assert_eq!(turn.files[0].actor.as_ref().unwrap().id, "agent:fixer");
-        undo(&data, "s1", "run-1", &[ws.clone()]).expect("undo");
+        undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).expect("undo");
         assert_eq!(text(&f), None, "undo restores the state before the turn");
         let _ = std::fs::remove_dir_all(data.parent().unwrap());
     }
@@ -901,12 +903,12 @@ mod tests {
         tool_write(&data, "run-1", &a, Some("changed\n"));
         tool_write(&data, "run-1", &b, Some("created\n"));
 
-        let report = undo(&data, "s1", "run-1", &[ws.clone()]).unwrap();
+        let report = undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap();
         assert_eq!(report.files, 2);
         assert_eq!(text(&a).as_deref(), Some("original\n"));
         assert!(!b.exists(), "a file the turn created is removed by undo");
 
-        redo(&data, "s1", "run-1", &[ws.clone()]).unwrap();
+        redo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap();
         assert_eq!(text(&a).as_deref(), Some("changed\n"));
         assert_eq!(text(&b).as_deref(), Some("created\n"));
     }
@@ -918,7 +920,7 @@ mod tests {
         std::fs::write(&a, "v0\n").unwrap();
         tool_write(&data, "run-1", &a, Some("v1\n"));
         tool_write(&data, "run-1", &a, Some("v2\n"));
-        undo(&data, "s1", "run-1", &[ws.clone()]).unwrap();
+        undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap();
         assert_eq!(text(&a).as_deref(), Some("v0\n"));
     }
 
@@ -933,7 +935,7 @@ mod tests {
         tool_write(&data, "run-1", &b, Some("jan b\n"));
         std::fs::write(&b, "the user's own edit\n").unwrap();
 
-        let err = undo(&data, "s1", "run-1", &[ws.clone()]).unwrap_err();
+        let err = undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap_err();
         let UndoError::Conflicts(c) = &err else { panic!("{err:?}") };
         assert_eq!(c.len(), 1);
         assert!(c[0].path.ends_with("b.txt"));
@@ -951,11 +953,11 @@ mod tests {
         tool_write(&data, "run-1", &a, Some("one\n"));
         tool_write(&data, "run-2", &a, Some("two\n"));
         assert!(matches!(
-            undo(&data, "s1", "run-1", &[ws.clone()]),
+            undo(&data, "s1", "run-1", std::slice::from_ref(&ws)),
             Err(UndoError::Conflicts(_))
         ));
-        undo(&data, "s1", "run-2", &[ws.clone()]).unwrap();
-        undo(&data, "s1", "run-1", &[ws.clone()]).unwrap();
+        undo(&data, "s1", "run-2", std::slice::from_ref(&ws)).unwrap();
+        undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap();
         assert!(!a.exists());
     }
 
@@ -987,12 +989,12 @@ mod tests {
         std::fs::create_dir_all(&repo).unwrap();
         let file = repo.join("x.txt");
         tool_write(&data, "run-1", &file, Some("jan\n"));
-        let err = undo(&data, "s1", "run-1", &[ws.clone()]).unwrap_err();
+        let err = undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap_err();
         assert!(matches!(err, UndoError::OutOfScope(_)), "{err:?}");
         assert_eq!(text(&file).as_deref(), Some("jan\n"));
         // A spelling that climbs out of an allowed root is not inside it.
         let climbing = ws.join("..").join("repo").join("x.txt");
-        assert!(!within(&climbing, &[ws.clone()]));
+        assert!(!within(&climbing, std::slice::from_ref(&ws)));
     }
 
     /// Jozkah/jan#291: a directory on a journaled path replaced by a link to
@@ -1007,7 +1009,7 @@ mod tests {
         std::fs::create_dir_all(&d).unwrap();
         let file = d.join("evil.desktop");
         tool_write(&data, "run-1", &file, Some("M"));
-        undo(&data, "s1", "run-1", &[ws.clone()]).unwrap();
+        undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap();
         assert!(!file.exists());
 
         std::fs::remove_dir_all(&d).unwrap();
@@ -1019,7 +1021,7 @@ mod tests {
             eprintln!("skipped: cannot create a symlink here: {e}");
             return;
         }
-        let err = redo(&data, "s1", "run-1", &[ws.clone()]).unwrap_err();
+        let err = redo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap_err();
         assert!(matches!(err, UndoError::OutOfScope(_)), "{err:?}");
         assert!(!outside.join("evil.desktop").exists(), "redo wrote through the link");
     }
@@ -1047,10 +1049,10 @@ mod tests {
         let (data, ws) = dirs("states");
         let a = ws.join("a.txt");
         tool_write(&data, "run-1", &a, Some("x\n"));
-        assert_eq!(redo(&data, "s1", "run-1", &[ws.clone()]), Err(UndoError::NotUndone));
-        undo(&data, "s1", "run-1", &[ws.clone()]).unwrap();
-        assert_eq!(undo(&data, "s1", "run-1", &[ws.clone()]), Err(UndoError::AlreadyUndone));
-        assert_eq!(undo(&data, "s1", "no-such-run", &[ws.clone()]), Err(UndoError::NotFound));
+        assert_eq!(redo(&data, "s1", "run-1", std::slice::from_ref(&ws)), Err(UndoError::NotUndone));
+        undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap();
+        assert_eq!(undo(&data, "s1", "run-1", std::slice::from_ref(&ws)), Err(UndoError::AlreadyUndone));
+        assert_eq!(undo(&data, "s1", "no-such-run", std::slice::from_ref(&ws)), Err(UndoError::NotFound));
     }
 
     #[test]
@@ -1058,12 +1060,12 @@ mod tests {
         let (data, ws) = dirs("persist");
         let a = ws.join("a.txt");
         tool_write(&data, "run-1", &a, Some("x\n"));
-        undo(&data, "s1", "run-1", &[ws.clone()]).unwrap();
+        undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap();
         // A fresh read is what a restarted process sees.
         let journal = load(&data, "s1");
         assert_eq!(journal.turns[0].state, TurnState::Undone);
         assert!(load(&data, "s2").turns.is_empty(), "another session sees nothing");
-        assert_eq!(undo(&data, "s2", "run-1", &[ws.clone()]), Err(UndoError::NotFound));
+        assert_eq!(undo(&data, "s2", "run-1", std::slice::from_ref(&ws)), Err(UndoError::NotFound));
     }
 
     #[test]
@@ -1090,7 +1092,7 @@ mod tests {
         let before_b = journal.turns[0].files[1].before.clone().unwrap();
         std::fs::write(blob_path(&data, &before_b), "tampered").unwrap();
 
-        let err = undo(&data, "s1", "run-1", &[ws.clone()]).unwrap_err();
+        let err = undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap_err();
         assert!(matches!(err, UndoError::Io(_)), "{err:?}");
         assert_eq!(text(&a).as_deref(), Some("a1\n"));
         assert_eq!(text(&b).as_deref(), Some("b1\n"));
@@ -1116,7 +1118,7 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
         std::fs::write(&dir, "in the way").unwrap();
 
-        let err = undo(&data, "s1", "run-1", &[ws.clone()]).unwrap_err();
+        let err = undo(&data, "s1", "run-1", std::slice::from_ref(&ws)).unwrap_err();
         assert!(matches!(err, UndoError::Io(_)), "{err:?}");
         assert_eq!(text(&a).as_deref(), Some("a1\n"), "a.txt was put back");
         assert_eq!(load(&data, "s1").turns[0].state, TurnState::Applied);

@@ -537,6 +537,12 @@ pub fn prepare(raw: &str, mode: AccessMode, env: &Env) -> Result<Prepared, Refus
 }
 
 fn is_system_location(path: &Path) -> bool {
+    // macOS keeps each user's temp and cache folders under /var/folders; they are
+    // the user's, not the system's, though /var as a whole is.
+    #[cfg(target_os = "macos")]
+    if within(path, &canonical_or_self(Path::new("/var/folders"))) {
+        return false;
+    }
     let mut roots: Vec<PathBuf> = Vec::new();
     #[cfg(windows)]
     for var in [
@@ -839,7 +845,7 @@ pub fn revoke_session(data_folder: &Path, session: &str) -> usize {
 pub fn list(data_folder: &Path, session: &str, now: u64) -> Vec<AccessGrant> {
     let mut out: Vec<AccessGrant> = Vec::new();
     if let Ok(mut reg) = registry().lock() {
-        reg.retain(|_, g| g.expires_at.map_or(true, |t| t > now));
+        reg.retain(|_, g| g.expires_at.is_none_or(|t| t > now));
         out.extend(reg.values().filter(|g| g.session == session).cloned());
     }
     out.extend(load_persisted(data_folder));
@@ -851,7 +857,7 @@ pub fn list(data_folder: &Path, session: &str, now: u64) -> Vec<AccessGrant> {
 pub fn list_all(data_folder: &Path, now: u64) -> Vec<AccessGrant> {
     let mut out: Vec<AccessGrant> = Vec::new();
     if let Ok(mut reg) = registry().lock() {
-        reg.retain(|_, g| g.expires_at.map_or(true, |t| t > now));
+        reg.retain(|_, g| g.expires_at.is_none_or(|t| t > now));
         out.extend(reg.values().cloned());
     }
     out.extend(load_persisted(data_folder));
@@ -968,7 +974,7 @@ mod tests {
     }
 
     fn fixture(tag: &str) -> Fixture {
-        let base = std::env::temp_dir().join(format!(
+        let base = crate::test_temp_root().join(format!(
             "jan_access_{tag}_{}_{}",
             std::process::id(),
             now_secs()

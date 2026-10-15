@@ -2540,6 +2540,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn a_denial_in_a_package_cache_names_the_cache_root() {
         use crate::tools::shell_diag::FailureClass;
         let (root, what) = toolchain_cache_root(Path::new(
@@ -2857,9 +2858,9 @@ mod tests {
             std::fs::create_dir_all(d).unwrap();
         }
         let ac = Backend::AppContainer;
-        assert!(can_confine_write_roots(ac, &[inside.clone()], Some(&owned)));
+        assert!(can_confine_write_roots(ac, std::slice::from_ref(&inside), Some(&owned)));
         assert!(can_confine_write_roots(ac, &[inside.clone(), outside.clone()], Some(&owned)));
-        assert!(can_confine_write_roots(Backend::Seatbelt, &[outside.clone()], None));
+        assert!(can_confine_write_roots(Backend::Seatbelt, std::slice::from_ref(&outside), None));
         assert!(!can_confine_write_roots(Backend::None, &[inside], Some(&owned)));
         assert!(supports_owned_write_roots(ac));
         let _ = std::fs::remove_dir_all(&base);

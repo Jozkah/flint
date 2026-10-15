@@ -181,6 +181,7 @@ pub struct FrameInfo<'a> {
     pub offset: u64,
 }
 
+#[allow(dead_code)]
 fn render(out: &mut dyn std::fmt::Write, info: &CrashInfo<'_>) {
     let stack = info.stack_high.saturating_sub(info.stack_low);
     let _ = writeln!(out, "Flint crash report");
@@ -218,6 +219,7 @@ fn render(out: &mut dyn std::fmt::Write, info: &CrashInfo<'_>) {
 
 /// A fixed buffer that implements `fmt::Write`, so the report is built without
 /// allocating. What does not fit is dropped.
+#[allow(dead_code)]
 struct Fixed<'a> {
     buf: &'a mut [u8],
     len: usize,

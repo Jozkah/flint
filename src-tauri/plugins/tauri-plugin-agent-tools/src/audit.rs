@@ -373,16 +373,16 @@ pub struct Query {
 
 impl Query {
     fn accepts(&self, r: &PermissionRecord) -> bool {
-        let eq = |want: &Option<String>, have: &str| want.as_ref().map_or(true, |w| w == have);
+        let eq = |want: &Option<String>, have: &str| want.as_ref().is_none_or(|w| w == have);
         eq(&self.session, &r.session)
             && eq(&self.run, &r.run)
             && eq(&self.agent, &r.agent)
             && eq(&self.tool, &r.tool)
-            && self.decision.map_or(true, |d| d == r.decision)
+            && self.decision.is_none_or(|d| d == r.decision)
             && self
                 .resource_contains
                 .as_ref()
-                .map_or(true, |needle| r.resource.contains(needle))
+                .is_none_or(|needle| r.resource.contains(needle))
     }
 }
 

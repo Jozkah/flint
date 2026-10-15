@@ -650,7 +650,7 @@ enum Disposition {
 fn disposition_for_status(status: u16) -> Disposition {
     match status {
         // 402: out of credits on this key; another key may still have balance.
-        401 | 402 | 403 => Disposition::NextKey,
+        401..=403 => Disposition::NextKey,
         // 429 can be either: with more keys it's worth rotating, and retrying the
         // same key after a delay is the documented remedy. Rotation is preferred
         // (see the caller) and this is the fallback when the chain is exhausted.

@@ -367,6 +367,7 @@ pub(crate) struct OrchestrationArgs {
     pub sandbox: Option<bool>,
 }
 
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub(crate) trait ModelInvoker: Send + Sync {
     async fn invoke(
@@ -537,6 +538,7 @@ fn mark_parts_as_error(mut parts: Vec<serde_json::Value>) -> Vec<serde_json::Val
 /// The object lifetime is explicit so a callback may borrow its caller's state.
 pub(crate) type OnComplete<'a> = dyn Fn(&ToolOutcome) + Send + Sync + 'a;
 
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub(crate) trait ToolInvoker: Send + Sync {
     /// The conversation this turn is dispatching from (AH-100).
@@ -4836,7 +4838,7 @@ fn retain_advertisable_mcp_tools(
         t.get("function")
             .and_then(|f| f.get("name"))
             .and_then(|n| n.as_str())
-            .map(|n| advertised(n))
+            .map(advertised)
             .unwrap_or(false)
     });
     tool_to_server.retain(|name, _| advertised(name));

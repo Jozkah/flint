@@ -272,7 +272,7 @@ async fn execute(plan: &Plan, cwd: &Path) -> String {
         // The daemon would keep the output pipes open after the build ends, and
         // the call would wait for it until the time limit.
         let existing = std::env::var("GRADLE_OPTS").unwrap_or_default();
-        cmd.env("GRADLE_OPTS", format!("{existing} -Dorg.gradle.daemon=false").trim().to_string());
+        cmd.env("GRADLE_OPTS", format!("{existing} -Dorg.gradle.daemon=false").trim());
     }
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);

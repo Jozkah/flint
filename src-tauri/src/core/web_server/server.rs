@@ -154,6 +154,7 @@ async fn read_json(req: Request<Incoming>) -> Result<serde_json::Value, Resp> {
 
 /// A JSON object body of up to `max` bytes. Messages that carry pictures and
 /// the provider request that sends them are far over the default limit.
+#[allow(clippy::result_large_err)]
 async fn read_json_max(req: Request<Incoming>, max: usize) -> Result<serde_json::Value, Resp> {
     let value = read_json_value_max(req, max).await?;
     if !value.is_object() {
@@ -168,6 +169,7 @@ pub(super) async fn read_json_value(req: Request<Incoming>) -> Result<serde_json
 }
 
 /// Like `read_json_value`, for a route that is allowed a larger body.
+#[allow(clippy::result_large_err)]
 pub(super) async fn read_json_value_max(
     req: Request<Incoming>,
     max: usize,
