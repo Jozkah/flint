@@ -81,6 +81,26 @@ jan_llama_engine * finish_start(std::unique_ptr<jan_llama_engine> engine,
 // in this process from evicting it.
 constexpr size_t LOG_CAPTURE_MAX_LINES = 8;
 
+// llama_backend_init/free touch process-global ggml state. Several engines
+// can live in one worker (chat + embedding), so free only when the last one
+// that initialized it stops.
+std::mutex g_backend_mu;
+int        g_backend_refs = 0;
+
+void backend_acquire() {
+    std::lock_guard<std::mutex> lock(g_backend_mu);
+    if (g_backend_refs++ == 0) {
+        llama_backend_init();
+    }
+}
+
+void backend_release() {
+    std::lock_guard<std::mutex> lock(g_backend_mu);
+    if (g_backend_refs > 0 && --g_backend_refs == 0) {
+        llama_backend_free();
+    }
+}
+
 std::mutex               g_capture_mu;
 std::vector<std::string> g_captured;
 bool                     g_capturing = false;
@@ -516,7 +536,7 @@ jan_llama_engine * finish_start(std::unique_ptr<jan_llama_engine> engine,
         common_init();
         // After common_init, which installs its own callback.
         llama_log_set(capture_log_callback, nullptr);
-        llama_backend_init();
+        backend_acquire();
         llama_numa_init(engine->params.numa);
 
         // Must be constructed before load_model: its ctor registers the
@@ -611,7 +631,7 @@ int jan_llama_engine_stop(jan_llama_engine * engine) {
         engine->loop.join();
     }
     delete engine;
-    llama_backend_free();
+    backend_release();
     return 0;
 }
 

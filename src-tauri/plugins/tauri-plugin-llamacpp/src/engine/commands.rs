@@ -386,6 +386,9 @@ pub async fn engine_devices<R: tauri::Runtime>(
     cmd.arg("--list-devices").envs(envs);
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
+    // A driver that hangs during backend probing must not leave the worker
+    // alive holding the GPU after the timeout drops the future.
+    cmd.kill_on_drop(true);
     jan_utils::system::setup_windows_process_flags(&mut cmd);
 
     let out = tokio::time::timeout(std::time::Duration::from_secs(30), cmd.output())
