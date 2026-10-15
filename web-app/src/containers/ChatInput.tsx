@@ -1489,7 +1489,7 @@ const ChatInput = memo(function ChatInput({
       cancelToolCall?.()
       // The turn's per-thread canceller too: a tool still running (or waiting
       // for approval) belongs to the turn that Stop ends.
-      useAppState.getState().cancelToolCalls?.[threadId]?.()
+      useAppState.getState?.().cancelToolCalls?.[threadId]?.()
     },
     [abortControllers, cancelToolCall, onStop]
   )
