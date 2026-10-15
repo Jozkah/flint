@@ -599,8 +599,6 @@ build: install-and-build install-rust-targets
 	$(MAKE) build-engine
 	yarn build
 
-# Only paths inside this checkout: ~/jan and ~/.cache/jan* belong to
-# upstream Jan and other apps, not to this build.
 clean: clean-engine-source
 ifeq ($(DETECTED_OS),Windows)
 	-powershell -Command "Get-ChildItem -Path . -Include node_modules, .next, dist, build, out, .turbo, .yarn -Recurse -Directory | Remove-Item -Recurse -Force"
@@ -611,6 +609,7 @@ ifeq ($(DETECTED_OS),Windows)
 	-powershell -Command "Remove-Item -Recurse -Force ./src-tauri/resources"
 	-git checkout -- src-tauri/resources/LICENSE
 	-powershell -Command "Remove-Item -Recurse -Force ./src-tauri/target"
+	-powershell -Command "if (Test-Path \"$($env:USERPROFILE)\jan\extensions\") { Remove-Item -Path \"$($env:USERPROFILE)\jan\extensions\" -Recurse -Force }"
 else ifeq ($(DETECTED_OS),Linux)
 	find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 	find . -name ".next" -type d -exec rm -rf '{}' +
@@ -627,6 +626,8 @@ else ifeq ($(DETECTED_OS),Linux)
 	rm -rf ./src-tauri/resources
 	-git checkout -- src-tauri/resources/LICENSE
 	rm -rf ./src-tauri/target
+	rm -rf ~/jan/extensions
+	rm -rf ~/.cache/jan*
 	rm -rf "./.cache"
 else
 	find . -name "node_modules" -type d -prune -exec rm -rfv '{}' +
@@ -643,4 +644,6 @@ else
 	rm -rfv ./src-tauri/resources
 	-git checkout -- src-tauri/resources/LICENSE
 	rm -rfv ./src-tauri/target
+	rm -rfv ~/jan/extensions
+	rm -rfv ~/Library/Caches/jan*
 endif
