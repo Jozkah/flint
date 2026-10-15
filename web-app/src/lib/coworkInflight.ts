@@ -6,7 +6,7 @@
  * closed or killed under lost that turn entirely: the tool calls it had made
  * and been answered, and the reply it was streaming. Now the run's live turns
  * are checkpointed onto the session while it goes -- at every step, and at
- * most every half second while text streams -- and cleared when the turn is
+ * most every three seconds while text streams -- and cleared when the turn is
  * committed. A checkpoint found when no run for that session is live is an
  * interrupted turn, offered back to the user: continue it, or discard the
  * unfinished reply and continue from the last completed step.

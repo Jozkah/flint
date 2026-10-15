@@ -203,6 +203,29 @@ describe('deriving a run outcome', () => {
     })
   })
 
+  it('lets a rerun that passes supersede the earlier failure', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [
+          user(),
+          bash('cargo test', {
+            result: 'test result: FAILED\n[exit 101]',
+            toolState: 'succeeded',
+          }),
+          bash('cargo test', {
+            result: 'test result: ok\n[exit 0]',
+            toolState: 'succeeded',
+          }),
+        ],
+      })
+    )
+
+    expect(outcome.checks).toHaveLength(1)
+    expect(outcome.checks[0]).toMatchObject({ outcome: 'passed' })
+    expect(outcome.unresolved.some((u) => u.kind === 'check-failed')).toBe(false)
+    expect(outcome.headline).not.toBe('completed-checks-failed')
+  })
+
   it('prefers the recorded exit code over the output text', () => {
     const outcome = deriveRunOutcome(
       input({

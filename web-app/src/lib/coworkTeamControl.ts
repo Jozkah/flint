@@ -193,6 +193,9 @@ export class TeamControl {
       const done = () => {
         signal?.removeEventListener('abort', done)
         if (timer !== undefined) clearTimeout(timer)
+        // Woken by abort or timeout: drop the waiter, or one leaks per call.
+        const at = this.waiters.indexOf(done)
+        if (at !== -1) this.waiters.splice(at, 1)
         resolve(this.queue.length > 0)
       }
       this.waiters.push(done)

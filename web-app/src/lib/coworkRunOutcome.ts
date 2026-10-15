@@ -558,6 +558,11 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
   for (const turn of toolTurns) {
     const check = checkFromTurn(turn, !input.running)
     if (check) {
+      // A rerun of the same command supersedes the earlier one: a check that
+      // failed and then passed must not leave the run marked failed.
+      const key = normalizeSegment(check.command)
+      const earlier = checks.findIndex((c) => normalizeSegment(c.command) === key)
+      if (earlier !== -1) checks.splice(earlier, 1)
       checks.push(check)
       checkCalls.add(turn)
     }

@@ -78,9 +78,11 @@ const INIT_USAGE =
 
 function phasesFromArgs(args: TodoArgs): TodoPhase[] | string {
   if (Array.isArray(args.list)) {
+    // Model-written: an entry or item of the wrong type is refused by
+    // validateInit, never thrown on here.
     return args.list.map((entry) => ({
-      name: entry.phase ?? '',
-      tasks: (entry.items ?? []).map((content) => ({
+      name: typeof entry?.phase === 'string' ? entry.phase : '',
+      tasks: (Array.isArray(entry?.items) ? entry.items : []).map((content) => ({
         content,
         status: 'pending' as const,
       })),
@@ -120,6 +122,7 @@ function validateInit(phases: TodoPhase[]): string | null {
     if (names.has(phase.name)) return `duplicate phase name '${phase.name}'`
     names.add(phase.name)
     for (const task of phase.tasks) {
+      if (typeof task.content !== 'string') return 'each task must be a string'
       if (!task.content.trim()) return 'task content must not be empty'
       // Content is the stable id, so a duplicate anywhere is ambiguous.
       if (contents.has(task.content)) {
@@ -215,6 +218,7 @@ function append(
 ): string | null {
   const seen = new Set<string>()
   for (const content of items) {
+    if (typeof content !== 'string') return 'each task must be a string'
     if (!content.trim()) return 'task content must not be empty'
     if (allTasks(list).some((t) => t.content === content)) {
       return `duplicate task '${content}'`
