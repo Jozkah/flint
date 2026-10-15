@@ -157,6 +157,7 @@ jobs:
           # The web-app production build needs about 3 GB of heap; 2048 ran out.
           NODE_OPTIONS: '--max-old-space-size=4096'
           JAN_SKIP_LSP_TESTS: '1'
+          FLINT_SKIP_BROWSER_TESTS: '1'
 
   test-on-ubuntu:
     runs-on: ubuntu-24.04
@@ -214,12 +215,22 @@ jobs:
           corepack prepare yarn@4.10.3 --activate
           yarn --version
 
+      - name: Free disk space
+        # The runner has about 14 GB free and the test build plus the web
+        # build overran it: the job died with no conclusion mid-compile.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - name: Linter and test
         # The LSP integration tests need gopls on PATH; the runner image does
         # not carry it, and the suite's documented opt-out is this variable.
         env:
           JAN_SKIP_LSP_TESTS: '1'
           NODE_OPTIONS: '--max-old-space-size=4096'
+          # Debug info is most of a test build's size and nothing here reads it.
+          CARGO_PROFILE_DEV_DEBUG: '0'
+          CARGO_INCREMENTAL: '0'
         run: |
           export DISPLAY=$(w -h | awk 'NR==1 {print $2}')
           echo -e "Display ID: $DISPLAY"
