@@ -1489,6 +1489,26 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // Any tool, MCP included, returns outside content, and an MCP tool can act
     // on the world as readily as the agent tools can.
     const hasTools = Object.keys(this.tools ?? {}).length > 0
+    // "None" means none: no assistant text, nothing that needs explaining to
+    // the model (no files, web, agent or MCP tools, memory), so what Flint
+    // would add -- colour, shell and tool-call notes, the plugin list, the
+    // date -- has nothing to attach to. Only the user's own reply-language
+    // setting still goes through. `list_plugins` is always offered and is
+    // described by its own schema.
+    const offeredTools = Object.keys(this.tools ?? {}).filter(
+      (name) => name !== 'list_plugins'
+    )
+    if (
+      !this.systemMessage?.trim() &&
+      !files &&
+      !web &&
+      !agentTools &&
+      offeredTools.length === 0 &&
+      !this.memorySelection?.block &&
+      this.mcpPromptNotes().length === 0
+    ) {
+      return replyLanguageLine() || undefined
+    }
     const raw =
       [
         this.systemMessage,

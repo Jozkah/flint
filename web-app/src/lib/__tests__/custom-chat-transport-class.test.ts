@@ -116,6 +116,26 @@ describe('CustomChatTransport', () => {
       expect(prompt).toMatch(/\n\nToday's date is \d{4}-\d{2}-\d{2}\.$/)
     })
 
+    it('adds nothing to a chat with no assistant text, tools, files, web or memory', async () => {
+      const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
+      const { useWebSearchConfig } = await import('@/hooks/useWebSearchConfig')
+      useAgentToolsConfig.setState({ agentToolsEnabled: false })
+      useWebSearchConfig.setState({ webSearchEnabled: false })
+      const bare = transport as unknown as {
+        systemMessage?: string
+        memorySelection: unknown
+      }
+      const saved = bare.systemMessage
+      bare.systemMessage = undefined
+      bare.memorySelection = null
+      internals().tools = { list_plugins: {} }
+      const prompt = internals().buildSystemPrompt([])
+      bare.systemMessage = saved
+      expect(prompt ?? '').not.toContain("Today's date")
+      expect(prompt ?? '').not.toContain('# Color')
+      expect(prompt ?? '').not.toContain('shell tools')
+    })
+
     it('gives both rules when only MCP tools are connected', async () => {
       const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
       useAgentToolsConfig.setState({ agentToolsEnabled: false })
