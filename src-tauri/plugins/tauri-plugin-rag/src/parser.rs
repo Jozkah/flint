@@ -65,8 +65,50 @@ fn extract_pdf_text_lenient(bytes: &[u8]) -> Result<String, String> {
     })
 }
 
+/// Most a PDF's streams may inflate to in total. Both extractors decode every
+/// stream fully in memory, so a small Flate bomb would otherwise take the app
+/// down (report-06 MED-5).
+const MAX_PDF_DECODED_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Refuse a PDF whose streams decode to more than `limit` bytes, measured with
+/// a bounded inflate so the check itself cannot be bombed.
+fn check_pdf_decoded_size(bytes: &[u8], limit: u64) -> Result<(), String> {
+    let doc = match lopdf::Document::load_mem(bytes) {
+        Ok(doc) => doc,
+        // The extractors report a document that will not load.
+        Err(_) => return Ok(()),
+    };
+    let mut total: u64 = 0;
+    for object in doc.objects.values() {
+        let lopdf::Object::Stream(stream) = object else { continue };
+        let flate = match stream.dict.get(b"Filter") {
+            Ok(lopdf::Object::Name(n)) => n.as_slice() == b"FlateDecode",
+            Ok(lopdf::Object::Array(a)) => a
+                .iter()
+                .any(|f| matches!(f, lopdf::Object::Name(n) if n.as_slice() == b"FlateDecode")),
+            _ => false,
+        };
+        let size = if flate {
+            let room = limit.saturating_sub(total) + 1;
+            let mut reader = flate2::read::ZlibDecoder::new(stream.content.as_slice()).take(room);
+            std::io::copy(&mut reader, &mut std::io::sink()).unwrap_or(0)
+        } else {
+            stream.content.len() as u64
+        };
+        total = total.saturating_add(size);
+        if total > limit {
+            return Err(format!(
+                "this PDF expands to more than {} MB when decoded, so it was not read",
+                limit / (1024 * 1024)
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Strict extractor first, lenient lopdf walk second, clear error if both fail.
 fn extract_pdf_text(bytes: &[u8]) -> Result<String, RagError> {
+    guard(|| check_pdf_decoded_size(bytes, MAX_PDF_DECODED_BYTES)).map_err(RagError::ParseError)?;
     let primary = guard(|| pdf_extract::extract_text_from_mem(bytes).map_err(|e| e.to_string()));
     let primary_err = match primary {
         Ok(t) if t.chars().any(|c| !c.is_whitespace()) => return Ok(t),
@@ -853,6 +895,22 @@ endstream", body.len(), body)
             ],
             "",
         )
+    }
+
+    #[test]
+    fn a_pdf_whose_streams_inflate_past_the_cap_is_refused() {
+        use std::io::Write;
+        let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+        z.write_all(&vec![b' '; 4 * 1024 * 1024]).unwrap();
+        let packed = z.finish().unwrap();
+        let mut doc = lopdf::Document::with_version("1.5");
+        let mut dict = lopdf::Dictionary::new();
+        dict.set("Filter", lopdf::Object::Name(b"FlateDecode".to_vec()));
+        doc.add_object(lopdf::Stream::new(dict, packed));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert!(check_pdf_decoded_size(&bytes, 1024 * 1024).is_err());
+        assert!(check_pdf_decoded_size(&bytes, 8 * 1024 * 1024).is_ok());
     }
 
     #[test]
