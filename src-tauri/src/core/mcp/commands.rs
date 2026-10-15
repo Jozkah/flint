@@ -884,15 +884,17 @@ pub async fn call_tool<R: Runtime>(
     let data_folder = crate::core::app::commands::resolve_jan_data_folder();
     let active_configs = state.mcp_active_servers.lock().await.clone();
 
-    let servers = state.mcp_servers.lock().await;
-
-    // If server_name is provided, only check that specific server
-    let servers_to_check: Vec<(&String, &RunningMcpService)> = if let Some(ref server) = server_name
-    {
-        servers.iter().filter(|(name, _)| *name == server).collect()
-    } else {
-        servers.iter().collect()
+    // Peers are copied out and the `mcp_servers` lock dropped before any await
+    // on a server: a hung server must not freeze every other MCP operation.
+    let servers_to_check: Vec<(String, rmcp::Peer<rmcp::RoleClient>)> = {
+        let servers = state.mcp_servers.lock().await;
+        servers
+            .iter()
+            .filter(|(name, _)| server_name.as_ref().is_none_or(|s| *name == s.as_str()))
+            .map(|(name, s)| (name.clone(), s.peer().clone()))
+            .collect()
     };
+    let list_timeout = timeout_duration.min(MCP_LIST_TOOLS_TIMEOUT);
 
     if servers_to_check.is_empty() {
         cleanup_cancellation_token(&state, &cancellation_token).await;
@@ -908,9 +910,13 @@ pub async fn call_tool<R: Runtime>(
 
     // Iterate through servers and find the one that contains the tool
     for (srv_name, service) in servers_to_check.iter() {
-        let tools = match service.list_all_tools().await {
-            Ok(tools) => tools,
-            Err(e) => {
+        let tools = match timeout(list_timeout, service.list_all_tools()).await {
+            Ok(Ok(tools)) => tools,
+            Err(_) => {
+                log::warn!("MCP server {srv_name} timed out listing tools during call_tool");
+                continue;
+            }
+            Ok(Err(e)) => {
                 let err_str = e.to_string();
                 log::warn!(
                     "MCP server {} failed to list tools during call_tool: {}",

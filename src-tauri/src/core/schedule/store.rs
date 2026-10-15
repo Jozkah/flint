@@ -410,8 +410,10 @@ impl Store {
         let Ok(tasks) = self.load_tasks() else { return Vec::new() };
         let mut out = Vec::new();
         for t in tasks {
-            // A run is "running" only recently-started ones can be; newest 10 is plenty.
-            if let Ok(rs) = self.list_runs(&t.id, 10) {
+            // Every record, not the newest few: skip records written while a
+            // long run is still going would push it out of a short window and
+            // let a second run start beside it. Retention bounds the count.
+            if let Ok(rs) = self.list_runs(&t.id, usize::MAX) {
                 out.extend(rs.into_iter().filter(|r| r.status == RunStatus::Running));
             }
         }
@@ -436,6 +438,14 @@ impl Store {
         let drop = names.len() - keep;
         let mut removed = 0;
         for n in names.into_iter().take(drop) {
+            // A run still going is never pruned: it is what stops a second one.
+            let running = fs::read_to_string(dir.join(&n))
+                .ok()
+                .and_then(|t| serde_json::from_str::<RunRecord>(&t).ok())
+                .is_some_and(|r| r.status == RunStatus::Running);
+            if running {
+                continue;
+            }
             if fs::remove_file(dir.join(n)).is_ok() {
                 removed += 1;
             }
@@ -492,7 +502,11 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), StoreError> {
     }
     let body = serde_json::to_vec_pretty(value).map_err(|e| StoreError::new(e.to_string()))?;
     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let tmp = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    // Pid plus a counter: two threads of one process writing the same file
+    // must not share (and truncate) one temp file.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_file_name(format!(".{name}.{}-{seq}.tmp", std::process::id()));
     fs::write(&tmp, body).map_err(|e| io_err("a schedule file could not be written", e))?;
     fs::rename(&tmp, path).map_err(|e| {
         let _ = fs::remove_file(&tmp);
@@ -606,10 +620,30 @@ mod tests {
         }
         let before = s.list_runs("a", 50).unwrap();
         assert_eq!(before.len(), 6);
+        for r in &before {
+            let mut r = r.clone();
+            r.status = RunStatus::Succeeded;
+            s.update_run(&r).unwrap();
+        }
         assert_eq!(s.prune_runs("a", 4).unwrap(), 2);
         let after = s.list_runs("a", 50).unwrap();
         assert_eq!(after.len(), 4);
         assert_eq!(after[0].id, before[0].id, "the newest survive");
+    }
+
+    #[test]
+    fn a_long_run_stays_running_behind_many_newer_records() {
+        let (_d, s) = store();
+        let t = s.save_task(task("a")).unwrap();
+        let long = s.begin_run(&t, Trigger::OnTime, Utc::now()).unwrap();
+        for _ in 0..12 {
+            std::thread::sleep(Duration::from_millis(2));
+            s.record_skipped(&t, Trigger::OnTime, Utc::now(), "still going").unwrap();
+        }
+        assert_eq!(s.running_runs().iter().map(|r| r.id.clone()).collect::<Vec<_>>(), vec![long.id.clone()]);
+        // Pruning past it keeps the running record.
+        s.prune_runs("a", 3).unwrap();
+        assert!(s.get_run("a", &long.id).unwrap().is_some());
     }
 
     #[test]
