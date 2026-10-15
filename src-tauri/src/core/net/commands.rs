@@ -126,6 +126,8 @@ async fn huggingface_bridge<R: Runtime>(
             let filename = body_string(&body, "filename")?.to_string();
             let expected_size = body.get("expectedSize").and_then(serde_json::Value::as_u64);
             let expected_sha256 = optional_string(&body, "expectedSha256");
+            let revision = optional_string(&body, "revision");
+            let bundle_remaining = body.get("bundleRemaining").and_then(serde_json::Value::as_u64);
             let path = crate::core::huggingface::huggingface_download_model(
                 app,
                 task_id,
@@ -134,6 +136,8 @@ async fn huggingface_bridge<R: Runtime>(
                 expected_size,
                 expected_sha256,
                 token,
+                revision,
+                bundle_remaining,
             )
             .await?;
             serde_json::Value::String(path)

@@ -60,13 +60,29 @@ export function backendFromDeviceIds(deviceIds: string[]): string {
 export function evaluateGpuOffload(input: {
   engineDeviceCount: number
   hardwareGpuCount: number
+  /** Vendor-or-name text of each GPU the hardware plugin found. */
+  hardwareGpus?: string[]
+  /** Id and name of each device the engine enumerated. */
+  engineDevices?: { id: string; name?: string }[]
 }): GpuOffloadCheck {
   const { engineDeviceCount, hardwareGpuCount } = input
   // "Expected" is now a property of the machine, not of a chosen build: the
   // shipped engine offloads wherever it can.
   const gpuExpected = hardwareGpuCount > 0
 
-  if (!gpuExpected || engineDeviceCount > 0) {
+  // Identity, not count: an NVIDIA card the engine never enumerated is not
+  // covered by an iGPU that it did. NVIDIA only, since a second AMD or Intel
+  // entry is routinely an iGPU the engine skips on purpose.
+  const nvidiaMissing =
+    input.hardwareGpus !== undefined &&
+    input.engineDevices !== undefined &&
+    engineDeviceCount > 0 &&
+    input.hardwareGpus.some((gpu) => /nvidia|geforce|quadro|rtx/i.test(gpu)) &&
+    !input.engineDevices.some(
+      (device) => /^cuda/i.test(device.id) || /nvidia/i.test(device.name ?? '')
+    )
+
+  if (!gpuExpected || (engineDeviceCount > 0 && !nvidiaMissing)) {
     return { status: 'ok', gpuExpected, engineDeviceCount }
   }
 

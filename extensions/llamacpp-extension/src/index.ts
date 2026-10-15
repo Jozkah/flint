@@ -633,8 +633,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
 
     let hardwareGpuCount = 0
+    let hardwareGpus: string[] | undefined
     try {
-      hardwareGpuCount = (await getSystemInfo())?.gpus?.length ?? 0
+      const gpus = (await getSystemInfo())?.gpus ?? []
+      hardwareGpuCount = gpus.length
+      hardwareGpus = gpus.map((gpu) => gpu.name ?? '')
     } catch (e) {
       logger.warn('Hardware GPU probe failed during setup verification:', e)
     }
@@ -644,6 +647,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       ...evaluateGpuOffload({
         engineDeviceCount: devices.length,
         hardwareGpuCount,
+        hardwareGpus,
+        engineDevices: devices.map((d) => ({ id: d.id, name: d.name })),
       }),
     }
   }

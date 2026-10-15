@@ -106,6 +106,10 @@ export async function downloadHuggingFaceFile(args: {
   expectedSize?: number | null
   expectedSha256?: string | null
   token?: string
+  /** Commit sha or branch to download from; the default branch when absent. */
+  revision?: string | null
+  /** Bytes still to fetch for the whole bundle, for one up-front disk check. */
+  bundleRemaining?: number
 }): Promise<string> {
   return call<string>('download', args)
 }
