@@ -2360,16 +2360,7 @@
     "tokenUsage": "토큰 사용량",
     "modelSleeping": "모델 대기 중",
     "visionSupported": "비전 입력 지원",
-    "audioSupported": "오디오 입력 지원",
-    "stopGenerating": "생성 중지",
-    "filterOptions": "옵션 필터",
-    "switchAssistant": "어시스턴트 전환",
-    "emergencyStop": "긴급 중지",
-    "toggleFavorite": "즐겨찾기 전환",
-    "pauseDownload": "다운로드 일시중지",
-    "cancelDownload": "다운로드 취소",
-    "decrement": "감소",
-    "increment": "증가"
+    "audioSupported": "오디오 입력 지원"
   },
   "attachedImages": {
     "open": "{{name}} 열기",

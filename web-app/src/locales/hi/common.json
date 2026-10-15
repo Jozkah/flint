@@ -2355,16 +2355,7 @@
     "tokenUsage": "टोकन उपयोग",
     "modelSleeping": "मॉडल सोया हुआ है",
     "visionSupported": "विज़न इनपुट समर्थित",
-    "audioSupported": "ऑडियो इनपुट समर्थित",
-    "stopGenerating": "जनरेशन रोकें",
-    "filterOptions": "विकल्प फ़िल्टर करें",
-    "switchAssistant": "असिस्टेंट बदलें",
-    "emergencyStop": "आपातकालीन रोक",
-    "toggleFavorite": "पसंदीदा टॉगल करें",
-    "pauseDownload": "डाउनलोड रोकें",
-    "cancelDownload": "डाउनलोड रद्द करें",
-    "decrement": "घटाएँ",
-    "increment": "बढ़ाएँ"
+    "audioSupported": "ऑडियो इनपुट समर्थित"
   },
   "attachedImages": {
     "open": "{{name}} खोलें",

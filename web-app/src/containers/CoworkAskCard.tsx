@@ -12,6 +12,20 @@ import type {
   TodoList,
 } from '@/types/coworkSession'
 
+type PastedImage = { dataUrl: string; name: string }
+
+const readPastedImage = (file: File): Promise<PastedImage> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () =>
+      resolve({
+        dataUrl: String(reader.result),
+        name: file.name || 'pasted-image',
+      })
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+
 /**
  * The option mark: a radio dot for a single choice, a square for several. No
  * checkbox primitive exists in `ui/`.
@@ -99,6 +113,8 @@ export function CoworkAskCard({
   /** Option ids, never labels: a label can change under a streamed update. */
   const [selected, setSelected] = useState<Record<string, string[]>>({})
   const [custom, setCustom] = useState<Record<string, string>>({})
+  /** Pictures pasted into the written answer, per question. */
+  const [pasted, setPasted] = useState<Record<string, PastedImage[]>>({})
 
   // A new request is a clean slate; keeping prior picks would silently answer
   // the next question with the previous one's selections.
@@ -106,6 +122,7 @@ export function CoworkAskCard({
     setIndex(0)
     setSelected({})
     setCustom({})
+    setPasted({})
   }, [requestId])
 
   const questions = useMemo(() => request?.questions ?? [], [request])
@@ -129,14 +146,16 @@ export function CoworkAskCard({
     if (picks.length === 0) return false
     const rows = rowsByQuestion.get(qid) ?? []
     const usingCustom = picks.some((id) => rows.find((r) => r.id === id)?.isCustom)
-    return usingCustom ? !!custom[qid]?.trim() : true
+    return usingCustom
+      ? !!custom[qid]?.trim() || (pasted[qid]?.length ?? 0) > 0
+      : true
   }
   // The core rejects a response that doesn't answer every question exactly
   // once (`validate_results`), so submit stays closed until all are answered.
   const allAnswered = useMemo(
     () => questions.length > 0 && questions.every((q) => isAnswered(q.id)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [questions, selected, custom, rowsByQuestion]
+    [questions, selected, custom, pasted, rowsByQuestion]
   )
 
   if (!requestId || !question) return null
@@ -179,7 +198,8 @@ export function CoworkAskCard({
           q,
           rowsByQuestion.get(q.id) ?? [],
           selected[q.id] ?? [],
-          custom[q.id] ?? ''
+          custom[q.id] ?? '',
+          pasted[q.id] ?? []
         )
       )
     )
@@ -302,10 +322,57 @@ export function CoworkAskCard({
                       advance()
                     }
                   }}
+                  onPaste={(e) => {
+                    const files = Array.from(e.clipboardData?.items ?? [])
+                      .filter((i) => i.type.startsWith('image/'))
+                      .map((i) => i.getAsFile())
+                      .filter((f): f is File => !!f)
+                    if (files.length === 0) return
+                    e.preventDefault()
+                    const qid = question.id
+                    void Promise.all(files.map(readPastedImage)).then(
+                      (imgs) =>
+                        setPasted((prev) => ({
+                          ...prev,
+                          [qid]: [...(prev[qid] ?? []), ...imgs],
+                        }))
+                    )
+                  }}
                   placeholder={t('common:askSomethingElsePlaceholder')}
                   data-testid="ask-custom-input"
                   className="mt-1 mb-1 ml-9 h-8 w-[calc(100%-2.75rem)]"
                 />
+              )}
+              {row.isCustom && checked && (pasted[question.id]?.length ?? 0) > 0 && (
+                <div
+                  className="mb-1 ml-9 flex flex-wrap gap-1.5"
+                  data-testid="ask-pasted-images"
+                >
+                  {pasted[question.id].map((img, n) => (
+                    <div key={n} className="group relative">
+                      <img
+                        src={img.dataUrl}
+                        alt={img.name}
+                        className="size-14 rounded-md border-[0.8px] border-border object-cover"
+                      />
+                      <button
+                        type="button"
+                        aria-label={t('common:close')}
+                        onClick={() =>
+                          setPasted((prev) => ({
+                            ...prev,
+                            [question.id]: (prev[question.id] ?? []).filter(
+                              (_, j) => j !== n
+                            ),
+                          }))
+                        }
+                        className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-foreground text-background opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )

@@ -83,9 +83,14 @@ export function formatAskAnswers(
       const question =
         request?.questions.find((q) => q.id === a.id)?.question ?? ''
       const text = a.custom_input?.trim()
-      const answer = text
-        ? `User wrote: ${text}`
-        : `User chose: ${a.selected.join(', ')}`
+      const pics = a.images?.length ?? 0
+      const attached = pics
+        ? `${text ? '\n' : ''}User attached ${pics} image${pics === 1 ? '' : 's'} (shown with this result).`
+        : ''
+      const answer =
+        text || pics
+          ? `${text ? `User wrote: ${text}` : ''}${attached}`
+          : `User chose: ${a.selected.join(', ')}`
       return `Question ${JSON.stringify(a.id)}: ${question}\n${answer}`
     })
     .join('\n\n')
@@ -98,5 +103,9 @@ export function renderAskResult(
   if (answers === null) {
     return { output: ASK_UNANSWERED_RESULT }
   }
-  return { output: formatAskAnswers(answers, request) }
+  const images = answers.flatMap((a) => a.images ?? [])
+  return {
+    output: formatAskAnswers(answers, request),
+    ...(images.length > 0 ? { images } : {}),
+  }
 }

@@ -2362,16 +2362,7 @@
     "tokenUsage": "Token 用量",
     "modelSleeping": "模型休眠中",
     "visionSupported": "支援影像輸入",
-    "audioSupported": "支援音訊輸入",
-    "stopGenerating": "停止生成",
-    "filterOptions": "篩選選項",
-    "switchAssistant": "切換助理",
-    "emergencyStop": "緊急停止",
-    "toggleFavorite": "切換我的最愛",
-    "pauseDownload": "暫停下載",
-    "cancelDownload": "取消下載",
-    "decrement": "減少",
-    "increment": "增加"
+    "audioSupported": "支援音訊輸入"
   },
   "attachedImages": {
     "open": "開啟 {{name}}",

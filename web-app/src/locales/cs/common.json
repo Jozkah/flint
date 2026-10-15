@@ -2442,16 +2442,7 @@
     "tokenUsage": "Využití tokenů",
     "modelSleeping": "Model spí",
     "visionSupported": "Vstup obrazu je podporován",
-    "audioSupported": "Vstup zvuku je podporován",
-    "stopGenerating": "Zastavit generování",
-    "filterOptions": "Filtrovat možnosti",
-    "switchAssistant": "Přepnout asistenta",
-    "emergencyStop": "Nouzové zastavení",
-    "toggleFavorite": "Přepnout oblíbené",
-    "pauseDownload": "Pozastavit stahování",
-    "cancelDownload": "Zrušit stahování",
-    "decrement": "Snížit",
-    "increment": "Zvýšit"
+    "audioSupported": "Vstup zvuku je podporován"
   },
   "attachedImages": {
     "open": "Otevřít {{name}}",

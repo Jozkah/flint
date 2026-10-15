@@ -2357,16 +2357,7 @@
     "tokenUsage": "Token-Nutzung",
     "modelSleeping": "Modell schläft",
     "visionSupported": "Vision-Eingabe unterstützt",
-    "audioSupported": "Audio-Eingabe unterstützt",
-    "stopGenerating": "Generierung stoppen",
-    "filterOptions": "Optionen filtern",
-    "switchAssistant": "Assistent wechseln",
-    "emergencyStop": "Notstopp",
-    "toggleFavorite": "Favorit umschalten",
-    "pauseDownload": "Download pausieren",
-    "cancelDownload": "Download abbrechen",
-    "decrement": "Verringern",
-    "increment": "Erhöhen"
+    "audioSupported": "Audio-Eingabe unterstützt"
   },
   "attachedImages": {
     "open": "{{name}} öffnen",

@@ -2360,16 +2360,7 @@
     "tokenUsage": "トークン使用量",
     "modelSleeping": "モデルはスリープ中",
     "visionSupported": "画像入力に対応",
-    "audioSupported": "音声入力に対応",
-    "stopGenerating": "生成を停止",
-    "filterOptions": "オプションを絞り込む",
-    "switchAssistant": "アシスタントを切り替え",
-    "emergencyStop": "緊急停止",
-    "toggleFavorite": "お気に入りを切り替え",
-    "pauseDownload": "ダウンロードを一時停止",
-    "cancelDownload": "ダウンロードをキャンセル",
-    "decrement": "減らす",
-    "increment": "増やす"
+    "audioSupported": "音声入力に対応"
   },
   "attachedImages": {
     "open": "{{name}} を開く",

@@ -2399,16 +2399,7 @@
     "tokenUsage": "Ús de tokens",
     "modelSleeping": "Model en repòs",
     "visionSupported": "Entrada de visió compatible",
-    "audioSupported": "Entrada d'àudio compatible",
-    "stopGenerating": "Atura la generació",
-    "filterOptions": "Filtra les opcions",
-    "switchAssistant": "Canvia d'assistent",
-    "emergencyStop": "Parada d'emergència",
-    "toggleFavorite": "Alterna favorit",
-    "pauseDownload": "Posa en pausa la descàrrega",
-    "cancelDownload": "Cancel·la la descàrrega",
-    "decrement": "Disminueix",
-    "increment": "Augmenta"
+    "audioSupported": "Entrada d'àudio compatible"
   },
   "attachedImages": {
     "open": "Obre {{name}}",
