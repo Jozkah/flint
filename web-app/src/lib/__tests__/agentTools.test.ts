@@ -111,6 +111,21 @@ describe('agentTools', () => {
     useAgentToolsConfig.setState({ shellEnabled: true })
   })
 
+  it('refuses host and shell tools in chat while Agent Tools is off', async () => {
+    const { chatAgentToolRefusal } = await import('../agentTools')
+    const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
+
+    useAgentToolsConfig.setState({ agentToolsEnabled: false })
+    expect(chatAgentToolRefusal('host_powershell')).toMatch(/turned off/i)
+    expect(chatAgentToolRefusal('bash')).toMatch(/turned off/i)
+    expect(chatAgentToolRefusal('list_plugins')).toBeNull()
+    expect(chatAgentToolRefusal('some_mcp_tool')).toBeNull()
+
+    useAgentToolsConfig.setState({ agentToolsEnabled: true })
+    expect(chatAgentToolRefusal('host_powershell')).toBeNull()
+    useAgentToolsConfig.setState({ agentToolsEnabled: false })
+  })
+
   /// The list depends on the folder it was computed for. One module-level
   /// cache shared by chat and Cowork let whichever surface asked first decide
   /// the tool set for every later caller -- a folderless chat's answer served
