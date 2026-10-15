@@ -528,6 +528,12 @@ async fn run_job<R: Runtime>(
     let (port, live) = {
         let mut guard = resident().lock().await;
         let r = guard.as_mut().ok_or("No image model is loaded.")?;
+        // `cancel_key` is the model this job was built for. Another request may
+        // have swapped the engine between `ensure_loaded` and here; running on
+        // that model would produce (and record) the wrong one.
+        if r.model_id != cancel_key {
+            return Err("The image engine switched to another model. Try again.".to_string());
+        }
         if r.busy {
             return Err("The image engine is busy with another generation.".to_string());
         }

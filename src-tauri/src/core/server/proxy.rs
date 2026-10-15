@@ -224,6 +224,19 @@ pub(crate) fn forwards_to_upstream(name: &hyper::header::HeaderName) -> bool {
         && name != hyper::header::REFERER
 }
 
+/// A provider's configured headers that form a valid header, so one bad
+/// entry cannot fail the whole request build.
+pub(crate) fn custom_header_pairs(cfg: &crate::core::state::ProviderConfig) -> Vec<(String, String)> {
+    cfg.custom_headers
+        .iter()
+        .filter(|h| {
+            hyper::header::HeaderName::from_bytes(h.header.trim().as_bytes()).is_ok()
+                && hyper::header::HeaderValue::from_str(&h.value).is_ok()
+        })
+        .map(|h| (h.header.trim().to_string(), h.value.clone()))
+        .collect()
+}
+
 pub(crate) fn strip_anthropic_billing_header(text: &str) -> &str {
     const KEY: &str = "x-anthropic-billing-header:";
     // `get`, not `[..]`: the length is in bytes, and a prompt that starts with
@@ -1178,6 +1191,9 @@ async fn proxy_request(
 
     // Initialize variables that will be set in the match
     let mut session_api_keys: Vec<String> = Vec::new();
+    // The provider's configured headers (Azure `api-key`, APIM subscription
+    // keys, ...), sent on every upstream attempt like the bearer key.
+    let mut provider_headers: Vec<(String, String)> = Vec::new();
     #[allow(unused_assignments)]
     let mut buffered_body: Option<Bytes> = None;
     let mut target_base_url: Option<String> = None;
@@ -1323,6 +1339,7 @@ async fn proxy_request(
                                     format!("{}{}", url.trim_end_matches('/'), "/messages")
                                 });
                                 session_api_keys = provider_cfg.bearer_key_chain();
+                                provider_headers = custom_header_pairs(&provider_cfg);
                             }
                         } else {
                             let mlx_session_info = {
@@ -1899,6 +1916,7 @@ async fn proxy_request(
                                 }
                                 upstream_converter = converter;
                                 session_api_keys = provider_cfg.bearer_key_chain();
+                                provider_headers = custom_header_pairs(&provider_cfg);
                             } else {
                                 log::error!("Provider config not found for '{provider}'");
                             }
@@ -2412,6 +2430,10 @@ async fn proxy_request(
             log::debug!("No session API key for this attempt");
         }
 
+        for (name, value) in &provider_headers {
+            outbound_req = outbound_req.header(name.as_str(), value.as_str());
+        }
+
         // Fixed headers the native API requires (Anthropic: anthropic-version).
         if let Some(conv) = &upstream_converter {
             for (name, value) in conv.extra_headers() {
@@ -2491,6 +2513,9 @@ async fn proxy_request(
                             fallback_req = fallback_req.header(name, value);
                         }
                     }
+                    for (name, value) in &provider_headers {
+                        fallback_req = fallback_req.header(name.as_str(), value.as_str());
+                    }
                     if let Some(key) = fallback_api_key {
                         fallback_req = fallback_req.header("Authorization", format!("Bearer {key}"));
                     }
@@ -2541,13 +2566,19 @@ async fn proxy_request(
 
                         let (sender, body) = body_channel();
                         let dest_path = destination_path.clone();
+                        let meter_model = meter_model_of(metered, &body_bytes_for_proxy);
+                        let meter_folder = jan_data_folder.clone();
 
                         tokio::spawn(async move {
+                            let tap = SharedTap::default();
                             if is_streaming {
-                                let stream = res.bytes_stream();
+                                let stream = tapped(res.bytes_stream(), &tap, meter_model.is_some());
                                 transform_and_forward_stream(stream, sender, &dest_path).await;
                             } else {
                                 let response_body = res.bytes().await;
+                                if let (Some(_), Ok(b)) = (&meter_model, &response_body) {
+                                    lock_tap(&tap).push(b);
+                                }
                                 forward_non_streaming(
                                     response_body,
                                     sender,
@@ -2555,6 +2586,7 @@ async fn proxy_request(
                                 )
                                 .await;
                             }
+                            finish_meter(meter_model, &meter_folder, &tap);
                         });
 
                         return Ok(builder.body(body).unwrap());
@@ -2625,18 +2657,21 @@ async fn proxy_request(
                         .map(|ct| ct.contains("event-stream"))
                         .unwrap_or(false);
                     let (sender, body) = body_channel();
+                    let meter_model = meter_model_of(metered, &body_bytes_for_proxy);
+                    let meter_folder = jan_data_folder.clone();
                     tokio::spawn(async move {
+                        let tap = SharedTap::default();
                         if is_sse {
-                            forward_converted_stream(response.bytes_stream(), sender, converter)
-                                .await;
+                            let stream = tapped(response.bytes_stream(), &tap, meter_model.is_some());
+                            forward_converted_stream(stream, sender, converter).await;
                         } else {
-                            forward_converted_non_streaming(
-                                response.bytes().await,
-                                sender,
-                                converter,
-                            )
-                            .await;
+                            let bytes = response.bytes().await;
+                            if let (Some(_), Ok(b)) = (&meter_model, &bytes) {
+                                lock_tap(&tap).push(b);
+                            }
+                            forward_converted_non_streaming(bytes, sender, converter).await;
                         }
+                        finish_meter(meter_model, &meter_folder, &tap);
                     });
                     return Ok(builder.body(body).unwrap());
                 }
@@ -3031,6 +3066,9 @@ async fn start_server_internal(
                 Ok(c) => c,
                 Err(e) => {
                     log::error!("Accept error: {e}");
+                    // Out of file handles fails every accept at once; without a
+                    // pause the loop spins a core and floods the log.
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                     continue;
                 }
             };
@@ -3119,6 +3157,51 @@ pub(crate) fn sse_event(data: &serde_json::Value) -> Bytes {
 /// Stream a native upstream response through an [`UpstreamConverter`], emitting
 /// chat/completions SSE chunks. Uses [`SseAccumulator`] so events split across
 /// network chunks are reassembled before translation.
+/// A usage tap the forwarding task and its stream share.
+type SharedTap = std::sync::Arc<std::sync::Mutex<super::usage_meter::UsageTap>>;
+
+fn lock_tap(tap: &SharedTap) -> std::sync::MutexGuard<'_, super::usage_meter::UsageTap> {
+    tap.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// The model a metered request names, or `None` when it is not metered.
+fn meter_model_of(metered: bool, body: &[u8]) -> Option<String> {
+    metered
+        .then(|| {
+            serde_json::from_slice::<serde_json::Value>(body)
+                .ok()
+                .and_then(|v| v.get("model").and_then(|m| m.as_str().map(String::from)))
+        })
+        .flatten()
+}
+
+/// `stream` with every chunk also pushed into `tap` when `on`. Usage is read
+/// from the upstream's own bytes, before any conversion.
+fn tapped<S>(
+    stream: S,
+    tap: &SharedTap,
+    on: bool,
+) -> impl futures_util::Stream<Item = Result<Bytes, reqwest::Error>> + Unpin
+where
+    S: futures_util::Stream<Item = Result<Bytes, reqwest::Error>> + Unpin,
+{
+    let tap = tap.clone();
+    futures_util::StreamExt::inspect(stream, move |chunk| {
+        if let (true, Ok(c)) = (on, chunk) {
+            lock_tap(&tap).push(c);
+        }
+    })
+}
+
+/// Record what a finished answer used, when it was metered and said.
+fn finish_meter(model: Option<String>, folder: &str, tap: &SharedTap) {
+    let counts = lock_tap(tap).counts();
+    if let (Some(model), Some((input, output))) = (model, counts) {
+        super::usage_meter::record(std::path::Path::new(folder), &model, input, output);
+        super::usage_meter::forget();
+    }
+}
+
 async fn forward_converted_stream<S>(
     mut stream: S,
     mut sender: BodySender,

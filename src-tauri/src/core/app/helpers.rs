@@ -22,9 +22,18 @@ pub fn copy_dir_recursive(
             }
         }
 
-        let is_dir = file_type.is_dir() || (file_type.is_symlink() && src_path.is_dir());
+        // A link to a directory is not followed: one pointing at an ancestor
+        // (or at the destination) recursed until the disk filled.
+        if file_type.is_symlink() && src_path.is_dir() {
+            log::warn!("Skipping directory link: {src_path:?}");
+            continue;
+        }
+        // The destination may sit inside the source; never copy it into itself.
+        if file_type.is_dir() && &src_path == dst {
+            continue;
+        }
 
-        if is_dir {
+        if file_type.is_dir() {
             copy_dir_recursive(&src_path, &dst_path, exclude_dirs)?;
         } else if file_type.is_file() || file_type.is_symlink() {
             fs::copy(&src_path, &dst_path)?;
@@ -104,6 +113,23 @@ mod tests {
         copy_dir_recursive(&src, &dst, &[]).unwrap();
         assert!(dst.exists());
         assert_eq!(fs::read_dir(&dst).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_link_to_an_ancestor_is_not_followed() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        let dst = tmp.path().join("dst");
+        write_file(&src.join("f.txt"), "x");
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(&src, src.join("loop")).is_ok();
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_dir(&src, src.join("loop")).is_ok();
+        copy_dir_recursive(&src, &dst, &[]).unwrap();
+        assert!(dst.join("f.txt").exists());
+        if made {
+            assert!(!dst.join("loop").exists());
+        }
     }
 
     #[test]

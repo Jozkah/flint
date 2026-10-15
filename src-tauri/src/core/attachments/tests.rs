@@ -57,7 +57,7 @@ fn save_writes_inside_the_attachments_folder() {
     let bytes: &[u8] = b"%PDF-1.4\x00\xff binary";
     let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
 
-    let saved = save_attachment_file(
+    let saved = save_attachment_file_blocking(
         app.handle().clone(),
         "../outside/report.pdf".to_string(),
         encoded,
@@ -80,8 +80,8 @@ fn save_writes_inside_the_attachments_folder() {
 fn save_gives_each_file_its_own_folder() {
     let app = mock_app();
     let encoded = base64::engine::general_purpose::STANDARD.encode(b"x");
-    let a = save_attachment_file(app.handle().clone(), "a.txt".into(), encoded.clone()).unwrap();
-    let b = save_attachment_file(app.handle().clone(), "a.txt".into(), encoded).unwrap();
+    let a = save_attachment_file_blocking(app.handle().clone(), "a.txt".into(), encoded.clone()).unwrap();
+    let b = save_attachment_file_blocking(app.handle().clone(), "a.txt".into(), encoded).unwrap();
     assert_ne!(a, b);
     for p in [a, b] {
         let _ = fs::remove_dir_all(PathBuf::from(p).parent().unwrap());
@@ -91,7 +91,7 @@ fn save_gives_each_file_its_own_folder() {
 #[test]
 fn save_rejects_data_that_is_not_base64() {
     let app = mock_app();
-    let result = save_attachment_file(
+    let result = save_attachment_file_blocking(
         app.handle().clone(),
         "report.pdf".to_string(),
         "not base64!".to_string(),
@@ -103,6 +103,6 @@ fn save_rejects_data_that_is_not_base64() {
 fn save_rejects_an_oversized_payload_without_decoding_it() {
     let app = mock_app();
     let huge = "A".repeat(MAX_ATTACHMENT_BYTES / 3 * 4 + 16);
-    let err = save_attachment_file(app.handle().clone(), "big.bin".to_string(), huge).unwrap_err();
+    let err = save_attachment_file_blocking(app.handle().clone(), "big.bin".to_string(), huge).unwrap_err();
     assert!(err.contains("too large"), "{err}");
 }

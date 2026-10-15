@@ -380,11 +380,17 @@ fn legacy_no_machine_id_keys() -> [[u8; 32]; 2] {
 }
 
 fn read_file_map(path: &PathBuf) -> BTreeMap<String, Vec<String>> {
+    try_read_file_map(path).unwrap_or_default()
+}
+
+/// `None` when the file exists but cannot be decrypted or parsed (a changed
+/// machine id, a damaged file). Absent or empty reads as an empty map.
+fn try_read_file_map(path: &PathBuf) -> Option<BTreeMap<String, Vec<String>>> {
     let Ok(bytes) = fs::read(path) else {
-        return BTreeMap::new();
+        return Some(BTreeMap::new());
     };
     if bytes.len() <= NONCE_LEN {
-        return BTreeMap::new();
+        return Some(BTreeMap::new());
     }
     let (nonce, ciphertext) = bytes.split_at(NONCE_LEN);
     let decrypt = |cipher: Aes256Gcm| {
@@ -404,12 +410,30 @@ fn read_file_map(path: &PathBuf) -> BTreeMap<String, Vec<String>> {
                 Some(pt) => pt,
                 None => {
                     log::warn!("Failed to decrypt provider secrets file: {err}");
-                    return BTreeMap::new();
+                    return None;
                 }
             }
         }
     };
-    serde_json::from_slice(&plaintext).unwrap_or_default()
+    serde_json::from_slice(&plaintext).ok()
+}
+
+/// The map a write starts from. An unreadable file is renamed aside first:
+/// writing over it would silently drop every key it holds.
+fn read_file_map_for_write(path: &PathBuf) -> Result<BTreeMap<String, Vec<String>>, String> {
+    if let Some(map) = try_read_file_map(path) {
+        return Ok(map);
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let aside = path.with_extension(format!("enc.unreadable-{stamp}"));
+    fs::rename(path, &aside).map_err(|e| {
+        format!("provider secrets file is unreadable and could not be set aside: {e}")
+    })?;
+    log::warn!("Unreadable provider secrets file moved to {}", aside.display());
+    Ok(BTreeMap::new())
 }
 
 fn write_file_map_atomic(
@@ -511,7 +535,7 @@ fn file_store(provider: &str, keys: &[String]) -> Result<(), String> {
     let _guard = FILE_LOCK.lock().map_err(|e| e.to_string())?;
     let _xlock = CrossProcessLock::acquire(FILE_XLOCK_NAME);
     let path = secrets_file_path();
-    let mut map = read_file_map(&path);
+    let mut map = read_file_map_for_write(&path)?;
     map.insert(provider.to_string(), keys.to_vec());
     write_file_map_atomic(&path, &map)
 }
@@ -520,7 +544,10 @@ fn file_remove(provider: &str) -> Result<(), String> {
     let _guard = FILE_LOCK.lock().map_err(|e| e.to_string())?;
     let _xlock = CrossProcessLock::acquire(FILE_XLOCK_NAME);
     let path = secrets_file_path();
-    let mut map = read_file_map(&path);
+    // Nothing readable to remove from: leave an unreadable file as it is.
+    let Some(mut map) = try_read_file_map(&path) else {
+        return Ok(());
+    };
     if map.remove(provider).is_some() {
         return write_file_map_atomic(&path, &map);
     }
@@ -746,6 +773,24 @@ mod tests {
         file_remove(provider).unwrap();
         assert!(file_load(provider).is_empty());
         assert_eq!(file_load("anthropic"), vec!["sk-ant".to_string()]);
+    }
+
+    #[test]
+    fn an_undecryptable_file_is_set_aside_not_overwritten() {
+        let _tmp = TempDataFolder::new();
+        let path = secrets_file_path();
+        let junk = vec![7u8; NONCE_LEN + 40];
+        fs::write(&path, &junk).unwrap();
+        file_remove("openai").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), junk, "remove leaves it alone");
+        file_store("openai", &["sk-new".to_string()]).unwrap();
+        assert_eq!(file_load("openai"), vec!["sk-new".to_string()]);
+        let aside = fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .flatten()
+            .find(|e| e.file_name().to_string_lossy().contains("unreadable"))
+            .expect("the old file is kept");
+        assert_eq!(fs::read(aside.path()).unwrap(), junk);
     }
 
     #[test]

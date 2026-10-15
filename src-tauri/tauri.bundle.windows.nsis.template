@@ -1144,6 +1144,10 @@ Section Uninstall
     SetShellVarContext current
     RmDir /r "$APPDATA\${BUNDLEID}"
     RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
+    ; The chats, models and settings themselves live in the default data
+    ; folder, %APPDATA%\<product>\data (core/app/commands.rs). A data folder
+    ; the user moved elsewhere is left alone.
+    RmDir /r "$APPDATA\${PRODUCTNAME}"
   ${EndIf}
 
   !ifmacrodef NSIS_HOOK_POSTUNINSTALL
