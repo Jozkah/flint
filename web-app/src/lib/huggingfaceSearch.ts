@@ -50,7 +50,8 @@ export function pinQueryMatches<T extends { id: string }>(
   const hits: T[] = []
   const rest: T[] = []
   for (const model of models) {
-    ;(matchesAllWords(model.id, query) ? hits : rest).push(model)
+    const bucket = matchesAllWords(model.id, query) ? hits : rest
+    bucket.push(model)
   }
   return hits.length === 0 || rest.length === 0 ? models : [...hits, ...rest]
 }

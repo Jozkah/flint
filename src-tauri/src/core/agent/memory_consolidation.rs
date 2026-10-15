@@ -1,12 +1,16 @@
 //! Idle-time memory consolidation ("autoDream").
 //!
 //! Folds the accumulated `<store>/memory/*.md` notes into a single
-//! deduplicated, contradiction-resolved note. The intent is that after a long
-//! session leaves many overlapping scraps behind, an idle machine quietly
-//! reconciles them: near-identical facts collapse to one, a newer fact wins over
-//! an older contradicting one (the conflict is recorded rather than silently
-//! dropped), and anything that looks like a credential is filtered out before it
-//! is ever rewritten.
+//! deduplicated note. The intent is that after a long session leaves many
+//! overlapping scraps behind, an idle machine quietly reconciles them:
+//! near-identical facts collapse to one, a newer fact wins over an older one that
+//! shares its subject (the text before the first colon; the conflict is recorded
+//! rather than silently dropped), and anything that looks like a credential is
+//! filtered out before it is ever rewritten.
+//!
+//! Only contradictions that share a subject are resolved. Two statements that
+//! disagree in different words have different subjects, so both are kept side by
+//! side: nothing is lost, but nothing is resolved either.
 //!
 //! Everything here is off by default. [`ConsolidationConfig::default`] has
 //! `enabled = false`, so the auto path (the frontend idle poller) is a no-op
@@ -433,22 +437,7 @@ impl Merger for HeuristicMerger {
         let mut secrets_filtered = 0usize;
 
         for note in notes {
-            // A leading `---` frontmatter block is metadata (`name:`,
-            // `description:`), not facts: every note has the same keys.
-            let mut in_frontmatter = note.content.trim_start().starts_with("---");
-            let mut fences = 0;
-            for line in note.content.lines() {
-                let trimmed = line.trim();
-                if in_frontmatter {
-                    if trimmed == "---" {
-                        fences += 1;
-                        in_frontmatter = fences < 2;
-                    }
-                    continue;
-                }
-                if trimmed.is_empty() || trimmed.starts_with('#') {
-                    continue;
-                }
+            for trimmed in statement_lines(&note.content) {
                 facts_in += 1;
                 if !secrets::scan_text(trimmed).is_empty() {
                     secrets_filtered += 1;
@@ -511,6 +500,30 @@ impl Merger for HeuristicMerger {
             secrets_filtered,
         })
     }
+}
+
+/// The statements in a note: trimmed lines that are not blank, headings or
+/// frontmatter. A leading `---` block is metadata (`name:`, `description:`), not
+/// facts: every note has the same keys.
+fn statement_lines(content: &str) -> Vec<&str> {
+    let mut in_frontmatter = content.trim_start().starts_with("---");
+    let mut fences = 0;
+    let mut out = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if in_frontmatter {
+            if trimmed == "---" {
+                fences += 1;
+                in_frontmatter = fences < 2;
+            }
+            continue;
+        }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        out.push(trimmed);
+    }
+    out
 }
 
 fn clone_fact(f: &Fact) -> Fact {
@@ -622,8 +635,9 @@ impl ModelMerger<'_> {
 }
 
 /// Parse the model's `[{name, content}]` reply into merged notes. Any secret the
-/// model failed to strip is filtered here as a backstop.
-fn parse_model_notes(reply: &str) -> Result<Vec<MergedNote>, String> {
+/// model failed to strip is filtered here as a backstop, and the count is the
+/// number of lines that backstop had to change.
+fn parse_model_notes(reply: &str) -> Result<(Vec<MergedNote>, usize), String> {
     let start = reply.find('[').ok_or("no JSON array in reply")?;
     let end = reply.rfind(']').ok_or("no JSON array in reply")?;
     if end < start {
@@ -632,6 +646,7 @@ fn parse_model_notes(reply: &str) -> Result<Vec<MergedNote>, String> {
     let arr: Vec<Value> =
         serde_json::from_str(&reply[start..=end]).map_err(|e| e.to_string())?;
     let mut notes = Vec::new();
+    let mut redacted_lines = 0usize;
     for item in arr {
         let name = item
             .get("name")
@@ -643,10 +658,17 @@ fn parse_model_notes(reply: &str) -> Result<Vec<MergedNote>, String> {
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string();
-        let content = secrets::redact_secrets(&content);
-        notes.push(MergedNote { name, content });
+        let clean = secrets::redact_secrets(&content);
+        redacted_lines += content
+            .lines()
+            .filter(|line| secrets::redact_secrets(line) != *line)
+            .count();
+        notes.push(MergedNote {
+            name,
+            content: clean,
+        });
     }
-    Ok(notes)
+    Ok((notes, redacted_lines))
 }
 
 #[async_trait]
@@ -663,13 +685,17 @@ impl Merger for ModelMerger<'_> {
             .and_then(|m| m.get("content").cloned())
             .and_then(|c| c.as_str().map(str::to_string))
             .unwrap_or_default();
-        let merged = parse_model_notes(&reply)?;
-        let facts_out = merged.iter().flat_map(|n| n.content.lines()).count();
+        let (merged, secrets_filtered) = parse_model_notes(&reply)?;
+        let facts_in = notes.iter().map(|n| statement_lines(&n.content).len()).sum();
+        let facts_out = merged.iter().map(|n| statement_lines(&n.content).len()).sum();
         Ok(MergeResult {
-            facts_in: facts_out,
+            facts_in,
             facts_out,
+            // A model's rewrite does not say which contradictions it settled,
+            // and guessing would report a guarantee nothing checked. Left at 0
+            // and meaning "not measured", not "none".
             conflicts_resolved: 0,
-            secrets_filtered: 0,
+            secrets_filtered,
             notes: merged,
         })
     }
@@ -1031,6 +1057,46 @@ https://example.invalid/two".into(),
         assert_eq!(result.facts_out, 4, "{}", result.notes[0].content);
     }
 
+    /// Fixture: contradictions worded differently share no subject, so the
+    /// heuristic keeps both. It fails safe -- nothing lost, nothing resolved --
+    /// and the module doc says so. A model-backed merger has to beat this on
+    /// the same fixture before it is wired in.
+    #[tokio::test]
+    async fn paraphrased_contradictions_are_kept_side_by_side() {
+        let notes = vec![
+            Note {
+                name: "old".into(),
+                content: "Deploys go out on Fridays".into(),
+                modified_ms: 100,
+            },
+            Note {
+                name: "new".into(),
+                content: "We never ship on Friday any more".into(),
+                modified_ms: 200,
+            },
+        ];
+        let result = HeuristicMerger.merge(&notes).await.unwrap();
+        assert_eq!(result.conflicts_resolved, 0);
+        assert_eq!(result.facts_out, 2, "{}", result.notes[0].content);
+    }
+
+    #[test]
+    fn statement_lines_skip_frontmatter_headings_and_blanks() {
+        let body = "---\nname: a\ndescription: b\n---\n# Title\n\nfirst\n  second  \n";
+        assert_eq!(statement_lines(body), vec!["first", "second"]);
+    }
+
+    #[test]
+    fn model_reply_counts_are_measured_not_assumed() {
+        let token = "ghp_0123456789abcdefghijklmnopqrstuvwx";
+        let reply = format!(
+            r##"[{{"name":"consolidated","content":"# Title\nkept fact\nGitHub token: {token}"}}]"##
+        );
+        let (notes, redacted) = parse_model_notes(&reply).unwrap();
+        assert!(redacted >= 1, "the backstop reports what it changed");
+        assert!(!notes[0].content.contains(token));
+    }
+
     #[tokio::test]
     async fn secrets_are_filtered_out() {
         let token = "ghp_0123456789abcdefghijklmnopqrstuvwx";
@@ -1222,7 +1288,7 @@ https://example.invalid/two".into(),
     #[test]
     fn parse_model_notes_reads_json_array() {
         let reply = r#"Here you go: [{"name":"consolidated","content":"a\nb"}] done"#;
-        let notes = parse_model_notes(reply).unwrap();
+        let (notes, _) = parse_model_notes(reply).unwrap();
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].name, "consolidated");
         assert_eq!(notes[0].content, "a\nb");
