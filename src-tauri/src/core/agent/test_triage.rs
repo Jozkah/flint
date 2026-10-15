@@ -114,15 +114,20 @@ fn run(command: &[String], project_root: &Path) -> Result<(bool, String), Harnes
             format!("{} could not be started: {e}", command[0]),
         )
     })?;
+    // Drains hand back over channels so the wait for them is bounded: a
+    // grandchild that escaped the tree kill and still holds a pipe must not
+    // hang the triage (report-09 MED-5).
     let drain = |handle: Option<Box<dyn std::io::Read + Send>>| {
+        let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
         std::thread::spawn(move || {
             let mut buffer = Vec::new();
             if let Some(mut handle) = handle {
                 use std::io::Read;
                 let _ = handle.read_to_end(&mut buffer);
             }
-            buffer
-        })
+            let _ = tx.send(buffer);
+        });
+        rx
     };
     let stdout = drain(child.stdout.take().map(|h| Box::new(h) as Box<dyn std::io::Read + Send>));
     let stderr = drain(child.stderr.take().map(|h| Box::new(h) as Box<dyn std::io::Read + Send>));
@@ -142,8 +147,9 @@ fn run(command: &[String], project_root: &Path) -> Result<(bool, String), Harnes
             Err(e) => return Err(failed(ErrorKind::Io, format!("the run could not be waited on: {e}"))),
         }
     };
-    let out = String::from_utf8_lossy(&stdout.join().unwrap_or_default()).to_string();
-    let err = String::from_utf8_lossy(&stderr.join().unwrap_or_default()).to_string();
+    let grace = if status.is_some() { Duration::from_secs(10) } else { Duration::from_secs(1) };
+    let out = String::from_utf8_lossy(&stdout.recv_timeout(grace).unwrap_or_default()).to_string();
+    let err = String::from_utf8_lossy(&stderr.recv_timeout(grace).unwrap_or_default()).to_string();
     let Some(status) = status else {
         return Err(failed(
             ErrorKind::Timeout,
