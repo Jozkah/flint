@@ -254,6 +254,12 @@ pub fn run_and_parse(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     jan_utils::system::hide_console_window(&mut checker);
+    // Its own process group, so `kill_tree` reaches what the shell started.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        checker.process_group(0);
+    }
     let mut child = checker
         .spawn()
         .map_err(|e| {
@@ -271,28 +277,21 @@ pub fn run_and_parse(
     // input this feature exists for.
     let mut out_pipe = child.stdout.take();
     let mut err_pipe = child.stderr.take();
-    let drain = |pipe: Option<std::process::ChildStdout>| {
+    // Results come back over channels so a grandchild still holding a pipe
+    // cannot keep this call waiting past the deadline.
+    let drain = |pipe: Option<Box<dyn std::io::Read + Send>>| {
+        let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
         std::thread::spawn(move || {
-            use std::io::Read as _;
             let mut buffer = Vec::new();
             if let Some(mut pipe) = pipe {
                 let _ = pipe.read_to_end(&mut buffer);
             }
-            buffer
-        })
+            let _ = tx.send(buffer);
+        });
+        rx
     };
-    let stdout_reader = drain(out_pipe.take());
-    let stderr_reader = {
-        let pipe = err_pipe.take();
-        std::thread::spawn(move || {
-            use std::io::Read as _;
-            let mut buffer = Vec::new();
-            if let Some(mut pipe) = pipe {
-                let _ = pipe.read_to_end(&mut buffer);
-            }
-            buffer
-        })
-    };
+    let stdout_reader = drain(out_pipe.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>));
+    let stderr_reader = drain(err_pipe.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>));
 
     // Waited on in slices so cancellation and the deadline are both answered
     // promptly, and so the process tree is killed rather than left behind.
@@ -321,9 +320,7 @@ pub fn run_and_parse(
         proc::kill_tree(pid);
         proc::unregister(pid);
         let _ = child.wait();
-        // The readers end when the pipes close with the process.
-        let _ = stdout_reader.join();
-        let _ = stderr_reader.join();
+        // Not waited on: a grandchild may still hold the pipes open.
         return Err(DiagnosticsError::new(
             kind,
             match kind {
@@ -335,8 +332,9 @@ pub fn run_and_parse(
         ));
     }
     proc::unregister(pid);
-    let stdout = stdout_reader.join().unwrap_or_default();
-    let stderr = stderr_reader.join().unwrap_or_default();
+    let grace = std::time::Duration::from_secs(5);
+    let stdout = stdout_reader.recv_timeout(grace).unwrap_or_default();
+    let stderr = stderr_reader.recv_timeout(grace).unwrap_or_default();
 
     let mut text = String::from_utf8_lossy(&stdout).into_owned();
     text.push('\n');

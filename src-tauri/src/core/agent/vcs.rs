@@ -193,6 +193,7 @@ pub(crate) fn refuse_filter_programs(repo: &Path) -> Result<(), String> {
         let last = lower.rsplit('.').next().unwrap_or("");
         let program = (lower.starts_with("filter.") && matches!(last, "clean" | "smudge" | "process"))
             || (lower.starts_with("diff.") && matches!(last, "textconv" | "command"))
+            || lower == "diff.external"
             || (lower.starts_with("merge.") && last == "driver");
         if program && !is_git_lfs_filter(&key, &value) {
             return Err(format!(
@@ -482,9 +483,9 @@ pub fn conflicts(repo: &Path) -> Result<MergeState, VcsError> {
             stages.entry(path.to_string()).or_default().push(stage);
         }
     }
-    let in_progress = !stages.is_empty()
-        || repo.join(".git").join("MERGE_HEAD").exists()
-        || repo.join(".git").join("REBASE_HEAD").exists();
+    // Through `--git-path`: in a linked worktree `.git` is a file, not the
+    // folder holding MERGE_HEAD.
+    let in_progress = !stages.is_empty() || in_progress(repo).is_some();
 
     let mut files = Vec::new();
     let truncated = stages.len() > MAX_FILES;

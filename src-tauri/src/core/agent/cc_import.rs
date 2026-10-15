@@ -300,6 +300,11 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
         let src_path = entry.path();
         let dst_path = dst.join(&file_name);
         if src_path.is_dir() {
+            // A linked folder is not descended into: a link back up the tree
+            // would recurse until the stack overflows.
+            if entry.file_type()?.is_symlink() {
+                continue;
+            }
             copy_dir_recursive(&src_path, &dst_path)?;
         } else if src_path.is_file() {
             fs::copy(&src_path, &dst_path)?;

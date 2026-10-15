@@ -92,6 +92,10 @@ pub fn opaque_reason(command: &str) -> Option<String> {
 #[derive(Debug, Clone, Default)]
 pub struct Scope {
     roots: Vec<String>,
+    /// Set once an earlier segment changed directory to somewhere not known
+    /// to be inside the scope (`cd ~ && rm -rf *`): relative targets no
+    /// longer resolve against the workspace, so they count as outside.
+    cwd_unknown: bool,
 }
 
 impl Scope {
@@ -115,7 +119,10 @@ impl Scope {
                 (resolved.contains('/') && !resolved.ends_with(':')).then_some(resolved)
             })
             .collect();
-        Self { roots }
+        Self {
+            roots,
+            cwd_unknown: false,
+        }
     }
 
     /// Whether the resolved absolute `path` is one of the roots or under one.
@@ -143,13 +150,17 @@ fn reason_at_depth(command: &str, workspace: &Scope, depth: usize) -> Option<Str
             return Some(reason);
         }
     }
+    let mut scope = workspace.clone();
     for segment in &parsed.segments {
         let words = strip_prefixes(segment);
         if words.is_empty() {
             continue;
         }
-        if let Some(reason) = check_segment(&words, workspace, depth) {
+        if let Some(reason) = check_segment(&words, &scope, depth) {
             return Some(reason);
+        }
+        if changes_to_unknown_dir(&words, &scope) {
+            scope.cwd_unknown = true;
         }
     }
     let lower = command.to_ascii_lowercase();
@@ -338,6 +349,29 @@ fn check_segment(words: &[String], workspace: &Scope, depth: usize) -> Option<St
     }
 }
 
+/// Whether this segment moves the shell to a directory not known to be inside
+/// `scope`: `cd`/`pushd`/`Set-Location` to an outside, home or unresolvable
+/// target, a bare `cd` (home), `cd -`, or `popd`.
+fn changes_to_unknown_dir(words: &[String], scope: &Scope) -> bool {
+    match command_name(&words[0]).as_str() {
+        "popd" | "pop-location" => true,
+        "cd" | "chdir" | "pushd" | "set-location" | "sl" | "push-location" => {
+            let target = words[1..]
+                .iter()
+                .filter(|a| !a.starts_with('-') && !is_cmd_switch(a))
+                .last();
+            match target {
+                None => true,
+                Some(t) => {
+                    let t = t.trim_matches(['"', '\'']);
+                    t.is_empty() || t == "-" || outside_workspace(t, scope)
+                }
+            }
+        }
+        _ => false,
+    }
+}
+
 /// Whether a deletion is recursive, and its targets. Understands POSIX short
 /// and long flags (`-rf`, `--recursive`) and PowerShell parameters
 /// (`-Recurse`, `-Force`, `-Path x`).
@@ -504,7 +538,8 @@ fn outside_workspace(target: &str, scope: &Scope) -> bool {
         return true;
     }
     if !is_absolute_str(&norm) {
-        return norm == ".."
+        return scope.cwd_unknown
+            || norm == ".."
             || norm.starts_with("../")
             || norm.contains("/../")
             || norm.ends_with("/..");
@@ -684,6 +719,29 @@ mod tests {
         assert!(why.contains("unbalanced quote"), "{why}");
         let why = destructive_reason("pwsh -enc AAAA", ws).unwrap();
         assert!(why.contains("encoded"), "{why}");
+    }
+
+    /// A `cd` out of the workspace makes later relative targets outside.
+    #[test]
+    fn changing_directory_out_of_the_workspace_is_tracked() {
+        let ws = Path::new("/home/me/project");
+        for cmd in [
+            "cd ~ && rm -rf *",
+            "cd / ; rm -rf ./*",
+            "cd .. && rm -rf proj",
+            "cd && rm -rf build",
+            "cd - && rm -rf build",
+            "pushd /etc && rm -rf conf",
+            "cd $HOME; rm -r -f stuff",
+            r"Set-Location C:\; Remove-Item -Recurse *",
+            r"cd /d C:\ && rd /s /q stuff",
+            "cd sub && popd && rm -rf build",
+        ] {
+            assert!(destructive_reason(cmd, ws).is_some(), "{cmd}");
+        }
+        for cmd in ["cd src && rm -rf build", "cd ./a/b; rm -rf node_modules"] {
+            assert!(destructive_reason(cmd, ws).is_none(), "{cmd}");
+        }
     }
 
     #[test]

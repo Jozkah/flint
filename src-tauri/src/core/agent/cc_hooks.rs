@@ -324,13 +324,21 @@ async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Option<String> {
             return None;
         }
     };
-    if let Some(mut stdin) = child.stdin.take() {
-        // A hook that does not read its input closes the pipe early; that is
-        // its business, not a failure.
-        let _ = stdin.write_all(payload.to_string().as_bytes()).await;
-    }
+    // Written beside the wait, not before it: a hook that never reads its input
+    // would otherwise block a large payload's write past the time limit. A
+    // hook that closes the pipe early is its business, not a failure.
+    let writer = child.stdin.take().map(|mut stdin| {
+        let body = payload.to_string();
+        tokio::spawn(async move {
+            let _ = stdin.write_all(body.as_bytes()).await;
+        })
+    });
     let limit = Duration::from_secs(hook.timeout_secs);
-    match tokio::time::timeout(limit, child.wait_with_output()).await {
+    let waited = tokio::time::timeout(limit, child.wait_with_output()).await;
+    if let Some(writer) = writer {
+        writer.abort();
+    }
+    match waited {
         Ok(Ok(out)) if out.status.success() => {
             context_from_output(&String::from_utf8_lossy(&out.stdout))
         }

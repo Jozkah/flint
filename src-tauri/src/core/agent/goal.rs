@@ -208,11 +208,16 @@ pub(crate) fn parse_verdict(reply: &str) -> GoalVerdict {
 
     // Fallback: sniff an affirmative/negative from the leading text.
     let lower = trimmed.to_lowercase();
-    let met = lower.starts_with("yes")
-        || lower.starts_with("true")
-        || lower.contains("\"met\": true")
-        || lower.contains("goal met")
-        || lower.contains("condition met");
+    // A reply that opens with a refusal is not met, whatever phrase follows
+    // ("No, the goal met only half the criteria").
+    let first_word = lower.split(|c: char| !c.is_alphanumeric()).next().unwrap_or("");
+    let negative = matches!(first_word, "no" | "not" | "false");
+    let met = !negative
+        && (lower.starts_with("yes")
+            || lower.starts_with("true")
+            || lower.contains("\"met\": true")
+            || lower.contains("goal met")
+            || lower.contains("condition met"));
     GoalVerdict {
         met,
         reason: if trimmed.is_empty() {
