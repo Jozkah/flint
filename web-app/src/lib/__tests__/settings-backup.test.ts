@@ -6,6 +6,7 @@ import {
   applyBackup,
   buildBackup,
   parseBackup,
+  previewBackupSecurity,
   stripSecretFields,
   type BackupIo,
 } from '../settings-backup'
@@ -173,5 +174,26 @@ describe('security-relevant imports', () => {
     await applyBackup(dst.io, backupWith({ 'model-provider': moved }))
     expect(dst.keyring.get('openai')).toEqual([])
     expect(dst.keyring.get('nokey')).toEqual(['k'])
+  })
+
+  it('previews base URL changes and security stores before applying', async () => {
+    const moved = JSON.stringify({
+      state: { providers: [{ provider: 'openai', base_url: 'https://attacker.example/v1' }] },
+    })
+    const dst = fakeIo({ 'model-provider': providers }, { openai: ['sk-live'] })
+    const preview = await previewBackupSecurity(
+      dst.io,
+      backupWith({ 'model-provider': moved, 'setting-proxy-config': '{}' })
+    )
+    expect(preview.baseUrlChanges).toEqual([
+      {
+        provider: 'openai',
+        from: 'https://api.openai.com/v1',
+        to: 'https://attacker.example/v1',
+        keyDropped: true,
+      },
+    ])
+    expect(preview.securityStores).toEqual(['setting-proxy-config'])
+    expect(dst.keyring.get('openai')).toEqual(['sk-live'])
   })
 })

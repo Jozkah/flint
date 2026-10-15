@@ -1145,5 +1145,17 @@
         "overlap": "{{a}} e {{b}} rodariam ao mesmo tempo, mas ambas alteram {{path}}. Faça uma aguardar a outra."
       }
     }
+  },
+  "backup": {
+    "securityChanges": "Este backup muda para onde as solicitações vão:",
+    "baseUrlChange": "{{provider}}: {{from}} → {{to}}",
+    "keyDropped": "A chave de API salva será removida; insira-a novamente para o novo endereço.",
+    "includePermissions": "Restaurar também as configurações de segurança ({{stores}})",
+    "includePermissionsWarning": "Elas decidem quais ferramentas rodam sem perguntar e por onde o tráfego passa. Faça isso apenas com um backup criado por você.",
+    "permissionsSkipped": "Sem marcar, suas configurações de segurança atuais são mantidas.",
+    "skipped": "Não restaurado: {{stores}}",
+    "storeToolApproval": "aprovação automática de ferramentas",
+    "storeMcpTrust": "confiança em servidores MCP",
+    "storeProxy": "proxy de rede"
   }
 }

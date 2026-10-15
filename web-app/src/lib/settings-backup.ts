@@ -238,6 +238,45 @@ function baseUrls(blob: string | null): Map<string, string> {
   return out
 }
 
+/** What importing `backup` would change that matters for security. */
+export interface BackupSecurityPreview {
+  /** Providers whose Base URL the backup changes. */
+  baseUrlChanges: Array<{
+    provider: string
+    from: string
+    to: string
+    /** The saved key is dropped: the backup has none for the new address. */
+    keyDropped: boolean
+  }>
+  /** Security stores the backup carries (restored only with permission). */
+  securityStores: string[]
+}
+
+export async function previewBackupSecurity(
+  io: BackupIo,
+  backup: SettingsBackup
+): Promise<BackupSecurityPreview> {
+  const baseUrlChanges: BackupSecurityPreview['baseUrlChanges'] = []
+  const providersBlob = backup.settings[PROVIDERS_STORE_KEY]
+  if (providersBlob !== undefined) {
+    const before = baseUrls(await io.get(PROVIDERS_STORE_KEY))
+    for (const [id, url] of baseUrls(providersBlob)) {
+      if (id === 'llamacpp' || !before.has(id) || before.get(id) === url)
+        continue
+      baseUrlChanges.push({
+        provider: id,
+        from: before.get(id) ?? '',
+        to: url,
+        keyDropped: !backup.providerKeys?.[id],
+      })
+    }
+  }
+  const securityStores = SECURITY_STORE_KEYS.filter(
+    (key) => backup.settings[key] !== undefined
+  )
+  return { baseUrlChanges, securityStores }
+}
+
 export async function applyBackup(
   io: BackupIo,
   backup: SettingsBackup,

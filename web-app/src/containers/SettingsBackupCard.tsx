@@ -3,12 +3,15 @@ import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardItem } from '@/containers/Card'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   applyBackup,
   buildBackup,
   defaultBackupName,
   parseBackup,
+  previewBackupSecurity,
   type BackupIo,
+  type BackupSecurityPreview,
   type SettingsBackup,
 } from '@/lib/settings-backup'
 
@@ -26,10 +29,24 @@ const io: BackupIo = {
  * is left to the user's own client: save the file into a Google Drive or
  * Nextcloud folder and import it on the other machine.
  */
+/** Label keys for the security stores a backup can carry. */
+const SECURITY_STORE_LABELS: Record<string, string> = {
+  'tool-approval': 'settings:backup.storeToolApproval',
+  'mcp-global-permissions': 'settings:backup.storeMcpTrust',
+  'setting-proxy-config': 'settings:backup.storeProxy',
+}
+
 export function SettingsBackupCard() {
+  const { t } = useTranslation()
   const [includeSecrets, setIncludeSecrets] = useState(false)
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState<SettingsBackup | null>(null)
+  const [preview, setPreview] = useState<BackupSecurityPreview | null>(null)
+  // Off by default: a backup from a shared folder must not decide what runs
+  // without asking or where traffic goes unless the user says so.
+  const [includePermissions, setIncludePermissions] = useState(false)
+  const storeLabel = (key: string) =>
+    SECURITY_STORE_LABELS[key] ? t(SECURITY_STORE_LABELS[key]) : key
 
   const handleExport = async () => {
     setBusy(true)
@@ -57,7 +74,10 @@ export function SettingsBackupCard() {
     try {
       const text = await invoke<string | null>('settings_backup_load')
       if (text == null) return
-      setPending(parseBackup(text))
+      const backup = parseBackup(text)
+      setPreview(await previewBackupSecurity(io, backup))
+      setIncludePermissions(false)
+      setPending(backup)
     } catch (e) {
       toast.error('Import failed', {
         description: e instanceof Error ? e.message : String(e),
@@ -71,11 +91,21 @@ export function SettingsBackupCard() {
     if (!pending) return
     setBusy(true)
     try {
-      await applyBackup(io, pending)
-      toast.success('Settings imported, restarting the window')
+      const result = await applyBackup(io, pending, { includePermissions })
+      toast.success('Settings imported, restarting the window', {
+        description:
+          result.skipped.length > 0
+            ? t('settings:backup.skipped', {
+                stores: result.skipped.map(storeLabel).join(', '),
+              })
+            : undefined,
+      })
       // Stores rehydrate from the backend at boot; a reload picks up the
       // imported values and re-seeds API keys from the keyring.
-      window.setTimeout(() => window.location.reload(), 400)
+      window.setTimeout(
+        () => window.location.reload(),
+        result.skipped.length > 0 ? 2500 : 400
+      )
     } catch (e) {
       toast.error('Import failed', { description: String(e) })
       setBusy(false)
@@ -133,13 +163,56 @@ export function SettingsBackupCard() {
                   : ''}
                 . This overwrites your current values.
               </p>
+              {preview && preview.baseUrlChanges.length > 0 && (
+                <div
+                  className="text-sm text-destructive"
+                  data-testid="settings-backup-base-url-changes"
+                >
+                  <p>{t('settings:backup.securityChanges')}</p>
+                  <ul className="list-disc pl-5">
+                    {preview.baseUrlChanges.map((c) => (
+                      <li key={c.provider}>
+                        {t('settings:backup.baseUrlChange', {
+                          provider: c.provider,
+                          from: c.from || '-',
+                          to: c.to || '-',
+                        })}
+                        {c.keyDropped ? ` ${t('settings:backup.keyDropped')}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {preview && preview.securityStores.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={includePermissions}
+                      onChange={(e) => setIncludePermissions(e.target.checked)}
+                      data-testid="settings-backup-include-permissions"
+                    />
+                    {t('settings:backup.includePermissions', {
+                      stores: preview.securityStores.map(storeLabel).join(', '),
+                    })}
+                  </label>
+                  <p className="text-sm text-muted-foreground">
+                    {includePermissions
+                      ? t('settings:backup.includePermissionsWarning')
+                      : t('settings:backup.permissionsSkipped')}
+                  </p>
+                </div>
+              )}
               <div className="flex gap-2">
                 <Button onClick={handleApply} disabled={busy}>
                   Import and reload
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => setPending(null)}
+                  onClick={() => {
+                    setPending(null)
+                    setPreview(null)
+                  }}
                   disabled={busy}
                 >
                   Cancel

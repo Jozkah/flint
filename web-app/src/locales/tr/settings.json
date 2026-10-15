@@ -1114,5 +1114,17 @@
         "overlap": "{{a}} ve {{b}} aynı anda çalışırdı ama ikisi de {{path}} dosyasını değiştiriyor. Birini diğerini bekletin."
       }
     }
+  },
+  "backup": {
+    "securityChanges": "Bu yedek isteklerin gittiği yeri değiştiriyor:",
+    "baseUrlChange": "{{provider}}: {{from}} → {{to}}",
+    "keyDropped": "Kayıtlı API anahtarı silinecek; yeni adres için yeniden girin.",
+    "includePermissions": "Güvenlik ayarlarını da geri yükle ({{stores}})",
+    "includePermissionsWarning": "Bunlar hangi araçların sormadan çalışacağını ve trafiğin nereye gideceğini belirler. Yalnızca kendi oluşturduğunuz bir yedekte yapın.",
+    "permissionsSkipped": "İşaretlenmezse mevcut güvenlik ayarlarınız korunur.",
+    "skipped": "Geri yüklenmedi: {{stores}}",
+    "storeToolApproval": "araç otomatik onayı",
+    "storeMcpTrust": "MCP sunucu güveni",
+    "storeProxy": "ağ proxy'si"
   }
 }
