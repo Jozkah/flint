@@ -44,8 +44,8 @@ const GLOBAL_CONFIG_TEMPLATE: &str = r#"# Jan Agent global provider config.
 #                                     # /terminal-setup when this terminal is
 #                                     # dropping Shift+Enter or Option+Delete.
 #                                     # On by default
-# claude_code_alias = false             # allow Jan to reuse Claude Code's
-#                                     # keychain login; on by default
+# claude_code_alias = true              # allow Flint to reuse Claude Code's
+#                                     # keychain login; off by default
 # hide_secrets = true                 # replace secret-named env values, URL
 #                                     # passwords and credential-shaped tokens
 #                                     # with placeholders before a request goes
@@ -327,14 +327,14 @@ pub(crate) fn terminal_hint_enabled() -> bool {
 }
 
 /// Whether Flint may reuse Claude Code's keychain login
-/// (`claude_code_alias` in `~/.jan/config.toml`), defaulting to on. This
-/// setting is deliberately opt-out to preserve existing behavior while making
-/// the cross-tool credential reuse explicit and reversible.
+/// (`claude_code_alias` in `~/.jan/config.toml`), defaulting to off. Reading
+/// another app's keychain secret is opt-in so the cross-tool credential reuse
+/// is always an explicit user decision.
 pub(crate) fn claude_code_alias_enabled() -> bool {
     load_raw()
         .ok()
         .and_then(|config| config.claude_code_alias)
-        .unwrap_or(true)
+        .unwrap_or(false)
 }
 
 /// Whether `bash` runs sandboxed by default (`sandbox` in `~/.jan/config.toml`).
@@ -971,11 +971,11 @@ mod tests {
     }
 
     #[test]
-    fn claude_code_alias_defaults_on_and_reads_the_toml_key() {
+    fn claude_code_alias_defaults_off_and_reads_the_toml_key() {
         with_temp_home(|_| {
-            assert!(claude_code_alias_enabled(), "missing file -> alias on");
+            assert!(!claude_code_alias_enabled(), "missing file -> alias off");
             let path = ensure_global_config().expect("ensure");
-            assert!(claude_code_alias_enabled(), "scaffolded file -> alias on");
+            assert!(!claude_code_alias_enabled(), "scaffolded file -> alias off");
 
             std::fs::write(&path, "claude_code_alias = false\n").unwrap();
             assert!(!claude_code_alias_enabled());
@@ -984,7 +984,7 @@ mod tests {
 
             std::fs::write(&path, "not valid toml [[[").unwrap();
             assert!(
-                claude_code_alias_enabled(),
+                !claude_code_alias_enabled(),
                 "an unreadable config keeps the default"
             );
         });
