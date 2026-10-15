@@ -87,8 +87,11 @@ const DENIED_GIT_OPTIONS = [
 function denyCommonGit(sub: string, rest: string[]): string | null {
   for (const a of rest) {
     const lower = a.toLowerCase()
+    // git accepts any unambiguous prefix of a long option (`--upload`,
+    // `--exe`), so a prefix of a denied option is refused too.
+    const name = lower.split('=')[0]
     for (const opt of DENIED_GIT_OPTIONS) {
-      if (lower === opt || lower.startsWith(`${opt}=`)) {
+      if (name.length >= 3 && name.startsWith('--') && opt.startsWith(name)) {
         return `the option \`${a}\` is not allowed`
       }
     }
@@ -96,14 +99,15 @@ function denyCommonGit(sub: string, rest: string[]): string | null {
       return `the transport in \`${a}\` is not allowed`
     }
   }
-  if ((sub === 'clone' || sub === 'ls-remote') && has(rest, ['-u'])) {
+  // Short flags bundle (`-qucalc`), so every letter is checked.
+  if ((sub === 'clone' || sub === 'ls-remote') && hasShort(rest, 'u')) {
     return '`-u` (upload-pack) is not allowed'
   }
-  if (sub === 'clone' && has(rest, ['-c'])) return '`clone -c` is not allowed'
-  if (sub === 'rebase' && rest.some((a) => a.startsWith('-x'))) {
+  if (sub === 'clone' && hasShort(rest, 'c')) return '`clone -c` is not allowed'
+  if (sub === 'rebase' && hasShort(rest, 'x')) {
     return '`rebase -x` is not allowed'
   }
-  if (sub === 'grep' && rest.some((a) => a.startsWith('-O'))) {
+  if (sub === 'grep' && hasShort(rest, 'O')) {
     return '`grep -O` is not allowed'
   }
   if (sub === 'merge' || sub === 'pull') {
@@ -119,6 +123,29 @@ function denyCommonGit(sub: string, rest: string[]): string | null {
       if (v !== undefined && !ok.includes(v))
         return `merge strategy \`${v}\` is not allowed`
     }
+  }
+  return null
+}
+
+/**
+ * A message file (`-F`, `--file`, commit `-t`) is read by git outside the
+ * sandbox, so it must be a relative path that stays inside the folder.
+ */
+function messageFileError(rest: string[]): string | null {
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i]
+    if (a === '--') break
+    let v: string | undefined
+    if (a === '-m' || a === '--message') {
+      i++
+      continue
+    } else if (a === '-F' || a === '--file' || a === '-t') v = rest[++i]
+    else if (a.startsWith('--file=')) v = a.slice('--file='.length)
+    else if ((a.startsWith('-F') || a.startsWith('-t')) && a.length > 2)
+      v = a.slice(2)
+    if (v === undefined || v === '-') continue
+    if (/^[\\/]/.test(v) || v.includes(':') || v.split(/[\\/]/).includes('..'))
+      return `the message file \`${v}\` must be a relative path inside the folder`
   }
   return null
 }
@@ -446,8 +473,13 @@ function gitPlan(input: string[]): GitPlanResult {
       if (hasOpt(rest, ['-f', '--force']))
         plan.destructive = 'removes files with uncommitted changes'
       break
-    case 'add':
     case 'commit':
+    case 'notes': {
+      const bad = messageFileError(rest)
+      if (bad) return fail(bad)
+      break
+    }
+    case 'add':
     case 'mv':
     case 'merge':
     case 'rebase':
@@ -456,7 +488,6 @@ function gitPlan(input: string[]): GitPlanResult {
     case 'am':
     case 'apply':
     case 'init':
-    case 'notes':
     case 'sparse-checkout':
     case 'update-index':
       break
