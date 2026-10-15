@@ -41,11 +41,15 @@ export class DefaultRAGService implements RAGService {
         thread_id?: string
         project_id?: string
       }
+      // The ids always come from the conversation, never from the model: a
+      // model-sent id would read another thread's or project's documents.
       const a: ToolCallArgs = { ...(args.arguments as Record<string, unknown>) }
-      if (args.scope === 'thread' && !a.thread_id) {
+      delete a.thread_id
+      delete a.project_id
+      if (args.scope === 'thread') {
         a.thread_id = args.threadId
       }
-      if (args.scope === 'project' && !a.project_id) {
+      if (args.scope === 'project') {
         a.project_id = args.projectId
         a.thread_id = args.projectId
       }

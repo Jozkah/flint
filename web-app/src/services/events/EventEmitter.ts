@@ -40,8 +40,14 @@ export class EventEmitter {
 
     const handlers = this.handlers.get(eventName)
 
-    handlers?.forEach((handler) => {
-      handler(args)
+    // A copy, so a handler that removes itself does not skip the next one,
+    // and one that throws does not stop the rest.
+    ;[...(handlers ?? [])].forEach((handler) => {
+      try {
+        handler(args)
+      } catch (error) {
+        console.error(`Handler for ${eventName} failed:`, error)
+      }
     })
   }
 }
