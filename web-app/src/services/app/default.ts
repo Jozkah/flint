@@ -2,7 +2,12 @@
  * Default App Service - Generic implementation with minimal returns
  */
 
-import type { AppService, FactoryResetOptions, LogEntry } from './types'
+import type {
+  AppService,
+  FactoryResetOptions,
+  LogChunk,
+  LogEntry,
+} from './types'
 
 export class DefaultAppService implements AppService {
   async factoryReset(options?: FactoryResetOptions): Promise<void> {
@@ -12,6 +17,11 @@ export class DefaultAppService implements AppService {
 
   async readLogs(): Promise<LogEntry[]> {
     return []
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async readLogsSince(_offset?: number): Promise<LogChunk> {
+    return { entries: await this.readLogs(), offset: 0, reset: true }
   }
 
   parseLogLine(line: string): LogEntry {

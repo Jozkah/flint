@@ -9,6 +9,15 @@ export interface LogEntry {
   message: string
 }
 
+/** Log lines read since an offset; see `AppService.readLogsSince`. */
+export interface LogChunk {
+  entries: LogEntry[]
+  /** Pass back on the next call to read only what was appended. */
+  offset: number
+  /** The entries replace what is shown (first read, or the log rotated). */
+  reset: boolean
+}
+
 export interface FactoryResetOptions {
   keepAppData: boolean
   keepModelsAndConfigs: boolean
@@ -18,6 +27,8 @@ export interface FactoryResetOptions {
 export interface AppService {
   factoryReset(options?: FactoryResetOptions): Promise<void>
   readLogs(): Promise<LogEntry[]>
+  /** The log lines appended since `offset`; with none, the log's tail. */
+  readLogsSince(offset?: number): Promise<LogChunk>
   parseLogLine(line: string): LogEntry
   getJanDataFolder(): Promise<string | undefined>
   /**
