@@ -10,18 +10,25 @@ pub async fn is_process_running_by_pid<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     pid: i32,
 ) -> Result<bool, String> {
-    let mut system = System::new();
-    system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-    let process_pid = Pid::from(pid as usize);
-    let alive = system.process(process_pid).is_some();
+    let state: State<MlxState> = app_handle.state();
+    let mut map = state.mlx_server_process.lock().await;
 
-    if !alive {
-        let state: State<MlxState> = app_handle.state();
-        let mut map = state.mlx_server_process.lock().await;
-        map.remove(&pid);
+    // A tracked session is asked through its own child handle: no process
+    // table walk per chat message.
+    if let Some(session) = map.get_mut(&pid) {
+        let alive = matches!(session.child.try_wait(), Ok(None));
+        if !alive {
+            map.remove(&pid);
+        }
+        return Ok(alive);
     }
+    drop(map);
 
-    Ok(alive)
+    // Not ours (or already reaped): look at just that pid.
+    let mut system = System::new();
+    let process_pid = Pid::from(pid as usize);
+    system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[process_pid]), true);
+    Ok(system.process(process_pid).is_some())
 }
 
 /// Get a random available port, avoiding ports used by existing sessions
@@ -46,7 +53,46 @@ pub async fn get_random_available_port<R: Runtime>(
 
     drop(map);
 
-    generate_random_port(&used_ports)
+    pick_dynamic_port(&used_ports)
+}
+
+/// A free loopback port from the IANA dynamic range (49152-65535), so it does
+/// not land on the 3000-4000 band dev servers use. Falls back to the shared
+/// picker only if the whole range is somehow unusable.
+fn pick_dynamic_port(used: &HashSet<u16>) -> Result<u16, String> {
+    use std::hash::{BuildHasher, Hasher};
+    const LOW: u32 = 49152;
+    const SPAN: u32 = 65535 - LOW + 1;
+
+    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+    hasher.write_u32(std::process::id());
+    let start = (hasher.finish() % SPAN as u64) as u32;
+
+    for i in 0..SPAN {
+        let port = (LOW + (start + i) % SPAN) as u16;
+        if used.contains(&port) {
+            continue;
+        }
+        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return Ok(port);
+        }
+    }
+    generate_random_port(used)
+}
+
+#[cfg(test)]
+mod port_tests {
+    use super::*;
+
+    #[test]
+    fn dynamic_port_is_in_range_and_skips_used() {
+        let mut used = HashSet::new();
+        let first = pick_dynamic_port(&used).unwrap();
+        assert!(first >= 49152);
+        used.insert(first);
+        let second = pick_dynamic_port(&used).unwrap();
+        assert_ne!(first, second);
+    }
 }
 
 /// Gracefully terminate a process on Unix systems (macOS)

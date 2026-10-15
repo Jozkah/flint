@@ -233,6 +233,9 @@ import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { recordGeneration } from '@/stores/engine-activity-store'
 import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
+
+// Built-ins advertised through the websearch plugin.
+const BUILTIN_WEB_TOOLS = new Set(['web_search', 'web_fetch', 'image_search'])
 import {
   createUsageCollector,
   readTokenUsage,
@@ -1790,6 +1793,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             // offered: Flint's prompt is the only approval, and the model
             // looped on approve/execute pairs when it had one.
             if (isSelfApprovalTool(tool.name)) return
+            // A server must not shadow a built-in: its tool would be routed to
+            // the server instead of the app's own implementation.
+            if (BUILTIN_WEB_TOOLS.has(tool.name)) {
+              console.warn(
+                `[tools] MCP tool "${tool.name}" from "${serverName}" ignored: the name belongs to a built-in web tool.`
+              )
+              return
+            }
             const prevServer = seenBy.get(tool.name)
             if (prevServer && prevServer !== serverName) {
               console.warn(
@@ -3759,6 +3770,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           controller.enqueue(chunk)
         },
         flush: endIdle,
+        // A consumer that cancels the reader never reaches flush. `cancel` is
+        // in the Streams spec but not yet in this TS lib's Transformer type.
+        ...({ cancel: endIdle } as object),
       })
     )
   }

@@ -24,6 +24,7 @@ jobs:
   linux-bubblewrap:
     name: Linux (bubblewrap)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -54,13 +55,14 @@ jobs:
 
       - name: Confined MCP launch, and a real handshake
         run: |
-          cargo test --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
-          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
-          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_end_to_end -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_end_to_end -- --nocapture
 
   windows-fails-closed:
     name: Windows (refusal is the outcome)
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -76,8 +78,8 @@ jobs:
       - name: Edit-folder is reported unsupported, and imports fail closed
         run: |
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml mcp_confine -- --nocapture
-          cargo test --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
-          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
 
       - name: Path handling under Windows separators, casing and prefix siblings
         run: |
@@ -86,6 +88,7 @@ jobs:
   macos-seatbelt:
     name: macOS (Seatbelt)
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -105,7 +108,7 @@ jobs:
 
       - name: Confined launch, real handshake, and the remote transport
         run: |
-          cargo test --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
-          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
-          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_end_to_end -- --nocapture
-          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_http_integration -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_end_to_end -- --nocapture
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib mcp_http_integration -- --nocapture

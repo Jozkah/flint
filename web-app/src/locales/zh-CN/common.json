@@ -2362,7 +2362,16 @@
     "tokenUsage": "Token 用量",
     "modelSleeping": "模型休眠中",
     "visionSupported": "支持图像输入",
-    "audioSupported": "支持音频输入"
+    "audioSupported": "支持音频输入",
+    "stopGenerating": "停止生成",
+    "filterOptions": "筛选选项",
+    "switchAssistant": "切换助手",
+    "emergencyStop": "紧急停止",
+    "toggleFavorite": "切换收藏",
+    "pauseDownload": "暂停下载",
+    "cancelDownload": "取消下载",
+    "decrement": "减少",
+    "increment": "增加"
   },
   "attachedImages": {
     "open": "打开 {{name}}",
@@ -2516,5 +2525,10 @@
     "failed": "翻译失败",
     "inputPlaceholder": "要翻译的文本",
     "outputPlaceholder": "译文显示在这里"
-  }
+  },
+  "markdownImage": {
+    "load": "从 {{host}} 加载图片"
+  },
+  "messageSaveFailed": "无法保存消息，重启后可能丢失。",
+  "threadSaveFailed": "无法保存对此对话的更改，已还原。"
 }

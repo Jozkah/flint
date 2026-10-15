@@ -8,7 +8,13 @@ pub async fn parse_document<R: tauri::Runtime>(
     file_type: String,
 ) -> Result<String, RagError> {
     log::info!("Parsing document: {} (type: {})", file_path, file_type);
-    let res = catch_unwind(AssertUnwindSafe(|| parser::parse_document(&file_path, &file_type)));
+    // PDF/XLSX parsing is synchronous and can run for seconds on large files;
+    // keep it off the async runtime's worker threads.
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        catch_unwind(AssertUnwindSafe(|| parser::parse_document(&file_path, &file_type)))
+    })
+    .await
+    .map_err(|e| RagError::ParseError(format!("Parsing task failed: {e}")))?;
     match res {
         Ok(result) => result,
         Err(payload) => {

@@ -47,6 +47,7 @@ import {
   chatTemplateSupportsTools,
   getDefaultEmbeddingModelId,
   modelFileProblem,
+  ggufShardPaths,
   assertSha256Matches,
   setDefaultEmbeddingModelId,
   type EmbedBatchResult,
@@ -84,6 +85,8 @@ import {
   isModelSupported,
   unloadLlamaModel,
   startEngine,
+  stopEngine as pluginStopEngine,
+  engineSlotsIdle,
   eraseThreadSlotState,
   getEngineInfo as pluginGetEngineInfo,
   getEngineVersion as pluginGetEngineVersion,
@@ -630,8 +633,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
 
     let hardwareGpuCount = 0
+    let hardwareGpus: string[] | undefined
     try {
-      hardwareGpuCount = (await getSystemInfo())?.gpus?.length ?? 0
+      const gpus = (await getSystemInfo())?.gpus ?? []
+      hardwareGpuCount = gpus.length
+      hardwareGpus = gpus.map((gpu) => gpu.name ?? '')
     } catch (e) {
       logger.warn('Hardware GPU probe failed during setup verification:', e)
     }
@@ -641,6 +647,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       ...evaluateGpuOffload({
         engineDeviceCount: devices.length,
         hardwareGpuCount,
+        hardwareGpus,
+        engineDevices: devices.map((d) => ({ id: d.id, name: d.name })),
       }),
     }
   }
@@ -775,6 +783,17 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    * sequence, and the second would kill the worker the first had just brought
    * up. A late caller gets the in-flight start rather than a restart.
    */
+  /** Live device ids, only when a saved device needs checking. */
+  private async knownDeviceIds(): Promise<string[] | undefined> {
+    const dev = (this.config as { device?: unknown }).device
+    if (typeof dev !== 'string' || dev.trim() === '') return undefined
+    try {
+      return (await this.getDevices()).map((d) => d.id)
+    } catch {
+      return undefined
+    }
+  }
+
   private async startEngine(): Promise<void> {
     const inflight = this.engineStartLock
     if (inflight) {
@@ -795,7 +814,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       providerPath,
       janDataFolderPath,
       this.config,
-      { kvFallbackModels: this.kvFallbackModels }
+      {
+        kvFallbackModels: this.kvFallbackModels,
+        knownDeviceIds: await this.knownDeviceIds(),
+      }
     )
 
     const modelsMax = this.resolveModelsMax(embeddingCount)
@@ -916,7 +938,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       providerPath,
       janDataFolderPath,
       this.config,
-      { kvFallbackModels: this.kvFallbackModels }
+      {
+        kvFallbackModels: this.kvFallbackModels,
+        knownDeviceIds: await this.knownDeviceIds(),
+      }
     )
     this.presetPath = presetPath
 
@@ -1255,7 +1280,12 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
 
     if (key === 'llamacpp_env') {
-      this.llamacpp_env = value as string
+      const next = String(value ?? '')
+      const changed = next !== this.llamacpp_env
+      this.llamacpp_env = next
+      // The env is only read when the worker is spawned, so a running worker
+      // keeps the old one until it is restarted.
+      if (changed && this.backgroundInit) this.scheduleEnvRestart()
     } else if (key === 'timeout') {
       // Clamped through the plugin's own coercion: the field is a text input, so
       // clearing it yields '' and a bare cast produced NaN. 0 or negative would
@@ -1273,6 +1303,36 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       // of slider/dropdown updates collapses into one bounce.
       this.schedulePresetRefresh()
     }
+  }
+
+  private envRestartTimer: ReturnType<typeof setTimeout> | null = null
+  private scheduleEnvRestart(): void {
+    if (this.envRestartTimer) clearTimeout(this.envRestartTimer)
+    this.envRestartTimer = setTimeout(() => {
+      this.envRestartTimer = null
+      this.restartEngineForEnv().catch((e) =>
+        logger.warn('Engine restart after environment change failed:', e)
+      )
+    }, 800)
+  }
+
+  /**
+   * Restart the worker so a changed `llamacpp_env` takes effect. Skipped while
+   * a generation is running (the restart would kill it); in that case the new
+   * value is picked up at the next start and a warning says so.
+   */
+  private async restartEngineForEnv(): Promise<void> {
+    if (!(await this.getEngineInfo())) return // next start reads the new env
+    if (!(await engineSlotsIdle())) {
+      logger.warn(
+        'Environment variables changed while a model is generating; the engine will use them after its next restart.'
+      )
+      return
+    }
+    await pluginStopEngine()
+    this.enginePort = undefined
+    this.engineApiKey = undefined
+    await this.startEngine()
   }
 
   private presetRefreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -1862,7 +1922,15 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
       // check for empty parts or path traversal
       const parts = id.split('/')
-      return parts.every((s) => s !== '' && s !== '.' && s !== '..')
+      // Trailing dots/spaces and Windows device names collide or fail on NTFS.
+      return parts.every(
+        (s) =>
+          s !== '' &&
+          s !== '.' &&
+          s !== '..' &&
+          !s.endsWith('.') &&
+          !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(s)
+      )
     }
 
     if (!isValidModelId(modelId))
@@ -2012,6 +2080,15 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
     // Calculate file sizes
     let size_bytes = (await fs.fileStat(fullModelPath)).size
+    // Split GGUF: the first shard is only part of the model. Every other shard
+    // has to exist (llama.cpp's own split error is opaque) and counts toward
+    // the size.
+    for (const shard of ggufShardPaths(fullModelPath).slice(1)) {
+      if (!(await fs.existsSync(shard))) {
+        throw new Error(`Missing model shard: ${shard}`)
+      }
+      size_bytes += (await fs.fileStat(shard)).size
+    }
     if (mmprojPath) {
       size_bytes += (
         await fs.fileStat(await joinPath([janDataFolderPath, mmprojPath]))
@@ -2284,6 +2361,15 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         expected: config.mmproj_size_bytes,
       },
     ]
+    if (config.mtp_model_path) {
+      files.push({ label: 'draft model', path: config.mtp_model_path })
+    }
+    // Shards 2..N of a split model: presence only, their sizes are not recorded.
+    if (config.model_path) {
+      for (const s of ggufShardPaths(config.model_path).slice(1)) {
+        files.push({ label: 'model shard', path: s })
+      }
+    }
     for (const file of files) {
       if (!file.path) continue
       const full = await joinPath([dataFolder, file.path])
@@ -2383,25 +2469,35 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       () => combinedController.abort(new Error('Request timed out')),
       this.timeout * 1000
     )
-    if (abortController?.signal) {
-      if (abortController.signal.aborted) {
-        combinedController.abort(abortController.signal.reason)
+    const externalSignal = abortController?.signal
+    const onExternalAbort = () =>
+      combinedController.abort(externalSignal?.reason)
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        combinedController.abort(externalSignal.reason)
       } else {
-        abortController.signal.addEventListener(
-          'abort',
-          () => combinedController.abort(abortController.signal.reason),
-          { once: true }
-        )
+        externalSignal.addEventListener('abort', onExternalAbort, {
+          once: true,
+        })
       }
     }
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body,
-      connectTimeout: Number(this.timeout) * 1000, // default 10 minutes
-      signal: combinedController.signal,
-    }).finally(() => clearTimeout(timeoutId))
+    let response: Response
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body,
+        connectTimeout: Number(this.timeout) * 1000, // default 10 minutes
+        signal: combinedController.signal,
+      })
+    } catch (e) {
+      externalSignal?.removeEventListener('abort', onExternalAbort)
+      throw e
+    } finally {
+      clearTimeout(timeoutId)
+    }
     if (!response.ok) {
+      externalSignal?.removeEventListener('abort', onExternalAbort)
       const errorData = await response.json().catch(() => null)
       throw new Error(
         `API request failed with status ${response.status}: ${JSON.stringify(
@@ -2411,6 +2507,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     }
 
     if (!response.body) {
+      externalSignal?.removeEventListener('abort', onExternalAbort)
       throw new Error('Response body is null')
     }
 
@@ -2434,16 +2531,24 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
 
         for (const line of lines) {
           const trimmedLine = line.trim()
-          if (!trimmedLine || trimmedLine === 'data: [DONE]') {
+          if (!trimmedLine) continue
+          // SSE comments (`: keep-alive` from a proxy) and the other SSE
+          // fields carry no completion data.
+          if (
+            trimmedLine.startsWith(':') ||
+            /^(event|id|retry)\s*:/.test(trimmedLine)
+          ) {
             continue
           }
 
-          if (trimmedLine.startsWith('data: ')) {
-            jsonStr = trimmedLine.slice(6)
-          } else if (trimmedLine.startsWith('error: ')) {
-            jsonStr = trimmedLine.slice(7)
+          if (trimmedLine.startsWith('error:')) {
+            jsonStr = trimmedLine.slice(6).trim()
             const error = JSON.parse(jsonStr)
             throw new Error(error.message)
+          } else if (trimmedLine.startsWith('data:')) {
+            // The space after the colon is optional per the SSE spec.
+            jsonStr = trimmedLine.slice(5).trim()
+            if (jsonStr === '[DONE]') continue
           } else {
             // it should not normally reach here
             throw new Error('Malformed chunk')
@@ -2461,7 +2566,15 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         }
       }
     } finally {
-      reader.releaseLock()
+      // Cancel first so an early consumer exit closes the HTTP body instead of
+      // leaving it open until the abort signal fires.
+      await reader.cancel().catch(() => {})
+      try {
+        reader.releaseLock()
+      } catch {
+        // already released
+      }
+      externalSignal?.removeEventListener('abort', onExternalAbort)
     }
   }
 
@@ -2528,6 +2641,65 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     return completionResponse
   }
 
+  /** Relative paths under `downloads/` that a model folder's yaml points at. */
+  private async downloadedFilesOf(modelDir: string): Promise<string[]> {
+    try {
+      const cfg = await fs.readYaml<Record<string, unknown>>(
+        await joinPath([modelDir, 'model.yml'])
+      )
+      return ['model_path', 'mmproj_path', 'mtp_model_path']
+        .map((k) => cfg?.[k])
+        .filter((p): p is string => typeof p === 'string')
+        .map((p) => p.replace(/\\/g, '/'))
+        .filter(
+          (p) => p.startsWith('downloads/') && !p.split('/').includes('..')
+        )
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Delete downloaded GGUFs no remaining model.yml references. Files outside
+   * `downloads/` (user-imported in place) are never touched.
+   */
+  private async removeUnreferencedDownloads(files: string[]): Promise<void> {
+    if (files.length === 0) return
+    try {
+      const modelsDir = await joinPath([await this.getProviderPath(), 'models'])
+      const stillUsed = new Set<string>()
+      const walk = async (dir: string, depth: number): Promise<void> => {
+        if (depth > 6) return
+        let entries: string[] = []
+        try {
+          entries = await fs.readdirSync(dir)
+        } catch {
+          return
+        }
+        for (const entry of entries) {
+          const yml = await joinPath([entry, 'model.yml'])
+          if (await fs.existsSync(yml)) {
+            for (const p of await this.downloadedFilesOf(entry)) stillUsed.add(p)
+          } else {
+            await walk(entry, depth + 1)
+          }
+        }
+      }
+      await walk(modelsDir, 0)
+      const dataFolder = await getJanDataFolderPath()
+      for (const rel of files) {
+        if (stillUsed.has(rel)) continue
+        try {
+          await fs.rm(await joinPath([dataFolder, rel]))
+        } catch (e) {
+          logger.warn(`Could not remove downloaded file ${rel}:`, e)
+        }
+      }
+    } catch (e) {
+      logger.warn('Cleanup of downloaded model files failed:', e)
+    }
+  }
+
   override async delete(modelId: string): Promise<void> {
     const modelDir = await joinPath([
       await this.getProviderPath(),
@@ -2539,7 +2711,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       throw new Error(`Model ${modelId} does not exist`)
     }
 
+    // Collect the model's downloaded files before its yaml goes away.
+    const owned = await this.downloadedFilesOf(modelDir)
     await fs.rm(modelDir)
+    await this.removeUnreferencedDownloads(owned)
 
     try {
       await this.refreshEnginePreset()
@@ -2982,21 +3157,38 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       return response
     }
 
-    const sendBatch = async (batchInput: string[]) => {
+    const batchResults: Array<{ result: EmbedBatchResult; offset: number }> = []
+
+    // The token estimate assumes ~3 chars per token; CJK or emoji-heavy text
+    // can exceed the batch budget and llama.cpp rejects it outright. On such a
+    // rejection split the batch in half and retry, down to a single input.
+    const sendBatch = async (
+      batchInput: string[],
+      offset: number
+    ): Promise<void> => {
       const response = await attemptRequest(sInfo, batchInput)
       if (!response.ok) {
         const errorData = await response.json().catch(() => null)
+        const tooLarge =
+          response.status === 400 || response.status === 413 || response.status === 500
+        if (tooLarge && batchInput.length > 1) {
+          const mid = Math.ceil(batchInput.length / 2)
+          await sendBatch(batchInput.slice(0, mid), offset)
+          await sendBatch(batchInput.slice(mid), offset + mid)
+          return
+        }
         throw new Error(
           `API request failed with status ${response.status}: ${JSON.stringify(errorData)}`
         )
       }
-      return (await response.json()) as EmbedBatchResult
+      batchResults.push({
+        result: (await response.json()) as EmbedBatchResult,
+        offset,
+      })
     }
 
-    const batchResults: Array<{ result: EmbedBatchResult; offset: number }> = []
     for (const { batch, offset } of batches) {
-      const result = await sendBatch(batch)
-      batchResults.push({ result, offset })
+      await sendBatch(batch, offset)
     }
 
     return mergeEmbedResponses(

@@ -12115,7 +12115,7 @@ const AGENT_SETTINGS: &[AgentSettingDef] = &[
         key: "claude_code_alias",
         label: "claude_code_alias",
         desc: "reuse and refresh Claude Code's keychain login for Claude requests",
-        kind: AgentSettingKind::Bool { default: true },
+        kind: AgentSettingKind::Bool { default: false },
         scope: SettingScope::Global,
     },
     AgentSettingDef {

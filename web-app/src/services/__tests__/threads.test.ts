@@ -172,7 +172,7 @@ describe('DefaultThreadsService', () => {
       })
     })
 
-    it('should handle creation error and return original thread', async () => {
+    it('should reject when thread creation fails', async () => {
       const inputThread = {
         id: '1',
         title: 'New Thread',
@@ -183,9 +183,9 @@ describe('DefaultThreadsService', () => {
         new Error('Creation failed')
       )
 
-      const result = await threadsService.createThread(inputThread as Thread)
-
-      expect(result).toEqual(inputThread)
+      await expect(
+        threadsService.createThread(inputThread as Thread)
+      ).rejects.toThrow('Creation failed')
     })
   })
 

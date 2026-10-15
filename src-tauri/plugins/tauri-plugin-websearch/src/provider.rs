@@ -252,6 +252,34 @@ pub(crate) fn check_public_url(url: &reqwest::Url) -> Result<(), String> {
     }
 }
 
+/// True when a system proxy is configured through the environment. Behind a
+/// proxy the target name is resolved by the proxy, so [`PublicOnlyResolver`]
+/// never runs for it and the name has to be vetted here instead.
+fn proxy_configured() -> bool {
+    ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]
+        .iter()
+        .any(|k| {
+            std::env::var(k).is_ok_and(|v| !v.trim().is_empty())
+                || std::env::var(k.to_ascii_lowercase()).is_ok_and(|v| !v.trim().is_empty())
+        })
+}
+
+/// With a proxy in the path, refuse a name that resolves (here) to any
+/// non-public address. Blocking; only used on the proxy path.
+fn check_name_public_blocking(url: &reqwest::Url) -> Result<(), String> {
+    use std::net::ToSocketAddrs;
+    if let Some(url::Host::Domain(d)) = url.host() {
+        if let Ok(addrs) = (d, 0u16).to_socket_addrs() {
+            if addrs.into_iter().any(|a| !is_public_ip(a.ip())) {
+                return Err(format!(
+                    "refused to fetch {url}: {d} resolves to a local or private address"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Resolves a name to its public addresses only; a name with none is an error.
 struct PublicOnlyResolver;
 
@@ -283,7 +311,14 @@ fn public_fetch_client() -> Result<&'static reqwest::Client, String> {
                     if attempt.previous().len() >= 10 {
                         return attempt.error("too many redirects");
                     }
-                    match check_public_url(attempt.url()) {
+                    let checked = check_public_url(attempt.url()).and_then(|()| {
+                        if proxy_configured() {
+                            check_name_public_blocking(attempt.url())
+                        } else {
+                            Ok(())
+                        }
+                    });
+                    match checked {
                         Ok(()) => attempt.follow(),
                         Err(e) => attempt.error(e),
                     }
@@ -300,6 +335,12 @@ fn public_fetch_client() -> Result<&'static reqwest::Client, String> {
 async fn public_get(url: &str, provider: &str) -> Result<reqwest::Response, String> {
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("{provider} fetch: invalid URL: {e}"))?;
     check_public_url(&parsed)?;
+    if proxy_configured() {
+        let target = parsed.clone();
+        tokio::task::spawn_blocking(move || check_name_public_blocking(&target))
+            .await
+            .map_err(|e| format!("{provider} fetch: {e}"))??;
+    }
     public_fetch_client()?
         .get(parsed)
         .send()

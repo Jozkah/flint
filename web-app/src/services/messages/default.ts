@@ -18,12 +18,12 @@ export class DefaultMessagesService implements MessagesService {
       return []
     }
 
-    return (
-      ExtensionManager.getInstance()
-        .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
-        ?.listMessages(threadId)
-        ?.catch(() => []) ?? []
-    )
+    // Let a backend failure reject so callers can tell "no messages" from
+    // "could not load" instead of showing an empty thread.
+    const res = await ExtensionManager.getInstance()
+      .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
+      ?.listMessages(threadId)
+    return res ?? []
   }
 
   async createMessage(message: ThreadMessage): Promise<ThreadMessage> {
@@ -32,12 +32,12 @@ export class DefaultMessagesService implements MessagesService {
       return message
     }
 
-    return (
-      ExtensionManager.getInstance()
-        .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
-        ?.createMessage(message)
-        ?.catch(() => message) ?? message
-    )
+    // A failed write must reject so the caller can surface it; a null echo
+    // (serve/web fallback) falls back to the input message.
+    const res = await ExtensionManager.getInstance()
+      .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
+      ?.createMessage(message)
+    return res ?? message
   }
 
   async modifyMessage(message: ThreadMessage): Promise<ThreadMessage> {
@@ -46,12 +46,10 @@ export class DefaultMessagesService implements MessagesService {
       return message
     }
 
-    return (
-      ExtensionManager.getInstance()
-        .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
-        ?.modifyMessage(message)
-        ?.catch(() => message) ?? message
-    )
+    const res = await ExtensionManager.getInstance()
+      .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
+      ?.modifyMessage(message)
+    return res ?? message
   }
 
   async deleteMessage(threadId: string, messageId: string): Promise<void> {

@@ -15,7 +15,16 @@ use std::sync::RwLock;
 
 /// Cached system info. Uses Option so we can invalidate on Linux after sleep/resume
 /// (GPU detection can return empty until the driver is ready again).
-static SYSTEM_INFO: RwLock<Option<SystemInfo>> = RwLock::new(None);
+static SYSTEM_INFO: RwLock<Option<(SystemInfo, std::time::Instant)>> = RwLock::new(None);
+
+/// How long a snapshot with no GPUs is trusted. An empty list right after boot
+/// or resume usually means the driver was not ready, not that there is no GPU,
+/// so it is re-detected instead of being cached for the whole session.
+const EMPTY_GPU_RETRY: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn is_fresh(info: &SystemInfo, at: std::time::Instant) -> bool {
+    !info.gpus.is_empty() || at.elapsed() < EMPTY_GPU_RETRY
+}
 
 /// Compute system hardware information (CPU, memory, GPUs).
 ///
@@ -24,14 +33,16 @@ static SYSTEM_INFO: RwLock<Option<SystemInfo>> = RwLock::new(None);
 pub fn get_system_info() -> SystemInfo {
     {
         let guard = SYSTEM_INFO.read().unwrap_or_else(|e| e.into_inner());
-        if let Some(ref info) = *guard {
-            return info.clone();
+        if let Some((info, at)) = guard.as_ref() {
+            if is_fresh(info, *at) {
+                return info.clone();
+            }
         }
     }
     let info = compute_system_info();
     {
         let mut guard = SYSTEM_INFO.write().unwrap_or_else(|e| e.into_inner());
-        *guard = Some(info.clone());
+        *guard = Some((info.clone(), std::time::Instant::now()));
     }
     info
 }
@@ -54,6 +65,7 @@ pub fn sample_system_usage() -> SystemUsage {
         cpu: cpu_usage,
         used_memory: system.used_memory() / 1024 / 1024,
         total_memory: system.total_memory() / 1024 / 1024,
+        available_memory: system.available_memory() / 1024 / 1024,
         gpus: crate::get_system_info()
             .gpus
             .iter()
@@ -116,12 +128,86 @@ fn compute_system_info() -> SystemInfo {
         )
     });
 
+    let default_active_gpus = default_active_gpus(&gpus);
     SystemInfo {
         cpu: CpuStaticInfo::new(),
         os_type: os_type.to_string(),
         os_name,
         total_memory: system.total_memory() / 1024 / 1024,
         gpus,
+        default_active_gpus,
+    }
+}
+
+/// Which GPUs to use by default: discrete cards when any exists (an integrated
+/// GPU shares system RAM and a virtual one is a hypervisor shim), and only
+/// NVIDIA's when an NVIDIA card is present. With no discrete card everything
+/// is active.
+pub fn default_active_gpus(gpus: &[GpuInfo]) -> Vec<String> {
+    let is_discrete = |g: &GpuInfo| {
+        g.nvidia_info.is_some()
+            || g.vulkan_info
+                .as_ref()
+                .is_some_and(|v| v.device_type == "DiscreteGpu")
+    };
+    let discrete: Vec<&GpuInfo> = gpus.iter().filter(|g| is_discrete(g)).collect();
+    if discrete.is_empty() {
+        return gpus.iter().map(|g| g.uuid.clone()).collect();
+    }
+    let any_nvidia = discrete
+        .iter()
+        .any(|g| matches!(g.vendor, Vendor::NVIDIA));
+    discrete
+        .into_iter()
+        .filter(|g| !any_nvidia || matches!(g.vendor, Vendor::NVIDIA))
+        .map(|g| g.uuid.clone())
+        .collect()
+}
+
+#[cfg(test)]
+mod default_active_tests {
+    use super::*;
+    use crate::vendor::vulkan::VulkanInfo;
+
+    fn gpu(uuid: &str, vendor: Vendor, device_type: &str) -> GpuInfo {
+        GpuInfo {
+            name: uuid.to_string(),
+            total_memory: 8192,
+            vendor,
+            uuid: uuid.to_string(),
+            driver_version: String::new(),
+            nvidia_info: None,
+            vulkan_info: Some(VulkanInfo {
+                index: 0,
+                device_type: device_type.to_string(),
+                api_version: "1.3.0".to_string(),
+                device_id: 0,
+            }),
+        }
+    }
+
+    #[test]
+    fn integrated_is_left_out_when_a_discrete_card_exists() {
+        let gpus = vec![
+            gpu("igpu", Vendor::Intel, "IntegratedGpu"),
+            gpu("dgpu", Vendor::AMD, "DiscreteGpu"),
+        ];
+        assert_eq!(default_active_gpus(&gpus), vec!["dgpu".to_string()]);
+    }
+
+    #[test]
+    fn nvidia_wins_over_other_discrete_cards() {
+        let gpus = vec![
+            gpu("amd", Vendor::AMD, "DiscreteGpu"),
+            gpu("nv", Vendor::NVIDIA, "DiscreteGpu"),
+        ];
+        assert_eq!(default_active_gpus(&gpus), vec!["nv".to_string()]);
+    }
+
+    #[test]
+    fn a_lone_integrated_gpu_stays_active() {
+        let gpus = vec![gpu("igpu", Vendor::Intel, "IntegratedGpu")];
+        assert_eq!(default_active_gpus(&gpus), vec!["igpu".to_string()]);
     }
 }
 

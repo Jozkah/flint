@@ -2442,7 +2442,16 @@
     "tokenUsage": "Využití tokenů",
     "modelSleeping": "Model spí",
     "visionSupported": "Vstup obrazu je podporován",
-    "audioSupported": "Vstup zvuku je podporován"
+    "audioSupported": "Vstup zvuku je podporován",
+    "stopGenerating": "Zastavit generování",
+    "filterOptions": "Filtrovat možnosti",
+    "switchAssistant": "Přepnout asistenta",
+    "emergencyStop": "Nouzové zastavení",
+    "toggleFavorite": "Přepnout oblíbené",
+    "pauseDownload": "Pozastavit stahování",
+    "cancelDownload": "Zrušit stahování",
+    "decrement": "Snížit",
+    "increment": "Zvýšit"
   },
   "attachedImages": {
     "open": "Otevřít {{name}}",
@@ -2607,5 +2616,10 @@
     "failed": "Překlad selhal",
     "inputPlaceholder": "Text k překladu",
     "outputPlaceholder": "Překlad se zobrazí zde"
-  }
+  },
+  "markdownImage": {
+    "load": "Načíst obrázek z {{host}}"
+  },
+  "messageSaveFailed": "Zprávu se nepodařilo uložit. Po restartu může být ztracena.",
+  "threadSaveFailed": "Změnu tohoto vlákna se nepodařilo uložit. Byla vrácena."
 }

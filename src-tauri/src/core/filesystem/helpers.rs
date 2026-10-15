@@ -22,6 +22,48 @@ pub fn resolve_path<R: Runtime>(app_handle: tauri::AppHandle<R>, path: &str) -> 
     }
 }
 
+/// Path components that never belong to a legitimate renderer read: key
+/// stores, cloud credentials, browser profiles and the app's own secrets.
+const SENSITIVE_READ_COMPONENTS: &[&str] = &[
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".kube",
+    ".azure",
+    ".mozilla",
+    "provider_secrets",
+    "login data",
+    "cookies",
+    "user data",
+];
+
+/// True when `path` passes through a credential or browser-profile location.
+/// Reads of arbitrary user-picked files stay allowed (model import needs them);
+/// this only closes the obvious secret stores.
+pub fn is_sensitive_read_path(path: &Path) -> bool {
+    path.components().any(|c| match c {
+        std::path::Component::Normal(n) => {
+            let n = n.to_string_lossy().to_lowercase();
+            SENSITIVE_READ_COMPONENTS
+                .iter()
+                .any(|s| n == *s || (*s == "provider_secrets" && n.starts_with(s)))
+        }
+        _ => false,
+    })
+}
+
+/// Resolve a path for a renderer-initiated read, refusing secret stores.
+pub fn resolve_read_path<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    path: &str,
+) -> Result<PathBuf, String> {
+    let resolved = resolve_path(app_handle, path);
+    if is_sensitive_read_path(&resolved) {
+        return Err(format!("path {} is not readable", resolved.display()));
+    }
+    Ok(resolved)
+}
+
 fn resolve_path_input(path: &str, jan_data_folder: &Path) -> PathBuf {
     if path.starts_with("file:/") || path.starts_with("file:\\") {
         let normalized = normalize_file_path(path);
@@ -111,6 +153,16 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn sensitive_read_paths_are_flagged() {
+        assert!(is_sensitive_read_path(Path::new("/home/u/.ssh/id_rsa")));
+        assert!(is_sensitive_read_path(Path::new(
+            "C:/Users/u/AppData/Local/Google/Chrome/User Data/Default/Login Data"
+        )));
+        assert!(is_sensitive_read_path(Path::new("/d/Flint/provider_secrets.json")));
+        assert!(!is_sensitive_read_path(Path::new("/home/u/models/a.gguf")));
+    }
 
     #[test]
     fn relative_path_resolves_inside_data_folder() {

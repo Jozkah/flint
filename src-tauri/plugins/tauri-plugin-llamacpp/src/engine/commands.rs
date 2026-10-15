@@ -244,7 +244,17 @@ pub async fn try_graceful_stop_engine<R: tauri::Runtime>(
         busy_models(handle.port, &handle.api_key),
     )
     .await
-    .unwrap_or_else(|_| Vec::new());
+    .unwrap_or_else(|_| Err("timed out asking the engine what is busy".to_string()));
+
+    let busy = match busy {
+        Ok(b) => b,
+        // Unknown is not idle: exiting here would kill a live generation. The
+        // caller shows the exit gate, which lets the user quit anyway.
+        Err(why) => {
+            log::warn!("could not tell whether the engine is busy: {why}");
+            vec!["(engine did not answer)".to_string()]
+        }
+    };
 
     if !busy.is_empty() {
         *state.engine.lock().await = Some(handle);
@@ -295,8 +305,10 @@ fn worker_client(timeout: std::time::Duration) -> Result<reqwest::Client, String
 }
 
 /// Models with a request in flight, from the worker's own `/models` listing.
-/// An unreachable worker reports none -- it cannot be generating.
-async fn busy_models(port: u16, api_key: &str) -> Vec<String> {
+/// A refused connection reports none -- a dead worker cannot be generating.
+/// Any other failure (timeout, bad status, unreadable body) is an `Err`, which
+/// callers treat as busy rather than idle.
+async fn busy_models(port: u16, api_key: &str) -> Result<Vec<String>, String> {
     busy_models_within(port, api_key, BUSY_MODELS_TIMEOUT).await
 }
 
@@ -304,22 +316,27 @@ async fn busy_models_within(
     port: u16,
     api_key: &str,
     timeout: std::time::Duration,
-) -> Vec<String> {
-    let Ok(client) = worker_client(timeout) else {
-        return Vec::new();
-    };
-    let Ok(resp) = client
+) -> Result<Vec<String>, String> {
+    let client = worker_client(timeout)?;
+    let resp = match client
         .get(format!("http://127.0.0.1:{port}/models"))
         .bearer_auth(api_key)
         .send()
         .await
-    else {
-        return Vec::new();
+    {
+        Ok(r) => r,
+        Err(e) if e.is_connect() => return Ok(Vec::new()),
+        Err(e) => return Err(e.to_string()),
     };
-    let Ok(json) = resp.json::<serde_json::Value>().await else {
-        return Vec::new();
-    };
-    json.get("data")
+    if !resp.status().is_success() {
+        return Err(format!("/models answered HTTP {}", resp.status()));
+    }
+    let json = resp
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(json
+        .get("data")
         .and_then(|d| d.as_array())
         .map(|arr| {
             arr.iter()
@@ -327,7 +344,7 @@ async fn busy_models_within(
                 .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(String::from))
                 .collect()
         })
-        .unwrap_or_default()
+        .unwrap_or_default())
 }
 
 #[cfg(feature = "tauri")]
@@ -491,7 +508,15 @@ pub async fn slots_idle(
         busy_models(port, &api_key),
     )
     .await
-    .unwrap_or_default();
+    .unwrap_or_else(|_| Err("timed out".to_string()));
+    let busy = match busy {
+        Ok(b) => b,
+        // Unknown is not idle.
+        Err(why) => {
+            log::warn!("could not tell whether the engine is idle: {why}");
+            return Ok(false);
+        }
+    };
     Ok(match model_id {
         Some(id) => !busy.contains(&id),
         None => busy.is_empty(),
@@ -693,7 +718,8 @@ mod tests {
         )
         .await
         .expect("busy_models hung on a silent worker");
-        assert!(busy.is_empty());
+        // A silent worker is unknown, which must not read as idle.
+        assert!(busy.is_err());
         assert!(started.elapsed() < std::time::Duration::from_secs(5));
         server.abort();
     }

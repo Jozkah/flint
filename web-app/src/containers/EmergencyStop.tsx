@@ -1,4 +1,5 @@
 import { useCallback, useId, useRef, useState } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { invoke } from '@tauri-apps/api/core'
 import { OctagonAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -105,6 +106,7 @@ function scopeArgs(scope: StopScope, props: EmergencyStopProps) {
 }
 
 export function EmergencyStop(props: EmergencyStopProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [scope, setScope] = useState<StopScope>('run')
   const [stopping, setStopping] = useState(false)
@@ -161,7 +163,7 @@ export function EmergencyStop(props: EmergencyStopProps) {
           type="button"
           variant="destructive"
           size="sm"
-          aria-label="Emergency stop"
+          aria-label={t('common:a11y.emergencyStop')}
           data-testid="emergency-stop-trigger"
           onClick={() => setOpen(true)}
         >

@@ -37,6 +37,13 @@ export const Routes = [...CoreRoutes, ...APIRoutes, ...AppRoutes].map((r) => ({
   route: r,
 }))
 
+const MESSAGE_ROUTES = new Set([
+  'listMessages',
+  'createMessage',
+  'modifyMessage',
+  'deleteMessage',
+])
+
 // Function to open an external URL in a new browser window
 export function openExternalUrl(url: string) {
   window?.open(url, '_blank')
@@ -124,6 +131,9 @@ export const APIs = {
           const command = proxy.route.replace(/([A-Z])/g, '_$1').toLowerCase()
           return serverInvoke(command, args).catch((error: unknown) => {
             console.warn(`API call '${proxy.route}' failed on the server`, error)
+            // Message routes must reject: a null echo would be stored as a
+            // message and a swallowed failure hides a lost write.
+            if (MESSAGE_ROUTES.has(proxy.route)) throw error
             return null
           })
         } else {

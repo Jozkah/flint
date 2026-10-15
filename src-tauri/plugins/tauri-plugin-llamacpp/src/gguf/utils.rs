@@ -17,7 +17,11 @@ where
 {
     if path.starts_with("http://") || path.starts_with("https://") {
         // Remote: read in 2MB chunks until successful
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
         let chunk_size = 2 * 1024 * 1024; // Fixed 2MB chunks
         let max_total_size = 120 * 1024 * 1024; // Don't exceed 120MB total
         let mut total_downloaded = 0;
@@ -168,11 +172,11 @@ pub async fn estimate_kv_cache_internal(
     let n_head_kv_key = format!("{}.attention.head_count_kv", arch);
     let n_head = meta
         .get(&n_head_kv_key)
-        .and_then(|s| s.parse::<u64>().ok())
+        .and_then(|s| parse_head_count(s))
         .filter(|&n| n > 0)
         .unwrap_or_else(|| {
             meta.get(&n_head_key)
-                .and_then(|s| s.parse::<u64>().ok())
+                .and_then(|s| parse_head_count(s))
                 .unwrap_or(0)
         });
     if n_head == 0 {
@@ -506,5 +510,39 @@ mod kv_estimate_overflow_tests {
         let est = estimate_kv_cache_internal(m, None, None, None).await.unwrap();
         assert_eq!(est.per_token_size, 32 * 32 * 256 * 2);
         assert_eq!(est.size, 4096 * 32 * 32 * 256 * 2);
+    }
+}
+
+/// A head count as the metadata map renders it: a scalar, or a short array
+/// (`[8, 8, 0, 8]`) for hybrid and per-layer-varying architectures. An array
+/// is averaged over its non-zero entries, which are the layers that hold a KV
+/// cache.
+fn parse_head_count(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if let Ok(n) = s.parse::<u64>() {
+        return Some(n);
+    }
+    let inner = s.strip_prefix('[')?.strip_suffix(']')?;
+    let vals: Vec<u64> = inner
+        .split(',')
+        .filter_map(|v| v.trim().parse::<u64>().ok())
+        .filter(|&n| n > 0)
+        .collect();
+    if vals.is_empty() {
+        return None;
+    }
+    Some(vals.iter().sum::<u64>().div_ceil(vals.len() as u64))
+}
+
+#[cfg(test)]
+mod head_count_tests {
+    use super::parse_head_count;
+
+    #[test]
+    fn scalar_and_array_head_counts() {
+        assert_eq!(parse_head_count("8"), Some(8));
+        assert_eq!(parse_head_count("[8, 8, 0, 8]"), Some(8));
+        assert_eq!(parse_head_count("[0, 0]"), None);
+        assert_eq!(parse_head_count("<Array of type Int32 with 40 elements, data skipped>"), None);
     }
 }

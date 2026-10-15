@@ -2355,7 +2355,16 @@
     "tokenUsage": "टोकन उपयोग",
     "modelSleeping": "मॉडल सोया हुआ है",
     "visionSupported": "विज़न इनपुट समर्थित",
-    "audioSupported": "ऑडियो इनपुट समर्थित"
+    "audioSupported": "ऑडियो इनपुट समर्थित",
+    "stopGenerating": "जनरेशन रोकें",
+    "filterOptions": "विकल्प फ़िल्टर करें",
+    "switchAssistant": "असिस्टेंट बदलें",
+    "emergencyStop": "आपातकालीन रोक",
+    "toggleFavorite": "पसंदीदा टॉगल करें",
+    "pauseDownload": "डाउनलोड रोकें",
+    "cancelDownload": "डाउनलोड रद्द करें",
+    "decrement": "घटाएँ",
+    "increment": "बढ़ाएँ"
   },
   "attachedImages": {
     "open": "{{name}} खोलें",
@@ -2516,5 +2525,10 @@
     "failed": "अनुवाद विफल रहा",
     "inputPlaceholder": "अनुवाद के लिए टेक्स्ट",
     "outputPlaceholder": "अनुवाद यहाँ दिखाई देगा"
-  }
+  },
+  "markdownImage": {
+    "load": "{{host}} से छवि लोड करें"
+  },
+  "messageSaveFailed": "संदेश सहेजा नहीं जा सका। पुनः आरंभ के बाद यह खो सकता है।",
+  "threadSaveFailed": "इस थ्रेड का बदलाव सहेजा नहीं जा सका। उसे वापस कर दिया गया।"
 }

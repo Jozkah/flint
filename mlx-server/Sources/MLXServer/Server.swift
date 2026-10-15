@@ -32,6 +32,9 @@ struct MLXHTTPServer {
     let modelRunner: ModelRunner
     let modelId: String
     let apiKey: String
+    /// Request body cap. A single 8 MB photo is ~10.7 MB as base64, so the old
+    /// 10 MB limit rejected ordinary vision chats.
+    static let maxBodyBytes = 64 * 1024 * 1024
     let activeGenerations = ActiveGenerations()
 
     init(modelRunner: ModelRunner, modelId: String, apiKey: String) {
@@ -93,7 +96,7 @@ struct MLXHTTPServer {
 
             // Parse request body
             do {
-                let body = try await request.body.collect(upTo: 10 * 1024 * 1024)  // 10MB max
+                let body = try await request.body.collect(upTo: Self.maxBodyBytes)
                 let chatRequest = try JSONDecoder().decode(ChatCompletionRequest.self, from: body)
 
                 let temperature = chatRequest.temperature ?? 0.7
@@ -152,7 +155,7 @@ struct MLXHTTPServer {
             }
 
             do {
-                let body = try await request.body.collect(upTo: 10 * 1024 * 1024)
+                let body = try await request.body.collect(upTo: Self.maxBodyBytes)
                 let anthropicReq = try JSONDecoder().decode(AnthropicRequest.self, from: body)
 
                 let messages = anthropicToInternalMessages(request: anthropicReq)

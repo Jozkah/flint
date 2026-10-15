@@ -78,6 +78,7 @@ export class RemoteClient {
       h.Authorization = `Bearer ${token}`
     }
     let res: Response
+    let body: unknown = null
     const abort = typeof AbortController !== 'undefined' ? new AbortController() : null
     let timedOut = false
     const timer = setTimeout(() => {
@@ -93,17 +94,20 @@ export class RemoteClient {
         referrerPolicy: 'no-referrer',
         ...(abort ? { signal: abort.signal } : {}),
       })
-    } catch {
+      // The timer stays armed through the body read: a stalled body would
+      // otherwise hang the call forever.
+      try {
+        body = await res.json()
+      } catch {
+        if (timedOut) throw new RemoteCallError('timeout', t('app.timeout'))
+        body = null
+      }
+    } catch (e) {
+      if (e instanceof RemoteCallError) throw e
       if (timedOut) throw new RemoteCallError('timeout', t('app.timeout'))
       throw new RemoteCallError('network', t('app.cantReach'))
     } finally {
       clearTimeout(timer)
-    }
-    let body: unknown = null
-    try {
-      body = await res.json()
-    } catch {
-      body = null
     }
     if (res.status === 401 && auth) throw this.unauthorized()
     if (!res.ok) {

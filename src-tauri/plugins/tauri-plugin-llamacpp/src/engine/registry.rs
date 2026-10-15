@@ -102,6 +102,58 @@ pub struct ReloadOutcome {
     pub kept: Vec<String>,
 }
 
+/// Outcome of `Registry::begin_acquire`.
+pub enum AcquireStep {
+    /// Resident; already counted busy.
+    Ready(Arc<Engine>),
+    /// Another request is loading this model; resolves (true) when it settles.
+    Wait(tokio::sync::watch::Receiver<bool>),
+    /// This caller must start the engine.
+    Start(LoadTicket),
+}
+
+/// The right to start one model's engine, detached from the registry so the
+/// blocking load can run without its lock.
+pub struct LoadTicket {
+    model_id: String,
+    spec: LoadSpec,
+    events: EventBus,
+    done: tokio::sync::watch::Sender<bool>,
+}
+
+impl LoadTicket {
+    /// Starts the engine. Blocks; call from a blocking context.
+    pub fn run(&self) -> Result<Engine, EngineError> {
+        let model_id = self.model_id.as_str();
+        // Real load progress, straight from server_context. Only the `loading`
+        // state carries a fraction; `ready` and `sleeping` arrive here too and
+        // are already covered by the lifecycle transitions around the load.
+        let progress = {
+            let bus = self.events.clone();
+            let model = model_id.to_string();
+            std::sync::Arc::new(move |state: &str, payload: &str| {
+                if state != "loading" {
+                    return;
+                }
+                match serde_json::from_str::<serde_json::Value>(payload) {
+                    Ok(v) if v.get("value").is_some() => {
+                        bus.emit(&model, Transition::LoadProgress(v));
+                    }
+                    _ => {}
+                }
+            }) as crate::engine::sys::StateCallback
+        };
+        match &self.spec {
+            LoadSpec::Args(args) => Engine::start(args, Some(progress)),
+            LoadSpec::Preset {
+                ini_path, section, ..
+            } => start_preset_with_mmproj_fallback(ini_path, section, |ini| {
+                Engine::start_from_preset(ini, section, Some(progress.clone()))
+            }),
+        }
+    }
+}
+
 pub struct Registry {
     loaded: HashMap<String, LoadedModel>,
     specs: HashMap<String, LoadSpec>,
@@ -113,6 +165,10 @@ pub struct Registry {
     /// `failed: true`: without it a failed load looks merely "unloaded" and the
     /// caller's poll loop waits out its full timeout instead of erroring.
     failures: HashMap<String, String>,
+    /// Models whose engine is being started right now, outside the registry
+    /// lock. Counted against `models_max` so two concurrent loads cannot both
+    /// claim the last slot.
+    loading: HashMap<String, tokio::sync::watch::Receiver<bool>>,
     /// Models the registry has stopped hosting since the last drain, whatever
     /// dropped them. Their slots died with the engine, so the occupancy map --
     /// which lives a module over and cannot be reached from these `&mut self`
@@ -140,6 +196,7 @@ impl Registry {
             specs: HashMap::new(),
             stale: HashSet::new(),
             failures: HashMap::new(),
+            loading: HashMap::new(),
             dropped: Vec::new(),
             models_max,
             idle_timeout: None,
@@ -249,7 +306,7 @@ impl Registry {
     /// caller must wait. Split out so the HTTP layer can queue instead of
     /// holding the registry lock across a load.
     pub fn is_saturated(&self) -> bool {
-        if self.models_max == 0 || self.loaded.len() < self.models_max {
+        if self.models_max == 0 || self.loaded.len() + self.loading.len() < self.models_max {
             return false;
         }
         self.lru_idle().is_none()
@@ -257,7 +314,29 @@ impl Registry {
 
     /// Acquires the engine for a model, loading (and evicting) as needed, and
     /// marks it busy. The caller must pair this with `release`.
+    ///
+    /// Blocks for the whole load. The HTTP layer uses `begin_acquire` /
+    /// `finish_load` instead so the registry lock is not held across it.
     pub fn acquire(&mut self, model_id: &str) -> Result<Arc<Engine>, RegistryError> {
+        match self.begin_acquire(model_id)? {
+            AcquireStep::Ready(e) => Ok(e),
+            // Only reachable when another thread is mid-load, which a caller
+            // holding `&mut self` for the whole load cannot be racing.
+            AcquireStep::Wait(_) => Err(RegistryError::Full {
+                models_max: self.models_max,
+            }),
+            AcquireStep::Start(ticket) => {
+                let result = ticket.run();
+                self.finish_load(ticket, result, 1)
+            }
+        }
+    }
+
+    /// First half of an acquire. Either hands back a resident engine (busy),
+    /// tells the caller to wait for a load already running, or reserves the
+    /// slot and returns a ticket whose `run` the caller executes *without*
+    /// holding this registry, then settles with `finish_load`.
+    pub fn begin_acquire(&mut self, model_id: &str) -> Result<AcquireStep, RegistryError> {
         // A model awaiting retirement keeps serving until its in-flight
         // requests drain. Loading the new spec alongside it would put two
         // engines under one id and split the inflight count, so a late request
@@ -267,7 +346,10 @@ impl Registry {
             m.inflight += 1;
             m.last_used = next_tick();
             m.last_active_ms = (self.clock)();
-            return Ok(m.engine());
+            return Ok(AcquireStep::Ready(m.engine()));
+        }
+        if let Some(rx) = self.loading.get(model_id) {
+            return Ok(AcquireStep::Wait(rx.clone()));
         }
 
         let spec = self
@@ -281,60 +363,55 @@ impl Registry {
         self.make_room()?;
 
         self.events.emit(model_id, Transition::Loading);
-        // Real load progress, straight from server_context. Only the `loading`
-        // state carries a fraction; `ready` and `sleeping` arrive here too and
-        // are already covered by the lifecycle transitions around this call.
-        let progress = {
-            let bus = self.events.clone();
-            let model = model_id.to_string();
-            std::sync::Arc::new(move |state: &str, payload: &str| {
-                if state != "loading" {
-                    return;
-                }
-                match serde_json::from_str::<serde_json::Value>(payload) {
-                    Ok(v) if v.get("value").is_some() => {
-                        bus.emit(&model, Transition::LoadProgress(v));
-                    }
-                    _ => {}
-                }
-            }) as crate::engine::sys::StateCallback
-        };
-        let started = match &spec {
-            LoadSpec::Args(args) => Engine::start(args, Some(progress)),
-            LoadSpec::Preset {
-                ini_path, section, ..
-            } => start_preset_with_mmproj_fallback(ini_path, section, |ini| {
-                Engine::start_from_preset(ini, section, Some(progress.clone()))
-            }),
-        };
-        let engine = match started {
-            Ok(e) => {
-                self.failures.remove(model_id);
-                e
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        self.loading.insert(model_id.to_string(), rx);
+        Ok(AcquireStep::Start(LoadTicket {
+            model_id: model_id.to_string(),
+            spec,
+            events: self.events.clone(),
+            done: tx,
+        }))
+    }
+
+    /// Settles a ticket: records the engine (with `inflight` requests) or the
+    /// failure, and wakes everyone waiting on this load.
+    pub fn finish_load(
+        &mut self,
+        ticket: LoadTicket,
+        result: Result<Engine, EngineError>,
+        inflight: usize,
+    ) -> Result<Arc<Engine>, RegistryError> {
+        let model_id = ticket.model_id.clone();
+        self.loading.remove(&model_id);
+        let out = match result {
+            Ok(engine) => {
+                self.failures.remove(&model_id);
+                let engine = Arc::new(engine);
+                self.loaded.insert(
+                    model_id.clone(),
+                    LoadedModel {
+                        engine: Arc::clone(&engine),
+                        inflight,
+                        last_used: next_tick(),
+                        last_active_ms: (self.clock)(),
+                    },
+                );
+                self.events.emit(&model_id, Transition::Loaded);
+                Ok(engine)
             }
             Err(e) => {
                 // Recorded so the poll arm sees `failed: true` rather than
                 // waiting out its timeout on a bare "unloaded".
-                self.failures.insert(model_id.to_string(), e.to_string());
+                self.failures.insert(model_id.clone(), e.to_string());
                 // Nonzero: this is the transition the desktop treats as a
                 // definitive load failure.
                 self.events
-                    .emit(model_id, Transition::Unloaded { exit_code: 1 });
-                return Err(e.into());
+                    .emit(&model_id, Transition::Unloaded { exit_code: 1 });
+                Err(e.into())
             }
         };
-        let engine = Arc::new(engine);
-        self.loaded.insert(
-            model_id.to_string(),
-            LoadedModel {
-                engine: Arc::clone(&engine),
-                inflight: 1,
-                last_used: next_tick(),
-                last_active_ms: (self.clock)(),
-            },
-        );
-        self.events.emit(model_id, Transition::Loaded);
-        Ok(engine)
+        let _ = ticket.done.send(true);
+        out
     }
 
     /// Marks a request finished. Only then does the model become evictable.
@@ -531,7 +608,7 @@ impl Registry {
         if self.models_max == 0 {
             return Ok(());
         }
-        while self.loaded.len() >= self.models_max {
+        while self.loaded.len() + self.loading.len() >= self.models_max {
             let Some(victim) = self.lru_idle() else {
                 return Err(RegistryError::Full {
                     models_max: self.models_max,

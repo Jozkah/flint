@@ -1,6 +1,6 @@
 // WARNING: These APIs will be deprecated soon due to removing FS API access from frontend.
 // It's added to ensure the legacy implementation from frontend still functions before removal.
-use super::helpers::{resolve_app_path_within_jan_data_folder, resolve_path};
+use super::helpers::{resolve_app_path_within_jan_data_folder, resolve_path, resolve_read_path};
 use super::models::{DialogOpenOptions, FileStat};
 use super::picker::AsyncFileDialog;
 use std::fs;
@@ -14,7 +14,7 @@ pub fn rm<R: Runtime>(app_handle: tauri::AppHandle<R>, args: Vec<String>) -> Res
 
     let (canonical_data, path) = resolve_app_path_within_jan_data_folder(app_handle, &args[0])
         .map_err(|_| format!("rm error: path {} is not under jan data folder", args[0]))?;
-    if !path.starts_with(&canonical_data) {
+    if path == canonical_data || !path.starts_with(&canonical_data) {
         return Err(format!(
             "rm error: path {} is not under jan data folder {}",
             path.display(),
@@ -90,7 +90,7 @@ pub fn exists_sync<R: Runtime>(
         return Err("exist_sync error: Invalid argument".to_string());
     }
 
-    let path = resolve_path(app_handle, &args[0]);
+    let path = resolve_read_path(app_handle, &args[0])?;
     Ok(path.exists())
 }
 
@@ -103,7 +103,7 @@ pub fn file_stat<R: Runtime>(
         return Err("file_stat error: Invalid argument".to_string());
     }
 
-    let path = resolve_path(app_handle, &args);
+    let path = resolve_read_path(app_handle, &args)?;
     let metadata = fs::metadata(&path).map_err(|e| e.to_string())?;
     let is_directory = metadata.is_dir();
     let size = if is_directory { 0 } else { metadata.len() };
@@ -127,7 +127,7 @@ pub fn read_file_sync<R: Runtime>(
         return Err("read_file_sync error: Invalid argument".to_string());
     }
 
-    let path = resolve_path(app_handle, &args[0]);
+    let path = resolve_read_path(app_handle, &args[0])?;
     fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
@@ -160,7 +160,7 @@ pub fn readdir_sync<R: Runtime>(
         return Err("read_dir_sync error: Invalid argument".to_string());
     }
 
-    let path = resolve_path(app_handle, &args[0]);
+    let path = resolve_read_path(app_handle, &args[0])?;
     let entries = fs::read_dir(&path).map_err(|e| e.to_string())?;
     let paths: Vec<String> = entries
         .filter_map(|entry| entry.ok())
@@ -268,7 +268,7 @@ pub(crate) fn unpack_archive(
                     if let Some(mode) = entry.unix_mode() {
                         let _ = std::fs::set_permissions(
                             &outpath,
-                            std::fs::Permissions::from_mode(mode),
+                            std::fs::Permissions::from_mode(mode & 0o755),
                         );
                     }
                 }

@@ -820,3 +820,15 @@ describe('chatTemplateSupportsTools', () => {
     expect(chatTemplateSupportsTools(undefined)).toBe(false)
   })
 })
+
+describe('ggufShardPaths', () => {
+  it('expands a split GGUF to every shard', async () => {
+    const { ggufShardPaths } = await import('./util')
+    expect(ggufShardPaths('/m/a-00001-of-00003.gguf')).toEqual([
+      '/m/a-00001-of-00003.gguf',
+      '/m/a-00002-of-00003.gguf',
+      '/m/a-00003-of-00003.gguf',
+    ])
+    expect(ggufShardPaths('/m/a.gguf')).toEqual(['/m/a.gguf'])
+  })
+})

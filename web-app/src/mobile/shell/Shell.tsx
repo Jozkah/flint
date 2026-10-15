@@ -218,7 +218,7 @@ export function Shell() {
         </Suspense>
       </div>
       {ios && <IosTabBar />}
-      <div className={`scrim${drawer ? ' on' : ''}`} onClick={closeAll} />
+      <div className={`scrim${drawer ? ' on' : ''}`} onClick={closeAll} aria-hidden="true" />
       <nav className={`drawer l${drawer === 'left' ? ' open' : ''}`} aria-label={t('shell.navigation')} aria-hidden={drawer !== 'left'} inert={drawer !== 'left'}>
         <LeftNav />
       </nav>
@@ -229,7 +229,7 @@ export function Shell() {
           </Suspense>
         )}
       </aside>
-      <div className={`scrim${sheet ? ' on' : ''}`} style={{ zIndex: 40 }} onClick={closeSheet} />
+      <div className={`scrim${sheet ? ' on' : ''}`} style={{ zIndex: 40 }} onClick={closeSheet} aria-hidden="true" />
       <div className={`sheet${sheet ? ' open' : ''}`} role="dialog" aria-modal="true" aria-hidden={!sheet} inert={!sheet}>
         {sheet && <SheetBody key={sheet.name + JSON.stringify(sheet.props ?? {})} name={sheet.name} props={sheet.props ?? {}} />}
       </div>

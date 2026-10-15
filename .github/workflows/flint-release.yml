@@ -49,6 +49,7 @@ jobs:
   prepare:
     name: Prepare release
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: write
     outputs:
@@ -220,7 +221,6 @@ jobs:
           corepack enable
           corepack prepare yarn@4.10.3 --activate
           yarn --version
-          yarn config set -H enableImmutableInstalls false
           echo "FLINT_YARN_CACHE_PATH=$(yarn config get cacheFolder)" >> "$GITHUB_ENV"
 
       - name: Restore the Yarn cache
@@ -339,6 +339,7 @@ jobs:
     if: github.event_name != 'push' && needs.prepare.outputs.skip != 'true'
     needs: [prepare, build]
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     permissions:
       contents: write
     steps:
@@ -367,6 +368,7 @@ jobs:
     if: github.event_name == 'schedule' && needs.prepare.outputs.skip != 'true'
     needs: [prepare, build, upload-release]
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:

@@ -106,6 +106,10 @@ export async function downloadHuggingFaceFile(args: {
   expectedSize?: number | null
   expectedSha256?: string | null
   token?: string
+  /** Commit sha or branch to download from; the default branch when absent. */
+  revision?: string | null
+  /** Bytes still to fetch for the whole bundle, for one up-front disk check. */
+  bundleRemaining?: number
 }): Promise<string> {
   return call<string>('download', args)
 }
@@ -157,7 +161,13 @@ export function repoFromDeepLink(link: string): string | null {
   const parts = url.pathname.split('/').filter(Boolean)
   if (parts[0] === 'huggingface') parts.shift()
   if (parts.length !== 2) return null
-  const repo = parts.map(decodeURIComponent).join('/')
+  let repo: string
+  try {
+    repo = parts.map(decodeURIComponent).join('/')
+  } catch {
+    // Malformed percent-escape in a hand-crafted link.
+    return null
+  }
   return /^[A-Za-z0-9][\w.-]*\/[A-Za-z0-9][\w.-]*$/.test(repo) ? repo : null
 }
 

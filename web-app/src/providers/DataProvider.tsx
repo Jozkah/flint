@@ -358,7 +358,11 @@ export function DataProvider() {
         cancelled = true
       }
     }
-    serviceHub.deeplink().getCurrent().then(handleDeepLink)
+    serviceHub
+      .deeplink()
+      .getCurrent()
+      .then(handleDeepLink)
+      .catch((e) => console.warn('Deep link getCurrent failed:', e))
     serviceHub
       .deeplink()
       .onOpenUrl(handleDeepLink)
@@ -366,6 +370,7 @@ export function DataProvider() {
         if (cancelled) unsub()
         else unsubscribeOpenUrl = unsub
       })
+      .catch((e) => console.warn('Deep link registration failed:', e))
 
     // Listen for deep link events
     let unsubscribe: (() => void) | undefined
@@ -379,6 +384,7 @@ export function DataProvider() {
         if (cancelled) unsub()
         else unsubscribe = unsub
       })
+      .catch((e) => console.warn('Deep link event listen failed:', e))
     return () => {
       cancelled = true
       unsubscribeOpenUrl?.()

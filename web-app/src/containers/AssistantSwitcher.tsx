@@ -92,7 +92,7 @@ export function AssistantSwitcher({
               variant="ghost"
               size="sm"
               className="h-7 min-w-0 gap-[5px] rounded-[7px] px-1.5 text-secondary-foreground"
-              aria-label="Switch assistant"
+              aria-label={t('common:a11y.switchAssistant')}
             >
               {activeAssistant?.avatar ? (
                 <AvatarEmoji

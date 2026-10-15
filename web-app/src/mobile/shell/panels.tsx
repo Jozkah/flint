@@ -236,7 +236,7 @@ export function CodeTab({ id }: { id: string }) {
                 const mark = stale ? undefined : f.changed[n]
                 const on = sel && n >= sel[0] && n <= sel[1]
                 return (
-                  <div key={n} className={`cl${mark ? ` g${mark}` : ''}${on ? ' sel' : ''}`} onClick={() => pick(n)}>
+                  <div key={n} role="button" tabIndex={0} className={`cl${mark ? ` g${mark}` : ''}${on ? ' sel' : ''}`} onClick={() => pick(n)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(n) } }}>
                     <span className="n">{n}</span>
                     <span className="g" />
                     <span className="t">{highlight(text)}</span>

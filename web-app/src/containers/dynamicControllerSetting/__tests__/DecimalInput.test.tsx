@@ -156,7 +156,7 @@ describe('decimal parameter input', () => {
     const onValue = vi.fn()
     render(<Harness initial={0.5} min={0} max={2} onValue={onValue} />)
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Increment' }))
+    await user.click(screen.getByRole('button', { name: 'common:a11y.increment' }))
     expect(onValue).toHaveBeenLastCalledWith(0.55)
     expect(field().value).toBe('0.55')
   })

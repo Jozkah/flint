@@ -23,13 +23,26 @@ pub struct FileInput {
 // Tauri Command Handlers
 // ============================================================================
 
+/// Run blocking SQLite work off the async runtime's worker threads.
+async fn blocking<T, F>(f: F) -> Result<T, VectorDBError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, VectorDBError> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| VectorDBError::DatabaseError(format!("task failed: {e}")))?
+}
+
 #[tauri::command]
 pub async fn get_status(state: State<'_, VectorDBState>) -> Result<Status, VectorDBError> {
     println!("[VectorDB] Checking ANN availability...");
     let temp = db::collection_path(&state.base_dir, "__status__");
-    let conn = db::open_or_init_conn(&temp)?;
-
-    let ann = db::try_load_sqlite_vec_verbose(&conn);
+    let ann = blocking(move || {
+        let conn = db::open_or_init_conn(&temp)?;
+        Ok(db::try_load_sqlite_vec_verbose(&conn))
+    })
+    .await?;
 
     println!("[VectorDB] ANN status: {}", if ann { "AVAILABLE" } else { "NOT AVAILABLE" });
     Ok(Status { ann_available: ann })
@@ -43,9 +56,11 @@ pub async fn create_collection<R: tauri::Runtime>(
     dimension: usize,
 ) -> Result<(), VectorDBError> {
     let path = db::collection_path(&state.base_dir, &name);
-    let conn = db::open_or_init_conn(&path)?;
-
-    let has_ann = db::create_schema(&conn, dimension)?;
+    let has_ann = blocking(move || {
+        let conn = db::open_or_init_conn(&path)?;
+        db::create_schema(&conn, dimension)
+    })
+    .await?;
     if has_ann {
         println!("[VectorDB] ✓ Collection '{}' created with ANN support", name);
     } else {
@@ -81,9 +96,12 @@ pub async fn insert_chunks<R: tauri::Runtime>(
     chunks: Vec<MinimalChunkInput>,
 ) -> Result<(), VectorDBError> {
     let path = db::collection_path(&state.base_dir, &collection);
-    let conn = db::open_or_init_conn(&path)?;
-    let vec_loaded = db::try_load_sqlite_vec(&conn);
-    db::insert_chunks(&conn, &file_id, chunks, vec_loaded)
+    blocking(move || {
+        let conn = db::open_or_init_conn(&path)?;
+        let vec_loaded = db::try_load_sqlite_vec(&conn);
+        db::insert_chunks(&conn, &file_id, chunks, vec_loaded)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -111,9 +129,12 @@ pub async fn search_collection<R: tauri::Runtime>(
     file_ids: Option<Vec<String>>,
 ) -> Result<Vec<SearchResult>, VectorDBError> {
     let path = db::collection_path(&state.base_dir, &collection);
-    let conn = db::open_or_init_conn(&path)?;
-    let vec_loaded = db::try_load_sqlite_vec(&conn);
-    db::search_collection(&conn, &query_embedding, limit, threshold, mode, vec_loaded, file_ids)
+    blocking(move || {
+        let conn = db::open_or_init_conn(&path)?;
+        let vec_loaded = db::try_load_sqlite_vec(&conn);
+        db::search_collection(&conn, &query_embedding, limit, threshold, mode, vec_loaded, file_ids)
+    })
+    .await
 }
 
 #[tauri::command]

@@ -2399,7 +2399,16 @@
     "tokenUsage": "Ús de tokens",
     "modelSleeping": "Model en repòs",
     "visionSupported": "Entrada de visió compatible",
-    "audioSupported": "Entrada d'àudio compatible"
+    "audioSupported": "Entrada d'àudio compatible",
+    "stopGenerating": "Atura la generació",
+    "filterOptions": "Filtra les opcions",
+    "switchAssistant": "Canvia d'assistent",
+    "emergencyStop": "Parada d'emergència",
+    "toggleFavorite": "Alterna favorit",
+    "pauseDownload": "Posa en pausa la descàrrega",
+    "cancelDownload": "Cancel·la la descàrrega",
+    "decrement": "Disminueix",
+    "increment": "Augmenta"
   },
   "attachedImages": {
     "open": "Obre {{name}}",
@@ -2561,5 +2570,10 @@
     "failed": "La traducció ha fallat",
     "inputPlaceholder": "Text per traduir",
     "outputPlaceholder": "La traducció apareix aquí"
-  }
+  },
+  "markdownImage": {
+    "load": "Carrega la imatge de {{host}}"
+  },
+  "messageSaveFailed": "No s'ha pogut desar el missatge. Es pot perdre després de reiniciar.",
+  "threadSaveFailed": "No s'ha pogut desar el canvi d'aquest fil. S'ha revertit."
 }

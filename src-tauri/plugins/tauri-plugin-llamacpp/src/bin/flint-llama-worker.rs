@@ -105,10 +105,9 @@ async fn main() {
         std::process::exit(3);
     }
 
-    // Must precede any ggml call, including device enumeration.
-    tauri_plugin_llamacpp::engine::load_backend_modules();
-
     if args.list_devices {
+        // Must precede any ggml call, including device enumeration.
+        tauri_plugin_llamacpp::engine::load_backend_modules();
         match tauri_plugin_llamacpp::engine::Engine::devices_json() {
             Ok(json) => println!("{json}"),
             Err(e) => {
@@ -215,6 +214,13 @@ async fn main() {
     // stdout is a pipe to the supervisor, so it is block-buffered.
     use std::io::Write;
     let _ = std::io::stdout().flush();
+
+    // After the handshake, so the supervisor's start budget does not include
+    // initialising CUDA/Vulkan/HIP (a driver update or an AV scan of the
+    // backend DLLs can take longer than it). Still before the first request is
+    // served, which is the first point a ggml call can happen; clients that
+    // connect meanwhile wait in the listen backlog.
+    tokio::task::block_in_place(tauri_plugin_llamacpp::engine::load_backend_modules);
 
     let server = Arc::new(server);
     Arc::clone(&server)

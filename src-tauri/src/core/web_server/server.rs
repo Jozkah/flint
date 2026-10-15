@@ -705,7 +705,7 @@ async fn token_sign_in(state: &State, req: Request<Incoming>, client: std::net::
     let Some(credential) = credential else {
         return text(StatusCode::BAD_REQUEST, "Invalid credential format");
     };
-    let result = state.auth.lock().unwrap().sign_in(&credential);
+    let result = state.auth.lock().unwrap_or_else(|p| p.into_inner()).sign_in(&credential);
     match result {
         Ok(Some(session)) => json(&serde_json::json!({
             "token": session,
@@ -1176,7 +1176,7 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
         else {
             return refuse(StatusCode::BAD_REQUEST, "format", "Invalid credential format");
         };
-        let result = state.auth.lock().unwrap().sign_in(token);
+        let result = state.auth.lock().unwrap_or_else(|p| p.into_inner()).sign_in(token);
         return match result {
             Ok(Some(session)) => {
                 let mut response = reply(
@@ -1207,7 +1207,7 @@ async fn route_inner(state: Arc<State>, req: Request<Incoming>, client: std::net
     } else {
         session_cookie(req.headers())
     };
-    let authorized = session.is_some_and(|token| state.auth.lock().unwrap().authorize(token));
+    let authorized = session.is_some_and(|token| state.auth.lock().unwrap_or_else(|p| p.into_inner()).authorize(token));
     if !authorized {
         if !presented_bearer && (method == Method::GET || method == Method::HEAD) {
             let mut response = reply(

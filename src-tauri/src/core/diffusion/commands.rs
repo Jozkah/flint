@@ -134,6 +134,8 @@ pub async fn diffusion_download_model<R: Runtime>(
             Some(file.size),
             Some(file.sha256.to_string()),
             token.clone(),
+            None,
+            None,
         )
         .await?;
     }

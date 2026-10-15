@@ -2362,7 +2362,16 @@
     "tokenUsage": "Mức dùng token",
     "modelSleeping": "Mô hình đang ngủ",
     "visionSupported": "Hỗ trợ đầu vào hình ảnh",
-    "audioSupported": "Hỗ trợ đầu vào âm thanh"
+    "audioSupported": "Hỗ trợ đầu vào âm thanh",
+    "stopGenerating": "Dừng tạo",
+    "filterOptions": "Lọc tùy chọn",
+    "switchAssistant": "Đổi trợ lý",
+    "emergencyStop": "Dừng khẩn cấp",
+    "toggleFavorite": "Bật/tắt yêu thích",
+    "pauseDownload": "Tạm dừng tải xuống",
+    "cancelDownload": "Hủy tải xuống",
+    "decrement": "Giảm",
+    "increment": "Tăng"
   },
   "attachedImages": {
     "open": "Mở {{name}}",
@@ -2516,5 +2525,10 @@
     "failed": "Dịch thất bại",
     "inputPlaceholder": "Văn bản cần dịch",
     "outputPlaceholder": "Bản dịch xuất hiện ở đây"
-  }
+  },
+  "markdownImage": {
+    "load": "Tải hình ảnh từ {{host}}"
+  },
+  "messageSaveFailed": "Không thể lưu tin nhắn. Tin nhắn có thể bị mất sau khi khởi động lại.",
+  "threadSaveFailed": "Không thể lưu thay đổi cho cuộc trò chuyện này. Đã hoàn tác."
 }

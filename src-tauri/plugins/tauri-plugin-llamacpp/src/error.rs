@@ -211,10 +211,15 @@ fn is_image_model_failure(lower: &str) -> bool {
 
 // Deliberately specific: a bare "was not found" also matches a missing model
 // file, which is a different failure with different advice.
-const MISSING_LIBRARY_MARKERS: [&str; 5] = [
+const MISSING_LIBRARY_MARKERS: [&str; 8] = [
     "cannot open shared object file",
     "library not loaded",
     ".dll was not found",
+    // STATUS_DLL_NOT_FOUND and STATUS_INVALID_IMAGE_FORMAT as the worker's
+    // exit description spells them: a clean Windows without the VC++ runtime.
+    "0xc0000135",
+    "a required dll was not found",
+    "0xc000007b",
     "the specified module could not be found",
     "image not found",
 ];

@@ -596,6 +596,44 @@ impl WorkerHandle {
     }
 }
 
+/// True inside a Flatpak sandbox.
+#[cfg(target_os = "linux")]
+fn is_flatpak() -> bool {
+    std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists()
+}
+
+/// `LD_LIBRARY_PATH` with the worker's own directory (and its `lib` child)
+/// first, keeping whatever was already set.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn flatpak_library_path(worker_dir: &Path, existing: &str) -> String {
+    let mut parts = vec![
+        worker_dir.display().to_string(),
+        worker_dir.join("lib").display().to_string(),
+    ];
+    if !existing.is_empty() {
+        parts.push(existing.to_string());
+    }
+    parts.join(":")
+}
+
+#[cfg(test)]
+mod flatpak_path_tests {
+    use super::*;
+
+    #[test]
+    fn worker_dir_comes_first_and_existing_is_kept() {
+        let dir = Path::new("/app/lib/flint");
+        let p = flatpak_library_path(dir, "/usr/lib");
+        let want = format!(
+            "{}:{}:/usr/lib",
+            dir.display(),
+            dir.join("lib").display()
+        );
+        assert_eq!(p, want);
+        assert!(!flatpak_library_path(dir, "").ends_with(':'));
+    }
+}
+
 /// Spawns the worker and waits for its handshake line.
 #[allow(clippy::too_many_arguments)]
 pub async fn spawn(
@@ -671,6 +709,16 @@ pub async fn spawn_with_offload(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+
+    // Inside a Flatpak the worker's bundled shared libraries live in the app's
+    // private lib directory, which the sandbox's loader does not search.
+    #[cfg(target_os = "linux")]
+    if is_flatpak() {
+        if let Some(dir) = exe.parent() {
+            let existing = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
+            cmd.env("LD_LIBRARY_PATH", flatpak_library_path(dir, &existing));
+        }
+    }
 
     let mut child = cmd.spawn().map_err(|e| WorkerError::Spawn(e.to_string()))?;
     #[cfg(windows)]

@@ -38,10 +38,10 @@
   {
     "key": "idle_unload_minutes",
     "title": "Unload Idle Models After (minutes)",
-    "description": "Unload a local model that has not been used for this many minutes, to free memory. It reloads on the next request. Embedding models and models with a request in progress are never unloaded. 0 = never.",
+    "description": "Unload a local model that has not been used for this many minutes, to free memory. It reloads on the next request. Embedding models and models with a request in progress are never unloaded. 0 = never. Default 30, so VRAM is not held while you game or render.",
     "controllerType": "input",
     "controllerProps": {
-      "value": 0,
+      "value": 30,
       "placeholder": "e.g 10",
       "type": "number",
       "textAlign": "right"
@@ -508,11 +508,11 @@
   {
     "key": "cache_ram",
     "title": "Prompt Cache RAM (MiB)",
-    "description": "Prompt cache size in MiB (default: 8192). -1 is unlimited, 0 disables it.",
+    "description": "Prompt cache size in MiB (default: 4096; llama.cpp itself defaults to 8192, which can crowd out the OS on a 16 GB machine). -1 is unlimited, 0 disables it.",
     "controllerType": "input",
     "controllerProps": {
-      "value": 8192,
-      "placeholder": "8192",
+      "value": 4096,
+      "placeholder": "4096",
       "type": "number",
       "textAlign": "right"
     }
@@ -529,11 +529,11 @@
   {
     "key": "thread_cache_size",
     "title": "Conversation Cache Disk Limit (MiB)",
-    "description": "Disk budget for saved conversation caches (default: 8192). The oldest are dropped first once it is reached. One long conversation can take hundreds of MiB.",
+    "description": "Disk budget for saved conversation caches (default: 2048). The oldest are dropped first once it is reached. One long conversation can take hundreds of MiB.",
     "controllerType": "input",
     "controllerProps": {
-      "value": 8192,
-      "placeholder": "8192",
+      "value": 2048,
+      "placeholder": "2048",
       "type": "number",
       "textAlign": "right"
     }

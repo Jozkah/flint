@@ -69,6 +69,7 @@ type BundleRunner = {
   label: string
   files: HuggingFaceFile[]
   token?: string
+  revision?: string | null
   onComplete?: (paths: string[]) => Promise<void>
 }
 
@@ -174,6 +175,10 @@ async function runBundle(id: string): Promise<void> {
         expectedSize: file.size,
         expectedSha256: file.sha256,
         token: runner.token,
+        revision: runner.revision ?? undefined,
+        bundleRemaining: runner.files
+          .slice(index)
+          .reduce((sum, item) => sum + (item.size ?? 0), 0),
       })
       paths[index] = path
       const downloaded = completedBytes(runner.files, index + 1)

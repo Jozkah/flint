@@ -2395,7 +2395,16 @@
     "tokenUsage": "Utilisation de jetons",
     "modelSleeping": "Modèle en veille",
     "visionSupported": "Entrée de vision prise en charge",
-    "audioSupported": "Entrée audio prise en charge"
+    "audioSupported": "Entrée audio prise en charge",
+    "stopGenerating": "Arrêter la génération",
+    "filterOptions": "Filtrer les options",
+    "switchAssistant": "Changer d'assistant",
+    "emergencyStop": "Arrêt d'urgence",
+    "toggleFavorite": "Basculer le favori",
+    "pauseDownload": "Mettre le téléchargement en pause",
+    "cancelDownload": "Annuler le téléchargement",
+    "decrement": "Diminuer",
+    "increment": "Augmenter"
   },
   "attachedImages": {
     "open": "Ouvrir {{name}}",
@@ -2561,5 +2570,10 @@
     "failed": "La traduction a échoué",
     "inputPlaceholder": "Texte à traduire",
     "outputPlaceholder": "La traduction apparaît ici"
-  }
+  },
+  "markdownImage": {
+    "load": "Charger l'image depuis {{host}}"
+  },
+  "messageSaveFailed": "Impossible d'enregistrer le message. Il peut être perdu après un redémarrage.",
+  "threadSaveFailed": "Impossible d'enregistrer la modification de cette conversation. Elle a été annulée."
 }

@@ -25,7 +25,7 @@ use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
-use super::registry::{Registry, RegistryError};
+use super::registry::{AcquireStep, Registry, RegistryError};
 use super::slots::{Claim, Identity, SlotOccupancy, StateStore, MIN_TOKENS_TO_SAVE};
 use super::Route;
 
@@ -618,21 +618,19 @@ impl EngineServer {
                 }));
             }
         }
-        // Serializing loads behind the lock is deliberate -- two concurrent
-        // loads would race on models_max -- but starting a llama_context is
-        // blocking, so it needs block_in_place to move other tasks off this
-        // worker instead of stalling the reactor. `block_on` inside
-        // `spawn_blocking` would risk deadlocking the runtime.
-        let mut reg = self.registry.lock().await;
-        let outcome = tokio::task::block_in_place(|| {
-            let r = reg.acquire(model).map(|_| ());
-            if r.is_ok() {
+        // The registry lock is NOT held across the load: acquire_engine
+        // reserves the slot under it, runs the blocking start outside it, and
+        // settles under it again, so listing models and chatting on a resident
+        // model keep working while this one loads.
+        let outcome = match acquire_engine(&self.registry, model).await {
+            Ok(engine) => {
                 // Resident but idle, so it stays evictable under models_max.
-                reg.release(model);
+                drop(engine);
+                self.registry.lock().await.release(model);
+                Ok(())
             }
-            r
-        });
-        drop(reg);
+            Err(e) => Err(e),
+        };
 
         match outcome {
             Ok(()) => json_ok(&serde_json::json!({ "status": "loaded", "model": model })),
@@ -681,24 +679,21 @@ impl EngineServer {
             return self.dispatch_any(route, body).await;
         };
 
-        let engine = {
-            let mut reg = self.registry.lock().await;
-            // acquire may start an engine, which blocks; see load_model.
-            match tokio::task::block_in_place(|| reg.acquire(&model)) {
-                Ok(e) => e,
-                Err(RegistryError::Full { models_max }) => {
-                    return json_error(
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        &format!(
-                            "all {models_max} model slots are busy; retry shortly"
-                        ),
-                    )
-                }
-                Err(RegistryError::Engine(e)) => {
-                    return json_error(StatusCode::BAD_REQUEST, &e.to_string())
-                }
+        let engine = match acquire_engine(&self.registry, &model).await {
+            Ok(e) => e,
+            Err(RegistryError::Full { models_max }) => {
+                return json_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &format!("all {models_max} model slots are busy; retry shortly"),
+                )
+            }
+            Err(RegistryError::Engine(e)) => {
+                return json_error(StatusCode::BAD_REQUEST, &e.to_string())
             }
         };
+        // From here the model counts as busy. The guard releases it even when
+        // hyper drops this future because the client disconnected.
+        let guard = InflightGuard::new(self.registry.clone(), model.clone());
 
         // Only a generating route has a KV cache worth keeping; an embedding or
         // a tokenize call leaves nothing behind.
@@ -712,33 +707,28 @@ impl EngineServer {
         };
 
         let (out, done) = run(engine, route, body, STREAM_BUFFER).await;
-        release_when_done(self.registry.clone(), model, done).await;
+        release_when_done(guard, done).await;
         out
     }
 
     /// For routes with no model in the body: use the first resident engine.
     async fn dispatch_any(&self, route: Route, body: String) -> HttpResponse<Body> {
-        let engine = {
-            let mut reg = self.registry.lock().await;
+        let first = {
+            let reg = self.registry.lock().await;
             let Some(first) = reg.loaded_models().into_iter().next() else {
-                return json_error(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "no model is loaded",
-                );
+                return json_error(StatusCode::SERVICE_UNAVAILABLE, "no model is loaded");
             };
-            match tokio::task::block_in_place(|| reg.acquire(&first)) {
-                Ok(e) => (e, first),
-                Err(e) => {
-                    return json_error(
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        &format!("{e:?}"),
-                    )
-                }
+            first
+        };
+        let eng = match acquire_engine(&self.registry, &first).await {
+            Ok(e) => e,
+            Err(e) => {
+                return json_error(StatusCode::SERVICE_UNAVAILABLE, &format!("{e:?}"))
             }
         };
-        let (eng, id) = engine;
+        let guard = InflightGuard::new(self.registry.clone(), first);
         let (out, done) = run(eng, route, body, STREAM_BUFFER).await;
-        release_when_done(self.registry.clone(), id, done).await;
+        release_when_done(guard, done).await;
         out
     }
 }
@@ -864,21 +854,128 @@ async fn slot_tokens(engine: &Arc<super::Engine>, slot: i32) -> u64 {
         .unwrap_or(0)
 }
 
-/// Releases `model`'s registry reference once its request is really done:
+/// Holds one registry reference (`inflight`) for a model and gives it back
+/// exactly once: explicitly through `release`, or from `Drop` when the
+/// handler future is dropped first (client disconnect mid-request).
+struct InflightGuard {
+    registry: Arc<Mutex<Registry>>,
+    model: Option<String>,
+}
+
+impl InflightGuard {
+    fn new(registry: Arc<Mutex<Registry>>, model: String) -> Self {
+        Self {
+            registry,
+            model: Some(model),
+        }
+    }
+
+    async fn release(mut self) {
+        if let Some(model) = self.model.take() {
+            self.registry.lock().await.release(&model);
+        }
+    }
+}
+
+impl Drop for InflightGuard {
+    fn drop(&mut self) {
+        let Some(model) = self.model.take() else {
+            return;
+        };
+        let registry = self.registry.clone();
+        // Drop cannot await the async mutex, so hand the release to the runtime.
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn(async move {
+                    registry.lock().await.release(&model);
+                });
+            }
+            Err(_) => {
+                // No runtime (shutdown): the registry is going away too.
+                log::warn!("could not release the in-flight count for {model}: no runtime");
+            }
+        }
+    }
+}
+
+/// Acquires `model`'s engine (busy-counted) without holding the registry lock
+/// across a model load. Concurrent requests for a model that is loading wait
+/// for that one load instead of starting another.
+async fn acquire_engine(
+    registry: &Arc<Mutex<Registry>>,
+    model: &str,
+) -> Result<Arc<super::Engine>, RegistryError> {
+    loop {
+        let step = registry.lock().await.begin_acquire(model)?;
+        match step {
+            AcquireStep::Ready(engine) => return Ok(engine),
+            AcquireStep::Wait(mut rx) => {
+                let _ = rx.wait_for(|done| *done).await;
+                let reg = registry.lock().await;
+                if !reg.is_loaded(model) {
+                    if let Some(f) = reg.failure_of(model) {
+                        return Err(RegistryError::Engine(super::EngineError::Start(
+                            f.to_string(),
+                        )));
+                    }
+                }
+            }
+            AcquireStep::Start(ticket) => {
+                // Its own task: the load and its settlement must finish even if
+                // this request's future is dropped, or the slot stays reserved.
+                let reg = registry.clone();
+                let task = tokio::spawn(async move {
+                    let joined = tokio::task::spawn_blocking(move || {
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                            || ticket.run(),
+                        ))
+                        .unwrap_or_else(|_| {
+                            Err(super::EngineError::Start(
+                                "the engine start panicked".to_string(),
+                            ))
+                        });
+                        (ticket, result)
+                    })
+                    .await;
+                    match joined {
+                        Ok((ticket, result)) => reg
+                            .lock()
+                            .await
+                            .finish_load(ticket, result, 0)
+                            .map(|_| ()),
+                        Err(e) => Err(RegistryError::Engine(super::EngineError::Start(
+                            format!("the load task failed: {e}"),
+                        ))),
+                    }
+                });
+                match task.await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => return Err(e),
+                    Err(e) => {
+                        return Err(RegistryError::Engine(super::EngineError::Start(format!(
+                            "the load task failed: {e}"
+                        ))))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Releases the model's registry reference once its request is really done:
 /// now, or -- for a stream, whose response head is returned while generation
 /// still runs -- when `done` resolves (#273).
 async fn release_when_done(
-    registry: Arc<Mutex<Registry>>,
-    model: String,
+    guard: InflightGuard,
     done: Option<tokio::sync::oneshot::Receiver<()>>,
 ) {
     match done {
-        None => registry.lock().await.release(&model),
+        None => guard.release().await,
         // Resolves when the drain task drops its sender, however it ended.
         Some(done) => {
             tokio::spawn(async move {
                 let _ = done.await;
-                registry.lock().await.release(&model);
+                guard.release().await;
             });
         }
     }
@@ -992,7 +1089,20 @@ async fn run(
                     }
                 }
                 Ok(None) => break,
-                Err(_) => break,
+                Err(e) => {
+                    // Without a frame the client sees a clean EOF and shows a
+                    // half answer as if it were complete.
+                    log::warn!("generation failed mid-stream: {e:?}");
+                    let frame = format!(
+                        "data: {}\n\n",
+                        serde_json::json!({ "error": {
+                            "message": "generation failed",
+                            "type": "server_error",
+                        }})
+                    );
+                    let _ = tx.blocking_send(Ok(Frame::data(Bytes::from(frame))));
+                    break;
+                }
             }
         }
     });
@@ -1059,6 +1169,25 @@ fn json_error(status: StatusCode, message: &str) -> HttpResponse<Body> {
 mod tests {
     use super::*;
 
+    /// A handler future dropped mid-request (client disconnect) must still give
+    /// its registry reference back.
+    #[cfg(not(feature = "engine"))]
+    #[tokio::test]
+    async fn a_dropped_guard_releases_the_model() {
+        let registry = Arc::new(Mutex::new(Registry::new(1)));
+        registry.lock().await.insert_resident_for_test("m", 1);
+        let guard = InflightGuard::new(registry.clone(), "m".to_string());
+        assert_eq!(registry.lock().await.busy_models(), vec!["m".to_string()]);
+        drop(guard);
+        for _ in 0..200 {
+            if registry.lock().await.busy_models().is_empty() {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        panic!("the dropped guard never released the model");
+    }
+
     /// #273: a streamed completion keeps its model busy until the stream has
     /// drained, so an unload in the meantime is refused instead of dropping a
     /// model that is still generating (and a later request starting a second
@@ -1070,7 +1199,8 @@ mod tests {
         registry.lock().await.insert_resident_for_test("m", 1);
         let (finished, done) = tokio::sync::oneshot::channel::<()>();
 
-        release_when_done(registry.clone(), "m".into(), Some(done)).await;
+        let guard = InflightGuard::new(registry.clone(), "m".to_string());
+        release_when_done(guard, Some(done)).await;
         assert_eq!(registry.lock().await.busy_models(), vec!["m".to_string()]);
         assert!(!registry.lock().await.unload("m"), "unloaded while still streaming");
 

@@ -1,11 +1,6 @@
 name: iOS IPA
 on:
   workflow_dispatch:
-  # A workflow_dispatch-only file cannot be run until it is on main. Drop this
-  # trigger once the workflow has landed there.
-  push:
-    branches: [feat/ios-thin-client]
-    paths: ['.github/workflows/ios-ipa.yml', 'src-tauri/tauri.ios.conf.json', 'src-tauri/src/**', 'src-tauri/Cargo.toml', 'web-app/src/mobile/**', 'scripts/build-ios-shell.mjs']
 
 concurrency:
   group: ios-ipa-${{ github.ref }}
@@ -48,7 +43,6 @@ jobs:
         run: |
           corepack enable
           corepack prepare yarn@4.10.3 --activate
-          yarn config set -H enableImmutableInstalls false
           yarn install
           yarn build:icon
 

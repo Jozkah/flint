@@ -30,7 +30,13 @@ struct MLXServerCommand: AsyncParsableCommand {
 
     /// MLX buffer cache limit: 20 GiB. It was `20 * 1024 * 1024`, 20 MiB,
     /// which made the allocator churn buffers on every step (#75).
-    static let gpuCacheLimitBytes: Int = 20 * 1024 * 1024 * 1024
+    static let gpuCacheLimitBytes: Int = {
+        // A quarter of physical memory, capped at 20 GiB: on an 8-16 GB Mac a
+        // flat 20 GiB is no limit at all.
+        let ceiling = 20 * 1024 * 1024 * 1024
+        let quarter = Int(ProcessInfo.processInfo.physicalMemory / 4)
+        return min(ceiling, quarter)
+    }()
 
     func run() async throws {
         // Set GPU memory limit to prevent OOM issues
@@ -61,19 +67,30 @@ struct MLXServerCommand: AsyncParsableCommand {
             throw error
         }
 
-        // Set up the HTTP server
+        // Set up the HTTP server. The key comes from the environment so it is
+        // not visible in the process list; `--api-key` still works.
+        let resolvedKey = apiKey.isEmpty
+            ? (ProcessInfo.processInfo.environment["MLX_API_KEY"] ?? "")
+            : apiKey
         let server = MLXHTTPServer(
             modelRunner: modelRunner,
             modelId: resolvedModelId,
-            apiKey: apiKey
+            apiKey: resolvedKey
         )
 
         let router = server.buildRouter()
-        let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: port)))
-
-        // Print readiness signal (monitored by Tauri plugin)
-        log("[mlx] http server listening on http://127.0.0.1:\(port)")
-        log("[mlx] server is listening on 127.0.0.1:\(port)")
+        let listenPort = port
+        let app = Application(
+            router: router,
+            configuration: .init(address: .hostname("127.0.0.1", port: listenPort)),
+            // Fires once the socket is bound, so the readiness line the Tauri
+            // plugin watches for is never printed for a port that failed to
+            // bind (or before the first request could be accepted).
+            onServerRunning: { _ in
+                log("[mlx] http server listening on http://127.0.0.1:\(listenPort)")
+                log("[mlx] server is listening on 127.0.0.1:\(listenPort)")
+            }
+        )
 
         try await app.run()
     }

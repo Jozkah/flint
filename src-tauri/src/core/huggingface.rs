@@ -270,14 +270,37 @@ pub(crate) fn relative_download_path(repo: &str, filename: &str) -> PathBuf {
 }
 
 fn download_path<R: Runtime>(app: &tauri::AppHandle<R>, repo: &str, filename: &str) -> PathBuf {
-    get_jan_data_folder_path(app.clone()).join(relative_download_path(repo, filename))
+    long_path_safe(get_jan_data_folder_path(app.clone()).join(relative_download_path(repo, filename)))
 }
 
-fn remote_file_url(repo: &str, filename: &str) -> Result<Url, String> {
-    remote_file_url_on(&hf_endpoint()?, repo, filename)
+fn remote_file_url(repo: &str, filename: &str, revision: Option<&str>) -> Result<Url, String> {
+    remote_file_url_on(&hf_endpoint()?, repo, filename, revision)
 }
 
-fn remote_file_url_on(base: &Url, repo: &str, filename: &str) -> Result<Url, String> {
+/// A branch name or commit sha usable as one URL segment. Empty or absent
+/// means the default branch.
+fn clean_revision(revision: Option<&str>) -> Result<&str, String> {
+    match revision.map(str::trim).filter(|value| !value.is_empty()) {
+        None => Ok("main"),
+        Some(value)
+            if value.len() <= 64
+                && !value.starts_with('.')
+                && value
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')) =>
+        {
+            Ok(value)
+        }
+        Some(_) => Err("Invalid Hugging Face revision".to_string()),
+    }
+}
+
+fn remote_file_url_on(
+    base: &Url,
+    repo: &str,
+    filename: &str,
+    revision: Option<&str>,
+) -> Result<Url, String> {
     if !valid_repo_id(repo) {
         return Err("Invalid Hugging Face repository id".to_string());
     }
@@ -286,7 +309,7 @@ fn remote_file_url_on(base: &Url, repo: &str, filename: &str) -> Result<Url, Str
     }
     let mut parts: Vec<&str> = repo.split('/').collect();
     parts.push("resolve");
-    parts.push("main");
+    parts.push(clean_revision(revision)?);
     parts.extend(filename.split('/'));
     let url = endpoint_url(base, &parts)?;
     if url.host_str() != base.host_str() || url.scheme() != base.scheme() {
@@ -485,7 +508,7 @@ pub async fn huggingface_model_files(
 
 #[tauri::command]
 pub async fn huggingface_readme(repo: String, token: Option<String>) -> Result<String, String> {
-    let url = remote_file_url(&repo, "README.md")?;
+    let url = remote_file_url(&repo, "README.md", None)?;
     let response = hf_client(token.as_deref())?
         .get(url)
         .send()
@@ -522,7 +545,7 @@ pub async fn huggingface_gguf_header(
     if !filename.to_ascii_lowercase().ends_with(".gguf") {
         return Err("Only GGUF files have a readable header".to_string());
     }
-    let url = remote_file_url(&repo, &filename)?;
+    let url = remote_file_url(&repo, &filename, None)?;
     let mut response = hf_client(token.as_deref())?
         .get(url)
         .header(
@@ -614,6 +637,55 @@ fn io_failure(action: &str, err: &std::io::Error) -> String {
 fn path_too_long(path: &std::path::Path) -> bool {
     let text = path.to_string_lossy();
     !text.starts_with(r"\\?\") && text.chars().count() >= 259
+}
+
+/// The `\\?\` form of an absolute Windows path (drive or UNC), which lifts the
+/// 260 character limit. `None` for a path that cannot be extended (relative).
+fn extended_windows_path(text: &str) -> Option<String> {
+    if text.starts_with("\\\\?\\") {
+        return Some(text.to_string());
+    }
+    let text = text.replace('/', "\\");
+    if let Some(unc) = text.strip_prefix("\\\\") {
+        return Some(format!("\\\\?\\UNC\\{unc}"));
+    }
+    let bytes = text.as_bytes();
+    if bytes.len() > 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'\\' {
+        return Some(format!("\\\\?\\{text}"));
+    }
+    None
+}
+
+/// `path` as is, or in extended form when it would exceed MAX_PATH on Windows.
+fn long_path_safe(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    if path_too_long(&path) {
+        if let Some(extended) = extended_windows_path(&path.to_string_lossy()) {
+            return PathBuf::from(extended);
+        }
+    }
+    path
+}
+
+/// Whether `path` is a regular file of exactly `size` bytes whose SHA-256
+/// equals `sha256` when one is given.
+async fn existing_file_matches(path: &PathBuf, size: u64, sha256: Option<&str>) -> bool {
+    let Ok(meta) = tokio::fs::metadata(path).await else {
+        return false;
+    };
+    if !meta.is_file() || meta.len() != size {
+        return false;
+    }
+    match sha256.map(str::trim).filter(|value| !value.is_empty()) {
+        None => true,
+        Some(expected) => {
+            let never = AtomicBool::new(false);
+            sha256_file(path, &never)
+                .await
+                .map(|actual| actual.eq_ignore_ascii_case(expected))
+                .unwrap_or(false)
+        }
+    }
 }
 
 /// Headroom kept free beyond the download itself, so the disk is not driven to
@@ -842,11 +914,13 @@ pub async fn huggingface_download_model<R: Runtime>(
     expected_size: Option<u64>,
     expected_sha256: Option<String>,
     token: Option<String>,
+    revision: Option<String>,
+    bundle_remaining: Option<u64>,
 ) -> Result<String, String> {
     if task_id.trim().is_empty() {
         return Err("Missing download id".to_string());
     }
-    let url = remote_file_url(&repo, &filename)?;
+    let url = remote_file_url(&repo, &filename, revision.as_deref())?;
     let final_path = download_path(&app, &repo, &filename);
     let mut part_name = final_path
         .file_name()
@@ -859,6 +933,16 @@ pub async fn huggingface_download_model<R: Runtime>(
         tokio::fs::create_dir_all(parent)
             .await
             .map_err(|e| format!("Could not create model download folder: {e}"))?;
+    }
+
+    // A complete copy from an earlier install: reuse it instead of fetching
+    // tens of gigabytes again. Size must match, and the hash too when given.
+    if let Some(size) = expected_size {
+        if existing_file_matches(&final_path, size, expected_sha256.as_deref()).await {
+            return Ok(relative_download_path(&repo, &filename)
+                .to_string_lossy()
+                .replace('\\', "/"));
+        }
     }
 
     let cancel = Arc::new(AtomicBool::new(false));
@@ -885,7 +969,14 @@ pub async fn huggingface_download_model<R: Runtime>(
             .map(|meta| meta.len())
             .unwrap_or(0);
         if let Some(free) = free_space_for_path(&part_path) {
-            disk_preflight(expected_size, already, free)?;
+            // The whole rest of the bundle must fit, not only this file: its
+            // files download one after another and each would otherwise see
+            // the same free space.
+            let total = match (bundle_remaining, expected_size) {
+                (Some(rest), Some(size)) => Some(rest.max(size)),
+                (_, size) => size,
+            };
+            disk_preflight(total, already, free)?;
         }
         let client = hf_client(token.as_deref())?;
         let mut failures: u32 = 0;
@@ -1104,9 +1195,60 @@ mod tests {
     #[test]
     fn resolve_url_stays_on_hugging_face() {
         let base = crate::core::hf_endpoint::parse_endpoint(None).unwrap();
-        let url = remote_file_url_on(&base, "bartowski/Qwen3-GGUF", "sub/model.gguf").unwrap();
+        let url = remote_file_url_on(&base, "bartowski/Qwen3-GGUF", "sub/model.gguf", None).unwrap();
         assert_eq!(url.host_str(), Some("huggingface.co"));
         assert!(url.path().contains("/resolve/main/sub/model.gguf"));
+    }
+
+    #[test]
+    fn revision_is_used_and_validated() {
+        let base = crate::core::hf_endpoint::parse_endpoint(None).unwrap();
+        let sha = "0123456789abcdef0123456789abcdef01234567";
+        let url = remote_file_url_on(&base, "o/n", "m.gguf", Some(sha)).unwrap();
+        assert!(url.path().contains(&format!("/resolve/{sha}/m.gguf")));
+        let blank = remote_file_url_on(&base, "o/n", "m.gguf", Some("  ")).unwrap();
+        assert!(blank.path().contains("/resolve/main/"));
+        assert!(remote_file_url_on(&base, "o/n", "m.gguf", Some("../x")).is_err());
+        assert!(remote_file_url_on(&base, "o/n", "m.gguf", Some("a/b")).is_err());
+    }
+
+    #[test]
+    fn long_windows_paths_get_the_extended_prefix() {
+        assert_eq!(
+            extended_windows_path("C:/data/a.gguf").as_deref(),
+            Some("\\\\?\\C:\\data\\a.gguf")
+        );
+        assert_eq!(
+            extended_windows_path("\\\\srv\\share\\a").as_deref(),
+            Some("\\\\?\\UNC\\srv\\share\\a")
+        );
+        assert_eq!(
+            extended_windows_path("\\\\?\\C:\\a").as_deref(),
+            Some("\\\\?\\C:\\a")
+        );
+        assert_eq!(extended_windows_path("relative\\a"), None);
+    }
+
+    #[test]
+    fn bundle_preflight_counts_the_remaining_files() {
+        let gb = 1_073_741_824u64;
+        assert!(disk_preflight(Some(10 * gb), 0, 11 * gb).is_ok());
+        assert!(disk_preflight(Some(20 * gb), 0, 11 * gb).is_err());
+    }
+
+    #[tokio::test]
+    async fn a_complete_existing_file_is_reused_only_when_it_matches() {
+        let dir = std::env::temp_dir().join(format!("flint-hf-reuse-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("m.gguf");
+        std::fs::write(&file, b"hello").unwrap();
+        let hello = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+        assert!(existing_file_matches(&file, 5, None).await);
+        assert!(existing_file_matches(&file, 5, Some(hello)).await);
+        assert!(!existing_file_matches(&file, 6, None).await);
+        assert!(!existing_file_matches(&file, 5, Some("00")).await);
+        assert!(!existing_file_matches(&dir.join("none"), 5, None).await);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

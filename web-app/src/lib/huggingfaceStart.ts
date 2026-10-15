@@ -40,6 +40,7 @@ export async function startGgufBundle(input: {
     label: modelId,
     files: bundleFiles,
     token,
+    revision,
     onComplete: async (paths) => {
       const mainPath = paths[0]
       if (!mainPath) throw new Error('The GGUF download finished without a model file.')

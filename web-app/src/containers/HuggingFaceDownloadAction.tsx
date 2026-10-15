@@ -239,7 +239,7 @@ export function HuggingFaceDownloadAction({
           readyLabel={t('common:motionMedia.ready')}
         />
         {task.status === 'downloading' && (
-          <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => void pauseHuggingFaceBundle(bundleId)} title="Pause download">
+          <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => void pauseHuggingFaceBundle(bundleId)} title={t('common:a11y.pauseDownload')}>
             <Pause className="size-3.5" />
           </Button>
         )}
@@ -253,7 +253,7 @@ export function HuggingFaceDownloadAction({
         <Button variant="outline" size="sm" onClick={() => void resumeHuggingFaceBundle(bundleId)}>
           <Play className="size-3.5" /> Resume
         </Button>
-        <Button variant="ghost" size="icon" className="size-8" onClick={() => void cancelHuggingFaceBundle(bundleId)} title="Cancel download">
+        <Button variant="ghost" size="icon" className="size-8" onClick={() => void cancelHuggingFaceBundle(bundleId)} title={t('common:a11y.cancelDownload')}>
           <X className="size-3.5" />
         </Button>
       </div>

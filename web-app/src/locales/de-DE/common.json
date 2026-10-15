@@ -2357,7 +2357,16 @@
     "tokenUsage": "Token-Nutzung",
     "modelSleeping": "Modell schläft",
     "visionSupported": "Vision-Eingabe unterstützt",
-    "audioSupported": "Audio-Eingabe unterstützt"
+    "audioSupported": "Audio-Eingabe unterstützt",
+    "stopGenerating": "Generierung stoppen",
+    "filterOptions": "Optionen filtern",
+    "switchAssistant": "Assistent wechseln",
+    "emergencyStop": "Notstopp",
+    "toggleFavorite": "Favorit umschalten",
+    "pauseDownload": "Download pausieren",
+    "cancelDownload": "Download abbrechen",
+    "decrement": "Verringern",
+    "increment": "Erhöhen"
   },
   "attachedImages": {
     "open": "{{name}} öffnen",
@@ -2516,5 +2525,10 @@
     "failed": "Übersetzung fehlgeschlagen",
     "inputPlaceholder": "Zu übersetzender Text",
     "outputPlaceholder": "Die Übersetzung erscheint hier"
-  }
+  },
+  "markdownImage": {
+    "load": "Bild von {{host}} laden"
+  },
+  "messageSaveFailed": "Die Nachricht konnte nicht gespeichert werden. Sie geht nach einem Neustart eventuell verloren.",
+  "threadSaveFailed": "Die Änderung an diesem Thread konnte nicht gespeichert werden. Sie wurde zurückgesetzt."
 }

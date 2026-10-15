@@ -2381,7 +2381,16 @@
     "tokenUsage": "Token usage",
     "modelSleeping": "Model sleeping",
     "visionSupported": "Vision input supported",
-    "audioSupported": "Audio input supported"
+    "audioSupported": "Audio input supported",
+    "stopGenerating": "Stop generating",
+    "filterOptions": "Filter options",
+    "switchAssistant": "Switch assistant",
+    "emergencyStop": "Emergency stop",
+    "toggleFavorite": "Toggle favorite",
+    "pauseDownload": "Pause download",
+    "cancelDownload": "Cancel download",
+    "decrement": "Decrement",
+    "increment": "Increment"
   },
   "attachedImages": {
     "open": "Open {{name}}",
@@ -2514,5 +2523,10 @@
     "details": "Details for {{name}}",
     "previewLoading": "Loading preview…",
     "previewNone": "No preview available"
-  }
+  },
+  "markdownImage": {
+    "load": "Load image from {{host}}"
+  },
+  "messageSaveFailed": "Could not save the message. It may be lost after a restart.",
+  "threadSaveFailed": "Could not save the change to this thread. It was reverted."
 }

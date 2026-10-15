@@ -42,6 +42,27 @@ describe('evaluateGpuOffload', () => {
     expect(result.reason).toBeUndefined()
   })
 
+  it('warns when an NVIDIA card is missing and only an iGPU was enumerated', () => {
+    const result = evaluateGpuOffload({
+      engineDeviceCount: 1,
+      hardwareGpuCount: 2,
+      hardwareGpus: ['NVIDIA GeForce RTX 4070', 'AMD Radeon(TM) Graphics'],
+      engineDevices: [{ id: 'Vulkan0', name: 'AMD Radeon(TM) Graphics' }],
+    })
+    expect(result.status).toBe('warning')
+    expect(result.reason).toBe('runtimeUnreachable')
+  })
+
+  it('passes when the NVIDIA card is enumerated, even next to an iGPU', () => {
+    const result = evaluateGpuOffload({
+      engineDeviceCount: 1,
+      hardwareGpuCount: 2,
+      hardwareGpus: ['NVIDIA GeForce RTX 4070', 'AMD Radeon(TM) Graphics'],
+      engineDevices: [{ id: 'CUDA0', name: 'NVIDIA GeForce RTX 4070' }],
+    })
+    expect(result.status).toBe('ok')
+  })
+
   it('passes a GPU the engine can actually use', () => {
     const result = evaluateGpuOffload({
       engineDeviceCount: 1,
