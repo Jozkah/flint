@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { toast } from 'sonner'
+import { i18n } from '@/i18n/react-i18next-compat'
 import { ulid } from 'ulidx'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { Fzf } from 'fzf'
@@ -199,22 +201,16 @@ export const useThreads = create<ThreadState>()((set, get) => ({
   },
   toggleFavorite: (threadId) => {
     set((state) => {
-      getServiceHub()
-        .threads()
-        .updateThread({
-          ...state.threads[threadId],
-          isFavorite: !state.threads[threadId].isFavorite,
-        })
-      return {
-        threads: {
-          ...state.threads,
-          [threadId]: {
-            ...state.threads[threadId],
-            isFavorite: !state.threads[threadId].isFavorite,
-            updated: Date.now() / 1000,
-          },
-        },
+      const thread = state.threads[threadId]
+      // The thread may have been deleted between the click and now.
+      if (!thread) return state
+      const next = {
+        ...thread,
+        isFavorite: !thread.isFavorite,
+        updated: Date.now() / 1000,
       }
+      persistThread(next, thread)
+      return { threads: { ...state.threads, [threadId]: next } }
     })
   },
   deleteThread: (threadId, permanent) => {
@@ -361,9 +357,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         {} as Record<string, Thread>
       )
       Object.values(updatedThreads).forEach((thread) => {
-        getServiceHub()
-          .threads()
-          .updateThread({ ...thread, isFavorite: false })
+        persistThread({ ...thread, isFavorite: false }, state.threads[thread.id])
       })
       return { threads: updatedThreads }
     })
@@ -432,13 +426,14 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       const rest = { ...(currentThread?.metadata ?? {}) }
       delete rest.jevRoutedAssistantId
       if (currentThread)
-        getServiceHub()
-          .threads()
-          .updateThread({
+        persistThread(
+          {
             ...currentThread,
             assistants: assistant ? [{ ...assistant, model: currentThread.model }] : [],
             metadata: rest,
-          })
+          },
+          currentThread
+        )
       return {
         threads: {
           ...state.threads,
@@ -474,9 +469,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         )
       const thread = state.threads[threadId]
       if (thread)
-        getServiceHub()
-          .threads()
-          .updateThread({ ...thread, model })
+        persistThread({ ...thread, model }, thread)
       return {
         threads: {
           ...state.threads,
@@ -498,7 +491,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         updated: Date.now() / 1000,
         metadata: { ...thread.metadata, titleSetManually: true },
       }
-      getServiceHub().threads().updateThread(updatedThread) // External call, order is fine
+      persistThread(updatedThread, thread)
       const newThreads = { ...state.threads, [threadId]: updatedThread }
       return {
         threads: newThreads,
@@ -531,7 +524,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       updatedThreads[threadId] = updatedThread
 
       // Update the backend for the main thread
-      getServiceHub().threads().updateThread(updatedThread)
+      persistThread(updatedThread, thread)
 
       return {
         threads: updatedThreads,
@@ -557,7 +550,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         updated: Date.now() / 1000,
       }
 
-      getServiceHub().threads().updateThread(updatedThread)
+      persistThread(updatedThread, thread)
 
       const newThreads = { ...state.threads, [threadId]: updatedThread }
       return {
@@ -572,3 +565,23 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     })
   },
 }))
+
+/**
+ * Persist a thread write without an unhandled rejection. On failure the
+ * optimistic state is rolled back to `prev` (if the thread still exists) and
+ * the user is told, so the UI no longer shows a change the disk never got.
+ */
+function persistThread(next: Thread, prev?: Thread) {
+  Promise.resolve()
+    .then(() => getServiceHub().threads().updateThread(next))
+    .catch((error) => {
+      console.error('Failed to persist thread update:', error)
+      toast.error(i18n.t('common:threadSaveFailed'))
+      if (!prev) return
+      useThreads.setState((state) =>
+        state.threads[prev.id]
+          ? { threads: { ...state.threads, [prev.id]: prev } }
+          : state
+      )
+    })
+}

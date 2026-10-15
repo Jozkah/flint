@@ -58,16 +58,17 @@ describe('DefaultMessagesService', () => {
       expect(result).toEqual([])
     })
 
-    it('should return empty array when listMessages fails', async () => {
+    it('should reject when listMessages fails', async () => {
       const threadId = 'thread-123'
       const error = new Error('Failed to list messages')
       mockExtension.listMessages.mockRejectedValue(error)
 
-      const result = await messagesService.fetchMessages(threadId)
+      await expect(messagesService.fetchMessages(threadId)).rejects.toThrow(
+        'Failed to list messages'
+      )
 
       expect(mockExtensionManager.get).toHaveBeenCalledWith(ExtensionTypeEnum.Conversational)
       expect(mockExtension.listMessages).toHaveBeenCalledWith(threadId)
-      expect(result).toEqual([])
     })
 
     it('should handle undefined listMessages response', async () => {
@@ -102,16 +103,17 @@ describe('DefaultMessagesService', () => {
       expect(result).toEqual(message)
     })
 
-    it('should return original message when createMessage fails', async () => {
+    it('should reject when createMessage fails', async () => {
       const message = { id: 'msg-1', threadId: 'thread-123', content: 'Hello', role: 'user' }
       const error = new Error('Failed to create message')
       mockExtension.createMessage.mockRejectedValue(error)
 
-      const result = await messagesService.createMessage(message)
+      await expect(messagesService.createMessage(message)).rejects.toThrow(
+        'Failed to create message'
+      )
 
       expect(mockExtensionManager.get).toHaveBeenCalledWith(ExtensionTypeEnum.Conversational)
       expect(mockExtension.createMessage).toHaveBeenCalledWith(message)
-      expect(result).toEqual(message)
     })
 
     it('should handle undefined createMessage response', async () => {

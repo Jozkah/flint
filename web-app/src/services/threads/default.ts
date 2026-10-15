@@ -122,7 +122,7 @@ export class DefaultThreadsService implements ThreadsService {
             assistants,
           } as Thread
         })
-        .catch(() => thread) ?? thread
+        ?? thread
     )
   }
 

@@ -2402,7 +2402,16 @@
     "tokenUsage": "Uso de tokens",
     "modelSleeping": "Modelo em repouso",
     "visionSupported": "Entrada de visão suportada",
-    "audioSupported": "Entrada de áudio suportada"
+    "audioSupported": "Entrada de áudio suportada",
+    "stopGenerating": "Parar a geração",
+    "filterOptions": "Filtrar opções",
+    "switchAssistant": "Trocar de assistente",
+    "emergencyStop": "Parada de emergência",
+    "toggleFavorite": "Alternar favorito",
+    "pauseDownload": "Pausar o download",
+    "cancelDownload": "Cancelar o download",
+    "decrement": "Diminuir",
+    "increment": "Aumentar"
   },
   "attachedImages": {
     "open": "Abrir {{name}}",
@@ -2542,5 +2551,27 @@
     "previewLoading": "Carregando pré-visualização…",
     "previewNone": "Nenhuma pré-visualização disponível"
   },
-  "dropAttachFailed": "Não foi possível anexar os arquivos soltos"
+  "dropAttachFailed": "Não foi possível anexar os arquivos soltos",
+  "translate": {
+    "title": "Tradutor",
+    "usingModel": "Usando {{model}}",
+    "noModel": "Escolha um modelo no seletor de modelos",
+    "from": "Traduzir de",
+    "to": "Traduzir para",
+    "detect": "Detectar idioma",
+    "swap": "Trocar idiomas",
+    "translate": "Traduzir",
+    "stop": "Parar",
+    "copy": "Copiar tradução",
+    "copied": "Tradução copiada",
+    "copyFailed": "Não foi possível copiar a tradução",
+    "failed": "A tradução falhou",
+    "inputPlaceholder": "Texto para traduzir",
+    "outputPlaceholder": "A tradução aparece aqui"
+  },
+  "markdownImage": {
+    "load": "Carregar imagem de {{host}}"
+  },
+  "messageSaveFailed": "Não foi possível salvar a mensagem. Ela pode ser perdida após reiniciar.",
+  "threadSaveFailed": "Não foi possível salvar a alteração nesta conversa. Ela foi revertida."
 }

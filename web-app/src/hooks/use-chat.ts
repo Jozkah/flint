@@ -11,7 +11,7 @@ import {
 } from '@ai-sdk/react'
 import { type ChatInit } from 'ai'
 import { settleStoppedToolCalls } from '@/lib/stopped-tool-calls'
-import { useEffect, useMemo, useRef, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
 import type { TokenUsage } from '@/lib/tokenUsage'
@@ -176,11 +176,15 @@ export function useChat(
   // The Chat was built for the first view of this session; a later view (the
   // page remounted, a handler's closure changed) has newer callbacks. Record
   // them on the session so the Chat's next event calls these, not the old ones.
-  if (sessionId) {
-    useChatSessions
-      .getState()
-      .setSessionCallbacks(sessionId, { onFinish, onToolCall, onError, onData })
-  }
+  // In a layout effect, not the render body: a discarded concurrent render
+  // must not leave its closures on the session.
+  useLayoutEffect(() => {
+    if (sessionId) {
+      useChatSessions
+        .getState()
+        .setSessionCallbacks(sessionId, { onFinish, onToolCall, onError, onData })
+    }
+  })
 
   useEffect(() => {
     if (sessionId && sessionTitle) {

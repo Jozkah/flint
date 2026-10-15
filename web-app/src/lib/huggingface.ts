@@ -157,7 +157,13 @@ export function repoFromDeepLink(link: string): string | null {
   const parts = url.pathname.split('/').filter(Boolean)
   if (parts[0] === 'huggingface') parts.shift()
   if (parts.length !== 2) return null
-  const repo = parts.map(decodeURIComponent).join('/')
+  let repo: string
+  try {
+    repo = parts.map(decodeURIComponent).join('/')
+  } catch {
+    // Malformed percent-escape in a hand-crafted link.
+    return null
+  }
   return /^[A-Za-z0-9][\w.-]*\/[A-Za-z0-9][\w.-]*$/.test(repo) ? repo : null
 }
 

@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { ThreadMessage } from '@janhq/core'
+import { toast } from 'sonner'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { i18n } from '@/i18n/react-i18next-compat'
 
 type MessageState = {
   messages: Record<string, ThreadMessage[]>
@@ -58,6 +60,7 @@ export const useMessages = create<MessageState>()((set, get) => ({
       }))
     }).catch((error) => {
       console.error('Failed to persist message:', error)
+      toast.error(i18n.t('common:messageSaveFailed'))
     })
   },
   updateMessage: (message) => {
@@ -79,6 +82,7 @@ export const useMessages = create<MessageState>()((set, get) => ({
     // to prevent duplicates when updating existing messages
     getServiceHub().messages().modifyMessage(updatedMessage).catch((error) => {
       console.error('Failed to persist message update:', error)
+      toast.error(i18n.t('common:messageSaveFailed'))
     })
   },
   deleteMessage: (threadId, messageId) => {

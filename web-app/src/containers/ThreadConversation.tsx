@@ -1697,6 +1697,7 @@ export function ThreadConversation({
           const emptyAssistantIds = messagesToSet
             .filter(threadMessageIsEmpty)
             .map((m) => m.id)
+          const emptySet = new Set(emptyAssistantIds)
           if (emptyAssistantIds.length > 0) {
             // A user turn sent after an errored generation hangs off the empty
             // row; re-link it before the row goes, or the rest of the
@@ -1708,7 +1709,7 @@ export function ThreadConversation({
               for (const m of relinked) updateMessage(m)
             }
             messagesToSet = messagesToSet.filter(
-              (m) => !emptyAssistantIds.includes(m.id)
+              (m) => !emptySet.has(m.id)
             )
             for (const id of emptyAssistantIds) {
               deleteMessage(threadId, id)

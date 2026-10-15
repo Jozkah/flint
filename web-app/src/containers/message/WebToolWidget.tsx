@@ -9,7 +9,7 @@ import {
   parseWebFetchOutput,
   type ToolCallBar,
 } from '@/lib/toolPresentation'
-import { hostOf, siteInitial } from '@/lib/webUrl'
+import { hostOf, isHttpUrl, siteInitial } from '@/lib/webUrl'
 import { ToolBar } from './ToolBar'
 import { SiteIcon } from '@/components/SiteIcon'
 
@@ -48,7 +48,29 @@ const ResultRow = ({
 }: {
   url: string
   title?: string
-}) => (
+}) => {
+  // Only http(s) may become a link; a hostile tool can put any scheme here.
+  const inner = (
+    <>
+      <Favicon url={url} />
+      <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+        {title || hostOf(url)}
+      </span>
+      <span className="shrink-0 text-subtle-foreground">
+        {hostOf(url)}
+      </span>
+    </>
+  )
+  const rowClass =
+    '-mx-1 flex min-w-0 items-center gap-2.5 rounded-md px-1 py-1.5 text-xs no-underline pointer-coarse:min-h-11'
+  if (!isHttpUrl(url)) {
+    return (
+      <span className={rowClass} title={url}>
+        {inner}
+      </span>
+    )
+  }
+  return (
   <a
     href={url}
     target="_blank"
@@ -56,15 +78,10 @@ const ResultRow = ({
     className="-mx-1 flex min-w-0 items-center gap-2.5 rounded-md px-1 py-1.5 text-xs no-underline transition-colors hover:bg-hover-row focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11"
     title={url}
   >
-    <Favicon url={url} />
-    <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-      {title || hostOf(url)}
-    </span>
-    <span className="shrink-0 text-subtle-foreground">
-      {hostOf(url)}
-    </span>
+    {inner}
   </a>
-)
+  )
+}
 
 export type WebToolWidgetProps = {
   bar: Extract<ToolCallBar, { variant: 'search' | 'address' }>

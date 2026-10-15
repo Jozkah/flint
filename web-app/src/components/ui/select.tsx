@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { CheckIcon, ChevronDownIcon, SearchIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -79,6 +80,7 @@ export function Select({
   'aria-label': ariaLabel,
   'data-testid': testId,
 }: SelectProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const options: SelectOption[] = []
@@ -149,7 +151,7 @@ export function Select({
                   e.stopPropagation()
               }}
               placeholder="Filter…"
-              aria-label="Filter options"
+              aria-label={t('common:a11y.filterOptions')}
               className="w-full min-w-0 bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
           </div>

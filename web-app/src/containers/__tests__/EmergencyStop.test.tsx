@@ -190,7 +190,7 @@ describe('EmergencyStop', () => {
     render(<EmergencyStop sessionId="s1" runId="r1" onStop={onStop} />)
 
     const trigger = screen.getByTestId('emergency-stop-trigger')
-    expect(trigger).toHaveAccessibleName('Emergency stop')
+    expect(trigger).toHaveAccessibleName('common:a11y.emergencyStop')
 
     trigger.focus()
     await user.keyboard('{Enter}')

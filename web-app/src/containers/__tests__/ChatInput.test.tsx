@@ -456,7 +456,7 @@ describe('ChatInput', () => {
     renderInput({ projectId: 'project-1', projectAssistantId: 'a2' })
 
     expect(
-      screen.getByRole('button', { name: 'Switch assistant' })
+      screen.getByRole('button', { name: 'common:a11y.switchAssistant' })
     ).toHaveTextContent('Project assistant')
   })
 

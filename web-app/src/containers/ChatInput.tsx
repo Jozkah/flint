@@ -1487,6 +1487,9 @@ const ChatInput = memo(function ChatInput({
         abortControllers[threadId]?.abort()
       }
       cancelToolCall?.()
+      // The turn's per-thread canceller too: a tool still running (or waiting
+      // for approval) belongs to the turn that Stop ends.
+      useAppState.getState().cancelToolCalls[threadId]?.()
     },
     [abortControllers, cancelToolCall, onStop]
   )
@@ -3771,7 +3774,7 @@ const ChatInput = memo(function ChatInput({
                       size="icon-sm"
                       className="size-7 border-destructive/40 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive hover:shadow-none pointer-coarse:size-11"
                       data-test-id="stop-button"
-                      aria-label="Stop generating"
+                      aria-label={t('common:a11y.stopGenerating')}
                       onClick={() => {
                         // Stop always stops the run. What is queued is held,
                         // not cleared: each chip then offers Send and

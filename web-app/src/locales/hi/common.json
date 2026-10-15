@@ -2355,7 +2355,16 @@
     "tokenUsage": "टोकन उपयोग",
     "modelSleeping": "मॉडल सोया हुआ है",
     "visionSupported": "विज़न इनपुट समर्थित",
-    "audioSupported": "ऑडियो इनपुट समर्थित"
+    "audioSupported": "ऑडियो इनपुट समर्थित",
+    "stopGenerating": "जनरेशन रोकें",
+    "filterOptions": "विकल्प फ़िल्टर करें",
+    "switchAssistant": "असिस्टेंट बदलें",
+    "emergencyStop": "आपातकालीन रोक",
+    "toggleFavorite": "पसंदीदा टॉगल करें",
+    "pauseDownload": "डाउनलोड रोकें",
+    "cancelDownload": "डाउनलोड रद्द करें",
+    "decrement": "घटाएँ",
+    "increment": "बढ़ाएँ"
   },
   "attachedImages": {
     "open": "{{name}} खोलें",
@@ -2499,5 +2508,27 @@
     "previewLoading": "पूर्वावलोकन लोड हो रहा है…",
     "previewNone": "कोई पूर्वावलोकन उपलब्ध नहीं"
   },
-  "dropAttachFailed": "छोड़ी गई फ़ाइलें संलग्न नहीं हो सकीं"
+  "dropAttachFailed": "छोड़ी गई फ़ाइलें संलग्न नहीं हो सकीं",
+  "translate": {
+    "title": "अनुवादक",
+    "usingModel": "{{model}} का उपयोग हो रहा है",
+    "noModel": "मॉडल चयनकर्ता में एक मॉडल चुनें",
+    "from": "इस भाषा से अनुवाद करें",
+    "to": "इस भाषा में अनुवाद करें",
+    "detect": "भाषा पहचानें",
+    "swap": "भाषाएँ बदलें",
+    "translate": "अनुवाद करें",
+    "stop": "रोकें",
+    "copy": "अनुवाद कॉपी करें",
+    "copied": "अनुवाद कॉपी हो गया",
+    "copyFailed": "अनुवाद कॉपी नहीं हो सका",
+    "failed": "अनुवाद विफल रहा",
+    "inputPlaceholder": "अनुवाद के लिए टेक्स्ट",
+    "outputPlaceholder": "अनुवाद यहाँ दिखाई देगा"
+  },
+  "markdownImage": {
+    "load": "{{host}} से छवि लोड करें"
+  },
+  "messageSaveFailed": "संदेश सहेजा नहीं जा सका। पुनः आरंभ के बाद यह खो सकता है।",
+  "threadSaveFailed": "इस थ्रेड का बदलाव सहेजा नहीं जा सका। उसे वापस कर दिया गया।"
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
@@ -29,6 +30,7 @@ export function InputControl({
   max,
   step = 1,
 }: InputControl) {
+  const { t } = useTranslation()
   const [showPassword, setShowPassword] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
   const hasInputActions = inputActions && inputActions.length > 0
@@ -75,7 +77,7 @@ export function InputControl({
           variant="outline"
           size="icon"
           type="button"
-          aria-label="Decrement"
+          aria-label={t('common:a11y.decrement')}
           className='h-8 w-8 shrink-0 rounded-none'
           onClick={() => handleNumberAdjustment(-step)}
           disabled={min !== undefined && numericValue <= min}
@@ -86,7 +88,7 @@ export function InputControl({
           variant="outline"
           size="icon"
           type="button"
-          aria-label="Increment"
+          aria-label={t('common:a11y.increment')}
           className='h-8 w-8 shrink-0 rounded-r-md'
           onClick={() => handleNumberAdjustment(step)}
           disabled={max !== undefined && numericValue >= max}

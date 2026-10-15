@@ -2360,7 +2360,16 @@
     "tokenUsage": "토큰 사용량",
     "modelSleeping": "모델 대기 중",
     "visionSupported": "비전 입력 지원",
-    "audioSupported": "오디오 입력 지원"
+    "audioSupported": "오디오 입력 지원",
+    "stopGenerating": "생성 중지",
+    "filterOptions": "옵션 필터",
+    "switchAssistant": "어시스턴트 전환",
+    "emergencyStop": "긴급 중지",
+    "toggleFavorite": "즐겨찾기 전환",
+    "pauseDownload": "다운로드 일시중지",
+    "cancelDownload": "다운로드 취소",
+    "decrement": "감소",
+    "increment": "증가"
   },
   "attachedImages": {
     "open": "{{name}} 열기",
@@ -2496,5 +2505,27 @@
     "previewLoading": "미리 보기를 불러오는 중…",
     "previewNone": "미리 볼 수 없습니다"
   },
-  "dropAttachFailed": "끌어다 놓은 파일을 첨부할 수 없습니다"
+  "dropAttachFailed": "끌어다 놓은 파일을 첨부할 수 없습니다",
+  "translate": {
+    "title": "번역",
+    "usingModel": "{{model}} 사용 중",
+    "noModel": "모델 선택기에서 모델을 선택하세요",
+    "from": "번역 원본 언어",
+    "to": "번역 대상 언어",
+    "detect": "언어 감지",
+    "swap": "언어 바꾸기",
+    "translate": "번역",
+    "stop": "중지",
+    "copy": "번역 복사",
+    "copied": "번역을 복사했습니다",
+    "copyFailed": "번역을 복사하지 못했습니다",
+    "failed": "번역하지 못했습니다",
+    "inputPlaceholder": "번역할 텍스트",
+    "outputPlaceholder": "번역이 여기에 표시됩니다"
+  },
+  "markdownImage": {
+    "load": "{{host}}에서 이미지 불러오기"
+  },
+  "messageSaveFailed": "메시지를 저장하지 못했습니다. 다시 시작하면 사라질 수 있습니다.",
+  "threadSaveFailed": "이 스레드의 변경 사항을 저장하지 못해 되돌렸습니다."
 }

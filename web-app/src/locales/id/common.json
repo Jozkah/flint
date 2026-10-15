@@ -2317,7 +2317,16 @@
     "tokenUsage": "Penggunaan token",
     "modelSleeping": "Model tidur",
     "visionSupported": "Input visi didukung",
-    "audioSupported": "Input audio didukung"
+    "audioSupported": "Input audio didukung",
+    "stopGenerating": "Hentikan pembuatan",
+    "filterOptions": "Filter opsi",
+    "switchAssistant": "Ganti asisten",
+    "emergencyStop": "Penghentian darurat",
+    "toggleFavorite": "Alihkan favorit",
+    "pauseDownload": "Jeda unduhan",
+    "cancelDownload": "Batalkan unduhan",
+    "decrement": "Kurangi",
+    "increment": "Tambah"
   },
   "attachedImages": {
     "open": "Buka {{name}}",
@@ -2456,5 +2465,27 @@
     "previewLoading": "Memuat pratinjau…",
     "previewNone": "Pratinjau tidak tersedia"
   },
-  "dropAttachFailed": "Tidak dapat melampirkan file yang dijatuhkan"
+  "dropAttachFailed": "Tidak dapat melampirkan file yang dijatuhkan",
+  "translate": {
+    "title": "Penerjemah",
+    "usingModel": "Menggunakan {{model}}",
+    "noModel": "Pilih model di pemilih model",
+    "from": "Terjemahkan dari",
+    "to": "Terjemahkan ke",
+    "detect": "Deteksi bahasa",
+    "swap": "Tukar bahasa",
+    "translate": "Terjemahkan",
+    "stop": "Berhenti",
+    "copy": "Salin terjemahan",
+    "copied": "Terjemahan disalin",
+    "copyFailed": "Terjemahan tidak dapat disalin",
+    "failed": "Terjemahan gagal",
+    "inputPlaceholder": "Teks yang akan diterjemahkan",
+    "outputPlaceholder": "Terjemahan muncul di sini"
+  },
+  "markdownImage": {
+    "load": "Muat gambar dari {{host}}"
+  },
+  "messageSaveFailed": "Pesan tidak dapat disimpan. Pesan bisa hilang setelah dimulai ulang.",
+  "threadSaveFailed": "Perubahan pada utas ini tidak dapat disimpan. Perubahan dibatalkan."
 }

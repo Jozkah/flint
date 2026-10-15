@@ -2362,7 +2362,16 @@
     "tokenUsage": "Token 用量",
     "modelSleeping": "模型休眠中",
     "visionSupported": "支援影像輸入",
-    "audioSupported": "支援音訊輸入"
+    "audioSupported": "支援音訊輸入",
+    "stopGenerating": "停止生成",
+    "filterOptions": "篩選選項",
+    "switchAssistant": "切換助理",
+    "emergencyStop": "緊急停止",
+    "toggleFavorite": "切換我的最愛",
+    "pauseDownload": "暫停下載",
+    "cancelDownload": "取消下載",
+    "decrement": "減少",
+    "increment": "增加"
   },
   "attachedImages": {
     "open": "開啟 {{name}}",
@@ -2499,5 +2508,27 @@
     "previewLoading": "正在載入預覽…",
     "previewNone": "沒有可用的預覽"
   },
-  "dropAttachFailed": "無法附加拖放的檔案"
+  "dropAttachFailed": "無法附加拖放的檔案",
+  "translate": {
+    "title": "翻譯",
+    "usingModel": "正在使用 {{model}}",
+    "noModel": "請在模型選擇器中選擇模型",
+    "from": "來源語言",
+    "to": "目標語言",
+    "detect": "偵測語言",
+    "swap": "交換語言",
+    "translate": "翻譯",
+    "stop": "停止",
+    "copy": "複製譯文",
+    "copied": "譯文已複製",
+    "copyFailed": "無法複製譯文",
+    "failed": "翻譯失敗",
+    "inputPlaceholder": "要翻譯的文字",
+    "outputPlaceholder": "譯文會顯示在這裡"
+  },
+  "markdownImage": {
+    "load": "從 {{host}} 載入圖片"
+  },
+  "messageSaveFailed": "無法儲存訊息，重新啟動後可能遺失。",
+  "threadSaveFailed": "無法儲存對此對話的變更，已還原。"
 }

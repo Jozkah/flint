@@ -2360,7 +2360,16 @@
     "tokenUsage": "Token kullanımı",
     "modelSleeping": "Model uyuyor",
     "visionSupported": "Görsel girdi destekleniyor",
-    "audioSupported": "Ses girdisi destekleniyor"
+    "audioSupported": "Ses girdisi destekleniyor",
+    "stopGenerating": "Üretimi durdur",
+    "filterOptions": "Seçenekleri filtrele",
+    "switchAssistant": "Asistanı değiştir",
+    "emergencyStop": "Acil durdurma",
+    "toggleFavorite": "Favoriyi aç/kapat",
+    "pauseDownload": "İndirmeyi duraklat",
+    "cancelDownload": "İndirmeyi iptal et",
+    "decrement": "Azalt",
+    "increment": "Artır"
   },
   "attachedImages": {
     "open": "{{name}} dosyasını aç",
@@ -2497,5 +2506,27 @@
     "previewLoading": "Önizleme yükleniyor…",
     "previewNone": "Önizleme yok"
   },
-  "dropAttachFailed": "Bırakılan dosyalar eklenemedi"
+  "dropAttachFailed": "Bırakılan dosyalar eklenemedi",
+  "translate": {
+    "title": "Çevirmen",
+    "usingModel": "{{model}} kullanılıyor",
+    "noModel": "Model seçicisinden bir model seçin",
+    "from": "Şu dilden çevir",
+    "to": "Şu dile çevir",
+    "detect": "Dili algıla",
+    "swap": "Dilleri değiştir",
+    "translate": "Çevir",
+    "stop": "Durdur",
+    "copy": "Çeviriyi kopyala",
+    "copied": "Çeviri kopyalandı",
+    "copyFailed": "Çeviri kopyalanamadı",
+    "failed": "Çeviri başarısız oldu",
+    "inputPlaceholder": "Çevrilecek metin",
+    "outputPlaceholder": "Çeviri burada görünür"
+  },
+  "markdownImage": {
+    "load": "Görseli {{host}} adresinden yükle"
+  },
+  "messageSaveFailed": "Mesaj kaydedilemedi. Yeniden başlatmadan sonra kaybolabilir.",
+  "threadSaveFailed": "Bu konudaki değişiklik kaydedilemedi. Geri alındı."
 }

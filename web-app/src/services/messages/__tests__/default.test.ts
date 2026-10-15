@@ -51,10 +51,9 @@ describe('DefaultMessagesService', () => {
       expect(result).toEqual([{ id: 'msg1' }])
     })
 
-    it('returns empty array on extension error', async () => {
+    it('rejects on extension error instead of showing an empty thread', async () => {
       mockListMessages.mockRejectedValue(new Error('fail'))
-      const result = await svc.fetchMessages('thread-1')
-      expect(result).toEqual([])
+      await expect(svc.fetchMessages('thread-1')).rejects.toThrow('fail')
     })
   })
 
@@ -73,11 +72,16 @@ describe('DefaultMessagesService', () => {
       expect(result).toEqual({ ...msg, created: true })
     })
 
-    it('returns original message on extension error', async () => {
+    it('rejects on extension error so the lost write is surfaced', async () => {
       const msg = { thread_id: 'thread-1', id: 'msg1' } as any
       mockCreateMessage.mockRejectedValue(new Error('fail'))
-      const result = await svc.createMessage(msg)
-      expect(result).toBe(msg)
+      await expect(svc.createMessage(msg)).rejects.toThrow('fail')
+    })
+
+    it('returns the input message when the extension echoes null', async () => {
+      const msg = { thread_id: 'thread-1', id: 'msg1' } as any
+      mockCreateMessage.mockResolvedValue(null)
+      expect(await svc.createMessage(msg)).toBe(msg)
     })
   })
 
@@ -96,11 +100,10 @@ describe('DefaultMessagesService', () => {
       expect(result).toEqual({ ...msg, modified: true })
     })
 
-    it('returns original message on extension error', async () => {
+    it('rejects on extension error', async () => {
       const msg = { thread_id: 'thread-1', id: 'msg1' } as any
       mockModifyMessage.mockRejectedValue(new Error('fail'))
-      const result = await svc.modifyMessage(msg)
-      expect(result).toBe(msg)
+      await expect(svc.modifyMessage(msg)).rejects.toThrow('fail')
     })
   })
 

