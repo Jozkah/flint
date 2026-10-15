@@ -2494,5 +2494,22 @@
     "previewLoading": "プレビューを読み込んでいます…",
     "previewNone": "プレビューはありません"
   },
-  "dropAttachFailed": "ドロップしたファイルを添付できませんでした"
+  "dropAttachFailed": "ドロップしたファイルを添付できませんでした",
+  "translate": {
+    "title": "翻訳",
+    "usingModel": "{{model}} を使用中",
+    "noModel": "モデルセレクターでモデルを選択してください",
+    "from": "翻訳元",
+    "to": "翻訳先",
+    "detect": "言語を検出",
+    "swap": "言語を入れ替える",
+    "translate": "翻訳",
+    "stop": "停止",
+    "copy": "翻訳をコピー",
+    "copied": "翻訳をコピーしました",
+    "copyFailed": "翻訳をコピーできませんでした",
+    "failed": "翻訳に失敗しました",
+    "inputPlaceholder": "翻訳するテキスト",
+    "outputPlaceholder": "ここに翻訳が表示されます"
+  }
 }

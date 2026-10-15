@@ -2499,5 +2499,22 @@
     "previewLoading": "Đang tải bản xem trước…",
     "previewNone": "Không có bản xem trước"
   },
-  "dropAttachFailed": "Không thể đính kèm các tệp đã thả"
+  "dropAttachFailed": "Không thể đính kèm các tệp đã thả",
+  "translate": {
+    "title": "Dịch",
+    "usingModel": "Đang dùng {{model}}",
+    "noModel": "Chọn một mô hình trong bộ chọn mô hình",
+    "from": "Dịch từ",
+    "to": "Dịch sang",
+    "detect": "Phát hiện ngôn ngữ",
+    "swap": "Đổi chỗ ngôn ngữ",
+    "translate": "Dịch",
+    "stop": "Dừng",
+    "copy": "Sao chép bản dịch",
+    "copied": "Đã sao chép bản dịch",
+    "copyFailed": "Không thể sao chép bản dịch",
+    "failed": "Dịch thất bại",
+    "inputPlaceholder": "Văn bản cần dịch",
+    "outputPlaceholder": "Bản dịch xuất hiện ở đây"
+  }
 }

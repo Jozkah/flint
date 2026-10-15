@@ -2590,5 +2590,22 @@
     "previewLoading": "Načítání náhledu…",
     "previewNone": "Náhled není k dispozici"
   },
-  "dropAttachFailed": "Přetažené soubory se nepodařilo připojit"
+  "dropAttachFailed": "Přetažené soubory se nepodařilo připojit",
+  "translate": {
+    "title": "Překladač",
+    "usingModel": "Používá {{model}}",
+    "noModel": "Vyberte model ve výběru modelů",
+    "from": "Přeložit z",
+    "to": "Přeložit do",
+    "detect": "Rozpoznat jazyk",
+    "swap": "Prohodit jazyky",
+    "translate": "Přeložit",
+    "stop": "Zastavit",
+    "copy": "Kopírovat překlad",
+    "copied": "Překlad zkopírován",
+    "copyFailed": "Překlad se nepodařilo zkopírovat",
+    "failed": "Překlad selhal",
+    "inputPlaceholder": "Text k překladu",
+    "outputPlaceholder": "Překlad se zobrazí zde"
+  }
 }

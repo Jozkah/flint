@@ -2587,5 +2587,22 @@
     "previewLoading": "Wczytywanie podglądu…",
     "previewNone": "Podgląd niedostępny"
   },
-  "dropAttachFailed": "Nie udało się dołączyć upuszczonych plików"
+  "dropAttachFailed": "Nie udało się dołączyć upuszczonych plików",
+  "translate": {
+    "title": "Tłumacz",
+    "usingModel": "Używa {{model}}",
+    "noModel": "Wybierz model w selektorze modeli",
+    "from": "Tłumacz z",
+    "to": "Tłumacz na",
+    "detect": "Wykryj język",
+    "swap": "Zamień języki",
+    "translate": "Tłumacz",
+    "stop": "Zatrzymaj",
+    "copy": "Kopiuj tłumaczenie",
+    "copied": "Skopiowano tłumaczenie",
+    "copyFailed": "Nie udało się skopiować tłumaczenia",
+    "failed": "Tłumaczenie nie powiodło się",
+    "inputPlaceholder": "Tekst do przetłumaczenia",
+    "outputPlaceholder": "Tłumaczenie pojawi się tutaj"
+  }
 }
