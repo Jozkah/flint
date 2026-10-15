@@ -1186,7 +1186,7 @@ mod located_tests {
     /// PowerShell, which parses it exactly as the sandboxed one does.
     #[cfg(windows)]
     fn run_wrapped(command: &str) -> (i32, String, String) {
-        let ws = std::env::temp_dir().join(format!(
+        let ws = crate::test_temp_root().join(format!(
             "jan-wrapped-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
