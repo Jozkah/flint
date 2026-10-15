@@ -118,7 +118,7 @@ async fn execute(plan: &Plan, cwd: &Path) -> String {
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .creation_flags(0x0800_0000);
-    match tokio::time::timeout(plan.timeout, cmd.output()).await {
+    match crate::tools::owned::output_with_timeout(&mut cmd, plan.timeout).await {
         Err(_) => format!(
             "ERROR: the script had not finished after {} seconds and was stopped. Run less at once, or raise timeout_secs (up to {MAX_TIMEOUT_SECS}).",
             plan.timeout.as_secs()

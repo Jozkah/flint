@@ -1617,8 +1617,21 @@ mod win {
         }
         let (roots, read_roots) = super::union_roots(&needs);
         let (roots, read_roots) = (&roots[..], read_roots);
-        let (old_write, old_read) =
-            super::parse_roots_record(&std::fs::read_to_string(record).unwrap_or_default());
+        let listed = super::roots_record(roots, &read_roots);
+        let recorded = std::fs::read_to_string(record).unwrap_or_default();
+        // Report-04 F8: every bash command lands here, and re-applying the
+        // same grants walks up to 50k entries. Skip when this process already
+        // applied exactly this set, the record still says so, and every
+        // isolated `.jan` is still in place.
+        let applied = APPLIED_UNION.get_or_init(Default::default);
+        if recorded == listed
+            && applied.lock().ok().and_then(|m| m.get(record).cloned()).as_deref()
+                == Some(listed.as_str())
+            && roots.iter().all(|r| r.join(crate::tools::sandbox::JAN_DIR).is_dir())
+        {
+            return Ok(());
+        }
+        let (old_write, old_read) = super::parse_roots_record(&recorded);
         let previous: Vec<PathBuf> = old_write.into_iter().chain(old_read).collect();
         for step in root_acl_plan(&previous, roots, &read_roots, |p| p.is_dir()) {
             match step {
@@ -1658,9 +1671,17 @@ mod win {
         if let Some(parent) = record.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
-        let listed = super::roots_record(roots, &read_roots);
-        std::fs::write(record, listed).map_err(|e| format!("{}: {e}", record.display()))
+        std::fs::write(record, &listed).map_err(|e| format!("{}: {e}", record.display()))?;
+        if let Ok(mut m) = applied.lock() {
+            m.insert(record.to_path_buf(), listed);
+        }
+        Ok(())
     }
+
+    /// The root set this process last applied, per container record.
+    static APPLIED_UNION: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<PathBuf, String>>,
+    > = std::sync::OnceLock::new();
 
     /// Give `path` a protected DACL holding every ACE it has now, explicit or
     /// inherited, except those naming `sid`. Inherited ACEs are kept as

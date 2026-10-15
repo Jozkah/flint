@@ -28,6 +28,12 @@ const MIN_REPORTED_SIMILARITY: f64 = 0.5;
 /// it is quadratic, and a near-match of that size is better re-read than guessed.
 const MAX_FUZZY_CHARS: usize = 8_000;
 
+/// Total Levenshtein cells (window chars x wanted chars) one edit may spend.
+/// The pass runs on the caller's thread, so a large file with many candidate
+/// windows must not stall it for seconds (report-04 F7); past the budget the
+/// remaining windows are not scored.
+const FUZZY_CELL_BUDGET: usize = 40_000_000;
+
 /// A resolved edit location: the byte range of `content` to replace and the
 /// text to put there.
 #[derive(Debug, PartialEq, Eq)]
@@ -309,6 +315,7 @@ pub fn resolve(content: &str, old: &str, new: &str) -> Result<Resolved, MatchErr
 
     let want_len = want.chars().count();
     let mut scored: Vec<(usize, f64)> = Vec::new();
+    let mut budget = FUZZY_CELL_BUDGET;
     for (s, w) in windows.iter().enumerate() {
         let wl = w.chars().count();
         if wl > MAX_FUZZY_CHARS || want_len > MAX_FUZZY_CHARS {
@@ -320,6 +327,13 @@ pub fn resolve(content: &str, old: &str, new: &str) -> Result<Resolved, MatchErr
         if bound < SIMILARITY_THRESHOLD && !scored.is_empty() && bound < best_of(&scored) {
             continue;
         }
+        let cells = wl.saturating_mul(want_len);
+        if cells > budget {
+            // Unscored windows could tie or beat any candidate so far, so a
+            // pick now could edit the wrong place: no fuzzy match at all.
+            return Err(MatchError::NotFound { closest: None });
+        }
+        budget -= cells;
         scored.push((s, similarity(w, &want)));
     }
     let passing: Vec<&(usize, f64)> =
@@ -415,6 +429,18 @@ mod tests {
             MatchError::Ambiguous { lines } => assert_eq!(lines, vec![1, 3]),
             e => panic!("unexpected {e:?}"),
         }
+    }
+
+    #[test]
+    fn a_huge_fuzzy_search_gives_up_instead_of_stalling() {
+        // ~4k-char windows x ~4k-char wanted text x 4k windows is far past the
+        // budget; it must return quickly, and never pick a site.
+        let line = "x".repeat(4_000);
+        let content = std::iter::repeat(line.as_str()).take(4_000).collect::<Vec<_>>().join("\n");
+        let old = format!("{}y", "x".repeat(3_999));
+        let started = std::time::Instant::now();
+        assert!(matches!(resolve(&content, &old, "z"), Err(MatchError::NotFound { .. })));
+        assert!(started.elapsed() < std::time::Duration::from_secs(20));
     }
 
     #[test]

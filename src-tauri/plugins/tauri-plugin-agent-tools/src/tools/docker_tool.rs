@@ -191,7 +191,7 @@ pub async fn docker(args: &Value) -> String {
         .env("COMPOSE_ANSI", "never");
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
-    let run = tokio::time::timeout(Duration::from_secs(TIMEOUT_SECS), cmd.output()).await;
+    let run = crate::tools::owned::output_with_timeout(&mut cmd, Duration::from_secs(TIMEOUT_SECS)).await;
     match run {
         Err(_) => format!("ERROR: docker did not finish in {TIMEOUT_SECS} seconds and was stopped."),
         Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => {

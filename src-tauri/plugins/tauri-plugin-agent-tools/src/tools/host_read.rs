@@ -380,7 +380,7 @@ pub(crate) async fn capture(mut cmd: tokio::process::Command, timeout: Duration)
         .kill_on_drop(true);
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
-    match tokio::time::timeout(timeout, cmd.output()).await {
+    match crate::tools::owned::output_with_timeout(&mut cmd, timeout).await {
         Err(_) => Err(CaptureError::Timeout),
         Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => Err(CaptureError::NotFound),
         Ok(Err(e)) => Err(CaptureError::Io(e.to_string())),

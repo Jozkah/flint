@@ -1332,7 +1332,7 @@ pub async fn check_repo_config(cwd: &Path) -> Result<(), String> {
         .kill_on_drop(true);
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
-    let out = match tokio::time::timeout(Duration::from_secs(30), cmd.output()).await {
+    let out = match crate::tools::owned::output_with_timeout(&mut cmd, Duration::from_secs(30)).await {
         Ok(Ok(out)) => out,
         _ => return Err("could not read this repository's Git configuration".into()),
     };
@@ -1479,7 +1479,7 @@ async fn quiet_output(bin: &Path, args: &[&str], cwd: &Path) -> Option<String> {
         .kill_on_drop(true);
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
-    let out = tokio::time::timeout(Duration::from_secs(20), cmd.output())
+    let out = crate::tools::owned::output_with_timeout(&mut cmd, Duration::from_secs(20))
         .await
         .ok()?
         .ok()?;
@@ -1790,7 +1790,7 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
         LOCAL_TIMEOUT_SECS
     };
     let shown = crate::secrets::redact_secrets(&plan.display());
-    let out = match tokio::time::timeout(Duration::from_secs(secs), cmd.output()).await {
+    let out = match crate::tools::owned::output_with_timeout(&mut cmd, Duration::from_secs(secs)).await {
         Err(_) => return format!("ERROR: `{shown}` timed out after {secs}s and was stopped"),
         Ok(Err(e)) => return format!("ERROR: could not start {}: {e}", plan.program.as_str()),
         Ok(Ok(out)) => out,
