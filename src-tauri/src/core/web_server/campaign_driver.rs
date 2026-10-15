@@ -155,6 +155,7 @@ pub struct OpenedSession {
     pub base_sha: String,
 }
 
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Host: Send + Sync + 'static {
     fn data(&self) -> PathBuf;
