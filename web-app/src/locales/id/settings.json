@@ -363,7 +363,9 @@
     "loadFailed": "Tidak dapat memuat workspace agen",
     "saveFailed": "Tidak dapat menyimpan",
     "deleteFailed": "Tidak dapat menghapus",
-    "revealFailed": "Tidak dapat membuka folder"
+    "revealFailed": "Tidak dapat membuka folder",
+    "nameExists": "\"{{name}}\" sudah ada. Pilih nama lain atau edit yang sudah ada.",
+    "deleted": "\"{{name}}\" dihapus"
   },
   "localApiServer": {
     "title": "Server API Lokal",

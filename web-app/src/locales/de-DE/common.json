@@ -1048,7 +1048,8 @@
     "compact": "Komprimieren",
     "compacting": "Wird komprimiert…",
     "compactFailed": "Noch nichts zu komprimieren.",
-    "newSession": "Neue Sitzung"
+    "newSession": "Neue Sitzung",
+    "compactSuperseded": "Die Unterhaltung hat sich während des Komprimierens geändert, daher wurde nichts ersetzt. Bitte erneut komprimieren."
   },
   "autoCompactNeedsWindow": "Die automatische Komprimierung braucht eine Kontextgröße, und für {{model}} kann Flint keine finden. Lege für dieses Modell „Max. Kontext-Tokens“ fest, damit lange Chats komprimiert werden, bevor sie ihn füllen. Wenn der Anbieter eine Anfrage wegen ihrer Länge ablehnt, komprimiert Flint und versucht es einmal erneut.",
   "compaction": {
@@ -2530,5 +2531,6 @@
     "load": "Bild von {{host}} laden"
   },
   "messageSaveFailed": "Die Nachricht konnte nicht gespeichert werden. Sie geht nach einem Neustart eventuell verloren.",
-  "threadSaveFailed": "Die Änderung an diesem Thread konnte nicht gespeichert werden. Sie wurde zurückgesetzt."
+  "threadSaveFailed": "Die Änderung an diesem Thread konnte nicht gespeichert werden. Sie wurde zurückgesetzt.",
+  "attachmentsProcessFailed": "Die Anhänge konnten nicht vorbereitet werden, daher wurde die Nachricht nicht gesendet"
 }

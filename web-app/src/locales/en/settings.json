@@ -365,7 +365,9 @@
     "loadFailed": "Could not load the agent workspace",
     "saveFailed": "Could not save",
     "deleteFailed": "Could not delete",
-    "revealFailed": "Could not open the folder"
+    "revealFailed": "Could not open the folder",
+    "nameExists": "\"{{name}}\" already exists. Choose another name or edit the existing one.",
+    "deleted": "Deleted \"{{name}}\""
   },
   "localApiServer": {
     "title": "Local API Server",

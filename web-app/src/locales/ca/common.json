@@ -1056,7 +1056,8 @@
     "compact": "Compacta",
     "compacting": "Compactant…",
     "compactFailed": "Encara no hi ha res a compactar.",
-    "newSession": "Sessió nova"
+    "newSession": "Sessió nova",
+    "compactSuperseded": "La conversa ha canviat mentre es compactava, així que no s'ha substituït res. Torna-la a compactar."
   },
   "autoCompactNeedsWindow": "La compactació automàtica necessita una mida de context, i {{model}} no en té cap que Flint pugui trobar. Estableix el màxim de tokens de context per a aquest model perquè els xats llargs es compactin abans d'omplir-lo. Si el proveïdor rebutja una petició per la seva longitud, Flint compacta i ho torna a provar una vegada.",
   "compaction": {
@@ -2575,5 +2576,6 @@
     "load": "Carrega la imatge de {{host}}"
   },
   "messageSaveFailed": "No s'ha pogut desar el missatge. Es pot perdre després de reiniciar.",
-  "threadSaveFailed": "No s'ha pogut desar el canvi d'aquest fil. S'ha revertit."
+  "threadSaveFailed": "No s'ha pogut desar el canvi d'aquest fil. S'ha revertit.",
+  "attachmentsProcessFailed": "No s'han pogut preparar els adjunts, així que el missatge no s'ha enviat"
 }

@@ -365,7 +365,9 @@
     "loadFailed": "エージェントのワークスペースを読み込めませんでした",
     "saveFailed": "保存できませんでした",
     "deleteFailed": "削除できませんでした",
-    "revealFailed": "フォルダーを開けませんでした"
+    "revealFailed": "フォルダーを開けませんでした",
+    "nameExists": "「{{name}}」は既に存在します。別の名前を選ぶか、既存のものを編集してください。",
+    "deleted": "「{{name}}」を削除しました"
   },
   "localApiServer": {
     "title": "ローカルAPIサーバー",

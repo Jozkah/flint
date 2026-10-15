@@ -24,29 +24,32 @@ export function FactoryResetDialog({
   children,
 }: FactoryResetDialogProps) {
   const { t } = useTranslation()
-  const resetButtonRef = useRef<HTMLButtonElement>(null)
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
+  const resetting = useRef(false)
   const [keepAppData, setKeepAppData] = useState(true)
   const [keepModelsAndConfigs, setKeepModelsAndConfigs] = useState(true)
   const [clearWebData, setClearWebData] = useState(false)
 
+  // One reset per confirmation: a key press can also fire the click.
   const handleReset = () => {
+    if (resetting.current) return
+    resetting.current = true
     onReset({ keepAppData, keepModelsAndConfigs, clearWebData })
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleReset()
-    }
-  }
-
   return (
-    <Dialog>
+    <Dialog
+      onOpenChange={(open) => {
+        if (open) resetting.current = false
+      }}
+    >
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent
         className="sm:max-w-[440px] lg:max-w-[440px] xl:max-w-[440px]"
         onOpenAutoFocus={(e) => {
           e.preventDefault()
-          resetButtonRef.current?.focus()
+          // Focus starts on Cancel, so a reflexive Enter resets nothing.
+          cancelButtonRef.current?.focus()
         }}
       >
         <DialogHeader>
@@ -108,6 +111,7 @@ export function FactoryResetDialog({
           <DialogFooter className={STICKY_DIALOG_FOOTER}>
             <DialogClose asChild>
               <Button
+                ref={cancelButtonRef}
                 variant="surface"
                 className="w-full sm:w-auto pointer-coarse:h-11"
               >
@@ -116,10 +120,8 @@ export function FactoryResetDialog({
             </DialogClose>
             <DialogClose asChild>
               <Button
-                ref={resetButtonRef}
                 variant="destructive"
                 onClick={handleReset}
-                onKeyDown={handleKeyDown}
                 className="w-full sm:w-auto pointer-coarse:h-11"
                 aria-label={t('settings:general.reset')}
               >

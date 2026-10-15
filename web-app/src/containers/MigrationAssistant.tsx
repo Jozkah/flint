@@ -598,11 +598,12 @@ export function MigrationAssistant() {
                 {t('common:migration.migrate')}
               </Button>
             )}
+            {/* Same test as the body: a throw (no result) or a complete
+                status with an error is a failure, and keeps Roll back. */}
             {step === 'result' &&
-              result &&
-              result.status !== 'complete' && (
+              !(result?.status === 'complete' && !result.error) && (
                 <>
-                  {!(result.rolled_back || rolledBack) && (
+                  {!(result?.rolled_back || rolledBack) && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -622,7 +623,8 @@ export function MigrationAssistant() {
                 </>
               )}
             {step === 'result' &&
-              (!result || result.status === 'complete') && (
+              result?.status === 'complete' &&
+              !result.error && (
                 <Button
                   size="sm"
                   onClick={() => {

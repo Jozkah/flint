@@ -15,5 +15,6 @@
   "levelDebug": "Débogage",
   "shown": "{{shown}} lignes sur {{total}}",
   "description": "Tout ce que Flint et son moteur ont écrit aujourd'hui. Les plus récents en premier.",
-  "serverDescription": "Requêtes adressées au serveur d'API local compatible OpenAI. Les plus récentes en premier."
+  "serverDescription": "Requêtes adressées au serveur d'API local compatible OpenAI. Les plus récentes en premier.",
+  "olderHidden": "{{count}} lignes plus anciennes ne sont pas affichées. Recherchez-les ou ouvrez le fichier journal."
 }

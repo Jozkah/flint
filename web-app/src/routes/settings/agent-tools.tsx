@@ -182,6 +182,16 @@ function AgentToolsContent() {
     if (!editor) return
     const name = editor.name.trim()
     if (!name) return
+    // Writing has no create-only mode: a new (or renamed) entry must not
+    // silently overwrite one that already has this name.
+    const taken =
+      editor.kind === 'skill'
+        ? skills.some((s) => s.name === name)
+        : memories.includes(name)
+    if (taken && name !== editor.original) {
+      toast.error(t('settings:agentTools.nameExists', { name }))
+      return
+    }
     setSaving(true)
     try {
       if (editor.kind === 'skill') await writeSkill(name, editor.content)
@@ -199,9 +209,30 @@ function AgentToolsContent() {
 
   const remove = async (kind: EntryKind, name: string) => {
     try {
+      // Kept so the toast can undo a mistaken click on the trash icon.
+      const content =
+        kind === 'skill' ? await readSkill(name) : await readMemory(name)
       if (kind === 'skill') await deleteSkill(name)
       else await deleteMemory(name)
       await refresh()
+      toast.success(t('settings:agentTools.deleted', { name }), {
+        action: {
+          label: t('common:undo'),
+          onClick: () => {
+            void (async () => {
+              try {
+                if (kind === 'skill') await writeSkill(name, content)
+                else await writeMemory(name, content)
+                await refresh()
+              } catch (e) {
+                toast.error(t('settings:agentTools.saveFailed'), {
+                  description: messageOf(e),
+                })
+              }
+            })()
+          },
+        },
+      })
     } catch (e) {
       toast.error(t('settings:agentTools.deleteFailed'), {
         description: messageOf(e),

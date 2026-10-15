@@ -15,5 +15,6 @@
   "levelDebug": "Debug",
   "shown": "{{shown}} von {{total}} Zeilen",
   "description": "Alles, was Flint und seine Engine heute geschrieben haben. Neueste zuerst.",
-  "serverDescription": "Anfragen an den OpenAI-kompatiblen lokalen API-Server. Neueste zuerst."
+  "serverDescription": "Anfragen an den OpenAI-kompatiblen lokalen API-Server. Neueste zuerst.",
+  "olderHidden": "{{count}} ältere Zeilen werden nicht angezeigt. Suche oder öffne die Logdatei, um sie zu sehen."
 }

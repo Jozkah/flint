@@ -502,27 +502,30 @@ function MCPServersDesktop() {
 
   const handleSaveServer = async (name: string, config: MCPServerConfig) => {
     if (editingKey) {
+      // Editing restarts a running server and leaves a stopped one stopped.
+      // The stop is awaited: a late deactivate cancels the fresh start.
+      const wasActive = !!mcpServers[editingKey]?.active
       // If server name changed, rename it while preserving position
       if (editingKey !== name) {
-        toggleServer(editingKey, false)
-        renameServer(editingKey, name, config)
-        toggleServer(name, true, config)
+        await toggleServer(editingKey, false)
+        renameServer(editingKey, name, { ...config, active: wasActive })
+        if (wasActive) await toggleServer(name, true, config)
         // Grants never follow a rename: the approval was for the old name,
         // and its OAuth tokens may belong to an endpoint the edit changed.
         forgetServerGrants(editingKey, 'renamed', name)
         // Restart servers to update tool references with new server name
         syncServersAndRestart()
       } else {
-        toggleServer(editingKey, false)
-        editServer(editingKey, config)
-        toggleServer(editingKey, true, config)
+        await toggleServer(editingKey, false)
+        editServer(editingKey, { ...config, active: wasActive })
+        if (wasActive) await toggleServer(editingKey, true, config)
         syncServers()
       }
     } else {
       // Add new server
-      toggleServer(name, false)
+      await toggleServer(name, false)
       addServer(name, config)
-      toggleServer(name, true, config)
+      await toggleServer(name, true, config)
       syncServers()
     }
   }
@@ -597,14 +600,13 @@ function MCPServersDesktop() {
         }
   ) => {
     if (jsonServerName) {
-      try {
-        toggleServer(jsonServerName, false)
-      } catch (error) {
-        console.error('Error deactivating server:', error)
-      }
+      await toggleServer(jsonServerName, false)
       // Save single server
       editServer(jsonServerName, data as MCPServerConfig)
-      toggleServer(jsonServerName, (data as MCPServerConfig).active || false)
+      await toggleServer(
+        jsonServerName,
+        (data as MCPServerConfig).active || false
+      )
     } else {
       // Save all servers
       let nextServers: Record<string, MCPServerConfig> = {}
@@ -630,11 +632,14 @@ function MCPServersDesktop() {
         })
       }
 
-      // Clear existing servers first
-      Object.keys(mcpServers).forEach((serverKey) => {
-        toggleServer(serverKey, false)
-        deleteServer(serverKey)
-      })
+      // Clear existing servers first, and wait for them to stop
+      await Promise.all(
+        Object.keys(mcpServers).map((serverKey) => {
+          const stopped = toggleServer(serverKey, false)
+          deleteServer(serverKey)
+          return stopped
+        })
+      )
 
       // A name that is not in the edited JSON is gone, whatever else was
       // added: forget its grants. A name that stays keeps them, and any edit
@@ -757,7 +762,7 @@ function MCPServersDesktop() {
     serverKey: string,
     active: boolean,
     configOverride?: MCPServerConfig
-  ) => {
+  ): Promise<void> => {
     if (serverKey) {
       setLoadingServers((prev) => ({ ...prev, [serverKey]: true }))
       // React state updates asynchronously; save can activate a server before
@@ -767,7 +772,7 @@ function MCPServersDesktop() {
         const transport = transportOf(config)
         setRuntime((prev) => ({ ...prev, [serverKey]: beginActivation() }))
         let started = false
-        serviceHub
+        return serviceHub
           .mcp()
           .activateMCPServer(serverKey, { ...config, active })
           .then(async () => {
@@ -831,15 +836,19 @@ function MCPServersDesktop() {
           active,
         })
         syncServers()
-        serviceHub
+        return serviceHub
           .mcp()
           .deactivateMCPServer(serverKey)
+          .catch((error) => {
+            console.error('Error deactivating server:', error)
+          })
           .finally(() => {
             refreshConnectedServers()
             setLoadingServers((prev) => ({ ...prev, [serverKey]: false }))
           })
       }
     }
+    return Promise.resolve()
   }
 
   useEffect(() => {

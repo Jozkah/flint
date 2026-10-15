@@ -369,7 +369,9 @@
     "loadFailed": "Nie udało się wczytać przestrzeni roboczej agenta",
     "saveFailed": "Nie udało się zapisać",
     "deleteFailed": "Nie udało się usunąć",
-    "revealFailed": "Nie udało się otworzyć folderu"
+    "revealFailed": "Nie udało się otworzyć folderu",
+    "nameExists": "„{{name}}” już istnieje. Wybierz inną nazwę lub edytuj istniejący wpis.",
+    "deleted": "Usunięto „{{name}}”"
   },
   "localApiServer": {
     "title": "Lokalny Serwer API",

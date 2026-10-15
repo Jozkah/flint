@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { campaignApi } from '@/lib/campaignApi'
@@ -25,6 +25,11 @@ export function ServerPlanApproval({
     allowBypass ? 'worktree' : 'ask'
   )
   const [busy, setBusy] = useState(false)
+  // The operator can lose --agent-allow-bypass after mount (a reconnect):
+  // never submit a mode the select no longer offers.
+  useEffect(() => {
+    if (!allowBypass) setAccess('ask')
+  }, [allowBypass])
 
   const run = async (work: () => Promise<unknown>) => {
     setBusy(true)

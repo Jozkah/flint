@@ -1369,7 +1369,8 @@ export function ThreadConversation({
                 state: 'output-error',
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
-                errorText: `Error: ${JSON.stringify(error)}`,
+                // An Error stringifies to {}, which hid the reason.
+                errorText: `Error: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
               })
             }
           } finally {
@@ -2024,6 +2025,12 @@ export function ThreadConversation({
               prev.filter((m) => m.id !== messageId)
             )
           }
+          // Hand the draft back, as a cancelled send does, and say why.
+          setAttachmentsForThread(attachmentsKey, () => allAttachments)
+          usePrompt.getState().setPrompt(text)
+          toast.error(t('common:attachmentsProcessFailed'), {
+            description: error instanceof Error ? error.message : String(error),
+          })
           return
         } finally {
           useAppState.getState().setThreadEmbedding(threadId, false)
@@ -2105,6 +2112,7 @@ export function ThreadConversation({
       clearAttachmentsForThread,
       serviceHub,
       selectedProvider,
+      t,
     ]
   )
 

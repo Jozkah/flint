@@ -18,12 +18,29 @@ function LogsViewer() {
 
   useEffect(() => {
     // The viewer keeps the newest line in view while it follows the log.
+    // One read at a time, no re-render when nothing was appended, and a
+    // failed read (unreadable file) is logged rather than left unhandled.
+    let reading = false
     function updateLogs() {
+      if (reading) return
+      reading = true
       serviceHub
         .app()
         .readLogs()
         .then((logData) => {
-          setLogs(logData.filter(Boolean) as LogEntry[])
+          const next = logData.filter(Boolean) as LogEntry[]
+          setLogs((prev) =>
+            prev.length === next.length &&
+            prev[prev.length - 1]?.timestamp ===
+              next[next.length - 1]?.timestamp &&
+            prev[prev.length - 1]?.message === next[next.length - 1]?.message
+              ? prev
+              : next
+          )
+        })
+        .catch((error) => console.error('Failed to read logs:', error))
+        .finally(() => {
+          reading = false
         })
     }
     updateLogs()

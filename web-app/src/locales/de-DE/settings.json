@@ -365,7 +365,9 @@
     "loadFailed": "Der Agent-Arbeitsbereich konnte nicht geladen werden",
     "saveFailed": "Speichern fehlgeschlagen",
     "deleteFailed": "Löschen fehlgeschlagen",
-    "revealFailed": "Der Ordner konnte nicht geöffnet werden"
+    "revealFailed": "Der Ordner konnte nicht geöffnet werden",
+    "nameExists": "\"{{name}}\" existiert bereits. Wähle einen anderen Namen oder bearbeite den vorhandenen Eintrag.",
+    "deleted": "\"{{name}}\" gelöscht"
   },
   "localApiServer": {
     "title": "Lokaler API Server",

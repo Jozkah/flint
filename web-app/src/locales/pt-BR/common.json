@@ -1055,7 +1055,8 @@
     "compact": "Compactar",
     "compacting": "Compactando…",
     "compactFailed": "Nada para compactar ainda.",
-    "newSession": "Nova sessão"
+    "newSession": "Nova sessão",
+    "compactSuperseded": "A conversa mudou enquanto era compactada, então nada foi substituído. Compacte novamente."
   },
   "autoCompactNeedsWindow": "A compactação automática precisa de um tamanho de contexto, e o {{model}} não tem nenhum que o Flint consiga encontrar. Defina Máx. de tokens de contexto para este modelo para que chats longos sejam compactados antes de enchê-lo. Se o provedor recusar uma requisição por causa do tamanho, o Flint compacta e tenta uma vez mais.",
   "compaction": {
@@ -2573,5 +2574,6 @@
     "load": "Carregar imagem de {{host}}"
   },
   "messageSaveFailed": "Não foi possível salvar a mensagem. Ela pode ser perdida após reiniciar.",
-  "threadSaveFailed": "Não foi possível salvar a alteração nesta conversa. Ela foi revertida."
+  "threadSaveFailed": "Não foi possível salvar a alteração nesta conversa. Ela foi revertida.",
+  "attachmentsProcessFailed": "Não foi possível preparar os anexos, então a mensagem não foi enviada"
 }

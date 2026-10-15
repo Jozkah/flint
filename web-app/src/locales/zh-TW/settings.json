@@ -365,7 +365,9 @@
     "loadFailed": "無法載入代理程式工作區",
     "saveFailed": "無法儲存",
     "deleteFailed": "無法刪除",
-    "revealFailed": "無法開啟資料夾"
+    "revealFailed": "無法開啟資料夾",
+    "nameExists": "「{{name}}」已存在。請換一個名稱或編輯現有項目。",
+    "deleted": "已刪除「{{name}}」"
   },
   "localApiServer": {
     "title": "本機 API 伺服器",

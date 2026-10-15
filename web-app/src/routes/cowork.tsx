@@ -1815,8 +1815,11 @@ export function CoworkPage() {
         ? given
         : await serviceHub.dialog().open({ directory: true })
     if (typeof picked !== 'string') return
+    // A split-view pane's session is never the global current one, so it is
+    // compared against the pane's own id.
     if (openingSessionId &&
-      useCoworkSessions.getState().currentId !== openingSessionId) return
+      (paneSessionIdRef.current ?? useCoworkSessions.getState().currentId) !==
+        openingSessionId) return
     const sid = ensureCurrentSession(paneSessionIdRef.current)
     if (!useCoworkRun.getState().runs[sid] && authorityMayChange(sid))
       useCoworkSessions.getState().setFolder(sid, picked)
@@ -5048,6 +5051,7 @@ export function CoworkPage() {
       // Defaults: a manual compaction was asked for either way.
     }
     setCompacting(true)
+    const snapshot = cur.messages
     try {
       const result = await compactHistory(cur.messages ?? [], {
         summarize: modelSummarizer({
@@ -5065,6 +5069,15 @@ export function CoworkPage() {
       })
       if (!result) {
         toast.info(t('common:budget.compactFailed'))
+        return
+      }
+      // A message sent while the summary was being written changed the
+      // history: committing the summary would silently drop that exchange.
+      const latest = useCoworkSessions
+        .getState()
+        .sessions.find((one) => one.id === sid)
+      if (latest?.messages !== snapshot) {
+        toast.info(t('common:budget.compactSuperseded'))
         return
       }
       useCoworkSessions
