@@ -23,6 +23,8 @@ export interface EnsureModelDeps {
   onLoadEnd?: () => void
 }
 
+const LOCAL_ENGINES = ['llamacpp', 'mlx'] as const
+
 /** Find the provider that owns a given model ID. */
 function findProviderForModel(modelId: string): ModelProvider | undefined {
   return useModelProvider
@@ -57,12 +59,17 @@ export async function ensureModelForServer(
 ): Promise<EnsureModelResult> {
   const { modelsService, modelOverride, onLoadStart, onLoadEnd } = deps
 
-  const loadedModels = await modelsService.getActiveModels()
-
-  if (loadedModels && loadedModels.length > 0) {
-    const modelId = loadedModels[0]
-    const providerName = findProviderForModel(modelId)?.provider ?? 'llamacpp'
-    return { status: 'already_loaded', modelId, providerName }
+  // Both local engines count: starting a GGUF model with bypassAutoUnload
+  // while an MLX model is loaded would keep two large models in memory.
+  for (const engine of LOCAL_ENGINES) {
+    const loadedModels = await modelsService
+      .getActiveModels(engine)
+      .catch(() => [] as string[])
+    if (loadedModels && loadedModels.length > 0) {
+      const modelId = loadedModels[0]
+      const providerName = findProviderForModel(modelId)?.provider ?? engine
+      return { status: 'already_loaded', modelId, providerName }
+    }
   }
 
   // No model loaded — pick one (prefer user-configured default, then auto-pick)

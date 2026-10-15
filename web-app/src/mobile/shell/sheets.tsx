@@ -95,7 +95,10 @@ function ReasonSheet({ props }: { props: Props }) {
 function ModeSheet({ props }: { props: Props }) {
   const current = str(props.value) ?? app.get().composer.cwMode
   const id = str(props.id)
-  return <><Title>{t('home.mayDo')}</Title>{COWORK_MODES.map((m) => <Opt key={m.id} title={m.label} sub={m.sub} selected={current === m.id} onClick={() => { closeSheet(); if (!id) app.set((s) => ({ composer: { ...s.composer, cwMode: m.id } })); else void act('settings.set', { scope: 'cowork', id, mode: m.id }, m.label).then(() => invalidate(['cowork.get'])) }} />)}</>
+  const perms = usePhonePermissions()
+  // Bypass runs every tool unasked and Auto answers some approvals itself:
+  // the computer refuses them from a phone that may not approve.
+  return <><Title>{t('home.mayDo')}</Title>{COWORK_MODES.map((m) => m.id === 'bypass' || (m.id === 'auto' && !perms.approvals) ? <DesktopOnly key={m.id} title={m.label} sub={m.sub} /> : <Opt key={m.id} title={m.label} sub={m.sub} selected={current === m.id} onClick={() => { closeSheet(); if (!id) app.set((s) => ({ composer: { ...s.composer, cwMode: m.id } })); else void act('settings.set', { scope: 'cowork', id, mode: m.id }, m.label).then(() => invalidate(['cowork.get'])) }} />)}</>
 }
 
 function AccessSheet({ props }: { props: Props }) {

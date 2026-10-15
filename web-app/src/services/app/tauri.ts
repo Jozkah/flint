@@ -26,10 +26,17 @@ export class TauriAppService extends DefaultAppService {
    */
   async factoryReset(options?: FactoryResetOptions): Promise<void> {
     const { EngineManager } = await import('@janhq/core')
+    // A crashed engine must not block the reset: unload what can be unloaded.
     for (const [, engine] of EngineManager.instance().engines) {
-      const activeModels = await engine.getLoadedModels()
-      if (activeModels) {
-        await Promise.all(activeModels.map((model: string) => engine.unload(model)))
+      try {
+        const activeModels = await engine.getLoadedModels()
+        if (activeModels) {
+          await Promise.allSettled(
+            activeModels.map((model: string) => engine.unload(model))
+          )
+        }
+      } catch (error) {
+        console.error('Unloading models before reset failed:', error)
       }
     }
 

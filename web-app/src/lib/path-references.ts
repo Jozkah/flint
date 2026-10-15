@@ -131,7 +131,9 @@ export function stripPromptReferences(text: string): string {
     // expands it downstream, and it is the only trace of what was selected.
     return !lineRangeOf(raw) && isReferenceToken(raw) ? pre : match
   })
-  return cleaned.replace(/\s+/g, ' ').trim()
+  // Only the gaps a removed token leaves: line breaks and indentation in
+  // pasted code, lists and stack traces stay as written.
+  return cleaned.replace(/(\S)[ \t]{2,}/g, '$1 ').replace(/[ \t]+$/gm, '').trim()
 }
 
 /**

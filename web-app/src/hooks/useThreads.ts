@@ -15,7 +15,7 @@ import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { cleanupThreadWorkspace } from '@/lib/agentTools'
-import { trackArchiveWork } from '@/lib/archive'
+import { archiveEnabled, trackArchiveWork } from '@/lib/archive'
 
 type ThreadState = {
   threads: Record<string, Thread>
@@ -98,11 +98,16 @@ const cleanupThreadCache = async (threadId: string) => {
 // Everything belonging to a thread that lives outside the thread store: its
 // vector DB collection, its saved prompt cache, and its ephemeral agent
 // sandbox. Fire-and-forget, since every caller runs inside a `set` reducer;
-// each logs its own failures.
-const cleanupThreadArtifacts = (threadId: string) => {
-  cleanupVectorDB(threadId)
+// each logs its own failures. An archived thread can be restored, so its
+// attachments index and sandbox are kept unless the delete is permanent or
+// the archive is off.
+const cleanupThreadArtifacts = (threadId: string, permanent?: boolean) => {
+  void (async () => {
+    if (!permanent && (await archiveEnabled())) return
+    cleanupVectorDB(threadId)
+    cleanupThreadWorkspace(threadId)
+  })()
   cleanupThreadCache(threadId)
-  cleanupThreadWorkspace(threadId)
   // "Allow all temporarily" lasts only as long as its conversation.
   useToolApprovalRequests.getState().forgetTemporaryGit(threadId)
 }
@@ -225,7 +230,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       // behind they would sit in the record forever.
       useModelOverrides.getState().dropThread(threadId)
       useThreadToolGrants.getState().dropThread(threadId)
-      cleanupThreadArtifacts(threadId)
+      cleanupThreadArtifacts(threadId, permanent)
       deleteThreadBackend(threadId, permanent)
 
       return {

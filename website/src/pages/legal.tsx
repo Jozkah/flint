@@ -12,7 +12,7 @@ export function Privacy() {
         <>
           <ul>
             <li>This website sets no cookies, stores nothing in your browser, runs no analytics and loads no third-party scripts, fonts or trackers.</li>
-            <li>The Flint app has no telemetry, no analytics and no update checks. It does not discover or download models in the background, and it reaches the network only for features you use: Hugging Face Discover, a cloud provider, a remote MCP server, or web search.</li>
+            <li>The Flint app has no telemetry and no analytics, and checks for updates only if you turn that on. It does not discover or download models in the background, and it reaches the network only for features you use: Hugging Face Discover, a cloud provider, a remote MCP server, or web search.</li>
             <li>Your chats, files, memory and settings stay on your computer. Provider keys are kept in your operating system’s keyring.</li>
           </ul>
         </>
@@ -53,7 +53,7 @@ export function Privacy() {
             <li>memory, settings, permission grants and usage figures;</li>
             <li>provider API keys and MCP sign-in tokens, stored through the operating system’s keyring.</li>
           </ul>
-          <p>The build has no telemetry, analytics or automatic update checks, and it does not discover or download models in the background. Models come from files you import, or from Hugging Face Discover when you use it. A diagnostic bundle, if you create one, is redacted, shown to you first and never uploaded by Flint.</p>
+          <p>The build has no telemetry or analytics, checks for updates only when you turn that on, and it does not discover or download models in the background. Models come from files you import, or from Hugging Face Discover when you use it. A diagnostic bundle, if you create one, is redacted, shown to you first and never uploaded by Flint.</p>
           <p>You can see what left your machine. The request log shows what each model was sent and where every request went, and “What Flint is using” shows what applied to each reply.</p>
         </>
       ),

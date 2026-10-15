@@ -88,6 +88,9 @@ export function startHomeProjectsMirror(): () => void {
 
   const start = async () => {
     const groups = useConversationGroups.getState()
+    // Groups that could not be read look empty: importing or mirroring them
+    // would overwrite real groups and clear every legacy project.
+    if (groups.unreadable?.home) return
     if (!groups.migratedProjects) {
       try {
         const folders = await getServiceHub().projects().getProjects()
@@ -99,7 +102,7 @@ export function startHomeProjectsMirror(): () => void {
           memberships: { ...data.memberships, ...current.memberships },
           contexts: current.contexts,
         }
-        await groups.importSurface('home', merged, true)
+        if (!(await groups.importSurface('home', merged, true))) return
       } catch (error) {
         // Never block the sidebar; projects stay untouched and are retried next start.
         console.error('Importing projects into Home groups failed:', error)

@@ -276,7 +276,7 @@ export function LocalFirst() {
                 <div className="r">
                   <dt>update checks</dt>
                   <dd>
-                    <span className="no">on</span> none
+                    <span className="no">off</span> unless you turn them on
                   </dd>
                 </div>
                 <div className="r">

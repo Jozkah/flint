@@ -79,6 +79,23 @@ describe('ensureModelForServer', () => {
     })
   })
 
+  it('counts a loaded MLX model instead of starting a second one', async () => {
+    vi.mocked(useModelProvider.getState).mockReturnValue({ providers: [] } as any)
+    const startModel = vi.fn()
+    const deps = makeDeps({
+      modelsService: {
+        getActiveModels: vi.fn(async (p?: string) => (p === 'mlx' ? ['mlx-model'] : [])),
+        startModel,
+      },
+    })
+    expect(await ensureModelForServer(deps)).toEqual({
+      status: 'already_loaded',
+      modelId: 'mlx-model',
+      providerName: 'mlx',
+    })
+    expect(startModel).not.toHaveBeenCalled()
+  })
+
   it('uses modelOverride when provided and valid', async () => {
     const myProvider = makeProvider('openai', ['gpt-4'])
     vi.mocked(useModelProvider.getState).mockReturnValue({

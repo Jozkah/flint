@@ -101,8 +101,20 @@ export function parseFrontmatter(text: string): {
   if (!match) return { data: null, body: text }
 
   const data: Record<string, unknown> = {}
+  // The key of a `key:` line with no value, which a YAML block list
+  // (`tools:` then `  - Read` lines) fills in.
+  let listKey: string | null = null
   for (const line of match[1].split(/\r?\n/)) {
     if (!line.trim() || line.trimStart().startsWith('#')) continue
+    const item = /^\s*-\s+(.*)$/.exec(line)
+    if (item && listKey) {
+      const value = item[1].trim().replace(/^['"]|['"]$/g, '')
+      const list = Array.isArray(data[listKey]) ? (data[listKey] as string[]) : []
+      if (value) list.push(value)
+      data[listKey] = list
+      continue
+    }
+    listKey = null
     const at = line.indexOf(':')
     if (at < 0) continue
     const key = line.slice(0, at).trim()
@@ -116,6 +128,7 @@ export function parseFrontmatter(text: string): {
         .filter(Boolean)
     } else {
       data[key] = raw.replace(/^['"]|['"]$/g, '')
+      if (!raw) listKey = key
     }
   }
   return { data, body: text.slice(match[0].length) }

@@ -272,6 +272,20 @@ export function createActionHandlers(
       throw new RemoteRpcError('unavailable', "Flint's window didn't open that chat in time")
     }
   }
+  /**
+   * A mode a phone may pick. `bypass` runs every tool without asking, so it is
+   * set only on the computer; `auto` answers some approvals itself, so it needs
+   * approvals from phones to be on.
+   */
+  const checkMode = async (mode: CoworkModeId | undefined) => {
+    if (mode === 'bypass') throw desktopOnly('Bypassing approvals')
+    if (mode === 'auto') {
+      const perms = await a.permissions()
+      if (!perms?.approvals) {
+        throw new RemoteRpcError('forbidden', 'Approvals from phones are turned off on the computer')
+      }
+    }
+  }
   const textWith = (text: string, att: PlannedAttachments) =>
     text || (att.files.length + att.docs.length ? 'Please look at the attached file(s).' : text)
 
@@ -303,7 +317,7 @@ export function createActionHandlers(
       })
     },
 
-    'cowork.send': (params, ctx) => {
+    'cowork.send': async (params, ctx) => {
       const p = (isRecord(params) ? params : {}) as Partial<CoworkSendParams> & Record<string, unknown>
       const clientId = clientIdOf(p)
       const text = textOf(p, uploadIdsOf(p).length > 0)
@@ -319,6 +333,7 @@ export function createActionHandlers(
       if (folder && !a.knownFolders().includes(folder)) {
         throw new RemoteRpcError('bad_params', 'Choose a folder the computer already uses; new folders are added on the computer')
       }
+      await checkMode(mode)
       const model = modelOf(p.model)
       return cache.once(`${ctx.device.id}:cowork:${clientId}`, async () => {
         const att = await prepare(ctx.device.id, { kind: 'cowork', id: isNew ? null : id, model }, p, text)
@@ -528,6 +543,7 @@ export function createActionHandlers(
         }
         if (p.mode !== undefined) {
           if (!MODES.includes(p.mode as CoworkModeId)) throw new RemoteRpcError('bad_params', 'Unknown mode')
+          await checkMode(p.mode as CoworkModeId)
           a.setCoworkMode(id, p.mode as CoworkModeId)
         }
         const model = modelOf(p.model)

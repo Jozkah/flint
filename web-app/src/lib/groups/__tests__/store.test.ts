@@ -37,6 +37,7 @@ beforeEach(() => {
   useConversationGroups.setState({
     state: emptyGroupsState(),
     loaded: { home: true, cowork: true, rooms: true },
+    unreadable: { home: false, cowork: false, rooms: false },
     migratedProjects: false,
   })
   vi.mocked(toast.error).mockClear()
@@ -135,6 +136,25 @@ describe('projects migration', () => {
     expect(l.groups.map((g) => [g.group.id, g.group.name])).toEqual([['p1', 'Alpha'], ['p2', 'Untitled group']])
     expect(l.groups[0].children.map((c) => c.id)).toEqual(['t2', 't1'])
     expect(l.recents.map((c) => c.id)).toEqual(['t3', 't4'])
+  })
+
+  it('keeps the migration pending when the import cannot be saved', async () => {
+    port.fail = true
+    expect(await store().importSurface('home', migrateProjects([{ id: 'p1', name: 'A' }], [], 7), true)).toBe(false)
+    expect(store().migratedProjects).toBe(false)
+  })
+
+  it('never saves over groups that could not be read', async () => {
+    port.disk.set('home', JSON.stringify({ version: 1, data: { groups: [{ id: 'g', name: 'Real' }], memberships: {} } }))
+    port.load = async () => {
+      throw new Error('settings_get failed')
+    }
+    await restart()
+    expect(store().unreadable.home).toBe(true)
+    expect(await store().importSurface('home', migrateProjects([], [], 7), true)).toBe(false)
+    expect(await store().createGroup('home', 'X')).toBeNull()
+    expect(port.writes).toEqual([])
+    expect(JSON.parse(port.disk.get('home')!).data.groups[0].name).toBe('Real')
   })
 })
 

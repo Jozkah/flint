@@ -50,6 +50,14 @@ describe('reading frontmatter', () => {
     expect(body.trim()).toBe('Review carefully.')
   })
 
+  // A YAML block list must not read as an empty value (= every tool).
+  it('reads a block list', () => {
+    const { data } = parseFrontmatter(
+      '---\nname: reviewer\ntools:\n  - Read\n  - "Grep"\nmodel: x\n---\nBody\n'
+    )
+    expect(data).toEqual({ name: 'reviewer', tools: ['Read', 'Grep'], model: 'x' })
+  })
+
   // A document with no block is a body, not a failure.
   it('treats a file with no block as all body', () => {
     const { data, body } = parseFrontmatter('Just instructions.')

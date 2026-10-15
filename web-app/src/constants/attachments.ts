@@ -142,6 +142,9 @@ export const DOCUMENT_ATTACHMENT_EXTENSIONS = [
 
 /** Whether a file name has one of the document attachment extensions. */
 export const isDocumentAttachmentName = (name: string): boolean => {
+  // `Dockerfile` and `Makefile` are whole names, with no extension.
+  const base = name.toLowerCase().split(/[\\/]/).pop() ?? ''
+  if (base === 'dockerfile' || base === 'makefile') return true
   if (!name.includes('.')) return false
   const ext = name.toLowerCase().split('.').pop() ?? ''
   return (DOCUMENT_ATTACHMENT_EXTENSIONS as readonly string[]).includes(ext)

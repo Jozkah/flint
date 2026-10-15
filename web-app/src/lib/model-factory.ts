@@ -1732,6 +1732,9 @@ export class ModelFactory {
       fetchImpl = withImageTap(fetchImpl, imageTap)
     }
 
+    // Only OpenAI itself may fall back to api.openai.com: any other provider
+    // with a blank Base URL would send its own key there.
+    if (!isAzure && provider.provider !== 'openai') requireAzureEndpoint(provider)
     const endpoint = isAzure
       ? splitBaseUrlQuery(provider.base_url ?? '')
       : { baseURL: provider.base_url || 'https://api.openai.com/v1' }

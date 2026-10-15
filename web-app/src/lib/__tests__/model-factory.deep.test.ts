@@ -484,12 +484,10 @@ describe('model-factory deep coverage', () => {
 
   /* openai-compatible empty base_url */
   describe('openai-compatible', () => {
-    it('uses default base_url when none provided', async () => {
-      const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible')
-      await ModelFactory.createModel('m', mkProvider('custom', { base_url: undefined }), {})
-      expect(vi.mocked(createOpenAICompatible)).toHaveBeenCalledWith(
-        expect.objectContaining({ baseURL: 'https://api.openai.com/v1' })
-      )
+    it('refuses a custom provider with no base_url instead of sending its key to OpenAI', async () => {
+      await expect(
+        ModelFactory.createModel('m', mkProvider('custom', { base_url: undefined }), {})
+      ).rejects.toThrow()
     })
   })
 })
