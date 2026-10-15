@@ -215,6 +215,13 @@ jobs:
           corepack prepare yarn@4.10.3 --activate
           yarn --version
 
+      - name: Allow unprivileged user namespaces
+        # The shell sandbox (bubblewrap) and Chrome's own sandbox need them;
+        # Ubuntu 24.04 images block them through AppArmor by default.
+        run: |
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Free disk space
         # The runner has about 14 GB free and the test build plus the web
         # build overran it: the job died with no conclusion mid-compile.
