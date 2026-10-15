@@ -152,12 +152,14 @@ pub async fn load_mlx_model_impl(
         args.push(config.ctx_size.to_string());
     }
 
-    if !api_key.is_empty() {
-        args.push("--api-key".to_string());
-        args.push(api_key.clone());
-    }
-
-    log::info!("MLX server arguments: {:?}", args);
+    // The key travels in the MLX_API_KEY environment variable (already part
+    // of `envs`), never on argv: argv is readable by every local process and
+    // was written to the log below.
+    log::info!(
+        "MLX server arguments: {:?} (api key {})",
+        args,
+        if api_key.is_empty() { "unset" } else { "set via env" }
+    );
 
     // Configure the command
     let mut command = Command::new(&bin_path);
@@ -221,7 +223,11 @@ pub async fn load_mlx_model_impl(
     let stderr_task = tokio::spawn(async move {
         let mut reader = BufReader::new(stderr);
         let mut byte_buffer = Vec::new();
-        let mut stderr_buffer = String::new();
+        // Last lines only: a long session would otherwise grow this without
+        // bound, and only the tail explains a crash.
+        const STDERR_TAIL_LINES: usize = 40;
+        let mut tail: std::collections::VecDeque<String> =
+            std::collections::VecDeque::with_capacity(STDERR_TAIL_LINES);
 
         loop {
             byte_buffer.clear();
@@ -232,8 +238,10 @@ pub async fn load_mlx_model_impl(
                     let line = line.trim_end();
 
                     if !line.is_empty() {
-                        stderr_buffer.push_str(line);
-                        stderr_buffer.push('\n');
+                        if tail.len() == STDERR_TAIL_LINES {
+                            tail.pop_front();
+                        }
+                        tail.push_back(line.to_string());
                         log::info!("[mlx] {}", line);
 
                         let line_lower = line.to_lowercase();
@@ -256,7 +264,12 @@ pub async fn load_mlx_model_impl(
             }
         }
 
-        stderr_buffer
+        let mut out = String::new();
+        for line in tail {
+            out.push_str(&line);
+            out.push('\n');
+        }
+        out
     });
 
     // Check if process exited early

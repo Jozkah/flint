@@ -91,14 +91,23 @@ fn into_string_error(err: LlamacppError) -> String {
     serde_json::to_string(&err).unwrap_or(err.message)
 }
 
-async fn http_client() -> reqwest::Client {
+async fn http_client() -> Result<reqwest::Client, String> {
     // The engine is on loopback: a system or environment proxy (a VPN client,
-    // a corporate proxy) must never carry these requests.
+    // a corporate proxy) must never carry these requests. Never falls back to
+    // `reqwest::Client::new()`, which has no timeout and honours the proxy.
     reqwest::Client::builder()
         .timeout(MODEL_LOAD_TIMEOUT)
         .no_proxy()
         .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+        .map_err(|e| format!("could not build an HTTP client for the engine: {e}"))
+}
+
+fn client_error(message: String) -> ServerError {
+    ServerError::Llamacpp(LlamacppError::new(
+        ErrorCode::InternalError,
+        message,
+        None,
+    ))
 }
 
 /// Payload for the `llamacpp-model-load-progress` event, mirrored from the
@@ -243,7 +252,14 @@ fn spawn_load_progress_listener<S: ProgressSink>(
             }
         };
 
-        let client = http_client().await;
+        let client = match http_client().await {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("model load progress: {e}");
+                announce();
+                return;
+            }
+        };
         let url = format!("http://127.0.0.1:{}/models/sse", port);
         let resp = match client.get(&url).bearer_auth(&api_key).send().await {
             Ok(r) => r,
@@ -387,7 +403,7 @@ async fn post_load_inner<S: ProgressSink>(
         log::debug!("/models/sse did not answer within {SUBSCRIBE_TIMEOUT:?}; loading anyway");
     }
 
-    let client = http_client().await;
+    let client = http_client().await.map_err(client_error)?;
     let url = format!("http://127.0.0.1:{}/models/load", port);
     let resp = client
         .post(&url)
@@ -412,14 +428,14 @@ async fn post_load_inner<S: ProgressSink>(
     };
     let status = resp.status();
     if !status.is_success() {
+        // The worker's idempotent "already loaded" reply is a 200, so any
+        // non-2xx is a real rejection whatever its text says.
         let body = resp.text().await.unwrap_or_default();
-        if !body.to_lowercase().contains("already") {
-            progress_task.abort();
-            return Err(ServerError::Llamacpp(load_rejection_error(
-                status.as_u16(),
-                &body,
-            )));
-        }
+        progress_task.abort();
+        return Err(ServerError::Llamacpp(load_rejection_error(
+            status.as_u16(),
+            &body,
+        )));
     }
 
     // Definitive failure signal from the SSE stream; pends forever if the
@@ -512,7 +528,7 @@ async fn wait_until_loaded(
     model_id: &str,
     timeout: Duration,
 ) -> ServerResult<()> {
-    let client = http_client().await;
+    let client = http_client().await.map_err(client_error)?;
     let url = format!("http://127.0.0.1:{}/models", port);
     let start = std::time::Instant::now();
     let poll_interval = Duration::from_millis(250);
@@ -580,7 +596,7 @@ async fn wait_until_loaded(
 }
 
 async fn post_unload(port: u16, api_key: &str, model_id: &str) -> Result<(), String> {
-    let client = http_client().await;
+    let client = http_client().await?;
     let url = format!("http://127.0.0.1:{}/models/unload", port);
     let resp = client
         .post(&url)
@@ -609,7 +625,7 @@ async fn wait_until_unloaded(
     model_id: &str,
     timeout: Duration,
 ) -> ServerResult<()> {
-    let client = http_client().await;
+    let client = http_client().await.map_err(client_error)?;
     let url = format!("http://127.0.0.1:{}/models", port);
     let start = std::time::Instant::now();
     let poll_interval = Duration::from_millis(250);
@@ -673,7 +689,7 @@ async fn engine_loaded_model_ids(
     // Router-aware listing: `/models` (not `/v1/models`, which is OAI-compat
     // and returns a single element). Each entry has a `status` object whose
     // `value` is one of "loaded" / "loading" / "unloaded" / "sleeping".
-    let client = http_client().await;
+    let client = http_client().await?;
     let url = format!("http://127.0.0.1:{}/models", port);
     // The first request of every model start (the frontend asks what is loaded
     // before loading), so a dead worker is reported from here more often than

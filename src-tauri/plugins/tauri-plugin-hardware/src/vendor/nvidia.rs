@@ -16,6 +16,18 @@ static NVML: RwLock<Option<Nvml>> = RwLock::new(None);
 pub struct NvidiaInfo {
     pub index: u32,
     pub compute_capability: String,
+    /// Highest CUDA version the installed driver supports ("12.4"), from NVML.
+    /// A backend built for a newer CUDA than this will not start.
+    #[serde(default)]
+    pub cuda_driver_version: Option<String>,
+}
+
+/// NVML packs the CUDA driver version as `major * 1000 + minor * 10`.
+pub fn format_cuda_version(raw: i32) -> Option<String> {
+    if raw <= 0 {
+        return None;
+    }
+    Some(format!("{}.{}", raw / 1000, (raw % 1000) / 10))
 }
 
 /// Run a closure with the current NVML handle, initializing if needed.
@@ -143,10 +155,14 @@ fn get_nvidia_gpus_internal() -> Vec<GpuInfo> {
             }
         };
 
+        let cuda_version = nvml
+            .sys_cuda_driver_version()
+            .ok()
+            .and_then(format_cuda_version);
         let mut gpus = Vec::with_capacity(num_gpus as usize);
 
         for i in 0..num_gpus {
-            match create_gpu_info(nvml, i, &driver_version) {
+            match create_gpu_info(nvml, i, &driver_version, cuda_version.clone()) {
                 Ok(gpu_info) => gpus.push(gpu_info),
                 Err(e) => log::warn!("Failed to get info for NVIDIA GPU {}: {}", i, e),
             }
@@ -157,7 +173,12 @@ fn get_nvidia_gpus_internal() -> Vec<GpuInfo> {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios", target_os = "macos")))]
-fn create_gpu_info(nvml: &Nvml, index: u32, driver_version: &str) -> Result<GpuInfo, NvmlError> {
+fn create_gpu_info(
+    nvml: &Nvml,
+    index: u32,
+    driver_version: &str,
+    cuda_driver_version: Option<String>,
+) -> Result<GpuInfo, NvmlError> {
     let device = nvml.device_by_index(index)?;
     let memory_info = device.memory_info()?;
     let compute_capability = device.cuda_compute_capability()?;
@@ -178,6 +199,7 @@ fn create_gpu_info(nvml: &Nvml, index: u32, driver_version: &str) -> Result<GpuI
         nvidia_info: Some(NvidiaInfo {
             index,
             compute_capability: format!("{}.{}", compute_capability.major, compute_capability.minor),
+            cuda_driver_version,
         }),
         vulkan_info: None,
     })
@@ -206,5 +228,17 @@ impl GpuInfo {
                 Some((current as f32, critical))
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod cuda_version_tests {
+    use super::format_cuda_version;
+
+    #[test]
+    fn formats_nvml_packed_version() {
+        assert_eq!(format_cuda_version(12040).as_deref(), Some("12.4"));
+        assert_eq!(format_cuda_version(11080).as_deref(), Some("11.8"));
+        assert_eq!(format_cuda_version(0), None);
     }
 }

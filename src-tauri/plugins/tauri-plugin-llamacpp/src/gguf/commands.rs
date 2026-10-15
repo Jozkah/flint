@@ -97,7 +97,11 @@ pub async fn find_gguf_tensors(path: String, names: Vec<String>) -> Result<Vec<S
 pub async fn get_model_size(path: String) -> Result<u64, String> {
     if path.starts_with("https://") {
         // Handle remote URL
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
         let response = client
             .head(&path)
             .send()
@@ -352,6 +356,7 @@ mod tests {
             os_name: "macOS 14.0".to_string(),
             total_memory: total_memory_mib,
             gpus: vec![],
+            default_active_gpus: vec![],
         }
     }
 

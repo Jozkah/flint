@@ -138,7 +138,7 @@ fn read_metadata_entry<R: Read + Seek + ReadBytesExt>(
 
     let value_type_u32 = reader.read_u32::<LittleEndian>()?;
     let value_type = GgufValueType::try_from(value_type_u32)?;
-    let value = read_gguf_value(reader, value_type)?;
+    let value = read_gguf_value(reader, value_type, 0)?;
 
     Ok((key, value))
 }
@@ -156,9 +156,15 @@ fn read_gguf_string<R: Read + ReadBytesExt>(reader: &mut R) -> io::Result<String
     String::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
+/// Deepest array-in-array nesting accepted. Real files nest at most once; an
+/// unbounded walk lets a crafted file (12 bytes per level) overflow the stack
+/// of the app process that parses it.
+const MAX_ARRAY_DEPTH: u32 = 4;
+
 fn read_gguf_value<R: Read + Seek + ReadBytesExt>(
     reader: &mut R,
     value_type: GgufValueType,
+    depth: u32,
 ) -> io::Result<String> {
     match value_type {
         GgufValueType::Uint8 => Ok(reader.read_u8()?.to_string()),
@@ -174,6 +180,12 @@ fn read_gguf_value<R: Read + Seek + ReadBytesExt>(
         GgufValueType::Int64 => Ok(reader.read_i64::<LittleEndian>()?.to_string()),
         GgufValueType::Float64 => Ok(reader.read_f64::<LittleEndian>()?.to_string()),
         GgufValueType::Array => {
+            if depth >= MAX_ARRAY_DEPTH {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "GGUF arrays are nested too deeply",
+                ));
+            }
             let elem_type_u32 = reader.read_u32::<LittleEndian>()?;
             let elem_type = GgufValueType::try_from(elem_type_u32)?;
             let len = reader.read_u64::<LittleEndian>()?;
@@ -186,7 +198,7 @@ fn read_gguf_value<R: Read + Seek + ReadBytesExt>(
             }
 
             if len > 24 {
-                skip_array_data(reader, elem_type, len)?;
+                skip_array_data(reader, elem_type, len, depth + 1)?;
                 return Ok(format!(
                     "<Array of type {:?} with {} elements, data skipped>",
                     elem_type, len
@@ -195,7 +207,7 @@ fn read_gguf_value<R: Read + Seek + ReadBytesExt>(
 
             let mut elems = Vec::with_capacity(len as usize);
             for _ in 0..len {
-                elems.push(read_gguf_value(reader, elem_type)?);
+                elems.push(read_gguf_value(reader, elem_type, depth + 1)?);
             }
             Ok(format!("[{}]", elems.join(", ")))
         }
@@ -206,6 +218,7 @@ fn skip_array_data<R: Read + Seek + ReadBytesExt>(
     reader: &mut R,
     elem_type: GgufValueType,
     len: u64,
+    depth: u32,
 ) -> io::Result<()> {
     match elem_type {
         GgufValueType::Uint8 | GgufValueType::Int8 | GgufValueType::Bool => {
@@ -223,12 +236,18 @@ fn skip_array_data<R: Read + Seek + ReadBytesExt>(
         GgufValueType::String => {
             for _ in 0..len {
                 let str_len = reader.read_u64::<LittleEndian>()?;
+                if str_len > i64::MAX as u64 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "GGUF string length is unreasonably large",
+                    ));
+                }
                 reader.seek(io::SeekFrom::Current(str_len as i64))?;
             }
         }
         GgufValueType::Array => {
             for _ in 0..len {
-                read_gguf_value(reader, elem_type)?;
+                read_gguf_value(reader, elem_type, depth)?;
             }
         }
     }
@@ -240,6 +259,20 @@ mod tests {
     use super::*;
     use byteorder::WriteBytesExt;
     use std::io::Cursor;
+
+    /// A file of nothing but nested array headers must error, not recurse
+    /// until the stack is gone.
+    #[test]
+    fn deeply_nested_arrays_are_rejected() {
+        let mut b = Vec::new();
+        for _ in 0..10_000 {
+            b.write_u32::<LittleEndian>(GgufValueType::Array as u32).unwrap();
+            b.write_u64::<LittleEndian>(1).unwrap();
+        }
+        let mut r = Cursor::new(b);
+        let r = read_gguf_value(&mut r, GgufValueType::Array, 0);
+        assert!(r.is_err());
+    }
 
     /// Builds a GGUF header with the given KV entries and tensor-info block.
     /// Hand-assembled because the point is to pin the byte layout the reader

@@ -85,6 +85,16 @@ fn get_vulkan_gpus_internal() -> Result<Vec<GpuInfo>, Box<dyn std::error::Error>
             continue;
         }
 
+        // Software rasterizers (llvmpipe, SwiftShader, lavapipe) can report a
+        // non-CPU device type; they are not a GPU to offload to.
+        let lower_name = properties.device_name.to_lowercase();
+        if ["llvmpipe", "swiftshader", "lavapipe", "softpipe"]
+            .iter()
+            .any(|n| lower_name.contains(n))
+        {
+            continue;
+        }
+
         let memory_properties = physical_device.memory_properties();
         let total_memory: u64 = memory_properties
             .memory_heaps
@@ -92,6 +102,13 @@ fn get_vulkan_gpus_internal() -> Result<Vec<GpuInfo>, Box<dyn std::error::Error>
             .filter(|heap| heap.flags.intersects(MemoryHeapFlags::DEVICE_LOCAL))
             .map(|heap| heap.size / (1024 * 1024))
             .sum();
+
+        // No device-local memory at all: nothing can be offloaded to it.
+        if total_memory == 0
+            && properties.device_type != PhysicalDeviceType::IntegratedGpu
+        {
+            continue;
+        }
 
         let device_uuid = physical_device.properties().device_uuid.unwrap_or([0; 16]);
         let driver_version = format!("{}", properties.driver_version);

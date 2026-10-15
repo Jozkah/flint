@@ -53,6 +53,11 @@ pub struct SystemInfo {
     pub os_name: String,
     pub total_memory: u64,
     pub gpus: Vec<GpuInfo>,
+    /// UUIDs of the GPUs to use unless the user picks otherwise: discrete
+    /// cards when any exists (integrated and virtual ones are left out), and
+    /// NVIDIA only when an NVIDIA card is present. Device data, not a choice.
+    #[serde(default)]
+    pub default_active_gpus: Vec<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -67,5 +72,8 @@ pub struct SystemUsage {
     pub cpu: f32,
     pub used_memory: u64,
     pub total_memory: u64,
+    /// Memory a new process can actually take now, in MiB (the OS's
+    /// "available" figure: free plus reclaimable, free+inactive on macOS).
+    pub available_memory: u64,
     pub gpus: Vec<GpuUsage>,
 }
