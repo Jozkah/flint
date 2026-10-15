@@ -266,6 +266,8 @@ async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> {
     let capture = dir.path().join("desktop.png");
     let (program, args) = linux_command(action, &capture);
     let mut cmd = tokio::process::Command::new(program);
+    // xdotool and import are the host's: keep an AppImage's bundled libs out.
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     cmd.args(args);
     output(cmd).await.map_err(|e| format!("{e}. Linux requires xdotool for input and ImageMagick (import) for screenshots."))?;
     if matches!(action, Action::Screenshot) { Ok(Some(std::fs::read(capture).map_err(|e| e.to_string())?)) } else { Ok(None) }

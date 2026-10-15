@@ -55,6 +55,8 @@ pub async fn perform(action: &Action) -> Result<Option<Vec<u8>>, String> {
     }
     for (program,args) in steps(action) {
         let mut cmd = tokio::process::Command::new(program);
+        // ydotool and wl-copy are the host's: keep an AppImage's bundled libs out.
+        jan_process::HostProcessEnv::host_env(&mut cmd);
         cmd.args(args);
         output(cmd).await.map_err(|e| format!("{e}. Wayland input requires ydotool 1.x, a running ydotoold with uinput access, and an accessible YDOTOOL_SOCKET. Text entry also needs wl-clipboard (wl-copy). Flint does not start a privileged daemon."))?;
     }
