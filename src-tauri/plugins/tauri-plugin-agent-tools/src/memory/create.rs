@@ -233,19 +233,27 @@ pub fn forget_text(
     id: &MemoryId,
     now: i64,
 ) -> Result<Option<String>, String> {
+    // Copies outside the store go first. If that fails nothing has been
+    // forgotten yet, so the caller can retry and the record still holds the
+    // text that snapshots must later be redacted of; forgetting the record
+    // first and failing after would lose that text for good.
+    if let Some(record) = store::load(store_root, scope)
+        .records
+        .iter()
+        .find(|r| &r.id == id && !matches!(r.status, Status::Deleted))
+    {
+        scrub_traces(store_root, &[Trace::of(record)])?;
+    }
     let mut forgotten: Option<String> = None;
-    let mut traces: Vec<Trace> = Vec::new();
     store::update(store_root, scope, |records| {
         let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
             return Ok((false, false));
         };
-        traces.push(Trace::of(record));
         forgotten = Some(std::mem::take(&mut record.content));
         record.status = Status::Deleted;
         record.updated_at = now;
         Ok((true, true))
     })?;
-    scrub_traces(store_root, &traces)?;
     Ok(forgotten)
 }
 
@@ -300,15 +308,21 @@ pub fn forget_all_text(
     may_see: impl Fn(&super::record::MemoryRecord) -> bool,
     now: i64,
 ) -> Result<Vec<String>, String> {
+    // Same order as `forget_text`: copies first, so a failure forgets nothing.
+    let traces: Vec<Trace> = store::load(store_root, scope)
+        .records
+        .iter()
+        .filter(|r| !matches!(r.status, Status::Deleted) && may_see(r))
+        .map(Trace::of)
+        .collect();
+    scrub_traces(store_root, &traces)?;
     let mut forgotten: Vec<String> = Vec::new();
-    let mut traces: Vec<Trace> = Vec::new();
     store::update(store_root, scope, |records| {
         let mut n = 0;
         for record in records.iter_mut().filter(|r| may_see(r)) {
             if matches!(record.status, Status::Deleted) {
                 continue;
             }
-            traces.push(Trace::of(record));
             forgotten.push(std::mem::take(&mut record.content));
             record.status = Status::Deleted;
             record.updated_at = now;
@@ -316,15 +330,17 @@ pub fn forget_all_text(
         }
         Ok((n > 0, n))
     })?;
-    scrub_traces(store_root, &traces)?;
     Ok(forgotten)
 }
 
 /// The stem of the note consolidation writes (`memory_consolidation::OUTPUT_NOTE`).
 /// Named here because this crate cannot depend on the app that owns it.
 const CONSOLIDATED_NOTE: &str = "consolidated";
+/// Its lock file, and how long one is trusted (`DEFAULT_STALE_LOCK_SECS`).
+const CONSOLIDATION_LOCK: &str = "consolidation.lock";
+const CONSOLIDATION_LOCK_FRESH_SECS: u64 = 15 * 60;
 
-/// What a forgotten record was, kept just long enough to find its copies.
+/// What a record to be forgotten was, kept just long enough to find its copies.
 struct Trace {
     text: String,
     hash: String,
@@ -342,18 +358,49 @@ impl Trace {
     }
 }
 
+/// Lower-case letters and digits with single spaces: the form consolidation
+/// compares statements in, so a re-cased or re-punctuated copy still matches.
+fn norm(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for word in s.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()) {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.extend(word.chars().flat_map(char::to_lowercase));
+    }
+    out
+}
+
+/// The non-blank, non-heading lines of the forgotten texts.
+fn statements(traces: &[Trace]) -> Vec<&str> {
+    traces
+        .iter()
+        .flat_map(|t| t.text.lines())
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#') && *l != "---")
+        .collect()
+}
+
 /// Remove the copies of forgotten text that live outside the record store.
 ///
 /// Migration copies a flat `<name>.md` note into a record and leaves the note
 /// where it was, and that note is still advertised to the model and readable
 /// with `memory_read`; consolidation then folds those notes into
 /// `consolidated.md`, quoting both sides of a conflict. Forgetting the record
-/// alone left all of that readable. So the note it came from (by content, or by
-/// the `legacy-note:` source it recorded, which covers a note edited since) is
-/// deleted, and the forgotten statements are taken out of the consolidated note.
+/// alone left all of that readable. So:
 ///
-/// A copy that cannot be removed is an error, not a shrug: the caller must not
-/// report "Forgotten." over text that is still readable.
+/// - a note with the same content as a forgotten record is deleted;
+/// - a note the record says it came from, but that has been edited since, loses
+///   only the forgotten lines (and goes if nothing else is left), so text the
+///   user added later survives;
+/// - the forgotten statements, in any casing or punctuation, are taken out of
+///   the consolidated note.
+///
+/// Undoing the forget restores the record, not these copies. A copy that
+/// cannot be removed is an error: the caller must not report "Forgotten." over
+/// text that is still readable. Refused while consolidation holds its lock,
+/// because it would write the text straight back from the notes it had already
+/// read.
 fn scrub_traces(store_root: &std::path::Path, traces: &[Trace]) -> Result<(), String> {
     if traces.is_empty() {
         return Ok(());
@@ -362,6 +409,17 @@ fn scrub_traces(store_root: &std::path::Path, traces: &[Trace]) -> Result<(), St
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return Ok(());
     };
+    let busy = std::fs::metadata(dir.join(CONSOLIDATION_LOCK))
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age.as_secs() < CONSOLIDATION_LOCK_FRESH_SECS);
+    if busy {
+        return Err(
+            "ERROR: memory consolidation is running; try forgetting again in a moment".into(),
+        );
+    }
+    let forgotten = statements(traces);
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|x| x.to_str()) != Some("md") {
@@ -376,49 +434,65 @@ fn scrub_traces(store_root: &std::path::Path, traces: &[Trace]) -> Result<(), St
         let Ok(body) = std::fs::read_to_string(&path) else {
             continue;
         };
-        let body_hash = content_hash(&body);
         let source = format!("legacy-note:{stem}");
-        let is_copy = traces
-            .iter()
-            .any(|t| t.hash == body_hash || t.source.as_deref() == Some(source.as_str()));
-        if is_copy {
-            match std::fs::remove_file(&path) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(format!("ERROR: could not remove note {stem}: {e}")),
+        let identical = traces.iter().any(|t| t.hash == content_hash(&body));
+        let came_from = traces.iter().any(|t| t.source.as_deref() == Some(source.as_str()));
+        if identical {
+            remove_note(&path, stem)?;
+        } else if came_from {
+            let kept: Vec<&str> = body
+                .lines()
+                .filter(|l| !forgotten.contains(&l.trim()))
+                .collect();
+            if kept.len() == body.lines().count() {
+                continue;
+            }
+            if kept.iter().all(|l| l.trim().is_empty() || l.trim().starts_with('#')) {
+                remove_note(&path, stem)?;
+            } else {
+                let mut out = kept.join("\n");
+                out.push('\n');
+                crate::workspace::write_atomic(&path, out.as_bytes())
+                    .map_err(|e| format!("ERROR: could not rewrite note {stem}: {e}"))?;
             }
         }
     }
-    scrub_consolidated(&dir.join(format!("{CONSOLIDATED_NOTE}.md")), traces)
+    scrub_consolidated(&dir.join(format!("{CONSOLIDATED_NOTE}.md")), &forgotten)
+}
+
+fn remove_note(path: &std::path::Path, stem: &str) -> Result<(), String> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("ERROR: could not remove note {stem}: {e}")),
+    }
 }
 
 /// Take the forgotten statements out of the consolidated note: a surviving
-/// line that is one of them, and a "Conflicts resolved" line that quotes one.
-/// Exact lines only -- a short forgotten fact must not delete unrelated text
-/// that merely contains it.
-fn scrub_consolidated(path: &std::path::Path, traces: &[Trace]) -> Result<(), String> {
+/// line that is one of them, and a "Conflicts resolved" line quoting one.
+/// Whole statements only, compared in normalised form -- a short forgotten fact
+/// must not delete unrelated text that merely contains it. A statement a live
+/// note also holds comes back at the next consolidation; forgetting errs toward
+/// removing.
+fn scrub_consolidated(path: &std::path::Path, forgotten: &[&str]) -> Result<(), String> {
     let body = match std::fs::read_to_string(path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(format!("ERROR: could not read the consolidated note: {e}")),
     };
-    let statements: Vec<&str> = traces
-        .iter()
-        .flat_map(|t| t.text.lines())
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#') && *l != "---")
-        .collect();
-    if statements.is_empty() {
+    let targets: Vec<String> = forgotten.iter().map(|s| norm(s)).filter(|n| !n.is_empty()).collect();
+    if targets.is_empty() {
         return Ok(());
     }
+    let is_target = |s: &str| targets.contains(&norm(s));
     let mut changed = false;
     let kept: Vec<&str> = body
         .lines()
         .filter(|line| {
             let line = line.trim();
-            let drop = statements.contains(&line)
+            let drop = is_target(line)
                 || (line.starts_with("- kept \"")
-                    && statements.iter().any(|s| line.contains(&format!("\"{s}\""))));
+                    && line.split('"').skip(1).step_by(2).any(is_target));
             changed |= drop;
             !drop
         })
@@ -784,17 +858,90 @@ mod tests {
     }
 
     /// An edited migrated note no longer hashes to its record, but the record
-    /// remembers which note it came from.
+    /// remembers which note it came from. Only the forgotten line goes; what
+    /// the user added since stays.
     #[test]
-    fn forgetting_reaches_a_migrated_note_edited_since() {
+    fn forgetting_strips_the_forgotten_line_from_a_note_edited_since() {
         let root = unique_root();
         write_note(&root, "deploy.md", "Deploy with make ship");
         let id = migrated(&root)[0].id.clone();
-        write_note(&root, "deploy.md", "Deploy with make ship, then tag");
+        write_note(&root, "deploy.md", "Deploy with make ship\nThen tag the release\n");
+
+        forget_text(&root, Scope::Project, &id, 20).unwrap();
+
+        let left = std::fs::read_to_string(memory_file(&root, "deploy.md")).unwrap();
+        assert_eq!(left.trim(), "Then tag the release");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_edited_note_left_with_nothing_is_removed() {
+        let root = unique_root();
+        write_note(&root, "deploy.md", "Deploy with make ship");
+        let id = migrated(&root)[0].id.clone();
+        write_note(&root, "deploy.md", "# Deploy\n\nDeploy with make ship\n");
 
         forget_text(&root, Scope::Project, &id, 20).unwrap();
 
         assert!(!memory_file(&root, "deploy.md").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Forgetting an already-forgotten id again must not delete a note written
+    /// since under the same name.
+    #[test]
+    fn forgetting_twice_leaves_a_new_note_of_the_same_name() {
+        let root = unique_root();
+        write_note(&root, "deploy.md", "Deploy with make ship");
+        let id = migrated(&root)[0].id.clone();
+        forget_text(&root, Scope::Project, &id, 20).unwrap();
+        write_note(&root, "deploy.md", "Deploy with make ship");
+
+        forget_text(&root, Scope::Project, &id, 21).unwrap();
+
+        assert!(memory_file(&root, "deploy.md").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Consolidation reads notes, merges, then writes; scrubbing in the middle
+    /// would be undone by that write. So forgetting waits, and forgets nothing.
+    #[test]
+    fn forgetting_is_refused_while_consolidation_holds_its_lock() {
+        let root = unique_root();
+        write_note(&root, "deploy.md", "Deploy with make ship");
+        let id = migrated(&root)[0].id.clone();
+        write_note(&root, "consolidation.lock", "0");
+
+        let err = forget_text(&root, Scope::Project, &id, 20).unwrap_err();
+
+        assert!(err.contains("consolidation is running"), "{err}");
+        assert!(memory_file(&root, "deploy.md").exists());
+        let kept = store::load(&root, Scope::Project).records;
+        assert!(kept.iter().any(|r| r.id == id && r.is_usable(20)), "still remembered");
+        std::fs::remove_file(memory_file(&root, "consolidation.lock")).unwrap();
+        forget_text(&root, Scope::Project, &id, 21).unwrap();
+        assert!(!memory_file(&root, "deploy.md").exists(), "a retry then succeeds");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Consolidation keeps whichever near-identical form is newest, so the copy
+    /// in the consolidated note need not match the forgotten text exactly.
+    #[test]
+    fn forgetting_reaches_a_recased_copy_in_the_consolidated_note() {
+        let root = unique_root();
+        write_note(&root, "deploy.md", "Deploy with make ship");
+        let id = migrated(&root)[0].id.clone();
+        write_note(
+            &root,
+            "consolidated.md",
+            "# Consolidated memory\n\ndeploy with make ship.\nPrefer tabs\n",
+        );
+
+        forget_text(&root, Scope::Project, &id, 20).unwrap();
+
+        let out = std::fs::read_to_string(memory_file(&root, "consolidated.md")).unwrap();
+        assert!(!out.to_lowercase().contains("make ship"), "{out}");
+        assert!(out.contains("Prefer tabs"));
         let _ = std::fs::remove_dir_all(&root);
     }
 

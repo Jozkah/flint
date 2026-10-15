@@ -661,8 +661,7 @@ fn parse_model_notes(reply: &str) -> Result<(Vec<MergedNote>, usize), String> {
         let clean = secrets::redact_secrets(&content);
         redacted_lines += content
             .lines()
-            .zip(clean.lines())
-            .filter(|(before, after)| before != after)
+            .filter(|line| secrets::redact_secrets(line) != *line)
             .count();
         notes.push(MergedNote {
             name,
