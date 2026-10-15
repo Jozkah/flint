@@ -367,7 +367,9 @@
     "loadFailed": "Não foi possível carregar o espaço de trabalho do agente",
     "saveFailed": "Não foi possível salvar",
     "deleteFailed": "Não foi possível excluir",
-    "revealFailed": "Não foi possível abrir a pasta"
+    "revealFailed": "Não foi possível abrir a pasta",
+    "nameExists": "\"{{name}}\" já existe. Escolha outro nome ou edite o existente.",
+    "deleted": "\"{{name}}\" excluído"
   },
   "localApiServer": {
     "title": "Servidor de API Local",

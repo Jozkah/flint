@@ -367,7 +367,9 @@
     "loadFailed": "Impossible de charger l'espace de travail de l'agent",
     "saveFailed": "Impossible d'enregistrer",
     "deleteFailed": "Impossible de supprimer",
-    "revealFailed": "Impossible d'ouvrir le dossier"
+    "revealFailed": "Impossible d'ouvrir le dossier",
+    "nameExists": "« {{name}} » existe déjà. Choisissez un autre nom ou modifiez l'existant.",
+    "deleted": "« {{name}} » supprimé"
   },
   "localApiServer": {
     "title": "Serveur d'API local",

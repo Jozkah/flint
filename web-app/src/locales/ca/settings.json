@@ -369,7 +369,9 @@
     "loadFailed": "No s'ha pogut carregar l'espai de treball de l'agent",
     "saveFailed": "No s'ha pogut desar",
     "deleteFailed": "No s'ha pogut suprimir",
-    "revealFailed": "No s'ha pogut obrir la carpeta"
+    "revealFailed": "No s'ha pogut obrir la carpeta",
+    "nameExists": "\"{{name}}\" ja existeix. Tria un altre nom o edita l'existent.",
+    "deleted": "S'ha suprimit \"{{name}}\""
   },
   "localApiServer": {
     "title": "Servidor API local",

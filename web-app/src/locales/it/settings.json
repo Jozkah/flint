@@ -367,7 +367,9 @@
     "loadFailed": "Impossibile caricare il workspace dell'agente",
     "saveFailed": "Impossibile salvare",
     "deleteFailed": "Impossibile eliminare",
-    "revealFailed": "Impossibile aprire la cartella"
+    "revealFailed": "Impossibile aprire la cartella",
+    "nameExists": "\"{{name}}\" esiste già. Scegli un altro nome o modifica quello esistente.",
+    "deleted": "\"{{name}}\" eliminato"
   },
   "localApiServer": {
     "title": "Server API locale",

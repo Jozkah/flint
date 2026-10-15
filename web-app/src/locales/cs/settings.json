@@ -369,7 +369,9 @@
     "loadFailed": "Pracovní prostor agenta se nepodařilo načíst",
     "saveFailed": "Uložení se nepodařilo",
     "deleteFailed": "Smazání se nepodařilo",
-    "revealFailed": "Složku se nepodařilo otevřít"
+    "revealFailed": "Složku se nepodařilo otevřít",
+    "nameExists": "\"{{name}}\" již existuje. Zvolte jiný název nebo upravte stávající.",
+    "deleted": "\"{{name}}\" bylo smazáno"
   },
   "localApiServer": {
     "title": "Lokální API server",

@@ -365,7 +365,9 @@
     "loadFailed": "无法加载智能体工作区",
     "saveFailed": "无法保存",
     "deleteFailed": "无法删除",
-    "revealFailed": "无法打开文件夹"
+    "revealFailed": "无法打开文件夹",
+    "nameExists": "“{{name}}”已存在。请换一个名称或编辑现有项。",
+    "deleted": "已删除“{{name}}”"
   },
   "localApiServer": {
     "title": "本地 API 服务器",

@@ -365,7 +365,9 @@
     "loadFailed": "Ajan çalışma alanı yüklenemedi",
     "saveFailed": "Kaydedilemedi",
     "deleteFailed": "Silinemedi",
-    "revealFailed": "Klasör açılamadı"
+    "revealFailed": "Klasör açılamadı",
+    "nameExists": "\"{{name}}\" zaten var. Başka bir ad seçin veya mevcut olanı düzenleyin.",
+    "deleted": "\"{{name}}\" silindi"
   },
   "localApiServer": {
     "title": "Yerel API Sunucusu",

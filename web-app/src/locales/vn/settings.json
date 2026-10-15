@@ -365,7 +365,9 @@
     "loadFailed": "Không thể tải không gian làm việc của tác tử",
     "saveFailed": "Không thể lưu",
     "deleteFailed": "Không thể xóa",
-    "revealFailed": "Không thể mở thư mục"
+    "revealFailed": "Không thể mở thư mục",
+    "nameExists": "\"{{name}}\" đã tồn tại. Hãy chọn tên khác hoặc chỉnh sửa mục hiện có.",
+    "deleted": "Đã xóa \"{{name}}\""
   },
   "localApiServer": {
     "title": "Máy chủ API cục bộ",
