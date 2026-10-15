@@ -269,6 +269,9 @@ pub mod commands {
         request: VerifyRequest,
     ) -> VerifyReport {
         let (tx, rx) = watch::channel(false);
+        // Identifies this run's entry: a newer run reusing the id replaces it,
+        // and this run ending must not then remove the newer run's sender.
+        let own = tx.subscribe();
         let id = request.id.clone();
         if let Ok(mut runs) = RUNS.lock() {
             if let Some(old) = runs.insert(id.clone(), tx) {
@@ -286,7 +289,9 @@ pub mod commands {
         )
         .await;
         if let Ok(mut runs) = RUNS.lock() {
-            runs.remove(&id);
+            if runs.get(&id).is_some_and(|tx| tx.subscribe().same_channel(&own)) {
+                runs.remove(&id);
+            }
         }
         report
     }

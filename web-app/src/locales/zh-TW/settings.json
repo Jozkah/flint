@@ -365,7 +365,9 @@
     "loadFailed": "無法載入代理程式工作區",
     "saveFailed": "無法儲存",
     "deleteFailed": "無法刪除",
-    "revealFailed": "無法開啟資料夾"
+    "revealFailed": "無法開啟資料夾",
+    "nameExists": "「{{name}}」已存在。請換一個名稱或編輯現有項目。",
+    "deleted": "已刪除「{{name}}」"
   },
   "localApiServer": {
     "title": "本機 API 伺服器",
@@ -1112,5 +1114,17 @@
         "overlap": "{{a}} 與 {{b}} 會同時執行，但都會變更 {{path}}。請讓其中一個等待另一個。"
       }
     }
+  },
+  "backup": {
+    "securityChanges": "此備份會變更請求的傳送位址：",
+    "baseUrlChange": "{{provider}}：{{from}} → {{to}}",
+    "keyDropped": "已儲存的 API 金鑰將被移除，請為新位址重新輸入。",
+    "includePermissions": "同時還原安全性設定（{{stores}}）",
+    "includePermissionsWarning": "這些設定決定哪些工具無需詢問即可執行，以及流量的去向。僅對你自己建立的備份啟用。",
+    "permissionsSkipped": "不勾選時，會保留目前的安全性設定。",
+    "skipped": "未還原：{{stores}}",
+    "storeToolApproval": "工具自動核准",
+    "storeMcpTrust": "MCP 伺服器信任",
+    "storeProxy": "網路代理"
   }
 }

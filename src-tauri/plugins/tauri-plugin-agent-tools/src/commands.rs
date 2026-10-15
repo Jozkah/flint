@@ -1268,7 +1268,11 @@ async fn execute_tool_inner(
             .into());
         }
         Decision::HardDeny(gate::DenyReason::Policy) => {
-            return Err(format!("tool '{name}' is denied by policy").into());
+            return Err(match &policy.load_error {
+                Some(why) => format!("tool '{name}' is denied by policy: {why}"),
+                None => format!("tool '{name}' is denied by policy"),
+            }
+            .into());
         }
         // Say which of the two it was. "No network" and "not that host" call
         // for different things from the user, and one message for both sends
@@ -1277,7 +1281,12 @@ async fn execute_tool_inner(
             return Err(format!(
                 "tool '{name}' was refused: this run has no network access. \
                  Nothing was sent. Work from what is already in the project, or \
-                 ask the user to enable network access for it."
+                 ask the user to enable network access for it.{}",
+                policy
+                    .load_error
+                    .as_ref()
+                    .map(|why| format!(" ({why})"))
+                    .unwrap_or_default()
             )
             .into());
         }

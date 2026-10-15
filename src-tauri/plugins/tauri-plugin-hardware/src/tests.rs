@@ -9,6 +9,18 @@ fn test_system_info() {
 }
 
 #[test]
+fn empty_gpu_list_stops_being_retried() {
+    let mut info = crate::get_system_info();
+    info.gpus.clear();
+    let old = std::time::Instant::now() - crate::EMPTY_GPU_RETRY * 2;
+    // A stale empty list is retried while retries remain (not on macOS).
+    assert_eq!(crate::is_fresh(&info, old, 0), cfg!(target_os = "macos"));
+    // Once the retries are spent it is trusted until invalidated.
+    assert!(crate::is_fresh(&info, old, crate::MAX_EMPTY_GPU_RETRIES));
+    assert!(crate::is_fresh(&info, std::time::Instant::now(), 0));
+}
+
+#[test]
 fn test_system_usage() {
     let usage = crate::sample_system_usage();
     println!("System Usage Info: {:?}", usage);

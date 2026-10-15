@@ -288,7 +288,7 @@ fn start_turn(
 /// agent, not the session, and a run that reported a different session after
 /// `session/model/set` would rename something the client is still holding.
 /// `session/fork` names its new session itself, after this returns.
-fn rebuild_agent(source: &Session, model: Option<String>) -> Result<AgentSession, String> {
+async fn rebuild_agent(source: &Session, model: Option<String>) -> Result<AgentSession, String> {
     let project = source
         .agent
         .args
@@ -305,7 +305,47 @@ fn rebuild_agent(source: &Session, model: Option<String>) -> Result<AgentSession
     agent.args.session_id = Some(source.id.clone());
     agent.args.host_tools = source.agent.args.host_tools.clone();
     agent.args.host_owns_gate = source.agent.args.host_owns_gate;
+    // The source's MCP servers are already connected: reuse them instead of
+    // spawning a second copy of every stdio server.
+    if let Some(task) = agent.mcp_task.take() {
+        task.abort();
+    }
+    disconnect_all(&agent.mcp_servers).await;
+    agent.mcp_servers = source.agent.mcp_servers.clone();
+    agent.args.mcp_servers = source.agent.args.mcp_servers.clone();
     Ok(agent)
+}
+
+/// Wait for the session's active MCP servers to connect, so its first turn
+/// (and the `session/start` tool list) already has their tools.
+async fn await_mcp(agent: &mut AgentSession) {
+    if let Some(task) = agent.mcp_task.take() {
+        match task.await {
+            Ok(outcome) => {
+                for failure in &outcome.failed {
+                    log::warn!("MCP: {failure}");
+                }
+            }
+            Err(e) => log::warn!("MCP connect task failed: {e}"),
+        }
+    }
+}
+
+async fn disconnect_all(servers: &crate::core::state::SharedMcpServers) {
+    let names: Vec<String> = servers.lock().await.keys().cloned().collect();
+    for name in names {
+        super::mcp::disconnect(&name, servers).await;
+    }
+}
+
+/// End an archived session: its MCP servers (unless another session still
+/// shares them, as a fork does) and its scratch space.
+async fn release_session(session: Session, sessions: &HashMap<String, Session>) {
+    let servers = &session.agent.args.mcp_servers;
+    if !sessions.values().any(|s| Arc::ptr_eq(&s.agent.args.mcp_servers, servers)) {
+        disconnect_all(servers).await;
+    }
+    let _ = tauri_plugin_agent_tools::workspace::remove_scratch_dir(&session.id).await;
 }
 
 fn finish_turn(
@@ -433,6 +473,7 @@ pub async fn serve() -> Result<(), String> {
                                 Err(message) => invalid_tools(&id, &message),
                                 Ok(host_tools) => match prepare_agent_session(&start.cwd, start.model, ProviderOverrides::default(), SessionFlags { require_model: true, ..Default::default() }, None) {
                                     Ok(mut agent) => {
+                                        await_mcp(&mut agent).await;
                                         agent.args.host_tools = host_tools;
                                         agent.args.host_owns_gate = start.permissions == PermissionOwner::Host;
                                         let sid = uuid::Uuid::new_v4().to_string();
@@ -502,7 +543,7 @@ pub async fn serve() -> Result<(), String> {
                                 Err(message) => error(&id, -32602, &message),
                                 Ok(_) => {
                                     let session = sessions.get_mut(&set.session_id).expect("checked");
-                                    match rebuild_agent(session, Some(set.model)) {
+                                    match rebuild_agent(session, Some(set.model)).await {
                                         Ok(agent) => {
                                             // The same registry: nothing is pending between
                                             // turns, and keeping it keeps one per session.
@@ -574,7 +615,7 @@ pub async fn serve() -> Result<(), String> {
                             let source = sessions.get(&sid).expect("checked");
                             // A fresh registry (from the rebuild): the fork is its
                             // own session, and a reply must never cross into it.
-                            match rebuild_agent(source, None) {
+                            match rebuild_agent(source, None).await {
                                 Ok(mut agent) => {
                                     let fork = uuid::Uuid::new_v4().to_string();
                                     // The fork is its own session, so it reports its own id.
@@ -595,7 +636,11 @@ pub async fn serve() -> Result<(), String> {
                         Ok(SessionIdParams { session_id: sid }) if active.as_ref().is_some_and(|t| t.session_id == sid) => {
                             error(&id, -32001, "session busy")
                         }
-                        Ok(SessionIdParams { session_id: sid }) if sessions.remove(&sid).is_some() => response(&id, json!({})),
+                        Ok(SessionIdParams { session_id: sid }) if sessions.contains_key(&sid) => {
+                            let session = sessions.remove(&sid).expect("checked");
+                            release_session(session, &sessions).await;
+                            response(&id, json!({}))
+                        }
                         Ok(_) => error(&id, -32602, "unknown sessionId"),
                     },
                     "turn/start" => {

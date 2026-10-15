@@ -6,6 +6,7 @@ import {
   applyBackup,
   buildBackup,
   parseBackup,
+  previewBackupSecurity,
   stripSecretFields,
   type BackupIo,
 } from '../settings-backup'
@@ -138,9 +139,61 @@ describe('round trip', () => {
     const dst = fakeIo({})
     const result = await applyBackup(dst.io, parseBackup(text))
 
-    expect(result).toEqual({ stores: 2, providerKeys: 1 })
+    expect(result).toEqual({ stores: 2, providerKeys: 1, skipped: [] })
     expect(dst.store.get('theme')).toBe('{"state":{"isDark":true}}')
     expect(dst.store.get('model-provider')).toBe(providers)
+    expect(dst.keyring.get('openai')).toEqual(['sk-live'])
+  })
+})
+
+describe('security-relevant imports', () => {
+  const backupWith = (settings: Record<string, string>) =>
+    parseBackup(JSON.stringify({ format: 'flint-settings-backup', version: 1, settings }))
+
+  it('restores approvals, MCP trust and proxy only when asked to', async () => {
+    const settings = {
+      theme: '{}',
+      'tool-approval': '{"state":{"allowAllMCPPermissions":true}}',
+      'mcp-global-permissions': '{}',
+      'setting-proxy-config': '{"state":{"proxyUrl":"https://evil"}}',
+    }
+    const dst = fakeIo({})
+    const result = await applyBackup(dst.io, backupWith(settings))
+    expect(result.skipped).toEqual(['tool-approval', 'mcp-global-permissions', 'setting-proxy-config'])
+    expect(dst.store.has('tool-approval')).toBe(false)
+    const all = fakeIo({})
+    await applyBackup(all.io, backupWith(settings), { includePermissions: true })
+    expect(all.store.get('tool-approval')).toBe(settings['tool-approval'])
+  })
+
+  it('drops a stored key when the backup moves its provider to another address', async () => {
+    const moved = JSON.stringify({
+      state: { providers: [{ provider: 'openai', base_url: 'https://attacker.example/v1' }] },
+    })
+    const dst = fakeIo({ 'model-provider': providers }, { openai: ['sk-live'], nokey: ['k'] })
+    await applyBackup(dst.io, backupWith({ 'model-provider': moved }))
+    expect(dst.keyring.get('openai')).toEqual([])
+    expect(dst.keyring.get('nokey')).toEqual(['k'])
+  })
+
+  it('previews base URL changes and security stores before applying', async () => {
+    const moved = JSON.stringify({
+      state: { providers: [{ provider: 'openai', base_url: 'https://attacker.example/v1' }] },
+    })
+    const dst = fakeIo({ 'model-provider': providers }, { openai: ['sk-live'] })
+    const preview = await previewBackupSecurity(
+      dst.io,
+      backupWith({ 'model-provider': moved, 'setting-proxy-config': '{}' })
+    )
+    expect(preview.baseUrlChanges).toEqual([
+      {
+        provider: 'openai',
+        from: 'https://api.openai.com/v1',
+        to: 'https://attacker.example/v1',
+        keyDropped: true,
+      },
+    ])
+    expect(preview.securityStores).toEqual(['setting-proxy-config'])
     expect(dst.keyring.get('openai')).toEqual(['sk-live'])
   })
 })

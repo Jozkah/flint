@@ -135,11 +135,20 @@ fn query_osc11_is_light() -> Option<bool> {
     }
 
     let mut stdout = std::io::stdout();
-    // OSC 11 background query, ST-terminated.
-    stdout.write_all(b"\x1b]11;?\x1b\\").ok()?;
+    // OSC 11 background query, ST-terminated, then a DA1 query. Every
+    // terminal answers DA1 and answers in order, so reading up to its reply
+    // consumes any OSC 11 reply too: a slow answer can no longer land after
+    // the timeout and be read as keystrokes.
+    stdout.write_all(b"\x1b]11;?\x1b\\\x1b[c").ok()?;
     stdout.flush().ok()?;
 
-    let deadline = Instant::now() + Duration::from_millis(120);
+    let da1_done = |reply: &[u8]| {
+        reply
+            .windows(3)
+            .position(|w| w == b"\x1b[?")
+            .is_some_and(|at| reply[at..].contains(&b'c'))
+    };
+    let deadline = Instant::now() + Duration::from_millis(500);
     let mut reply = Vec::new();
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -161,12 +170,11 @@ fn query_osc11_is_light() -> Option<bool> {
             break;
         }
         reply.extend_from_slice(&buf[..n as usize]);
-        // The reply ends at ST (ESC \) or BEL; stop as soon as one lands so a
-        // terminal that answered is not held for the whole timeout.
-        if reply.contains(&0x07) || reply.windows(2).any(|w| w == [0x1b, b'\\']) {
+        // Done once the DA1 reply has landed (it comes after the OSC 11 one).
+        if da1_done(&reply) {
             break;
         }
-        if reply.len() > 256 {
+        if reply.len() > 512 {
             break;
         }
     }

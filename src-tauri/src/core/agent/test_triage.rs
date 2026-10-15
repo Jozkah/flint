@@ -102,21 +102,32 @@ fn run(command: &[String], project_root: &Path) -> Result<(bool, String), Harnes
         use jan_process::CommandConsole;
         process.background();
     }
+    // Its own process group, so the deadline can stop the whole tree.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        process.process_group(0);
+    }
     let mut child = process.spawn().map_err(|e| {
         failed(
             ErrorKind::ToolUnavailable,
             format!("{} could not be started: {e}", command[0]),
         )
     })?;
+    // Drains hand back over channels so the wait for them is bounded: a
+    // grandchild that escaped the tree kill and still holds a pipe must not
+    // hang the triage (report-09 MED-5).
     let drain = |handle: Option<Box<dyn std::io::Read + Send>>| {
+        let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
         std::thread::spawn(move || {
             let mut buffer = Vec::new();
             if let Some(mut handle) = handle {
                 use std::io::Read;
                 let _ = handle.read_to_end(&mut buffer);
             }
-            buffer
-        })
+            let _ = tx.send(buffer);
+        });
+        rx
     };
     let stdout = drain(child.stdout.take().map(|h| Box::new(h) as Box<dyn std::io::Read + Send>));
     let stderr = drain(child.stderr.take().map(|h| Box::new(h) as Box<dyn std::io::Read + Send>));
@@ -125,6 +136,9 @@ fn run(command: &[String], project_root: &Path) -> Result<(bool, String), Harnes
         match child.try_wait() {
             Ok(Some(status)) => break Some(status),
             Ok(None) if started.elapsed() >= RUN_DEADLINE => {
+                // The whole tree: a grandchild (a test runner's workers) that
+                // survived would hold the pipes open and the drains never end.
+                let _ = tauri_plugin_agent_tools::tools::proc::kill_tree_child(&mut child);
                 let _ = child.kill();
                 let _ = child.wait();
                 break None;
@@ -133,8 +147,9 @@ fn run(command: &[String], project_root: &Path) -> Result<(bool, String), Harnes
             Err(e) => return Err(failed(ErrorKind::Io, format!("the run could not be waited on: {e}"))),
         }
     };
-    let out = String::from_utf8_lossy(&stdout.join().unwrap_or_default()).to_string();
-    let err = String::from_utf8_lossy(&stderr.join().unwrap_or_default()).to_string();
+    let grace = if status.is_some() { Duration::from_secs(10) } else { Duration::from_secs(1) };
+    let out = String::from_utf8_lossy(&stdout.recv_timeout(grace).unwrap_or_default()).to_string();
+    let err = String::from_utf8_lossy(&stderr.recv_timeout(grace).unwrap_or_default()).to_string();
     let Some(status) = status else {
         return Err(failed(
             ErrorKind::Timeout,

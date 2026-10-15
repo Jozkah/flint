@@ -397,6 +397,12 @@ impl Registry {
                     },
                 );
                 self.events.emit(&model_id, Transition::Loaded);
+                // A reload that ran while this load was in flight changed or
+                // removed the spec: serve this request, then drop the engine
+                // so the next one loads the current settings.
+                if self.specs.get(&model_id) != Some(&ticket.spec) {
+                    self.retire(&model_id);
+                }
                 Ok(engine)
             }
             Err(e) => {

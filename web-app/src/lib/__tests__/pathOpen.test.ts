@@ -128,7 +128,7 @@ describe('classifyPath', () => {
   })
 
   it('only reveals executables', () => {
-    for (const f of ['a.exe', 'a.bat', 'a.cmd', 'a.ps1', 'a.lnk', 'a.msi', 'a.sh', 'a.APP', 'a.com', 'a.scr']) {
+    for (const f of ['a.exe', 'a.bat', 'a.cmd', 'a.ps1', 'a.lnk', 'a.msi', 'a.sh', 'a.APP', 'a.com', 'a.scr', 'a.vbs', 'a.js', 'a.hta', 'a.reg', 'a.wsf', 'a.jar', 'a.url']) {
       expect(classifyPath(abs(`C:\\work\\proj\\${f}`), { roots, canOpenInCode: true }).kind, f).toBe('reveal')
     }
     expect(isExecutablePath('/x/run.sh')).toBe(true)

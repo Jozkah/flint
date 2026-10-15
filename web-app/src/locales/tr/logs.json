@@ -15,5 +15,6 @@
   "levelDebug": "Hata ayıklama",
   "shown": "{{total}} satırdan {{shown}} tanesi",
   "description": "Flint ve motorunun bugün yazdığı her şey. En yeniler önce.",
-  "serverDescription": "OpenAI uyumlu Yerel API Sunucusuna gelen istekler. En yeniler önce."
+  "serverDescription": "OpenAI uyumlu Yerel API Sunucusuna gelen istekler. En yeniler önce.",
+  "olderHidden": "{{count}} eski satır gösterilmiyor. Görmek için arayın veya günlük dosyasını açın."
 }

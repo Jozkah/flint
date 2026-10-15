@@ -287,7 +287,7 @@ fn classify_command(command: &str, env: &Environment) -> Option<Block> {
         );
     }
     // Irreversible local destruction.
-    if c.contains("rm -rf") || c.contains("rm -fr") {
+    if c.contains("rm -rf") || c.contains("rm -fr") || recursive_force_delete(&c) {
         return block(
             "irreversible-destruction",
             "a recursive force delete cannot be undone",
@@ -334,7 +334,46 @@ fn classify_command(command: &str, env: &Environment) -> Option<Block> {
             "installing a cron job is a persistence mechanism",
         );
     }
+    if (c.contains("schtasks") && c.contains("/create"))
+        || c.replace('/', "\\").contains("\\currentversion\\run")
+    {
+        return block(
+            "unauthorized-persistence",
+            "a scheduled task or Run key starts a program on its own",
+        );
+    }
     None
+}
+
+/// A recursive delete spelled any way the plain substring checks miss:
+/// `rm -r -f`, `rm --recursive --force`, `Remove-Item -Recurse -Force`,
+/// `rd /s`, `del /s`. `c` is lowercased.
+fn recursive_force_delete(c: &str) -> bool {
+    let words: Vec<&str> = c
+        .split(|ch: char| ch.is_whitespace() || matches!(ch, ';' | '&' | '|'))
+        .filter(|w| !w.is_empty())
+        .collect();
+    words.iter().enumerate().any(|(i, w)| {
+        let rest = &words[i + 1..];
+        let name = w.rsplit(['/', '\\']).next().unwrap_or(w);
+        let name = name.strip_suffix(".exe").unwrap_or(name);
+        match name {
+            "rm" => {
+                let short: String = rest
+                    .iter()
+                    .filter(|a| a.starts_with('-') && !a.starts_with("--"))
+                    .map(|a| a.trim_start_matches('-'))
+                    .collect();
+                let has = |long: &str| rest.iter().any(|a| *a == long);
+                (short.contains('r') || has("--recursive")) && (short.contains('f') || has("--force"))
+            }
+            "remove-item" | "ri" => {
+                rest.iter().any(|a| a.starts_with("-rec")) && rest.iter().any(|a| a.starts_with("-fo"))
+            }
+            "rd" | "rmdir" | "del" | "erase" => rest.contains(&"/s"),
+            _ => false,
+        }
+    })
 }
 
 /// Classify a write target against the block taxonomy.
@@ -374,6 +413,25 @@ mod tests {
 
     fn exec(command: &str) -> serde_json::Value {
         json!({ "command": command })
+    }
+
+    #[test]
+    fn other_spellings_of_recursive_delete_and_persistence_are_classified() {
+        let env = Environment::default();
+        for cmd in [
+            "rm -r -f build",
+            "rm --recursive --force /",
+            "Remove-Item -Recurse -Force C:\\x",
+            "rd /s /q C:\\x",
+            "del /s /q *.*",
+            "schtasks /Create /TN x /TR evil.exe",
+            r"reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v x /d evil.exe",
+        ] {
+            assert!(classify_command(cmd, &env).is_some(), "{cmd}");
+        }
+        for cmd in ["rm -r build", "rd empty", "schtasks /query"] {
+            assert!(classify_command(cmd, &env).is_none(), "{cmd}");
+        }
     }
     fn write(path: &str) -> serde_json::Value {
         json!({ "path": path })

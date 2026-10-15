@@ -365,7 +365,9 @@
     "loadFailed": "Không thể tải không gian làm việc của tác tử",
     "saveFailed": "Không thể lưu",
     "deleteFailed": "Không thể xóa",
-    "revealFailed": "Không thể mở thư mục"
+    "revealFailed": "Không thể mở thư mục",
+    "nameExists": "\"{{name}}\" đã tồn tại. Hãy chọn tên khác hoặc chỉnh sửa mục hiện có.",
+    "deleted": "Đã xóa \"{{name}}\""
   },
   "localApiServer": {
     "title": "Máy chủ API cục bộ",
@@ -1112,5 +1114,17 @@
         "overlap": "{{a}} và {{b}} sẽ chạy cùng lúc nhưng cùng thay đổi {{path}}. Hãy để một tác vụ chờ tác vụ kia."
       }
     }
+  },
+  "backup": {
+    "securityChanges": "Bản sao lưu này thay đổi nơi gửi yêu cầu:",
+    "baseUrlChange": "{{provider}}: {{from}} → {{to}}",
+    "keyDropped": "Khóa API đã lưu sẽ bị xóa; hãy nhập lại cho địa chỉ mới.",
+    "includePermissions": "Khôi phục cả cài đặt bảo mật ({{stores}})",
+    "includePermissionsWarning": "Các cài đặt này quyết định công cụ nào chạy mà không hỏi và lưu lượng đi đâu. Chỉ làm vậy với bản sao lưu do bạn tạo.",
+    "permissionsSkipped": "Nếu không đánh dấu, cài đặt bảo mật hiện tại được giữ nguyên.",
+    "skipped": "Không khôi phục: {{stores}}",
+    "storeToolApproval": "tự động phê duyệt công cụ",
+    "storeMcpTrust": "tin cậy máy chủ MCP",
+    "storeProxy": "proxy mạng"
   }
 }

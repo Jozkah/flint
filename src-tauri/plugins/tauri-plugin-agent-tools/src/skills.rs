@@ -135,9 +135,8 @@ struct PluginsSectionToml {
 
 /// Read `[skills].enabled` and `[plugins].disabled` from `<store>/agent.toml`.
 ///
-/// A missing or unparseable file yields the defaults, the same fallback the
-/// app crate's `load_agent_config(..).unwrap_or_default()` uses, so both sides
-/// answer "what is in force" identically.
+/// A missing file yields the defaults; one that will not parse enables no
+/// skill.
 pub fn load_config(store: &Path) -> SkillConfig {
     let Ok(raw) = std::fs::read_to_string(store.join("agent.toml")) else {
         return SkillConfig::default();
@@ -147,9 +146,22 @@ pub fn load_config(store: &Path) -> SkillConfig {
             enabled: parsed.skills.enabled,
             disabled_plugins: parsed.plugins.disabled,
         },
-        Err(_) => SkillConfig::default(),
+        // Fail closed: an unreadable file may hold a whitelist, and reading
+        // it as "every skill" would enable what it left out. A name no skill
+        // can have keeps the whitelist non-empty and matching nothing.
+        Err(e) => {
+            eprintln!("agent.toml: could not read [skills], enabling none: {e}");
+            SkillConfig {
+                enabled: vec![UNREADABLE_CONFIG.to_string()],
+                disabled_plugins: Vec::new(),
+            }
+        }
     }
 }
+
+/// The whitelist entry an unreadable `agent.toml` stands for: not a valid
+/// skill name, so it matches no skill.
+const UNREADABLE_CONFIG: &str = "\0unreadable agent.toml";
 
 /// Frontmatter fields we recognize; everything else is ignored.
 #[derive(Debug, Default, Deserialize)]
@@ -597,6 +609,14 @@ pub fn discover(store: &Path) -> Vec<SkillEntry> {
     scan_skill_dir(&skills_dir(store))
 }
 
+/// Whether `file`, with every link resolved, is still inside `root`.
+fn stays_under(root: &Path, file: &Path) -> bool {
+    match (root.canonicalize(), file.canonicalize()) {
+        (Ok(root), Ok(file)) => file.starts_with(root),
+        _ => false,
+    }
+}
+
 /// Scan one skills directory, sorted by name. Folder skills (`<name>/SKILL.md`)
 /// and legacy flat skills (`<name>.md`) are both discovered. When both forms
 /// share a name, the folder form wins so a skill is never listed/injected twice.
@@ -610,6 +630,12 @@ pub fn scan_skill_dir(dir: &Path) -> Vec<SkillEntry> {
     let mut by_name: std::collections::BTreeMap<String, SkillEntry> =
         std::collections::BTreeMap::new();
     let mut consider = |entry: SkillEntry| {
+        // A skill file is read into the model's context: one that is a link
+        // (or sits under a linked folder) pointing outside this directory
+        // would hand it any file on the host.
+        if !stays_under(dir, &entry.file) {
+            return;
+        }
         match by_name.get(&entry.name) {
             // Keep an existing folder entry over an incoming flat one.
             Some(existing) if existing.is_folder && !entry.is_folder => {}
@@ -679,7 +705,7 @@ pub fn scan_plugins_at(dir: &Path) -> Vec<SkillEntry> {
             });
         }
         let root_md = path.join("SKILL.md");
-        if root_md.is_file() {
+        if root_md.is_file() && stays_under(&path, &root_md) {
             out.push(SkillEntry {
                 name: plugin.to_string(),
                 file: root_md,
@@ -730,7 +756,7 @@ pub fn resolve_store_skill(store: &Path, name: &str) -> Result<SkillEntry, Strin
     let stem = safe_stem(name)?;
     let dir = skills_dir(store);
     let folder = dir.join(&stem).join("SKILL.md");
-    if folder.is_file() {
+    if folder.is_file() && stays_under(&dir, &folder) {
         return Ok(SkillEntry {
             name: stem,
             file: folder,
@@ -739,7 +765,7 @@ pub fn resolve_store_skill(store: &Path, name: &str) -> Result<SkillEntry, Strin
         });
     }
     let flat = dir.join(format!("{stem}.md"));
-    if flat.is_file() {
+    if flat.is_file() && stays_under(&dir, &flat) {
         return Ok(SkillEntry {
             name: stem,
             file: flat,
@@ -774,16 +800,16 @@ pub fn resolve_in_plugin(
         plugin: Some(plugin.to_string()),
     };
     let folder = base.join(KIND).join(plain).join("SKILL.md");
-    if folder.is_file() {
+    if folder.is_file() && stays_under(&base, &folder) {
         return Some(tagged(folder, true));
     }
     let flat = base.join(KIND).join(format!("{plain}.md"));
-    if flat.is_file() {
+    if flat.is_file() && stays_under(&base, &flat) {
         return Some(tagged(flat, false));
     }
     if plain == plugin {
         let root_md = base.join("SKILL.md");
-        if root_md.is_file() {
+        if root_md.is_file() && stays_under(&base, &root_md) {
             return Some(tagged(root_md, false));
         }
     }
@@ -1570,6 +1596,33 @@ mod tests {
         std::fs::write(dir.join("themes").join("ocean.md"), "deep blue").unwrap();
         std::fs::write(dir.join("notes.txt"), "n").unwrap();
         store
+    }
+
+    /// A skill file that links outside the skills directory is never found,
+    /// so the host file it points at is never read into the model.
+    #[cfg(unix)]
+    #[test]
+    fn a_skill_linked_outside_the_store_is_ignored() {
+        let store = store_with(&[("real", "---\ndescription: r\n---\nbody")]);
+        let secret = store.join("secret.txt");
+        std::fs::write(&secret, "id_rsa").unwrap();
+        let root = skills_dir(&store);
+        std::os::unix::fs::symlink(&secret, root.join("leak.md")).unwrap();
+        std::fs::create_dir_all(root.join("leak2")).unwrap();
+        std::os::unix::fs::symlink(&secret, root.join("leak2").join("SKILL.md")).unwrap();
+        let names: Vec<String> = discover(&store).into_iter().map(|e| e.name).collect();
+        assert_eq!(names, vec!["real".to_string()]);
+        assert!(resolve_store_skill(&store, "leak").is_err());
+        assert!(resolve_store_skill(&store, "leak2").is_err());
+    }
+
+    /// An agent.toml that will not parse enables no skill.
+    #[test]
+    fn an_unreadable_agent_toml_enables_no_skill() {
+        let store = store_with(&[]);
+        std::fs::write(store.join("agent.toml"), "[skills\nenabled = [").unwrap();
+        let config = load_config(&store);
+        assert_eq!(config.enabled, vec![UNREADABLE_CONFIG.to_string()]);
     }
 
     fn located(store: &std::path::Path, name: &str) -> SkillEntry {
@@ -2456,8 +2509,9 @@ mod tests {
                 disabled_plugins: vec!["p".into()],
             }
         );
+        // Unreadable fails closed: no skill is enabled.
         agent_toml(&store, "[skills\nbroken");
-        assert_eq!(load_config(&store), SkillConfig::default());
+        assert_eq!(load_config(&store).enabled, vec![UNREADABLE_CONFIG.to_string()]);
         let _ = std::fs::remove_dir_all(&store);
     }
 }

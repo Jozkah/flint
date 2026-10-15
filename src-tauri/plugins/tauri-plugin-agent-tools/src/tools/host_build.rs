@@ -277,7 +277,7 @@ async fn execute(plan: &Plan, cwd: &Path) -> String {
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
     let shown = plan.display();
-    match tokio::time::timeout(plan.timeout, cmd.output()).await {
+    match crate::tools::owned::output_with_timeout(&mut cmd, plan.timeout).await {
         Err(_) => format!(
             "ERROR: `{shown}` had not finished after {} seconds and was stopped. Run a smaller task, or raise timeout_secs (up to {MAX_TIMEOUT_SECS}).",
             plan.timeout.as_secs()

@@ -263,6 +263,10 @@ fn run_git(git: &Path, repo_dir: &Path, args: &[&str]) -> (bool, String) {
         // No hooks, no pager, no credential prompt that could hang unseen.
         .arg("-c")
         .arg("core.hooksPath=/dev/null")
+        // A repository's own config can name an fsmonitor program, which
+        // `ls-files` / `update-index` would run here, unsandboxed.
+        .arg("-c")
+        .arg("core.fsmonitor=false")
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_PAGER", "cat")

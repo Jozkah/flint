@@ -367,7 +367,9 @@
     "loadFailed": "Impossible de charger l'espace de travail de l'agent",
     "saveFailed": "Impossible d'enregistrer",
     "deleteFailed": "Impossible de supprimer",
-    "revealFailed": "Impossible d'ouvrir le dossier"
+    "revealFailed": "Impossible d'ouvrir le dossier",
+    "nameExists": "« {{name}} » existe déjà. Choisissez un autre nom ou modifiez l'existant.",
+    "deleted": "« {{name}} » supprimé"
   },
   "localApiServer": {
     "title": "Serveur d'API local",
@@ -1114,5 +1116,17 @@
         "overlap": "{{a}} et {{b}} s'exécuteraient en même temps mais modifient toutes deux {{path}}. Faites attendre l'une l'autre."
       }
     }
+  },
+  "backup": {
+    "securityChanges": "Cette sauvegarde change la destination des requêtes :",
+    "baseUrlChange": "{{provider}} : {{from}} → {{to}}",
+    "keyDropped": "Sa clé API enregistrée sera supprimée ; saisissez-la de nouveau pour la nouvelle adresse.",
+    "includePermissions": "Restaurer aussi les paramètres de sécurité ({{stores}})",
+    "includePermissionsWarning": "Ils décident quels outils s'exécutent sans demander et par où passe le trafic. À n'utiliser qu'avec une sauvegarde que vous avez faite vous-même.",
+    "permissionsSkipped": "Sans cette case, vos paramètres de sécurité actuels sont conservés.",
+    "skipped": "Non restauré : {{stores}}",
+    "storeToolApproval": "approbation automatique des outils",
+    "storeMcpTrust": "confiance envers les serveurs MCP",
+    "storeProxy": "proxy réseau"
   }
 }

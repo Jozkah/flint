@@ -87,8 +87,9 @@ fn parse_field(text: &str, f: &Field) -> Result<u64, CronError> {
         let (range, step) = match part.split_once('/') {
             Some((r, s)) => {
                 let step: u32 = match s.parse() {
-                    Ok(n) if n > 0 => n,
-                    _ => return err(format!("the {} step '{s}' must be a positive number", f.name)),
+                    // Bounded so `v += step` below cannot overflow.
+                    Ok(n) if n > 0 && n <= 60 => n,
+                    _ => return err(format!("the {} step '{s}' must be a number from 1 to 60", f.name)),
                 };
                 (r, Some(step))
             }
@@ -259,7 +260,7 @@ mod tests {
     fn invalid_expressions_are_refused_with_a_reason() {
         for bad in [
             "", "* * * *", "* * * * * *", "60 * * * *", "* 24 * * *", "* * 0 * *", "* * 32 * *", "* * * 13 *",
-            "* * * * 8", "*/0 * * * *", "a * * * *", "5-1 * * * *", "1,,2 * * * *", "*/x * * * *",
+            "* * * * 8", "*/0 * * * *", "*/4294967295 * * * *", "a * * * *", "5-1 * * * *", "1,,2 * * * *", "*/x * * * *",
         ] {
             assert!(CronExpr::parse(bad).is_err(), "{bad:?} should not parse");
         }

@@ -365,7 +365,9 @@
     "loadFailed": "エージェントのワークスペースを読み込めませんでした",
     "saveFailed": "保存できませんでした",
     "deleteFailed": "削除できませんでした",
-    "revealFailed": "フォルダーを開けませんでした"
+    "revealFailed": "フォルダーを開けませんでした",
+    "nameExists": "「{{name}}」は既に存在します。別の名前を選ぶか、既存のものを編集してください。",
+    "deleted": "「{{name}}」を削除しました"
   },
   "localApiServer": {
     "title": "ローカルAPIサーバー",
@@ -1112,5 +1114,17 @@
         "overlap": "{{a}} と {{b}} は同時に実行されますが、どちらも {{path}} を変更します。一方がもう一方を待つようにしてください。"
       }
     }
+  },
+  "backup": {
+    "securityChanges": "このバックアップはリクエストの送信先を変更します:",
+    "baseUrlChange": "{{provider}}: {{from}} → {{to}}",
+    "keyDropped": "保存済みの API キーは削除されます。新しいアドレス用に再入力してください。",
+    "includePermissions": "セキュリティ設定も復元する ({{stores}})",
+    "includePermissionsWarning": "確認なしで実行されるツールと通信の経路を決める設定です。自分で作成したバックアップの場合のみ有効にしてください。",
+    "permissionsSkipped": "チェックしない場合、現在のセキュリティ設定が維持されます。",
+    "skipped": "復元されなかった項目: {{stores}}",
+    "storeToolApproval": "ツールの自動承認",
+    "storeMcpTrust": "MCP サーバーの信頼",
+    "storeProxy": "ネットワークプロキシ"
   }
 }

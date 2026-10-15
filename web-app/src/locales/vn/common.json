@@ -1048,7 +1048,8 @@
     "compact": "Nén",
     "compacting": "Đang nén…",
     "compactFailed": "Chưa có gì để nén.",
-    "newSession": "Phiên mới"
+    "newSession": "Phiên mới",
+    "compactSuperseded": "Cuộc trò chuyện đã thay đổi trong lúc nén nên không có gì bị thay thế. Hãy nén lại."
   },
   "autoCompactNeedsWindow": "Tự động nén cần kích thước ngữ cảnh, và {{model}} không có kích thước nào Flint tìm được. Hãy đặt Số token ngữ cảnh tối đa cho mô hình này để các cuộc trò chuyện dài được nén trước khi đầy. Nếu nhà cung cấp từ chối một yêu cầu vì độ dài, Flint nén và thử lại một lần.",
   "compaction": {
@@ -2530,5 +2531,6 @@
     "load": "Tải hình ảnh từ {{host}}"
   },
   "messageSaveFailed": "Không thể lưu tin nhắn. Tin nhắn có thể bị mất sau khi khởi động lại.",
-  "threadSaveFailed": "Không thể lưu thay đổi cho cuộc trò chuyện này. Đã hoàn tác."
+  "threadSaveFailed": "Không thể lưu thay đổi cho cuộc trò chuyện này. Đã hoàn tác.",
+  "attachmentsProcessFailed": "Không thể chuẩn bị tệp đính kèm nên tin nhắn chưa được gửi"
 }

@@ -742,7 +742,9 @@ export async function consumeStep(
           const salvaged =
             (empty || NO_ARG_TOOLS.has(chunk.toolName)) && offered
               ? {}
-              : typeof raw === 'string'
+              : // Never for a tool the run did not offer: repairing its
+                // arguments would dispatch it past the refusal below.
+                offered && typeof raw === 'string'
                 ? recoverToolArgs(raw)
                 : undefined
           if (salvaged) {

@@ -70,9 +70,23 @@ pub fn attachment_file_name(raw: &str) -> Result<String, String> {
 }
 
 /// Writes a dropped file (base64-encoded) into its own folder under the
-/// attachments folder and returns the saved file's path.
+/// attachments folder and returns the saved file's path. Async, with the
+/// decode and write on a blocking thread: a sync command runs on the main
+/// thread, and decoding a 200MB payload there froze the window.
 #[tauri::command]
-pub fn save_attachment_file<R: Runtime>(
+pub async fn save_attachment_file<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    file_name: String,
+    data_base64: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        save_attachment_file_blocking(app_handle, file_name, data_base64)
+    })
+    .await
+    .map_err(|e| format!("save_attachment_file error: {e}"))?
+}
+
+pub(crate) fn save_attachment_file_blocking<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     file_name: String,
     data_base64: String,

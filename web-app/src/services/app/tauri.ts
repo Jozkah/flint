@@ -4,7 +4,7 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import { AppConfiguration } from '@janhq/core'
-import type { FactoryResetOptions, LogEntry } from './types'
+import type { FactoryResetOptions, LogChunk, LogEntry } from './types'
 import { DefaultAppService } from './default'
 import { pruneLocalStorageByFlags } from './reset-localstorage'
 
@@ -26,10 +26,17 @@ export class TauriAppService extends DefaultAppService {
    */
   async factoryReset(options?: FactoryResetOptions): Promise<void> {
     const { EngineManager } = await import('@janhq/core')
+    // A crashed engine must not block the reset: unload what can be unloaded.
     for (const [, engine] of EngineManager.instance().engines) {
-      const activeModels = await engine.getLoadedModels()
-      if (activeModels) {
-        await Promise.all(activeModels.map((model: string) => engine.unload(model)))
+      try {
+        const activeModels = await engine.getLoadedModels()
+        if (activeModels) {
+          await Promise.allSettled(
+            activeModels.map((model: string) => engine.unload(model))
+          )
+        }
+      } catch (error) {
+        console.error('Unloading models before reset failed:', error)
       }
     }
 
@@ -53,6 +60,19 @@ export class TauriAppService extends DefaultAppService {
   async readLogs(): Promise<LogEntry[]> {
     const logData: string = (await invoke('read_logs')) ?? ''
     return logData.split('\n').map(this.parseLogLine)
+  }
+
+  async readLogsSince(offset?: number): Promise<LogChunk> {
+    const chunk: { text: string; offset: number; reset: boolean } =
+      await invoke('read_logs_since', { offset: offset ?? null })
+    return {
+      entries: chunk.text
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => this.parseLogLine(line)),
+      offset: chunk.offset,
+      reset: chunk.reset,
+    }
   }
 
   async getJanDataFolder(): Promise<string | undefined> {

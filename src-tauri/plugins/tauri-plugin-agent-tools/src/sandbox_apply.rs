@@ -179,6 +179,13 @@ fn resolve(
     {
         return Err("Flint's own files in the sandbox are not session output".into());
     }
+    // Neither end may name Git's or Flint's state under any spelling
+    // (`.GIT`, `git~1`, `.jan.`): a run that wrote `.git/hooks/post-checkout`
+    // in its sandbox must not get it applied into the project.
+    let destination_text = crate::proposal::validate_path(destination)
+        .map_err(|_| format!("{destination} cannot be written in the attached folder"))?;
+    crate::proposal::validate_path(&relative.to_string_lossy())
+        .map_err(|_| "that sandbox file cannot be applied".to_string())?;
     let sandbox_root = std::fs::canonicalize(sandbox)
         .map_err(|e| format!("the session sandbox is not readable: {e}"))?;
     let project_root = std::fs::canonicalize(project)
@@ -196,6 +203,9 @@ fn resolve(
         return Err("only files can be applied".into());
     }
 
+    if crate::proposal::resolves_into_reserved(&project_root, &destination_text) {
+        return Err("the destination is inside Git's or Flint's own state".into());
+    }
     let destination = project_root.join(&target);
     // Whatever part of the destination already exists must resolve inside
     // the project, so a link in the project cannot redirect the write.
@@ -238,6 +248,24 @@ mod tests {
         std::fs::create_dir_all(&project).unwrap();
         std::fs::write(sandbox.join("docs/notes.md"), "from the run").unwrap();
         (TempDir(root), sandbox, project)
+    }
+
+    /// A sandbox file is never applied into Git's or Flint's state, under any
+    /// spelling of either end.
+    #[test]
+    fn never_writes_git_or_jan_state() {
+        let (_root, sandbox, project) = dirs();
+        std::fs::create_dir_all(project.join(".git/hooks")).unwrap();
+        for destination in [".git/hooks/post-checkout", ".GIT/hooks/x", "GIT~1/hooks/x", ".jan./agent/agent.toml", "docs/../.git/config"] {
+            assert!(
+                apply_sandbox_file_to(&sandbox, &project, "docs/notes.md", destination, true).is_err(),
+                "{destination}"
+            );
+        }
+        std::fs::create_dir_all(sandbox.join(".Git/hooks")).unwrap();
+        std::fs::write(sandbox.join(".Git/hooks/post-checkout"), "evil").unwrap();
+        assert!(apply_sandbox_file(&sandbox, &project, ".Git/hooks/post-checkout", true).is_err());
+        assert!(!project.join(".git/hooks/post-checkout").exists());
     }
 
     #[test]

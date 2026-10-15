@@ -365,7 +365,9 @@
     "loadFailed": "Could not load the agent workspace",
     "saveFailed": "Could not save",
     "deleteFailed": "Could not delete",
-    "revealFailed": "Could not open the folder"
+    "revealFailed": "Could not open the folder",
+    "nameExists": "\"{{name}}\" already exists. Choose another name or edit the existing one.",
+    "deleted": "Deleted \"{{name}}\""
   },
   "localApiServer": {
     "title": "Local API Server",
@@ -1111,5 +1113,17 @@
         "overlap": "{{a}} and {{b}} would run at the same time but both change {{path}}. Make one wait for the other."
       }
     }
+  },
+  "backup": {
+    "securityChanges": "This backup changes where requests go:",
+    "baseUrlChange": "{{provider}}: {{from}} → {{to}}",
+    "keyDropped": "Its saved API key will be removed; enter it again for the new address.",
+    "includePermissions": "Also restore security settings ({{stores}})",
+    "includePermissionsWarning": "These decide which tools run without asking and where traffic goes. Only do this for a backup you made yourself.",
+    "permissionsSkipped": "Left unticked, your current security settings are kept.",
+    "skipped": "Not restored: {{stores}}",
+    "storeToolApproval": "tool auto-approval",
+    "storeMcpTrust": "MCP server trust",
+    "storeProxy": "network proxy"
   }
 }

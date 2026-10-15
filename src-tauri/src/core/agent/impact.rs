@@ -212,8 +212,19 @@ pub fn graph(project_root: &Path) -> Result<Graph, ImpactError> {
             if name.starts_with('.') && name != ".jan" || ignored(&name) {
                 continue;
             }
-            if path.is_dir() {
-                queue.push_back((path, depth + 1));
+            // A link is not followed: one to `..` or the home folder would walk
+            // the host file system, and a loop of them never ends.
+            let Ok(kind) = entry.file_type() else { continue };
+            // (std reports a Windows junction as a symlink too.)
+            if kind.is_symlink() {
+                continue;
+            }
+            if kind.is_dir() {
+                if sources.len() >= MAX_FILES {
+                    graph.truncated = true;
+                } else {
+                    queue.push_back((path, depth + 1));
+                }
                 continue;
             }
             let Some(language) = Language::of(&path) else { continue };
@@ -784,6 +795,19 @@ mod tests {
             std::fs::write(full, body).unwrap();
         }
         root
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_directory_link_out_of_the_project_is_not_walked() {
+        let outside = project("outside", &[("secret.rs", "fn x() {}\n")]);
+        let root = project("links", &[("src/main.rs", "fn main() {}\n")]);
+        std::os::unix::fs::symlink(&outside, root.join("up")).unwrap();
+        std::os::unix::fs::symlink(&root, root.join("src/self")).unwrap();
+        let graph = graph(&root).unwrap();
+        assert_eq!(graph.files, ["src/main.rs"]);
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     #[test]

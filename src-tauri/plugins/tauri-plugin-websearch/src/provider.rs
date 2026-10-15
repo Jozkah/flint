@@ -304,7 +304,30 @@ fn public_fetch_client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: std::sync::OnceLock<Result<reqwest::Client, String>> = std::sync::OnceLock::new();
     CLIENT
         .get_or_init(|| {
-            reqwest::Client::builder()
+            // Only the environment proxies `proxy_configured` knows about. A
+            // system proxy (Windows registry, macOS settings) would resolve
+            // the target itself, bypass `PublicOnlyResolver`, and go unvetted.
+            let mut builder = reqwest::Client::builder().no_proxy();
+            type MakeProxy = fn(String) -> reqwest::Result<reqwest::Proxy>;
+            let env_proxies: [([&str; 2], MakeProxy); 3] = [
+                (["HTTP_PROXY", "http_proxy"], reqwest::Proxy::http::<String>),
+                (["HTTPS_PROXY", "https_proxy"], reqwest::Proxy::https::<String>),
+                (["ALL_PROXY", "all_proxy"], reqwest::Proxy::all::<String>),
+            ];
+            for (vars, make) in env_proxies {
+                let Some(url) = vars
+                    .iter()
+                    .filter_map(|k| std::env::var(k).ok())
+                    .find(|v| !v.trim().is_empty())
+                else {
+                    continue;
+                };
+                let proxy = make(url.trim().to_string())
+                    .map_err(|e| format!("invalid proxy in {}: {e}", vars[0]))?
+                    .no_proxy(reqwest::NoProxy::from_env());
+                builder = builder.proxy(proxy);
+            }
+            builder
                 .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
                 .dns_resolver(std::sync::Arc::new(PublicOnlyResolver))
                 .redirect(reqwest::redirect::Policy::custom(|attempt| {
@@ -1115,7 +1138,7 @@ async fn http_get_page(
         return Err(format!("{provider} fetch failed with HTTP {}", status.as_u16()));
     }
     let title = extract_html_title(&body).unwrap_or_default();
-    let (content, truncated) = bound_text(&body);
+    let (content, truncated) = bound_text(&html_to_text(&body));
     Ok(FetchedPage {
         url: url.to_string(),
         title,
@@ -1614,13 +1637,49 @@ async fn fetch_url_direct(
         ));
     }
     let title = extract_html_title(&body).unwrap_or_default();
-    let (content, truncated) = bound_text(&body);
+    let (content, truncated) = bound_text(&html_to_text(&body));
     Ok(FetchedPage {
         url: url.to_string(),
         title,
         content,
         truncated,
     })
+}
+
+/// Readable text of an HTML page; other bodies pass through. Raw markup,
+/// scripts and styles would otherwise fill the bounded content the model reads.
+fn html_to_text(body: &str) -> String {
+    let head = body.chars().take(1024).collect::<String>().to_ascii_lowercase();
+    if !(head.contains("<html") || head.contains("<!doctype html") || head.contains("<body")) {
+        return body.to_string();
+    }
+    let lower = body.to_ascii_lowercase();
+    let mut kept = String::with_capacity(body.len());
+    let mut pos = 0;
+    while pos < body.len() {
+        // Next block whose contents are not text: script, style or comment.
+        let next = [("<script", "</script>"), ("<style", "</style>"), ("<!--", "-->")]
+            .iter()
+            .filter_map(|(open, close)| lower[pos..].find(open).map(|i| (pos + i, *close)))
+            .min_by_key(|(i, _)| *i);
+        let Some((start, close)) = next else {
+            kept.push_str(&body[pos..]);
+            break;
+        };
+        kept.push_str(&body[pos..start]);
+        kept.push(' ');
+        pos = match lower[start..].find(close) {
+            Some(i) => start + i + close.len(),
+            None => body.len(),
+        };
+    }
+    let text = decode_html_entities(&strip_html_tags(&kept));
+    // Collapse the indentation and blank runs markup leaves behind.
+    text.lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn extract_html_title(html: &str) -> Option<String> {
@@ -2137,6 +2196,15 @@ mod tests {
         });
         assert_eq!(normalize_serper_search(&body, 1).len(), 1);
         assert!(normalize_serper_search(&json!({}), 5).is_empty());
+    }
+
+    #[test]
+    fn html_to_text_keeps_only_readable_text() {
+        let page = "<!DOCTYPE html><html><head><title>T</title><style>p{x:1}</style>\
+            <script>var a = '<p>';</script></head><body>\n  <p>Hello &amp; <b>bye</b></p>\
+            <!-- <b>hidden</b> --></body></html>";
+        assert_eq!(html_to_text(page), "T\nHello & bye");
+        assert_eq!(html_to_text("{\"a\": \"<b>\"}"), "{\"a\": \"<b>\"}");
     }
 
     #[test]

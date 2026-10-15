@@ -279,7 +279,17 @@ pub fn is_hidden_jan_path(project_root: &Path, raw: &str) -> bool {
     // A path that cannot be resolved (a link cycle planted under `.jan`) is
     // judged by where it is written, so it stays hidden rather than listed.
     let resolved = canonicalize_lenient(&abs).unwrap_or_else(|_| lexical_normalize(&abs));
-    resolved.starts_with(root.join(JAN_DIR))
+    // Any case, and with the trailing dots and spaces Windows drops: `.JAN`
+    // and `.jan.` are the same folder on a case-insensitive filesystem, and
+    // a `.jan` that does not exist yet is not case-corrected by resolving.
+    resolved.strip_prefix(&root).is_ok_and(|rel| {
+        rel.components().next().is_some_and(|c| {
+            c.as_os_str()
+                .to_string_lossy()
+                .trim_end_matches(['.', ' '])
+                .eq_ignore_ascii_case(JAN_DIR)
+        })
+    })
 }
 
 /// Whether a path names a repository's `.git` or anything under it: a
@@ -436,6 +446,7 @@ fn glob_names_jan(project_root: &Path, token: &str) -> bool {
     }
     let options = glob::MatchOptions {
         require_literal_leading_dot: true,
+        case_sensitive: false,
         ..glob::MatchOptions::new()
     };
     glob::Pattern::new(first).is_ok_and(|p| p.matches_with(JAN_DIR, options))
@@ -715,6 +726,12 @@ mod tests {
         // Config, the agent dir listing, unknown config files.
         assert!(is_hidden_jan_path(&root, ".jan/agent/agent.toml"));
         assert!(is_hidden_jan_path(&root, "./.jan/agent/agent.toml"));
+        // Case and trailing dots: the same folder on Windows and macOS.
+        assert!(is_hidden_jan_path(&root, ".JAN/agent/agent.toml"));
+        assert!(is_hidden_jan_path(&root, ".Jan/agent/hooks.toml"));
+        assert!(is_hidden_jan_path(&root, ".jan./agent/agent.toml"));
+        assert!(!is_hidden_jan_path(&root, ".janet/x"));
+        assert!(command_touches_hidden_jan_path(&root, "mkdir .JAN/agent"));
         assert!(is_hidden_jan_path(
             &root,
             root.join(".jan/agent/agent.toml").to_str().unwrap()

@@ -65,8 +65,50 @@ fn extract_pdf_text_lenient(bytes: &[u8]) -> Result<String, String> {
     })
 }
 
+/// Most a PDF's streams may inflate to in total. Both extractors decode every
+/// stream fully in memory, so a small Flate bomb would otherwise take the app
+/// down (report-06 MED-5).
+const MAX_PDF_DECODED_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Refuse a PDF whose streams decode to more than `limit` bytes, measured with
+/// a bounded inflate so the check itself cannot be bombed.
+fn check_pdf_decoded_size(bytes: &[u8], limit: u64) -> Result<(), String> {
+    let doc = match lopdf::Document::load_mem(bytes) {
+        Ok(doc) => doc,
+        // The extractors report a document that will not load.
+        Err(_) => return Ok(()),
+    };
+    let mut total: u64 = 0;
+    for object in doc.objects.values() {
+        let lopdf::Object::Stream(stream) = object else { continue };
+        let flate = match stream.dict.get(b"Filter") {
+            Ok(lopdf::Object::Name(n)) => n.as_slice() == b"FlateDecode",
+            Ok(lopdf::Object::Array(a)) => a
+                .iter()
+                .any(|f| matches!(f, lopdf::Object::Name(n) if n.as_slice() == b"FlateDecode")),
+            _ => false,
+        };
+        let size = if flate {
+            let room = limit.saturating_sub(total) + 1;
+            let mut reader = flate2::read::ZlibDecoder::new(stream.content.as_slice()).take(room);
+            std::io::copy(&mut reader, &mut std::io::sink()).unwrap_or(0)
+        } else {
+            stream.content.len() as u64
+        };
+        total = total.saturating_add(size);
+        if total > limit {
+            return Err(format!(
+                "this PDF expands to more than {} MB when decoded, so it was not read",
+                limit / (1024 * 1024)
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Strict extractor first, lenient lopdf walk second, clear error if both fail.
 fn extract_pdf_text(bytes: &[u8]) -> Result<String, RagError> {
+    guard(|| check_pdf_decoded_size(bytes, MAX_PDF_DECODED_BYTES)).map_err(RagError::ParseError)?;
     let primary = guard(|| pdf_extract::extract_text_from_mem(bytes).map_err(|e| e.to_string()));
     let primary_err = match primary {
         Ok(t) if t.chars().any(|c| !c.is_whitespace()) => return Ok(t),
@@ -362,11 +404,40 @@ fn excel_duration(days: f64) -> String {
     format!("{}{}:{:02}:{:02}", sign, secs / 3600, secs % 3600 / 60, secs % 60)
 }
 
+/// Ceiling for everything an xlsx/ods archive inflates to. calamine reads
+/// whole parts into memory, so a small zip bomb would otherwise take the app
+/// down before any parse error could be reported.
+const MAX_SPREADSHEET_INFLATED_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Inflate every entry into a sink and fail once the total passes `cap`.
+/// Declared sizes can lie, so the bytes are counted, not the headers. A file
+/// that is not a zip (legacy .xls) has nothing to check.
+fn check_zip_inflated_size(file_path: &str, cap: u64) -> Result<(), RagError> {
+    let Ok(mut zip) = ZipArchive::new(fs::File::open(file_path)?) else {
+        return Ok(());
+    };
+    let mut total: u64 = 0;
+    for i in 0..zip.len() {
+        let entry = zip
+            .by_index(i)
+            .map_err(|e| RagError::ParseError(e.to_string()))?;
+        total += std::io::copy(&mut entry.take(cap - total + 1), &mut std::io::sink())
+            .map_err(|e| RagError::ParseError(e.to_string()))?;
+        if total > cap {
+            return Err(RagError::ParseError(
+                "Spreadsheet is too large once decompressed".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn parse_spreadsheet(file_path: &str) -> Result<String, RagError> {
     let metadata = fs::metadata(file_path)?;
     if metadata.len() > MAX_PARSE_FILE_SIZE {
         return Err(RagError::ParseError("File too large (max 200MB)".to_string()));
     }
+    check_zip_inflated_size(file_path, MAX_SPREADSHEET_INFLATED_BYTES)?;
     let mut workbook = open_workbook_auto(file_path)
         .map_err(|e| RagError::ParseError(e.to_string()))?;
     let mut out = String::new();
@@ -568,6 +639,17 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn spreadsheet_zip_bomb_is_refused_by_inflated_size() {
+        let dir = TempDir::new("zipbomb");
+        let body = "0".repeat(4096);
+        let path = dir.zip("bomb.xlsx", &[("a.xml", &body), ("b.xml", &body)]);
+        assert!(check_zip_inflated_size(&path, 8192).is_ok());
+        assert!(is_too_large(check_zip_inflated_size(&path, 8191).unwrap_err()));
+        let plain = dir.file("old.xls", b"not a zip");
+        assert!(check_zip_inflated_size(&plain, 1).is_ok());
     }
 
     fn is_too_large(err: RagError) -> bool {
@@ -813,6 +895,22 @@ endstream", body.len(), body)
             ],
             "",
         )
+    }
+
+    #[test]
+    fn a_pdf_whose_streams_inflate_past_the_cap_is_refused() {
+        use std::io::Write;
+        let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+        z.write_all(&vec![b' '; 4 * 1024 * 1024]).unwrap();
+        let packed = z.finish().unwrap();
+        let mut doc = lopdf::Document::with_version("1.5");
+        let mut dict = lopdf::Dictionary::new();
+        dict.set("Filter", lopdf::Object::Name(b"FlateDecode".to_vec()));
+        doc.add_object(lopdf::Stream::new(dict, packed));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert!(check_pdf_decoded_size(&bytes, 1024 * 1024).is_err());
+        assert!(check_pdf_decoded_size(&bytes, 8 * 1024 * 1024).is_ok());
     }
 
     #[test]

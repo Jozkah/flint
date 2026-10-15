@@ -363,6 +363,11 @@ describe('isVisionSupported', () => {
 })
 
 describe('isToolSupported', () => {
+  // clearAllMocks keeps implementations; earlier suites stat folders.
+  beforeEach(() => {
+    mockFileStat.mockResolvedValue({ isDirectory: false } as any)
+  })
+
   it('detects tools from GGUF chat template metadata', async () => {
     const ext = newExt()
     mockInvoke.mockResolvedValue({ model_path: '/abs/model.gguf' })
@@ -393,6 +398,22 @@ describe('isToolSupported', () => {
       p.endsWith('tokenizer_config.json')
     )
     expect(await ext.isToolSupported('foo')).toBe(true)
+  })
+
+  it('treats a model folder as safetensors, not GGUF', async () => {
+    const ext = newExt()
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_yaml') return { model_path: '/abs/mlx-model' }
+      if (cmd === 'read_file_sync')
+        return JSON.stringify({ chat_template: '{% if tools %}x{% endif %}' })
+      return undefined
+    })
+    mockFileStat.mockResolvedValue({ isDirectory: true } as any)
+    mockExistsSync.mockImplementation(
+      async (p: string) => p === '/abs/mlx-model/tokenizer_config.json'
+    )
+    expect(await ext.isToolSupported('foo')).toBe(true)
+    expect(mockReadGguf).not.toHaveBeenCalled()
   })
 
   it('does not treat the assistant chat role as tool support (#64)', async () => {

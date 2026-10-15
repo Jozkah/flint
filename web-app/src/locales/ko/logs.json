@@ -15,5 +15,6 @@
   "levelDebug": "디버그",
   "shown": "{{total}}줄 중 {{shown}}줄",
   "description": "오늘 Flint와 엔진이 기록한 모든 내용입니다. 최신순입니다.",
-  "serverDescription": "OpenAI 호환 로컬 API 서버로 들어온 요청입니다. 최신순입니다."
+  "serverDescription": "OpenAI 호환 로컬 API 서버로 들어온 요청입니다. 최신순입니다.",
+  "olderHidden": "이전 줄 {{count}}개는 표시되지 않습니다. 검색하거나 로그 파일을 열어 확인하세요."
 }

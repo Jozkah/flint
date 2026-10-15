@@ -436,10 +436,15 @@ impl StreamInput {
     pub(crate) async fn aborted(&self) {
         // The latch is checked first: an abort that arrived before this future
         // was polled has already fired its notification and would be missed.
+        // Register as a waiter before checking, so an abort landing between
+        // the check and the await still wakes us.
+        let notified = self.abort.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
         if self.aborted.load(Ordering::SeqCst) {
             return;
         }
-        self.abort.notified().await;
+        notified.await;
     }
 }
 

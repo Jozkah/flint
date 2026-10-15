@@ -187,7 +187,10 @@ fn read_map_for_merge(path: &PathBuf) -> Option<BTreeMap<String, String>> {
 fn write_batch(path: &PathBuf, batch: &FlushBatch) -> Result<BTreeMap<String, String>, String> {
     let to_write = match read_map_for_merge(path) {
         Some(disk) => merge_changes(disk, &batch.changes),
-        None => batch.snapshot.clone(),
+        None => {
+            backup_unreadable(path);
+            batch.snapshot.clone()
+        }
     };
     write_map_atomic(path, &to_write)?;
     Ok(to_write)
@@ -216,12 +219,28 @@ fn settings_file_path() -> PathBuf {
     resolve_jan_data_folder().join(CONFIGURATION_FILE_NAME)
 }
 
+/// The startup map. Non-string values are kept as their JSON text (the same
+/// reading the flush merge uses): parsing as strings only turned one number
+/// into an empty map, and the webview then wrote its defaults over the real
+/// settings. A file that cannot be parsed at all is copied aside first, since
+/// the next flush will replace it.
 fn read_map(path: &PathBuf) -> BTreeMap<String, String> {
-    match fs::read_to_string(path) {
-        Ok(content) if !content.trim().is_empty() => {
-            serde_json::from_str(&content).unwrap_or_default()
+    match read_map_for_merge(path) {
+        Some(map) => map,
+        None => {
+            backup_unreadable(path);
+            BTreeMap::new()
         }
-        _ => BTreeMap::new(),
+    }
+}
+
+fn backup_unreadable(path: &PathBuf) {
+    if path.is_file() {
+        let aside = path.with_extension(format!("json.corrupt-{}", std::process::id()));
+        match fs::copy(path, &aside) {
+            Ok(_) => log::warn!("settings: unreadable {}; kept a copy at {}", path.display(), aside.display()),
+            Err(e) => log::warn!("settings: unreadable {} and could not copy it: {e}", path.display()),
+        }
     }
 }
 
@@ -230,7 +249,10 @@ fn write_map_atomic(path: &PathBuf, map: &BTreeMap<String, String>) -> Result<()
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let serialized = serde_json::to_string_pretty(map).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
+    // A name per write: the flush thread and the exit flush may both write.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_extension(format!("json.{}-{seq}.tmp", std::process::id()));
     fs::write(&tmp, serialized).map_err(|e| e.to_string())?;
     fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
@@ -508,5 +530,28 @@ mod tests {
         let empty = dir.path().join("empty.json");
         fs::write(&empty, "   ").unwrap();
         assert!(read_map(&empty).is_empty());
+    }
+
+    #[test]
+    fn one_non_string_value_keeps_every_other_setting() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, r#"{"theme":"dark","fontSize":14}"#).unwrap();
+        let map = read_map(&path);
+        assert_eq!(map.get("theme").map(String::as_str), Some("dark"));
+        assert_eq!(map.get("fontSize").map(String::as_str), Some("14"));
+    }
+
+    #[test]
+    fn an_unparseable_file_is_copied_aside() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, "{ not json").unwrap();
+        assert!(read_map(&path).is_empty());
+        let kept = fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().contains("corrupt"));
+        assert!(kept);
     }
 }

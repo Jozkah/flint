@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { tooHeavyToHighlight } from "@/lib/highlightLimits";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import {
   type ComponentProps,
@@ -80,17 +81,30 @@ export const CodeBlock = ({
 }: CodeBlockProps) => {
   const [html, setHtml] = useState<string>("");
   const [darkHtml, setDarkHtml] = useState<string>("");
+  // Plain text when the code is too big to tokenise on the main thread (a
+  // large tool output froze the window) or highlighting failed.
+  const [plain, setPlain] = useState(() => tooHeavyToHighlight(code));
 
   useEffect(() => {
     // Per-run flag: a superseded run must never apply its (stale) result,
     // whatever order the highlight promises settle in.
     let cancelled = false;
-    highlightCode(code, language, showLineNumbers).then(([light, dark]) => {
-      if (!cancelled) {
-        setHtml(light);
-        setDarkHtml(dark);
-      }
-    });
+    if (tooHeavyToHighlight(code)) {
+      setPlain(true);
+      return;
+    }
+    highlightCode(code, language, showLineNumbers).then(
+      ([light, dark]) => {
+        if (!cancelled) {
+          setHtml(light);
+          setDarkHtml(dark);
+          setPlain(false);
+        }
+      },
+      () => {
+        if (!cancelled) setPlain(true);
+      },
+    );
 
     return () => {
       cancelled = true;
@@ -108,6 +122,12 @@ export const CodeBlock = ({
         {...props}
       >
         <div className="relative">
+          {plain ? (
+            <pre className="m-0 overflow-auto bg-code-bg px-3 py-2.5 font-mono text-xs leading-[1.6] text-foreground">
+              <code>{code}</code>
+            </pre>
+          ) : (
+          <>
           <div
             className="overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:bg-code-bg! [&>pre]:px-3 [&>pre]:py-2.5 [&>pre]:text-foreground! [&>pre]:text-xs [&>pre]:leading-[1.6] [&_code]:font-mono [&_code]:text-xs"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
@@ -118,6 +138,8 @@ export const CodeBlock = ({
             // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
             dangerouslySetInnerHTML={{ __html: darkHtml }}
           />
+          </>
+          )}
           {children && (
             <div className="absolute top-2 right-2 flex items-center gap-2">
               {children}

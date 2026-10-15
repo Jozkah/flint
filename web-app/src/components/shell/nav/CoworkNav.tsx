@@ -771,7 +771,14 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
 
       <Dialog
         open={pendingDelete !== null}
-        onOpenChange={(open) => !open && setPendingDelete(null)}
+        onOpenChange={(open) => {
+          // Keeping the worktree is the default for every dialog: a choice
+          // made in a cancelled one must not carry over to the next session.
+          if (!open) {
+            setPendingDelete(null)
+            setRemoveWorktree(false)
+          }
+        }}
       >
         <DialogContent>
           <DialogHeader>
@@ -801,7 +808,10 @@ export function CoworkNav({ after }: { after?: React.ReactNode }) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setPendingDelete(null)}
+              onClick={() => {
+                setPendingDelete(null)
+                setRemoveWorktree(false)
+              }}
             >
               {t('common:cancel')}
             </Button>

@@ -41,6 +41,7 @@ import { useGlobalExtensions, type Scope } from '@/hooks/useGlobalExtensions'
 import {
   useSkills,
   effectiveEnabled,
+  storedEnabled,
   type HubSkill,
 } from '@/hooks/useSkills'
 import { normalizeAppError } from '@/utils/appError'
@@ -363,12 +364,12 @@ export default function SkillsManagerDialog({
 
   const toggleSkillEnabled = (skillName: string) => {
     const allNames = skills.map((s) => s.name)
-    const current = effectiveEnabled(enabled, allNames)
-    if (current.has(skillName)) {
-      void setEnabled(enabled.filter((n) => n !== skillName))
-    } else {
-      void setEnabled([...enabled, skillName])
-    }
+    // Toggle against the effective set: an empty whitelist means "all", so
+    // filtering it directly could never turn one skill off.
+    const next = new Set(effectiveEnabled(enabled, allNames))
+    if (next.has(skillName)) next.delete(skillName)
+    else next.add(skillName)
+    void setEnabled(storedEnabled(next, allNames))
   }
 
   const editing = isNew || selected !== null

@@ -1041,7 +1041,8 @@
     "compact": "Padatkan",
     "compacting": "Memadatkan…",
     "compactFailed": "Belum ada yang perlu dipadatkan.",
-    "newSession": "Sesi baru"
+    "newSession": "Sesi baru",
+    "compactSuperseded": "Percakapan berubah saat sedang dipadatkan, jadi tidak ada yang diganti. Padatkan lagi."
   },
   "autoCompactNeedsWindow": "Auto-compact membutuhkan ukuran konteks, dan {{model}} tidak memilikinya yang dapat ditemukan Flint. Atur Max Context Tokens untuk model ini agar obrolan panjang dipadatkan sebelum penuh. Jika provider menolak permintaan karena panjangnya, Flint memadatkan dan mencoba sekali lagi.",
   "compaction": {
@@ -2487,5 +2488,6 @@
     "load": "Muat gambar dari {{host}}"
   },
   "messageSaveFailed": "Pesan tidak dapat disimpan. Pesan bisa hilang setelah dimulai ulang.",
-  "threadSaveFailed": "Perubahan pada utas ini tidak dapat disimpan. Perubahan dibatalkan."
+  "threadSaveFailed": "Perubahan pada utas ini tidak dapat disimpan. Perubahan dibatalkan.",
+  "attachmentsProcessFailed": "Lampiran tidak dapat disiapkan, jadi pesan tidak terkirim"
 }

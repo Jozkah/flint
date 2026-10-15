@@ -770,7 +770,7 @@ pub fn classify_tool(tool: &str, content: &str) -> Option<HarnessError> {
         .trim()
         .to_string();
     let text = message.to_ascii_lowercase();
-    let has = |markers: &[&str]| markers.iter().any(|m| text.contains(m));
+    let has = |markers: &[&str]| markers.iter().any(|m| mentions(&text, m));
     let made = |kind: ErrorKind| Some(HarnessError::new(kind, &message).at(stage));
 
     // A deadline first: a tool that timed out was also "stopped", and reading
@@ -825,6 +825,21 @@ pub fn classify_tool(tool: &str, content: &str) -> Option<HarnessError> {
     )
 }
 
+/// Whether lowered error text mentions `marker`. A status code counts only as
+/// a whole number: "401" inside a port or an id ("127.0.0.1:34012") is not
+/// the provider saying 401.
+fn mentions(text: &str, marker: &str) -> bool {
+    if !marker.bytes().all(|b| b.is_ascii_digit()) {
+        return text.contains(marker);
+    }
+    let bytes = text.as_bytes();
+    text.match_indices(marker).any(|(at, _)| {
+        let before = at.checked_sub(1).map(|i| bytes[i]);
+        let after = bytes.get(at + marker.len()).copied();
+        !before.is_some_and(|b| b.is_ascii_alphanumeric()) && !after.is_some_and(|b| b.is_ascii_alphanumeric())
+    })
+}
+
 /// Classify a provider failure from the text the upstream layer returns.
 ///
 /// One place decides what a provider failure means, because the decisions that
@@ -840,7 +855,7 @@ pub fn classify_upstream(error: &str) -> HarnessError {
 /// [`classify_upstream`], saying where the failure happened.
 pub fn classify_upstream_at(error: &str, stage: Stage) -> HarnessError {
     let text = error.to_ascii_lowercase();
-    let has = |markers: &[&str]| markers.iter().any(|m| text.contains(m));
+    let has = |markers: &[&str]| markers.iter().any(|m| mentions(&text, m));
     let made = |kind: ErrorKind| HarnessError::new(kind, error).at(stage);
 
     if has(&["cancelled", "canceled", "aborted", "stopped by the user"]) {
@@ -951,6 +966,16 @@ pub fn may_try_another(classified: &HarnessError) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A status code is a whole number, never digits inside a port or an id.
+    #[test]
+    fn status_codes_are_not_matched_inside_other_numbers() {
+        let refused = classify_upstream("error sending request for url (http://127.0.0.1:34012/v1): connection refused");
+        assert_eq!(refused.kind, ErrorKind::Transport);
+        assert_eq!(classify_upstream("HTTP 401: bad key").kind, ErrorKind::Authentication);
+        assert_eq!(classify_upstream("status=429").kind, ErrorKind::RateLimited);
+        assert_eq!(classify_upstream("request id 5034").kind, ErrorKind::Upstream);
+    }
 
     /// Every kind this build knows can be written down and read back, and no
     /// two of them share a tag. The tags outlive the build that wrote them.

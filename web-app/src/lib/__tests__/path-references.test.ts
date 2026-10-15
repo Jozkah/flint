@@ -72,6 +72,9 @@ describe('stripPromptReferences', () => {
 
   it('keeps non-reference text intact', () => {
     expect(stripPromptReferences('no refs here')).toBe('no refs here')
+    expect(stripPromptReferences('see @src/main.ts\n  - one\n  - two')).toBe(
+      'see\n  - one\n  - two'
+    )
     expect(stripPromptReferences('ssh username@203.0.113.10')).toBe(
       'ssh username@203.0.113.10'
     )

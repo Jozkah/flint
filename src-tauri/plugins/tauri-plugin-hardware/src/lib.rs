@@ -19,11 +19,34 @@ static SYSTEM_INFO: RwLock<Option<(SystemInfo, std::time::Instant)>> = RwLock::n
 
 /// How long a snapshot with no GPUs is trusted. An empty list right after boot
 /// or resume usually means the driver was not ready, not that there is no GPU,
-/// so it is re-detected instead of being cached for the whole session.
+/// so it is re-detected a few times instead of being cached for the session.
 const EMPTY_GPU_RETRY: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn is_fresh(info: &SystemInfo, at: std::time::Instant) -> bool {
-    !info.gpus.is_empty() || at.elapsed() < EMPTY_GPU_RETRY
+/// Re-detections of an empty GPU list before it is trusted until the next
+/// `invalidate_system_info()`. Machines with no GPU (CPU-only boxes, VMs)
+/// would otherwise redo NVML and Vulkan probing on every UI poll.
+const MAX_EMPTY_GPU_RETRIES: u32 = 3;
+
+static EMPTY_GPU_RETRIES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Serializes re-detection so concurrent polls do not probe in parallel.
+static COMPUTE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn is_fresh(info: &SystemInfo, at: std::time::Instant, empty_retries: u32) -> bool {
+    // macOS has no NVML/Vulkan path here, so an empty list is final.
+    !info.gpus.is_empty()
+        || cfg!(target_os = "macos")
+        || empty_retries >= MAX_EMPTY_GPU_RETRIES
+        || at.elapsed() < EMPTY_GPU_RETRY
+}
+
+fn cached_system_info() -> Option<SystemInfo> {
+    let guard = SYSTEM_INFO.read().unwrap_or_else(|e| e.into_inner());
+    let retries = EMPTY_GPU_RETRIES.load(std::sync::atomic::Ordering::Relaxed);
+    match guard.as_ref() {
+        Some((info, at)) if is_fresh(info, *at, retries) => Some(info.clone()),
+        _ => None,
+    }
 }
 
 /// Compute system hardware information (CPU, memory, GPUs).
@@ -31,15 +54,26 @@ fn is_fresh(info: &SystemInfo, at: std::time::Instant) -> bool {
 /// Results are cached after the first call; subsequent calls return the cached
 /// value. Use `invalidate_system_info()` to force re-detection.
 pub fn get_system_info() -> SystemInfo {
-    {
-        let guard = SYSTEM_INFO.read().unwrap_or_else(|e| e.into_inner());
-        if let Some((info, at)) = guard.as_ref() {
-            if is_fresh(info, *at) {
-                return info.clone();
-            }
-        }
+    if let Some(info) = cached_system_info() {
+        return info;
     }
+    let _compute = COMPUTE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // Another caller may have refreshed the cache while this one waited.
+    if let Some(info) = cached_system_info() {
+        return info;
+    }
+    let had_snapshot = SYSTEM_INFO
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .is_some();
     let info = compute_system_info();
+    if info.gpus.is_empty() {
+        if had_snapshot {
+            EMPTY_GPU_RETRIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    } else {
+        EMPTY_GPU_RETRIES.store(0, std::sync::atomic::Ordering::Relaxed);
+    }
     {
         let mut guard = SYSTEM_INFO.write().unwrap_or_else(|e| e.into_inner());
         *guard = Some((info.clone(), std::time::Instant::now()));
@@ -80,6 +114,7 @@ pub fn invalidate_system_info() {
     vendor::nvidia::invalidate_nvml();
     let mut guard = SYSTEM_INFO.write().unwrap_or_else(|e| e.into_inner());
     *guard = None;
+    EMPTY_GPU_RETRIES.store(0, std::sync::atomic::Ordering::Relaxed);
 }
 
 fn compute_system_info() -> SystemInfo {

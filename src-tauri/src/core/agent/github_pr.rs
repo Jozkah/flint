@@ -327,18 +327,16 @@ fn lookup_blocking(project: &Path, pr: Option<&str>) -> PrLookup {
     cmd.args(view_args(pr));
     // Never prompt: a missing login must fail, not wait for input.
     cmd.env("GH_PROMPT_DISABLED", "1");
-    jan_utils::system::hide_console_window(&mut cmd);
-    let out = match cmd.output() {
-        Ok(out) => out,
-        Err(e) => return PrLookup::Failed { message: e.to_string() },
-    };
-    if out.status.success() {
-        return match parse_pr(&String::from_utf8_lossy(&out.stdout)) {
+    // Bounded and killed on the deadline: the caller's own timeout only stops
+    // waiting, it would leave a hung `gh` and this thread behind.
+    let out = run_bounded(cmd, 1024 * 1024, std::time::Instant::now() + GH_TIMEOUT);
+    if out.ok && !out.truncated {
+        return match parse_pr(&out.stdout) {
             Ok(pr) => PrLookup::Found { pr },
             Err(message) => PrLookup::Failed { message },
         };
     }
-    let err = String::from_utf8_lossy(&out.stderr).to_ascii_lowercase();
+    let err = out.stderr.to_ascii_lowercase();
     if err.contains("no pull requests found") {
         PrLookup::NoPullRequest
     } else if err.contains("gh auth login") || err.contains("not logged") {
@@ -349,7 +347,7 @@ fn lookup_blocking(project: &Path, pr: Option<&str>) -> PrLookup {
         PrLookup::GhSignedOut
     } else {
         PrLookup::Failed {
-            message: String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            message: out.stderr.trim().to_string(),
         }
     }
 }
@@ -400,15 +398,7 @@ pub enum CheckLog {
     Unavailable { reason: String, details_url: Option<String>, head_verified: bool },
 }
 
-/// What one bounded `gh` call printed.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct GhOutput {
-    pub ok: bool,
-    pub stdout: String,
-    pub stderr: String,
-    /// Stdout reached `LOG_READ_CAP` and the rest was not read.
-    pub truncated: bool,
-}
+pub(crate) use super::github_recovery::{run_bounded, GhOutput};
 
 fn is_head_sha(sha: &str) -> bool {
     (7..=64).contains(&sha.len()) && sha.chars().all(|c| c.is_ascii_hexdigit())
@@ -575,91 +565,6 @@ pub(crate) fn run_gh_bounded(
     cmd.env("GH_PROMPT_DISABLED", "1");
     cmd.env("NO_COLOR", "1");
     run_bounded(cmd, cap, deadline)
-}
-
-pub(crate) fn run_bounded(
-    mut cmd: Command,
-    cap: usize,
-    deadline: std::time::Instant,
-) -> GhOutput {
-    use std::io::Read;
-    use std::process::Stdio;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
-
-    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    jan_utils::system::hide_console_window(&mut cmd);
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => return GhOutput { stderr: e.to_string(), ..GhOutput::default() },
-    };
-    let full = Arc::new(AtomicBool::new(false));
-    let mut stdout = child.stdout.take();
-    let mut stderr = child.stderr.take();
-    let full_flag = full.clone();
-    // Readers hand back what they have over channels: a grandchild that keeps
-    // a pipe open after `gh` is killed must not keep this call waiting.
-    let (out_tx, out_rx) = std::sync::mpsc::channel::<Vec<u8>>();
-    let (err_tx, err_rx) = std::sync::mpsc::channel::<Vec<u8>>();
-    std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(out) = stdout.as_mut() {
-            let mut chunk = [0u8; 16 * 1024];
-            while let Ok(n) = out.read(&mut chunk) {
-                if n == 0 {
-                    break;
-                }
-                let room = cap.saturating_sub(buf.len());
-                buf.extend_from_slice(&chunk[..n.min(room)]);
-                if n >= room {
-                    full_flag.store(true, Ordering::SeqCst);
-                    break;
-                }
-            }
-        }
-        let _ = out_tx.send(buf);
-    });
-    std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(err) = stderr.as_mut() {
-            let _ = err.take(64 * 1024).read_to_end(&mut buf);
-        }
-        let _ = err_tx.send(buf);
-    });
-    let mut timed_out = false;
-    let mut killed = false;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
-            Ok(None) => {}
-            Err(_) => break None,
-        }
-        if full.load(Ordering::SeqCst) || std::time::Instant::now() >= deadline {
-            timed_out = !full.load(Ordering::SeqCst);
-            killed = true;
-            let _ = child.kill();
-            let _ = child.wait();
-            break None;
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    };
-    // A process that exited normally has closed its pipes; one that was killed
-    // may have left a grandchild holding them, so the wait is bounded.
-    let grace = if killed { Duration::from_millis(500) } else { Duration::from_secs(5) };
-    let stdout = out_rx.recv_timeout(grace).unwrap_or_default();
-    let stderr = err_rx.recv_timeout(grace).unwrap_or_default();
-    let truncated = full.load(Ordering::SeqCst);
-    GhOutput {
-        // Cut off at the cap is still a log worth showing the end of.
-        ok: truncated || status.is_some_and(|s| s.success()),
-        stdout: String::from_utf8_lossy(&stdout).into_owned(),
-        stderr: if timed_out {
-            "gh did not answer in time".to_string()
-        } else {
-            String::from_utf8_lossy(&stderr).into_owned()
-        },
-        truncated,
-    }
 }
 
 /// The failed log of one check on a pull request, for "Fix this check". Read

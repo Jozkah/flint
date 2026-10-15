@@ -377,18 +377,17 @@ impl Query {
 /// Perform `query` against the configured Tokamak deployment and return the raw
 /// body.
 ///
-/// Honours `TOKAMAK_BASE_URL` through [`super::base_url`], so a dev stack is
-/// reachable without a rebuild, and shapes failures through the same
+/// Talks to the API root the key was stored for ([`super::stored_base_url`],
+/// which falls back to `TOKAMAK_BASE_URL`), and shapes failures through the same
 /// [`super::describe_failure`] the sign-in path uses -- one voice for upstream
 /// problems regardless of which endpoint hit them.
 pub async fn fetch(query: &Query) -> Result<Payload, UsageError> {
     let api_key = super::stored_api_key().ok_or(UsageError::NotSignedIn)?;
-    let client = reqwest::Client::builder()
-        .timeout(USAGE_TIMEOUT)
+    let client = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(USAGE_TIMEOUT))
         .build()
         .map_err(|e| UsageError::Failed(e.to_string()))?;
 
-    let root = super::base_url();
+    let root = super::stored_base_url();
     let (path, params) = query.route();
     let mut request = client
         .get(format!("{root}/{path}"))

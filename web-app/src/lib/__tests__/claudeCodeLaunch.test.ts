@@ -33,4 +33,10 @@ describe('claudeCodeApiUrl', () => {
   it('uses the port the server bound', () => {
     expect(claudeCodeApiUrl('127.0.0.1', 1338)).toBe('http://127.0.0.1:1338')
   })
+
+  it('connects to loopback when bound to every interface', () => {
+    expect(claudeCodeApiUrl('0.0.0.0', 1338)).toBe('http://127.0.0.1:1338')
+    expect(claudeCodeApiUrl('::', 1338)).toBe('http://[::1]:1338')
+    expect(claudeCodeApiUrl('fe80::1', 1338)).toBe('http://[fe80::1]:1338')
+  })
 })

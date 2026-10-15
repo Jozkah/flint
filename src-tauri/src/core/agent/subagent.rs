@@ -638,30 +638,35 @@ fn parse_plugin_agent(raw: &str) -> Option<ParsedPluginAgent> {
 }
 
 /// Claude Code tool names with a Flint equivalent, 1:1 where one exists. Unknown
-/// names are dropped — the author's runtime differs. Returns `None` when
-/// nothing maps, so the child inherits the parent's full tool policy (an empty
-/// list would mean "no tools" to the dispatcher).
+/// names are dropped — the author's runtime differs. Returns `None` only when
+/// the agent declares no tools, so the child inherits the parent's full tool
+/// policy. A declared list where nothing maps stays an empty allowlist ("no
+/// tools"): widening a narrow agent to every tool is the wrong failure.
 fn map_claude_tools(tools: &[String]) -> Option<Vec<String>> {
-    let mapped: Vec<String> = tools
-        .iter()
-        .filter_map(|t| {
-            let jan = match t.to_ascii_lowercase().as_str() {
-                "read" => Some("read"),
-                "glob" => Some("glob"),
-                "grep" => Some("grep"),
-                "bash" => Some("bash"),
-                "edit" => Some("edit"),
-                "write" => Some("write"),
-                "websearch" => Some("web_search"),
-                "webfetch" => Some("web_fetch"),
-                "todowrite" => Some("todo"),
-                "ask" => Some("ask"),
-                _ => None,
-            };
-            jan.map(String::from)
-        })
-        .collect();
-    (!mapped.is_empty()).then_some(mapped)
+    if tools.is_empty() {
+        return None;
+    }
+    let mut mapped: Vec<String> = Vec::new();
+    for t in tools {
+        let jan = match t.to_ascii_lowercase().as_str() {
+            "read" => "read",
+            "glob" => "find",
+            "ls" => "ls",
+            "grep" => "grep",
+            "bash" => "bash",
+            "edit" | "multiedit" => "edit",
+            "write" => "write",
+            "websearch" => "web_search",
+            "webfetch" => "web_fetch",
+            "todowrite" => "todo",
+            "ask" => "ask",
+            _ => continue,
+        };
+        if !mapped.iter().any(|m| m == jan) {
+            mapped.push(jan.to_string());
+        }
+    }
+    Some(mapped)
 }
 
 /// Agent definitions one plugin ships (`(name, description)`), for the
@@ -5160,11 +5165,22 @@ auto_compact_window = 9000
         let def = reg.get("scout").expect("loaded");
         assert_eq!(
             def.allowed_tools.as_deref(),
-            Some(&["read".to_string(), "glob".to_string(), "grep".to_string()][..])
+            Some(&["read".to_string(), "find".to_string(), "grep".to_string()][..])
         );
         // No tools field: no allowlist at all.
         assert_eq!(reg.get("reader").unwrap().allowed_tools, None);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn declared_tools_that_map_to_nothing_do_not_widen_the_agent() {
+        let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(map_claude_tools(&[]), None);
+        assert_eq!(map_claude_tools(&names(&["NotebookRead"])), Some(vec![]));
+        assert_eq!(
+            map_claude_tools(&names(&["LS", "Glob", "MultiEdit", "Edit"])),
+            Some(names(&["ls", "find", "edit"]))
+        );
     }
 
     /// Two shapes Claude Code accepts and plugin packs ship: `tools` as a
@@ -5199,7 +5215,7 @@ auto_compact_window = 9000
     }
 
     #[test]
-    fn plugin_agent_with_only_unknown_tools_gets_no_allowlist() {
+    fn plugin_agent_with_only_unknown_tools_gets_an_empty_allowlist() {
         let root = unique_root("plugin-unknown-tools");
         std::fs::create_dir_all(plugin_agents_dir(&root)).unwrap();
         std::fs::write(
@@ -5209,9 +5225,9 @@ auto_compact_window = 9000
         .unwrap();
 
         let reg = SubagentRegistry::load(&root);
-        // All names unknown -> None (inherit parent policy), never Some([])
-        // which the dispatcher treats as "no tools".
-        assert_eq!(reg.get("probe").unwrap().allowed_tools, None);
+        // All names unknown -> Some([]) ("no tools"), never None, which would
+        // widen a narrow agent to the parent's whole toolset.
+        assert_eq!(reg.get("probe").unwrap().allowed_tools, Some(vec![]));
         let _ = std::fs::remove_dir_all(&root);
     }
 

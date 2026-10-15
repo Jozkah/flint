@@ -26,6 +26,7 @@ import { Icon } from '@/components/ui/icon'
 import { toast } from 'sonner'
 import { SystemEvent } from '@/types/events'
 import { Input } from '@/components/ui/input'
+import { SecretInput } from '@/components/ui/secret-input'
 import { FlintServerSettings } from '@/containers/FlintServerSettings'
 import { RemoteRunnerCard } from '@/containers/RemoteRunnerCard'
 import { isPlatformAndroid, isPlatformIOS } from '@/lib/platform/utils'
@@ -640,7 +641,7 @@ function General() {
             column
             actions={
               <div className="flex w-full min-w-0 items-center gap-2">
-                <Input
+                <SecretInput
                   id="hf-token"
                   className="min-w-0 flex-1 font-mono"
                   value={huggingfaceToken || ''}

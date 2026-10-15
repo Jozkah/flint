@@ -438,57 +438,40 @@ pub fn creation_time_of(pid: u32) -> Option<u64> {
 /// promoted to `completed`: an ending nobody saw is an interruption.
 pub fn reconcile(data_folder: &Path) -> Vec<JobRecord> {
     let mut changed = Vec::new();
-    for (path, records) in read_all(data_folder) {
-        let mut updated = false;
-        let mut out = Vec::with_capacity(records.len());
+    for (_path, records) in read_all(data_folder) {
         for mut record in records {
-            if record.state == JobState::Running {
-                match still_running(&record.identity) {
-                    Verdict::Alive => {}
-                    Verdict::Gone => {
-                        record.state = JobState::Interrupted;
-                        record.ended_at_ms = Some(now_ms());
-                        record.note =
-                            "the process was gone when the app next looked".to_string();
-                        record.identity = ProcessIdentity::default();
-                        updated = true;
-                        changed.push(record.clone());
-                    }
-                    Verdict::Reused => {
-                        record.state = JobState::Orphaned;
-                        record.ended_at_ms = Some(now_ms());
-                        record.note =
-                            "its process id now belongs to something else, so nothing was assumed about it"
-                                .to_string();
-                        // Dropped deliberately: nothing may act on it later.
-                        record.identity = ProcessIdentity::default();
-                        updated = true;
-                        changed.push(record.clone());
-                    }
-                    Verdict::Unknowable => {
-                        record.state = JobState::Interrupted;
-                        record.ended_at_ms = Some(now_ms());
-                        record.note =
-                            "the app stopped while it ran, and it cannot be identified again"
-                                .to_string();
-                        updated = true;
-                        changed.push(record.clone());
-                    }
+            if record.state != JobState::Running {
+                continue;
+            }
+            match still_running(&record.identity) {
+                Verdict::Alive => continue,
+                Verdict::Gone => {
+                    record.state = JobState::Interrupted;
+                    record.ended_at_ms = Some(now_ms());
+                    record.note = "the process was gone when the app next looked".to_string();
+                    record.identity = ProcessIdentity::default();
+                }
+                Verdict::Reused => {
+                    record.state = JobState::Orphaned;
+                    record.ended_at_ms = Some(now_ms());
+                    record.note =
+                        "its process id now belongs to something else, so nothing was assumed about it"
+                            .to_string();
+                    // Dropped deliberately: nothing may act on it later.
+                    record.identity = ProcessIdentity::default();
+                }
+                Verdict::Unknowable => {
+                    record.state = JobState::Interrupted;
+                    record.ended_at_ms = Some(now_ms());
+                    record.note =
+                        "the app stopped while it ran, and it cannot be identified again".to_string();
                 }
             }
-            out.push(record);
-        }
-        if updated {
-            let mut body = String::new();
-            for one in &out {
-                if let Ok(line) = serde_json::to_string(one) {
-                    body.push_str(&line);
-                    body.push('\n');
-                }
-            }
-            let temp = path.with_extension("jsonl.tmp");
-            if std::fs::write(&temp, body).is_ok() {
-                let _ = std::fs::rename(&temp, &path);
+            // Written under the owner's lock against the stored record: a
+            // supervisor that wrote the real ending since the read above wins,
+            // and a record saved meanwhile is not dropped by a stale rewrite.
+            if let Ok(None) = save_ending(data_folder, &record) {
+                changed.push(record);
             }
         }
     }

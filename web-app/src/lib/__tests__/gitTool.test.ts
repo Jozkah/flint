@@ -112,3 +112,17 @@ describe('gitRemoteFacts', () => {
     )
   })
 })
+
+describe('git message files', () => {
+  it('allows only relative message files inside the folder', () => {
+    expect(planGitCall('git', ['commit', '-F', 'msg.txt']).ok).toBe(true)
+    expect(planGitCall('git', ['commit', '-m', '-Fix: c:/x']).ok).toBe(true)
+    for (const bad of [
+      ['commit', '-F', 'C:/Users/u/.ssh/id_rsa'],
+      ['commit', '--file=../secret'],
+      ['commit', '-F/etc/passwd'],
+      ['notes', 'add', '-F', '/etc/passwd'],
+    ])
+      expect(planGitCall('git', bad).ok, bad.join(' ')).toBe(false)
+  })
+})

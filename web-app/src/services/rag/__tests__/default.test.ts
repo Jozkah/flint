@@ -69,12 +69,12 @@ describe('DefaultRAGService.callTool', () => {
     expect(callTool).toHaveBeenCalledWith('search', expect.objectContaining({ thread_id: 't1', scope: 'thread' }))
   })
 
-  it('does not override existing thread_id', async () => {
+  it('replaces a model-sent thread_id with the conversation', async () => {
     const callTool = vi.fn().mockResolvedValue({ content: [] })
     mockGet.mockReturnValue({ callTool })
     const svc = new DefaultRAGService()
     await svc.callTool({ toolName: 'search', arguments: { thread_id: 'existing' }, scope: 'thread', threadId: 't1' })
-    expect(callTool).toHaveBeenCalledWith('search', expect.objectContaining({ thread_id: 'existing' }))
+    expect(callTool).toHaveBeenCalledWith('search', expect.objectContaining({ thread_id: 't1' }))
   })
 
   it('injects project_id for project scope', async () => {

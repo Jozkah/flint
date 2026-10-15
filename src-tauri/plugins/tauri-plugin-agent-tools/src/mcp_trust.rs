@@ -166,6 +166,11 @@ struct State {
     /// `None` until the file has been read, so a failed read is retried rather
     /// than remembered as "nothing is trusted".
     loaded_from: Option<PathBuf>,
+    /// The file's modification time and length when it was last read or
+    /// written here. Another process (the CLI, a second window) saving the
+    /// file changes it, and the next look reads the file again, so a
+    /// revocation made there is seen here and not saved over.
+    loaded_stamp: Option<(SystemTime, u64)>,
     stored: Stored,
     tickets: HashMap<String, Ticket>,
     sequence: u64,
@@ -173,6 +178,17 @@ struct State {
 
 fn path_for(data_folder: &Path) -> PathBuf {
     data_folder.join(FILE_NAME)
+}
+
+fn stamp_of(path: &Path) -> Option<(SystemTime, u64)> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.modified().ok()?, meta.len()))
+}
+
+/// Held across a read-modify-write of the trust file, so two processes
+/// deciding at once cannot drop each other's change.
+fn hold(data_folder: &Path) -> crate::mailbox::Held {
+    crate::mailbox::Held::take(&path_for(data_folder))
 }
 
 /// Record one trust decision. A witness only: never fails the caller.
@@ -231,7 +247,7 @@ impl State {
     /// a fresh install.
     fn ensure_loaded(&mut self, data_folder: &Path) {
         let path = path_for(data_folder);
-        if self.loaded_from.as_deref() == Some(path.as_path()) {
+        if self.loaded_from.as_deref() == Some(path.as_path()) && self.loaded_stamp == stamp_of(&path) {
             return;
         }
         let parsed = std::fs::read_to_string(&path)
@@ -252,6 +268,7 @@ impl State {
                 Err(e) => eprintln!("mcp trust: {} could not be read or kept aside: {e}", path.display()),
             }
         }
+        self.loaded_stamp = stamp_of(&path);
         self.loaded_from = Some(path);
         let Some((stored, legacy)) = parsed else {
             self.stored = Stored {
@@ -291,7 +308,7 @@ impl State {
         }
     }
 
-    fn save(&self, data_folder: &Path) -> Result<(), String> {
+    fn save(&mut self, data_folder: &Path) -> Result<(), String> {
         let path = path_for(data_folder);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -301,7 +318,9 @@ impl State {
         // the previous list rather than a truncated one.
         let temp = path.with_extension(format!("json.tmp-{}", std::process::id()));
         std::fs::write(&temp, body.as_bytes()).map_err(|e| e.to_string())?;
-        std::fs::rename(&temp, &path).map_err(|e| e.to_string())
+        std::fs::rename(&temp, &path).map_err(|e| e.to_string())?;
+        self.loaded_stamp = stamp_of(&path);
+        Ok(())
     }
 
     fn grant_for(&self, server: &str) -> Option<&TrustGrant> {
@@ -345,6 +364,7 @@ pub fn trust(data_folder: &Path, server: &str, fingerprint: &str) -> Result<(), 
             "cannot trust MCP server '{server}' without knowing its configuration"
         ));
     }
+    let _held = hold(data_folder);
     let mut state = state().lock().expect("mcp trust");
     state.ensure_loaded(data_folder);
     if state
@@ -377,6 +397,7 @@ pub fn trust(data_folder: &Path, server: &str, fingerprint: &str) -> Result<(), 
 ///
 /// Returns whether a live grant was removed. Audited only when one was.
 pub fn revoke(data_folder: &Path, server: &str, reason: RevokeReason) -> Result<bool, String> {
+    let _held = hold(data_folder);
     let mut state = state().lock().expect("mcp trust");
     state.ensure_loaded(data_folder);
     let before_trusted = state.stored.trusted.len();
@@ -525,6 +546,7 @@ pub fn permits(
     current: Option<&str>,
     ticket: Option<&str>,
 ) -> Result<(), Refusal> {
+    let _held = hold(data_folder);
     let mut state = state().lock().expect("mcp trust");
     state.ensure_loaded(data_folder);
 

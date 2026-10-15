@@ -23,6 +23,20 @@ pub enum PermissionDefault {
 }
 
 impl PermissionDefault {
+    /// What an `agent.toml` with a `[tools]` policy but no `default` key means.
+    /// One answer for the desktop gate, the CLI and policy export, so the
+    /// policy exported is the one enforced.
+    pub const UNSET: PermissionDefault = PermissionDefault::ReadOnly;
+
+    /// The `agent.toml` spelling, inverse of [`Self::from_str_lenient`].
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PermissionDefault::Allow => "allow",
+            PermissionDefault::Deny => "deny",
+            PermissionDefault::ReadOnly => "read-only",
+        }
+    }
+
     /// Lenient parser: unknown/empty falls back to the secure default (ReadOnly).
     pub fn from_str_lenient(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {

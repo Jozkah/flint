@@ -93,7 +93,9 @@ function HuggingFaceModelDetail() {
     const run = async () => {
       try {
         const results = await searchHuggingFaceModels(repo, token, 'all')
-        const exact = results.find((candidate) => candidate.id.toLowerCase() === repo.toLowerCase()) ?? results[0]
+        // Only the requested repo: the first search hit is a different model,
+        // which this page would offer to download under the requested name.
+        const exact = results.find((candidate) => candidate.id.toLowerCase() === repo.toLowerCase())
         if (!exact) throw new Error('Model repository not found on Hugging Face.')
         let repoFiles = exact.files ?? []
         if (!repoFiles.length) repoFiles = await getHuggingFaceFiles(exact.id, token)

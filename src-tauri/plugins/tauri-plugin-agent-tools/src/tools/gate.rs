@@ -259,7 +259,12 @@ fn deletes_home_or_root(command: &str) -> bool {
     separated.split(';').any(|segment| {
         let words: Vec<String> = segment
             .split_whitespace()
-            .map(|w| w.trim_matches(|c| c == '"' || c == '\'').to_string())
+            .map(|w| {
+                // Brace-group braces (`{ rm -rf ~; }`, `{rm`), not `${HOME}`.
+                let w = if w.starts_with('{') { w.trim_start_matches('{') } else { w };
+                let w = if w.contains('{') { w } else { w.trim_end_matches('}') };
+                w.trim_matches(|c| c == '"' || c == '\'').to_string()
+            })
             .filter(|w| !w.is_empty())
             .collect();
         let start = words.iter().position(|w| {
@@ -664,6 +669,12 @@ pub fn resolve_decision(
     if perms.asks_call(tool.name, &resources, subject).is_some() {
         return Decision::Prompt(PromptKind::Ask);
     }
+    // The calls below that are asked about every time stay asked about even
+    // when an allow rule matches: a project's settings file ships with the
+    // repository, so its allow list must not switch off these prompts.
+    if always_asks(tool.name, args) {
+        return Decision::Prompt(PromptKind::Ask);
+    }
     if let Some(rule) = perms.allows_call(tool.name, &resources, subject) {
         // A relative pattern (`write(src/**)`) names something in the project
         // (Jozkah/jan#222). Its any-directory match exists so deny rules catch
@@ -874,6 +885,29 @@ pub fn resolve_decision(
     }
 }
 
+/// Calls that are asked about every time (see the per-tool branches in
+/// `decide`), checked before any allow rule.
+fn always_asks(name: &str, args: &serde_json::Value) -> bool {
+    use crate::tools::*;
+    match name {
+        "git" => git_tool::plan_from_args(args).is_ok_and(|p| p.always_asks()),
+        "host_action" => host_action::plan(args).is_ok(),
+        "host_build" => host_build::plan(args).is_ok(),
+        "computer" => computer::plan(args).is_ok(),
+        "clipboard" => clipboard::plan(args).is_ok(),
+        "open_path" => open_path::plan(args).is_ok(),
+        "host_package" => host_package::plan(args).is_ok_and(|p| p.verb.changes()),
+        "host_wsl" => host_wsl::plan(args).is_ok(),
+        "host_ssh" => host_ssh::plan(args).is_ok(),
+        "host_powershell" => host_powershell::plan(args).is_ok(),
+        "browser" => matches!(
+            browser_tool::class_of(args),
+            browser_tool::Class::Open | browser_tool::Class::Evaluate
+        ),
+        _ => false,
+    }
+}
+
 fn gated(kind: PromptKind, grants: &SessionGrants) -> Decision {
     if grants.covers(kind) {
         Decision::Allow
@@ -1035,6 +1069,33 @@ mod tests {
         assert_eq!(simple("open_path", json!({"path": "docs/a.pdf"})), ask);
         assert_eq!(simple("open_path", json!({})), Decision::Allow);
         assert_eq!(simple("host_powershell", json!({"script": "Get-Date"})), ask);
+        // An allow rule (a project's settings ship with the repository) does
+        // not switch the prompt off.
+        let allowing = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &["host_powershell".to_string(), "git".to_string(), "clipboard".to_string()],
+            &[],
+            &[],
+        );
+        assert_eq!(decide(&allowing, json!({"action": "kill_process", "pid": 4321})), ask);
+        for (tool, args) in [
+            ("host_powershell", json!({"script": "Get-Date"})),
+            ("git", json!({"args": ["push", "origin", "main"]})),
+            ("clipboard", json!({"action": "read"})),
+        ] {
+            let d = resolve_decision(
+                lookup(tool).unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &allowing,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            );
+            assert_eq!(d, ask, "{tool} {args}");
+        }
         assert_eq!(simple("host_powershell", json!({"script": "  "})), Decision::Allow);
         // winget: looking is free, each change is asked about.
         assert_eq!(simple("host_package", json!({"action": "list"})), Decision::Allow);
@@ -2563,6 +2624,10 @@ mod security_corpus {
             "echo $(git reset --hard)",
             "ls | git reset --hard",
             "(git reset --hard)",
+            "{ git reset --hard; }",
+            "{git reset --hard;}",
+            "& { git reset --hard }",
+            "if (1) { git push --force origin main }",
         ] {
             let d = decide("bash", json!({ "command": command }), &root, &perms, &NetworkPolicy::open());
             assert!(matches!(d, Decision::HardDeny(DenyReason::DestructiveGit(_))), "{command}: {d:?}");
@@ -2575,6 +2640,7 @@ mod security_corpus {
         let perms = ToolPermissions::new(PermissionDefault::Allow, &["bash".to_string()], &[], &[]);
         for command in [
             "rm -rf ~",
+            "{ rm -rf ~; }",
             "rm -rf ~/",
             "rm -rf ~/*",
             "rm -fr $HOME",

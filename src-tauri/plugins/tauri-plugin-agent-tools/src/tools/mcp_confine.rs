@@ -170,7 +170,9 @@ pub fn policy_for(authority: &McpAuthority, jan_data: Option<&Path>) -> Policy {
         // Mask first: the neighbours go dark and the chosen repository is
         // allowed back by the read root below. An attached folder beside the
         // repository is re-allowed the same way, because the later rule wins.
-        if let Some(parent) = repo.parent() {
+        // A repository at a filesystem root's top (`/repo`, `C:\repo`) has no
+        // neighbours worth masking: masking `/` would mask everything.
+        if let Some(parent) = repo.parent().filter(|p| p.parent().is_some()) {
             policy = policy.with_mask_root(parent);
         }
         read_roots.push(repo.clone());
@@ -187,7 +189,18 @@ pub fn policy_for(authority: &McpAuthority, jan_data: Option<&Path>) -> Policy {
     }
 
     if let Some(data) = jan_data {
-        policy = policy.with_hide_root(data);
+        // A hide root is applied after the workspace and wins over it, so it
+        // must not cover the server's own workspace (a session workspace lives
+        // inside the data folder). There the data folder is masked instead,
+        // which the workspace is bound back over; when the mask is already
+        // the repository's neighbours, the data folder is left unhidden
+        // rather than the server left unable to start.
+        let workspace = authority.workspace();
+        if !workspace.starts_with(data) {
+            policy = policy.with_hide_root(data);
+        } else if policy.mask_root.is_none() {
+            policy = policy.with_mask_root(data);
+        }
     }
     policy
 }
@@ -401,6 +414,39 @@ mod tests {
             "the home read denial must stay in force; relaxing it would hand \
              an imported server the user's keys"
         );
+    }
+
+    /// The session workspace lives inside the data folder: hiding the data
+    /// folder over it would leave the server without its own folder.
+    #[test]
+    fn a_workspace_inside_jan_data_is_not_hidden() {
+        let data = PathBuf::from("/jan");
+        let reviewing = policy_for(
+            &McpAuthority::ReviewOnly {
+                workspace: PathBuf::from("/jan/sessions/session-a"),
+                repository: None,
+                read_roots: vec![],
+            },
+            Some(&data),
+        );
+        assert!(reviewing.hide_roots.is_empty());
+        assert_eq!(reviewing.mask_root.as_deref(), Some(data.as_path()));
+        let editing = policy_for(&editing(), Some(&data));
+        assert!(editing.hide_roots.is_empty());
+    }
+
+    /// A repository directly under a filesystem root masks nothing.
+    #[test]
+    fn a_repository_at_the_top_of_a_root_does_not_mask_the_root() {
+        let policy = policy_for(
+            &McpAuthority::ReviewOnly {
+                workspace: PathBuf::from("/tmp/ws"),
+                repository: Some(PathBuf::from("/repo")),
+                read_roots: vec![],
+            },
+            None,
+        );
+        assert_eq!(policy.mask_root, None);
     }
 
     #[test]

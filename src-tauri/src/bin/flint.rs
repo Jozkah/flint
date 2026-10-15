@@ -1000,8 +1000,6 @@ enum AgentCommands {
         #[command(flatten)]
         providers: ProviderArgs,
     },
-    /// List the exact requests a session sent to the model, or print one as
-    /// text (what the model saw: every message, tool call and tool offered)
     /// What a session's runs started, as a tree (AH-173)
     Tree {
         /// The session to read.
@@ -1296,6 +1294,8 @@ enum AgentCommands {
         #[arg(long, default_value_t = 100)]
         limit: usize,
     },
+    /// List the exact requests a session sent to the model, or print one as
+    /// text (what the model saw: every message, tool call and tool offered)
     Prompts {
         /// The session whose requests to list
         session: String,
@@ -1954,6 +1954,12 @@ fn make_logo() -> String {
 /// commands to remove.
 fn main() {
     install_closed_pipe_hook();
+    // `serve`/`stop --data-dir` must point every data-folder lookup at that
+    // folder, including the grants, exclusions and log set up before the
+    // command is parsed; and the variable is set before any thread exists.
+    if let Some(dir) = pre_parse_data_dir(std::env::args().skip(1)) {
+        std::env::set_var("JAN_DATA_FOLDER", dir);
+    }
     let worker = std::thread::Builder::new()
         .name("jan-main".to_string())
         .stack_size(32 * 1024 * 1024)
@@ -1970,6 +1976,21 @@ fn main() {
     if worker.join().is_err() {
         std::process::exit(70);
     }
+}
+
+/// The `--data-dir` value from raw args (only `serve` and `stop` accept it),
+/// stopping at `--` so a task text can never be mistaken for it.
+fn pre_parse_data_dir(args: impl Iterator<Item = String>) -> Option<String> {
+    let mut args = args.take_while(|a| a != "--");
+    let mut found = None;
+    while let Some(arg) = args.next() {
+        if arg == "--data-dir" {
+            found = args.next();
+        } else if let Some(v) = arg.strip_prefix("--data-dir=") {
+            found = Some(v.to_string());
+        }
+    }
+    found.filter(|v| !v.is_empty())
 }
 
 /// Whether a panic message is the standard library giving up on a write to
@@ -2081,9 +2102,8 @@ async fn run() {
 
     match command {
         Commands::Serve { listen, assets_dir, data_dir, public_host, allow_mcp_stdio, agent_roots, agent_run, agent_max_sessions, agent_allow_bypass, agent_allow_always, agent_approval_timeout, agent_allow_checks, agent_require_sandbox, allowed_hosts, allowed_origins, llama_worker, background, credential_file } => {
-            if let Some(data_dir) = data_dir {
-                std::env::set_var("JAN_DATA_FOLDER", data_dir);
-            }
+            // `--data-dir` was applied in `main`, before any thread started.
+            let _ = data_dir;
             let assets = assets_dir.unwrap_or_else(|| {
                 std::env::current_exe()
                     .ok()
@@ -2150,9 +2170,8 @@ async fn run() {
             }
         }
         Commands::Stop { data_dir } => {
-            if let Some(data_dir) = data_dir {
-                std::env::set_var("JAN_DATA_FOLDER", data_dir);
-            }
+            // `--data-dir` was applied in `main`, before any thread started.
+            let _ = data_dir;
             let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
             match app_lib::core::web_server::control::stop(&data_folder, std::time::Duration::from_secs(20)) {
                 Ok(app_lib::core::web_server::control::Stopped::Clean) => println!("Flint server stopped."),
@@ -4203,7 +4222,21 @@ fn handle_models_info(path_or_id: &str, json: bool) {
     }
 }
 
+/// Whether `id` names a direct child of the models folder: one plain path
+/// component, so `..`, separators or an absolute path cannot reach outside it.
+fn is_model_dir_name(id: &str) -> bool {
+    let mut parts = std::path::Path::new(id).components();
+    matches!(
+        (parts.next(), parts.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    ) && !id.contains(['/', '\\', ':'])
+}
+
 fn handle_models_delete(id: &str, yes: bool) {
+    if !is_model_dir_name(id) {
+        eprintln!("Error: '{id}' is not a model id (expected a name from `models list`)");
+        std::process::exit(1);
+    }
     let dir = models_dir().join(id);
     if !dir.is_dir() {
         eprintln!("Error: model directory not found: {}", dir.display());
@@ -4535,6 +4568,23 @@ fn build_mcp_config(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn model_delete_ids_stay_inside_the_models_folder() {
+        assert!(super::is_model_dir_name("qwen3-8b"));
+        assert!(super::is_model_dir_name("model.v2"));
+        for bad in ["..", ".", "", "../x", "a/b", "a\\b", "/etc", "C:\\x", "C:"] {
+            assert!(!super::is_model_dir_name(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn data_dir_is_pre_parsed_before_the_task_separator() {
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>().into_iter();
+        assert_eq!(super::pre_parse_data_dir(args(&["serve", "--data-dir", "D"])).as_deref(), Some("D"));
+        assert_eq!(super::pre_parse_data_dir(args(&["stop", "--data-dir=E"])).as_deref(), Some("E"));
+        assert_eq!(super::pre_parse_data_dir(args(&["x", "--", "--data-dir", "D"])), None);
+    }
+
     /// A closed stdout/stderr pipe is recognised; nothing else is.
     #[test]
     fn closed_output_panics_are_recognised() {

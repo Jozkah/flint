@@ -607,6 +607,7 @@ ifeq ($(DETECTED_OS),Windows)
 	-powershell -Command "Remove-Item -Recurse -Force ./extensions/*/*.tgz"
 	-powershell -Command "Remove-Item -Recurse -Force ./electron/pre-install/*.tgz"
 	-powershell -Command "Remove-Item -Recurse -Force ./src-tauri/resources"
+	-git checkout -- src-tauri/resources/LICENSE
 	-powershell -Command "Remove-Item -Recurse -Force ./src-tauri/target"
 	-powershell -Command "if (Test-Path \"$($env:USERPROFILE)\jan\extensions\") { Remove-Item -Path \"$($env:USERPROFILE)\jan\extensions\" -Recurse -Force }"
 else ifeq ($(DETECTED_OS),Linux)
@@ -623,6 +624,7 @@ else ifeq ($(DETECTED_OS),Linux)
 	rm -rf ./extensions/*/*.tgz
 	rm -rf ./electron/pre-install/*.tgz
 	rm -rf ./src-tauri/resources
+	-git checkout -- src-tauri/resources/LICENSE
 	rm -rf ./src-tauri/target
 	rm -rf ~/jan/extensions
 	rm -rf ~/.cache/jan*
@@ -640,6 +642,7 @@ else
 	rm -rfv ./extensions/*/*.tgz
 	rm -rfv ./electron/pre-install/*.tgz
 	rm -rfv ./src-tauri/resources
+	-git checkout -- src-tauri/resources/LICENSE
 	rm -rfv ./src-tauri/target
 	rm -rfv ~/jan/extensions
 	rm -rfv ~/Library/Caches/jan*

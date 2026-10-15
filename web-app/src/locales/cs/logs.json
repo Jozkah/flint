@@ -15,5 +15,6 @@
   "levelDebug": "Ladění",
   "shown": "{{shown}} z {{total}} řádků",
   "description": "Vše, co dnes Flint a jeho engine zapsaly. Nejnovější nahoře.",
-  "serverDescription": "Požadavky na lokální server API kompatibilní s OpenAI. Nejnovější nahoře."
+  "serverDescription": "Požadavky na lokální server API kompatibilní s OpenAI. Nejnovější nahoře.",
+  "olderHidden": "Starší řádky ({{count}}) nejsou zobrazeny. Najdete je vyhledáváním nebo v souboru protokolu."
 }

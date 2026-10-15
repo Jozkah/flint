@@ -316,6 +316,7 @@ pub(crate) fn epoch_of(at: &str) -> Option<u64> {
 }
 
 /// One dispatch's tokens, from whichever record carries them.
+#[derive(Clone)]
 struct Counted {
     at: String,
     session: String,
@@ -360,69 +361,98 @@ fn counted(data_folder: &Path) -> Vec<Counted> {
     let events_dir = data_folder.join("events");
     let Ok(entries) = std::fs::read_dir(&events_dir) else { return out };
     for entry in entries.flatten().take(10_000) {
-        let Ok(text) = std::fs::read_to_string(entry.path()) else { continue };
-        // The model a run answered with, as its own events say.
-        let mut model_of_run: BTreeMap<String, String> = BTreeMap::new();
-        let mut pending: Vec<Counted> = Vec::new();
-        for line in text.lines().take(MAX_RECORDS) {
-            let Ok(event) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-            let kind = event.get("kind").and_then(|v| v.as_str()).unwrap_or_default();
-            let run = event.get("run").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-            let payload = event.get("payload").cloned().unwrap_or_default();
-            if kind == "run.started" {
-                if let Some(model) = payload.get("model").and_then(|v| v.as_str()) {
-                    model_of_run.insert(run, model.to_string());
-                }
-                continue;
+        for record in events_file_counted(&entry.path()) {
+            if !known.contains(&record.invocation) {
+                out.push(record);
             }
-            if kind != "usage.reported" {
-                continue;
+        }
+    }
+    out
+}
+
+/// Parsed `usage.reported` dispatches of one session event log, by the file's
+/// size and mtime: the quota check runs every turn over up to 10k logs, and
+/// re-parsing the unchanged ones each time is most of its cost (report-09
+/// MED-3).
+fn events_file_counted(path: &Path) -> Vec<Counted> {
+    type Key = (std::time::SystemTime, u64);
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (Key, Vec<Counted>)>>,
+    > = std::sync::OnceLock::new();
+    let key: Option<Key> = std::fs::metadata(path)
+        .ok()
+        .and_then(|m| Some((m.modified().ok()?, m.len())));
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(key) = key {
+        if let Some((cached, records)) = cache.lock().ok().and_then(|c| c.get(path).cloned()) {
+            if cached == key {
+                return records;
             }
-            let input = payload.get("inputTokens").and_then(serde_json::Value::as_u64);
-            let output = payload.get("outputTokens").and_then(serde_json::Value::as_u64);
-            // The second `usage.reported` of a turn only names the model that
-            // answered; it counts no tokens and is not a dispatch.
-            let (Some(input), Some(output)) = (input, output) else { continue };
-            let invocation = event
-                .get("invocation")
+        }
+    }
+    let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
+    let mut out = Vec::new();
+    // The model a run answered with, as its own events say.
+    let mut model_of_run: BTreeMap<String, String> = BTreeMap::new();
+    let mut pending: Vec<Counted> = Vec::new();
+    for line in text.lines().take(MAX_RECORDS) {
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let kind = event.get("kind").and_then(|v| v.as_str()).unwrap_or_default();
+        let run = event.get("run").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let payload = event.get("payload").cloned().unwrap_or_default();
+        if kind == "run.started" {
+            if let Some(model) = payload.get("model").and_then(|v| v.as_str()) {
+                model_of_run.insert(run, model.to_string());
+            }
+            continue;
+        }
+        if kind != "usage.reported" {
+            continue;
+        }
+        let input = payload.get("inputTokens").and_then(serde_json::Value::as_u64);
+        let output = payload.get("outputTokens").and_then(serde_json::Value::as_u64);
+        // The second `usage.reported` of a turn only names the model that
+        // answered; it counts no tokens and is not a dispatch.
+        let (Some(input), Some(output)) = (input, output) else { continue };
+        let invocation = event
+            .get("invocation")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        pending.push(Counted {
+            at: event.get("at").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+            session: event
+                .get("session")
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
-                .to_string();
-            if known.contains(&invocation) {
-                continue;
-            }
-            pending.push(Counted {
-                at: event.get("at").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-                session: event
-                    .get("session")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                invocation,
-                model: run.clone(),
-                input,
-                cached: payload
-                    .get("cachedInputTokens")
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(0),
-                cache_write: payload
-                    .get("cacheWriteTokens")
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(0),
-                output,
-                // The event log records what the provider said; an estimate
-                // never reaches it as a count.
-                estimated: false,
-            });
-        }
-        for mut record in pending {
-            // `model` held the run id until its run said what it answered with.
-            record.model = model_of_run
-                .get(&record.model)
-                .cloned()
-                .unwrap_or_else(|| "(not recorded)".to_string());
-            out.push(record);
-        }
+                .to_string(),
+            invocation,
+            model: run.clone(),
+            input,
+            cached: payload
+                .get("cachedInputTokens")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0),
+            cache_write: payload
+                .get("cacheWriteTokens")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0),
+            output,
+            // The event log records what the provider said; an estimate
+            // never reaches it as a count.
+            estimated: false,
+        });
+    }
+    for mut record in pending {
+        // `model` held the run id until its run said what it answered with.
+        record.model = model_of_run
+            .get(&record.model)
+            .cloned()
+            .unwrap_or_else(|| "(not recorded)".to_string());
+        out.push(record);
+    }
+    if let (Some(key), Ok(mut c)) = (key, cache.lock()) {
+        c.insert(path.to_path_buf(), (key, out.clone()));
     }
     out
 }
@@ -433,9 +463,31 @@ pub fn report(
     period: Option<&str>,
     session: Option<&str>,
 ) -> Result<Report, SpendError> {
-    let cutoff = since(period)?;
+    let mut reports = reports(data_folder, &[period], session)?;
+    Ok(reports.remove(0))
+}
+
+/// One report per period, from a single read of the ledger: the quota check
+/// asks for four windows every turn, and each read parses the whole log.
+pub(crate) fn reports(
+    data_folder: &Path,
+    periods: &[Option<&str>],
+    session: Option<&str>,
+) -> Result<Vec<Report>, SpendError> {
     let prices = prices(data_folder)?;
     let all = counted(data_folder);
+    periods
+        .iter()
+        .map(|period| report_of(&all, &prices, since(*period)?, session))
+        .collect()
+}
+
+fn report_of(
+    all: &[Counted],
+    prices: &BTreeMap<String, Price>,
+    cutoff: Option<String>,
+    session: Option<&str>,
+) -> Result<Report, SpendError> {
     let truncated = all.len() > MAX_RECORDS;
 
     let mut by_model: BTreeMap<String, ModelSpend> = BTreeMap::new();

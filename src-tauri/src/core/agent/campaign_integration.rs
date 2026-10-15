@@ -249,17 +249,18 @@ fn configured_gate(dir: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Like `gate_command`, with the user's own checkout as a second place to look
-/// for `[campaign] gate`: a config file the user has not committed yet is not
-/// in any worktree, but it is still what they configured. Order: the tree's own
-/// `agent.toml` (source `agent_toml`), then the checkout's, committed or not
-/// (source `agent_toml_checkout`), then detection from `root`.
+/// Like `gate_command`, but with a user checkout the configured gate is read
+/// from that checkout only (source `agent_toml_checkout`, committed or not),
+/// never from `root`: a task or integration worktree is written by agents, and
+/// the gate runs on the host unsandboxed, so an agent must not be able to pick
+/// it. Then detection from `root`.
 pub fn gate_command_with_checkout(root: &Path, checkout: Option<&Path>) -> GateChoice {
-    if let Some(command) = configured_gate(root) {
+    if let Some(checkout) = checkout {
+        if let Some(command) = configured_gate(checkout) {
+            return GateChoice { source: "agent_toml_checkout".into(), command: Some(command) };
+        }
+    } else if let Some(command) = configured_gate(root) {
         return GateChoice { source: "agent_toml".into(), command: Some(command) };
-    }
-    if let Some(command) = checkout.and_then(configured_gate) {
-        return GateChoice { source: "agent_toml_checkout".into(), command: Some(command) };
     }
     if let Ok(text) = std::fs::read_to_string(root.join("package.json")) {
         if let Ok(pkg) = serde_json::from_str::<Value>(&text) {
@@ -312,17 +313,28 @@ pub fn run_command(dir: &Path, command: &str, seconds: u64) -> Result<CommandRun
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     jan_utils::system::hide_console_window(&mut cmd);
+    // Its own process group, so `kill_tree` on the deadline reaches what the
+    // shell started, not only the shell.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     let mut child = cmd.spawn().map_err(|e| io(format!("the command could not be started: {e}")))?;
     let pid = child.id();
     proc::register(pid);
+    // Readers hand back over channels: a grandchild still holding a pipe after
+    // the kill must not keep this call waiting.
     let drain = |pipe: Option<Box<dyn std::io::Read + Send>>| {
+        let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
         std::thread::spawn(move || {
             let mut buffer = Vec::new();
             if let Some(mut pipe) = pipe {
                 let _ = pipe.read_to_end(&mut buffer);
             }
-            buffer
-        })
+            let _ = tx.send(buffer);
+        });
+        rx
     };
     let out = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>));
     let errs = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>));
@@ -343,9 +355,10 @@ pub fn run_command(dir: &Path, command: &str, seconds: u64) -> Result<CommandRun
         std::thread::sleep(std::time::Duration::from_millis(50));
     };
     proc::unregister(pid);
-    let mut text = String::from_utf8_lossy(&out.join().unwrap_or_default()).into_owned();
+    let grace = std::time::Duration::from_millis(if timed_out { 500 } else { 5_000 });
+    let mut text = String::from_utf8_lossy(&out.recv_timeout(grace).unwrap_or_default()).into_owned();
     text.push('\n');
-    text.push_str(&String::from_utf8_lossy(&errs.join().unwrap_or_default()));
+    text.push_str(&String::from_utf8_lossy(&errs.recv_timeout(grace).unwrap_or_default()));
     Ok(CommandRun { exit_code: status.and_then(|s| s.code()), timed_out, output: text })
 }
 
@@ -2290,10 +2303,12 @@ mod tests {
         std::fs::write(checkout.join(".jan/agent/agent.toml"), "[campaign]\ngate = \"make ci\"\n").unwrap();
         let g = gate_command_with_checkout(&tree, Some(&checkout));
         assert_eq!((g.source.as_str(), g.command.as_deref()), ("agent_toml_checkout", Some("make ci")));
-        // The tree's own config still outranks the checkout's.
+        // The tree is agent-written: its config is never the gate.
         std::fs::write(tree.join(".jan/agent/agent.toml"), "[campaign]\ngate = \"just check\"\n").unwrap();
         let g = gate_command_with_checkout(&tree, Some(&checkout));
-        assert_eq!((g.source.as_str(), g.command.as_deref()), ("agent_toml", Some("just check")));
+        assert_eq!((g.source.as_str(), g.command.as_deref()), ("agent_toml_checkout", Some("make ci")));
+        std::fs::remove_file(checkout.join(".jan/agent/agent.toml")).unwrap();
+        assert_eq!(gate_command_with_checkout(&tree, Some(&checkout)).source, "detected");
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -2304,9 +2319,9 @@ mod tests {
         work(&f, "a", "a.txt", "from a\n");
         assert!(merge_task(&f.data, &f.roots, &f.id, "a").unwrap().merged);
         // A gate that fails keeps the campaign in review with the output.
-        std::fs::create_dir_all(Path::new(&f.integration.path).join(".jan/agent")).unwrap();
+        std::fs::create_dir_all(f.src.join(".jan/agent")).unwrap();
         std::fs::write(
-            Path::new(&f.integration.path).join(".jan/agent/agent.toml"),
+            f.src.join(".jan/agent/agent.toml"),
             "[campaign]\ngate = \"exit 3\"\n",
         )
         .unwrap();
@@ -2317,7 +2332,7 @@ mod tests {
         assert_eq!(failed.campaign.status, CampaignStatus::Reviewing);
         // Passing: one proposal, campaign merging until the user applies it.
         std::fs::write(
-            Path::new(&f.integration.path).join(".jan/agent/agent.toml"),
+            f.src.join(".jan/agent/agent.toml"),
             "[campaign]\ngate = \"exit 0\"\n",
         )
         .unwrap();
@@ -2344,7 +2359,7 @@ mod tests {
         // Nothing failed yet: nothing to repair or retry.
         assert!(gate_repair(&f.data, &f.roots, &f.id).is_err());
         assert!(retry_gate(&f.data, &f.roots, &f.id, 60).is_err());
-        let toml = Path::new(&f.integration.path).join(".jan/agent/agent.toml");
+        let toml = f.src.join(".jan/agent/agent.toml");
         std::fs::create_dir_all(toml.parent().unwrap()).unwrap();
         std::fs::write(&toml, "[campaign]
 gate = \"exit 3\"
@@ -2616,8 +2631,8 @@ two
         rec
     }
 
-    fn set_check(rec: &WorktreeRecord, command: &str) {
-        let dir = Path::new(&rec.path).join(".jan").join("agent");
+    fn set_check(f: &Fx, command: &str) {
+        let dir = f.src.join(".jan").join("agent");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("agent.toml"), format!("[campaign]\ngate = \"{command}\"\n")).unwrap();
     }
@@ -2626,8 +2641,8 @@ two
     fn a_failing_objective_check_takes_a_verifier_pass_back() {
         let f = fixture("check", vec![task_with_acceptance("a", &[])]);
         start(&f);
-        let rec = finished(&f, "a", Some(("a.txt", "x\n")));
-        set_check(&rec, "exit 3");
+        finished(&f, "a", Some(("a.txt", "x\n")));
+        set_check(&f, "exit 3");
         verify_prepare(&f.data, &f.roots, &f.id, "a", "m", true).unwrap();
         let t = campaign::get(&f.data, &f.id).unwrap().task("a").unwrap().clone();
         let check = t.evidence.unwrap().check.unwrap();
@@ -2648,8 +2663,8 @@ two
     fn a_verifier_fail_stays_a_fail_when_the_check_passes() {
         let f = fixture("checkok", vec![task_with_acceptance("a", &[])]);
         start(&f);
-        let rec = finished(&f, "a", Some(("a.txt", "x\n")));
-        set_check(&rec, "exit 0");
+        finished(&f, "a", Some(("a.txt", "x\n")));
+        set_check(&f, "exit 0");
         verify_prepare(&f.data, &f.roots, &f.id, "a", "m", true).unwrap();
         let out = verify_finish(&f.data, &f.id, "a", Some("VERDICT: FAIL\nEVIDENCE: wrong"), None, 0).unwrap();
         assert_eq!(out.verdict, "FAIL");
@@ -2661,8 +2676,8 @@ two
     fn a_pass_with_a_passing_check_stands() {
         let f = fixture("checkpass", vec![task_with_acceptance("a", &[])]);
         start(&f);
-        let rec = finished(&f, "a", Some(("a.txt", "x\n")));
-        set_check(&rec, "exit 0");
+        finished(&f, "a", Some(("a.txt", "x\n")));
+        set_check(&f, "exit 0");
         verify_prepare(&f.data, &f.roots, &f.id, "a", "m", true).unwrap();
         let out = verify_finish(&f.data, &f.id, "a", Some("VERDICT: PASS\nEVIDENCE: ok"), None, 0).unwrap();
         assert_eq!((out.verdict.as_str(), out.next.clone()), ("PASS", VerifyNext::Verified));

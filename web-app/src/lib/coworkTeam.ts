@@ -1115,7 +1115,12 @@ export async function runTeam(
     }
     // The first to finish, not all of them: a dependent should start as soon
     // as its last dependency lands -- or a person asks for something.
-    await Promise.race([...running.values(), ...(deps.control ? [deps.control.next(deps.signal)] : [])])
+    // The wait is released once the race settles, so a loop that ends on a
+    // finished child does not leave a waiter and an abort listener behind.
+    const settled = new AbortController()
+    const wait = deps.signal ? AbortSignal.any([deps.signal, settled.signal]) : settled.signal
+    await Promise.race([...running.values(), ...(deps.control ? [deps.control.next(wait)] : [])])
+    settled.abort()
   }
   if (deps.control) deps.control.finished = true
   if (deps.signal?.aborted && deps.control && awaitingDecision(state)) decision = 'stopped'

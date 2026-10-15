@@ -535,6 +535,60 @@ pub async fn read_logs<R: Runtime>(app: AppHandle<R>) -> Result<String, String> 
     }
 }
 
+/// Most of `app.log` one [`read_logs_since`] call returns.
+const LOG_CHUNK_BYTES: u64 = 2 * 1024 * 1024;
+
+/// New log text and where the next read starts.
+#[derive(serde::Serialize, Debug, PartialEq)]
+pub struct LogChunk {
+    pub text: String,
+    pub offset: u64,
+    /// The text does not continue the caller's offset (first read, or the
+    /// log was rotated or truncated): replace what is shown, do not append.
+    pub reset: bool,
+}
+
+/// Read whole lines of `path` from `offset`, at most `cap` bytes. With no
+/// offset, or one past the end, the tail of the file is returned instead, so
+/// the viewer polls only new lines and never re-reads a 10 MB log.
+pub fn read_log_chunk(path: &Path, offset: Option<u64>, cap: u64) -> std::io::Result<LogChunk> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let (start, reset) = match offset {
+        Some(o) if o <= len => (o, false),
+        _ => (len.saturating_sub(cap), true),
+    };
+    file.seek(SeekFrom::Start(start))?;
+    let mut buf = Vec::new();
+    file.take(cap).read_to_end(&mut buf)?;
+    let mut begin = 0;
+    if reset && start > 0 {
+        // Started mid-line: drop the partial first line.
+        begin = buf.iter().position(|&b| b == b'\n').map_or(buf.len(), |i| i + 1);
+    }
+    // Only complete lines; a line still being written is read next time.
+    let end = buf.iter().rposition(|&b| b == b'\n').map_or(begin, |i| (i + 1).max(begin));
+    Ok(LogChunk {
+        text: String::from_utf8_lossy(&buf[begin..end]).into_owned(),
+        offset: start + end as u64,
+        reset,
+    })
+}
+
+/// The log lines appended since `offset` (report-24 #8).
+#[tauri::command]
+pub async fn read_logs_since<R: Runtime>(
+    app: AppHandle<R>,
+    offset: Option<u64>,
+) -> Result<LogChunk, String> {
+    let log_path = get_jan_data_folder_path(app).join("logs").join("app.log");
+    tokio::task::spawn_blocking(move || read_log_chunk(&log_path, offset, LOG_CHUNK_BYTES))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|_| "Log file not found".to_string())
+}
+
 /// How much of `app.log` the redacted export carries.
 const EXPORT_LOG_TAIL_LINES: usize = 5000;
 
@@ -1248,16 +1302,17 @@ fn jan_cli_install_dir() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(".local").join("bin"))
 }
 
-/// Return the directory containing the bundled CLI binary on Windows.
+/// Return the directory containing the bundled CLI binary on Windows: the
+/// same `resources/bin` beside the app that `cli_install_target` puts on
+/// PATH. A hardcoded `Programs\Jan` never matched the `Programs\Flint` install,
+/// so uninstall removed nothing and detection never found the CLI.
 #[cfg(windows)]
 fn jan_cli_bin_dir_windows() -> Result<PathBuf, String> {
-    let local_app_data =
-        std::env::var("LOCALAPPDATA").map_err(|_| "Cannot determine LOCALAPPDATA".to_string())?;
-    Ok(PathBuf::from(local_app_data)
-        .join("Programs")
-        .join("Jan")
-        .join("resources")
-        .join("bin"))
+    let exe = std::env::current_exe().map_err(|e| format!("Cannot locate the app: {e}"))?;
+    let dir = exe
+        .parent()
+        .ok_or_else(|| "the app has no parent directory".to_string())?;
+    Ok(crate::core::app::commands::strip_verbatim_prefix(dir.to_path_buf()).join("resources/bin"))
 }
 
 /// The user PATH with `install_dir` put first, or `None` when it is already on
@@ -1978,5 +2033,36 @@ mod redacted_export_tests {
         let out = redact_log_text("GET failed\nAuthorization: Bearer sk-abcdef1234567890abcdef\nok");
         assert!(!out.contains("sk-abcdef1234567890abcdef"), "{out}");
         assert!(out.contains("GET failed") && out.contains("ok"));
+    }
+}
+
+#[cfg(test)]
+mod log_chunk_tests {
+    use super::read_log_chunk;
+
+    #[test]
+    fn reads_whole_lines_and_resumes_from_the_offset() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("app.log");
+        std::fs::write(&path, "one\ntwo\nthr").unwrap();
+        let first = read_log_chunk(&path, None, 1024).unwrap();
+        assert_eq!((first.text.as_str(), first.offset, first.reset), ("one\ntwo\n", 8, true));
+        std::fs::write(&path, "one\ntwo\nthree\n").unwrap();
+        let next = read_log_chunk(&path, Some(first.offset), 1024).unwrap();
+        assert_eq!((next.text.as_str(), next.reset), ("three\n", false));
+        // Rotated: the old offset is past the end, so the tail comes back.
+        std::fs::write(&path, "new\n").unwrap();
+        let rotated = read_log_chunk(&path, Some(next.offset), 1024).unwrap();
+        assert_eq!((rotated.text.as_str(), rotated.reset), ("new\n", true));
+    }
+
+    #[test]
+    fn the_first_read_of_a_large_log_is_its_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("app.log");
+        std::fs::write(&path, "aaaa\nbbbb\ncccc\n").unwrap();
+        let chunk = read_log_chunk(&path, None, 7).unwrap();
+        assert_eq!(chunk.text, "cccc\n");
+        assert_eq!(chunk.offset, 15);
     }
 }

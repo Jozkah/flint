@@ -52,11 +52,12 @@ type DirectEditGrantsState = {
   /** Live grants, by the session each was issued to. */
   bySession: Record<string, LiveGrant>
   /**
-   * Bumped whenever a request is superseded, so a reply that arrives after the
-   * user moved on can be recognised as belonging to a question nobody is
-   * waiting on any more.
+   * Bumped per session whenever its request is superseded, so a reply that
+   * arrives after the user moved on can be recognised as belonging to a
+   * question nobody is waiting on any more. Per session, so asking for one
+   * session never discards another session's grant in flight.
    */
-  generation: number
+  generation: Record<string, number>
 
   refreshCapability: () => Promise<void>
   authorize: (
@@ -83,7 +84,7 @@ export const useDirectEditGrants = create<DirectEditGrantsState>()(
   (set, get) => ({
     capability: { known: false, reason: 'loading' },
     bySession: {},
-    generation: 0,
+    generation: {},
 
     refreshCapability: async () => {
       try {
@@ -102,8 +103,8 @@ export const useDirectEditGrants = create<DirectEditGrantsState>()(
     },
 
     authorize: async (sessionId, folder, dataFolder, extraFolders) => {
-      const generation = get().generation + 1
-      set({ generation })
+      const generation = (get().generation[sessionId] ?? 0) + 1
+      set((s) => ({ generation: { ...s.generation, [sessionId]: generation } }))
       let grantId: string
       try {
         grantId =
@@ -121,7 +122,7 @@ export const useDirectEditGrants = create<DirectEditGrantsState>()(
       // grant is authority nobody asked for. Hand it back rather than holding
       // it: a grant the UI has forgotten is exactly the hidden authority this
       // store exists to prevent.
-      if (get().generation !== generation) {
+      if (get().generation[sessionId] !== generation) {
         void directEditRevoke(grantId).catch(() => {})
         return { ok: false, reason: 'superseded' }
       }
@@ -135,7 +136,12 @@ export const useDirectEditGrants = create<DirectEditGrantsState>()(
       const grant = get().bySession[sessionId]
       // Superseding first: a reply still in flight must not install itself
       // after this.
-      set((s) => ({ generation: s.generation + 1 }))
+      set((s) => ({
+        generation: {
+          ...s.generation,
+          [sessionId]: (s.generation[sessionId] ?? 0) + 1,
+        },
+      }))
       if (!grant) {
         // Nothing local, but the backend may still hold something for this
         // session — a reply that raced us. Asking is idempotent.
@@ -174,7 +180,13 @@ export const useDirectEditGrants = create<DirectEditGrantsState>()(
         if (!(sessionId in s.bySession)) return s
         const next = { ...s.bySession }
         delete next[sessionId]
-        return { bySession: next, generation: s.generation + 1 }
+        return {
+          bySession: next,
+          generation: {
+            ...s.generation,
+            [sessionId]: (s.generation[sessionId] ?? 0) + 1,
+          },
+        }
       }),
   })
 )

@@ -83,7 +83,32 @@ pub fn migrate_project_notes(
         return Ok(report);
     }
 
-    let mut existing = store::load(store_root, Scope::Project).records;
+    // Read, decided and written under the scope's lock, and refused when the
+    // store could not be read: an unreadable store saved over with only the
+    // imported notes would lose every project memory.
+    store::update(store_root, Scope::Project, |existing| {
+        import_into(existing, store_root, project_id, notes, now, &mut report);
+        Ok((report.changed_anything(), ()))
+    })?;
+    if report.changed_anything() {
+        // Records now carry this id; write it down so they survive a move.
+        super::identity::persist_for_store(store_root, project_id);
+    }
+    Ok(report)
+}
+
+/// The import itself, against the records already in the project scope. A
+/// note counts as already imported when its content is there, when a record
+/// has the id it would get, or when a record says it came from that note --
+/// the last is what keeps an edited migrated note from coming back.
+fn import_into(
+    existing: &mut Vec<MemoryRecord>,
+    store_root: &Path,
+    project_id: &str,
+    notes: Vec<(String, String)>,
+    now: i64,
+    report: &mut Report,
+) {
     let known: std::collections::HashSet<String> =
         existing.iter().map(|r| r.content_hash.clone()).collect();
 
@@ -114,13 +139,19 @@ pub fn migrate_project_notes(
         }
 
         let hash = content_hash(&body);
-        if known.contains(&hash) {
+        let id = migrated_id(project_id, &body);
+        let source = format!("legacy-note:{name}");
+        if known.contains(&hash)
+            || existing.iter().any(|r| {
+                r.id == id || r.provenance.message_id.as_deref() == Some(source.as_str())
+            })
+        {
             report.already_present.push(name);
             continue;
         }
 
         let mut record = MemoryRecord::new(
-            migrated_id(project_id, &body),
+            id,
             &body,
             Scope::Project,
             // Not `User`: nobody reviewed this content today, and treating it
@@ -136,21 +167,12 @@ pub fn migrate_project_notes(
             // The note itself is the source. Recorded as a note name rather
             // than an absolute path, which would be machine-specific and would
             // leak a directory layout into an export.
-            message_id: Some(format!("legacy-note:{name}")),
+            message_id: Some(source),
             ..Provenance::default()
         };
         existing.push(record);
         report.imported.push(name);
     }
-
-    if report.changed_anything() {
-        // The canonical write is committed before anything else is claimed.
-        // The legacy files are left exactly where they are either way.
-        store::save(store_root, Scope::Project, &existing)?;
-        // Records now carry this id; write it down so they survive a move.
-        super::identity::persist_for_store(store_root, project_id);
-    }
-    Ok(report)
 }
 
 #[cfg(test)]

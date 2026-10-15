@@ -90,16 +90,9 @@ fn now_ms() -> u64 {
 /// A job's secret: enough entropy that it cannot be guessed by something that
 /// merely knows the job id.
 fn mint_token() -> String {
-    let mut seed = format!(
-        "{}-{}-{:?}",
-        std::process::id(),
-        now_ms(),
-        std::time::Instant::now()
-    );
-    // A second reading, so two jobs started in the same millisecond by the
-    // same process still differ.
-    seed.push_str(&format!("{:?}", std::thread::current().id()));
-    hash(&seed)
+    // From the OS's CSPRNG: a pid and a clock reading are guessable.
+    let bytes: [u8; 32] = rand::random();
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 pub fn hash(text: &str) -> String {
@@ -433,6 +426,11 @@ fn supervise_launch(
     // a console program with a hidden console, so the job would inherit that
     // anyway; saying it here keeps the job's fate independent of how the
     // supervisor was started.
+    //
+    // Windows only: there `kill_tree` walks the supervisor's descendants. On
+    // Unix the supervisor is its own session and group, `cancel` signals that
+    // group, and a job in a group of its own would survive the cancel.
+    #[cfg(windows)]
     {
         use jan_process::CommandConsole;
         cmd.background_in_new_group();

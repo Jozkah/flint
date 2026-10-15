@@ -531,6 +531,12 @@ export const providerFetch: typeof globalThis.fetch = async (
       const abort = new AbortController()
       // Ending the local body (consumer released it) also ends the HTTP read.
       void streamViaServer(payload, onChunk, abort.signal)
+        .then(() => {
+          // A stream that closes cleanly without its `end` chunk (proxy
+          // timeout, server restart) would otherwise hang the reply forever.
+          if (!ended && !failure)
+            fail(new Error('The provider stream ended unexpectedly'))
+        })
         .catch((e: unknown) => {
           if (!ended) fail(e)
         })

@@ -423,8 +423,16 @@ pub fn append_within(
     }
     let fresh = !path.exists();
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&path).map_err(io)?;
-    file.write_all(line.as_bytes()).map_err(io)?;
-    file.flush().map_err(io)?;
+    if let Err(e) = file.write_all(line.as_bytes()).and_then(|()| file.flush()) {
+        // A partial write would leave a torn line mid-log, and the next append
+        // would make it a corrupt line that fails the whole session's read.
+        // Cut back to what was whole; if even that fails, forget the loaded
+        // state so the next append re-reads the file.
+        if file.set_len(state.bytes).is_err() {
+            states.remove(&key);
+        }
+        return Err(io(e));
+    }
     state.last_seq = envelope.seq;
     state.ids.insert(envelope.id.clone());
     state.bytes += line.len() as u64;

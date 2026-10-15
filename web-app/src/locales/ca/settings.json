@@ -369,7 +369,9 @@
     "loadFailed": "No s'ha pogut carregar l'espai de treball de l'agent",
     "saveFailed": "No s'ha pogut desar",
     "deleteFailed": "No s'ha pogut suprimir",
-    "revealFailed": "No s'ha pogut obrir la carpeta"
+    "revealFailed": "No s'ha pogut obrir la carpeta",
+    "nameExists": "\"{{name}}\" ja existeix. Tria un altre nom o edita l'existent.",
+    "deleted": "S'ha suprimit \"{{name}}\""
   },
   "localApiServer": {
     "title": "Servidor API local",
@@ -1116,5 +1118,17 @@
         "overlap": "{{a}} i {{b}} s'executarien alhora però tots dos canvien {{path}}. Fes que una esperi l'altra."
       }
     }
+  },
+  "backup": {
+    "securityChanges": "Aquesta còpia canvia on van les peticions:",
+    "baseUrlChange": "{{provider}}: {{from}} → {{to}}",
+    "keyDropped": "Se n'esborrarà la clau d'API desada; torna-la a introduir per a la nova adreça.",
+    "includePermissions": "Restaura també la configuració de seguretat ({{stores}})",
+    "includePermissionsWarning": "Decideix quines eines s'executen sense preguntar i per on passa el trànsit. Fes-ho només amb una còpia feta per tu.",
+    "permissionsSkipped": "Si no ho marques, es mantindrà la configuració de seguretat actual.",
+    "skipped": "No restaurat: {{stores}}",
+    "storeToolApproval": "aprovació automàtica d'eines",
+    "storeMcpTrust": "confiança en servidors MCP",
+    "storeProxy": "servidor intermediari de xarxa"
   }
 }

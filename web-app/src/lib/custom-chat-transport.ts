@@ -2809,11 +2809,49 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
   }
 
+  /**
+   * Everything before the stream exists can throw (model load failure, Stop
+   * during load, a missing provider, a hook interrupt, a context that does not
+   * fit), and then no stream callback ever runs. Undo what the request set up
+   * here so the in-flight flag is not left stale and the run is not recorded
+   * as done (report-21 MED-1).
+   */
   protected async sendOnce(
     options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
+    const held: { generation?: number; run?: string } = {}
+    try {
+      return await this.sendOnceUnguarded(options, held)
+    } catch (error) {
+      const threadId = this.threadId ?? options.chatId
+      if (
+        held.generation === this.streamGeneration &&
+        useAppState.getState().currentStreamThreadId === threadId
+      ) {
+        useAppState.getState().setCurrentStreamThreadId(undefined)
+      }
+      if (held.run) {
+        const aborted =
+          options.abortSignal?.aborted ||
+          (error instanceof Error && error.name === 'AbortError')
+        endChatRun(
+          threadId,
+          aborted ? 'cancelled' : 'error',
+          aborted ? undefined : error instanceof Error ? error.message : String(error),
+          held.run
+        )
+      }
+      throw error
+    }
+  }
+
+  private async sendOnceUnguarded(
+    options: SendOptions,
+    held: { generation?: number; run?: string }
+  ): Promise<ReadableStream<UIMessageChunk>> {
     const threadId = this.threadId ?? options.chatId
     const myGeneration = ++this.streamGeneration
+    held.generation = myGeneration
     const requestId = newRequestId()
     useAppState.getState().setCurrentStreamThreadId(threadId)
     // Capture the effective provider name early so the Anthropic serial
@@ -2838,6 +2876,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const myRun = recordsChatRun
       ? continueOrBeginChatRun(threadId, { model: modelId }).run
       : undefined
+    held.run = myRun
 
     try {
       const updatedProvider = useModelProvider

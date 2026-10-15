@@ -464,7 +464,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "script": { "type": "string", "description": "The PowerShell script (up to 20000 characters). Required." },
+                        "script": { "type": "string", "description": "The PowerShell script (up to 12000 characters). Required." },
                         "cwd": { "type": "string", "description": "Folder to run in, relative to the project or absolute inside a writable root. Default: the project folder." },
                         "timeout_secs": { "type": "integer", "description": "Stop the script after this many seconds. Default 120, at most 900." }
                     },

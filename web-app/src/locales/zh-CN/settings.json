@@ -365,7 +365,9 @@
     "loadFailed": "无法加载智能体工作区",
     "saveFailed": "无法保存",
     "deleteFailed": "无法删除",
-    "revealFailed": "无法打开文件夹"
+    "revealFailed": "无法打开文件夹",
+    "nameExists": "“{{name}}”已存在。请换一个名称或编辑现有项。",
+    "deleted": "已删除“{{name}}”"
   },
   "localApiServer": {
     "title": "本地 API 服务器",
@@ -1112,5 +1114,17 @@
         "overlap": "{{a}} 和 {{b}} 会同时运行，但都会更改 {{path}}。请让其中一个等待另一个。"
       }
     }
+  },
+  "backup": {
+    "securityChanges": "此备份会更改请求的发送地址：",
+    "baseUrlChange": "{{provider}}：{{from}} → {{to}}",
+    "keyDropped": "已保存的 API 密钥将被移除，请为新地址重新输入。",
+    "includePermissions": "同时恢复安全设置（{{stores}}）",
+    "includePermissionsWarning": "这些设置决定哪些工具无需询问即可运行以及流量的去向。仅对你自己创建的备份启用。",
+    "permissionsSkipped": "不勾选时，将保留当前的安全设置。",
+    "skipped": "未恢复：{{stores}}",
+    "storeToolApproval": "工具自动批准",
+    "storeMcpTrust": "MCP 服务器信任",
+    "storeProxy": "网络代理"
   }
 }

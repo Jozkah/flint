@@ -11,6 +11,9 @@ export const Route = createFileRoute(route.appLogs as any)({
   component: LogsViewer,
 })
 
+/** Lines kept in view while following the log. */
+const MAX_LOG_ENTRIES = 20000
+
 function LogsViewer() {
   const { t } = useTranslation()
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -18,12 +21,45 @@ function LogsViewer() {
 
   useEffect(() => {
     // The viewer keeps the newest line in view while it follows the log.
+    // One read at a time, no re-render when nothing was appended, and a
+    // failed read (unreadable file) is logged rather than left unhandled.
+    let reading = false
+    // Where the next read starts: only appended lines are fetched, so the
+    // 10 MB log is not re-read every poll (report-24 #8).
+    let offset: number | undefined
     function updateLogs() {
-      serviceHub
-        .app()
-        .readLogs()
-        .then((logData) => {
-          setLogs(logData.filter(Boolean) as LogEntry[])
+      if (reading) return
+      reading = true
+      const app = serviceHub.app()
+      const read =
+        typeof app.readLogsSince === 'function'
+          ? app.readLogsSince(offset).then((chunk) => {
+              offset = chunk.offset
+              return chunk
+            })
+          : app
+              .readLogs()
+              .then((entries) => ({ entries, offset: 0, reset: true }))
+      read
+        .then(({ entries, reset }) => {
+          const next = entries.filter(Boolean) as LogEntry[]
+          if (reset) {
+            setLogs((prev) =>
+              prev.length === next.length &&
+              prev[prev.length - 1]?.timestamp ===
+                next[next.length - 1]?.timestamp &&
+              prev[prev.length - 1]?.message ===
+                next[next.length - 1]?.message
+                ? prev
+                : next
+            )
+          } else if (next.length > 0) {
+            setLogs((prev) => [...prev, ...next].slice(-MAX_LOG_ENTRIES))
+          }
+        })
+        .catch((error) => console.error('Failed to read logs:', error))
+        .finally(() => {
+          reading = false
         })
     }
     updateLogs()

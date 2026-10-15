@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { FolderLock, FileLock, PenLine } from 'lucide-react'
 import {
   Dialog,
@@ -30,13 +30,25 @@ export function AccessRequestDialog() {
 
   useEffect(() => useAccessRequests.getState().attachPresenter(), [])
 
+  // The grant buttons wait a moment after each new request, so a click or
+  // Enter meant for the previous one cannot grant the next path.
+  const headId = head?.id
+  const [armedFor, setArmedFor] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (headId === undefined) return
+    const timer = setTimeout(() => setArmedFor(headId), 400)
+    return () => clearTimeout(timer)
+  }, [headId])
+
   if (!head) return null
+  const armed = armedFor === head.id
   const { prepared } = head
   const write = prepared.mode === 'write'
   const Icon = write ? PenLine : prepared.isDir ? FolderLock : FileLock
 
   return (
     <Dialog
+      key={head.id}
       open
       onOpenChange={(open) => {
         if (!open) answer(head.id, 'deny')
@@ -132,12 +144,14 @@ export function AccessRequestDialog() {
           <Button
             variant="outline"
             data-testid="access-always"
+            disabled={!armed}
             onClick={() => answer(head.id, 'always')}
           >
             Always allow
           </Button>
           <Button
             data-testid="access-session"
+            disabled={!armed}
             onClick={() => answer(head.id, 'session')}
           >
             Allow for this conversation

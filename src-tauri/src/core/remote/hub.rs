@@ -123,6 +123,15 @@ pub fn valid_method(method: &str) -> bool {
 /// Any `approvals.*` method that carries `scope: "always"` (or a method whose
 /// name says always) is a standing grant.
 pub fn check_policy(method: &str, params: &Value, cfg: &RemoteConfig) -> Result<(), &'static str> {
+    // Switching a session to `bypass` approves every future tool call, a
+    // standing grant broader than "Always allow", so it needs both switches.
+    let bypass = params
+        .get("mode")
+        .and_then(Value::as_str)
+        .is_some_and(|m| m.eq_ignore_ascii_case("bypass"));
+    if bypass && !(cfg.allow_approvals && cfg.allow_always_allow) {
+        return Err("Auto-approving every action from phones is turned off on the computer");
+    }
     if !method.starts_with("approvals.") {
         return Ok(());
     }

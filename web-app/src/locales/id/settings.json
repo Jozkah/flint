@@ -363,7 +363,9 @@
     "loadFailed": "Tidak dapat memuat workspace agen",
     "saveFailed": "Tidak dapat menyimpan",
     "deleteFailed": "Tidak dapat menghapus",
-    "revealFailed": "Tidak dapat membuka folder"
+    "revealFailed": "Tidak dapat membuka folder",
+    "nameExists": "\"{{name}}\" sudah ada. Pilih nama lain atau edit yang sudah ada.",
+    "deleted": "\"{{name}}\" dihapus"
   },
   "localApiServer": {
     "title": "Server API Lokal",
@@ -1110,5 +1112,17 @@
         "overlap": "{{a}} dan {{b}} akan berjalan bersamaan tetapi keduanya mengubah {{path}}. Buat salah satunya menunggu yang lain."
       }
     }
+  },
+  "backup": {
+    "securityChanges": "Cadangan ini mengubah tujuan permintaan:",
+    "baseUrlChange": "{{provider}}: {{from}} → {{to}}",
+    "keyDropped": "Kunci API yang tersimpan akan dihapus; masukkan lagi untuk alamat baru.",
+    "includePermissions": "Pulihkan juga pengaturan keamanan ({{stores}})",
+    "includePermissionsWarning": "Pengaturan ini menentukan alat mana yang berjalan tanpa bertanya dan ke mana lalu lintas pergi. Lakukan hanya untuk cadangan buatan Anda sendiri.",
+    "permissionsSkipped": "Jika tidak dicentang, pengaturan keamanan Anda saat ini dipertahankan.",
+    "skipped": "Tidak dipulihkan: {{stores}}",
+    "storeToolApproval": "persetujuan otomatis alat",
+    "storeMcpTrust": "kepercayaan server MCP",
+    "storeProxy": "proksi jaringan"
   }
 }

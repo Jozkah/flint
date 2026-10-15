@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::core::agent::spend::{self, Report};
+use crate::core::agent::spend;
 
 /// What went wrong reading or judging a quota.
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -271,24 +271,26 @@ pub fn standing(data_folder: &Path, quotas: &Quotas) -> Result<Vec<Standing>, Qu
     if !quotas.any() {
         return Ok(Vec::new());
     }
-    let read = |period: &str| -> Result<Report, QuotaError> {
-        spend::report(data_folder, Some(period), None).map_err(|e| {
+    // Every window from one read of the ledger.
+    let periods: Vec<Option<&str>> = WINDOWS.iter().map(|(_, period, _)| Some(*period)).collect();
+    let mut reports = spend::reports(data_folder, &periods, None)
+        .map_err(|e| {
             QuotaError::new(QuotaErrorKind::Unreadable, format!("the ledger: {}", e.message))
-        })
-    };
+        })?
+        .into_iter();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
     let mut out = Vec::new();
-    for (name, period, window_secs) in WINDOWS {
+    for (name, _period, window_secs) in WINDOWS {
+        let Some(report) = reports.next() else { break };
         let tokens = quotas.tokens.limit(name);
         let money = quotas.spend.limit(name);
         if tokens.is_none() && money.is_none() {
             continue;
         }
-        let report = read(period)?;
         let frees_in_secs = report
             .earliest
             .map(|at| (at + window_secs).saturating_sub(now));

@@ -729,7 +729,14 @@ async fn schedule_mcp_start_task<R: Runtime>(
             }
 
             let handler = JanClientHandler::new(flint_client_info(), name.clone(), app.clone());
-            match handler.serve(process).await {
+            let served = match timeout(MCP_INIT_TIMEOUT, handler.serve(process)).await {
+                Ok(served) => served.map_err(|e| e.to_string()),
+                Err(_) => Err(format!(
+                    "no initialize reply within {} seconds",
+                    MCP_INIT_TIMEOUT.as_secs()
+                )),
+            };
+            match served {
                 Ok(server) => break (server, stderr),
                 Err(e) => {
                     // The child often crashes here with a write EPIPE while
@@ -738,7 +745,13 @@ async fn schedule_mcp_start_task<R: Runtime>(
                     // serve() error.
                     let mut buffer = String::new();
                     if let Some(mut stderr_stream) = stderr {
-                        let _ = stderr_stream.read_to_string(&mut buffer).await;
+                        // Bounded: a hung child that never closes stderr must
+                        // not turn the init timeout back into a hang.
+                        let _ = timeout(
+                            Duration::from_secs(2),
+                            stderr_stream.read_to_string(&mut buffer),
+                        )
+                        .await;
                     }
                     // The same scrub the running-server stderr pump applies: a
                     // server that prints a credential and then crashes must
@@ -973,11 +986,19 @@ where
         client,
         StreamableHttpClientTransportConfig::with_uri(url.to_string()),
     );
-    handler
-        .serve(transport)
-        .await
-        .map_err(|e| super::oauth::redact_url(&e.to_string(), url))
+    match timeout(MCP_INIT_TIMEOUT, handler.serve(transport)).await {
+        Ok(served) => served.map_err(|e| super::oauth::redact_url(&e.to_string(), url)),
+        Err(_) => Err(format!(
+            "MCP server did not finish initializing within {} seconds",
+            MCP_INIT_TIMEOUT.as_secs()
+        )),
+    }
 }
+
+/// How long the `initialize` handshake may take. Without a limit a server that
+/// never answers keeps its name in `mcp_starting` and every lazy start waiting
+/// on it hangs forever. Generous, since `npx`/`uvx` may download on first run.
+pub(super) const MCP_INIT_TIMEOUT: Duration = Duration::from_secs(120);
 
 fn emit_mcp_update_event<R: Runtime>(app: &AppHandle<R>, name: &str) {
     if let Err(e) = app.emit(
@@ -1658,6 +1679,10 @@ pub async fn persist_server_tools<R: Runtime>(
     let Some(config) = app_state.mcp_active_servers.lock().await.get(name).cloned() else {
         return;
     };
+    // Servers finish starting concurrently; without this one read-modify-write
+    // of the shared cache file drops another's entry.
+    static CACHE_WRITE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _guard = CACHE_WRITE.lock().await;
     let path = tool_cache_path(app);
     let mut cache = super::lazy::read_tool_cache(&path);
     let entry = super::lazy::CachedServerTools {

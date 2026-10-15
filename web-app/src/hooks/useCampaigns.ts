@@ -73,19 +73,24 @@ export const useCampaignStore = create<CampaignsState>()((set) => ({
 
 let subscribers = 0
 let timer: ReturnType<typeof setTimeout> | null = null
+// Which polling chain is current. A refresh still in flight when the last
+// subscriber left belongs to an old chain and must not schedule another,
+// or a remount would leave two chains polling.
+let chain = 0
 
-const schedule = () => {
-  if (subscribers === 0) return
+const schedule = (id: number) => {
+  if (subscribers === 0 || id !== chain) return
   const { campaigns, refresh } = useCampaignStore.getState()
   timer = setTimeout(() => {
-    void refresh().finally(schedule)
+    void refresh().finally(() => schedule(id))
   }, pollDelay(campaigns))
 }
 
 function start() {
   subscribers += 1
   if (subscribers === 1) {
-    void useCampaignStore.getState().refresh().finally(schedule)
+    const id = ++chain
+    void useCampaignStore.getState().refresh().finally(() => schedule(id))
   }
 }
 

@@ -15,5 +15,6 @@
   "levelDebug": "偵錯",
   "shown": "{{shown}} / {{total}} 行",
   "description": "Flint 及其引擎今天寫入的所有內容。最新的在前。",
-  "serverDescription": "對相容 OpenAI 的本機 API 伺服器的請求。最新的在前。"
+  "serverDescription": "對相容 OpenAI 的本機 API 伺服器的請求。最新的在前。",
+  "olderHidden": "未顯示 {{count}} 行較早的記錄。請搜尋或開啟記錄檔查看。"
 }

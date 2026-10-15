@@ -113,8 +113,13 @@ function ModelProviders() {
   const [renaming, setRenaming] = useState<ProviderObject | null>(null)
 
   const toggleProvider = async (provider: ProviderObject, active: boolean) => {
-    if (!active && provider.provider.toLowerCase() === 'llamacpp') {
-      await serviceHub.models().stopAllModels()
+    const engine = provider.provider.toLowerCase()
+    if (!active && (engine === 'llamacpp' || engine === 'mlx')) {
+      const loaded = await serviceHub.models().getActiveModels(engine)
+      await Promise.all(
+        loaded.map((model) => serviceHub.models().stopModel(model, engine))
+      )
+      setActiveModels((await serviceHub.models().getActiveModels()) || [])
     }
     updateProvider(provider.provider, { ...provider, active })
   }

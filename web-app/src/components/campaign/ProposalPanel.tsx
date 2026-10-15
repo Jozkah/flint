@@ -28,7 +28,8 @@ export function CampaignProposalPanel({ campaign }: { campaign: Campaign }) {
       setProposal(null)
       return
     }
-    const all = await listProposals(campaign.sourceRoot)
+    // A failed read must not leave the board on "loading" forever.
+    const all = await listProposals(campaign.sourceRoot).catch(() => [])
     setProposal(all.find((p) => p.id === proposalId) ?? null)
   }, [proposalId, campaign.sourceRoot])
 

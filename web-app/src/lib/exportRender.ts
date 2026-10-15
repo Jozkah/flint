@@ -43,14 +43,26 @@ em{color:#6b6b70}
 export function renderHtmlBody(doc: ExportDoc, options: RenderOptions = {}): string {
   const markdown = renderMarkdown(doc, options)
   return renderToStaticMarkup(
-    createElement(ReactMarkdown, { remarkPlugins: [remarkGfm] }, markdown)
+    createElement(
+      ReactMarkdown,
+      {
+        remarkPlugins: [remarkGfm],
+        // An image in the text would be fetched from wherever it points
+        // when the export renders; its alt text stands in for it.
+        components: {
+          img: ({ alt }: { alt?: string }) =>
+            createElement('em', null, alt ? `[${alt}]` : '[image]'),
+        },
+      },
+      markdown
+    )
   )
 }
 
 /** A complete HTML page for the print frame. */
 export function renderHtmlPage(doc: ExportDoc, options: RenderOptions = {}): string {
   const title = doc.title.replace(/[<>&"]/g, ' ')
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${CSS}</style></head><body><div class="flint-export">${renderHtmlBody(doc, options)}</div></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${title}</title><style>${CSS}</style></head><body><div class="flint-export">${renderHtmlBody(doc, options)}</div></body></html>`
 }
 
 export type PdfStrategy = 'print' | 'html'
@@ -93,6 +105,9 @@ export function printDocument(
     const frame = document.createElement('iframe')
     frame.setAttribute('aria-hidden', 'true')
     frame.tabIndex = -1
+    // No scripts in the frame; same-origin so print() can be called on it,
+    // modals so the print dialog may open.
+    frame.setAttribute('sandbox', 'allow-same-origin allow-modals')
     frame.style.cssText =
       'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
     let done = false

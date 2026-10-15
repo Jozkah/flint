@@ -288,8 +288,13 @@ fn find_process_using_port_windows(port: u16) -> Option<ProcessUsingPort> {
     let output_str = String::from_utf8_lossy(&output.stdout);
 
     for line in output_str.lines() {
-        if line.contains(&format!(":{}", port)) && line.contains("LISTENING") {
-            let parts: Vec<&str> = line.split_whitespace().collect();
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        // The local address column, matched exactly: a substring test took
+        // `:8080` for port 80.
+        let local_port_matches = parts
+            .get(1)
+            .is_some_and(|addr| addr.ends_with(&format!(":{port}")));
+        if local_port_matches && line.contains("LISTENING") {
             if let Some(pid_str) = parts.last() {
                 if let Ok(pid) = pid_str.parse::<u32>() {
                     let mut tasklist_cmd = Command::new("tasklist");
@@ -339,8 +344,10 @@ fn get_process_command_line(pid: u32) -> Option<Vec<String>> {
     Some(cmd_str.split_whitespace().map(|s| s.to_string()).collect())
 }
 
+/// One `Win32_Process` field of `pid`. `wmic` first; it is gone from
+/// Windows 11 24H2 onward, so PowerShell's CIM query answers when it fails.
 #[cfg(target_os = "windows")]
-fn get_process_command_line(pid: u32) -> Option<Vec<String>> {
+fn win32_process_field(pid: u32, field: &str) -> Option<String> {
     use std::process::Command;
 
     #[cfg(windows)]
@@ -352,29 +359,47 @@ fn get_process_command_line(pid: u32) -> Option<Vec<String>> {
         "where",
         &format!("ProcessId={}", pid),
         "get",
-        "CommandLine",
+        field,
         "/format:list",
     ]);
-
     cmd.background();
-
-    let output = cmd.output().ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let output_str = String::from_utf8_lossy(&output.stdout);
-    for line in output_str.lines() {
-        if line.starts_with("CommandLine=") {
-            let cmd_str = line.strip_prefix("CommandLine=")?.trim().to_string();
-            if !cmd_str.is_empty() {
-                return Some(cmd_str.split_whitespace().map(|s| s.to_string()).collect());
+    if let Ok(output) = cmd.output() {
+        if output.status.success() {
+            let prefix = format!("{field}=");
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            if let Some(value) = output_str
+                .lines()
+                .find_map(|line| line.strip_prefix(prefix.as_str()))
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+            {
+                return Some(value);
             }
         }
     }
 
-    None
+    let mut ps = Command::new("powershell");
+    ps.args(&[
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        &format!(
+            "(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}' -ErrorAction SilentlyContinue).{field}"
+        ),
+    ]);
+    ps.background();
+    let output = ps.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+#[cfg(target_os = "windows")]
+fn get_process_command_line(pid: u32) -> Option<Vec<String>> {
+    let cmd_str = win32_process_field(pid, "CommandLine")?;
+    Some(cmd_str.split_whitespace().map(|s| s.to_string()).collect())
 }
 
 /// Get process information by PID
@@ -422,43 +447,7 @@ fn get_process_info_by_pid_unix(pid: u32) -> Option<ProcessUsingPort> {
 
 #[cfg(target_os = "windows")]
 fn get_process_info_by_pid_windows(pid: u32) -> Option<ProcessUsingPort> {
-    use std::process::Command;
-
-    #[cfg(windows)]
-    use jan_process::CommandConsole;
-
-    // Use wmic to get process info by PID
-    let mut cmd = Command::new("wmic");
-    cmd.args(&[
-        "process",
-        "where",
-        &format!("ProcessId={}", pid),
-        "get",
-        "Name",
-        "/format:list",
-    ]);
-
-    cmd.background();
-
-    let output = cmd.output().ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let output_str = String::from_utf8_lossy(&output.stdout);
-    let mut name = String::new();
-
-    for line in output_str.lines() {
-        if line.starts_with("Name=") {
-            name = line.strip_prefix("Name=")?.trim().to_string();
-            break;
-        }
-    }
-
-    if name.is_empty() {
-        return None;
-    }
+    let name = win32_process_field(pid, "Name")?;
 
     let cmd = get_process_command_line(pid).unwrap_or_else(|| vec![name.clone()]);
 

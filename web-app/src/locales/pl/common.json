@@ -1064,7 +1064,8 @@
     "compact": "Skompaktuj",
     "compacting": "Kompaktowanie…",
     "compactFailed": "Na razie nie ma czego kompaktować.",
-    "newSession": "Nowa sesja"
+    "newSession": "Nowa sesja",
+    "compactSuperseded": "Rozmowa zmieniła się podczas kompaktowania, więc nic nie zostało zastąpione. Skompaktuj ponownie."
   },
   "autoCompactNeedsWindow": "Automatyczne kompaktowanie wymaga rozmiaru kontekstu, a {{model}} nie ma żadnego, który Flint potrafiłby znaleźć. Ustaw Maks. tokeny kontekstu dla tego modelu, aby długie czaty były kompaktowane, zanim go zapełnią. Jeśli dostawca odrzuci żądanie z powodu jego długości, Flint skompaktuje i spróbuje raz jeszcze.",
   "compaction": {
@@ -2618,5 +2619,6 @@
     "load": "Wczytaj obraz z {{host}}"
   },
   "messageSaveFailed": "Nie udało się zapisać wiadomości. Może zostać utracona po restarcie.",
-  "threadSaveFailed": "Nie udało się zapisać zmiany w tym wątku. Została cofnięta."
+  "threadSaveFailed": "Nie udało się zapisać zmiany w tym wątku. Została cofnięta.",
+  "attachmentsProcessFailed": "Nie udało się przygotować załączników, więc wiadomość nie została wysłana"
 }

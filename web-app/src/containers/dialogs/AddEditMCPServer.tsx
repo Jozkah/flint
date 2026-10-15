@@ -238,25 +238,24 @@ export default function AddEditMCPServer({
         setJsonContent('')
       }
 
-      if (initialData.env) {
-        // Convert env object to arrays of keys and values
-        const keys = Object.keys(initialData.env)
-        const values = keys.map((key) => initialData.env[key])
+      // Always replace env and headers: the dialog stays mounted, and a
+      // server without them must not inherit the previous server's secrets.
+      const env = initialData.env ?? {}
+      const keys = Object.keys(env)
+      setEnvKeys(keys.length > 0 ? keys : [''])
+      setEnvValues(keys.length > 0 ? keys.map((key) => env[key]) : [''])
 
-        setEnvKeys(keys.length > 0 ? keys : [''])
-        setEnvValues(values.length > 0 ? values : [''])
-      }
-
-      if (initialData.headers) {
-        // Convert headers object to arrays of keys and values
-        const headerKeysList = Object.keys(initialData.headers)
-        const headerValuesList = headerKeysList.map(
-          (key) => initialData.headers![key]
-        )
-
-        setHeaderKeys(headerKeysList.length > 0 ? headerKeysList : [''])
-        setHeaderValues(headerValuesList.length > 0 ? headerValuesList : [''])
-      }
+      const headers = initialData.headers ?? {}
+      const headerKeysList = Object.keys(headers)
+      setHeaderKeys(headerKeysList.length > 0 ? headerKeysList : [''])
+      setHeaderValues(
+        headerKeysList.length > 0
+          ? headerKeysList.map((key) => headers[key])
+          : ['']
+      )
+      setIsToggled(false)
+      setAttempted(false)
+      setError(null)
     } else if (open) {
       // Add mode - reset form
       resetForm()

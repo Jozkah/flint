@@ -76,7 +76,14 @@ pub fn argv(plan: &Plan, cwd: Option<&str>) -> Vec<String> {
     if let Some(dir) = cwd {
         args.extend(["--cd".to_string(), dir.to_string()]);
     }
-    args.extend(["--exec".into(), "bash".into(), "-c".into(), format!("echo {encoded} | base64 -d | bash")]);
+    // Decoded whole and run with `eval`, not piped into `bash`: a command that
+    // reads stdin would otherwise swallow the rest of the script.
+    args.extend([
+        "--exec".into(),
+        "bash".into(),
+        "-c".into(),
+        format!("eval \"$(echo {encoded} | base64 -d)\" </dev/null"),
+    ]);
     args
 }
 
@@ -150,8 +157,10 @@ mod tests {
         assert_eq!(&args[..4], ["-d", "Ubuntu", "--cd", "C:\\work"]);
         assert_eq!(&args[4..7], ["--exec", "bash", "-c"]);
         let line = &args[7];
-        assert!(line.starts_with("echo ") && line.ends_with("| base64 -d | bash"));
-        let b64 = line.trim_start_matches("echo ").trim_end_matches(" | base64 -d | bash");
+        assert!(line.starts_with("eval \"$(echo ") && line.ends_with(" | base64 -d)\" </dev/null"));
+        let b64 = line
+            .trim_start_matches("eval \"$(echo ")
+            .trim_end_matches(" | base64 -d)\" </dev/null");
         assert!(b64.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '=')));
         assert_eq!(base64::engine::general_purpose::STANDARD.decode(b64).unwrap(), nasty.as_bytes());
         assert!(!line.contains("rm -rf"));

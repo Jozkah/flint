@@ -1792,6 +1792,10 @@ struct App {
     /// Set after a turn finishes while a goal is active: the chat loop runs the
     /// evaluator off the render loop, then auto-continues or returns control.
     goal_eval_pending: bool,
+    /// A goal evaluation is running off the render loop (report-12 MED-3).
+    goal_evaluating: bool,
+    /// Esc was pressed while `goal_evaluating`: the loop aborts the call.
+    goal_eval_cancel: bool,
     /// Read-only plan mode. `Plan` blocks mutation-capable tools at the core
     /// dispatcher (advisory prompt is defense in depth only). Persisted with
     /// the thread so it survives restart/resume.
@@ -2082,6 +2086,13 @@ struct App {
     /// on every bare `/model` -- that would freeze the render loop for the whole
     /// request timeout -- so only unprobed providers are fetched once.
     probed_models: std::collections::HashSet<String>,
+    /// `/model` asked for missing model lists: the loop fetches them off the
+    /// render loop (report-12 MED-4). Taken once.
+    model_fetch_request: bool,
+    /// That fetch is in flight.
+    model_fetch_running: bool,
+    /// `/model` found nothing to show yet: open the picker when the fetch lands.
+    model_fetch_wants_picker: bool,
     /// Key handed off to the loop to verify off the render loop. Taken once.
     login_submit: Option<(String, String)>,
     /// Active OAuth account prompt; owns the keyboard while open.
@@ -2500,6 +2511,8 @@ impl App {
             model,
             goal: None,
             goal_eval_pending: false,
+            goal_evaluating: false,
+            goal_eval_cancel: false,
             run_mode: crate::core::agent::plan::RunMode::Normal,
             args: None,
             approval_phrasing: String::new(),
@@ -2601,6 +2614,9 @@ impl App {
             mcp_auth_cancel: false,
             provider_prompt: None,
             probed_models: std::collections::HashSet::new(),
+            model_fetch_request: false,
+            model_fetch_running: false,
+            model_fetch_wants_picker: false,
             login_submit: None,
             account_login: None,
             account_login_submit: None,
@@ -2699,6 +2715,13 @@ impl App {
     fn set_workspace(&mut self, workspace: Option<Worktree>) {
         self.workspace_record = workspace.clone();
         self.workspace = workspace;
+    }
+
+    /// Where the agent's tools read and write: the session's worktree when it
+    /// has one, else the project. Relative tool paths and `@path` refs resolve
+    /// here, not against the original checkout.
+    fn work_root(&self) -> &std::path::Path {
+        self.workspace.as_ref().map_or(self.project_root.as_path(), |w| w.path.as_path())
     }
 
     /// Drop the current conversation and all transient turn state, detaching from
@@ -3938,7 +3961,7 @@ impl App {
             return;
         };
 
-        let entries = path_refs::search_files_sync(&self.project_root, &query, 30);
+        let entries = path_refs::search_files_sync(self.work_root(), &query, 30);
         self.path_hints = entries
             .into_iter()
             .map(|(path, name, is_dir)| PathHintItem { path, name, is_dir })
@@ -4158,7 +4181,7 @@ impl App {
         let names: Vec<String> = images.iter().map(|i| i.name.clone()).collect();
         // Resolve @path file references before sending
         let (clean_text, injected_contents) =
-            path_refs::resolve_references(&text, &self.project_root);
+            path_refs::resolve_references(&text, self.work_root());
         let final_text = if injected_contents.is_empty() {
             clean_text
         } else {
@@ -4233,6 +4256,29 @@ impl App {
         self.persist();
     }
 
+    /// While a turn runs, queue a skill or command invocation like a chat
+    /// message instead of pushing it into a history the run will overwrite.
+    /// Returns whether it was queued.
+    fn queue_invocation(&mut self, name: &str, args: &str, msg: &str, description: &str) -> bool {
+        if self.status != Status::Running {
+            return false;
+        }
+        let args = args.trim();
+        self.message_queue.push_back(PendingMessage {
+            text: format!("/{name} {args}").trim_end().to_string(),
+            message: serde_json::json!({ "role": "user", "content": msg }),
+            images: Vec::new(),
+            display: true,
+            invocation: Some((name.to_string(), args.to_string(), description.to_string())),
+            run_mode: Some(self.run_mode),
+        });
+        self.note(&format!(
+            "message pending for next agent step ({} pending)",
+            self.message_queue.len()
+        ));
+        true
+    }
+
     /// Invoke an enabled project skill by name: load its full instructions and
     /// submit them as the user message so the agent follows the procedure
     /// directly (no `skill_read` round trip). The transcript shows one compact
@@ -4253,6 +4299,9 @@ impl App {
         // message gets in `submit_user_text` (#141).
         if self.model.is_empty() {
             self.note("not signed in — run /login to choose a provider first");
+            return true;
+        }
+        if self.queue_invocation(name, args, &msg, &description) {
             return true;
         }
         self.ensure_base_snapshot();
@@ -4287,6 +4336,9 @@ impl App {
         // message gets in `submit_user_text` (#141).
         if self.model.is_empty() {
             self.note("not signed in — run /login to choose a provider first");
+            return true;
+        }
+        if self.queue_invocation(name, args, &msg, &description) {
             return true;
         }
         self.ensure_base_snapshot();
@@ -4335,6 +4387,7 @@ impl App {
         // read-only exploration where todos are only staged for handoff.
         if self.want_start
             || self.goal_eval_pending
+            || self.goal_evaluating
             || self.run_mode == crate::core::agent::plan::RunMode::Plan
             || !self.ask_queue.is_empty()
         {
@@ -5252,7 +5305,7 @@ impl App {
                     // Record the touched path so the next checkpoint snapshots
                     // exactly this file instead of scanning the whole repo.
                     if let Some(p) = args.get("path").and_then(|v| v.as_str()) {
-                        self.turn_touched.push(self.project_root.join(p));
+                        self.turn_touched.push(self.work_root().join(p));
                         self.diff_paths.insert(id.clone(), p.to_string());
                     }
                     // Diff-producing tools render standalone (call row & panel).
@@ -6026,33 +6079,67 @@ impl App {
         self.dequeue_next();
     }
 
-    /// Run one goal evaluation and act on the verdict. Called by the chat loop
-    /// when a turn finished under an active goal (`goal_eval_pending`). Makes one
-    /// stateless `smol`-model call (no tools), then either auto-submits the next
-    /// turn (goal unmet) or marks the goal achieved and returns control (goal
-    /// met). Runs only while idle; blocks the loop for the single eval call.
-    async fn run_goal_evaluation(&mut self) {
+    /// Start one goal evaluation. Called by the chat loop when a turn finished
+    /// under an active goal (`goal_eval_pending`). Returns the stateless
+    /// `smol`-model call (no tools) for the loop to run off the render loop, so
+    /// the UI keeps drawing and Esc can abort it; `finish_goal_evaluation`
+    /// acts on the verdict.
+    fn begin_goal_evaluation(&mut self) -> Option<GoalEvalTask> {
         self.goal_eval_pending = false;
-        let Some(goal) = self.goal.clone() else {
-            return;
-        };
+        let goal = self.goal.clone()?;
         if !goal.is_active() {
+            return None;
+        }
+        // No live session (e.g. tests): cannot evaluate. Leave control with
+        // the user rather than looping blindly.
+        let args = self.args.clone()?;
+        self.note("◎ evaluating goal... (Esc to stop)");
+        self.goal_evaluating = true;
+        self.goal_eval_cancel = false;
+        self.detail = "evaluating goal".to_string();
+        let model = self.smol_model.clone();
+        let history = self.history.clone();
+        Some(tokio::spawn(async move {
+            let verdict = crate::core::agent::r#loop::evaluate_goal(
+                &args,
+                &model,
+                &goal.condition,
+                &history,
+            )
+            .await;
+            (goal, verdict)
+        }))
+    }
+
+    /// The evaluation was stopped (Esc, or the user took over by submitting):
+    /// the goal is kept, nothing is auto-submitted.
+    fn stop_goal_evaluation(&mut self) {
+        self.goal_evaluating = false;
+        self.goal_eval_cancel = false;
+        self.detail.clear();
+        self.note("◎ goal evaluation stopped (goal kept; /goal clear to stop)");
+        self.persist();
+    }
+
+    /// Act on a finished goal evaluation: auto-submit the next turn (goal
+    /// unmet) or mark the goal achieved and return control (goal met).
+    fn finish_goal_evaluation(
+        &mut self,
+        goal: crate::core::agent::goal::GoalState,
+        verdict: Result<
+            crate::core::agent::goal::GoalVerdict,
+            tauri_plugin_agent_tools::harness_error::HarnessError,
+        >,
+    ) {
+        self.goal_evaluating = false;
+        self.goal_eval_cancel = false;
+        self.detail.clear();
+        // Cleared or replaced while the call was out: the verdict is stale.
+        if self.goal.as_ref().map(|g| &g.condition) != Some(&goal.condition)
+            || !self.goal.as_ref().is_some_and(|g| g.is_active())
+        {
             return;
         }
-        let Some(args) = self.args.clone() else {
-            // No live session (e.g. tests): cannot evaluate. Leave control with
-            // the user rather than looping blindly.
-            return;
-        };
-        self.note("◎ evaluating goal...");
-        let verdict = crate::core::agent::r#loop::evaluate_goal(
-            &args,
-            &self.smol_model,
-            &goal.condition,
-            &self.history,
-        )
-        .await;
-
         match verdict {
             Ok(v) => {
                 if let Some(g) = self.goal.as_mut() {
@@ -8242,6 +8329,20 @@ fn drain_trailing_sgr_mouse_reports(buf: &mut String, cursor: &mut usize) {
     }
 }
 
+/// The args a new run starts from: the session's, with the approval mode
+/// `/mode` set on `app.args` (a copy-on-write clone the session's args never
+/// see), so `/mode ask` actually gates the next run.
+fn run_args(app: &App, args: &Arc<OrchestrationArgs>) -> Arc<OrchestrationArgs> {
+    match app.args.as_ref() {
+        Some(set) if set.auto_approve != args.auto_approve => {
+            let mut next = (**args).clone();
+            next.auto_approve = set.auto_approve;
+            Arc::new(next)
+        }
+        _ => Arc::clone(args),
+    }
+}
+
 fn spawn_run(args: &Arc<OrchestrationArgs>, body: serde_json::Value) -> CurrentRun {
     let (tx, rx) = mpsc::unbounded_channel::<StreamEvent>();
     let (steering_tx, steering) = mpsc::unbounded_channel();
@@ -8947,6 +9048,10 @@ async fn chat_loop<B: Backend>(
     > =
         None;
     let mut compact_base = 0usize;
+    // `/goal` evaluation: one stateless model call, off the render loop.
+    let mut goal_task: Option<GoalEvalTask> = None;
+    // `/model`'s probe of providers with no model list: network, so off-loop.
+    let mut model_fetch_task: Option<tokio::task::JoinHandle<ModelFetchDone>> = None;
 
     // The dock's branch indicator is captured once at startup; re-read it on a
     // slow timer so a checkout made outside the TUI (another terminal, an
@@ -9163,8 +9268,23 @@ async fn chat_loop<B: Backend>(
         // before anything else. It either auto-submits the next turn (setting
         // want_start) or hands control back. Gated on an idle, run-free state so
         // it never races an in-flight turn.
-        if app.goal_eval_pending && current.is_none() && !app.want_start {
-            app.run_goal_evaluation().await;
+        if model_fetch_task.is_none() && std::mem::take(&mut app.model_fetch_request) {
+            app.model_fetch_running = true;
+            model_fetch_task = Some(tokio::spawn(fetch_models_job(
+                app.project_root.clone(),
+                app.probed_models.clone(),
+            )));
+        }
+        if goal_task.is_none() && app.goal_eval_pending && current.is_none() && !app.want_start {
+            goal_task = app.begin_goal_evaluation();
+        }
+        // Esc, or the user submitting a message themselves, stops the
+        // evaluation: its verdict would otherwise start a second turn.
+        if app.goal_evaluating && (app.goal_eval_cancel || app.want_start) {
+            if let Some(task) = goal_task.take() {
+                task.abort();
+            }
+            app.stop_goal_evaluation();
         }
 
         // Kick off a queued run once the previous one has cleared, the MCP
@@ -9180,7 +9300,7 @@ async fn chat_loop<B: Backend>(
                 // The submission itself is one human turn toward the aging
                 // grace period; model roundtrips count via `Step` events.
                 age_closed_todos(app).await;
-                current = Some(spawn_run(args, app.body()));
+                current = Some(spawn_run(&run_args(app, args), app.body()));
             } else if !loading_noted && !mcp_ready {
                 // The base snapshot gates silently; only the MCP connect notes.
                 loading_noted = true;
@@ -9345,6 +9465,18 @@ async fn chat_loop<B: Backend>(
             }
             compacted = await_compaction(&mut compact_task) => {
                 finish_compaction(app, compacted, compact_base);
+            }
+            Some(done) = await_model_fetch(&mut model_fetch_task) => {
+                finish_model_fetch(app, done).await;
+            }
+            evaluated = await_goal_eval(&mut goal_task) => {
+                match evaluated {
+                    Some((goal, verdict)) => app.finish_goal_evaluation(goal, verdict),
+                    None => {
+                        app.goal_evaluating = false;
+                        app.note("◎ goal evaluation failed (goal kept; /goal clear to stop)");
+                    }
+                }
             }
             snap_res = await_snapshot(&mut snap_task) => {
                 match (snap_inflight.take(), snap_res) {
@@ -10857,6 +10989,10 @@ async fn handle_key(
                 abort_run(current);
                 app.cancel_run();
                 app.last_esc = None;
+            } else if app.goal_evaluating {
+                // The chat loop aborts the evaluation call.
+                app.goal_eval_cancel = true;
+                app.last_esc = None;
             } else {
                 // A second idle Esc within the window opens the rewind picker;
                 // a lone Esc clears the input as before.
@@ -11597,6 +11733,10 @@ async fn run_command(
                 app.system_detail_text(&format!("{keys:18} {description}"));
             }
         }
+        // The running turn would bring the old conversation back when it ends.
+        "clear" | "new" if app.status != Status::Idle => {
+            app.note("a turn is running; press Esc to stop it first");
+        }
         "clear" => {
             app.reset_session();
             clear_todos(app).await;
@@ -11853,6 +11993,33 @@ impl CompactKind {
 
 /// Await an in-flight compaction, parking forever when none is running so this
 /// can sit in the loop's `select!` unconditionally.
+/// A goal evaluation running off the render loop: the goal it judged and the
+/// verdict.
+type GoalEvalTask = tokio::task::JoinHandle<(
+    crate::core::agent::goal::GoalState,
+    Result<
+        crate::core::agent::goal::GoalVerdict,
+        tauri_plugin_agent_tools::harness_error::HarnessError,
+    >,
+)>;
+
+async fn await_goal_eval(
+    task: &mut Option<GoalEvalTask>,
+) -> Option<(
+    crate::core::agent::goal::GoalState,
+    Result<
+        crate::core::agent::goal::GoalVerdict,
+        tauri_plugin_agent_tools::harness_error::HarnessError,
+    >,
+)> {
+    let joined = match task.as_mut() {
+        Some(h) => h.await,
+        None => return pending().await,
+    };
+    *task = None;
+    joined.ok()
+}
+
 async fn await_compaction(
     task: &mut Option<tokio::task::JoinHandle<Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>>>,
 ) -> Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError> {
@@ -13788,30 +13955,102 @@ fn open_thread_picker(app: &mut App) {
 }
 
 /// Open the `/model` hub listing the `provider / model` pairs this build can
-/// actually run, with the current raw model pre-highlighted.
+/// actually run, with the current raw model pre-highlighted. Providers with no
+/// configured list are probed by the chat loop off the render loop, and the
+/// picker is refreshed when their models arrive.
 async fn open_model_picker(app: &mut App) {
-    let project_root = app.project_root.clone();
-    match super::providers::fetch_missing_models(Some(&project_root), &mut app.probed_models).await
-    {
+    if !app.model_fetch_running {
+        app.model_fetch_request = true;
+    }
+    if !show_model_picker(app, false) {
+        app.model_fetch_wants_picker = true;
+        app.note("fetching models...");
+    }
+}
+
+/// Show the model picker from the providers on disk. With `final_answer`, an
+/// empty list is reported; otherwise the caller waits for the fetch. Returns
+/// whether a picker is open.
+fn show_model_picker(app: &mut App, final_answer: bool) -> bool {
+    let pairs = super::providers::list_provider_models(Some(&app.project_root));
+    match ModelPicker::from_pairs(pairs, &app.model) {
+        Some(picker) => {
+            app.picker = None;
+            app.model_picker = Some(picker);
+            true
+        }
+        None => {
+            if final_answer {
+                app.note(
+                    "no models available (add a provider with `flint config set`, or configure one in the desktop app)",
+                );
+            }
+            false
+        }
+    }
+}
+
+/// What a background model-list fetch returns: its result and the probed set.
+type ModelFetchDone = (Result<bool, String>, std::collections::HashSet<String>);
+
+async fn fetch_models_job(
+    project_root: PathBuf,
+    mut probed: std::collections::HashSet<String>,
+) -> ModelFetchDone {
+    let result = super::providers::fetch_missing_models(Some(&project_root), &mut probed).await;
+    (result, probed)
+}
+
+async fn await_model_fetch(
+    task: &mut Option<tokio::task::JoinHandle<ModelFetchDone>>,
+) -> Option<ModelFetchDone> {
+    let joined = match task.as_mut() {
+        Some(h) => h.await,
+        None => return pending().await,
+    };
+    *task = None;
+    joined.ok()
+}
+
+/// Apply a finished model-list fetch: record what was probed, reload the
+/// providers when lists were discovered, and refresh or open the picker.
+async fn finish_model_fetch(app: &mut App, (result, probed): ModelFetchDone) {
+    app.model_fetch_running = false;
+    app.probed_models.extend(probed);
+    let wants_picker = std::mem::take(&mut app.model_fetch_wants_picker);
+    match result {
         Ok(true) => {
             // The discovered ids now live on disk; refresh the session's
             // in-memory provider snapshot so a picked model resolves on the
             // next run without a restart (#8688 parallels the /login reload).
             reload_provider_configs(app).await;
             app.note("fetched models for provider(s) with no configured list");
+            if wants_picker || app.model_picker.is_some() {
+                show_model_picker(app, wants_picker);
+            }
         }
-        Ok(_) => {}
-        Err(e) => app.note(&format!("could not fetch models: {e}")),
+        Ok(_) => {
+            if wants_picker {
+                show_model_picker(app, true);
+            }
+        }
+        Err(e) => {
+            app.note(&format!("could not fetch models: {e}"));
+            if wants_picker {
+                show_model_picker(app, true);
+            }
+        }
     }
-    let pairs = super::providers::list_provider_models(Some(&project_root));
-    match ModelPicker::from_pairs(pairs, &app.model) {
-        Some(picker) => {
-            app.picker = None;
-            app.model_picker = Some(picker);
-        }
-        None => app.note(
-            "no models available (add a provider with `flint config set`, or configure one in the desktop app)",
-        ),
+}
+
+/// Run a fetch `/model` queued, inline: what the chat loop does in the
+/// background, for tests that drive commands without the loop.
+#[cfg(test)]
+async fn run_pending_model_fetch(app: &mut App) {
+    if std::mem::take(&mut app.model_fetch_request) {
+        app.model_fetch_running = true;
+        let done = fetch_models_job(app.project_root.clone(), app.probed_models.clone()).await;
+        finish_model_fetch(app, done).await;
     }
 }
 
@@ -15756,6 +15995,11 @@ async fn apply_resume(app: &mut App, request: &ResumeRequest) {
 /// are not persisted as messages). `verb` names how the thread was opened, so a
 /// fork does not report itself as a resume.
 async fn load_thread(app: &mut App, thread: &serde_json::Value, verb: &str) {
+    // The running turn would save its conversation over the thread opened
+    // here when it finishes.
+    if app.status != Status::Idle {
+        return app.note("a turn is running; press Esc to stop it before switching threads");
+    }
     let full_id = thread
         .get("id")
         .and_then(|v| v.as_str())
@@ -26003,6 +26247,7 @@ mod tests {
             // `with_temp_home` is sync; drive the async command on a dedicated runtime.
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(super::run_command(&mut app, "model", &no_mcp()));
+            rt.block_on(super::run_pending_model_fetch(&mut app));
 
             let picker = app.model_picker.as_ref().expect("model picker opened");
             assert!(
@@ -26044,6 +26289,7 @@ mod tests {
             let mut app = test_app();
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(super::run_command(&mut app, "model", &no_mcp()));
+            rt.block_on(super::run_pending_model_fetch(&mut app));
 
             // The picker opened (no reachable pairs => the note path fires,
             // but there is no panic, no hang, and the provider stays put).
@@ -26056,6 +26302,7 @@ mod tests {
             // Opening once more must not re-contact the dead endpoint: the
             // session short-circuit means the second open is near-instant.
             rt.block_on(super::run_command(&mut app, "model", &no_mcp()));
+            rt.block_on(super::run_pending_model_fetch(&mut app));
         });
     }
 
@@ -34007,6 +34254,13 @@ mod tests {
             "compact row: {}",
             transcript_text(&app)
         );
+        // Typed while that turn runs: queued, not pushed into its history.
+        let before = app.history.len();
+        run_command(&mut app, "feature-dev mid turn", &no_mcp()).await;
+        assert_eq!(app.history.len(), before);
+        assert_eq!(app.message_queue.len(), 1);
+        app.message_queue.clear();
+        app.status = Status::Idle;
         // Explicit qualified form.
         run_command(
             &mut app,

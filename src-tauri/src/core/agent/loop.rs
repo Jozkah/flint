@@ -2351,6 +2351,67 @@ impl CompositeToolInvoker {
         }
     }
 
+    /// Approve a repository-changing `git_split` / `git_history` /
+    /// `git_branch` call. Same rules as a write through the gate: an explicit
+    /// allow or a session grant runs it, auto-approval runs it subject to
+    /// `[auto_mode]` and the streak check-in, otherwise a person is asked.
+    async fn approve_repo_mutation(&self, name: &str, what: &str, args: &serde_json::Value) -> Result<(), String> {
+        use std::sync::atomic::Ordering as StreakOrdering;
+        let refused = || {
+            format!(
+                "ERROR [approval_refused]: {name} ({what}) was not approved, so the repository was not changed. It needs a person's approval, auto-approval, or `allow = [\"{name}\"]` in the project's agent.toml."
+            )
+        };
+        if self.permissions.is_allowed(name, &self.subject)
+            || self.grants.lock().unwrap().covers_mcp("repo", name)
+        {
+            return Ok(());
+        }
+        let mut forced_reason = None;
+        if self.auto_approve {
+            if let Some(block) = self.auto_mode.block_reason(name, tauri_plugin_agent_tools::tools::Capability::Exec, args) {
+                return Err(auto_mode_refusal_msg(name, &block));
+            }
+            let streak = self.auto_approved_streak.fetch_add(1, StreakOrdering::Relaxed) + 1;
+            if self.auto_approve_limit == 0 || streak <= self.auto_approve_limit {
+                return Ok(());
+            }
+            forced_reason = Some(format!(
+                "Auto-approval paused: {} tool calls ran without asking. Allow this one to continue.",
+                self.auto_approve_limit
+            ));
+        }
+        self.auto_approved_streak.store(0, StreakOrdering::Relaxed);
+        let request_id = next_permission_id();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.permission_requests
+            .lock()
+            .await
+            .insert(request_id.clone(), tx);
+        let _ = self.events.send(StreamEvent::PermissionRequest {
+            request_id: request_id.clone(),
+            tool_name: name.to_string(),
+            capability: "run".to_string(),
+            path: None,
+            command: Some(what.to_string()),
+            diff: None,
+            patch: None,
+            prompt_kind: "exec".to_string(),
+            offers_always: forced_reason.is_none(),
+            reason: forced_reason,
+        });
+        let decision = rx.await.unwrap_or(PermissionDecision::Deny);
+        self.permission_requests.lock().await.remove(&request_id);
+        match decision {
+            PermissionDecision::AllowOnce => Ok(()),
+            PermissionDecision::AllowAlways => {
+                self.grants.lock().unwrap().grant_mcp("repo", name);
+                Ok(())
+            }
+            PermissionDecision::Deny => Err(refused()),
+        }
+    }
+
     /// Prompt the user to approve a `user`-scope subagent write (it persists
     /// outside the current project). Project-scope writes are not prompted.
     async fn prompt_subagent_create(&self, name: &str) -> PermissionDecision {
@@ -3560,6 +3621,39 @@ fn plan_mode_read_only_msg(name: &str) -> String {
     format!("ERROR: tool '{name}' unavailable in plan_mode_read_only (plan mode is read-only)")
 }
 
+/// The tools of the subagent/git group that only read, so Plan mode runs them.
+/// `git_branch` refuses create and switch in Plan itself; listing is a read.
+fn plan_mode_offers_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "symbol_find" | "review_comments" | "mcp_resource_list" | "mcp_resource_read" | "git_branch"
+    )
+}
+
+/// What a repository-changing call of the subagent/git group will do, for the
+/// approval prompt; `None` for a call that only reads.
+fn repo_mutation(name: &str, args: &serde_json::Value) -> Option<String> {
+    let text = |key: &str| args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
+    match name {
+        "git_split" => {
+            let n = args.get("groups").and_then(|g| g.as_array()).map_or(0, Vec::len);
+            Some(format!("commit the working tree as {n} commits"))
+        }
+        "git_history" => match text("action").as_str() {
+            "status" => None,
+            "rebase" => Some(format!("rebase the current branch onto {}", text("onto"))),
+            "cherry_pick" => Some(format!("cherry-pick {} onto the current branch", text("commit"))),
+            other => Some(format!("{other} a stopped rebase or cherry-pick")),
+        },
+        "git_branch" => match text("action").as_str() {
+            "create" => Some(format!("create and switch to branch {}", text("name"))),
+            "switch" => Some(format!("switch to branch {}", text("name"))),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// The refusal the autonomous-mode safety policy returns for a blocked call.
 /// Names the class and the reason so the model can adjust rather than retry the
 /// same action, and points at how a person would allow it if they meant to.
@@ -3917,10 +4011,14 @@ impl CompositeToolInvoker {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                // Plan mode blocks subagent dispatch (a subagent could mutate).
-                // They are not advertised in Plan; this is defense in depth
-                // against a stale tool schema. Auto-approval cannot override.
-                if self.run_mode == crate::core::agent::plan::RunMode::Plan {
+                // Plan mode blocks the ones that can change something (a
+                // subagent, a commit, a branch, a pull request). They are not
+                // advertised in Plan; this is defense in depth against a stale
+                // tool schema. Auto-approval cannot override. The read-only
+                // ones Plan does advertise run as usual.
+                if self.run_mode == crate::core::agent::plan::RunMode::Plan
+                    && !plan_mode_offers_tool(name)
+                {
                     out.push(ToolOutcome::plain(id, plan_mode_read_only_msg(name)));
                     continue;
                 }
@@ -3934,6 +4032,14 @@ impl CompositeToolInvoker {
                 if self.permissions.is_denied(name, &self.subject) {
                     out.push(ToolOutcome::plain(id, denied_by_policy_msg(name, &self.project_root)));
                     continue;
+                }
+                // Commits, rebases and branch switches rewrite the checkout
+                // without passing the write/exec gate: ask like the git tool.
+                if let Some(what) = repo_mutation(name, &args) {
+                    if let Err(refused) = self.approve_repo_mutation(name, &what, &args).await {
+                        out.push(ToolOutcome::plain(id, refused));
+                        continue;
+                    }
                 }
                 let content = self.handle_subagent_tool(name, &args).await;
                 out.push(ToolOutcome::plain(id, content));
@@ -13844,6 +13950,79 @@ mod tests {
             "{}",
             out[0].content
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Plan mode advertises these read-only tools, so it must also run them.
+    #[tokio::test]
+    async fn plan_mode_runs_the_read_only_tools_it_offers() {
+        let root = unique_project_root();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let permissions: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, permissions);
+        invoker.run_mode = crate::core::agent::plan::RunMode::Plan;
+        let call = json!({
+            "id": "p1",
+            "type": "function",
+            "function": { "name": "symbol_find", "arguments": "{\"name\":\"nothing_here\"}" }
+        });
+        let out = invoker
+            .invoke(&[call, tool_call("p2", "mcp_resource_list"), tool_call("p3", "git_split")])
+            .await
+            .unwrap();
+        assert_eq!(out.len(), 3);
+        assert!(!out[0].content.contains("plan_mode_read_only"), "{}", out[0].content);
+        assert!(!out[1].content.contains("plan_mode_read_only"), "{}", out[1].content);
+        assert!(out[2].content.contains("plan_mode_read_only"), "{}", out[2].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// git_split, git_history and git_branch create/switch change the
+    /// repository: without an allow or auto-approval a person is asked, and a
+    /// refusal leaves it alone. A listing asks nobody.
+    #[tokio::test]
+    async fn repo_changing_git_tools_ask_before_running() {
+        let root = unique_project_root();
+        let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            registry.clone(),
+            ToolPermissions::new(PermissionDefault::Allow, &[], &[], &[]),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        let answering = registry.clone();
+        let asked = tokio::spawn(async move {
+            let mut asked = Vec::new();
+            while let Some(event) = rx.recv().await {
+                if let StreamEvent::PermissionRequest { request_id, tool_name, .. } = event {
+                    asked.push(tool_name);
+                    if let Some(sender) = answering.lock().await.remove(&request_id) {
+                        let _ = sender.send(PermissionDecision::Deny);
+                    }
+                }
+            }
+            asked
+        });
+        let call = |id: &str, name: &str, args: &str| {
+            json!({ "id": id, "type": "function", "function": { "name": name, "arguments": args } })
+        };
+        let out = invoker
+            .invoke(&[
+                call("g1", "git_split", r#"{"groups":[{"files":["a"],"message":"a"},{"files":["b"],"message":"b"}]}"#),
+                call("g2", "git_history", r#"{"action":"rebase","onto":"main"}"#),
+                call("g3", "git_branch", r#"{"action":"create","name":"x"}"#),
+                call("g4", "git_branch", r#"{"action":"list"}"#),
+            ])
+            .await
+            .unwrap();
+        for o in &out[..3] {
+            assert!(o.content.starts_with("ERROR [approval_refused]"), "{}", o.content);
+        }
+        assert!(!out[3].content.contains("approval_refused"), "{}", out[3].content);
+        drop(invoker);
+        assert_eq!(asked.await.unwrap(), ["git_split", "git_history", "git_branch"]);
         let _ = std::fs::remove_dir_all(&root);
     }
 

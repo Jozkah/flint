@@ -295,6 +295,10 @@ pub async fn create_thread_assistant<R: Runtime>(
     // Use file-based storage on desktop
     let data_folder = get_jan_data_folder_path(app_handle);
     let path = get_thread_metadata_path(&data_folder, &thread_id);
+    // Read-modify-write of thread.json, under the thread's lock so a
+    // concurrent update is not lost.
+    let lock = super::helpers::get_lock_for_thread(&thread_id).await;
+    let _guard = lock.lock().await;
     if !path.exists() {
         return Err("Thread not found".to_string());
     }
@@ -328,6 +332,8 @@ pub async fn modify_thread_assistant<R: Runtime>(
     // Use file-based storage on desktop
     let data_folder = get_jan_data_folder_path(app_handle);
     let path = get_thread_metadata_path(&data_folder, &thread_id);
+    let lock = super::helpers::get_lock_for_thread(&thread_id).await;
+    let _guard = lock.lock().await;
     if !path.exists() {
         return Err("Thread not found".to_string());
     }

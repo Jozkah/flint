@@ -447,6 +447,28 @@ fn invalid_certs_fingerprint() -> u64 {
 /// A cheap key for "which bundle is in force": the path, its size and its
 /// modification time. A caller caching a client rebuilds it when this changes.
 pub fn fingerprint() -> u64 {
+    // Asked on every outbound request, and computing it reads the org policy,
+    // stats the bundle and may read the keyring for the proxy password, all on
+    // an async worker. A change still takes effect within a second or two.
+    #[cfg(not(test))]
+    {
+        use std::time::{Duration, Instant};
+        static LAST: Mutex<Option<(Instant, u64)>> = Mutex::new(None);
+        let mut last = LAST.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((at, value)) = *last {
+            if at.elapsed() < Duration::from_secs(2) {
+                return value;
+            }
+        }
+        let value = compute_fingerprint();
+        *last = Some((Instant::now(), value));
+        value
+    }
+    #[cfg(test)]
+    compute_fingerprint()
+}
+
+fn compute_fingerprint() -> u64 {
     // The HTTPS proxy setting changes what a rebuilt client does, so it is part
     // of the key; `0` still means "nothing configured". The endpoints with
     // verification off are part of it too, so switching one on or off

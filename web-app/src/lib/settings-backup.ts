@@ -210,21 +210,107 @@ function isImportableKey(key: string): boolean {
   return key === PROVIDERS_STORE_KEY || BACKUP_STORE_KEYS.includes(key)
 }
 
-export async function applyBackup(
+/**
+ * Stores that decide what runs without asking or where traffic goes: tool
+ * auto-approval, MCP trust and the network proxy. A backup file can come from
+ * a shared sync folder or another person, so these are only restored when the
+ * caller passes `includePermissions` after the user agreed to it.
+ */
+export const SECURITY_STORE_KEYS: readonly string[] = [
+  'tool-approval',
+  'mcp-global-permissions',
+  'setting-proxy-config',
+]
+
+function baseUrls(blob: string | null): Map<string, string> {
+  const out = new Map<string, string>()
+  if (!blob) return out
+  try {
+    const providers = JSON.parse(blob)?.state?.providers
+    if (!Array.isArray(providers)) return out
+    for (const p of providers) {
+      if (typeof p?.provider === 'string')
+        out.set(p.provider, typeof p.base_url === 'string' ? p.base_url.trim() : '')
+    }
+  } catch {
+    // An unreadable blob names no providers.
+  }
+  return out
+}
+
+/** What importing `backup` would change that matters for security. */
+export interface BackupSecurityPreview {
+  /** Providers whose Base URL the backup changes. */
+  baseUrlChanges: Array<{
+    provider: string
+    from: string
+    to: string
+    /** The saved key is dropped: the backup has none for the new address. */
+    keyDropped: boolean
+  }>
+  /** Security stores the backup carries (restored only with permission). */
+  securityStores: string[]
+}
+
+export async function previewBackupSecurity(
   io: BackupIo,
   backup: SettingsBackup
-): Promise<{ stores: number; providerKeys: number }> {
+): Promise<BackupSecurityPreview> {
+  const baseUrlChanges: BackupSecurityPreview['baseUrlChanges'] = []
+  const providersBlob = backup.settings[PROVIDERS_STORE_KEY]
+  if (providersBlob !== undefined) {
+    const before = baseUrls(await io.get(PROVIDERS_STORE_KEY))
+    for (const [id, url] of baseUrls(providersBlob)) {
+      if (id === 'llamacpp' || !before.has(id) || before.get(id) === url)
+        continue
+      baseUrlChanges.push({
+        provider: id,
+        from: before.get(id) ?? '',
+        to: url,
+        keyDropped: !backup.providerKeys?.[id],
+      })
+    }
+  }
+  const securityStores = SECURITY_STORE_KEYS.filter(
+    (key) => backup.settings[key] !== undefined
+  )
+  return { baseUrlChanges, securityStores }
+}
+
+export async function applyBackup(
+  io: BackupIo,
+  backup: SettingsBackup,
+  opts: { includePermissions?: boolean } = {}
+): Promise<{ stores: number; providerKeys: number; skipped: string[] }> {
+  const skipped: string[] = []
+  // A provider whose Base URL the backup changes, with no key of its own in
+  // the backup, would send the key already in the keyring to the new address:
+  // that key is dropped, so it has to be entered again for the new endpoint.
+  const providersBlob = backup.settings[PROVIDERS_STORE_KEY]
+  const redirected: string[] = []
+  if (providersBlob !== undefined) {
+    const before = baseUrls(await io.get(PROVIDERS_STORE_KEY))
+    for (const [id, url] of baseUrls(providersBlob)) {
+      if (id === 'llamacpp' || backup.providerKeys?.[id]) continue
+      if (before.has(id) && before.get(id) !== url) redirected.push(id)
+    }
+  }
   let stores = 0
   for (const [key, value] of Object.entries(backup.settings)) {
+    if (!opts.includePermissions && SECURITY_STORE_KEYS.includes(key)) {
+      skipped.push(key)
+      continue
+    }
     await io.set(key, value)
     stores++
   }
+  for (const id of redirected) await io.setProviderKeys(id, [])
   let providerKeys = 0
   for (const [id, keys] of Object.entries(backup.providerKeys ?? {})) {
     await io.setProviderKeys(id, keys)
     providerKeys++
   }
-  return { stores, providerKeys }
+  return { stores, providerKeys, skipped }
 }
 
 export function defaultBackupName(now = new Date()): string {

@@ -414,7 +414,7 @@ pub(crate) fn diff_worktree_to(repo: &Path, commit: &str) -> Result<String, Stri
     let result = (|| {
         stage_worktree(repo, &idx, commit)?;
         let tree = run(repo, Some(&idx), &["write-tree"])?;
-        run_untrimmed(repo, None, &["diff", &tree, commit])
+        run_untrimmed(repo, None, &["diff", "--no-ext-diff", "--no-textconv", &tree, commit])
     })();
     drop(idx);
     result

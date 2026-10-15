@@ -27,6 +27,8 @@ pdf-extract = "0.12"
 # Same lopdf pdf-extract already links; used directly as a lenient fallback.
 lopdf = { version = "0.42", default-features = false }
 zip = "0.6"
+# Bounded inflate to measure a PDF's decoded streams before parsing it.
+flate2 = "1"
 # 0.41+: earlier versions check duplicate attributes in O(n^2) (RUSTSEC-2026-0194).
 quick-xml = { version = "0.41", features = ["serialize"] }
 csv = "1.3"

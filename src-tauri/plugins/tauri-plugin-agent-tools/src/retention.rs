@@ -165,6 +165,21 @@ pub(crate) fn retain<T: Serialize>(
     kept
 }
 
+/// The longest quota window (a month of thirty days). Usage records inside
+/// it are what monthly quotas are counted from.
+pub const LONGEST_QUOTA_WINDOW_SECS: i64 = 30 * 24 * 60 * 60;
+
+/// Usage lines are small and feed the token and spend quotas, so only age
+/// trims them: a count or byte cap would drop in-window records and a monthly
+/// quota would undercount (report-09 MED-2).
+fn usage_policy(policy: &Retention) -> Retention {
+    Retention {
+        max_age_secs: policy.max_age_secs.max(LONGEST_QUOTA_WINDOW_SECS),
+        max_entries: usize::MAX,
+        max_bytes: u64::MAX,
+    }
+}
+
 /// Replace a JSONL log with `records`, atomically. An empty set removes the
 /// file rather than leaving an empty one behind.
 pub(crate) fn rewrite<T: Serialize>(path: &Path, records: &[T]) -> Result<(), String> {
@@ -203,7 +218,7 @@ pub fn compact(data_folder: &Path, policy: &Retention, now: i64) -> Result<Remov
     if usage::log_path(data_folder).exists() {
         let all = usage::read_all(data_folder);
         let before = all.len();
-        let kept = retain(all, |u| u.at.as_str(), policy, now);
+        let kept = retain(all, |u| u.at.as_str(), &usage_policy(policy), now);
         removed.usage = before - kept.len();
         rewrite_if_worthwhile(&usage::log_path(data_folder), &kept, removed.usage, LARGE_LOG_BYTES)?;
     }
@@ -474,6 +489,23 @@ mod tests {
         assert_eq!(removed.snapshots, 3);
         let sessions: Vec<_> = snapshot::read_all(&d).into_iter().map(|s| s.session).collect();
         assert_eq!(sessions, vec!["s3", "s4"], "oldest first, newest kept");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn usage_inside_the_quota_window_survives_the_count_cap() {
+        let d = dir("usage-cap");
+        let now = 1_780_000_000;
+        for i in 0..5 {
+            let at = crate::audit::format_rfc3339((now - 10 + i) as u64);
+            usage::append(&d, &use_line(&format!("s{i}"), &at));
+        }
+        let old = crate::audit::format_rfc3339((now - LONGEST_QUOTA_WINDOW_SECS - 60) as u64);
+        usage::append(&d, &use_line("s-old", &old));
+        let policy = Retention { max_entries: 2, max_bytes: 1, ..DEFAULT_RETENTION };
+        let removed = compact(&d, &policy, now).unwrap();
+        assert_eq!(removed.usage, 1, "only the out-of-window line goes");
+        assert_eq!(usage::read_all(&d).len(), 5);
         let _ = std::fs::remove_dir_all(&d);
     }
 

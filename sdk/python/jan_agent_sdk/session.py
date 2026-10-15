@@ -323,7 +323,13 @@ class JanSession:
             except BaseException as error:  # noqa: BLE001 - the answer is the report
                 self._respond(request_id, {"content": str(error), "isError": True})
                 return
-            self._respond(request_id, normalize_result(result))
+            # Converting the result can fail too (an image path that cannot
+            # be read); that still has to answer, or the turn waits forever.
+            try:
+                normalized = normalize_result(result)
+            except BaseException as error:  # noqa: BLE001 - the answer is the report
+                normalized = {"content": str(error), "isError": True}
+            self._respond(request_id, normalized)
 
         threading.Thread(target=run, name=f"jan-tool-{call.tool_name}", daemon=True).start()
 

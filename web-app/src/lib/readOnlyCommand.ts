@@ -103,11 +103,12 @@ const VERSION_TOOLS: ReadonlySet<string> = new Set([
 /**
  * Anything that redirects, substitutes, groups, escapes or calls: `>`/`<`,
  * `$(`, backticks, braces (script blocks, hashtables), parentheses, a lone
- * `&` (call operator or background), line breaks, and `\\`/`//`: a UNC path
- * (`Get-Content \\host\share\x`) opens an SMB connection that leaks the
- * Windows login hash.
+ * `&` (call operator or background), line breaks, and two slashes in a row
+ * in either direction (`\\`, `//`, `/\`, `\/`): Windows reads each as a UNC
+ * path (`Get-Content \\host\share\x`), which opens an SMB connection that
+ * leaks the Windows login hash.
  */
-const UNSAFE_SYNTAX = /[<>`{}()\r\n]|\$\(|(^|[^&])&(?!&)|\\\\|\/\//
+const UNSAFE_SYNTAX = /[<>`{}()\r\n]|\$\(|(^|[^&])&(?!&)|[\\/][\\/]/
 
 /** Words that write, create, delete, or run something else, anywhere. */
 const UNSAFE_WORDS =

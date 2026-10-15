@@ -253,9 +253,13 @@ function MemorySettings() {
     projectRoot: projectRoot || undefined,
   })
 
+  // Only the newest request may fill the list: a slower earlier answer (the
+  // previous scope or query) would show records Forget and Pin then misfile.
+  const refreshSeq = useRef(0)
   const refresh = useCallback(
     async (nextScope: MemoryScope, nextQuery: string, nextOffset: number) => {
       if (!location) return
+      const seq = ++refreshSeq.current
       if (nextScope === 'project' && !projectId && !projectRoot) {
         setPage([])
         setTotal(0)
@@ -268,10 +272,12 @@ function MemorySettings() {
           offset: nextOffset,
           limit: PAGE_SIZE,
         })
+        if (seq !== refreshSeq.current) return
         setPage(result.items)
         setTotal(result.total)
         setUnavailable(null)
       } catch (error) {
+        if (seq !== refreshSeq.current) return
         // A refusal is the expected answer outside a chat or project, not a
         // failure worth a toast: show it where the list would be.
         setPage([])
@@ -283,7 +289,9 @@ function MemorySettings() {
   )
 
   useEffect(() => {
-    void refresh(scope, query, offset)
+    // Typing waits a moment; a scope or page change reads at once.
+    const timer = setTimeout(() => void refresh(scope, query, offset), query ? 200 : 0)
+    return () => clearTimeout(timer)
   }, [refresh, scope, query, offset])
 
   /**

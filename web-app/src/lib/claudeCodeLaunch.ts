@@ -18,7 +18,18 @@ type ProviderLike = {
  * exporting the configured port then sent Claude Code to nothing.
  */
 export function claudeCodeApiUrl(host: string, port: number): string {
-  return `http://${host}:${port}`
+  // A wildcard bind address is not a place to connect to (Windows refuses
+  // 0.0.0.0), so the client goes to loopback; IPv6 literals need brackets.
+  const h = host.trim()
+  const target =
+    h === '0.0.0.0' || h === ''
+      ? '127.0.0.1'
+      : h === '::' || h === '[::]'
+        ? '[::1]'
+        : h.includes(':') && !h.startsWith('[')
+          ? `[${h}]`
+          : h
+  return `http://${target}:${port}`
 }
 
 /**

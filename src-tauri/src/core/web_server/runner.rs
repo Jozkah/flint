@@ -977,7 +977,12 @@ impl Runner {
         let live = Arc::new(Live { tx: tx.clone(), shared: shared.clone() });
         {
             let mut map = self.live.lock().unwrap();
-            if map.len() >= self.options.max_sessions as usize && !map.contains_key(&id) {
+            // Two resumes of one stored session can race; the second must not
+            // replace the first's live entry with a second actor.
+            if map.contains_key(&id) {
+                return Err(fail(409, "that session is already live"));
+            }
+            if map.len() >= self.options.max_sessions as usize {
                 return Err(fail(
                     429,
                     format!("this server runs at most {} sessions at once", self.options.max_sessions),
@@ -1057,7 +1062,10 @@ impl Runner {
         let session = self
             .build_session(&folder, model, mode, id, history, meta, title, record, coordinator)
             .await?;
-        self.admit(session)?;
+        if let Err(refused) = self.admit(session) {
+            // Another resume got there first: use its live session.
+            return self.get(id).ok_or(refused);
+        }
         self.get(id).ok_or_else(|| fail(410, "that session has ended"))
     }
 }
@@ -1525,6 +1533,15 @@ fn configure(
 // The actor
 // ---------------------------------------------------------------------------
 
+/// Drop the live entry for `id` only when it is this actor's: an actor that
+/// lost a resume race must not evict the session that won.
+fn remove_own_live(runner: &Runner, id: &str, shared: &Arc<Shared>) {
+    let mut map = runner.live.lock().unwrap();
+    if map.get(id).is_some_and(|live| Arc::ptr_eq(&live.shared, shared)) {
+        map.remove(id);
+    }
+}
+
 async fn actor(
     runner: Arc<Runner>,
     mut session: Session,
@@ -1839,7 +1856,7 @@ async fn actor(
                         }
                         session.agent.permission_requests.lock().await.clear();
                         cancel_asks(&session).await;
-                        runner.live.lock().unwrap().remove(&session.id);
+                        remove_own_live(&runner, &session.id, &shared);
                         let outcome = crate::core::cli::delete_thread_at(&runner.data_folder, &session.id)
                             .map(|_| json!({ "deleted": true }))
                             .map_err(|m| fail(500, format!("could not delete the session: {m}")));
@@ -1977,7 +1994,7 @@ async fn actor(
             }
         }
     }
-    runner.live.lock().unwrap().remove(&id);
+    remove_own_live(&runner, &id, &shared);
     shared.publish("session.closed", json!({}));
 }
 

@@ -129,6 +129,62 @@ impl OwnedChild {
     }
 }
 
+impl OwnedChild {
+    /// Let the tree go on without its owner: what it left running is not
+    /// stopped. Used once the child itself finished normally.
+    pub fn release(mut self) {
+        self.stopped = true;
+        #[cfg(windows)]
+        unsafe {
+            use windows_sys::Win32::System::JobObjects::{
+                JobObjectExtendedLimitInformation, SetInformationJobObject,
+                JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            };
+            // Clear kill-on-close first, so closing the handle ends nothing.
+            let limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            SetInformationJobObject(
+                self.job,
+                JobObjectExtendedLimitInformation,
+                &limits as *const _ as *const std::ffi::c_void,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            windows_sys::Win32::Foundation::CloseHandle(self.job);
+        }
+    }
+}
+
+/// `cmd.output()` under `timeout`, where a timeout stops the whole process
+/// tree, not just the direct child (report-04 F11): a `.cmd` wrapper, `wsl.exe`
+/// or `docker` leaves the real work in a grandchild that `kill_on_drop` never
+/// reaches. Stdin is null and stdout/stderr are captured, as `output()` does.
+pub async fn output_with_timeout(
+    cmd: &mut tokio::process::Command,
+    timeout: std::time::Duration,
+) -> Result<std::io::Result<std::process::Output>, tokio::time::error::Elapsed> {
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => return Ok(Err(e)),
+    };
+    let owner = child.id().and_then(|pid| OwnedChild::own(pid).ok());
+    match tokio::time::timeout(timeout, child.wait_with_output()).await {
+        Ok(out) => {
+            if let Some(owner) = owner {
+                owner.release();
+            }
+            Ok(out)
+        }
+        // Dropping `owner` stops the tree; the child itself is killed on drop.
+        Err(elapsed) => {
+            drop(owner);
+            Err(elapsed)
+        }
+    }
+}
+
 impl Drop for OwnedChild {
     fn drop(&mut self) {
         self.stop();

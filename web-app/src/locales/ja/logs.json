@@ -15,5 +15,6 @@
   "levelDebug": "デバッグ",
   "shown": "{{total}} 行中 {{shown}} 行",
   "description": "本日、Flint とそのエンジンが書き込んだすべての内容です。新しい順に表示します。",
-  "serverDescription": "OpenAI 互換のローカル API サーバーへのリクエストです。新しい順に表示します。"
+  "serverDescription": "OpenAI 互換のローカル API サーバーへのリクエストです。新しい順に表示します。",
+  "olderHidden": "古い {{count}} 行は表示されていません。検索するか、ログファイルを開いて確認してください。"
 }

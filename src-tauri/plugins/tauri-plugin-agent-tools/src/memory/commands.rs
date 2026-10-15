@@ -531,44 +531,50 @@ pub async fn memory_proposal_resolve(
     .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
 
     let id = MemoryId::new(id);
-    let mut records = super::store::load(&store_root, scope).records;
-    let Some(index) = records.iter().position(|r| r.id == id) else {
-        return Err(AgentToolsError::from(
-            "that proposal is no longer there".to_string(),
-        ));
-    };
-    let Some(reason) = inferred::pending_reason(&records[index]) else {
-        return Err(AgentToolsError::from(
-            "that memory is not awaiting an answer".to_string(),
-        ));
-    };
-
-    if !approve {
-        records.remove(index);
-        super::store::save(&store_root, scope, &records).map_err(AgentToolsError::from)?;
-        return Ok(None);
+    // Decided and written under the scope's lock, so a memory saved while the
+    // proposal was on screen is not dropped by this rewrite.
+    enum Outcome {
+        Dismissed,
+        Discarded,
+        Approved,
     }
-
-    if reason == PendingReason::ConflictsWithExisting {
-        return Err(AgentToolsError::from(
-            "this contradicts something already remembered; resolve the conflict rather than approving one side".to_string(),
-        ));
+    let outcome = super::store::update(&store_root, scope, |records| {
+        let Some(index) = records.iter().position(|r| r.id == id) else {
+            return Err("that proposal is no longer there".to_string());
+        };
+        let Some(reason) = inferred::pending_reason(&records[index]) else {
+            return Err("that memory is not awaiting an answer".to_string());
+        };
+        if !approve {
+            records.remove(index);
+            return Ok((true, Outcome::Dismissed));
+        }
+        if reason == PendingReason::ConflictsWithExisting {
+            return Err(
+                "this contradicts something already remembered; resolve the conflict rather than approving one side".to_string(),
+            );
+        }
+        // Re-checked at the moment of the decision, not at the moment of the
+        // proposal: the refusals are what stop a credential being stored, and a
+        // proposal can sit on screen for a long time.
+        if !crate::secrets::scan_text(&records[index].content).is_empty() {
+            records.remove(index);
+            return Ok((true, Outcome::Discarded));
+        }
+        records[index].status = Status::Active;
+        records[index].updated_at = now();
+        Ok((true, Outcome::Approved))
+    })
+    .map_err(AgentToolsError::from)?;
+    match outcome {
+        Outcome::Dismissed => return Ok(None),
+        Outcome::Discarded => {
+            return Err(AgentToolsError::from(
+                "that looks like a credential, so it was discarded rather than saved".to_string(),
+            ))
+        }
+        Outcome::Approved => {}
     }
-
-    // Re-checked at the moment of the decision, not at the moment of the
-    // proposal: the refusals are what stop a credential being stored, and a
-    // proposal can sit on screen for a long time.
-    if !crate::secrets::scan_text(&records[index].content).is_empty() {
-        records.remove(index);
-        super::store::save(&store_root, scope, &records).map_err(AgentToolsError::from)?;
-        return Err(AgentToolsError::from(
-            "that looks like a credential, so it was discarded rather than saved".to_string(),
-        ));
-    }
-
-    records[index].status = Status::Active;
-    records[index].updated_at = now();
-    super::store::save(&store_root, scope, &records).map_err(AgentToolsError::from)?;
     Ok(Some(service::get(&access, scope, &id)?))
 }
 

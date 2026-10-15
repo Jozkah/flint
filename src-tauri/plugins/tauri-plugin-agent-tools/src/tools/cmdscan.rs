@@ -624,6 +624,21 @@ fn split_segments(s: &str) -> Vec<String> {
                 segs.push(std::mem::take(&mut cur));
                 i += 1;
             }
+            // A brace group (`{ cmd; }`, PowerShell `& { cmd }`, `if (..) {cmd}`)
+            // opens at the start of a command and closes as its own word; the
+            // braces of a word (`${x}`, `{}`, `a{b,c}`) are kept.
+            '{' if cur.trim().is_empty() => {
+                segs.push(std::mem::take(&mut cur));
+                i += 1;
+            }
+            '}' if {
+                let word = cur.rsplit(char::is_whitespace).next().unwrap_or("");
+                word.matches('{').count() <= word.matches('}').count()
+            } =>
+            {
+                segs.push(std::mem::take(&mut cur));
+                i += 1;
+            }
             _ => {
                 cur.push(c);
                 i += 1;
@@ -1021,6 +1036,11 @@ mod simple_command_tests {
         assert_eq!(simple_commands("go build ./... 2>&1"), vec!["go build ./... 2>&1"]);
         assert_eq!(simple_commands("make >&2 && git push"), vec!["make >&2", "git push"]);
         assert_eq!(simple_commands("cargo test &>log; ls"), vec!["cargo test &>log", "ls"]);
+        // Brace groups open and close commands; braces inside a word do not.
+        assert_eq!(simple_commands("{ git reset --hard; }"), vec!["git reset --hard"]);
+        assert_eq!(simple_commands("& {git push -f}"), vec!["git push -f"]);
+        assert_eq!(simple_commands("find . -exec rm {} +"), vec!["find . -exec rm {} +"]);
+        assert_eq!(simple_commands("echo ${HOME}"), vec!["echo ${HOME}"]);
     }
 }
 

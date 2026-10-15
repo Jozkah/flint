@@ -72,6 +72,22 @@ pub fn confine(data_folder: &Path, raw: &str) -> Result<PathBuf, String> {
     Ok(target)
 }
 
+/// Top-level folders a browser may change: what the extensions write. The
+/// rest of the data folder (`mcp_config.json`, `settings.json`, trust and
+/// grant files, `extensions/`) configures what the desktop app runs on the
+/// host, so a browser session must not rewrite it.
+const WRITABLE: &[&str] = &["assistants", "models", "llamacpp", "mlx", "threads", "web-server/uploads"];
+
+/// [`confine`] for a call that creates, changes or removes something.
+pub fn confine_write(data_folder: &Path, raw: &str) -> Result<PathBuf, String> {
+    let target = confine(data_folder, raw)?;
+    let base = settle(data_folder);
+    if WRITABLE.iter().any(|dir| target.starts_with(base.join(dir))) {
+        return Ok(target);
+    }
+    Err("path is not writable from the browser".into())
+}
+
 fn first_arg(args: &Value) -> Result<&str, String> {
     args.get("args")
         .and_then(|a| a.as_array().and_then(|list| list.first()).or(Some(a)))
@@ -139,7 +155,7 @@ pub fn call(data_folder: &Path, command: &str, args: &Value) -> Result<Value, St
             fs::read_to_string(path).map(|text| json!(text)).map_err(|e| e.to_string())
         }
         "write_file_sync" => {
-            let path = confine(data_folder, nth_arg(args, 0)?)?;
+            let path = confine_write(data_folder, nth_arg(args, 0)?)?;
             let content = nth_arg(args, 1)?;
             fs::write(path, content).map(|_| Value::Null).map_err(|e| e.to_string())
         }
@@ -154,11 +170,11 @@ pub fn call(data_folder: &Path, command: &str, args: &Value) -> Result<Value, St
             Ok(json!(names))
         }
         "mkdir" => {
-            let path = confine(data_folder, first_arg(args)?)?;
+            let path = confine_write(data_folder, first_arg(args)?)?;
             fs::create_dir_all(path).map(|_| Value::Null).map_err(|e| e.to_string())
         }
         "rm" => {
-            let path = confine(data_folder, first_arg(args)?)?;
+            let path = confine_write(data_folder, first_arg(args)?)?;
             if path == settle(data_folder) {
                 return Err("rm error: refusing to remove the data folder".into());
             }
@@ -172,8 +188,8 @@ pub fn call(data_folder: &Path, command: &str, args: &Value) -> Result<Value, St
             Ok(Value::Null)
         }
         "mv" => {
-            let source = confine(data_folder, nth_arg(args, 0)?)?;
-            let destination = confine(data_folder, nth_arg(args, 1)?)?;
+            let source = confine_write(data_folder, nth_arg(args, 0)?)?;
+            let destination = confine_write(data_folder, nth_arg(args, 1)?)?;
             if !source.exists() {
                 return Err("mv error: Source path does not exist".into());
             }
@@ -192,7 +208,7 @@ pub fn call(data_folder: &Path, command: &str, args: &Value) -> Result<Value, St
                 .and_then(Value::as_str)
                 .ok_or("expected a savePath")?;
             let data = args.get("data").ok_or("expected data")?;
-            let path = confine(data_folder, raw)?;
+            let path = confine_write(data_folder, raw)?;
             let file = fs::File::create(path).map_err(|e| e.to_string())?;
             serde_yaml::to_writer(std::io::BufWriter::new(file), data)
                 .map(|_| Value::Null)
@@ -241,6 +257,29 @@ mod tests {
         assert!(call(data.path(), "read_file_sync", &args(json!([data.path().join("web-server").join("server.json")]))).is_err());
         assert!(call(data.path(), "read_file_sync", &args(json!([outside.path().join("secret.txt")]))).is_err());
         assert!(call(data.path(), "rm", &args(json!([data.path()]))).is_err());
+    }
+
+    #[test]
+    fn a_browser_cannot_rewrite_what_the_desktop_runs() {
+        let data = tempfile::tempdir().unwrap();
+        let d = data.path();
+        let p = |name: &str| json!(d.join(name).to_string_lossy());
+        std::fs::write(d.join("mcp_config.json"), "{}").unwrap();
+        let cfg = r#"{"mcpServers":{"x":{"command":"calc.exe","active":true}}}"#;
+        assert!(call(d, "write_file_sync", &args(json!([p("mcp_config.json"), cfg]))).is_err());
+        assert!(call(d, "write_file_sync", &args(json!(["file://mcp_config.json", cfg]))).is_err());
+        assert!(call(d, "write_file_sync", &args(json!([p("models/../mcp_config.json"), cfg]))).is_err());
+        assert!(call(d, "write_yaml", &json!({"data": {}, "savePath": p("settings.json")})).is_err());
+        assert!(call(d, "rm", &args(json!([p("mcp_config.json")]))).is_err());
+        assert!(call(d, "mkdir", &args(json!([p("extensions/evil")]))).is_err());
+        call(d, "mkdir", &args(json!([p("models/m")]))).unwrap();
+        assert!(call(d, "mv", &args(json!([p("models/m"), p("extensions")]))).is_err());
+        assert!(call(d, "mv", &args(json!([p("mcp_config.json"), p("models/x.json")]))).is_err());
+        // Reading stays allowed.
+        assert_eq!(call(d, "read_file_sync", &args(json!([p("mcp_config.json")]))).unwrap(), json!("{}"));
+        call(d, "mkdir", &args(json!(["file://assistants"]))).unwrap();
+        call(d, "write_file_sync", &args(json!([p("assistants/a.json"), "{}"]))).unwrap();
+        call(d, "mkdir", &args(json!([p("llamacpp/models/x")]))).unwrap();
     }
 
     #[test]

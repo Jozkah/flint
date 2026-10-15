@@ -420,8 +420,9 @@ const ChatInput = memo(function ChatInput({
   slashProject,
   slashBuiltins,
 }: ChatInputProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const richComposerRef = useRef<RichComposerHandle>(null)
+  const isComposerElement = (el: Element | null) =>
+    !!el && !!richComposerRef.current?.element?.contains(el)
   const focusComposer = useCallback(() => {
     richComposerRef.current?.focus()
   }, [])
@@ -433,7 +434,7 @@ const ChatInput = memo(function ChatInput({
       active instanceof HTMLInputElement ||
       active instanceof HTMLTextAreaElement ||
       (active instanceof HTMLElement && active.isContentEditable)
-    if (typing && active !== textareaRef.current) return
+    if (typing && !isComposerElement(active)) return
     focusComposer()
   }, [focusComposer])
   const [isFocused, setIsFocused] = useState(false)
@@ -701,15 +702,12 @@ const ChatInput = memo(function ChatInput({
         }
 
         // Position the picker above the text
-        if (textareaRef.current) {
-          const lineHeight = 22
-          const lines = beforeCursor.split('\n').length
-          const pos = {
-            top: -Math.min(lines * lineHeight + 40, 300),
-            left: 0,
-          }
-          setFilePickerPosition(pos)
-        }
+        const lineHeight = 22
+        const lines = beforeCursor.split('\n').length
+        setFilePickerPosition({
+          top: -Math.min(lines * lineHeight + 40, 300),
+          left: 0,
+        })
         setFilePickerOpen(true)
       } else {
         setFilePickerOpen(false)
@@ -1422,13 +1420,13 @@ const ChatInput = memo(function ChatInput({
 
   useEffect(() => {
     const handleFocusIn = () => {
-      if (document.activeElement === textareaRef.current) {
+      if (isComposerElement(document.activeElement)) {
         setIsFocused(true)
       }
     }
 
     const handleFocusOut = () => {
-      if (document.activeElement !== textareaRef.current) {
+      if (!isComposerElement(document.activeElement)) {
         setIsFocused(false)
       }
     }
@@ -1471,7 +1469,7 @@ const ChatInput = memo(function ChatInput({
     // Radix dismisses the sampler when focus moves outside its content.
     const timer = setTimeout(() => {
       const active = document.activeElement
-      if (!active || active === document.body || active === textareaRef.current) {
+      if (!active || active === document.body || isComposerElement(active)) {
         focusComposer()
       }
     }, 10)
@@ -3215,7 +3213,6 @@ const ChatInput = memo(function ChatInput({
                   onActiveChange={setReferenceActive}
                   onSelect={handleFilePickerSelect}
                   onClose={handleFilePickerClose}
-                  textareaRef={textareaRef}
                   listId={referenceListId}
                   aliasDraft={aliasDraft}
                   aliasError={aliasError}
@@ -3745,16 +3742,11 @@ const ChatInput = memo(function ChatInput({
                     draftScope
                       ? (usePrompt.getState().scoped?.[draftScope]?.prompt ?? '')
                       : usePrompt.getState().prompt,
-                  getCaret: () =>
-                    document.activeElement === textareaRef.current
-                      ? (textareaRef.current?.selectionStart ?? null)
-                      : null,
-                  apply: (value, caret) => {
+                  // The rich editor's caret has no Markdown offset, so
+                  // dictated text is appended to the draft.
+                  getCaret: () => null,
+                  apply: (value) => {
                     setPrompt(value)
-                    // The box shows the new value on the next frame.
-                    requestAnimationFrame(() => {
-                      textareaRef.current?.setSelectionRange(caret, caret)
-                    })
                   },
                 }}
               />

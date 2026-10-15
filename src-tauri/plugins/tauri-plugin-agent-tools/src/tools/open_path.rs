@@ -19,11 +19,13 @@ use crate::tools::git_tool::{canon, in_jan_dir, inside, Roots};
 
 const TIMEOUT_SECS: u64 = 15;
 
-/// File types that run something when opened. Compared in lower case.
-pub const RUNNABLE: &[&str] = &[
-    "exe", "com", "bat", "cmd", "ps1", "psm1", "psd1", "ps1xml", "vbs", "vbe", "js", "jse", "wsf", "wsh", "msi", "msp",
-    "mst", "scr", "lnk", "url", "hta", "reg", "dll", "jar", "cpl", "msc", "application", "gadget", "appref-ms", "inf",
-    "sct", "pif", "appx", "appxbundle", "msix", "msixbundle", "sh", "py", "pyw", "rb", "pl", "php",
+/// Document, image, media and text types that open in a viewer. Anything else
+/// (a program, a script, a disk image, a help file, a macro document) can
+/// only be revealed: a list of what runs is never complete. Lower case.
+pub const OPENABLE: &[&str] = &[
+    "pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico", "tif", "tiff", "txt", "md", "markdown", "log",
+    "html", "htm", "csv", "tsv", "json", "xml", "yaml", "yml", "toml", "docx", "xlsx", "pptx", "odt", "ods", "odp",
+    "rtf", "mp3", "wav", "ogg", "flac", "m4a", "mp4", "webm", "mkv", "mov", "avi",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,7 +63,7 @@ pub fn summary(plan: &Plan) -> String {
 
 fn runnable(path: &Path) -> bool {
     match path.extension().and_then(|e| e.to_str()) {
-        Some(ext) => RUNNABLE.contains(&ext.to_ascii_lowercase().as_str()),
+        Some(ext) => !OPENABLE.contains(&ext.to_ascii_lowercase().as_str()),
         // A file with no type asks Windows which program to use, which can be
         // anything; it can still be shown in Explorer.
         None => true,
@@ -182,7 +184,10 @@ mod tests {
     fn only_documents_open_and_anything_can_be_shown() {
         let dir = std::env::temp_dir().join(format!("flint-open-path-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("sub")).unwrap();
-        for name in ["report.pdf", "tool.exe", "run.BAT", "setup.msi", "noext", "page.html", "x.ps1", "link.lnk"] {
+        for name in [
+            "report.pdf", "tool.exe", "run.BAT", "setup.msi", "noext", "page.html", "x.ps1", "link.lnk", "help.chm",
+            "disk.iso", "a.settingcontent-ms", "book.xlsm",
+        ] {
             std::fs::write(dir.join(name), "x").unwrap();
         }
         let roots = roots_in(&dir);
@@ -190,7 +195,10 @@ mod tests {
         assert!(open("report.pdf", false).is_ok());
         assert!(open("page.html", false).is_ok());
         assert!(open("sub", false).is_ok());
-        for runnable in ["tool.exe", "run.BAT", "setup.msi", "noext", "x.ps1", "link.lnk"] {
+        for runnable in [
+            "tool.exe", "run.BAT", "setup.msi", "noext", "x.ps1", "link.lnk", "help.chm", "disk.iso",
+            "a.settingcontent-ms", "book.xlsm",
+        ] {
             assert!(open(runnable, false).is_err(), "{runnable}");
             assert!(open(runnable, true).is_ok(), "{runnable} revealed");
         }

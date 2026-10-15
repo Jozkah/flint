@@ -1052,7 +1052,8 @@
     "compact": "Compacter",
     "compacting": "Compactage…",
     "compactFailed": "Rien à compacter pour l'instant.",
-    "newSession": "Nouvelle session"
+    "newSession": "Nouvelle session",
+    "compactSuperseded": "La conversation a changé pendant le compactage, rien n'a donc été remplacé. Compactez à nouveau."
   },
   "autoCompactNeedsWindow": "Le compactage automatique nécessite une taille de contexte, et Flint n'en trouve aucune pour {{model}}. Définissez le nombre maximal de jetons de contexte pour ce modèle afin que les longues conversations soient compactées avant de le saturer. Si le fournisseur refuse une requête à cause de sa longueur, Flint compacte et réessaie une fois.",
   "compaction": {
@@ -2575,5 +2576,6 @@
     "load": "Charger l'image depuis {{host}}"
   },
   "messageSaveFailed": "Impossible d'enregistrer le message. Il peut être perdu après un redémarrage.",
-  "threadSaveFailed": "Impossible d'enregistrer la modification de cette conversation. Elle a été annulée."
+  "threadSaveFailed": "Impossible d'enregistrer la modification de cette conversation. Elle a été annulée.",
+  "attachmentsProcessFailed": "Impossible de préparer les pièces jointes, le message n'a donc pas été envoyé"
 }

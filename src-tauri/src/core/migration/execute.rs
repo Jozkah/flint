@@ -1053,6 +1053,31 @@ pub fn rollback_from_manifest(flint_config_dir: &Path) -> Result<(), String> {
     result
 }
 
+/// Move `path` (if present) under `kept`, keyed by a counter plus its name so
+/// two items with the same name never collide. Rename first; copy-and-delete
+/// when the two folders sit on different volumes.
+fn set_aside(path: &Path, kept: &Path) -> Result<(), String> {
+    if !path.exists() || kept.starts_with(path) {
+        return Ok(());
+    }
+    std::fs::create_dir_all(kept).map_err(|e| e.to_string())?;
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "item".into());
+    let n = std::fs::read_dir(kept).map(|rd| rd.count()).unwrap_or(0);
+    let target = kept.join(format!("{n}-{name}"));
+    if std::fs::rename(path, &target).is_ok() {
+        return Ok(());
+    }
+    fsutil::copy_tree_preserving_mtime(path, &target).map_err(|e| e.to_string())?;
+    if path.is_dir() {
+        std::fs::remove_dir_all(path).map_err(|e| e.to_string())
+    } else {
+        std::fs::remove_file(path).map_err(|e| e.to_string())
+    }
+}
+
 fn rollback_with_manifest(flint_config_dir: &Path, m: manifest::MigrationManifest) -> Result<(), String> {
 
     // Undo only what this migration recorded: remove the items it created and
@@ -1062,29 +1087,25 @@ fn rollback_with_manifest(flint_config_dir: &Path, m: manifest::MigrationManifes
     let inside = |p: &Path| {
         p.starts_with(&m.destination.config_dir) || p.starts_with(&m.destination.data_folder)
     };
+    // The rollback can run long after the migration, when the user has added
+    // chats or models inside the folders it created. Those folders are moved
+    // aside into the Flint config folder instead of deleted, so nothing made
+    // since the migration is lost.
+    let kept = m
+        .destination
+        .config_dir
+        .join(format!("rollback-kept-{}", fsutil::now_ms()));
     for path in &m.created {
         if !inside(path) {
             continue;
         }
-        let _ = if path.is_dir() {
-            std::fs::remove_dir_all(path)
-        } else if path.is_file() {
-            std::fs::remove_file(path)
-        } else {
-            Ok(())
-        };
+        set_aside(path, &kept)?;
     }
     for rec in &m.replaced {
         if !inside(&rec.dest) || !rec.backup.exists() {
             continue;
         }
-        let _ = if rec.dest.is_dir() {
-            std::fs::remove_dir_all(&rec.dest)
-        } else if rec.dest.is_file() {
-            std::fs::remove_file(&rec.dest)
-        } else {
-            Ok(())
-        };
+        set_aside(&rec.dest, &kept)?;
         fsutil::copy_tree_preserving_mtime(&rec.backup, &rec.dest).map_err(|e| e.to_string())?;
     }
     let _ = std::fs::remove_dir_all(m.destination.config_dir.join(UNDO_DIR_NAME));
@@ -1510,10 +1531,24 @@ mod tests {
         let r = execute(&p, &ExecuteOpts::with_holder("test"));
         assert_eq!(r.status, Status::Complete, "err={:?}", r.error);
         assert!(f.data_folder.join("threads/thread_1/thread.json").is_file());
+        // A chat the user started after migrating, inside a migrated folder.
+        fs::create_dir_all(f.data_folder.join("threads/new_chat")).unwrap();
+        fs::write(f.data_folder.join("threads/new_chat/thread.json"), b"{}").unwrap();
 
         rollback_from_manifest(&f.config_dir).unwrap();
         // Created by the migration: gone. Pre-existing Flint data: untouched.
         assert!(!f.data_folder.join("threads").exists());
+        // The newer chat is set aside, not deleted.
+        let kept = fs::read_dir(&f.config_dir)
+            .unwrap()
+            .flatten()
+            .find(|e| e.file_name().to_string_lossy().starts_with("rollback-kept-"))
+            .expect("rollback keeps what it removes");
+        let survived = fs::read_dir(kept.path())
+            .unwrap()
+            .flatten()
+            .any(|e| e.path().join("new_chat/thread.json").is_file());
+        assert!(survived);
         assert_eq!(
             fs::read(f.data_folder.join("mcp_config.json")).unwrap(),
             br#"{"mine":1}"#
