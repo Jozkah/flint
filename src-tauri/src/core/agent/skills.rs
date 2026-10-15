@@ -729,6 +729,9 @@ pub(crate) fn build_invocation_message(
         msg.push_str(&note);
     }
     if !args.is_empty() {
+        if !msg.ends_with('\n') {
+            msg.push('\n');
+        }
         msg.push_str(&format!("User: {args}\n"));
     }
     Ok((msg, meta.description))

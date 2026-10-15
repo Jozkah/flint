@@ -132,12 +132,28 @@ fn allowed_by(expression: &str, allowed: &BTreeSet<String>) -> Option<bool> {
         if upper.contains(" AND ") {
             return None;
         }
-        return Some(text.split(" OR ").any(&ok));
+        return Some(split_ci(text, &upper, " OR ").any(&ok));
     }
     if upper.contains(" AND ") {
-        return Some(text.split(" AND ").all(&ok));
+        return Some(split_ci(text, &upper, " AND ").all(&ok));
     }
     Some(ok(text))
+}
+
+/// `text` split on `sep` matched case-insensitively (`MIT or Apache-2.0`).
+/// `upper` is `text` upper-cased, which keeps every byte offset.
+fn split_ci<'a>(text: &'a str, upper: &'a str, sep: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+    let mut start = 0;
+    let mut cuts = upper.match_indices(sep).map(|(i, _)| i).collect::<Vec<_>>().into_iter();
+    std::iter::from_fn(move || {
+        if start > text.len() {
+            return None;
+        }
+        let end = cuts.next().unwrap_or(text.len());
+        let part = &text[start..end];
+        start = end + sep.len();
+        Some(part)
+    })
 }
 
 /// Run a program that prints the dependency tree, with a deadline.
@@ -510,6 +526,7 @@ mod tests {
         assert_eq!(allowed_by("mit", &set), Some(true), "identifiers are not case");
         assert_eq!(allowed_by("MIT OR Apache-2.0", &set), Some(true));
         assert_eq!(allowed_by("MIT OR GPL-3.0", &set), Some(true), "either will do");
+        assert_eq!(allowed_by("GPL-3.0 or MIT", &set), Some(true), "the operator is not case");
         assert_eq!(allowed_by("GPL-3.0 OR AGPL-3.0", &set), Some(false));
         assert_eq!(allowed_by("MIT AND Apache-2.0", &set), Some(true));
         assert_eq!(allowed_by("MIT AND OpenSSL", &set), Some(false), "both, or neither");

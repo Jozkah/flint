@@ -164,8 +164,11 @@ pub(crate) fn acquire_lock(
         .create_new(true)
         .open(&path)
     {
-        Ok(_) => {
-            write_lock_body(&path, now_ms);
+        Ok(mut file) => {
+            // Through the handle that created it: a second open could leave the
+            // lock empty for a moment, which another process reads as stale.
+            use std::io::Write;
+            let _ = write!(file, "{} {}", std::process::id(), now_ms);
             Ok(Some(ConsolidationLock {
                 path,
                 released: false,
@@ -429,8 +432,19 @@ impl Merger for HeuristicMerger {
         let mut secrets_filtered = 0usize;
 
         for note in notes {
+            // A leading `---` frontmatter block is metadata (`name:`,
+            // `description:`), not facts: every note has the same keys.
+            let mut in_frontmatter = note.content.trim_start().starts_with("---");
+            let mut fences = 0;
             for line in note.content.lines() {
                 let trimmed = line.trim();
+                if in_frontmatter {
+                    if trimmed == "---" {
+                        fences += 1;
+                        in_frontmatter = fences < 2;
+                    }
+                    continue;
+                }
                 if trimmed.is_empty() || trimmed.starts_with('#') {
                     continue;
                 }
@@ -549,17 +563,20 @@ fn normalize(s: &str) -> String {
 }
 
 /// The grouping key for contradiction detection: the text before the first
-/// colon when present (e.g. "Default timeout" from "Default timeout: 30s"),
-/// else the first few normalised words.
+/// colon when it reads as a short key (e.g. "Default timeout" from "Default
+/// timeout: 30s"), else the whole normalised line, so unrelated lines are
+/// never merged. A URL scheme (`https:`) or a generic label (`TODO:`) is not a
+/// key: two lines that share it are not about the same thing.
 fn subject_key(s: &str) -> String {
-    if let Some((head, _)) = s.split_once(':') {
-        return normalize(head);
+    if let Some((head, rest)) = s.split_once(':') {
+        let key = normalize(head);
+        let words = key.split_whitespace().count();
+        let generic = matches!(key.as_str(), "todo" | "note" | "fixme" | "why" | "how to apply" | "see");
+        if (1..=6).contains(&words) && !rest.starts_with("//") && !generic {
+            return key;
+        }
     }
-    let norm = normalize(s);
-    norm.split_whitespace()
-        .take(5)
-        .collect::<Vec<_>>()
-        .join(" ")
+    normalize(s)
 }
 
 /// A model-backed [`Merger`] that reuses the existing invocation path: build a
@@ -984,6 +1001,33 @@ mod tests {
             content.contains("Conflicts resolved"),
             "the conflict is recorded: {content}"
         );
+    }
+
+    #[tokio::test]
+    async fn lines_sharing_only_a_label_or_url_scheme_are_not_conflicts() {
+        let notes = vec![
+            Note {
+                name: "a".into(),
+                content: "---
+name: a
+---
+TODO: fix the build
+https://example.invalid/one".into(),
+                modified_ms: 100,
+            },
+            Note {
+                name: "b".into(),
+                content: "---
+name: b
+---
+TODO: write docs
+https://example.invalid/two".into(),
+                modified_ms: 200,
+            },
+        ];
+        let result = HeuristicMerger.merge(&notes).await.unwrap();
+        assert_eq!(result.conflicts_resolved, 0, "{}", result.notes[0].content);
+        assert_eq!(result.facts_out, 4, "{}", result.notes[0].content);
     }
 
     #[tokio::test]

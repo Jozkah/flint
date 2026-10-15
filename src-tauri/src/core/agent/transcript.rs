@@ -227,7 +227,15 @@ pub fn search(
                 let body = text_of(&message);
                 let at = match &pattern {
                     Some(re) => re.find(&body).map(|m| m.start()),
-                    None => body.to_lowercase().find(&needle),
+                    // Lowercasing can change byte lengths (`İ`): the hit is
+                    // mapped back to `body` by its character position.
+                    None => {
+                        let lower = body.to_lowercase();
+                        lower.find(&needle).map(|at| {
+                            let chars = lower[..at].chars().count();
+                            body.char_indices().nth(chars).map_or(body.len(), |(i, _)| i)
+                        })
+                    }
                 };
                 let Some(at) = at else { continue };
                 found.hits.push(Hit {
