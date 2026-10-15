@@ -43,8 +43,13 @@ const baseName: (paths: string) => Promise<string> = (path) => globalThis.core.a
  * @param {string} url - The URL to open.
  * @returns {Promise<any>} - A promise that resolves when the URL has been successfully opened.
  */
-const openExternalUrl: (url: string) => Promise<any> = (url) =>
-  globalThis.core.api?.openExternalUrl(url)
+const openExternalUrl: (url: string) => Promise<any> = (url) => {
+  // Only web links are opened; file:, javascript: and custom schemes are not.
+  if (!/^https?:\/\//i.test(String(url).trim())) {
+    return Promise.reject(new Error('Only http(s) URLs can be opened'))
+  }
+  return globalThis.core.api?.openExternalUrl(url)
+}
 
 /**
  * Gets the resource path of the application.

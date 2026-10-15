@@ -756,6 +756,15 @@ describe('generatePreset upstream-default skipping', () => {
     expect(globalSection()).not.toContain('rope-freq-scale')
   })
 
+  it('accepts numeric strings for checkpoint settings', async () => {
+    await generatePreset('/p', '/jan', {
+      ctx_checkpoints: '16',
+      checkpoint_min_step: '4096',
+    } as any)
+    expect(globalSection()).toContain('ctx-checkpoints = 16')
+    expect(globalSection()).toContain('checkpoint-min-step = 4096')
+  })
+
   it('omits cache-ram at the upstream default and emits an explicit -1', async () => {
     await generatePreset('/p', '/jan', { cache_ram: 8192 } as any, {
     })

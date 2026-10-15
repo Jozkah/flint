@@ -280,6 +280,16 @@ export function extraArgsToIni(text: unknown): {
   return { lines, skipped }
 }
 
+/** Number, or a numeric string (settings text inputs store strings). */
+function asFiniteNumber(v: unknown): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : undefined
+  }
+  return undefined
+}
+
 function escapeIniValue(v: string): string {
   // INI values for llama-server are read as strings; trim surrounding whitespace
   // and strip stray newlines that would break parsing.
@@ -299,6 +309,12 @@ export async function generatePreset(
     reservedBackgroundSlots?: number
     /** Models whose KV cache defaults failed to load; they get f16 instead. */
     kvFallbackModels?: ReadonlySet<string>
+    /**
+     * Device ids the engine currently reports. When given and non-empty, a
+     * saved `device` that is not among them is dropped: after a driver update
+     * or an eGPU unplug llama.cpp rejects the stale name and every load fails.
+     */
+    knownDeviceIds?: readonly string[]
   } = {}
 ): Promise<{ path: string; embeddingCount: number }> {
   // Overridable for tests only. Production callers take the default: gating it
@@ -415,8 +431,9 @@ export async function generatePreset(
   }
   // parallel default = -1 (auto); positive user value is intent. The reserved
   // slot is added on top and never exposed in the setting's own value.
-  if (typeof config.parallel === 'number' && config.parallel > 0) {
-    lines.push(`parallel = ${config.parallel + reservedBackgroundSlots}`)
+  const userParallel = asFiniteNumber(config.parallel)
+  if (userParallel !== undefined && userParallel > 0) {
+    lines.push(`parallel = ${Math.floor(userParallel) + reservedBackgroundSlots}`)
     // llama.cpp only turns on unified KV as part of resolving parallel = -1;
     // passing parallel explicitly leaves it off, which splits ctx-size into
     // ctx-size/parallel per slot. Restore the auto behaviour so the configured
@@ -508,24 +525,35 @@ export async function generatePreset(
   }
   // ctx-checkpoints default = 32, checkpoint-min-step default = 8192.
   if (
-    typeof config.ctx_checkpoints === 'number' &&
-    Number.isFinite(config.ctx_checkpoints) &&
-    config.ctx_checkpoints >= 0 &&
-    config.ctx_checkpoints !== 32
+    asFiniteNumber(config.ctx_checkpoints) !== undefined &&
+    asFiniteNumber(config.ctx_checkpoints)! >= 0 &&
+    asFiniteNumber(config.ctx_checkpoints) !== 32
   ) {
-    lines.push(`ctx-checkpoints = ${Math.floor(config.ctx_checkpoints)}`)
+    lines.push(`ctx-checkpoints = ${Math.floor(asFiniteNumber(config.ctx_checkpoints)!)}`)
   }
   if (
-    typeof config.checkpoint_min_step === 'number' &&
-    Number.isFinite(config.checkpoint_min_step) &&
-    config.checkpoint_min_step >= 0 &&
-    config.checkpoint_min_step !== 8192
+    asFiniteNumber(config.checkpoint_min_step) !== undefined &&
+    asFiniteNumber(config.checkpoint_min_step)! >= 0 &&
+    asFiniteNumber(config.checkpoint_min_step) !== 8192
   ) {
-    lines.push(`checkpoint-min-step = ${Math.floor(config.checkpoint_min_step)}`)
+    lines.push(`checkpoint-min-step = ${Math.floor(asFiniteNumber(config.checkpoint_min_step)!)}`)
   }
   // device default = empty (auto-pick)
   if (typeof config.device === 'string' && config.device.trim().length > 0) {
-    lines.push(`device = ${escapeIniValue(config.device)}`)
+    const wanted = config.device
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean)
+    const known = opts.knownDeviceIds
+    const stale =
+      known && known.length > 0 ? wanted.filter((d) => !known.includes(d)) : []
+    if (stale.length > 0) {
+      console.warn(
+        `[llamacpp] ignoring saved device(s) not reported by the engine: ${stale.join(', ')}`
+      )
+    } else {
+      lines.push(`device = ${escapeIniValue(config.device)}`)
+    }
   }
   // split-mode default = 'layer'
   if (
@@ -791,12 +819,13 @@ export async function generatePreset(
       typeof mc.mtp_layers === 'number' && mc.mtp_layers > 0
     const specDecoding = mc.mtp === true && (hasMtpLayers || hasMtpModel)
 
-    if (typeof mc.parallel === 'number' && mc.parallel > 0) {
-      lines.push(`parallel = ${mc.parallel + reservedBackgroundSlots}`)
+    const mcParallel = asFiniteNumber(mc.parallel)
+    if (mcParallel !== undefined && mcParallel > 0) {
+      lines.push(`parallel = ${Math.floor(mcParallel) + reservedBackgroundSlots}`)
       if (kvUnifiedIsAuto) lines.push('kv-unified = true')
     } else if (
       specDecoding &&
-      !(typeof config.parallel === 'number' && config.parallel > 0)
+      !((asFiniteNumber(config.parallel) ?? 0) > 0)
     ) {
       // With parallel on auto, a speculative-decoding model gets one user slot.
       // Every slot of a hybrid model carries (1 + spec-draft-n-max) rows of
@@ -975,15 +1004,8 @@ export async function generatePreset(
   // Atomic write: tmp + rename. fs.mv overwrites on Tauri's side.
   await fs.writeFileSync(tmpPath, body)
   try {
-    // Best-effort cleanup of any prior file before rename — fs.mv may not
-    // overwrite on all platforms.
-    if (await fs.existsSync(outPath)) {
-      try {
-        await fs.rm(outPath)
-      } catch {
-        /* ignore */
-      }
-    }
+    // No rm first: that left a window with no preset for a concurrent load.
+    // If the rename cannot overwrite, the fallback below writes in place.
     await fs.mv(tmpPath, outPath)
   } catch {
     // Fallback: if rename fails, write directly to the target.

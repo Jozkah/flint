@@ -54,12 +54,12 @@ const mv = (...args: any[]) => globalThis.core.api?.mv({ args })
  * @param {string} path - The path of the file to delete.
  * @returns {Promise<any>} A Promise that resolves when the file is deleted.
  */
-const unlinkSync = (...args: any[]) => globalThis.core.api?.unlinkSync(...args)
+const unlinkSync = (...args: any[]) => globalThis.core.api?.unlinkSync({ args })
 
 /**
  * Appends data to a file at the specified path.
  */
-const appendFileSync = (...args: any[]) => globalThis.core.api?.appendFileSync(...args)
+const appendFileSync = (...args: any[]) => globalThis.core.api?.appendFileSync({ args })
 
 /**
  * Copies a file from the source path to the destination path.

@@ -431,3 +431,19 @@ export function assertSha256Matches(
     )
   }
 }
+
+/**
+ * Paths of every shard of a split GGUF (`name-00001-of-00005.gguf`), the
+ * given path included. A path that is not a split file returns `[path]`.
+ */
+export function ggufShardPaths(path: string): string[] {
+  const m = /^(.*)-(\d{5})-of-(\d{5})(\.gguf)$/i.exec(path)
+  if (!m) return [path]
+  const total = parseInt(m[3], 10)
+  if (!Number.isFinite(total) || total < 2 || total > 999) return [path]
+  const out: string[] = []
+  for (let n = 1; n <= total; n++) {
+    out.push(`${m[1]}-${String(n).padStart(5, '0')}-of-${m[3]}${m[4]}`)
+  }
+  return out
+}

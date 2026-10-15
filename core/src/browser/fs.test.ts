@@ -70,13 +70,13 @@ describe('fs module', () => {
   it('should call unlinkSync with correct arguments', () => {
     const args = ['path/to/file']
     fs.unlinkSync(...args)
-    expect(globalThis.core.api.unlinkSync).toHaveBeenCalledWith(...args)
+    expect(globalThis.core.api.unlinkSync).toHaveBeenCalledWith({ args })
   })
 
   it('should call appendFileSync with correct arguments', () => {
     const args = ['path/to/file', 'data']
     fs.appendFileSync(...args)
-    expect(globalThis.core.api.appendFileSync).toHaveBeenCalledWith(...args)
+    expect(globalThis.core.api.appendFileSync).toHaveBeenCalledWith({ args })
   })
 
   it('should call copyFile with correct arguments', async () => {

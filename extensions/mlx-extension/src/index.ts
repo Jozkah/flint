@@ -399,10 +399,21 @@ export default class mlx_extension extends AIEngine {
     })
 
     if (isAlive) {
-      try {
-        const res = await fetch(`http://localhost:${sessionInfo.port}/health`)
-        if (!res.ok) throw new Error(`health check returned ${res.status}`)
-      } catch (e) {
+      let healthy = false
+      // One missed probe is not a crash: a long prefill can starve the server's
+      // event loop. Retry with backoff, then confirm the process is gone.
+      for (let attempt = 0; attempt < 3 && !healthy; attempt++) {
+        if (attempt > 0) {
+          await new Promise((res) => setTimeout(res, 500 * attempt))
+        }
+        try {
+          const res = await fetch(`http://127.0.0.1:${sessionInfo.port}/health`)
+          healthy = res.ok
+        } catch {
+          healthy = false
+        }
+      }
+      if (!healthy) {
         // Best-effort cleanup: unload() rejects when the session is already
         // gone, and that rejection must not escape as an unhandled one.
         this.unload(sessionInfo.model_id).catch((err) =>
@@ -414,7 +425,7 @@ export default class mlx_extension extends AIEngine {
       throw new Error('MLX model has crashed! Please reload!')
     }
 
-    const baseUrl = `http://localhost:${sessionInfo.port}/v1`
+    const baseUrl = `http://127.0.0.1:${sessionInfo.port}/v1`
     const url = `${baseUrl}/chat/completions`
     const headers = {
       'Content-Type': 'application/json',
@@ -422,9 +433,21 @@ export default class mlx_extension extends AIEngine {
     }
 
     const body = JSON.stringify(opts)
+    // A `length` stop caused by the caller's own max_tokens is a valid answer,
+    // not an out-of-context failure.
+    const userCappedTokens =
+      typeof (opts as { max_tokens?: unknown }).max_tokens === 'number' ||
+      typeof (opts as { max_completion_tokens?: unknown })
+        .max_completion_tokens === 'number'
 
     if (opts.stream) {
-      return this.handleStreamingResponse(url, headers, body, abortController)
+      return this.handleStreamingResponse(
+        url,
+        headers,
+        body,
+        abortController,
+        userCappedTokens
+      )
     }
 
     const response = await fetch(url, {
@@ -443,7 +466,10 @@ export default class mlx_extension extends AIEngine {
 
     const completionResponse = (await response.json()) as chatCompletion
 
-    if (completionResponse.choices?.[0]?.finish_reason === 'length') {
+    if (
+      !userCappedTokens &&
+      completionResponse.choices?.[0]?.finish_reason === 'length'
+    ) {
       throw new Error(OUT_OF_CONTEXT_SIZE)
     }
 
@@ -454,7 +480,8 @@ export default class mlx_extension extends AIEngine {
     url: string,
     headers: HeadersInit,
     body: string,
-    abortController?: AbortController
+    abortController?: AbortController,
+    userCappedTokens = false
   ): AsyncIterable<chatCompletionChunk> {
     // AbortSignal.any() is not available in all runtimes (e.g. WebKit/JavaScriptCore),
     // so we manually combine the timeout and external abort signals.
@@ -522,7 +549,10 @@ export default class mlx_extension extends AIEngine {
 
             // A context-limit stop is an expected outcome, not a parse
             // failure, so it is raised outside the parse try/catch.
-            if (data.choices?.[0]?.finish_reason === 'length') {
+            if (
+              !userCappedTokens &&
+              data.choices?.[0]?.finish_reason === 'length'
+            ) {
               throw new Error(OUT_OF_CONTEXT_SIZE)
             }
 
