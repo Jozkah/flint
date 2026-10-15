@@ -116,7 +116,23 @@ pub async fn load_mlx_model_impl(
         .into());
     }
 
-    // Port 0 lets the OS choose, so there is nothing to collide on.
+    // Port 0 means "any": pick a concrete free port here. Passing 0 through
+    // let the server bind somewhere this process never learned, so the
+    // session was recorded with port 0 and could not be reached.
+    let port = if port == 0 {
+        std::net::TcpListener::bind(("127.0.0.1", 0))
+            .and_then(|l| l.local_addr())
+            .map(|a| a.port())
+            .map_err(|e| {
+                MlxError::new(
+                    ErrorCode::ModelLoadFailed,
+                    format!("Could not find a free port: {e}"),
+                    None,
+                )
+            })?
+    } else {
+        port
+    };
     let _reservation = if port == 0 {
         None
     } else {
