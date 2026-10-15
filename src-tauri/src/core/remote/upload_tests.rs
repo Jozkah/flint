@@ -55,8 +55,8 @@ fn uploads_are_sized_ordered_and_owned() {
     b.wrote(&u.id, 4, now);
     let info = b.finish("d1", &u.id, b"\x89PNG\r\n\x1a\n").unwrap();
     assert_eq!(info.mime, "image/png");
-    assert_eq!(b.finished("d1", &[u.id.clone()]).len(), 1);
-    assert!(b.finished("d2", &[u.id.clone()]).is_empty());
+    assert_eq!(b.finished("d1", std::slice::from_ref(&u.id)).len(), 1);
+    assert!(b.finished("d2", std::slice::from_ref(&u.id)).is_empty());
     // A refused file is forgotten.
     let bad = b.start(dir.path(), "d1", "x.png", 2, "image/png", 25, now).unwrap();
     b.wrote(&bad.id, 2, now);

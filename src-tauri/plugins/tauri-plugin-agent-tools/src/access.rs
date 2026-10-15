@@ -839,7 +839,7 @@ pub fn revoke_session(data_folder: &Path, session: &str) -> usize {
 pub fn list(data_folder: &Path, session: &str, now: u64) -> Vec<AccessGrant> {
     let mut out: Vec<AccessGrant> = Vec::new();
     if let Ok(mut reg) = registry().lock() {
-        reg.retain(|_, g| g.expires_at.map_or(true, |t| t > now));
+        reg.retain(|_, g| g.expires_at.is_none_or(|t| t > now));
         out.extend(reg.values().filter(|g| g.session == session).cloned());
     }
     out.extend(load_persisted(data_folder));
@@ -851,7 +851,7 @@ pub fn list(data_folder: &Path, session: &str, now: u64) -> Vec<AccessGrant> {
 pub fn list_all(data_folder: &Path, now: u64) -> Vec<AccessGrant> {
     let mut out: Vec<AccessGrant> = Vec::new();
     if let Ok(mut reg) = registry().lock() {
-        reg.retain(|_, g| g.expires_at.map_or(true, |t| t > now));
+        reg.retain(|_, g| g.expires_at.is_none_or(|t| t > now));
         out.extend(reg.values().cloned());
     }
     out.extend(load_persisted(data_folder));

@@ -57,6 +57,11 @@ jobs:
           make test-ci
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # The web-app production build runs out of the runner's default heap.
+          NODE_OPTIONS: '--max-old-space-size=4096'
+          # The LSP integration tests need gopls on PATH; the runner image does
+          # not carry it, and the suite's documented opt-out is this variable.
+          JAN_SKIP_LSP_TESTS: '1'
 
   test-on-windows:
     # Ran only on push, which this manual-dispatch workflow no longer has, and
@@ -138,12 +143,20 @@ jobs:
           corepack prepare yarn@4.10.3 --activate
           yarn --version
 
+      - name: TLS fixture dependency
+        # core::net::tls tests mint their CA with the `cryptography` package.
+        shell: powershell
+        run: |
+          python -m pip install --disable-pip-version-check cryptography
+
       - name: Linter and test
         shell: powershell
         run: |
           make test-ci
         env:
-          NODE_OPTIONS: '--max-old-space-size=2048'
+          # The web-app production build needs about 3 GB of heap; 2048 ran out.
+          NODE_OPTIONS: '--max-old-space-size=4096'
+          JAN_SKIP_LSP_TESTS: '1'
 
   test-on-ubuntu:
     runs-on: ubuntu-24.04
@@ -206,6 +219,7 @@ jobs:
         # not carry it, and the suite's documented opt-out is this variable.
         env:
           JAN_SKIP_LSP_TESTS: '1'
+          NODE_OPTIONS: '--max-old-space-size=4096'
         run: |
           export DISPLAY=$(w -h | awk 'NR==1 {print $2}')
           echo -e "Display ID: $DISPLAY"

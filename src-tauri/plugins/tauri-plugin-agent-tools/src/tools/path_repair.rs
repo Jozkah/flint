@@ -84,7 +84,7 @@ pub fn repair(key: &str, raw: &str, exists: &dyn Fn(&str) -> bool) -> Result<Opt
         .parent()
         .and_then(|p| p.to_str())
         .filter(|p| !p.is_empty())
-        .map(|p| exists(p))
+        .map(exists)
         .unwrap_or(false);
     if exists(&restored) || parent_exists {
         return Ok(Some(restored));

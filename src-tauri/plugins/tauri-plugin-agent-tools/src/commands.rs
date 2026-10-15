@@ -1175,7 +1175,6 @@ async fn execute_tool_inner(
     // Transcript audit #5: `"C:	mp"` in JSON arrives as `C:<TAB>mp`. Put the
     // backslash back when that names something real, before the gate judges
     // the path; otherwise say what happened instead of "does not exist".
-    let mut args = args;
     crate::tools::path_repair::repair_args_on_disk(&name, tool.path_args, &mut args, &root, Some(&scratch))
         .map_err(|e| AgentToolsError::from(format!("tool '{name}' was refused: {e}")))?;
 

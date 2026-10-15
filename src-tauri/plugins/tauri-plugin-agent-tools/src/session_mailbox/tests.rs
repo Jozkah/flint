@@ -143,7 +143,7 @@ fn a_corrupt_state_file_is_quarantined_and_the_state_is_rebuilt() {
 
     // b delivered and read the first message; the second is still delivered.
     assert_eq!(mb.take_for_delivery("b").unwrap().len(), 2);
-    assert_eq!(mb.mark_read("b", &[one.message_id.clone()]).unwrap(), 1);
+    assert_eq!(mb.mark_read("b", std::slice::from_ref(&one.message_id)).unwrap(), 1);
 
     // The delivery-state file is corrupted (e.g. a torn atomic write on crash).
     let state_path = fx.data.join("mailbox/inbox/b.state.json");
@@ -1167,11 +1167,11 @@ fn claim_returns_an_id_once_and_not_after_a_tool_read() {
     // First claim wins; a second claim of the same id gets nothing.
     let ids = vec![m1.clone(), m1.clone(), "msg-not-here".to_string()];
     assert_eq!(mb.claim("b", &ids).unwrap(), vec![m1.clone()]);
-    assert!(mb.claim("b", &[m1.clone()]).unwrap().is_empty());
+    assert!(mb.claim("b", std::slice::from_ref(&m1)).unwrap().is_empty());
 
     // A tool consumed m2 first: the renderer's claim must not get it.
     assert_eq!(mb.read_messages("b", true).unwrap().len(), 1);
-    assert!(mb.claim("b", &[m2.clone()]).unwrap().is_empty());
+    assert!(mb.claim("b", std::slice::from_ref(&m2)).unwrap().is_empty());
     assert!(mb.pending("b").unwrap().is_empty());
 }
 
@@ -1189,12 +1189,12 @@ async fn a_reply_consumed_by_wait_for_reply_cannot_be_claimed_and_vice_versa() {
         WaitOutcome::Reply(e) => assert_eq!(e.id, r1),
         other => panic!("expected the reply, got {other:?}"),
     }
-    assert!(mb.claim("a", &[r1.clone()]).unwrap().is_empty());
+    assert!(mb.claim("a", std::slice::from_ref(&r1)).unwrap().is_empty());
 
     // The renderer claimed the reply first: wait_for_reply does not return it again.
     let q2 = mb.send("a", "b", "q2", None, Origin::Agent).unwrap().message_id;
     let r2 = mb.send("b", "a", "r2", Some(&q2), Origin::Agent).unwrap().message_id;
-    assert_eq!(mb.claim("a", &[r2.clone()]).unwrap(), vec![r2.clone()]);
+    assert_eq!(mb.claim("a", std::slice::from_ref(&r2)).unwrap(), vec![r2.clone()]);
     assert_eq!(
         mb.wait_for_reply("a", &q2, Duration::from_secs(1), None).await.unwrap(),
         WaitOutcome::AlreadyDelivered(r2)

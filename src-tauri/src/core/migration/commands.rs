@@ -300,7 +300,7 @@ mod tests {
             Conflict::KeepBoth,
         );
         let kept = client.items.remove(0);
-        client.items.truncate(0);
+        client.items.clear();
         client.items.push(kept.clone());
         let trusted = trusted_plan(&client, &roots).unwrap();
         assert_eq!(trusted.items.len(), 1);

@@ -97,7 +97,7 @@ pub fn active_path(messages: &[Value], active_root_id: Option<&str>) -> Vec<Valu
 }
 
 fn set_meta(m: &mut Value, key: &str, value: Value) {
-    if !m.get("metadata").map_or(false, Value::is_object) {
+    if !m.get("metadata").is_some_and(Value::is_object) {
         m["metadata"] = json!({});
     }
     m["metadata"][key] = value;
@@ -201,7 +201,7 @@ pub fn apply_active_root(thread: &mut Value, change: Option<Option<String>>) -> 
     let Some(change) = change else {
         return false;
     };
-    if !thread.get("metadata").map_or(false, Value::is_object) {
+    if !thread.get("metadata").is_some_and(Value::is_object) {
         thread["metadata"] = json!({});
     }
     match change {

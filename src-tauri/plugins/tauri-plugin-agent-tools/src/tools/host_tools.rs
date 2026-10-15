@@ -1242,7 +1242,7 @@ mod tests {
         assert_eq!(got, vec![ok.clone()]);
         // Already on the sandbox PATH: not added twice.
         assert!(
-            usable_host_dirs(&host, Some(&prof), &[ok.clone()], &[], |_| Some(true))
+            usable_host_dirs(&host, Some(&prof), std::slice::from_ref(&ok), &[], |_| Some(true))
                 .iter()
                 .all(|d| d != &ok)
         );

@@ -6396,7 +6396,7 @@ pub(crate) fn format_tokens(tokens: u64) -> String {
     }
     // Tenths of a thousand, half-up. Exact for every u64 below ~1.8e15.
     let tenths = (tokens + 50) / 100;
-    if tokens < 10_000 && tenths % 10 != 0 {
+    if tokens < 10_000 && !tenths.is_multiple_of(10) {
         format!("{}.{}K", tenths / 10, tenths % 10)
     } else {
         // 6.0K reads as noise; report it as 6K. Above 10K the decimal is

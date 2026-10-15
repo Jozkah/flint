@@ -4836,7 +4836,7 @@ fn retain_advertisable_mcp_tools(
         t.get("function")
             .and_then(|f| f.get("name"))
             .and_then(|n| n.as_str())
-            .map(|n| advertised(n))
+            .map(&advertised)
             .unwrap_or(false)
     });
     tool_to_server.retain(|name, _| advertised(name));

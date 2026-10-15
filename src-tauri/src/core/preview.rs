@@ -164,7 +164,7 @@ pub fn preview_release(id: String) {
 mod tests {
     use super::*;
 
-    fn get<'a>(res: &'a Response<Vec<u8>>, name: header::HeaderName) -> &'a str {
+    fn get(res: &Response<Vec<u8>>, name: header::HeaderName) -> &str {
         res.headers().get(name).unwrap().to_str().unwrap()
     }
 

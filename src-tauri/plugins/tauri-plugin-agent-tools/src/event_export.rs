@@ -193,7 +193,7 @@ pub fn export(
 ) -> Result<ExportReport, ExportError> {
     let events = event_log::read_session(data_folder, session)
         .map_err(|e| ExportError::new(ExportErrorKind::LogUnreadable, e.message()))?;
-    let events: Vec<Envelope> = events.into_iter().filter(|e| run.map_or(true, |r| e.run == r)).collect();
+    let events: Vec<Envelope> = events.into_iter().filter(|e| run.is_none_or(|r| e.run == r)).collect();
     if events.is_empty() {
         return Err(ExportError::new(ExportErrorKind::NoEvents, "there are no recorded events to export"));
     }
@@ -423,7 +423,7 @@ mod tests {
     }
 
     fn seed(d: &Path) {
-        let mut add = |id: &str, run: &str, kind: &str, payload: Value| {
+        let add = |id: &str, run: &str, kind: &str, payload: Value| {
             append(d, NewEvent { id: id.into(), session: "s1".into(), run: run.into(), invocation: String::new(), kind: kind.into(), payload }).unwrap();
         };
         add("a", "r1", "run.started", json!({ "model": "m", "title": "fix the login bug in C:/work/app" }));

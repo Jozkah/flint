@@ -590,16 +590,13 @@ fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) ->
     let mut removed = 0;
     let mut index = 0;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
-        match serde_json::from_str::<PromptSnapshot>(line) {
-            Ok(s) => {
-                let kept = keep(index, &s);
-                index += 1;
-                if !kept {
-                    removed += 1;
-                    continue;
-                }
+        if let Ok(s) = serde_json::from_str::<PromptSnapshot>(line) {
+            let kept = keep(index, &s);
+            index += 1;
+            if !kept {
+                removed += 1;
+                continue;
             }
-            Err(_) => {}
         }
         out.push_str(line);
         out.push('\n');
@@ -1237,7 +1234,7 @@ pub fn scoped_lookup(
             return Ok(Vec::new());
         };
         let in_scope =
-            session.map_or(true, |s| found.session == s) && run.map_or(true, |r| found.run == r);
+            session.is_none_or(|s| found.session == s) && run.is_none_or(|r| found.run == r);
         if !in_scope {
             return Err(
                 "a snapshot must be requested with the session or run it belongs to".into(),

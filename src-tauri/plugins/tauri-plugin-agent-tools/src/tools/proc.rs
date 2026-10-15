@@ -828,6 +828,7 @@ fn powershell_core_prelude() -> String {
 ///     * `$?` is false after its last statement (as before, and as
 ///       `-Command` itself decides), or
 ///     * a statement- or script-terminating error occurred anywhere in it.
+///
 ///   The second is read from `$Error`: records added while the command ran
 ///   whose origin is not a cmdlet or native program. Non-terminating cmdlet
 ///   errors are deliberately *not* counted -- they include those silenced

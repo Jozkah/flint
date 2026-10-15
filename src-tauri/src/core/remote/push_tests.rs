@@ -140,6 +140,7 @@ fn only_known_push_services_are_accepted() {
 }
 
 #[test]
+#[allow(clippy::field_reassign_with_default)]
 fn quiet_hours_let_only_approvals_through() {
     let mut p = PushPrefs::default();
     p.quiet_hours = QuietHours { enabled: true, start: 22 * 60, end: 7 * 60 };

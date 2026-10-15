@@ -142,7 +142,7 @@ fn ref_of(outline: &str, needle: &str) -> String {
         .find(|l| l.contains(needle) && l.contains('['))
         .unwrap_or_else(|| panic!("no line with {needle:?} in:\n{outline}"));
     // A ref is `[e12]`, or `[t2e12]` in a later tab.
-    let start = line.rfind(|c| c == '[').unwrap() + 1;
+    let start = line.rfind('[').unwrap() + 1;
     let end = line[start..].find(']').unwrap() + start;
     line[start..end].to_string()
 }

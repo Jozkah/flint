@@ -803,7 +803,7 @@ impl Mailbox {
     /// heartbeat for any other run, or for an idle session, changes nothing.
     pub fn heartbeat(&self, session_id: &str, run_id: &str) -> Result<()> {
         self.with_live_record(session_id, |record, now, epoch| {
-            let same_run = record.run_id.as_deref().map_or(true, |r| r == run_id);
+            let same_run = record.run_id.as_deref().is_none_or(|r| r == run_id);
             if record.status == SessionStatus::Running && same_run {
                 record.heartbeat_at = Some(now);
                 record.epoch = Some(epoch.to_string());
@@ -916,7 +916,7 @@ impl Mailbox {
         let found: Vec<&SessionRecord> = if exact.len() == 1 {
             vec![*exact[0]]
         } else if exact.len() > 1 {
-            exact.into_iter().map(|r| *r).collect()
+            exact.into_iter().copied().collect()
         } else if wanted.is_empty() {
             Vec::new()
         } else {
@@ -1346,7 +1346,7 @@ impl Mailbox {
         if !inbox.iter().any(expired) {
             return Ok(false);
         }
-        let kept: Vec<&MailEnvelope> = inbox.iter().filter(|e| !expired(*e)).collect();
+        let kept: Vec<&MailEnvelope> = inbox.iter().filter(|e| !expired(e)).collect();
         write_jsonl_atomically(&self.inbox_path(session_id), &kept)?;
         state.retain(|id, _| kept.iter().any(|e| &e.id == id));
         Ok(true)

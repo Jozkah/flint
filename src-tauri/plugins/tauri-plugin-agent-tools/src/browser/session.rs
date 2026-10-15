@@ -1843,7 +1843,7 @@ impl Session {
         };
         let want_shot = done.mutated && WATCHED.load(Ordering::SeqCst) && {
             let mut last = self.last_mirror.lock().ok();
-            let due = last.as_ref().and_then(|l| l.as_ref()).map_or(true, |t| t.elapsed() >= MIRROR_THROTTLE);
+            let due = last.as_ref().and_then(|l| l.as_ref()).is_none_or(|t| t.elapsed() >= MIRROR_THROTTLE);
             if due {
                 if let Some(l) = last.as_mut() {
                     **l = Some(Instant::now());

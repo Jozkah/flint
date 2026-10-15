@@ -296,6 +296,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn should_compact_follows_auto_and_the_reserve() {
         let mut p = Policy::default();
         p.reserve_tokens = 1000;

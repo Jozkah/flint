@@ -225,11 +225,10 @@ pub fn compact(data_folder: &Path, policy: &Retention, now: i64) -> Result<Remov
                     .ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                     .map(|d| d.as_secs() as i64);
-                if entry.path().is_dir() && modified.is_some_and(|m| m < cutoff) {
-                    if std::fs::remove_dir_all(entry.path()).is_ok() {
+                if entry.path().is_dir() && modified.is_some_and(|m| m < cutoff)
+                    && std::fs::remove_dir_all(entry.path()).is_ok() {
                         removed.diff_sessions += 1;
                     }
-                }
             }
         }
     }
