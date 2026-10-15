@@ -53,7 +53,6 @@ export const PLAN_DENIED_TOOLS = new Set([
   'memory_write',
   'skill_write',
   'task',
-  'team',
 ])
 
 /**
