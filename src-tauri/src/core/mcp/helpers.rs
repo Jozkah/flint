@@ -65,7 +65,7 @@ pub async fn run_mcp_commands<R: Runtime>(
     servers_state: SharedMcpServers,
 ) -> Result<(), String> {
     let app_path = get_jan_data_folder_path(app.clone());
-    let app_path_str = app_path.to_str().unwrap().to_string();
+    let app_path_str = app_path.to_string_lossy().into_owned();
     log::trace!(
         "Load MCP configs from {}",
         app_path_str.clone() + "/mcp_config.json"
@@ -509,10 +509,11 @@ async fn schedule_mcp_start_task<R: Runtime>(
     config: Value,
 ) -> Result<(), String> {
     let app_path = get_jan_data_folder_path(app.clone());
-    let exe_path = env::current_exe().expect("Failed to get current exe path");
+    let exe_path = env::current_exe()
+        .map_err(|e| format!("Failed to get current exe path: {e}"))?;
     let exe_parent_path = exe_path
         .parent()
-        .expect("Executable must have a parent directory");
+        .ok_or_else(|| "Executable must have a parent directory".to_string())?;
     let bin_path = exe_parent_path.to_path_buf();
 
     let config_params = extract_command_args(&config)
@@ -640,7 +641,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
                 cache_dir.push(".npx");
                 cmd = Command::new(bun_x_path.display().to_string());
                 cmd.arg("x");
-                cmd.env("BUN_INSTALL", cache_dir.to_str().unwrap());
+                cmd.env("BUN_INSTALL", &cache_dir);
             }
             if use_override
                 && config_params.command == "uvx"
@@ -651,7 +652,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
                 cmd = Command::new(uv_path.clone());
                 cmd.arg("tool");
                 cmd.arg("run");
-                cmd.env("UV_CACHE_DIR", cache_dir.to_str().unwrap());
+                cmd.env("UV_CACHE_DIR", &cache_dir);
             }
             {
                 // No console window on Windows; `npx`, `uvx` and whatever they

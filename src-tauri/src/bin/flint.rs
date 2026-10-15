@@ -4,6 +4,23 @@
 //! remote providers (no local inference, no GUI dependencies).
 //! Build with: cargo build --no-default-features --features cli --bin jan
 
+/// `println!` that treats a closed pipe (`flint ... | head`) as a normal end of
+/// output instead of panicking. Shadows the std macro for this file.
+macro_rules! println {
+    () => { println!("") };
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let mut out = std::io::stdout().lock();
+        if let Err(e) = writeln!(out, $($arg)*) {
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                std::process::exit(0);
+            }
+            eprintln!("error: could not write to stdout: {e}");
+            std::process::exit(1);
+        }
+    }};
+}
+
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use console::Style;
 

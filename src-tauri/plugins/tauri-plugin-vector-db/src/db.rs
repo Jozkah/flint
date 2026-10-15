@@ -102,6 +102,11 @@ fn vec0_module_available(conn: &Connection) -> bool {
     false
 }
 
+/// Outcome of the first probe for the sqlite-vec library, kept for the life of
+/// the process so each search does not retry a dozen failing `dlopen`s.
+/// `Some(None)` = probed, not found; `Some(Some(p))` = loads from `p`.
+static VEC_PROBE: std::sync::Mutex<Option<Option<String>>> = std::sync::Mutex::new(None);
+
 fn load_sqlite_vec(conn: &Connection, verbose: bool) -> bool {
     if vec0_module_available(conn) {
         if verbose {
@@ -110,11 +115,28 @@ fn load_sqlite_vec(conn: &Connection, verbose: bool) -> bool {
         return true;
     }
 
+    let cached = VEC_PROBE.lock().ok().and_then(|g| g.clone());
+    if let Some(None) = cached {
+        if !verbose {
+            return false;
+        }
+    }
+
+    // SQL-level `load_extension()` stays off except for the instant the
+    // Rust-side loader below runs.
     unsafe {
         let _ = conn.load_extension_enable();
     }
+    let ok = probe_sqlite_vec(conn, verbose, cached.flatten());
+    let _ = conn.load_extension_disable();
+    ok
+}
 
-    let paths = possible_sqlite_vec_paths();
+fn probe_sqlite_vec(conn: &Connection, verbose: bool, known: Option<String>) -> bool {
+    let paths = match known {
+        Some(p) => vec![p],
+        None => possible_sqlite_vec_paths(),
+    };
     if verbose {
         println!("[VectorDB] Trying {} sqlite-vec candidates...", paths.len());
     }
@@ -127,10 +149,16 @@ fn load_sqlite_vec(conn: &Connection, verbose: bool) -> bool {
             if verbose {
                 println!("[VectorDB] sqlite-vec loaded from: {}", p);
             }
+            if let Ok(mut g) = VEC_PROBE.lock() {
+                *g = Some(Some(p));
+            }
             return true;
         }
     }
 
+    if let Ok(mut g) = VEC_PROBE.lock() {
+        *g = Some(None);
+    }
     if verbose {
         println!("[VectorDB] sqlite-vec unavailable; using linear search");
     }
@@ -173,9 +201,16 @@ fn build_sqlite_vec_paths(override_path: Option<String>, exe: Option<PathBuf>) -
         }
     }
 
-    // Dev paths
-    paths.push("./src-tauri/resources/bin/sqlite-vec".to_string());
-    paths.push("./resources/bin/sqlite-vec".to_string());
+    // Dev builds only: the checkout's resources, anchored at compile time. A
+    // working-directory-relative path would run whatever the launch directory
+    // holds.
+    #[cfg(debug_assertions)]
+    paths.push(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../resources/bin/sqlite-vec")
+            .to_string_lossy()
+            .into_owned(),
+    );
 
     // Exe-relative paths
     if let Some(exe) = exe {
@@ -206,9 +241,6 @@ fn build_sqlite_vec_paths(override_path: Option<String>, exe: Option<PathBuf>) -
             paths.push(format!("{dir}{}{stem}", std::path::MAIN_SEPARATOR));
         }
     }
-
-    // Bare stems last, so the OS loader can search its own default paths.
-    paths.extend(SQLITE_VEC_STEMS.iter().map(|s| s.to_string()));
 
     let mut seen = std::collections::HashSet::new();
     paths.retain(|p| seen.insert(p.clone()));
@@ -455,6 +487,11 @@ fn validate_embedding(embedding: &[f32]) -> Result<(), VectorDBError> {
     Ok(())
 }
 
+/// Upper bound on results one search may return.
+const MAX_SEARCH_LIMIT: usize = 1000;
+/// Upper bound on the `file_ids` filter, well under SQLite's variable limit.
+const MAX_FILE_IDS: usize = 500;
+
 pub fn search_collection(
     conn: &Connection,
     query_embedding: &[f32],
@@ -468,6 +505,15 @@ pub fn search_collection(
     // and cosine_similarity turns it into a NaN score that silently fails the
     // threshold, so retrieval would just come back empty.
     validate_embedding(query_embedding)?;
+
+    // `limit` and `file_ids` come straight from the renderer.
+    let limit = limit.min(MAX_SEARCH_LIMIT);
+    if file_ids.as_ref().is_some_and(|ids| ids.len() > MAX_FILE_IDS) {
+        return Err(VectorDBError::InvalidInput(format!(
+            "too many file ids ({}); the maximum is {MAX_FILE_IDS}",
+            file_ids.as_ref().map_or(0, Vec::len)
+        )));
+    }
 
     let has_vec = if vec_loaded {
         conn
@@ -638,6 +684,16 @@ fn search_linear(
                 file_id,
                 chunk_file_order,
             });
+            // Keep memory bounded to O(limit) instead of every chunk above
+            // the threshold.
+            if results.len() >= limit.saturating_mul(2).max(64) {
+                results.sort_by(|a, b| {
+                    b.score
+                        .partial_cmp(&a.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+                results.truncate(limit);
+            }
         }
     }
 
@@ -817,16 +873,17 @@ mod tests {
         );
     }
 
-    // A bare stem lets the OS loader consult LD_LIBRARY_PATH and its default
-    // directories, which covers layouts we cannot enumerate.
+    // A bare stem or a CWD-relative path would let the loader pick up a library
+    // from the launch directory or PATH.
     #[test]
-    fn ends_with_bare_stems_for_the_loader_to_resolve() {
-        let paths = build_sqlite_vec_paths(None, None);
-        for stem in SQLITE_VEC_STEMS {
-            assert!(paths.contains(&stem.to_string()), "missing {stem} in {paths:?}");
+    fn never_offers_bare_or_cwd_relative_candidates() {
+        let paths = build_sqlite_vec_paths(None, Some(PathBuf::from("/opt/jan/bin/jan")));
+        for p in &paths {
+            assert!(
+                std::path::Path::new(p).is_absolute() || p.starts_with('/'),
+                "relative candidate {p}"
+            );
         }
-        let first_bare = paths.iter().position(|p| !p.contains('/') && !p.contains('\\'));
-        assert_eq!(first_bare.map(|i| i + SQLITE_VEC_STEMS.len()), Some(paths.len()));
     }
 
     #[test]

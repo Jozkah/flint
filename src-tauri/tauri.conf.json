@@ -30,7 +30,10 @@
         "img-src": "'self' asset: http://asset.localhost blob: data: https:",
         "media-src": "'self' asset: http://asset.localhost blob: data: https:",
         "style-src": "'unsafe-inline' 'self' https://fonts.googleapis.com",
-        "script-src": "'self' 'wasm-unsafe-eval' asset: http://asset.localhost"
+        "script-src": "'self' 'wasm-unsafe-eval' asset: http://asset.localhost",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'self'"
       },
       "dangerousDisableAssetCspModification": [
         "style-src"
@@ -40,17 +43,16 @@
         "scope": {
           "requireLiteralLeadingDot": true,
           "allow": [
-            "$APPDATA/**",
-            "$APPLOCALDATA/**",
+            "$APPDATA/jan.ai.app/**",
+            "$APPDATA/Flint/**",
+            "$APPDATA/Jan/**",
             "$APPCACHE/**",
-            "$HOME/**",
             "$DESKTOP/**",
             "$DOCUMENT/**",
             "$DOWNLOAD/**",
             "$PICTURE/**",
             "$VIDEO/**",
-            "$AUDIO/**",
-            "$TEMP/**"
+            "$AUDIO/**"
           ]
         }
       }

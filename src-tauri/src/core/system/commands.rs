@@ -217,6 +217,65 @@ fn is_valid_env_key(key: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+/// Variables that change how every later process loads code or resolves
+/// commands. Writing one into a shell rc or the user registry is persistence,
+/// not Claude Code configuration.
+fn is_blocked_env_key(key: &str) -> bool {
+    let k = key.to_ascii_uppercase();
+    k.starts_with("LD_")
+        || k.starts_with("DYLD_")
+        || matches!(
+            k.as_str(),
+            "PATH"
+                | "PATHEXT"
+                | "COMSPEC"
+                | "BASH_ENV"
+                | "ENV"
+                | "PROMPT_COMMAND"
+                | "PS1"
+                | "IFS"
+                | "SHELL"
+                | "HOME"
+                | "USERPROFILE"
+                | "PYTHONPATH"
+                | "PYTHONSTARTUP"
+                | "PYTHONHOME"
+                | "NODE_OPTIONS"
+                | "NODE_PATH"
+                | "PERL5OPT"
+                | "PERL5LIB"
+                | "RUBYOPT"
+                | "RUBYLIB"
+                | "JAVA_TOOL_OPTIONS"
+                | "_JAVA_OPTIONS"
+                | "CLASSPATH"
+                | "GIT_SSH_COMMAND"
+                | "GIT_EXEC_PATH"
+        )
+}
+
+/// Replace `path` with `content` through a temp file in the same directory,
+/// keeping the original's permissions and following a symlinked rc file.
+fn atomic_write_preserving(path: &str, content: &str) -> Result<(), String> {
+    let target = std::fs::canonicalize(path).unwrap_or_else(|_| std::path::PathBuf::from(path));
+    let dir = target
+        .parent()
+        .ok_or_else(|| "env file has no parent directory".to_string())?;
+    let name = target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "env".to_string());
+    let tmp = dir.join(format!(".{name}.flint-tmp"));
+    std::fs::write(&tmp, content).map_err(|e| e.to_string())?;
+    if let Ok(meta) = std::fs::metadata(&target) {
+        let _ = std::fs::set_permissions(&tmp, meta.permissions());
+    }
+    if let Err(e) = std::fs::rename(&tmp, &target) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.to_string());
+    }
+    Ok(())
+}
 
 // Helper function to write env vars to a shell config file
 fn write_env_to_shell(env_file_path: &str, env_vars: &[(String, String)]) -> Result<(), String> {
@@ -231,7 +290,7 @@ fn write_env_to_shell(env_file_path: &str, env_vars: &[(String, String)]) -> Res
     let new_content = format!("{}\n{}\n{}\n", marker, new_entries, marker);
 
     let final_content = cleaned + "\n" + &new_content;
-    std::fs::write(env_file_path, &final_content).map_err(|e| e.to_string())?;
+    atomic_write_preserving(env_file_path, &final_content)?;
     Ok(())
 }
 
@@ -509,9 +568,42 @@ pub async fn export_redacted_logs<R: Runtime>(
     Ok(destination)
 }
 
+const PROBEABLE_LIBRARIES: &[&str] = &[
+    "vulkan-1.dll",
+    "libvulkan.so.1",
+    "libvulkan.so",
+    "libvulkan.1.dylib",
+    "nvcuda.dll",
+    "libcuda.so.1",
+    "libcuda.so",
+    "cudart64_12.dll",
+    "cudart64_11.dll",
+    "libcudart.so",
+    "nvml.dll",
+    "libnvidia-ml.so.1",
+    "OpenCL.dll",
+    "libOpenCL.so.1",
+    "libOpenCL.so",
+    "libgomp.so.1",
+    "vcruntime140.dll",
+    "msvcp140.dll",
+];
+
+fn is_probeable_library(name: &str) -> bool {
+    PROBEABLE_LIBRARIES
+        .iter()
+        .any(|l| l.eq_ignore_ascii_case(name))
+}
+
 // check if a system library is available
 #[tauri::command]
 pub fn is_library_available(library: &str) -> bool {
+    // Loading a library runs its initializers, so only well-known driver and
+    // runtime names may be probed, never a path the caller supplies.
+    if !is_probeable_library(library) {
+        log::warn!("Refusing to probe unlisted library {library:?}");
+        return false;
+    }
     match unsafe { libloading::Library::new(library) } {
         Ok(_) => true,
         Err(e) => {
@@ -617,6 +709,12 @@ fn build_claude_code_env_vars(
                      underscores, not starting with a digit."
                 ));
             }
+            if is_blocked_env_key(key) {
+                return Err(format!(
+                    "The environment variable {key} cannot be set here: it changes how \
+                     programs load code or find commands."
+                ));
+            }
             if value.contains('\0') {
                 return Err(format!("The value of {key} contains a NUL byte."));
             }
@@ -654,38 +752,13 @@ fn write_claude_code_env_vars(env_vars: &[(String, String)]) -> Result<(), Strin
                 Ok(())
             }
             Err(_) => {
-                // Use admin privileges to write
-                let marker = JAN_ENV_MARKER;
-                let existing_content = std::fs::read_to_string(&env_file_path).unwrap_or_default();
-                let cleaned = strip_jan_env_block(&existing_content);
-
-                let env_content = render_env_exports(env_vars);
-
-                let new_block = format!("{}\n{}", marker, env_content);
-
-                let final_content = cleaned + "\n" + &new_block + marker;
-
-                // Write to a temp file first, then use osascript to move it
-                let temp_script_path = format!("{}/.jan_env_update.sh", home_dir);
-                std::fs::write(&temp_script_path, &final_content).map_err(|e| e.to_string())?;
-
-                // Use admin privileges to move the temp file
-                let script = format!(
-                    r#"do shell script "cp '{}' '{}' && rm '{}' && echo 'Env vars written to {}'" with administrator privileges"#,
-                    temp_script_path, env_file_path, temp_script_path, env_file_path
-                );
-
-                std::process::Command::new("osascript")
-                    .arg("-e")
-                    .arg(&script)
-                    .output()
-                    .map_err(|e| e.to_string())?;
-
-                log::info!(
-                    "Env vars written to {} with admin privileges",
-                    env_file_path
-                );
-                Ok(())
+                // Never write a user's rc file as root: the file is
+                // user-owned, so a failure here means it is read-only or
+                // locked and the user has to fix that themselves.
+                Err(format!(
+                    "Could not write {env_file_path}. Make the file writable and try again, \
+                     or add the exported variables to it manually."
+                ))
             }
         }
     } else if cfg!(target_os = "linux") {
@@ -1673,6 +1746,12 @@ mod tests {
             vec![serde_json::json!({"key": "FOO; id", "value": "x"})],
         );
         assert!(result.unwrap_err().contains("FOO; id"));
+        assert!(is_blocked_env_key("LD_PRELOAD"));
+        assert!(is_blocked_env_key("dyld_insert_libraries"));
+        assert!(is_blocked_env_key("PATH"));
+        assert!(!is_blocked_env_key("CLAUDE_CODE_MAX_OUTPUT_TOKENS"));
+        assert!(is_probeable_library("vulkan-1.dll"));
+        assert!(!is_probeable_library("C:\\evil\\x.dll"));
         assert!(is_valid_env_key("_MY_VAR1"));
         assert!(!is_valid_env_key("1ABC"));
         assert!(!is_valid_env_key(""));

@@ -1071,6 +1071,25 @@ async fn proxy_request(
         log::debug!("Bypassing host validation for whitelisted path: {path}");
     }
 
+    // A page in the user's browser can send a "simple" cross-origin request to
+    // 127.0.0.1 without a preflight; CORS only hides the answer, the request
+    // still runs. With no API key that would spend credits or load models on
+    // behalf of any website, so a foreign Origin is refused outright.
+    if !is_whitelisted_path
+        && !origin_header.is_empty()
+        && config.proxy_api_key.is_empty()
+        && !origin_is_trusted(&origin_header, &config.trusted_hosts)
+    {
+        let mut error_response = Response::builder().status(StatusCode::FORBIDDEN);
+        error_response = add_cors_headers_with_host_and_origin(
+            error_response,
+            &host_header,
+            &origin_header,
+            &config.trusted_hosts,
+        );
+        return Ok(error_response.body(full("Untrusted origin")).unwrap());
+    }
+
     if !is_whitelisted_path && !config.proxy_api_key.is_empty() {
         // Check Authorization header (Bearer token)
         let auth_valid = parts
@@ -1078,7 +1097,7 @@ async fn proxy_request(
             .get(hyper::header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
             .and_then(|auth_str| auth_str.strip_prefix("Bearer "))
-            .map(|token| token == config.proxy_api_key)
+            .map(|token| keys_equal(token, &config.proxy_api_key))
             .unwrap_or(false);
 
         // Check X-Api-Key header
@@ -1086,7 +1105,7 @@ async fn proxy_request(
             .headers
             .get("X-Api-Key")
             .and_then(|v| v.to_str().ok())
-            .map(|key| key == config.proxy_api_key)
+            .map(|key| keys_equal(key, &config.proxy_api_key))
             .unwrap_or(false);
 
         if !auth_valid && !api_key_valid {
@@ -2719,8 +2738,45 @@ async fn proxy_request(
 /// True when this bind exposes the API to the network with no authentication:
 /// a non-loopback host and an empty API key.
 fn is_insecure_public_bind(host: &str, api_key: &str) -> bool {
-    let is_loopback = matches!(host, "127.0.0.1" | "localhost" | "::1");
-    !is_loopback && api_key.is_empty()
+    !is_loopback_host(host) && api_key.is_empty()
+}
+
+/// True for `localhost` and any loopback IP literal, bracketed or not,
+/// including IPv4-mapped IPv6 loopback.
+fn is_loopback_host(host: &str) -> bool {
+    let bare = host.trim().trim_start_matches('[').trim_end_matches(']');
+    if bare.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    match bare.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => ip.is_loopback(),
+        Ok(std::net::IpAddr::V6(ip)) => {
+            ip.is_loopback() || ip.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback())
+        }
+        Err(_) => false,
+    }
+}
+
+/// Socket address for `host:port`, accepting bare or bracketed IPv6 literals
+/// and `localhost`.
+fn bind_addr(host: &str, port: u16) -> Result<SocketAddr, String> {
+    let bare = host.trim().trim_start_matches('[').trim_end_matches(']');
+    if bare.eq_ignore_ascii_case("localhost") {
+        return Ok(SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, port)));
+    }
+    bare.parse::<std::net::IpAddr>()
+        .map(|ip| SocketAddr::new(ip, port))
+        .map_err(|e| format!("Invalid address: {e}"))
+}
+
+/// Constant-time comparison of a presented key against the configured one.
+fn keys_equal(presented: &str, expected: &str) -> bool {
+    crate::core::remote::auth::constant_time_eq(presented.as_bytes(), expected.as_bytes())
+}
+
+/// Whether the host of a request's `Origin` is one the server trusts.
+fn origin_is_trusted(origin: &str, trusted_hosts: &[Vec<String>]) -> bool {
+    is_valid_host(&extract_host_from_origin(origin), trusted_hosts)
 }
 
 /// Convert a TCP bind failure into a user-facing message. Address-in-use
@@ -2916,9 +2972,7 @@ async fn start_server_internal(
         return Err("Server is already running".into());
     }
 
-    let addr: SocketAddr = format!("{host}:{port}")
-        .parse()
-        .map_err(|e| format!("Invalid address: {e}"))?;
+    let addr: SocketAddr = bind_addr(&host, port)?;
 
     // Binding to 0.0.0.0 exposes the server on the LAN, but that must NOT discard
     // the user's Trusted Hosts allowlist. LAN clients connect via http://192.168.x.x:port
@@ -2928,6 +2982,15 @@ async fn start_server_internal(
 
     // Calculate this before proxy_api_key is moved into ProxyConfig.
     let insecure_public_bind = is_insecure_public_bind(&host, &proxy_api_key);
+    if insecure_public_bind {
+        // Unauthenticated inference, model listing and (when enabled) MCP tool
+        // execution for anything that can reach this machine: never start.
+        return Err(format!(
+            "Refusing to bind the API server to {host} without an API key. Set an API key in \
+             Settings > Local API Server, or bind to 127.0.0.1."
+        )
+        .into());
+    }
 
     let client = upstream_client(Some(proxy_timeout))?;
     let local_client = local_upstream_client(Some(proxy_timeout))?;
@@ -2961,19 +3024,6 @@ async fn start_server_internal(
         enable_server_tool_execution,
         cors_enabled,
     };
-
-    // Security: binding to a non-loopback interface exposes the OpenAI-compatible
-    // API on the network. With no API key set, any reachable host can call it
-    // unauthenticated (model inference, model enumeration, and MCP tool execution
-    // when enabled). Warn loudly rather than refuse to start, so existing
-    // trusted-LAN setups keep working, but the operator is told.
-    if insecure_public_bind {
-        log::warn!(
-            "Flint API server is bound to a non-loopback address ({host}) with no API key set. \
-             The local API is reachable UNAUTHENTICATED by any host that can reach this machine. \
-             Set an API key in Settings > Local API Server to require authentication."
-        );
-    }
 
     let server_task = tokio::spawn(async move {
         loop {
@@ -3567,7 +3617,7 @@ mod tests {
     }
 
     use super::{
-        anthropic_context_error, bind_with_fallback, error_json, is_insecure_public_bind, is_local_url, map_bind_error,
+        anthropic_context_error, bind_addr, bind_with_fallback, error_json, is_insecure_public_bind, keys_equal, is_local_url, map_bind_error,
         model_ids_match,
     };
     use std::net::SocketAddr;
@@ -3611,7 +3661,7 @@ mod tests {
 
     #[test]
     fn loopback_never_warns() {
-        for host in ["127.0.0.1", "localhost", "::1"] {
+        for host in ["127.0.0.1", "localhost", "::1", "[::1]", "127.0.0.2", "::ffff:127.0.0.1"] {
             assert!(!is_insecure_public_bind(host, ""), "{host} should be safe");
             assert!(!is_insecure_public_bind(host, "secret"));
         }
@@ -3620,6 +3670,11 @@ mod tests {
     #[test]
     fn public_bind_without_key_warns() {
         assert!(is_insecure_public_bind("0.0.0.0", ""));
+        assert!(bind_addr("::1", 80).is_ok());
+        assert!(bind_addr("[::1]", 80).is_ok());
+        assert!(keys_equal("abc", "abc"));
+        assert!(!keys_equal("abc", "abd"));
+        assert!(!keys_equal("abc", "abcd"));
         assert!(is_insecure_public_bind("192.168.1.10", ""));
     }
 

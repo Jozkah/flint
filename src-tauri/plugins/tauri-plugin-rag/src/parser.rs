@@ -183,6 +183,32 @@ pub fn parse_document(file_path: &str, file_type: &str) -> Result<String, RagErr
     }
 }
 
+/// Ceiling for the decompressed size of one XML part inside an OOXML zip. The
+/// 200MB limit on the compressed file does not bound what a small archive
+/// inflates to.
+const MAX_ZIP_ENTRY_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Read a zip entry as text, refusing one that inflates past the cap.
+fn read_zip_entry_capped<R: Read>(entry: R, declared: u64) -> Result<String, RagError> {
+    if declared > MAX_ZIP_ENTRY_BYTES {
+        return Err(RagError::ParseError(
+            "Document part is too large once decompressed".to_string(),
+        ));
+    }
+    let mut out = String::new();
+    // Declared sizes can lie; the take() is the real bound.
+    entry
+        .take(MAX_ZIP_ENTRY_BYTES + 1)
+        .read_to_string(&mut out)
+        .map_err(|e| RagError::ParseError(e.to_string()))?;
+    if out.len() as u64 > MAX_ZIP_ENTRY_BYTES {
+        return Err(RagError::ParseError(
+            "Document part is too large once decompressed".to_string(),
+        ));
+    }
+    Ok(out)
+}
+
 fn parse_docx(file_path: &str) -> Result<String, RagError> {
     let metadata = std::fs::metadata(file_path)?;
     if metadata.len() > MAX_PARSE_FILE_SIZE {
@@ -196,10 +222,8 @@ fn parse_docx(file_path: &str) -> Result<String, RagError> {
         Ok(f) => f,
         Err(_) => return Err(RagError::ParseError("document.xml not found".into())),
     };
-    let mut xml_content = String::new();
-    doc_xml
-        .read_to_string(&mut xml_content)
-        .map_err(|e| RagError::ParseError(e.to_string()))?;
+    let declared = doc_xml.size();
+    let xml_content = read_zip_entry_capped(&mut doc_xml, declared)?;
 
     // Parse XML and extract text from w:t nodes; add newlines on w:p boundaries
     let mut reader = Reader::from_str(&xml_content);
@@ -385,8 +409,13 @@ fn parse_pptx(file_path: &str) -> Result<String, RagError> {
     let mut output = String::new();
     for slide_name in slides {
         let mut file = zip.by_name(&slide_name).map_err(|e| RagError::ParseError(e.to_string()))?;
-        let mut xml = String::new();
-        file.read_to_string(&mut xml).map_err(|e| RagError::ParseError(e.to_string()))?;
+        let declared = file.size();
+        let xml = read_zip_entry_capped(&mut file, declared)?;
+        if output.len() as u64 > MAX_ZIP_ENTRY_BYTES {
+            return Err(RagError::ParseError(
+                "Presentation text is too large".to_string(),
+            ));
+        }
         output.push_str(&extract_pptx_text(&xml));
         output.push_str("\n\n");
     }

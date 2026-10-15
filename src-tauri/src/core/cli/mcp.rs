@@ -104,12 +104,18 @@ fn write_config(data_folder: &std::path::Path, cfg: &Value) -> Result<(), String
 
 /// Read the `mcpServers` object as a mutable map, defaulting to an empty one.
 fn servers_map_mut(cfg: &mut Value) -> &mut serde_json::Map<String, Value> {
-    cfg.as_object_mut()
-        .unwrap()
+    if !cfg.is_object() {
+        *cfg = serde_json::json!({});
+    }
+    let root = cfg.as_object_mut().expect("root was just made an object");
+    // A hand-edited file may hold null, an array or a string here.
+    let entry = root
         .entry("mcpServers")
-        .or_insert_with(|| serde_json::json!({}))
-        .as_object_mut()
-        .expect("mcpServers is an object")
+        .or_insert_with(|| serde_json::json!({}));
+    if !entry.is_object() {
+        *entry = serde_json::json!({});
+    }
+    entry.as_object_mut().expect("mcpServers was just made an object")
 }
 
 /// Parsed `mcpSettings` block (tool-call timeout etc.), defaults when absent.
@@ -536,7 +542,17 @@ async fn connect_in(
                         }
                     });
                 }
-                RunningServiceEnum::NoInit(().serve(process).await.map_err(|e| {
+                // A server that starts but never answers `initialize` must not
+                // hang the whole agent run; dropping the future kills it.
+                let served = tokio::time::timeout(CONNECT_TIMEOUT, ().serve(process))
+                    .await
+                    .map_err(|_| {
+                        ConnectError::Failed(format!(
+                            "'{name}' did not complete the MCP handshake within {}s",
+                            CONNECT_TIMEOUT.as_secs()
+                        ))
+                    })?;
+                RunningServiceEnum::NoInit(served.map_err(|e| {
                     ConnectError::Failed(format!("failed to connect to '{name}': {e}"))
                 })?)
             }
@@ -557,13 +573,21 @@ where
         client,
         StreamableHttpClientTransportConfig::with_uri(url.to_string()),
     );
+    let served = tokio::time::timeout(CONNECT_TIMEOUT, client_info().serve(transport))
+        .await
+        .map_err(|_| {
+            format!(
+                "'{name}' did not complete the MCP handshake within {}s",
+                CONNECT_TIMEOUT.as_secs()
+            )
+        })?;
     Ok(RunningServiceEnum::WithInit(
-        client_info()
-            .serve(transport)
-            .await
-            .map_err(|e| format!("failed to connect to '{name}': {e}"))?,
+        served.map_err(|e| format!("failed to connect to '{name}': {e}"))?,
     ))
 }
+
+/// Upper bound for the MCP `initialize` handshake of one server.
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 fn client_info() -> ClientInfo {
     ClientInfo::new(

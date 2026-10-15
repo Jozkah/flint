@@ -14,8 +14,6 @@
     "core:window:allow-close",
     "core:window:allow-show",
     "core:window:allow-set-title",
-    "shell:allow-spawn",
-    "shell:allow-open",
     "core:app:allow-set-app-theme",
     "core:window:allow-set-focus",
     "core:window:allow-request-user-attention",
@@ -39,7 +37,13 @@
           "url": "https://*:*"
         },
         {
-          "url": "http://*:*"
+          "url": "http://127.0.0.1:*"
+        },
+        {
+          "url": "http://localhost:*"
+        },
+        {
+          "url": "http://[::1]:*"
         }
       ],
       "deny": []

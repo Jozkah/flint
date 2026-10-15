@@ -877,6 +877,29 @@ pub fn agent_worktree_state(record: WorktreeRecordInput) -> worktree::WorktreeSt
     worktree::state(&record.into())
 }
 
+/// Component-wise prefix check that also refuses `..`: `Path::starts_with` is
+/// purely lexical, so `root/../elsewhere` would otherwise pass.
+fn is_under_root(path: &std::path::Path, root: &std::path::Path) -> bool {
+    path.starts_with(root)
+        && !path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+}
+
+#[cfg(test)]
+mod under_root_tests {
+    use super::is_under_root;
+    use std::path::Path;
+
+    #[test]
+    fn parent_dir_escapes_are_refused() {
+        let root = Path::new("/data/worktrees");
+        assert!(is_under_root(Path::new("/data/worktrees/a/b"), root));
+        assert!(!is_under_root(Path::new("/data/worktrees/../x"), root));
+        assert!(!is_under_root(Path::new("/data/other"), root));
+    }
+}
+
 /// Remove a worktree and its branch.
 ///
 /// Only ever called because someone asked: this is the one operation here that
@@ -894,7 +917,7 @@ pub fn agent_worktree_discard(
 ) -> Result<(), String> {
     let roots = owned_worktrees_root(&data_folder)?;
     let record: worktree::WorktreeRecord = record.into();
-    if !std::path::Path::new(&record.path).starts_with(&roots) {
+    if !is_under_root(std::path::Path::new(&record.path), &roots) {
         return Err(format!(
             "{} is not a worktree Flint manages, so Flint will not remove it",
             record.path
@@ -922,7 +945,7 @@ pub fn discard_for_purge(
         return Ok(());
     }
     let roots = worktree::absolute(&workspace::worktrees_dir(data_folder))?;
-    if !std::path::Path::new(path).starts_with(&roots) {
+    if !is_under_root(std::path::Path::new(path), &roots) {
         return Err(format!(
             "{path} is not a worktree Flint manages, so Flint will not remove it"
         ));
@@ -1042,7 +1065,7 @@ pub fn agent_worktree_optimize(
 ) -> Result<(), String> {
     let roots = owned_worktrees_root(&data_folder)?;
     let record: worktree::WorktreeRecord = record.into();
-    if !std::path::Path::new(&record.path).starts_with(&roots) {
+    if !is_under_root(std::path::Path::new(&record.path), &roots) {
         return Err(format!(
             "{} is not a worktree Flint manages, so Flint will not optimize it",
             record.path
