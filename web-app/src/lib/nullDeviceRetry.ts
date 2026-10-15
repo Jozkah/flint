@@ -51,8 +51,23 @@ export type NullDeviceRetryOutcome = {
 }
 
 /**
+ * Programs that run whatever code they are handed: a grant keyed on one of
+ * them would cover any command at all.
+ */
+const INTERPRETERS = new Set([
+  'bash', 'sh', 'zsh', 'dash', 'fish', 'cmd', 'powershell', 'pwsh', 'env',
+  'python', 'python3', 'py', 'pythonw', 'node', 'bun', 'deno', 'npx', 'bunx',
+  'ruby', 'perl', 'php', 'lua', 'wsl', 'start', 'call', 'xargs', 'nohup',
+  'sudo', 'time', 'exec', 'eval', 'source', 'wscript', 'cscript', 'mshta',
+  'rundll32', 'regsvr32',
+])
+
+/**
  * The program a `bash` call runs (`go` for `go test ./...`), lowercased with
- * any directory and `.exe` dropped. Undefined when it cannot be told.
+ * any directory and `.exe` dropped. Undefined when it cannot be told, and for
+ * a line that chains, pipes, redirects into or substitutes other commands or
+ * starts an interpreter: "allow for this conversation" is keyed on the
+ * program, so it is only offered when the program is all the line runs.
  */
 export function commandProgram(input: unknown): string | undefined {
   const command =
@@ -60,12 +75,14 @@ export function commandProgram(input: unknown): string | undefined {
       ? (input as { command?: unknown }).command
       : undefined
   if (typeof command !== 'string') return undefined
+  if (/[;&|`$()<>\r\n]/.test(command)) return undefined
   // Skip leading `VAR=value` assignments; take the first real word.
   const words = command.trim().split(/\s+/)
   const first = words.find((w) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w))
   if (!first) return undefined
   const bare = first.replace(/^["']|["']$/g, '').split(/[\\/]/).pop() ?? ''
   const program = bare.toLowerCase().replace(/\.exe$/, '')
+  if (INTERPRETERS.has(program.replace(/[\d.]+$/, ''))) return undefined
   return /^[a-z0-9._+-]+$/.test(program) ? program : undefined
 }
 

