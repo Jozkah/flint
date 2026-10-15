@@ -346,11 +346,17 @@ pub fn gh_status() -> (bool, GhAuth) {
     };
     let mut cmd = Command::new(&gh);
     cmd.args(["auth", "status"]);
-    jan_utils::system::hide_console_window(&mut cmd);
-    match cmd.output() {
-        Ok(out) if out.status.success() => (true, GhAuth::Yes),
-        Ok(_) => (true, GhAuth::No),
-        Err(_) => (true, GhAuth::Unknown),
+    cmd.env("GH_PROMPT_DISABLED", "1");
+    // Bounded like every other `gh` call: a hung credential helper or network
+    // check must not stall the caller.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let out = run_bounded(cmd, 64 * 1024, deadline);
+    if out.ok {
+        (true, GhAuth::Yes)
+    } else if out.stderr == "gh did not answer in time" {
+        (true, GhAuth::Unknown)
+    } else {
+        (true, GhAuth::No)
     }
 }
 
@@ -615,5 +621,101 @@ mod tests {
         }
         assert!(!looks_like_private_access_failure("connection reset by peer"));
         assert!(!looks_like_private_access_failure("timed out"));
+    }
+}
+
+/// What one bounded `gh` call printed.
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) struct GhOutput {
+    pub ok: bool,
+    pub stdout: String,
+    pub stderr: String,
+    /// Stdout reached the cap and the rest was not read.
+    pub truncated: bool,
+}
+
+pub(crate) fn run_bounded(
+    mut cmd: Command,
+    cap: usize,
+    deadline: std::time::Instant,
+) -> GhOutput {
+    use std::io::Read;
+    use std::process::Stdio;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    jan_utils::system::hide_console_window(&mut cmd);
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => return GhOutput { stderr: e.to_string(), ..GhOutput::default() },
+    };
+    let full = Arc::new(AtomicBool::new(false));
+    let mut stdout = child.stdout.take();
+    let mut stderr = child.stderr.take();
+    let full_flag = full.clone();
+    // Readers hand back what they have over channels: a grandchild that keeps
+    // a pipe open after `gh` is killed must not keep this call waiting.
+    let (out_tx, out_rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let (err_tx, err_rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(out) = stdout.as_mut() {
+            let mut chunk = [0u8; 16 * 1024];
+            while let Ok(n) = out.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                let room = cap.saturating_sub(buf.len());
+                buf.extend_from_slice(&chunk[..n.min(room)]);
+                if n >= room {
+                    full_flag.store(true, Ordering::SeqCst);
+                    break;
+                }
+            }
+        }
+        let _ = out_tx.send(buf);
+    });
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(err) = stderr.as_mut() {
+            let _ = err.take(64 * 1024).read_to_end(&mut buf);
+        }
+        let _ = err_tx.send(buf);
+    });
+    let mut timed_out = false;
+    let mut killed = false;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) => {}
+            Err(_) => break None,
+        }
+        if full.load(Ordering::SeqCst) || std::time::Instant::now() >= deadline {
+            timed_out = !full.load(Ordering::SeqCst);
+            killed = true;
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    };
+    // A process that exited normally has closed its pipes; one that was killed
+    // may have left a grandchild holding them, so the wait is bounded.
+    let grace = if killed { std::time::Duration::from_millis(500) } else { std::time::Duration::from_secs(5) };
+    let stdout = out_rx.recv_timeout(grace).unwrap_or_default();
+    let stderr = err_rx.recv_timeout(grace).unwrap_or_default();
+    let truncated = full.load(Ordering::SeqCst);
+    GhOutput {
+        // Cut off at the cap is still a log worth showing the end of.
+        ok: truncated || status.is_some_and(|s| s.success()),
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: if timed_out {
+            "gh did not answer in time".to_string()
+        } else {
+            String::from_utf8_lossy(&stderr).into_owned()
+        },
+        truncated,
     }
 }
