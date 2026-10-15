@@ -362,11 +362,40 @@ fn excel_duration(days: f64) -> String {
     format!("{}{}:{:02}:{:02}", sign, secs / 3600, secs % 3600 / 60, secs % 60)
 }
 
+/// Ceiling for everything an xlsx/ods archive inflates to. calamine reads
+/// whole parts into memory, so a small zip bomb would otherwise take the app
+/// down before any parse error could be reported.
+const MAX_SPREADSHEET_INFLATED_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Inflate every entry into a sink and fail once the total passes `cap`.
+/// Declared sizes can lie, so the bytes are counted, not the headers. A file
+/// that is not a zip (legacy .xls) has nothing to check.
+fn check_zip_inflated_size(file_path: &str, cap: u64) -> Result<(), RagError> {
+    let Ok(mut zip) = ZipArchive::new(fs::File::open(file_path)?) else {
+        return Ok(());
+    };
+    let mut total: u64 = 0;
+    for i in 0..zip.len() {
+        let entry = zip
+            .by_index(i)
+            .map_err(|e| RagError::ParseError(e.to_string()))?;
+        total += std::io::copy(&mut entry.take(cap - total + 1), &mut std::io::sink())
+            .map_err(|e| RagError::ParseError(e.to_string()))?;
+        if total > cap {
+            return Err(RagError::ParseError(
+                "Spreadsheet is too large once decompressed".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn parse_spreadsheet(file_path: &str) -> Result<String, RagError> {
     let metadata = fs::metadata(file_path)?;
     if metadata.len() > MAX_PARSE_FILE_SIZE {
         return Err(RagError::ParseError("File too large (max 200MB)".to_string()));
     }
+    check_zip_inflated_size(file_path, MAX_SPREADSHEET_INFLATED_BYTES)?;
     let mut workbook = open_workbook_auto(file_path)
         .map_err(|e| RagError::ParseError(e.to_string()))?;
     let mut out = String::new();
@@ -568,6 +597,17 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn spreadsheet_zip_bomb_is_refused_by_inflated_size() {
+        let dir = TempDir::new("zipbomb");
+        let body = "0".repeat(4096);
+        let path = dir.zip("bomb.xlsx", &[("a.xml", &body), ("b.xml", &body)]);
+        assert!(check_zip_inflated_size(&path, 8192).is_ok());
+        assert!(is_too_large(check_zip_inflated_size(&path, 8191).unwrap_err()));
+        let plain = dir.file("old.xls", b"not a zip");
+        assert!(check_zip_inflated_size(&plain, 1).is_ok());
     }
 
     fn is_too_large(err: RagError) -> bool {

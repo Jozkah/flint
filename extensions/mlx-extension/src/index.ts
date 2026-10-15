@@ -195,7 +195,14 @@ export default class mlx_extension extends AIEngine {
     let modelInfos: modelInfo[] = []
     for (const modelId of modelIds) {
       const path = await joinPath([modelsDir, modelId, 'model.yml'])
-      const modelConfig = await invoke<ModelConfig>('read_yaml', { path })
+      let modelConfig: ModelConfig
+      try {
+        modelConfig = await invoke<ModelConfig>('read_yaml', { path })
+      } catch (e) {
+        // One unreadable model.yml must not blank the whole MLX list.
+        logger.warn(`Skipping MLX model ${modelId}: ${e}`)
+        continue
+      }
 
       const capabilities: string[] = []
       if (modelConfig.mmproj_path) {
@@ -879,9 +886,19 @@ export default class mlx_extension extends AIEngine {
       modelPath = await joinPath([janDataFolderPath, modelConfig.model_path])
     }
 
-    // Check if model is safetensors or GGUF
-    const isSafetensors = modelPath.endsWith('.safetensors')
-    const modelDir = modelPath.substring(0, modelPath.lastIndexOf('/'))
+    // Check if model is safetensors or GGUF. Both import paths store the
+    // model folder, which holds safetensors; treating it as a GGUF file made
+    // every MLX model lose the tools capability.
+    let isDirectory = false
+    try {
+      isDirectory = !!(await fs.fileStat(modelPath))?.isDirectory
+    } catch {
+      // Missing path: fall through to the extension checks.
+    }
+    const isSafetensors = isDirectory || modelPath.endsWith('.safetensors')
+    const modelDir = isDirectory
+      ? modelPath
+      : modelPath.substring(0, modelPath.lastIndexOf('/'))
 
     // For safetensors models, check multiple sources for tool support
     if (isSafetensors) {

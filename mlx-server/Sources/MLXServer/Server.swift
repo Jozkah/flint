@@ -453,8 +453,7 @@ struct MLXHTTPServer {
                     log("[mlx] Error in SSE stream: \(error.localizedDescription)")
                     // Send error as SSE event
                     var buffer = ByteBufferAllocator().buffer(capacity: 256)
-                    buffer.writeString(
-                        "error: {\"message\":\"\(error.localizedDescription)\"}\n\n")
+                    buffer.writeString("error: \(sseErrorJSON(error.localizedDescription))\n\n")
                     continuation.yield(buffer)
                 } else {
                     log("[mlx] SSE stream cancelled by client")
@@ -711,8 +710,7 @@ struct MLXHTTPServer {
                 if !Task.isCancelled {
                     log("[mlx] Error in Anthropic SSE stream: \(error.localizedDescription)")
                     var buffer = ByteBufferAllocator().buffer(capacity: 256)
-                    buffer.writeString(
-                        "error: {\"message\":\"\(error.localizedDescription)\"}\n\n")
+                    buffer.writeString("error: \(sseErrorJSON(error.localizedDescription))\n\n")
                     continuation.yield(buffer)
                 }
             }
@@ -797,4 +795,11 @@ private func buildSSEFrame(_ data: Data) -> ByteBuffer {
     buffer.writeBytes(data)
     buffer.writeString("\n\n")
     return buffer
+}
+
+/// `{"message": ...}` with the text JSON-escaped: a quote or newline in an
+/// error description made the frame unparseable and hid the real error.
+func sseErrorJSON(_ message: String) -> String {
+    let data = try? JSONSerialization.data(withJSONObject: ["message": message])
+    return data.flatMap { String(data: $0, encoding: .utf8) } ?? #"{"message":"internal error"}"#
 }

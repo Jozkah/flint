@@ -450,8 +450,37 @@ pub fn insert_chunks(
     Ok(())
 }
 
+/// Removes the ANN rows of the chunks `chunk_filter` selects (a `WHERE` on
+/// `chunks` with one `?1` parameter). Left behind they would keep matching,
+/// fill the `k` nearest slots with rows that join to nothing, and be served
+/// again if a new chunk reused the rowid. Best effort: without sqlite-vec
+/// there is no `chunks_vec` to clean.
+fn delete_vec_rows(conn: &Connection, chunk_filter: &str, param: &str) {
+    let has_vec = try_load_sqlite_vec(conn)
+        && conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='chunks_vec'",
+                [],
+                |_| Ok(()),
+            )
+            .optional()
+            .ok()
+            .flatten()
+            .is_some();
+    if !has_vec {
+        return;
+    }
+    let sql = format!(
+        "DELETE FROM chunks_vec WHERE rowid IN (SELECT rowid FROM chunks WHERE {chunk_filter})"
+    );
+    if let Err(e) = conn.execute(&sql, params![param]) {
+        println!("[VectorDB] ✗ Failed to delete chunks_vec rows: {}", e);
+    }
+}
+
 pub fn delete_file(conn: &Connection, file_id: &str) -> Result<(), VectorDBError> {
     let tx = conn.unchecked_transaction()?;
+    delete_vec_rows(&tx, "file_id = ?1", file_id);
     tx.execute("DELETE FROM chunks WHERE file_id = ?1", params![file_id])?;
     tx.execute("DELETE FROM files WHERE id = ?1", params![file_id])?;
     tx.commit()?;
@@ -532,7 +561,10 @@ pub fn search_collection(
         _ => true, // auto prefers ANN when available
     };
 
-    if has_vec && prefer_ann {
+    // vec0 applies `k` before the file_id filter, so a scoped ANN query
+    // returns only those of the k global nearest that belong to the files --
+    // often none. A scoped search covers few chunks; scan them exactly.
+    if has_vec && prefer_ann && file_ids.is_none() {
         search_ann(conn, query_embedding, limit, file_ids)
     } else {
         search_linear(conn, query_embedding, limit, threshold, file_ids)
@@ -760,6 +792,7 @@ pub fn list_attachments(
 pub fn delete_chunks(conn: &Connection, ids: Vec<String>) -> Result<(), VectorDBError> {
     let tx = conn.unchecked_transaction()?;
     for id in ids {
+        delete_vec_rows(&tx, "id = ?1", &id);
         tx.execute("DELETE FROM chunks WHERE id = ?1", params![id])?;
     }
     tx.commit()?;

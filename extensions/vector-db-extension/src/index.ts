@@ -36,6 +36,23 @@ function describeError(e: unknown): string {
   return String(e)
 }
 
+/**
+ * Insert a new file's chunks, removing the file row if that fails. A row left
+ * with no chunks would make every retry fail the duplicate check.
+ */
+async function insertOrRollback(
+  collection: string,
+  fileId: string,
+  chunks: { text: string; embedding: number[] }[]
+): Promise<void> {
+  try {
+    await vecdb.insertChunks(collection, fileId, chunks)
+  } catch (e) {
+    await vecdb.deleteFile(collection, fileId).catch(() => {})
+    throw e
+  }
+}
+
 export default class VectorDBExt extends VectorDBExtension {
   async onLoad(): Promise<void> {
     // no-op
@@ -133,7 +150,7 @@ export default class VectorDBExt extends VectorDBExtension {
     await this.createCollectionForProject(projectId, dimension)
 
     const fi = await vecdb.createFile(this.collectionForProject(projectId), file)
-    await vecdb.insertChunks(
+    await insertOrRollback(
       this.collectionForProject(projectId),
       fi.id,
       chunks.map((t, i) => ({ text: t, embedding: embeddings[i] }))
@@ -264,7 +281,7 @@ export default class VectorDBExt extends VectorDBExtension {
     if (dimension <= 0) throw new Error('Embedding dimension not available')
     await this.createCollection(threadId, dimension)
     const fi = await vecdb.createFile(this.collectionForThread(threadId), file)
-    await vecdb.insertChunks(
+    await insertOrRollback(
       this.collectionForThread(threadId),
       fi.id,
       chunks.map((t, i) => ({ text: t, embedding: embeddings[i] }))

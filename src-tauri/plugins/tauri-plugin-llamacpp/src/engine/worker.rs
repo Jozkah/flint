@@ -27,6 +27,30 @@ pub struct Handshake {
     pub models: Vec<String>,
 }
 
+/// Line reader that survives non-UTF-8 output. `Lines` ends the stream at
+/// the first invalid byte, which would silently stop fault detection (and,
+/// on stdout, the drain that keeps the worker from blocking on a full pipe).
+struct LossyLines<R> {
+    inner: tokio::io::Split<BufReader<R>>,
+}
+
+impl<R: tokio::io::AsyncRead + Unpin> LossyLines<R> {
+    fn new(reader: R) -> Self {
+        Self {
+            inner: BufReader::new(reader).split(b'\n'),
+        }
+    }
+
+    async fn next_line(&mut self) -> std::io::Result<Option<String>> {
+        Ok(self.inner.next_segment().await?.map(|mut bytes| {
+            if bytes.last() == Some(&b'\r') {
+                bytes.pop();
+            }
+            String::from_utf8_lossy(&bytes).into_owned()
+        }))
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum WorkerError {
     Spawn(String),
@@ -734,7 +758,7 @@ pub async fn spawn_with_offload(
     let drain = child.stderr.take().map(|stderr| {
         let tail = stderr_tail.clone();
         tokio::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
+            let mut lines = LossyLines::new(stderr);
             let mut reader = FaultReader::default();
             let mut last_fault_at: Option<tokio::time::Instant> = None;
             let mut offload = OffloadTracker::default();
@@ -779,7 +803,7 @@ pub async fn spawn_with_offload(
         })
     });
 
-    let mut lines = BufReader::new(stdout).lines();
+    let mut lines = LossyLines::new(stdout);
     let first = tokio::time::timeout(HANDSHAKE_TIMEOUT, lines.next_line()).await;
 
     let line = match first {
@@ -1145,6 +1169,22 @@ mod tests {
                 "should have rejected {bad:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn lossy_lines_read_past_invalid_utf8() {
+        let input: &[u8] = b"ok\r\nbad \xff byte\nCUDA error: out of memory\n";
+        let mut lines = LossyLines::new(input);
+        assert_eq!(lines.next_line().await.unwrap().as_deref(), Some("ok"));
+        assert_eq!(
+            lines.next_line().await.unwrap().as_deref(),
+            Some("bad \u{fffd} byte")
+        );
+        assert_eq!(
+            lines.next_line().await.unwrap().as_deref(),
+            Some("CUDA error: out of memory")
+        );
+        assert_eq!(lines.next_line().await.unwrap(), None);
     }
 
     #[tokio::test]

@@ -89,8 +89,8 @@ actor ModelRunner {
     }
 
     /// Inspect the model folder to see if the chat template injects a `<think>`
-    /// opener into the assistant turn. Heuristic — looks for the literal
-    /// `<think>` substring across the conventional template locations:
+    /// opener into the assistant turn. Heuristic — see `injectsOpener` — applied
+    /// across the conventional template locations:
     ///   - `chat_template.jinja` (newer split-file convention, Qwen3-VL etc.)
     ///   - `chat_template.json`  ({ "chat_template": ... } wrapper)
     ///   - `tokenizer_config.json` → `chat_template` (older inline convention)
@@ -98,7 +98,7 @@ actor ModelRunner {
         // 1. Standalone Jinja file.
         let jinjaURL = modelDir.appendingPathComponent("chat_template.jinja")
         if let body = try? String(contentsOf: jinjaURL, encoding: .utf8),
-           body.contains("<think>") {
+           injectsOpener(body) {
             return true
         }
 
@@ -121,14 +121,29 @@ actor ModelRunner {
         return false
     }
 
+    /// True when the template's generation prompt leaves a `<think>` open.
+    /// Many non-thinking templates mention `<think>` only to strip it from
+    /// history, and hybrid ones emit a closed `<think></think>` to turn
+    /// thinking off; neither starts the reply inside a reasoning block, and
+    /// treating them as if they did sent the whole answer to reasoning.
+    nonisolated static func injectsOpener(_ template: String) -> Bool {
+        guard let prompt = template.range(of: "add_generation_prompt", options: .backwards) else {
+            return false
+        }
+        let tail = template[prompt.upperBound...]
+        let opens = tail.components(separatedBy: "<think>").count - 1
+        let closes = tail.components(separatedBy: "</think>").count - 1
+        return opens > closes
+    }
+
     /// `chat_template` can be a string or an array of { name, template } entries.
     private nonisolated static func templateValueContainsThink(_ value: Any?) -> Bool {
         if let body = value as? String {
-            return body.contains("<think>")
+            return injectsOpener(body)
         }
         if let entries = value as? [[String: Any]] {
             for entry in entries {
-                if let body = entry["template"] as? String, body.contains("<think>") {
+                if let body = entry["template"] as? String, injectsOpener(body) {
                     return true
                 }
             }
@@ -194,7 +209,31 @@ actor ModelRunner {
         }
 
         return Chat.Message(
-            role: role, content: message.content.textContent, images: images, videos: videos)
+            role: role, content: Self.contentWithToolCalls(message), images: images, videos: videos)
+    }
+
+    /// `Chat.Message` has no tool-call field, so an assistant turn that only
+    /// called tools reached the template empty and the following `tool`
+    /// results had nothing to pair with. Render the calls into the content in
+    /// the `<tool_call>` form most MLX tool models (Qwen, Hermes) are trained on.
+    nonisolated static func contentWithToolCalls(_ message: ChatMessage) -> String {
+        let text = message.content.textContent
+        guard message.role == "assistant", let calls = message.tool_calls, !calls.isEmpty else {
+            return text
+        }
+        var parts = text.isEmpty ? [] : [text]
+        for call in calls {
+            let arguments: Any =
+                call.function.arguments.data(using: .utf8).flatMap {
+                    try? JSONSerialization.jsonObject(with: $0, options: [.fragmentsAllowed])
+                } ?? call.function.arguments
+            let object: [String: Any] = ["name": call.function.name, "arguments": arguments]
+            guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+                  let json = String(data: data, encoding: .utf8)
+            else { continue }
+            parts.append("<tool_call>\n\(json)\n</tool_call>")
+        }
+        return parts.joined(separator: "\n")
     }
 
     /// Build GenerateParameters from individual parameters

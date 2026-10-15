@@ -27,6 +27,10 @@ struct AnyCodable: Codable, @unchecked Sendable {
 
         if let string = value as? String {
             try container.encode(string)
+        } else if let number = value as? NSNumber,
+                  CFGetTypeID(number) == CFBooleanGetTypeID() {
+            // JSONSerialization yields NSNumber, which also casts to Int.
+            try container.encode(number.boolValue)
         } else if let int = value as? Int {
             try container.encode(int)
         } else if let double = value as? Double {

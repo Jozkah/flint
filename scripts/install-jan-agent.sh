@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Installs the `jan` agent CLI on Linux and macOS: either a published build
-# from delta.jan.ai (default) or one compiled from this checkout (--source).
+# from Flint's GitHub releases (default) or one compiled from this checkout
+# (--source).
 # Windows has install-jan-agent.ps1; this script also works from Git Bash,
 # but only if `unzip` is available there.
 # The CLI has no self-update command: re-run this script to update.
 set -euo pipefail
 
-CHANNEL="agent-nightly"
+REPO="Jozkah/flint"
 INSTALL_DIR="${JAN_INSTALL_DIR:-$HOME/.local/bin}"
 VERSION=""
 FROM_SOURCE=0
@@ -18,15 +19,14 @@ usage() {
 Usage: scripts/install-jan-agent.sh [options]
 
   --dir DIR         Install directory (default: $JAN_INSTALL_DIR or ~/.local/bin)
-  --channel NAME    Release channel to install from (default: agent-nightly)
-  --version VER     Install a specific version instead of the latest
+  --version VER     Install a specific release (e.g. 0.9.0) instead of the latest
   --source          Build from this checkout instead of downloading
   -h, --help        Show this help
 
 Examples:
-  scripts/install-jan-agent.sh                      # latest nightly to ~/.local/bin
+  scripts/install-jan-agent.sh                      # latest release to ~/.local/bin
   scripts/install-jan-agent.sh --dir /usr/local/bin # needs write access to that dir
-  scripts/install-jan-agent.sh --version 0.8.4-97   # a specific nightly
+  scripts/install-jan-agent.sh --version 0.9.0      # a specific release
   scripts/install-jan-agent.sh --source             # compile this working tree
 EOF
 }
@@ -39,7 +39,6 @@ die() {
 while [ $# -gt 0 ]; do
   case "$1" in
     --dir) INSTALL_DIR="${2:?--dir needs a path}"; shift 2 ;;
-    --channel) CHANNEL="${2:?--channel needs a name}"; shift 2 ;;
     --version) VERSION="${2:?--version needs a version}"; shift 2 ;;
     --source) FROM_SOURCE=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -47,7 +46,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Platform keys and archive names match the nightly workflow's manifest.
+# Release asset targets match scripts/render-package-manifests.mjs.
 detect_platform() {
   local os arch
   os="$(uname -s)"
@@ -55,26 +54,21 @@ detect_platform() {
   case "$os" in
     Linux)
       case "$arch" in
-        x86_64)
-          PLATFORM_KEY="linux-x86_64"
-          ARCHIVE_SLUG="linux-x86_64"
-          ;;
-        aarch64)
-          PLATFORM_KEY="linux-aarch64"
-          ARCHIVE_SLUG="linux-aarch64"
-          ;;
+        x86_64) TARGET="x86_64-unknown-linux-gnu" ;;
+        aarch64|arm64) TARGET="aarch64-unknown-linux-gnu" ;;
         *) die "no published build for Linux $arch; use --source" ;;
       esac
       ARCHIVE_EXT="tar.gz"
       ;;
     Darwin)
-      PLATFORM_KEY="darwin-universal"
-      ARCHIVE_SLUG="darwin-universal"
+      case "$arch" in
+        arm64) TARGET="aarch64-apple-darwin" ;;
+        *) die "no published build for macOS $arch; use --source" ;;
+      esac
       ARCHIVE_EXT="tar.gz"
       ;;
     MINGW*|MSYS*|CYGWIN*)
-      PLATFORM_KEY="windows-x86_64"
-      ARCHIVE_SLUG="windows-x86_64"
+      TARGET="x86_64-pc-windows-msvc"
       ARCHIVE_EXT="zip"
       BINARY_NAME="flint.exe"
       ;;
@@ -93,27 +87,6 @@ sha256_of() {
   fi
 }
 
-# The manifest's per-platform objects are flat (url, sha256), so collapsing
-# whitespace and slicing out the one object is enough -- no jq dependency.
-# Absent fields (sha256 is optional) print nothing rather than failing.
-manifest_field() {
-  local manifest="$1" key="$2" field="$3"
-  printf '%s' "$manifest" \
-    | tr -d ' \n\r\t' \
-    | grep -o "\"$key\":{[^}]*}" \
-    | grep -o "\"$field\":\"[^\"]*\"" \
-    | head -1 \
-    | sed 's/.*:"//; s/"$//' || true
-}
-
-manifest_version() {
-  printf '%s' "$1" \
-    | tr -d ' \n\r\t' \
-    | grep -o '"version":"[^"]*"' \
-    | head -1 \
-    | sed 's/.*:"//; s/"$//' || true
-}
-
 install_binary() {
   local src="$1" dest="$INSTALL_DIR/$BINARY_NAME"
   mkdir -p "$INSTALL_DIR" || die "cannot create $INSTALL_DIR"
@@ -124,7 +97,7 @@ install_binary() {
   # `jan --version` reports Cargo.toml's pinned version, not the nightly build
   # number, so report the build we actually installed.
   if [ -n "$VERSION" ]; then
-    echo "installed $dest ($CHANNEL $VERSION)"
+    echo "installed $dest ($VERSION)"
   else
     echo "installed $dest"
   fi
@@ -148,41 +121,45 @@ build_from_source() {
 
 install_published() {
   command -v curl >/dev/null 2>&1 || die "curl not found"
-  local base="https://delta.jan.ai/$CHANNEL" url="" expected=""
-
+  local tag
   if [ -n "$VERSION" ]; then
-    url="$base/jan-agent-$ARCHIVE_SLUG-$VERSION.$ARCHIVE_EXT"
+    tag="v${VERSION#v}"
   else
-    echo "resolving the latest $CHANNEL build"
-    local manifest
-    manifest="$(curl -fsSL "$base/manifest.json")" || die "cannot fetch $base/manifest.json"
-    VERSION="$(manifest_version "$manifest")"
-    url="$(manifest_field "$manifest" "$PLATFORM_KEY" url)"
-    expected="$(manifest_field "$manifest" "$PLATFORM_KEY" sha256)"
-    [ -n "$url" ] || die "the $CHANNEL manifest has no build for $PLATFORM_KEY"
+    echo "resolving the latest release of $REPO"
+    tag="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+      | tr -d ' \n\r\t' \
+      | grep -o '"tag_name":"[^"]*"' \
+      | head -1 \
+      | sed 's/.*:"//; s/"$//' || true)"
+    [ -n "$tag" ] || die "cannot resolve the latest release of $REPO"
   fi
+  VERSION="${tag#v}"
+  local base="https://github.com/$REPO/releases/download/$tag"
+  local asset="flint-$VERSION-$TARGET.$ARCHIVE_EXT"
 
   # TMP_DIR is global: the EXIT trap fires outside this function's scope.
   # BSD mktemp (macOS) needs an explicit template, unlike GNU's bare -d.
-  TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/jan-agent.XXXXXX")"
+  TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/flint-cli.XXXXXX")"
   trap 'rm -rf "${TMP_DIR:-}"' EXIT
 
   local tmp="$TMP_DIR"
-  local archive="$tmp/jan-agent.$ARCHIVE_EXT"
-  echo "downloading ${VERSION:-$CHANNEL} from $url"
-  curl -fSL --progress-bar -o "$archive" "$url" || die "download failed: $url"
+  local archive="$tmp/$asset"
+  # Every release publishes sha256sums.txt; an archive without a matching
+  # line is refused rather than installed unverified.
+  curl -fsSL -o "$tmp/sha256sums.txt" "$base/sha256sums.txt" \
+    || die "cannot fetch $base/sha256sums.txt"
+  local expected
+  expected="$(awk -v a="$asset" '$2 == a || $2 == "*" a { print tolower($1); exit }' "$tmp/sha256sums.txt")"
+  [ -n "$expected" ] || die "release $tag has no checksum for $asset"
 
-  if [ -n "$expected" ]; then
-    local actual
-    actual="$(sha256_of "$archive")"
-    if [ -z "$actual" ]; then
-      echo "warning: no sha256 tool found; skipping checksum verification" >&2
-    elif [ "$actual" != "$expected" ]; then
-      die "checksum mismatch: expected $expected, got $actual"
-    else
-      echo "sha256 verified"
-    fi
-  fi
+  echo "downloading $tag from $base/$asset"
+  curl -fSL --progress-bar -o "$archive" "$base/$asset" || die "download failed: $base/$asset"
+
+  local actual
+  actual="$(sha256_of "$archive")"
+  [ -n "$actual" ] || die "no sha256 tool found (sha256sum or shasum); cannot verify the download"
+  [ "$actual" = "$expected" ] || die "checksum mismatch: expected $expected, got $actual"
+  echo "sha256 verified"
 
   if [ "$ARCHIVE_EXT" = "zip" ]; then
     command -v unzip >/dev/null 2>&1 || die "unzip not found; on Windows use scripts/install-jan-agent.ps1"
