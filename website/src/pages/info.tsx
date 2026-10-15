@@ -251,7 +251,7 @@ export function Faq() {
       title: 'Privacy and data',
       body: (
         <>
-          {q('Does Flint send my data anywhere?', <p>Not by itself. There is no telemetry, analytics or update check. Flint does not discover or download models in the background. It reaches the network only for features you use: Hugging Face Discover, a cloud provider key, a remote MCP server, or turn on web search. See the <a href={pageHref('privacy')}>privacy policy</a>.</p>)}
+          {q('Does Flint send my data anywhere?', <p>Not by itself. There is no telemetry or analytics, and no update check unless you turn one on in Settings. Flint does not discover or download models in the background. It reaches the network only for features you use: Hugging Face Discover, a cloud provider key, a remote MCP server, or turn on web search. See the <a href={pageHref('privacy')}>privacy policy</a>.</p>)}
           {q('Can I use it offline?', <p>Yes, with local models. GGUF models run through the bundled llama.cpp engine, and MLX models run on Apple silicon, both on your device. Cloud providers need a network connection.</p>)}
           {q('Where are my API keys stored?', <p>In your operating system’s keyring.</p>)}
           {q('Where is my data kept?', <p>On your computer, in Flint’s data folder. You can choose a custom data folder. Flint keeps Jan’s data path so an existing install is detected.</p>)}
