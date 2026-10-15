@@ -295,6 +295,28 @@ describe('ingestFile (thread)', () => {
     } as any)
     expect(res).toEqual({ id: 'f1', name: 'a', chunk_count: 1 })
   })
+
+  it('removes the file row when inserting its chunks fails', async () => {
+    mockRag.parseDocument.mockResolvedValue('body')
+    mockVecdb.chunkText.mockResolvedValue(['c1'])
+    getByName.mockReturnValue(
+      makeEngine({
+        getEmbeddingContextSize: undefined,
+        countEmbeddingTokens: undefined,
+        embed: vi.fn().mockResolvedValue({ data: [{ embedding: [1, 2], index: 0 }] }),
+      })
+    )
+    mockVecdb.createFile.mockResolvedValue({ id: 'f1', name: 'a' })
+    mockVecdb.insertChunks.mockRejectedValue(new Error('bad vector'))
+    mockVecdb.deleteFile.mockResolvedValue(undefined)
+    await expect(
+      ext.ingestFile('t1', { name: 'a', path: '/a', type: 'text/plain' } as any, {
+        chunkSize: 100,
+        chunkOverlap: 10,
+      } as any)
+    ).rejects.toThrow('bad vector')
+    expect(mockVecdb.deleteFile).toHaveBeenCalledWith('attachments_t1', 'f1')
+  })
 })
 
 describe('ingestFileForProject', () => {
