@@ -142,15 +142,20 @@ export function CoworkTimelinePanel({
   const read = useCallback(async () => {
     const asked = sessionId
     try {
-      const page = await listEvents(asked, lastSeq.current)
-      if (session.current !== asked) return
-      // Two reads can be in flight from the same `lastSeq` (a poll tick and a
-      // run ending); whichever lands second must not append the same events
-      // again, or every tool phase shows up twice (#170).
-      const fresh = page.events.filter((e) => e.seq > lastSeq.current)
-      if (fresh.length > 0) {
-        lastSeq.current = fresh[fresh.length - 1].seq
-        setEvents((prev) => [...prev, ...fresh])
+      // A page is capped; keep reading while the backend says there is more,
+      // or a finished long session would only ever show its oldest events.
+      for (;;) {
+        const page = await listEvents(asked, lastSeq.current)
+        if (session.current !== asked) return
+        // Two reads can be in flight from the same `lastSeq` (a poll tick and a
+        // run ending); whichever lands second must not append the same events
+        // again, or every tool phase shows up twice (#170).
+        const fresh = page.events.filter((e) => e.seq > lastSeq.current)
+        if (fresh.length > 0) {
+          lastSeq.current = fresh[fresh.length - 1].seq
+          setEvents((prev) => [...prev, ...fresh])
+        }
+        if (!page.truncated || fresh.length === 0) break
       }
       setError(null)
     } catch (e) {

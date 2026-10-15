@@ -32,6 +32,7 @@ import { INTERRUPTED_BY_RESTART } from '@/lib/hydrateStores'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { describeTokenUsage, fromCoworkUsage } from '@/lib/tokenUsage'
 import { CacheReuseBadge } from '@/components/CacheReuseBadge'
+import { redactSecrets } from '@/lib/redact'
 
 /** How often running rows re-render so their elapsed time advances. A second
  * is the resolution the duration label shows, so anything finer is wasted
@@ -902,7 +903,7 @@ function TaskItem({
           )}
           {task.description && task.kind !== 'agent' && (
             <p className="mb-2 text-[11px] text-fg-2">
-              {task.description}
+              {redactSecrets(task.description)}
             </p>
           )}
           {task.detail && (
@@ -947,7 +948,7 @@ function TaskItem({
                         turn.isError && 'text-destructive'
                       )}
                     >
-                      {turnSummary(turn)}
+                      {redactSecrets(turnSummary(turn))}
                     </span>
                   </li>
                 ))}
@@ -971,7 +972,9 @@ function TaskItem({
 function TaskOutput({ task }: { task: ActivityTask }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
-  const output = task.output
+  // Masked as the Background panel masks it: `env` or `cat .env` output
+  // must not put keys on screen or on the clipboard.
+  const output = task.output ? redactSecrets(task.output) : task.output
   if (!output) {
     // A subagent's transcript already says what it is waiting on.
     if (task.kind === 'agent' && (task.status === 'queued' || task.status === 'running')) return null

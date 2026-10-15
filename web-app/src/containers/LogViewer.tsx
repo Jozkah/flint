@@ -16,6 +16,9 @@ import {
 } from '@/lib/logFilter'
 import { SystemPageHeader } from '@/containers/SystemPageHeader'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
+import { redactSecrets } from '@/lib/redact'
+
+const MAX_RENDERED_LINES = 3000
 
 /** Time of day in UTC, 24-hour, as the log file records it. */
 function formatLogTimestamp(timestamp: string | number): string {
@@ -66,7 +69,8 @@ export function CopyLogsButton({ logs }: { logs: LogEntry[] }) {
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(logsAsText(logs))
+      // Redacted as the log export is: a copied log gets pasted into issues.
+      await navigator.clipboard.writeText(redactSecrets(logsAsText(logs)))
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
@@ -140,7 +144,12 @@ export function LogsDashboard({
   const [level, setLevel] = useState<LogLevelFilter>('all')
 
   const shown = useMemo(() => filterLogs(logs, query, level), [logs, query, level])
-  const newest = useMemo(() => [...shown].reverse(), [shown])
+  // Only the newest lines become DOM rows: a full 10 MB log is ~100k lines,
+  // which froze the window. Search and Copy still cover every line.
+  const newest = useMemo(
+    () => shown.slice(-MAX_RENDERED_LINES).reverse(),
+    [shown]
+  )
 
   const serviceHub = useServiceHub()
   const openFolder = async () => {
@@ -212,7 +221,18 @@ export function LogsDashboard({
               {logs.length === 0 ? t('logs:noLogs') : t('logs:noMatch')}
             </p>
           ) : (
-            newest.map((log, i) => <LogLine key={shown.length - i} log={log} />)
+            <>
+              {newest.map((log, i) => (
+                <LogLine key={shown.length - i} log={log} />
+              ))}
+              {shown.length > newest.length && (
+                <p className="py-2 font-sans text-[12px] text-muted-foreground">
+                  {t('logs:olderHidden', {
+                    count: shown.length - newest.length,
+                  })}
+                </p>
+              )}
+            </>
           )}
         </div>
       </FrameBody>

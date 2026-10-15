@@ -15,5 +15,6 @@
   "levelDebug": "Debug",
   "shown": "{{shown}} de {{total}} linhas",
   "description": "Tudo o que o Flint e seu motor escreveram hoje. Mais recentes primeiro.",
-  "serverDescription": "Requisições ao Servidor de API Local compatível com OpenAI. Mais recentes primeiro."
+  "serverDescription": "Requisições ao Servidor de API Local compatível com OpenAI. Mais recentes primeiro.",
+  "olderHidden": "{{count}} linhas mais antigas não são exibidas. Pesquise ou abra o arquivo de log para vê-las."
 }

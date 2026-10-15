@@ -15,5 +15,6 @@
   "levelDebug": "调试",
   "shown": "{{shown}} / {{total}} 行",
   "description": "Flint 及其引擎今天写入的所有内容。最新的在前。",
-  "serverDescription": "对兼容 OpenAI 的本地 API 服务器的请求。最新的在前。"
+  "serverDescription": "对兼容 OpenAI 的本地 API 服务器的请求。最新的在前。",
+  "olderHidden": "未显示 {{count}} 行较早的日志。请搜索或打开日志文件查看。"
 }

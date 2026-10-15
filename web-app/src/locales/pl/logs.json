@@ -15,5 +15,6 @@
   "levelDebug": "Debugowanie",
   "shown": "{{shown}} z {{total}} wierszy",
   "description": "Wszystko, co Flint i jego silnik zapisały dzisiaj. Od najnowszych.",
-  "serverDescription": "Żądania do lokalnego serwera API zgodnego z OpenAI. Od najnowszych."
+  "serverDescription": "Żądania do lokalnego serwera API zgodnego z OpenAI. Od najnowszych.",
+  "olderHidden": "Nie pokazano {{count}} starszych wierszy. Wyszukaj je lub otwórz plik dziennika."
 }

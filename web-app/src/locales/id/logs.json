@@ -15,5 +15,6 @@
   "levelDebug": "Debug",
   "shown": "{{shown}} dari {{total}} baris",
   "description": "Semua yang ditulis Flint dan enginenya hari ini. Terbaru lebih dulu.",
-  "serverDescription": "Permintaan ke Server API Lokal yang kompatibel dengan OpenAI. Terbaru lebih dulu."
+  "serverDescription": "Permintaan ke Server API Lokal yang kompatibel dengan OpenAI. Terbaru lebih dulu.",
+  "olderHidden": "{{count}} baris lama tidak ditampilkan. Cari atau buka berkas log untuk melihatnya."
 }
