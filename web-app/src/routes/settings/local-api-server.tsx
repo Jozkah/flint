@@ -48,6 +48,7 @@ import {
 import { Icon } from '@/components/ui/icon'
 import { BrandMark } from '@/containers/engine/BrandMark'
 import { modelLogo } from '@/lib/brandLogos'
+import { claudeCodeApiUrl } from '@/lib/claudeCodeLaunch'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.local_api_server as any)({
@@ -275,6 +276,9 @@ function LocalAPIServerContent() {
   }
 
   const isServerRunning = serverStatus !== 'stopped'
+  // Bound to 0.0.0.0 the server is reachable on loopback; 0.0.0.0 itself is
+  // not an address a browser can open on Windows.
+  const serverUrl = claudeCodeApiUrl(serverHost, activeServerPort ?? serverPort)
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -570,7 +574,7 @@ function LocalAPIServerContent() {
                       </Chip>
                       {isServerRunning && (
                         <code className="inline-flex h-[30px] items-center rounded-lg bg-muted px-2.5 font-mono text-[11.5px] text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
-                          http://{serverHost}:{activeServerPort ?? serverPort}
+                          {serverUrl}
                           {apiPrefix}
                         </code>
                       )}
@@ -583,7 +587,7 @@ function LocalAPIServerContent() {
                   description={t('settings:localApiServer.swaggerDocsDesc')}
                   actions={
                     <a
-                      href={`http://${serverHost}:${activeServerPort ?? serverPort}`}
+                      href={serverUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={cn(
