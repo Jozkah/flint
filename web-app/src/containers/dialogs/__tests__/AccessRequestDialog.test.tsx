@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AccessRequestDialog } from '../AccessRequestDialog'
 import { useAccessRequests } from '@/lib/accessRequests'
 
@@ -41,6 +41,7 @@ describe('AccessRequestDialog', () => {
     expect(screen.getByTestId('access-mode')).toHaveTextContent('Read only')
     expect(screen.getByText('Check caveman plugin')).toBeInTheDocument()
     expect(screen.getByTestId('access-deny')).toHaveFocus()
+    await waitFor(() => expect(screen.getByTestId('access-session')).toBeEnabled())
     fireEvent.click(screen.getByTestId('access-session'))
     await expect(answer).resolves.toBe('session')
   })
@@ -84,7 +85,24 @@ describe('AccessRequestDialog', () => {
     act(() => {
       answer = ask()
     })
-    fireEvent.click(await screen.findByTestId('access-always'))
+    const always = await screen.findByTestId('access-always')
+    await waitFor(() => expect(always).toBeEnabled())
+    fireEvent.click(always)
     await expect(answer).resolves.toBe('always')
+  })
+
+  it('holds the grant buttons briefly for each new request', async () => {
+    render(<AccessRequestDialog />)
+    act(() => {
+      void ask()
+      void ask({ requested: 'D:\other' })
+    })
+    await waitFor(() => expect(screen.getByTestId('access-session')).toBeEnabled())
+    // Answering the first moves straight to the second, which starts held,
+    // so a double click or Enter cannot grant it too.
+    fireEvent.click(screen.getByTestId('access-session'))
+    expect(await screen.findByText(/D:\other/)).toBeInTheDocument()
+    expect(screen.getByTestId('access-session')).toBeDisabled()
+    expect(screen.getByTestId('access-always')).toBeDisabled()
   })
 })
