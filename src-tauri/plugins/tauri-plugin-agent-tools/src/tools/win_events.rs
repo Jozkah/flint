@@ -167,7 +167,8 @@ pub async fn windows_events(args: &Value) -> String {
             if stdout.trim().is_empty() {
                 return "No events matched.".to_string();
             }
-            bounded(stdout.trim())
+            // Event text can hold secrets (script-block logs carry whole scripts).
+            bounded(&crate::secrets::redact_secrets(stdout.trim()))
         }
     }
 }

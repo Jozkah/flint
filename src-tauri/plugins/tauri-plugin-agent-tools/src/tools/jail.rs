@@ -295,25 +295,11 @@ pub fn supports_owned_write_roots(backend: Backend) -> bool {
 
 /// Whether the shell can be held to exactly `roots` on `backend`.
 ///
-/// `owned` is the directory Jan's managed worktrees live under. On
-/// AppContainer every root must be inside it; anywhere else the answer is the
-/// general [`supports_write_roots`].
-pub fn can_confine_write_roots(backend: Backend, roots: &[PathBuf], owned: Option<&Path>) -> bool {
-    if supports_write_roots(backend) {
-        return true;
-    }
-    if backend != Backend::AppContainer {
-        return false;
-    }
-    let Some(owned) = owned.and_then(|o| o.canonicalize().ok()) else {
-        return false;
-    };
-    !roots.is_empty()
-        && roots.iter().all(|root| {
-            root.canonicalize()
-                .map(|r| r.starts_with(&owned) && r != owned)
-                .unwrap_or(false)
-        })
+/// Every backend that exists, AppContainer included, holds the shell to any
+/// set of write roots, so this is [`supports_write_roots`]; `roots` and
+/// `owned` (where Jan's managed worktrees live) no longer narrow it.
+pub fn can_confine_write_roots(backend: Backend, _roots: &[PathBuf], _owned: Option<&Path>) -> bool {
+    supports_write_roots(backend)
 }
 
 pub fn backend() -> Backend {
@@ -1709,7 +1695,7 @@ pub fn select_shell(policy: &Policy) -> Result<SelectedShell, String> {
     if let Some(usable) = reports.iter().find(|r| r.outcome.usable()) {
         let Some(wrapped) = wrap(&usable.cfg, policy) else {
             return Err(
-                "no OS sandbox backend is available on this system, so no shell can be                  confined here"
+                "no OS sandbox backend is available on this system, so no shell can be confined here"
                     .to_string(),
             );
         };

@@ -139,6 +139,15 @@ fn read_file(base: &Path, raw: &str) -> Option<String> {
     if raw == "-" || (!path.is_absolute() && !base.is_absolute()) {
         return None;
     }
+    // Only a file inside the call's folder: inlining one from elsewhere would
+    // read a host file (a key, a secret) past the git tool's own check.
+    if path.is_absolute()
+        || raw.starts_with(['/', '\\'])
+        || raw.contains(':')
+        || path.components().any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return None;
+    }
     let path = if path.is_absolute() { path.to_path_buf() } else { base.join(path) };
     let meta = std::fs::metadata(&path).ok()?;
     if !meta.is_file() || meta.len() > MAX_FILE {
