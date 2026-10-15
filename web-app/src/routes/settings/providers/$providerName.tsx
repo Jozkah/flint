@@ -49,7 +49,14 @@ import {
 import { Icon } from '@/components/ui/icon'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { toast } from 'sonner'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { takeFirstModelFetch } from '@/lib/pendingFirstModelFetch'
 import {
   AZURE_BASE_URL_PLACEHOLDER,
@@ -206,6 +213,28 @@ function ProviderDetail() {
   const isLlamacpp = provider?.provider === 'llamacpp'
   const isEngineProvider =
     provider?.provider === 'llamacpp' || provider?.provider === 'mlx'
+  // An engine setting change restarts that engine's models, once typing
+  // pauses; a remote provider's settings never touch loaded local models.
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingRestartRef = useRef<(() => void) | null>(null)
+  useEffect(
+    () => () => {
+      // Leaving the page still applies a pending restart.
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current)
+      pendingRestartRef.current?.()
+    },
+    []
+  )
+  const stopProviderModels = useCallback(
+    async (name: string) => {
+      const loaded = await serviceHub.models().getActiveModels(name)
+      await Promise.all(
+        loaded.map((model) => serviceHub.models().stopModel(model, name))
+      )
+      setActiveModels((await serviceHub.models().getActiveModels()) || [])
+    },
+    [serviceHub, setActiveModels]
+  )
   const isPredefinedProvider = useMemo(
     () => predefinedProviders.some((p) => p.provider === providerName),
     [providerName]
@@ -1062,15 +1091,16 @@ function ProviderDetail() {
           className={cn(setting.key === 'device' && 'hidden')}
           onChange={(newValue) => {
             if (provider) {
+              // Copy the changed setting: the stored one must not be mutated.
               const newSettings = [...provider.settings]
-              // Handle different value types by forcing the type
-              // Use type assertion to bypass type checking
-
-              ;(
-                newSettings[settingIndex].controller_props as {
-                  value: string | boolean | number
-                }
-              ).value = newValue
+              const changed = newSettings[settingIndex]
+              newSettings[settingIndex] = {
+                ...changed,
+                controller_props: {
+                  ...changed.controller_props,
+                  value: newValue,
+                },
+              } as ProviderSetting
 
               // Create update object with updated settings
               const updateObj: Partial<ModelProvider> = {
@@ -1095,13 +1125,19 @@ function ProviderDetail() {
                 ...updateObj,
               })
 
-              serviceHub.models().stopAllModels()
-
-              // Refresh active models after stopping
-              serviceHub
-                .models()
-                .getActiveModels()
-                .then((models) => setActiveModels(models || []))
+              if (isEngineProvider) {
+                if (restartTimerRef.current) {
+                  clearTimeout(restartTimerRef.current)
+                }
+                const engine = provider.provider
+                const restart = () => {
+                  restartTimerRef.current = null
+                  pendingRestartRef.current = null
+                  void stopProviderModels(engine).catch(() => {})
+                }
+                pendingRestartRef.current = restart
+                restartTimerRef.current = setTimeout(restart, 800)
+              }
             }
           }}
         />
@@ -1783,9 +1819,13 @@ function ProviderDetail() {
             <Switch
               aria-label={t('providers:useProvider', { provider: title })}
               checked={provider?.active ?? false}
-              onCheckedChange={(checked) =>
-                provider && updateProvider(providerName, { active: checked })
-              }
+              onCheckedChange={(checked) => {
+                if (!provider) return
+                if (!checked && isEngineProvider) {
+                  void stopProviderModels(provider.provider).catch(() => {})
+                }
+                updateProvider(providerName, { active: checked })
+              }}
             />
             {t('engine:provider.enabled')}
           </label>
