@@ -300,9 +300,17 @@ mod permission_tests {
 #[allow(clippy::items_after_test_module)]
 pub(crate) fn test_temp_root() -> std::path::PathBuf {
     let tmp = std::env::temp_dir();
-    if cfg!(target_os = "macos") {
-        std::fs::canonicalize(&tmp).unwrap_or(tmp)
-    } else {
-        tmp
+    // On Windows the temp folder can be spelled with an 8.3 short name
+    // (RUNNER~1); the real path, without the verbatim prefix, is the one the
+    // scope checks compare against.
+    match std::fs::canonicalize(&tmp) {
+        Ok(real) => {
+            let text = real.to_string_lossy();
+            match text.strip_prefix(r"\\?\") {
+                Some(plain) if !plain.starts_with("UNC") => std::path::PathBuf::from(plain),
+                _ => real,
+            }
+        }
+        Err(_) => tmp,
     }
 }
