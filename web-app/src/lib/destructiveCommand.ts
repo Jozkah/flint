@@ -189,7 +189,9 @@ function scopeRoots(scope: DeletionScope): string[] {
  */
 export function outsideWorkspace(
   target: string,
-  workspace: string | DeletionScope
+  workspace: string | DeletionScope,
+  /** An earlier `cd` left the workspace: relative targets are outside too. */
+  cwdUnknown = false
 ): boolean {
   const t = target.replace(/^["']+|["']+$/g, '')
   if (!t) return false
@@ -199,6 +201,7 @@ export function outsideWorkspace(
   if (isDrive(norm.slice(0, 2)) && !isAbsolutePath(norm)) return true
   if (!isAbsolutePath(norm)) {
     return (
+      cwdUnknown ||
       norm === '..' ||
       norm.startsWith('../') ||
       norm.includes('/../') ||
@@ -270,18 +273,48 @@ function outsideReason(words: string[], target: string, verb: string): string {
   return `\`${words.join(' ')}\` ${verb} \`${target}\`, outside the workspace`
 }
 
-function firstOutside(
-  targets: string[],
-  workspace: DeletionScope
-): string | undefined {
-  return (targets.length ? targets : ['.']).find((t) =>
-    outsideWorkspace(t, workspace)
-  )
+/** The approved roots, and whether a `cd` has left them. */
+type Scope = { roots: DeletionScope; cwdUnknown: boolean }
+
+const outside = (target: string, scope: Scope) =>
+  outsideWorkspace(target, scope.roots, scope.cwdUnknown)
+
+function firstOutside(targets: string[], scope: Scope): string | undefined {
+  return (targets.length ? targets : ['.']).find((t) => outside(t, scope))
+}
+
+/**
+ * Whether this segment moves the shell to a directory not known to be inside
+ * `scope`: `cd`/`pushd`/`Set-Location` to an outside, home or unresolvable
+ * target, a bare `cd` (home), `cd -`, or `popd`.
+ */
+function changesToUnknownDir(words: string[], scope: Scope): boolean {
+  switch (commandName(words[0])) {
+    case 'popd':
+    case 'pop-location':
+      return true
+    case 'cd':
+    case 'chdir':
+    case 'pushd':
+    case 'set-location':
+    case 'sl':
+    case 'push-location': {
+      const target = words
+        .slice(1)
+        .filter((a) => !a.startsWith('-') && !/^\/[a-zA-Z]$/.test(a))
+        .pop()
+      if (target === undefined) return true
+      const t = target.replace(/^["']+|["']+$/g, '')
+      return t === '' || t === '-' || outside(t, scope)
+    }
+    default:
+      return false
+  }
 }
 
 function checkSegment(
   words: string[],
-  workspace: DeletionScope,
+  workspace: Scope,
   depth: number
 ): string | null {
   const cmd = commandName(words[0])
@@ -329,7 +362,7 @@ function checkSegment(
     case 'ri': {
       const { recursive, targets } = deletionFlags(args, false)
       if (!(recursive || cmd === 'shred')) return null
-      const t = targets.find((x) => outsideWorkspace(x, workspace))
+      const t = targets.find((x) => outside(x, workspace))
       return t ? outsideReason(words, t, 'deletes') : null
     }
     case 'del':
@@ -337,7 +370,7 @@ function checkSegment(
       if (lower.includes('/s')) return '`del /s` deletes recursively'
       const { recursive, targets } = deletionFlags(args, true)
       if (!recursive) return null
-      const t = targets.find((x) => outsideWorkspace(x, workspace))
+      const t = targets.find((x) => outside(x, workspace))
       return t ? outsideReason(words, t, 'deletes') : null
     }
     case 'rd':
@@ -422,7 +455,7 @@ function checkSegment(
 
 function reasonAtDepth(
   command: string,
-  workspace: DeletionScope,
+  workspace: Scope,
   depth: number
 ): string | null {
   if (depth > MAX_DEPTH) return 'nests shells too deeply to check'
@@ -436,11 +469,13 @@ function reasonAtDepth(
     const reason = reasonAtDepth(body, workspace, depth + 1)
     if (reason) return reason
   }
+  const scope = { ...workspace }
   for (const segment of parsed.segments) {
     const words = stripPrefixes(segment)
     if (!words.length) continue
-    const reason = checkSegment(words, workspace, depth)
+    const reason = checkSegment(words, scope, depth)
     if (reason) return reason
+    if (changesToUnknownDir(words, scope)) scope.cwdUnknown = true
   }
   const lowerCommand = command.toLowerCase()
   const phrase = RULES.sqlPhrases.find((p) => lowerCommand.includes(p))
@@ -459,7 +494,10 @@ export function destructiveCommandReason(
 ): string | null {
   return reasonAtDepth(
     command,
-    typeof workspace === 'string' ? [workspace] : workspace,
+    {
+      roots: typeof workspace === 'string' ? [workspace] : workspace,
+      cwdUnknown: false,
+    },
     0
   )
 }
