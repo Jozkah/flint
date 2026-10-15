@@ -177,8 +177,11 @@ const DENIED_GIT_OPTIONS: &[&str] = &[
 fn deny_common_git(sub: &str, rest: &[String]) -> Result<(), String> {
     for a in rest {
         let lower = a.to_ascii_lowercase();
+        // git accepts any unambiguous prefix of a long option (`--upload`,
+        // `--exe`), so a prefix of a denied option is refused too.
+        let name = lower.split('=').next().unwrap_or("");
         for opt in DENIED_GIT_OPTIONS {
-            if lower == *opt || lower.starts_with(&format!("{opt}=")) {
+            if name.len() >= 3 && name.starts_with("--") && opt.starts_with(name) {
                 return Err(format!(
                     "the option `{a}` is not allowed: it can run other programs or reach outside the allowed folders"
                 ));
@@ -193,20 +196,21 @@ fn deny_common_git(sub: &str, rest: &[String]) -> Result<(), String> {
         // `-u` is `--upload-pack` for these two (for push it is
         // `--set-upstream`, for fetch `--update-head-ok`).
         "clone" | "ls-remote" => {
-            if has(rest, &["-u"]) {
+            // Short flags bundle (`-qucalc`), so every letter is checked.
+            if has_short(rest, 'u') {
                 return Err("`-u` (upload/receive-pack) is not allowed".into());
             }
-            if sub == "clone" && has(rest, &["-c"]) {
+            if sub == "clone" && has_short(rest, 'c') {
                 return Err("`clone -c` (configuration override) is not allowed".into());
             }
         }
         "rebase" => {
-            if has(rest, &["-x"]) || rest.iter().any(|a| a.starts_with("-x")) {
+            if has_short(rest, 'x') {
                 return Err("`rebase -x/--exec` runs shell commands and is not allowed".into());
             }
         }
         "grep" => {
-            if has(rest, &["-O"]) || rest.iter().any(|a| a.starts_with("-O")) {
+            if has_short(rest, 'O') {
                 return Err("`grep -O` opens a pager program and is not allowed".into());
             }
         }
@@ -227,6 +231,41 @@ fn deny_common_git(sub: &str, rest: &[String]) -> Result<(), String> {
             }
         }
         _ => {}
+    }
+    Ok(())
+}
+
+/// A message file (`-F`, `--file`, commit `-t`) is read by git outside the
+/// sandbox, so it must be a relative path that stays inside the folder.
+fn check_message_files(rest: &[String]) -> Result<(), String> {
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
+        if a == "--" {
+            break;
+        }
+        let value = match a.as_str() {
+            "-m" | "--message" => {
+                it.next();
+                continue;
+            }
+            "-F" | "--file" | "-t" => it.next().map(String::as_str),
+            _ => a
+                .strip_prefix("--file=")
+                .or_else(|| a.strip_prefix("-F").filter(|v| !v.is_empty()))
+                .or_else(|| a.strip_prefix("-t").filter(|v| !v.is_empty())),
+        };
+        let Some(v) = value else { continue };
+        let p = std::path::Path::new(v);
+        if v != "-"
+            && (p.is_absolute()
+                || v.starts_with(['/', '\\'])
+                || v.contains(':')
+                || p.components().any(|c| matches!(c, std::path::Component::ParentDir)))
+        {
+            return Err(format!(
+                "the message file `{v}` must be a relative path inside the folder"
+            ));
+        }
     }
     Ok(())
 }
@@ -446,8 +485,9 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
                 plan.destructive = Some("removes files with uncommitted changes".into());
             }
         }
-        "add" | "commit" | "mv" | "merge" | "rebase" | "cherry-pick" | "revert" | "am"
-        | "apply" | "init" | "notes" | "sparse-checkout" | "update-index" => {}
+        "commit" | "notes" => check_message_files(&rest)?,
+        "add" | "mv" | "merge" | "rebase" | "cherry-pick" | "revert" | "am"
+        | "apply" | "init" | "sparse-checkout" | "update-index" => {}
         "clone" => {
             plan.reaches_remote = true;
             let values = ["-b", "--branch", "--depth", "-o", "--origin", "-j", "--jobs", "--filter", "--shallow-since", "--shallow-exclude", "--bundle-uri"];
@@ -1942,6 +1982,17 @@ mod tests {
         assert!(p("git", &["commit", "-m", "a\0b"]).is_err());
         // A multi-line message is one argv entry, not a second command.
         assert!(p("git", &["commit", "-m", "subject\n\nbody"]).is_ok());
+        // A message file is read outside the sandbox: only inside the folder.
+        assert!(p("git", &["commit", "-F", "msg.txt"]).is_ok());
+        assert!(p("git", &["commit", "-m", "-Fix: c:/x"]).is_ok());
+        for bad in [
+            &["commit", "-F", "C:/Users/u/.ssh/id_rsa"][..],
+            &["commit", "--file=../secret"],
+            &["commit", "-F/etc/passwd"],
+            &["notes", "add", "-F", "/etc/passwd"],
+        ] {
+            assert!(p("git", bad).is_err(), "{bad:?}");
+        }
     }
 
     /// Transcript audit #8: gh shapes a model gets wrong are fixed where gh

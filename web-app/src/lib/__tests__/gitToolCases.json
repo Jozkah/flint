@@ -82,5 +82,14 @@
   { "program": "gh", "args": ["pr", "view", "--web"], "class": "deny" },
   { "program": "gh", "args": ["issue", "create", "repo", "o/r", "t", "T"], "class": "deny" },
   { "program": "gh", "args": ["auth", "login"], "class": "deny" },
-  { "program": "gh", "args": ["secret", "set", "X"], "class": "deny" }
+  { "program": "gh", "args": ["secret", "set", "X"], "class": "deny" },
+  { "program": "git", "args": ["grep", "--open=calc", "x"], "class": "deny" },
+  { "program": "git", "args": ["grep", "-iOcalc", "x"], "class": "deny" },
+  { "program": "git", "args": ["ls-remote", "--upload=calc", "origin"], "class": "deny" },
+  { "program": "git", "args": ["ls-remote", "-qucalc", "origin"], "class": "deny" },
+  { "program": "git", "args": ["rebase", "--exe=calc", "main"], "class": "deny" },
+  { "program": "git", "args": ["rebase", "-mx", "calc", "main"], "class": "deny" },
+  { "program": "git", "args": ["fetch", "--upload-p=calc"], "class": "deny" },
+  { "program": "git", "args": ["clone", "-qccore.sshCommand=calc", "https://example.com/r.git"], "class": "deny" },
+  { "program": "git", "args": ["push", "--rec=calc"], "class": "deny" }
 ]
