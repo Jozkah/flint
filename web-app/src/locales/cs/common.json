@@ -1065,7 +1065,8 @@
     "compact": "Zhustit",
     "compacting": "Zhušťování…",
     "compactFailed": "Zatím není co zhustit.",
-    "newSession": "Nová relace"
+    "newSession": "Nová relace",
+    "compactSuperseded": "Konverzace se během zhušťování změnila, nic proto nebylo nahrazeno. Zhušťte ji znovu."
   },
   "autoCompactNeedsWindow": "Automatické zhušťování potřebuje velikost kontextu a pro {{model}} žádnou Flint nenašel. Nastavte pro tento model Max. počet tokenů kontextu, aby se dlouhé chaty zhustily dřív, než ho zaplní. Pokud poskytovatel odmítne požadavek kvůli jeho délce, Flint zhustí a zkusí to jednou znovu.",
   "compaction": {
@@ -2621,5 +2622,6 @@
     "load": "Načíst obrázek z {{host}}"
   },
   "messageSaveFailed": "Zprávu se nepodařilo uložit. Po restartu může být ztracena.",
-  "threadSaveFailed": "Změnu tohoto vlákna se nepodařilo uložit. Byla vrácena."
+  "threadSaveFailed": "Změnu tohoto vlákna se nepodařilo uložit. Byla vrácena.",
+  "attachmentsProcessFailed": "Přílohy se nepodařilo připravit, zpráva proto nebyla odeslána"
 }

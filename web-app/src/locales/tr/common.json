@@ -1046,7 +1046,8 @@
     "compact": "Kısa bağlam",
     "compacting": "Sıkıştırılıyor…",
     "compactFailed": "Henüz sıkıştırılacak bir şey yok.",
-    "newSession": "Yeni oturum"
+    "newSession": "Yeni oturum",
+    "compactSuperseded": "Sohbet sıkıştırılırken değişti, bu yüzden hiçbir şey değiştirilmedi. Yeniden sıkıştırın."
   },
   "autoCompactNeedsWindow": "Otomatik sıkıştırma bir bağlam boyutu gerektirir ve {{model}} için Flint'in bulabildiği bir boyut yok. Uzun sohbetlerin dolmadan önce sıkıştırılması için bu model için En Yüksek Bağlam Token'ını ayarlayın. Sağlayıcı bir isteği uzunluğu nedeniyle reddederse Flint sıkıştırır ve bir kez yeniden dener.",
   "compaction": {
@@ -2528,5 +2529,6 @@
     "load": "Görseli {{host}} adresinden yükle"
   },
   "messageSaveFailed": "Mesaj kaydedilemedi. Yeniden başlatmadan sonra kaybolabilir.",
-  "threadSaveFailed": "Bu konudaki değişiklik kaydedilemedi. Geri alındı."
+  "threadSaveFailed": "Bu konudaki değişiklik kaydedilemedi. Geri alındı.",
+  "attachmentsProcessFailed": "Ekler hazırlanamadı, bu yüzden mesaj gönderilmedi"
 }

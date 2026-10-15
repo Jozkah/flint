@@ -1055,7 +1055,8 @@
     "compact": "Compatta",
     "compacting": "Compattazione…",
     "compactFailed": "Ancora niente da compattare.",
-    "newSession": "Nuova sessione"
+    "newSession": "Nuova sessione",
+    "compactSuperseded": "La conversazione è cambiata durante la compattazione, quindi non è stato sostituito nulla. Compatta di nuovo."
   },
   "autoCompactNeedsWindow": "L'auto-compattazione richiede una dimensione del contesto, e {{model}} non ne ha una che Flint riesca a trovare. Imposta Max Context Tokens per questo modello così le chat lunghe vengono compattate prima di riempirlo. Se il provider rifiuta una richiesta per la sua lunghezza, Flint compatta e riprova una volta.",
   "compaction": {
@@ -2575,5 +2576,6 @@
     "load": "Carica immagine da {{host}}"
   },
   "messageSaveFailed": "Impossibile salvare il messaggio. Potrebbe andare perso dopo un riavvio.",
-  "threadSaveFailed": "Impossibile salvare la modifica a questa conversazione. È stata annullata."
+  "threadSaveFailed": "Impossibile salvare la modifica a questa conversazione. È stata annullata.",
+  "attachmentsProcessFailed": "Impossibile preparare gli allegati, quindi il messaggio non è stato inviato"
 }

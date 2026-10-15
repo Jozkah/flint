@@ -1047,7 +1047,8 @@
     "compact": "Compact",
     "compacting": "Compacting…",
     "compactFailed": "Nothing to compact yet.",
-    "newSession": "New session"
+    "newSession": "New session",
+    "compactSuperseded": "The conversation changed while it was being compacted, so nothing was replaced. Compact again."
   },
   "autoCompactNeedsWindow": "Auto-compact needs a context size, and {{model}} has none Flint can find. Set Max Context Tokens for this model so long chats compact before they fill it. If the provider refuses a request for its length, Flint compacts and retries once.",
   "compaction": {
@@ -2528,5 +2529,6 @@
     "load": "Load image from {{host}}"
   },
   "messageSaveFailed": "Could not save the message. It may be lost after a restart.",
-  "threadSaveFailed": "Could not save the change to this thread. It was reverted."
+  "threadSaveFailed": "Could not save the change to this thread. It was reverted.",
+  "attachmentsProcessFailed": "Couldn't prepare the attachments, so the message was not sent"
 }
