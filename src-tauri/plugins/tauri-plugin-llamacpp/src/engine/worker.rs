@@ -675,7 +675,7 @@ pub async fn spawn_with_offload(
 ) -> Result<WorkerHandle, WorkerError> {
     let args = worker_args(preset_path, port, models_max, slot_cache_mib);
     log::info!("starting {} {}", exe.display(), args.join(" "));
-    let envs = with_engine_env_defaults(envs);
+    let (envs, clear_vk_fallback) = with_engine_env_defaults(envs);
 
     let mut cmd = Command::new(exe);
     // Without this the worker flashes a console window on Windows, the way
@@ -699,6 +699,9 @@ pub async fn spawn_with_offload(
         if let Some(dir) = exe.parent() {
             cmd.current_dir(dir);
         }
+    }
+    if clear_vk_fallback {
+        cmd.env_remove(VK_SYSMEM_FALLBACK_ENV);
     }
     cmd.args(&args)
         .envs(envs)
@@ -871,16 +874,33 @@ pub fn sidecar_path() -> Option<PathBuf> {
 /// after auto-fit has sized the model, so fit cannot leave room for them; with
 /// VRAM full the allocation fails with `ErrorOutOfDeviceMemory` because
 /// ggml-vulkan has no system-memory fallback unless asked. With the fallback a
-/// tight fit runs slower instead of failing. A value the user set wins.
+/// tight fit runs slower instead of failing. ggml-vulkan only checks that the
+/// variable exists, so a user value of `0`/`false`/`off` is removed here to
+/// switch it off rather than passed through.
 const VK_SYSMEM_FALLBACK_ENV: &str = "GGML_VK_ALLOW_SYSMEM_FALLBACK";
 
-fn with_engine_env_defaults(mut envs: HashMap<String, String>) -> HashMap<String, String> {
-    if !envs.contains_key(VK_SYSMEM_FALLBACK_ENV)
-        && std::env::var_os(VK_SYSMEM_FALLBACK_ENV).is_none()
-    {
-        envs.insert(VK_SYSMEM_FALLBACK_ENV.to_string(), "1".to_string());
+fn is_off(value: &str) -> bool {
+    matches!(value.trim().to_ascii_lowercase().as_str(), "0" | "false" | "off" | "no")
+}
+
+/// The worker's environment plus defaults, and whether the fallback variable
+/// must also be cleared from the inherited environment.
+fn with_engine_env_defaults(mut envs: HashMap<String, String>) -> (HashMap<String, String>, bool) {
+    let user = envs
+        .get(VK_SYSMEM_FALLBACK_ENV)
+        .cloned()
+        .or_else(|| std::env::var(VK_SYSMEM_FALLBACK_ENV).ok());
+    match user {
+        Some(v) if is_off(&v) => {
+            envs.remove(VK_SYSMEM_FALLBACK_ENV);
+            (envs, true)
+        }
+        Some(_) => (envs, false),
+        None => {
+            envs.insert(VK_SYSMEM_FALLBACK_ENV.to_string(), "1".to_string());
+            (envs, false)
+        }
     }
-    envs
 }
 
 #[cfg(test)]
@@ -890,13 +910,20 @@ mod tests {
     #[test]
     fn vulkan_sysmem_fallback_is_on_unless_the_user_set_it() {
         if std::env::var_os(VK_SYSMEM_FALLBACK_ENV).is_none() {
-            let envs = with_engine_env_defaults(HashMap::new());
+            let (envs, clear) = with_engine_env_defaults(HashMap::new());
             assert_eq!(envs.get(VK_SYSMEM_FALLBACK_ENV).map(String::as_str), Some("1"));
+            assert!(!clear);
         }
         let mut user = HashMap::new();
         user.insert(VK_SYSMEM_FALLBACK_ENV.to_string(), "0".to_string());
-        let envs = with_engine_env_defaults(user);
-        assert_eq!(envs.get(VK_SYSMEM_FALLBACK_ENV).map(String::as_str), Some("0"));
+        let (envs, clear) = with_engine_env_defaults(user);
+        assert!(!envs.contains_key(VK_SYSMEM_FALLBACK_ENV), "0 must switch it off");
+        assert!(clear);
+        let mut user = HashMap::new();
+        user.insert(VK_SYSMEM_FALLBACK_ENV.to_string(), "1".to_string());
+        let (envs, clear) = with_engine_env_defaults(user);
+        assert_eq!(envs.get(VK_SYSMEM_FALLBACK_ENV).map(String::as_str), Some("1"));
+        assert!(!clear);
     }
 
     // Restored with the marker lists intact: each entry came from a real crash
