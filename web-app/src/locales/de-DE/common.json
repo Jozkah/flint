@@ -2499,5 +2499,22 @@
     "previewLoading": "Vorschau wird geladen…",
     "previewNone": "Keine Vorschau verfügbar"
   },
-  "dropAttachFailed": "Die abgelegten Dateien konnten nicht angehängt werden"
+  "dropAttachFailed": "Die abgelegten Dateien konnten nicht angehängt werden",
+  "translate": {
+    "title": "Übersetzer",
+    "usingModel": "Verwendet {{model}}",
+    "noModel": "Wähle ein Modell in der Modellauswahl",
+    "from": "Übersetzen aus",
+    "to": "Übersetzen nach",
+    "detect": "Sprache erkennen",
+    "swap": "Sprachen tauschen",
+    "translate": "Übersetzen",
+    "stop": "Stopp",
+    "copy": "Übersetzung kopieren",
+    "copied": "Übersetzung kopiert",
+    "copyFailed": "Die Übersetzung konnte nicht kopiert werden",
+    "failed": "Übersetzung fehlgeschlagen",
+    "inputPlaceholder": "Zu übersetzender Text",
+    "outputPlaceholder": "Die Übersetzung erscheint hier"
+  }
 }

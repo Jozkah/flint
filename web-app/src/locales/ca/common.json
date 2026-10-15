@@ -2544,5 +2544,22 @@
     "previewLoading": "Carregant la previsualització…",
     "previewNone": "No hi ha cap previsualització disponible"
   },
-  "dropAttachFailed": "No s'han pogut adjuntar els fitxers deixats anar"
+  "dropAttachFailed": "No s'han pogut adjuntar els fitxers deixats anar",
+  "translate": {
+    "title": "Traductor",
+    "usingModel": "Amb {{model}}",
+    "noModel": "Tria un model al selector de models",
+    "from": "Tradueix de",
+    "to": "Tradueix a",
+    "detect": "Detecta l'idioma",
+    "swap": "Intercanvia els idiomes",
+    "translate": "Tradueix",
+    "stop": "Atura",
+    "copy": "Copia la traducció",
+    "copied": "Traducció copiada",
+    "copyFailed": "No s'ha pogut copiar la traducció",
+    "failed": "La traducció ha fallat",
+    "inputPlaceholder": "Text per traduir",
+    "outputPlaceholder": "La traducció apareix aquí"
+  }
 }

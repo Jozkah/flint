@@ -2497,5 +2497,22 @@
     "previewLoading": "Önizleme yükleniyor…",
     "previewNone": "Önizleme yok"
   },
-  "dropAttachFailed": "Bırakılan dosyalar eklenemedi"
+  "dropAttachFailed": "Bırakılan dosyalar eklenemedi",
+  "translate": {
+    "title": "Çevirmen",
+    "usingModel": "{{model}} kullanılıyor",
+    "noModel": "Model seçicisinden bir model seçin",
+    "from": "Şu dilden çevir",
+    "to": "Şu dile çevir",
+    "detect": "Dili algıla",
+    "swap": "Dilleri değiştir",
+    "translate": "Çevir",
+    "stop": "Durdur",
+    "copy": "Çeviriyi kopyala",
+    "copied": "Çeviri kopyalandı",
+    "copyFailed": "Çeviri kopyalanamadı",
+    "failed": "Çeviri başarısız oldu",
+    "inputPlaceholder": "Çevrilecek metin",
+    "outputPlaceholder": "Çeviri burada görünür"
+  }
 }

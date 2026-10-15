@@ -2542,5 +2542,22 @@
     "previewLoading": "Carregando pré-visualização…",
     "previewNone": "Nenhuma pré-visualização disponível"
   },
-  "dropAttachFailed": "Não foi possível anexar os arquivos soltos"
+  "dropAttachFailed": "Não foi possível anexar os arquivos soltos",
+  "translate": {
+    "title": "Tradutor",
+    "usingModel": "Usando {{model}}",
+    "noModel": "Escolha um modelo no seletor de modelos",
+    "from": "Traduzir de",
+    "to": "Traduzir para",
+    "detect": "Detectar idioma",
+    "swap": "Trocar idiomas",
+    "translate": "Traduzir",
+    "stop": "Parar",
+    "copy": "Copiar tradução",
+    "copied": "Tradução copiada",
+    "copyFailed": "Não foi possível copiar a tradução",
+    "failed": "A tradução falhou",
+    "inputPlaceholder": "Texto para traduzir",
+    "outputPlaceholder": "A tradução aparece aqui"
+  }
 }

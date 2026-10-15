@@ -2499,5 +2499,22 @@
     "previewLoading": "正在加载预览…",
     "previewNone": "没有可用的预览"
   },
-  "dropAttachFailed": "无法附加拖放的文件"
+  "dropAttachFailed": "无法附加拖放的文件",
+  "translate": {
+    "title": "翻译",
+    "usingModel": "正在使用 {{model}}",
+    "noModel": "请在模型选择器中选择模型",
+    "from": "源语言",
+    "to": "目标语言",
+    "detect": "检测语言",
+    "swap": "交换语言",
+    "translate": "翻译",
+    "stop": "停止",
+    "copy": "复制译文",
+    "copied": "译文已复制",
+    "copyFailed": "无法复制译文",
+    "failed": "翻译失败",
+    "inputPlaceholder": "要翻译的文本",
+    "outputPlaceholder": "译文显示在这里"
+  }
 }
