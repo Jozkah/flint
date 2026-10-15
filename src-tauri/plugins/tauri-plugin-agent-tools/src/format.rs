@@ -10,8 +10,8 @@
 //! Two rules keep this from becoming a guess:
 //!
 //! * **Evidence, not convention.** A formatter is only claimed when the
-//!   project says so *and* the program is actually there -- on `PATH`, or in
-//!   `node_modules/.bin`. A file extension alone is not evidence: plenty of
+//!   project says so *and* the program is actually there -- on `PATH`, never
+//!   a copy inside the project (it runs unsandboxed). A file extension alone is not evidence: plenty of
 //!   repositories hold a `.py` and no Python formatter, and running one
 //!   nobody asked for is a change nobody asked for. What the evidence was is
 //!   carried on the result, so a person can be told why.
@@ -42,8 +42,11 @@ pub struct Formatter {
     pub evidence: String,
 }
 
-/// Whether `program` can be run here: `node_modules/.bin` first (a project's
-/// own copy is the one it means), then `PATH`.
+/// Whether `program` can be run here, from `PATH`.
+///
+/// The formatter runs outside the sandbox, so a copy inside the project
+/// (`node_modules/.bin`, or a `PATH` entry that is relative or points into
+/// the project) is never used: the repository, or the agent, wrote it.
 ///
 /// Windows needs the extensions too: `prettier` there is `prettier.cmd`, and a
 /// check for the bare name finds nothing.
@@ -57,14 +60,14 @@ fn resolve_program(project_root: &Path, program: &str) -> Option<PathBuf> {
         }
         out
     };
-    let local = project_root.join("node_modules").join(".bin");
-    for candidate in candidates(&local) {
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
+    let project = std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
     let path = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path) {
+        if dir.is_relative()
+            || std::fs::canonicalize(&dir).is_ok_and(|d| d.starts_with(&project))
+        {
+            continue;
+        }
         for candidate in candidates(&dir) {
             if candidate.is_file() {
                 return Some(candidate);
@@ -175,11 +178,42 @@ pub fn detect(project_root: &Path, file: &Path) -> Option<Formatter> {
             if config.is_none() && !mentioned {
                 return None;
             }
+            // Prettier runs outside the sandbox, so it is only run on a
+            // configuration that cannot load code: no JavaScript config, no
+            // plugins, no shared config named by package.json.
+            let config_arg = match &config {
+                Some(file) if file.ends_with("js") => return None,
+                Some(file) => {
+                    if read(&project_root.join(file))?.contains("plugins") {
+                        return None;
+                    }
+                    project_root.join(file).to_string_lossy().into_owned()
+                }
+                None => {
+                    let raw = read(&project_root.join("package.json"))?;
+                    let json = serde_json::from_str::<serde_json::Value>(&raw).ok()?;
+                    match json.get("prettier") {
+                        Some(serde_json::Value::Object(o)) if !o.contains_key("plugins") => {
+                            project_root.join("package.json").to_string_lossy().into_owned()
+                        }
+                        Some(_) => return None,
+                        None => String::new(),
+                    }
+                }
+            };
             let program = resolve_program(project_root, "prettier")?;
+            // An explicit config (or none) stops prettier searching for one
+            // nearer the file, which could be a JavaScript config.
+            let mut args = vec!["--write".to_string()];
+            if config_arg.is_empty() {
+                args.push("--no-config".to_string());
+            } else {
+                args.extend(["--config".to_string(), config_arg]);
+            }
             Some(Formatter {
                 name: "prettier".to_string(),
                 program,
-                args: vec!["--write".to_string()],
+                args,
                 evidence: config.unwrap_or_else(|| "package.json".to_string()),
             })
         }
@@ -250,7 +284,7 @@ pub fn run(formatter: &Formatter, project_root: &Path, file: &Path) -> Formatted
         .arg(file)
         .current_dir(project_root)
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped());
     {
         use jan_process::CommandConsole;
@@ -260,11 +294,24 @@ pub fn run(formatter: &Formatter, project_root: &Path, file: &Path) -> Formatted
         Ok(child) => child,
         Err(e) => return Formatted::Failed(format!("{} could not be started: {e}", formatter.name)),
     };
+    // Drained while it runs: a formatter that fills the pipe would otherwise
+    // block until the deadline.
+    let (stderr_tx, stderr_reader) = std::sync::mpsc::channel::<Vec<u8>>();
+    if let Some(mut pipe) = child.stderr.take() {
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut buffer = Vec::new();
+            let _ = pipe.read_to_end(&mut buffer);
+            let _ = stderr_tx.send(buffer);
+        });
+    }
     let deadline = std::time::Instant::now() + FORMAT_DEADLINE;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if std::time::Instant::now() >= deadline => {
+                // The whole tree: `prettier.cmd` is a shell that started node.
+                let _ = crate::tools::proc::kill_tree_child(&mut child);
                 let _ = child.kill();
                 let _ = child.wait();
                 return Formatted::Failed(format!(
@@ -281,10 +328,8 @@ pub fn run(formatter: &Formatter, project_root: &Path, file: &Path) -> Formatted
         // A formatter that refuses is usually refusing the *syntax*, which is
         // worth saying plainly: the edit is still there, and it may not parse.
         let mut stderr = String::new();
-        if let Some(mut pipe) = child.stderr.take() {
-            use std::io::Read;
-            let mut buffer = Vec::new();
-            let _ = pipe.read_to_end(&mut buffer);
+        // Bounded: a grandchild still holding the pipe must not hang the edit.
+        if let Ok(buffer) = stderr_reader.recv_timeout(Duration::from_secs(1)) {
             stderr = String::from_utf8_lossy(&buffer).trim().to_string();
         }
         let detail = stderr.lines().next().unwrap_or("no output").to_string();
@@ -369,30 +414,34 @@ mod tests {
             assert_eq!(detect(&root, &root.join("a.ts")), None);
         }
 
-        // A project's own copy is the one it means.
+        // A copy inside the project is never run: it executes unsandboxed.
         let bin = root.join("node_modules").join(".bin");
         std::fs::create_dir_all(&bin).unwrap();
         let name = if cfg!(windows) { "prettier.cmd" } else { "prettier" };
         std::fs::write(bin.join(name), "#!/bin/sh\nexit 0\n").unwrap();
-        let found = detect(&root, &root.join("a.ts")).expect("a local prettier is a formatter");
-        assert_eq!(found.name, "prettier");
-        assert!(found.program.starts_with(&bin), "{:?}", found.program);
-        assert_eq!(found.args, vec!["--write"]);
-        assert_eq!(found.evidence, ".prettierrc");
+        assert!(resolve_program(&root, "prettier").is_none_or(|p| !p.starts_with(&root)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
-        // Without the config or a package.json mention, the same binary is not
-        // evidence: it may be there for something else entirely.
-        std::fs::remove_file(root.join(".prettierrc")).unwrap();
+    /// A prettier configuration that can load code is not run.
+    #[test]
+    fn prettier_refuses_configs_that_load_code() {
+        if resolve_program(Path::new("."), "prettier").is_none() {
+            return; // nothing to resolve on this machine
+        }
+        let root = temp_root("prettier_code");
+        std::fs::write(root.join("a.ts"), "const x=1\n").unwrap();
+        std::fs::write(root.join("prettier.config.js"), "module.exports={}\n").unwrap();
         assert_eq!(detect(&root, &root.join("a.ts")), None);
-        std::fs::write(
-            root.join("package.json"),
-            r#"{"devDependencies":{"prettier":"3.0.0"}}"#,
-        )
-        .unwrap();
-        assert_eq!(
-            detect(&root, &root.join("a.ts")).map(|f| f.evidence),
-            Some("package.json".to_string())
-        );
+        std::fs::remove_file(root.join("prettier.config.js")).unwrap();
+        std::fs::write(root.join(".prettierrc"), r#"{"plugins":["./x.js"]}"#).unwrap();
+        assert_eq!(detect(&root, &root.join("a.ts")), None);
+        std::fs::remove_file(root.join(".prettierrc")).unwrap();
+        std::fs::write(root.join("package.json"), r#"{"prettier":"@corp/config"}"#).unwrap();
+        assert_eq!(detect(&root, &root.join("a.ts")), None);
+        std::fs::write(root.join("package.json"), r#"{"devDependencies":{"prettier":"3"}}"#).unwrap();
+        let found = detect(&root, &root.join("a.ts")).expect("prettier");
+        assert_eq!(found.args, vec!["--write", "--no-config"]);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -405,29 +454,22 @@ mod tests {
         std::fs::write(root.join("pyproject.toml"), "[tool.pytest.ini_options]\n").unwrap();
         assert_eq!(detect(&root, &root.join("a.py")), None);
 
-        let bin = root.join("node_modules").join(".bin");
-        std::fs::create_dir_all(&bin).unwrap();
-        for tool in ["ruff", "black"] {
-            let name = if cfg!(windows) {
-                format!("{tool}.cmd")
-            } else {
-                tool.to_string()
-            };
-            std::fs::write(bin.join(name), "#!/bin/sh\nexit 0\n").unwrap();
-        }
+        // The programs come from PATH (never the project), so what is
+        // asserted is the declaration that picks one.
         std::fs::write(root.join("pyproject.toml"), "[tool.black]\nline-length = 88\n").unwrap();
-        assert_eq!(
-            detect(&root, &root.join("a.py")).map(|f| f.name),
-            Some("black".to_string())
-        );
+        assert!(pyproject_declares(&root, "black"));
+        assert!(!pyproject_declares(&root, "ruff"));
         std::fs::write(
             root.join("pyproject.toml"),
             "[tool.black]\n[tool.ruff.format]\nquote-style = \"double\"\n",
         )
         .unwrap();
-        let found = detect(&root, &root.join("a.py")).expect("ruff");
-        assert_eq!(found.name, "ruff format");
-        assert_eq!(found.args, vec!["format", "-q"]);
+        assert!(pyproject_declares(&root, "ruff"));
+        if resolve_program(&root, "ruff").is_some() {
+            let found = detect(&root, &root.join("a.py")).expect("ruff");
+            assert_eq!(found.name, "ruff format");
+            assert_eq!(found.args, vec!["format", "-q"]);
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

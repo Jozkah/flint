@@ -32,6 +32,8 @@ const MAX_IMAGE_BYTES: usize = 20 * 1024 * 1024;
 /// to a temp file the `read` tool can page through, so the cap is tuned for
 /// context economy (~16k tokens worst case) rather than for fitting everything.
 const BASH_MAX_BYTES: usize = MAX_BYTES;
+/// Most of a command's output kept in its spill file.
+const BASH_SPILL_MAX_BYTES: usize = 256 * 1024 * 1024;
 const BASH_MAX_LINES: usize = MAX_LINES;
 const GREP_MAX_LINE: usize = 500;
 const LS_DEFAULT_LIMIT: usize = 500;
@@ -2921,8 +2923,11 @@ impl BashCapture {
                 }
             }
         }
+        // The spill file keeps the first BASH_SPILL_MAX_BYTES: a command that
+        // prints forever must not fill the disk.
         if let Some(w) = self.spill.as_mut() {
-            let _ = w.write_all(chunk);
+            let room = BASH_SPILL_MAX_BYTES.saturating_sub(self.total_bytes);
+            let _ = w.write_all(&chunk[..chunk.len().min(room)]);
         }
         self.total_bytes += chunk.len();
         self.total_newlines += bytecount_newlines(chunk);

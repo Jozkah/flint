@@ -25,7 +25,9 @@ use crate::tools::git_tool::Roots;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 120;
 const MAX_TIMEOUT_SECS: u64 = 900;
-const MAX_SCRIPT_CHARS: usize = 20_000;
+// The script travels as base64 of UTF-16 on the command line, which Windows
+// caps at 32,767 characters: 12,000 characters encode to about 32,000.
+const MAX_SCRIPT_CHARS: usize = 12_000;
 const HEAD_BYTES: usize = 6 * 1024;
 const TAIL_BYTES: usize = 40 * 1024;
 
