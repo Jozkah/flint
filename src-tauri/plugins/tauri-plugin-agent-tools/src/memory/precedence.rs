@@ -182,7 +182,7 @@ pub fn authority_claim(text: &str) -> Option<&'static str> {
 /// The sentence of `text` that mentions `word`, bounded, for a report.
 fn excerpt(text: &str, words: &[&str]) -> String {
     let sentence = text
-        .split(|c| c == '.' || c == '\n' || c == ';')
+        .split(['.', '\n', ';'])
         .find(|s| {
             let l = s.to_lowercase();
             words.iter().any(|w| {

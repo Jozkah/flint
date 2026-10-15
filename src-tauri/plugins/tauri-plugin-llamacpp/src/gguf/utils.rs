@@ -310,7 +310,6 @@ pub async fn estimate_kv_cache_internal(
 #[cfg(test)]
 mod remote_fetch_status_tests {
     use super::*;
-    use std::io::Read;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     /// Serves every request with the same status line and body.

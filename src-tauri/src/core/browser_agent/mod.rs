@@ -124,6 +124,7 @@ pub(crate) fn set_open_in_flight(on: bool) {
 ///   site): stopped before anything is requested from it, and the user is asked;
 /// - the approved site's own pages and subdomains, and sites with a rule or
 ///   grant: allowed.
+///
 /// Otherwise the pane behaves as it always has.
 pub fn navigation_permitted(label: &str, url: &Url) -> bool {
     if label != PANE_LABEL || url.scheme() == "about" {

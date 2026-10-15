@@ -896,7 +896,7 @@ mod tests {
     use super::*;
 
     fn dir(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!(
+        let d = crate::test_temp_root().join(format!(
             "jan-hooks-{tag}-{}-{:?}",
             std::process::id(),
             std::thread::current().id()

@@ -751,7 +751,7 @@ pub fn read_all(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivityEv
         .collect();
     let mut out: Vec<ToolActivityEvent> = read_legacy(data_folder)
         .into_iter()
-        .filter(|e| session.map_or(true, |s| e.session == s))
+        .filter(|e| session.is_none_or(|s| e.session == s))
         .filter(|e| !known.contains(&(e.session.clone(), e.call.clone(), e.event_type, e.phase)))
         .collect();
     out.extend(canonical);

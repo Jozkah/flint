@@ -502,7 +502,7 @@ pub async fn huggingface_model_files(
         .filter(|file| valid_remote_path(&file.rfilename))
         .map(sibling_file)
         .collect();
-    files.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+    files.sort_by_key(|a| a.name.to_ascii_lowercase());
     Ok(files)
 }
 
@@ -641,6 +641,7 @@ fn path_too_long(path: &std::path::Path) -> bool {
 
 /// The `\\?\` form of an absolute Windows path (drive or UNC), which lifts the
 /// 260 character limit. `None` for a path that cannot be extended (relative).
+#[cfg_attr(not(windows), allow(dead_code))]
 fn extended_windows_path(text: &str) -> Option<String> {
     if text.starts_with("\\\\?\\") {
         return Some(text.to_string());
@@ -906,6 +907,7 @@ async fn download_attempt<R: Runtime>(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn huggingface_download_model<R: Runtime>(
     app: tauri::AppHandle<R>,
     task_id: String,
@@ -1013,7 +1015,7 @@ pub async fn huggingface_download_model<R: Runtime>(
                                 .await
                                 .map(|meta| meta.len())
                                 .unwrap_or(0);
-                            if expected_size.map_or(true, |size| now >= size) {
+                            if expected_size.is_none_or(|size| now >= size) {
                                 break;
                             }
                             (
@@ -1122,7 +1124,7 @@ mod tests {
 
     #[test]
     fn an_unrecognised_error_keeps_only_the_os_text() {
-        let err = std::io::Error::new(std::io::ErrorKind::Other, "odd failure");
+        let err = std::io::Error::other("odd failure");
         assert_eq!(
             io_failure("Could not open", &err),
             "Could not open: odd failure"

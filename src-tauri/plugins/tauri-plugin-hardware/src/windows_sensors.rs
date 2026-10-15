@@ -15,6 +15,9 @@
 //! Spawning PowerShell costs about a second, so the query runs on a
 //! background thread at most every 30 seconds and polls return the cached
 //! result immediately.
+// The parser and its constants are only reached through the PowerShell query,
+// which exists on Windows; the unit tests exercise them everywhere else.
+#![cfg_attr(not(windows), allow(dead_code))]
 
 use crate::snapshot::SensorDetails;
 use serde_json::Value;

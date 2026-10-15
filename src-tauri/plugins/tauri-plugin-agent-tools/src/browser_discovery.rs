@@ -327,6 +327,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn windows_candidates_cover_real_install_layouts() {
         let pf = Path::new(r"C:\Program Files");
         let pf86 = Path::new(r"C:\Program Files (x86)");

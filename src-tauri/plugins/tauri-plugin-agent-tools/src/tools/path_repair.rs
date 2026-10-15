@@ -84,7 +84,7 @@ pub fn repair(key: &str, raw: &str, exists: &dyn Fn(&str) -> bool) -> Result<Opt
         .parent()
         .and_then(|p| p.to_str())
         .filter(|p| !p.is_empty())
-        .map(|p| exists(p))
+        .map(exists)
         .unwrap_or(false);
     if exists(&restored) || parent_exists {
         return Ok(Some(restored));
@@ -152,6 +152,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(not(windows), ignore = "exercises Windows paths and programs")]
     fn a_new_file_in_an_existing_folder_is_repaired_too() {
         let exists = |p: &str| p == "C:\\tmp";
         assert_eq!(

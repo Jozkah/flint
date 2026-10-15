@@ -82,6 +82,7 @@ fn app_key(name: &str) -> String {
     n.strip_suffix(".exe").unwrap_or(&n).to_string()
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn app_allowed(app: &str, allowed: &[String]) -> bool {
     let key = app_key(app);
     allowed.iter().any(|a| app_key(a) == key)

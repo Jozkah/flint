@@ -1313,7 +1313,7 @@ mod tests {
     use super::*;
 
     fn dirs(name: &str) -> (PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!(
+        let root = crate::test_temp_root().join(format!(
             "jan-proposal-{name}-{}-{}",
             std::process::id(),
             new_id()
@@ -1739,7 +1739,13 @@ mod tests {
             &approve(&record, &dest, vec![all("a.txt"), all("b/c.txt")]),
         )
         .unwrap_err();
-        assert!(matches!(&err, ProposalError::WriteFailed { not_restored, .. } if not_restored.is_empty()), "{err:?}");
+        // Windows reports the blocked write; Unix refuses to make the folder first
+        // (ENOTDIR). Either way nothing is left half written.
+        assert!(
+            matches!(&err, ProposalError::WriteFailed { not_restored, .. } if not_restored.is_empty())
+                || matches!(&err, ProposalError::Io(_)),
+            "{err:?}"
+        );
         assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), "a\n");
     }
 

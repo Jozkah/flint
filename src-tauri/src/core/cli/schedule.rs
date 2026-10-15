@@ -11,6 +11,7 @@
 //!   task asked for that; otherwise nothing that changes the folder is ever
 //!   approved;
 //! * stops at the turn, token and wall-clock budgets the task was saved with.
+//!
 //! The quota and spend ceilings the loop already enforces apply as for any run.
 
 use std::path::{Path, PathBuf};

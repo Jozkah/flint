@@ -199,7 +199,7 @@ impl DeviceStore {
     pub fn touch(&mut self, id: &str, at: u64) {
         let mut dirty = false;
         if let Some(d) = self.devices.iter_mut().find(|d| d.id == id) {
-            if d.last_seen.map_or(true, |prev| {
+            if d.last_seen.is_none_or(|prev| {
                 at.saturating_sub(prev) >= LAST_SEEN_PERSIST_EVERY_MS
             }) {
                 dirty = true;

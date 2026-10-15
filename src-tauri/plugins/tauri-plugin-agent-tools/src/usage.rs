@@ -122,9 +122,9 @@ pub fn scoped_lookup(
     Ok(read_all(data_folder)
         .into_iter()
         .filter(|record| {
-            invocation.map_or(true, |id| record.invocation == id)
-                && run.map_or(true, |id| record.run == id)
-                && session.map_or(true, |id| record.session == id)
+            invocation.is_none_or(|id| record.invocation == id)
+                && run.is_none_or(|id| record.run == id)
+                && session.is_none_or(|id| record.session == id)
         })
         .collect())
 }

@@ -396,11 +396,13 @@ pub(crate) async fn capture(mut cmd: tokio::process::Command, timeout: Duration)
 /// A script that writes UTF-8. PowerShell writes to a pipe in the console's
 /// code page, so a Portuguese date, a Japanese file name or a service's display
 /// name would otherwise reach the model as garbage.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn utf8_script(script: &str) -> String {
     format!("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n{script}")
 }
 
 /// Cut to the output cap on a character boundary, saying so.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn bounded(text: &str) -> String {
     if text.len() <= OUTPUT_CAP {
         return text.to_string();
