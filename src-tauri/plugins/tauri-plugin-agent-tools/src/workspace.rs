@@ -197,7 +197,13 @@ pub fn validate_browse_root(root: &Path, jan_data_folder: &Path) -> Result<PathB
 /// rule and an ACE respectively. Either way `TMPDIR`/`TMP`/`TEMP` point at it
 /// (see `tools::jail::scratch_env_path`) and it is cleaned up with the session.
 pub fn scratch_dir(session: &str) -> PathBuf {
-    scratch_base().join(format!("jan-agent-{session}"))
+    // One component whatever the id holds: the result is later removed
+    // recursively, so a separator must not lead it out of the temp dir.
+    let safe: String = session
+        .chars()
+        .map(|c| if matches!(c, '/' | '\\' | ':') || c.is_control() { '_' } else { c })
+        .collect();
+    scratch_base().join(format!("jan-agent-{safe}"))
 }
 
 /// The directory session scratches are created in: the host temp dir.

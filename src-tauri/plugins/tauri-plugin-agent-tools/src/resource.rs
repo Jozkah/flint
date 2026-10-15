@@ -77,9 +77,19 @@ impl GitOp {
             {
                 GitOp::Clean
             }
-            "push" if has(&["--delete"]) => GitOp::DeleteBranch,
+            // `-d` is `--delete`; `--mirror` and `--prune` delete remote refs the
+            // local side lacks; `origin :branch` is a delete spelled as a
+            // refspec with an empty source.
+            "push"
+                if has(&["--delete", "--mirror", "--prune"])
+                    || rest.iter().any(|a| is_short_flag_with(a, &['d']))
+                    || rest.iter().any(|a| a.starts_with(':') && a.len() > 1) =>
+            {
+                GitOp::DeleteBranch
+            }
             "push"
                 if has(&["--force", "-f", "--force-with-lease", "--force-if-includes"])
+                    || rest.iter().any(|a| a.starts_with("--force-with-lease=") || is_short_flag_with(a, &['f']))
                     // `git push origin +main` is a force push spelled with a
                     // refspec rather than a flag.
                     || rest.iter().any(|a| a.starts_with('+') && a.len() > 1) =>
@@ -87,6 +97,7 @@ impl GitOp {
                 GitOp::ForcePush
             }
             "checkout" if has(&["--force", "-f"]) => GitOp::DiscardWorktree,
+            "switch" if has(&["--force", "-f", "--discard-changes"]) => GitOp::DiscardWorktree,
             // `git checkout .` and `git checkout -- path` overwrite the tree.
             "checkout" if rest.iter().any(|a| *a == "." || *a == "--") => GitOp::DiscardWorktree,
             "restore" if !has(&["--staged"]) && !rest.is_empty() => GitOp::DiscardWorktree,
@@ -135,7 +146,10 @@ fn subcommand_index(argv: &[String]) -> usize {
     let mut idx = 0;
     while idx < argv.len() {
         let word = argv[idx].as_str();
-        if word == "-C" || word == "-c" || word == "--git-dir" || word == "--work-tree" {
+        if matches!(
+            word,
+            "-C" | "-c" | "--git-dir" | "--work-tree" | "--namespace" | "--super-prefix" | "--config-env"
+        ) {
             idx += 2;
             continue;
         }
@@ -854,6 +868,22 @@ mod tests {
 
     fn git(line: &str) -> GitOp {
         GitOp::classify(&argv(line))
+    }
+
+    /// Spellings of a remote delete, a forced switch and a hidden subcommand.
+    #[test]
+    fn other_spellings_of_destructive_git_are_caught() {
+        for line in ["push -d origin x", "push origin :x", "push --mirror", "push --prune origin", "push -dq origin x"] {
+            assert_eq!(git(line), GitOp::DeleteBranch, "{line}");
+        }
+        for line in ["push --force-with-lease=main origin main", "--namespace ns push --force", "push -fu origin main"] {
+            assert_eq!(git(line), GitOp::ForcePush, "{line}");
+        }
+        for line in ["switch -f main", "switch --discard-changes main"] {
+            assert_eq!(git(line), GitOp::DiscardWorktree, "{line}");
+        }
+        assert_eq!(git("push origin main"), GitOp::Other);
+        assert_eq!(git("switch main"), GitOp::Other);
     }
 
     // ---- normalization -------------------------------------------------

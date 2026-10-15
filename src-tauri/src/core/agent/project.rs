@@ -622,27 +622,63 @@ pub fn allowed_licenses(project_root: &Path) -> Vec<String> {
 /// else exactly as it is: a policy import (AH-052) or a bundle import
 /// (AH-145) must not rewrite a project's model, budget or skills.
 pub(crate) fn replace_tools_section(existing: &str, section: &str) -> String {
+    // Only the keys a policy document carries are replaced. Every other key in
+    // the old `[tools]` (allow_network, allow_domains, deny_domains, ask,
+    // nul_programs, ...) is kept: dropping them would widen what the agent may
+    // do while the import still reports a narrowing.
+    const DOCUMENT_KEYS: &[&str] = &["default", "allow", "deny", "allow_write"];
     let mut out = String::new();
-    let mut skipping = false;
+    let mut in_tools = false;
     let mut replaced = false;
+    // Bracket depth of a document key's value that runs over several lines.
+    let mut dropping_depth: i32 = 0;
+    // The same for a kept key, so its continuation lines are never read as a
+    // section heading.
+    let mut keeping_depth: i32 = 0;
     for line in existing.lines() {
+        if dropping_depth > 0 {
+            dropping_depth += bracket_delta(line);
+            continue;
+        }
+        if keeping_depth > 0 {
+            keeping_depth += bracket_delta(line);
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
         let heading = line.trim_start().starts_with('[') && line.trim_end().ends_with(']');
         if heading {
             if line.trim() == "[tools]" {
                 out.push_str(section);
-                // A blank line before whatever section follows, so the file
-                // reads the way the user wrote it.
-                out.push('\n');
-                skipping = true;
+                in_tools = true;
                 replaced = true;
                 continue;
             }
-            skipping = false;
+            if in_tools {
+                // A blank line before whatever section follows, so the file
+                // reads the way the user wrote it.
+                out.push('\n');
+            }
+            in_tools = false;
         }
-        if !skipping {
-            out.push_str(line);
-            out.push('\n');
+        if in_tools {
+            let trimmed = line.trim();
+            // The document writes its own note as comments; the old ones go.
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            let key = trimmed.split('=').next().unwrap_or("").trim().trim_matches('"');
+            if trimmed.contains('=') && DOCUMENT_KEYS.contains(&key) {
+                dropping_depth = bracket_delta(line).max(0);
+                continue;
+            }
+            keeping_depth = bracket_delta(line).max(0);
         }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if in_tools {
+        out.push('\n');
     }
     if !replaced {
         if !out.is_empty() && !out.ends_with('\n') {
@@ -651,6 +687,33 @@ pub(crate) fn replace_tools_section(existing: &str, section: &str) -> String {
         out.push_str(section);
     }
     out
+}
+
+/// How many more `[` than `]` a TOML line opens, ignoring quoted strings.
+fn bracket_delta(line: &str) -> i32 {
+    let mut depth = 0;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for c in line.chars() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' && q == '"' {
+                escaped = true;
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        match c {
+            '"' | '\'' => quote = Some(c),
+            '#' => break,
+            '[' => depth += 1,
+            ']' => depth -= 1,
+            _ => {}
+        }
+    }
+    depth
 }
 
 pub(crate) fn enabled_skills(project_root: &Path) -> Vec<String> {
@@ -686,7 +749,7 @@ pub(crate) fn permissions_under(
         .default
         .as_deref()
         .map(PermissionDefault::from_str_lenient)
-        .unwrap_or_default();
+        .unwrap_or(PermissionDefault::UNSET);
     ToolPermissions::new(
         org.clamp_default(default),
         &cfg.tools.allow,
@@ -840,6 +903,25 @@ skills = ["review"]
 [profiles.quiet]
 max_tokens = 10
 "#;
+
+    /// A policy import replaces only the keys a policy document carries; the
+    /// network and ask rules it does not describe stay as they were.
+    #[test]
+    fn a_policy_import_keeps_the_tools_keys_it_does_not_describe() {
+        let existing = "[agent]\nmodel = \"m\"\n\n[tools]\n# old note\ndefault = \"allow\"\ndeny = [\n  \"bash\",\n]\nallow_network = false\nallow_domains = [\n  \"example.com\",\n]\nask = [\"write\"]\n\n[skills]\nenabled = []\n";
+        let section = "[tools]\ndefault = \"read-only\"\nallow = []\ndeny = [\"bash\"]\nallow_write = []\n";
+        let out = replace_tools_section(existing, section);
+        let parsed: toml::Value = toml::from_str(&out).expect("valid toml");
+        let tools = &parsed["tools"];
+        assert_eq!(tools["default"].as_str(), Some("read-only"));
+        assert_eq!(tools["allow_network"].as_bool(), Some(false));
+        assert_eq!(tools["allow_domains"][0].as_str(), Some("example.com"));
+        assert_eq!(tools["ask"][0].as_str(), Some("write"));
+        assert_eq!(tools["deny"].as_array().map(Vec::len), Some(1));
+        assert_eq!(parsed["agent"]["model"].as_str(), Some("m"));
+        assert!(parsed["skills"]["enabled"].as_array().is_some());
+        assert!(!out.contains("old note"));
+    }
 
     /// AH-186: what a profile mentions changes; what it does not mention is
     /// left exactly as the project had it. A profile that quietly reset

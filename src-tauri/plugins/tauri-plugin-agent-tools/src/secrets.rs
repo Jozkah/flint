@@ -520,9 +520,10 @@ pub fn redact_secrets(text: &str) -> String {
 /// compiles this same pattern.
 pub const QUOTED_KEY_VALUE_RE: &str = r#"(?i)((?:\\?["'])[A-Za-z0-9_\-]*(?:api[_-]?key|apikey|secret|token|password|passwd|pwd)(?:\\?["'])\s*:\s*\\?["'])[^"'\\<][^"'\\]*"#;
 
-/// An upper-case variable named for a key: `STRIPE_KEY= value`, `KEY=value`.
+/// An upper-case variable named for a key: `STRIPE_KEY= value`, `KEY=value`,
+/// `APIKEY=value`, but not a word that merely ends in KEY (`MONKEY=`).
 /// Case-sensitive so prose ("the key = ...") is left. Shared with the CLI.
-pub const ENV_KEY_ASSIGNMENT_RE: &str = r#"(\b(?:[A-Z][A-Z0-9_]*)?KEY\s*=\s*)[^\s"'<;&|]{4,}"#;
+pub const ENV_KEY_ASSIGNMENT_RE: &str = r#"(\b(?:[A-Z0-9_]*(?:_|API))?KEY\s*=\s*)[^\s"'<;&|]{4,}"#;
 
 /// Take the value of a quoted-key or env-key assignment, keeping the label.
 /// `None` when nothing matched, so the caller keeps its original string.

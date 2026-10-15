@@ -330,6 +330,13 @@ pub fn load(data_folder: &Path, session: &str) -> Journal {
         })
 }
 
+/// Held across a journal's load-change-save. Parallel subagents in one run, or
+/// two runs of one session, record at once; without it the later save drops
+/// the other's change and undo restores only part of the turn.
+fn hold(data_folder: &Path, session: &str) -> crate::mailbox::Held {
+    crate::mailbox::Held::take(&journal_path(data_folder, session))
+}
+
 fn save(data_folder: &Path, journal: &Journal) -> Result<(), String> {
     let body = serde_json::to_vec_pretty(journal).map_err(|e| e.to_string())?;
     write_atomic(&journal_path(data_folder, &journal.session), &body)
@@ -360,6 +367,7 @@ pub fn record(
     // like with like. A relative data folder (the configured default is
     // `./data`) recorded relative paths that no root could ever contain.
     let key = absolute(path).to_string_lossy().to_string();
+    let _held = hold(data_folder, session);
     let mut journal = load(data_folder, session);
     let idx = match journal.turns.iter().position(|t| t.run == run) {
         Some(i) => i,
@@ -507,6 +515,7 @@ fn swap(
     allowed_roots: &[PathBuf],
     undo: bool,
 ) -> Result<UndoReport, UndoError> {
+    let _held = hold(data_folder, session);
     let mut journal = load(data_folder, session);
     let Some(idx) = journal.turns.iter().position(|t| t.run == run) else {
         return Err(UndoError::NotFound);

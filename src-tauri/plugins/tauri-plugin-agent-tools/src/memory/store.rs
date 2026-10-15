@@ -34,6 +34,9 @@ pub struct Loaded {
     /// where the file should be, permissions). Distinct from "empty": an
     /// unreadable store that looked empty would silently lose every memory.
     pub unavailable: Option<String>,
+    /// The skipped lines themselves, verbatim, so a rewrite through
+    /// [`update`] writes them back instead of destroying them.
+    pub kept_lines: Vec<String>,
 }
 
 impl Loaded {
@@ -99,9 +102,13 @@ pub fn load(store_root: &Path, scope: Scope) -> Loaded {
         match serde_json::from_str::<MemoryRecord>(line) {
             Ok(record) if record.schema_version > SCHEMA_VERSION => {
                 out.skipped_newer_schema += 1;
+                out.kept_lines.push(line.to_string());
             }
             Ok(record) => out.records.push(record),
-            Err(_) => out.skipped_unreadable += 1,
+            Err(_) => {
+                out.skipped_unreadable += 1;
+                out.kept_lines.push(line.to_string());
+            }
         }
     }
     out
@@ -113,6 +120,11 @@ pub fn load(store_root: &Path, scope: Scope) -> Loaded {
 /// all change existing records, and an append-only log would need compaction to
 /// answer the simplest question the UI asks ("what is in this scope?").
 pub fn save(store_root: &Path, scope: Scope, records: &[MemoryRecord]) -> Result<(), String> {
+    save_keeping(store_root, scope, records, &[])
+}
+
+/// [`save`], writing `kept` (lines this build could not use) back unchanged.
+fn save_keeping(store_root: &Path, scope: Scope, records: &[MemoryRecord], kept: &[String]) -> Result<(), String> {
     let path = records_path(store_root, scope);
     let dir = path
         .parent()
@@ -123,6 +135,10 @@ pub fn save(store_root: &Path, scope: Scope, records: &[MemoryRecord]) -> Result
     for record in records {
         let line = serde_json::to_string(record).map_err(|e| format!("ERROR: {e}"))?;
         body.push_str(&line);
+        body.push('\n');
+    }
+    for line in kept {
+        body.push_str(line);
         body.push('\n');
     }
 
@@ -239,7 +255,7 @@ pub fn update<T>(
     let mut records = loaded.records;
     let (changed, out) = change(&mut records)?;
     if changed {
-        save(store_root, scope, &records)?;
+        save_keeping(store_root, scope, &records, &loaded.kept_lines)?;
     }
     Ok(out)
 }
@@ -285,13 +301,11 @@ pub fn insert_capped(store_root: &Path, record: &MemoryRecord, cap: usize) -> Re
 /// Callers wanting an undoable delete set [`super::record::Status::Deleted`]
 /// through `upsert` instead; this is the permanent one.
 pub fn remove(store_root: &Path, scope: Scope, id: &MemoryId) -> Result<(), String> {
-    let mut records = load(store_root, scope).records;
-    let before = records.len();
-    records.retain(|r| &r.id != id);
-    if records.len() == before {
-        return Ok(());
-    }
-    save(store_root, scope, &records)
+    update(store_root, scope, |records| {
+        let before = records.len();
+        records.retain(|r| &r.id != id);
+        Ok((records.len() != before, ()))
+    })
 }
 
 #[cfg(test)]
