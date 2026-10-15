@@ -25,7 +25,7 @@ beforeEach(() => {
   useDirectEditGrants.setState({
     capability: { known: false, reason: 'loading' },
     bySession: {},
-    generation: 0,
+    generation: {},
   })
   bindings.directEditCapability.mockResolvedValue(true)
   bindings.managedWorktreeCapability.mockResolvedValue(true)
@@ -150,6 +150,25 @@ describe('a reply that outlives the question', () => {
     expect(await first).toEqual({ ok: false, reason: 'superseded' })
     expect(bindings.directEditRevoke).toHaveBeenCalledWith('grant-first')
     expect(store().grantFor(SESSION)?.grantId).toBe('grant-second')
+  })
+
+  it('is not superseded by another session asking', async () => {
+    let releaseFirst: (id: string) => void = () => {}
+    bindings.directEditAuthorize.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        releaseFirst = resolve
+      })
+    )
+    bindings.directEditAuthorize.mockResolvedValueOnce('grant-other')
+
+    const first = store().authorize(SESSION, FOLDER, DATA)
+    await store().authorize('other-session', FOLDER, DATA)
+    store().forget('third-session')
+    releaseFirst('grant-first')
+
+    expect(await first).toMatchObject({ ok: true })
+    expect(store().grantFor(SESSION)?.grantId).toBe('grant-first')
+    expect(store().grantFor('other-session')?.grantId).toBe('grant-other')
   })
 })
 

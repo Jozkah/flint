@@ -76,16 +76,17 @@ export function useCodeGitOverlays(input: {
     if (!changeMarkers || !root || !path || original !== undefined) return
     let alive = true
     const key = `${root}\u0000${path}`
-    let hit = headCache.get(key)
-    if (!hit) {
-      hit = loadGitHeadFile(root, path).catch(() => null)
-      headCache.set(key, hit)
-    }
-    void hit.then((value) => alive && setHead(value))
+    // The cached copy shows at once; HEAD is read again every time, since a
+    // commit since then changes it and nothing else would refresh the cache.
+    const cached = headCache.get(key)
+    if (cached) void cached.then((value) => alive && setHead(value))
+    const fresh = loadGitHeadFile(root, path).catch(() => null)
+    headCache.set(key, fresh)
+    void fresh.then((value) => alive && setHead(value))
     return () => {
       alive = false
     }
-  }, [changeMarkers, root, path, original])
+  }, [changeMarkers, root, path, original, savedCount])
 
   useEffect(() => {
     setBlame(null)
