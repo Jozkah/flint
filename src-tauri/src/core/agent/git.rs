@@ -75,6 +75,7 @@ fn exec(
     use std::process::Stdio;
 
     let mut cmd = Command::new("git");
+    jan_process::HostProcessEnv::host_env(&mut cmd);
     cmd.arg("-C").arg(repo).args(crate::core::agent::vcs::HARDENED).env("GIT_TERMINAL_PROMPT", "0");
     // Snapshot and restore must round-trip the working tree byte for byte.
     // `core.autocrlf` is on by default in Git for Windows, which converts on
