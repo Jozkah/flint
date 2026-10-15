@@ -31,6 +31,15 @@ use super::Route;
 
 type Body = BoxBody<Bytes, Infallible>;
 
+/// One model load at a time, process-wide.
+///
+/// Auto-fit sizes a model against the device memory free when its load starts.
+/// Two loads running side by side both see the same free memory and together
+/// overcommit it; on Vulkan, which cannot spill into system memory, the second
+/// one fails with `ErrorOutOfDeviceMemory`. The registry lock is still not held
+/// across a load, so resident models keep serving while another one loads.
+static LOAD_GATE: Mutex<()> = Mutex::const_new(());
+
 pub struct EngineServer {
     pub port: u16,
     pub api_key: String,
@@ -925,6 +934,9 @@ async fn acquire_engine(
                 // this request's future is dropped, or the slot stays reserved.
                 let reg = registry.clone();
                 let task = tokio::spawn(async move {
+                    // Held until the load settles, so the next fit sees this
+                    // model's memory already taken.
+                    let _gate = LOAD_GATE.lock().await;
                     let joined = tokio::task::spawn_blocking(move || {
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
                             || ticket.run(),
