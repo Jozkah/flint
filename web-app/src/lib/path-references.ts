@@ -94,6 +94,39 @@ function isReferenceToken(raw: string): boolean {
   )
 }
 
+// ── Text an @ is never read in ───────────────────────────────────────────────
+
+/**
+ * Spans of `text` whose `@` is literal: fenced code blocks (an unclosed fence
+ * runs to the end, as markdown reads it) and inline code spans. Pasted Python
+ * is full of `@property` and `@app.route`, and neither backticks nor a
+ * backslash used to keep them from being read as file references.
+ */
+function codeSpans(text: string): Array<[number, number]> {
+  const spans: Array<[number, number]> = []
+  const code = /```[\s\S]*?(?:```|$)|`[^`\n]+`/g
+  let m: RegExpExecArray | null
+  while ((m = code.exec(text)) !== null) {
+    spans.push([m.index, m.index + m[0].length])
+  }
+  return spans
+}
+
+const inSpan = (spans: Array<[number, number]>, at: number): boolean =>
+  spans.some(([from, to]) => at >= from && at < to)
+
+/**
+ * Whether the `@` of a pattern match is a literal one: inside code, or
+ * escaped with a backslash (`\@property`).
+ */
+function isLiteralAt(
+  spans: Array<[number, number]>,
+  pre: string,
+  index: number
+): boolean {
+  return pre === '\\' || inSpan(spans, index + pre.length)
+}
+
 // ── Parsing references from text ─────────────────────────────────────────────
 
 /**
@@ -103,9 +136,12 @@ function isReferenceToken(raw: string): boolean {
 export function parsePromptForReferences(text: string): string[] {
   const seen = new Set<string>()
   const refs: string[] = []
+  const spans = codeSpans(text)
+  REFERENCE_PATTERN.lastIndex = 0
   let match: RegExpExecArray | null
   while ((match = REFERENCE_PATTERN.exec(text)) !== null) {
     const raw = match[2]
+    if (isLiteralAt(spans, match[1], match.index)) continue
     // Excerpt references belong to whoever produced them; see `lineRangeOf`.
     if (lineRangeOf(raw)) continue
     if (!isReferenceToken(raw)) continue
@@ -120,17 +156,32 @@ export function parsePromptForReferences(text: string): string[] {
 /**
  * Remove qualified @path references from `text`, leaving non-reference `@`
  * tokens (ssh/email addresses, bare IPs) intact, and normalise whitespace.
+ * A reference named in `keep` stays too: `@property` in unfenced pasted code is
+ * code, not a file that failed to load.
  */
-export function stripPromptReferences(text: string): string {
-  const cleaned = text.replace(REFERENCE_PATTERN, (match, pre: string, raw: string) => {
+export function stripPromptReferences(
+  text: string,
+  /** References that did not resolve: left in the text as typed. */
+  keep?: ReadonlySet<string>
+): string {
+  const spans = codeSpans(text)
+  const cleaned = text.replace(
+    REFERENCE_PATTERN,
+    (match, pre: string, raw: string, offset: number) => {
+    // Escaped: the backslash was only there to say so, so it goes and the
+    // `@` stays. Inside code nothing is touched.
+    if (inSpan(spans, offset + pre.length)) return match
+    if (pre === '\\') return match.slice(1)
     // A skill or agent reference is an instruction, read from the text by
     // what acts on it, so it stays. An alias is replaced by what it names.
     const typed = typedReference(raw)
     if (typed) return typed.kind === 'alias' ? pre : match
     // An excerpt reference stays in the text: the surface that emitted it
     // expands it downstream, and it is the only trace of what was selected.
+    if (keep?.has(raw)) return match
     return !lineRangeOf(raw) && isReferenceToken(raw) ? pre : match
-  })
+    }
+  )
   // Only the gaps a removed token leaves: line breaks and indentation in
   // pasted code, lists and stack traces stay as written.
   return cleaned.replace(/(\S)[ \t]{2,}/g, '$1 ').replace(/[ \t]+$/gm, '').trim()

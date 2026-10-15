@@ -154,3 +154,41 @@ describe('code references survive the prompt round trip', () => {
     expect(parsePromptForReferences(typed)).toEqual([])
   })
 })
+
+describe('literal @ (decorators in pasted code)', () => {
+  const py = 'class A:\n    @property\n    def x(self): ...\n\n@app.route("/")\ndef f(): ...'
+
+  it('reads an @ inside a fenced code block as text', () => {
+    const text = `fix this\n\`\`\`python\n${py}\n\`\`\``
+    expect(parsePromptForReferences(text)).toEqual([])
+    expect(stripPromptReferences(text)).toBe(text)
+  })
+
+  it('reads an @ inside an unclosed fence or inline code as text', () => {
+    expect(parsePromptForReferences('```py\n@property\ndef x(): ...')).toEqual([])
+    expect(parsePromptForReferences('use `@staticmethod` here')).toEqual([])
+    expect(stripPromptReferences('use `@staticmethod` here')).toBe(
+      'use `@staticmethod` here'
+    )
+  })
+
+  it('lets a backslash escape an @ and drops the backslash', () => {
+    expect(parsePromptForReferences('add \\@property')).toEqual([])
+    expect(stripPromptReferences('add \\@property')).toBe('add @property')
+  })
+
+  it('still reads a reference outside the code', () => {
+    const text = 'see @src/main.ts and `@x`'
+    expect(parsePromptForReferences(text)).toEqual(['src/main.ts'])
+    expect(stripPromptReferences(text)).toBe('see and `@x`')
+  })
+})
+
+describe('unresolved references', () => {
+  it('stay in the text so pasted code is not mangled', () => {
+    const text = '@property\ndef x(self): ...\nsee @src/a.ts'
+    expect(stripPromptReferences(text, new Set(['property']))).toBe(
+      '@property\ndef x(self): ...\nsee'
+    )
+  })
+})
