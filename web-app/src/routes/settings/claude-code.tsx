@@ -63,7 +63,8 @@ function ClaudeCodeIntegration() {
     verboseLogs,
     serverHost,
     serverPort,
-    setServerPort,
+    activeServerPort,
+    setActiveServerPort,
     apiPrefix,
     apiKey,
     trustedHosts,
@@ -142,7 +143,7 @@ function ClaudeCodeIntegration() {
     const customEnvVars = helperModels.envVars
     // The port the server actually bound, which is not serverPort when that one
     // was taken.
-    let boundPort = serverPort
+    let boundPort = activeServerPort ?? serverPort
 
     // Claude Code's first request is far larger than the default 8192-token
     // context (janhq/jan#8108). Raise the context of each local model that has
@@ -206,21 +207,25 @@ function ClaudeCodeIntegration() {
 
       if (modelsToStart.length > 0) {
         setIsModelLoading(true)
-        for (const modelId of modelsToStart) {
-          const providerWithModel = providers.find((p) =>
-            p.models.some((m) => m.id === modelId)
-          )
+        try {
+          for (const modelId of modelsToStart) {
+            const providerWithModel = providers.find((p) =>
+              p.models.some((m) => m.id === modelId)
+            )
 
-          if (providerWithModel) {
-            await serviceHub
-              .models()
-              .startModel(providerWithModel, modelId, true)
-              .then(() => {
-                console.log(`Model ${modelId} started successfully`)
-              })
+            // Remote models need no loading; only local engines can start.
+            if (providerWithModel && isLocalProvider(providerWithModel.provider)) {
+              await serviceHub
+                .models()
+                .startModel(providerWithModel, modelId, true)
+                .then(() => {
+                  console.log(`Model ${modelId} started successfully`)
+                })
+            }
           }
+        } finally {
+          setIsModelLoading(false)
         }
-        setIsModelLoading(false)
         await serviceHub
           .models()
           .getActiveModels()
@@ -249,6 +254,7 @@ function ClaudeCodeIntegration() {
                 .then((models) => setActiveModels(models || []))
               return new Promise((resolve) => setTimeout(resolve, 500))
             })
+            .finally(() => setIsModelLoading(false))
         }
       }
 
@@ -274,8 +280,9 @@ function ClaudeCodeIntegration() {
         if (!msg.includes('already running')) throw startErr
       }
 
-      if (actualPort && actualPort !== serverPort) {
-        setServerPort(actualPort)
+      if (actualPort) {
+        // A fallback bind is recorded for this run only, not as the setting.
+        setActiveServerPort(actualPort)
         boundPort = actualPort
       }
       setServerStatus('running')
