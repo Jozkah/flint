@@ -2362,7 +2362,16 @@
     "tokenUsage": "Mức dùng token",
     "modelSleeping": "Mô hình đang ngủ",
     "visionSupported": "Hỗ trợ đầu vào hình ảnh",
-    "audioSupported": "Hỗ trợ đầu vào âm thanh"
+    "audioSupported": "Hỗ trợ đầu vào âm thanh",
+    "stopGenerating": "Dừng tạo",
+    "filterOptions": "Lọc tùy chọn",
+    "switchAssistant": "Đổi trợ lý",
+    "emergencyStop": "Dừng khẩn cấp",
+    "toggleFavorite": "Bật/tắt yêu thích",
+    "pauseDownload": "Tạm dừng tải xuống",
+    "cancelDownload": "Hủy tải xuống",
+    "decrement": "Giảm",
+    "increment": "Tăng"
   },
   "attachedImages": {
     "open": "Mở {{name}}",

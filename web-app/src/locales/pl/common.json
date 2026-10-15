@@ -2444,7 +2444,16 @@
     "tokenUsage": "Użycie tokenów",
     "modelSleeping": "Model uśpiony",
     "visionSupported": "Obsługiwane wejście obrazu",
-    "audioSupported": "Obsługiwane wejście dźwięku"
+    "audioSupported": "Obsługiwane wejście dźwięku",
+    "stopGenerating": "Zatrzymaj generowanie",
+    "filterOptions": "Filtruj opcje",
+    "switchAssistant": "Przełącz asystenta",
+    "emergencyStop": "Zatrzymanie awaryjne",
+    "toggleFavorite": "Przełącz ulubione",
+    "pauseDownload": "Wstrzymaj pobieranie",
+    "cancelDownload": "Anuluj pobieranie",
+    "decrement": "Zmniejsz",
+    "increment": "Zwiększ"
   },
   "attachedImages": {
     "open": "Otwórz {{name}}",

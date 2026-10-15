@@ -2443,7 +2443,16 @@
     "tokenUsage": "Использование токенов",
     "modelSleeping": "Модель в спящем режиме",
     "visionSupported": "Поддерживается ввод изображений",
-    "audioSupported": "Поддерживается ввод аудио"
+    "audioSupported": "Поддерживается ввод аудио",
+    "stopGenerating": "Остановить генерацию",
+    "filterOptions": "Фильтр параметров",
+    "switchAssistant": "Сменить ассистента",
+    "emergencyStop": "Аварийная остановка",
+    "toggleFavorite": "Переключить избранное",
+    "pauseDownload": "Приостановить загрузку",
+    "cancelDownload": "Отменить загрузку",
+    "decrement": "Уменьшить",
+    "increment": "Увеличить"
   },
   "attachedImages": {
     "open": "Открыть {{name}}",

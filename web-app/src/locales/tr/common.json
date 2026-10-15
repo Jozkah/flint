@@ -2360,7 +2360,16 @@
     "tokenUsage": "Token kullanımı",
     "modelSleeping": "Model uyuyor",
     "visionSupported": "Görsel girdi destekleniyor",
-    "audioSupported": "Ses girdisi destekleniyor"
+    "audioSupported": "Ses girdisi destekleniyor",
+    "stopGenerating": "Üretimi durdur",
+    "filterOptions": "Seçenekleri filtrele",
+    "switchAssistant": "Asistanı değiştir",
+    "emergencyStop": "Acil durdurma",
+    "toggleFavorite": "Favoriyi aç/kapat",
+    "pauseDownload": "İndirmeyi duraklat",
+    "cancelDownload": "İndirmeyi iptal et",
+    "decrement": "Azalt",
+    "increment": "Artır"
   },
   "attachedImages": {
     "open": "{{name}} dosyasını aç",

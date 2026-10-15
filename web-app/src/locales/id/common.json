@@ -2317,7 +2317,16 @@
     "tokenUsage": "Penggunaan token",
     "modelSleeping": "Model tidur",
     "visionSupported": "Input visi didukung",
-    "audioSupported": "Input audio didukung"
+    "audioSupported": "Input audio didukung",
+    "stopGenerating": "Hentikan pembuatan",
+    "filterOptions": "Filter opsi",
+    "switchAssistant": "Ganti asisten",
+    "emergencyStop": "Penghentian darurat",
+    "toggleFavorite": "Alihkan favorit",
+    "pauseDownload": "Jeda unduhan",
+    "cancelDownload": "Batalkan unduhan",
+    "decrement": "Kurangi",
+    "increment": "Tambah"
   },
   "attachedImages": {
     "open": "Buka {{name}}",
