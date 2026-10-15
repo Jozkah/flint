@@ -576,6 +576,7 @@ pub fn certificate_failure(err: &(dyn std::error::Error + 'static)) -> Option<St
         ("self-signed certificate", "the server's certificate is self-signed and not trusted"),
         ("certificate has expired", "the certificate has expired"),
         ("hostname mismatch", "the certificate is not valid for this host name"),
+        ("host name mismatch", "the certificate is not valid for this host name"),
         // Security.framework (macOS) for a chain whose issuer is not in the keychain
         // (errSecNoSuchCertificate / -25318), as captured from a real refusal.
         ("certificates required to validate this certificate cannot be found", "the certificate chain ends in a root certificate that is not trusted"),
