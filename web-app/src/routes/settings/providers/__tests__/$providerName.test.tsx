@@ -844,14 +844,46 @@ describe('ProviderDetail route', () => {
       )
     })
 
-    it('for llamacpp, changing a setting also stops all running models', async () => {
-      h.params.providerName = 'llamacpp'
-      renderComponent()
-      const dyns = screen.getAllByTestId('dynamic-ctrl')
-      await act(async () => {
-        fireEvent.click(dyns[0])
-      })
-      expect(h.modelsSvc.stopAllModels).toHaveBeenCalled()
+    it('for llamacpp, a setting change stops only its models, once typing pauses', async () => {
+      vi.useFakeTimers()
+      try {
+        h.params.providerName = 'llamacpp'
+        h.modelsSvc.getActiveModels = vi.fn().mockResolvedValue(['local-model'])
+        renderComponent()
+        const dyns = screen.getAllByTestId('dynamic-ctrl')
+        await act(async () => {
+          fireEvent.click(dyns[0])
+          fireEvent.click(dyns[0])
+        })
+        expect(h.modelsSvc.stopModel).not.toHaveBeenCalled()
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1000)
+        })
+        expect(h.modelsSvc.getActiveModels).toHaveBeenCalledWith('llamacpp')
+        expect(h.modelsSvc.stopModel).toHaveBeenCalledTimes(1)
+        expect(h.modelsSvc.stopModel).toHaveBeenCalledWith('local-model', 'llamacpp')
+        expect(h.modelsSvc.stopAllModels).not.toHaveBeenCalled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    // Typing a remote provider's base URL used to unload every local model,
+    // killing generations in flight.
+    it('for a remote provider, a setting change leaves local models alone', async () => {
+      vi.useFakeTimers()
+      try {
+        setupCustomProvider()
+        renderComponent()
+        await act(async () => {
+          fireEvent.click(screen.getByTestId('dynamic-ctrl'))
+          await vi.advanceTimersByTimeAsync(1000)
+        })
+        expect(h.modelsSvc.stopModel).not.toHaveBeenCalled()
+        expect(h.modelsSvc.stopAllModels).not.toHaveBeenCalled()
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 })
