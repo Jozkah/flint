@@ -335,8 +335,8 @@ export class JanSession {
     else if (tag === 'tool_request_cancelled') this.#abandon(event)
   }
 
-  _complete({ turnId, stopReason, error }) {
-    const record = { stopReason, error: error ?? null }
+  _complete({ turnId, stopReason, usage, error }) {
+    const record = { stopReason, usage: usage ?? null, error: error ?? null }
     const turn = this.#turns.get(turnId)
     // The runtime may close a turn it started before the client asked for it -
     // a run that ends with no events, or an immediate refusal. The record is
@@ -412,7 +412,18 @@ export class JanSession {
         })
         return
       }
-      await this.#respond(event.request_id, await normalizeResult(result))
+      // Converting the result can fail too (an image path that cannot be
+      // read); that still has to answer, or the turn waits forever.
+      let normalized
+      try {
+        normalized = await normalizeResult(result)
+      } catch (error) {
+        normalized = {
+          content: error instanceof Error ? error.message : String(error),
+          isError: true,
+        }
+      }
+      await this.#respond(event.request_id, normalized)
     }
     answer().catch(() => {})
   }
