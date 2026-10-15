@@ -113,7 +113,7 @@ fn map_tool(name: &str) -> Option<&'static str> {
     match name.trim().to_ascii_lowercase().as_str() {
         "read" => Some("read"),
         "ls" | "list" => Some("ls"),
-        "glob" => Some("glob"),
+        "glob" => Some("find"),
         "grep" => Some("grep"),
         "find" => Some("find"),
         "bash" | "shell" => Some("bash"),

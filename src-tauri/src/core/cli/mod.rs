@@ -2737,7 +2737,7 @@ pub fn cli_policy_export(
         crate::core::agent::project::AgentToml::default()
     };
     Ok(tauri_plugin_agent_tools::policy_transfer::export(
-        config.tools.default.as_deref().unwrap_or("read-only"),
+        config.tools.default.as_deref().unwrap_or(tauri_plugin_agent_tools::permissions::PermissionDefault::UNSET.as_str()),
         &config.tools.allow,
         &config.tools.deny,
         &config.tools.allow_write,
