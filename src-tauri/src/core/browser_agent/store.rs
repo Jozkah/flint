@@ -224,8 +224,11 @@ impl Store {
     /// Write the rules file. Called after `inner` is released.
     fn write_rules(&self, path: Option<PathBuf>, body: Result<String, String>) -> Result<(), String> {
         let Some(path) = path else { return Ok(()) };
-        let body = body?;
+        body?;
         let _io = lock(&self.io);
+        // Serialized again under the io lock: two writers that each took a
+        // snapshot earlier could otherwise land the older one last.
+        let body = serde_json::to_string_pretty(&lock(&self.inner).rules).map_err(|e| e.to_string())?;
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }

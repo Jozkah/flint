@@ -343,6 +343,23 @@ fn approvals_policy_is_enforced() {
     assert!(check_policy("approvals.list", &Value::Null, &cfg).is_err());
 }
 
+#[test]
+fn bypass_mode_needs_both_approval_switches() {
+    let mut cfg = RemoteConfig::default();
+    let send = json!({ "id": "s1", "mode": "bypass" });
+    let set = json!({ "scope": "cowork", "id": "s1", "mode": "Bypass" });
+    let ask = json!({ "scope": "cowork", "id": "s1", "mode": "ask" });
+    cfg.allow_approvals = true;
+    cfg.allow_always_allow = false;
+    assert!(check_policy("cowork.send", &send, &cfg).is_err());
+    assert!(check_policy("settings.set", &set, &cfg).is_err());
+    assert!(check_policy("settings.set", &ask, &cfg).is_ok());
+    cfg.allow_always_allow = true;
+    assert!(check_policy("cowork.send", &send, &cfg).is_ok());
+    cfg.allow_approvals = false;
+    assert!(check_policy("settings.set", &set, &cfg).is_err());
+}
+
 #[tokio::test]
 async fn rpc_round_trips_through_the_window() {
     let (hub, rec) = hub();

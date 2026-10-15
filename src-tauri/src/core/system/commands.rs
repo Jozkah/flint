@@ -1248,16 +1248,17 @@ fn jan_cli_install_dir() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(".local").join("bin"))
 }
 
-/// Return the directory containing the bundled CLI binary on Windows.
+/// Return the directory containing the bundled CLI binary on Windows: the
+/// same `resources/bin` beside the app that `cli_install_target` puts on
+/// PATH. A hardcoded `Programs\Jan` never matched the `Programs\Flint` install,
+/// so uninstall removed nothing and detection never found the CLI.
 #[cfg(windows)]
 fn jan_cli_bin_dir_windows() -> Result<PathBuf, String> {
-    let local_app_data =
-        std::env::var("LOCALAPPDATA").map_err(|_| "Cannot determine LOCALAPPDATA".to_string())?;
-    Ok(PathBuf::from(local_app_data)
-        .join("Programs")
-        .join("Jan")
-        .join("resources")
-        .join("bin"))
+    let exe = std::env::current_exe().map_err(|e| format!("Cannot locate the app: {e}"))?;
+    let dir = exe
+        .parent()
+        .ok_or_else(|| "the app has no parent directory".to_string())?;
+    Ok(crate::core::app::commands::strip_verbatim_prefix(dir.to_path_buf()).join("resources/bin"))
 }
 
 /// The user PATH with `install_dir` put first, or `None` when it is already on
