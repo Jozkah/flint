@@ -129,10 +129,25 @@ fn parse_references(text: &str) -> Vec<String> {
 }
 
 /// Remove all `@path` references from `text` and normalise whitespace.
+#[cfg(test)]
 fn strip_references(text: &str) -> String {
+    strip_references_except(text, &std::collections::HashSet::new())
+}
+
+/// Like `strip_references`, but keeps references whose unquoted path is in
+/// `keep` (paths that did not resolve, so the user's words stay in the prompt).
+fn strip_references_except(text: &str, keep: &std::collections::HashSet<String>) -> String {
     let mut kept = String::with_capacity(text.len());
     let mut last = 0;
     for m in ref_matches(text) {
+        let raw = &text[m.start() + 1..m.end()];
+        let raw = raw
+            .strip_prefix('"')
+            .and_then(|r| r.strip_suffix('"'))
+            .unwrap_or(raw);
+        if keep.contains(raw) {
+            continue;
+        }
         kept.push_str(&text[last..m.start()]);
         last = m.end();
     }
@@ -166,6 +181,7 @@ pub fn resolve_references(text: &str, project_root: &Path) -> (String, String) {
     }
 
     let mut parts: Vec<String> = Vec::new();
+    let mut unresolved = std::collections::HashSet::new();
     for raw in &refs {
         let abs = if raw.starts_with('/') {
             PathBuf::from(raw)
@@ -177,6 +193,7 @@ pub fn resolve_references(text: &str, project_root: &Path) -> (String, String) {
             Ok(m) => m,
             Err(e) => {
                 parts.push(format!("[{}: cannot access: {}]", raw, e));
+                unresolved.insert(raw.clone());
                 continue;
             }
         };
@@ -197,7 +214,7 @@ pub fn resolve_references(text: &str, project_root: &Path) -> (String, String) {
                 listing.push('\n');
             }
             if listing.len() > MAX_DIR_CHARS {
-                listing.truncate(MAX_DIR_CHARS);
+                listing.truncate(floor_char_boundary(&listing, MAX_DIR_CHARS));
                 listing.push_str("  ... (truncated)\n");
             }
             parts.push(format!(
@@ -231,7 +248,7 @@ pub fn resolve_references(text: &str, project_root: &Path) -> (String, String) {
         match std::fs::read_to_string(&abs) {
             Ok(s) => {
                 let content = if s.len() > MAX_FILE_BYTES as usize {
-                    let mut t = s[..MAX_FILE_BYTES as usize].to_string();
+                    let mut t = s[..floor_char_boundary(&s, MAX_FILE_BYTES as usize)].to_string();
                     t.push_str("\n\n... (truncated)");
                     t
                 } else {
@@ -250,9 +267,21 @@ pub fn resolve_references(text: &str, project_root: &Path) -> (String, String) {
         }
     }
 
-    let clean = strip_references(text);
+    let clean = strip_references_except(text, &unresolved);
     let block = parts.join("\n\n");
     (clean, block)
+}
+
+/// Largest index `<= max` that is a char boundary of `s`.
+fn floor_char_boundary(s: &str, max: usize) -> usize {
+    if max >= s.len() {
+        return s.len();
+    }
+    let mut i = max;
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
 }
 
 /// Synchronous file search for path-hint autocomplete.
@@ -353,6 +382,22 @@ fn image_mime(ext: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_floor_char_boundary_multibyte() {
+        let s = "ab\u{6587}\u{5b57}";
+        assert_eq!(floor_char_boundary(s, 3), 2);
+        assert_eq!(floor_char_boundary(s, 5), 5);
+        assert_eq!(floor_char_boundary(s, 99), s.len());
+    }
+
+    #[test]
+    fn test_unresolved_reference_kept_in_prompt() {
+        let dir = tempfile::tempdir().unwrap();
+        let (clean, block) = resolve_references("ping @someone please", dir.path());
+        assert_eq!(clean, "ping @someone please");
+        assert!(block.contains("cannot access"));
+    }
 
     #[test]
     fn test_parse_references() {

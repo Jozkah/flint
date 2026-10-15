@@ -287,7 +287,8 @@ pub fn file_name(title: &str, ext: &str) -> String {
     if stem.is_empty() {
         stem = "export".to_string();
     }
-    let lower = stem.to_lowercase();
+    // Windows reserves the device name before any dot too ("con.notes").
+    let lower = stem.split('.').next().unwrap_or("").trim_end().to_lowercase();
     let reserved = matches!(lower.as_str(), "con" | "prn" | "aux" | "nul")
         || ((lower.starts_with("com") || lower.starts_with("lpt"))
             && lower.len() == 4
@@ -393,6 +394,8 @@ mod tests {
         assert_eq!(file_name("a/b: c?", "md"), "a-b- c-.md");
         assert_eq!(file_name("", "md"), "export.md");
         assert_eq!(file_name("CON", "md"), "_CON.md");
+        assert_eq!(file_name("con.notes", "md"), "_con.notes.md");
+        assert_eq!(file_name("console", "md"), "console.md");
         assert_eq!(file_name("  ..x.. ", "json"), "x.json");
     }
 

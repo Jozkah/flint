@@ -348,6 +348,10 @@ const TMUX_SETTINGS: [(&str, &str); 2] = [
 ];
 
 fn write_atomic(path: &Path, contents: &str) -> Result<(), String> {
+    // Write through a symlinked dotfile (e.g. one managed by a dotfiles repo)
+    // instead of replacing the link with a plain file.
+    let resolved = std::fs::canonicalize(path).ok();
+    let path = resolved.as_deref().unwrap_or(path);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
@@ -356,9 +360,22 @@ fn write_atomic(path: &Path, contents: &str) -> Result<(), String> {
     std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// Read a config file; a missing file is empty, any other error is reported so
+/// an unreadable config is never overwritten with only our additions.
+fn read_config(path: &Path) -> Result<String, String> {
+    match std::fs::read_to_string(path) {
+        Ok(s) => Ok(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
 /// Apply `settings` to a line-oriented config at `path`.
 fn configure_lines(path: PathBuf, settings: &[(&str, &str)], detail: &str) -> Outcome {
-    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    let current = match read_config(&path) {
+        Ok(s) => s,
+        Err(error) => return Outcome::Failed { path, error },
+    };
     match append_missing_settings(&current, settings) {
         None => Outcome::AlreadyDone(path),
         Some(next) => match write_atomic(&path, &next) {
@@ -373,7 +390,10 @@ fn configure_lines(path: PathBuf, settings: &[(&str, &str)], detail: &str) -> Ou
 
 fn configure_vscode(home: &Path, appdata: Option<&Path>) -> Outcome {
     let path = preferred_path(&vscode_keybinding_paths(home, appdata));
-    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    let current = match read_config(&path) {
+        Ok(s) => s,
+        Err(error) => return Outcome::Failed { path, error },
+    };
     match add_vscode_binding(&current) {
         Ok(None) => Outcome::AlreadyDone(path),
         Ok(Some(next)) => match write_atomic(&path, &next) {

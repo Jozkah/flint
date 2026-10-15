@@ -2386,14 +2386,33 @@ async fn run_agent_loop(
             eprintln!("(could not save session before the run: {e})");
         }
     }
-    let checkpoint = std::sync::Arc::new(std::sync::Mutex::new(match persist.thread_id.as_deref() {
-        Some(thread) => Some(inflight::Writer::begin(
+    let writer = match persist.thread_id.as_deref() {
+        Some(thread) => match inflight::Writer::begin(
             &get_thread_dir(&persist.agent_dir, thread),
             &persist.model,
             persist.history.clone(),
-        )?),
+        ) {
+            Ok(w) => Some(w),
+            Err(e) => {
+                // The init line is already out: close the stream with a result
+                // line so a JSON consumer is not left waiting for one.
+                if format.is_machine() {
+                    print_report(
+                        format,
+                        RunReport::setup_failure(&e.to_string()).finish(
+                            None,
+                            "",
+                            started.elapsed().as_millis(),
+                            None,
+                        ),
+                    );
+                }
+                return Err(e);
+            }
+        },
         None => None,
-    }));
+    };
+    let checkpoint = std::sync::Arc::new(std::sync::Mutex::new(writer));
     let checkpoint_for_printer = checkpoint.clone();
     let printer = tokio::spawn(async move {
         // The last conversation the loop published, kept for the save below.

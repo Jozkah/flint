@@ -47,7 +47,14 @@ fn checkouts(repo: &Path) -> Result<Vec<Checkout>, String> {
     for path in git::worktree_paths(repo) {
         if path.parent().map(|p| p == root).unwrap_or(false) && path.is_dir() {
             let id = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
-            let branch = run_git(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
+            let mut branch = run_git(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
+            // A detached checkout reports "HEAD", which from the main repo
+            // names the wrong commit: use the checkout's own commit instead,
+            // so its unmerged work is still seen before a discard.
+            if branch.trim().is_empty() || branch.trim() == "HEAD" {
+                branch = run_git(&path, &["rev-parse", "HEAD"]).unwrap_or_default();
+            }
+            let branch = branch.trim().to_string();
             out.push(Checkout { id, path, branch });
         }
     }
@@ -73,6 +80,9 @@ fn base_branch(repo: &Path, target: Option<&str>) -> Result<String, String> {
 }
 
 fn unmerged(repo: &Path, base: &str, branch: &str) -> Result<Vec<String>, String> {
+    if branch.is_empty() {
+        return Err("could not read the checkout's commit".to_string());
+    }
     run_git(repo, &["log", "--format=%h %s", &format!("{base}..{branch}")])
         .map(|s| s.lines().map(str::to_string).collect())
 }
