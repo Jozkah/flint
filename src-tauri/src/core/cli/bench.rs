@@ -491,6 +491,8 @@ impl Runner for ProcessRunner {
         let mut cmd = std::process::Command::new(&self.program);
         cmd.args(["cli", "agent", "run", "--output-format", "json", "--model", &self.model, "--project"])
             .arg(project)
+            // A prompt that starts with `-` is still the prompt, not a flag.
+            .arg("--")
             .arg(prompt)
             .current_dir(project)
             .stdin(std::process::Stdio::null())

@@ -37,6 +37,12 @@ pub(crate) fn platform_launcher() -> (&'static str, &'static [&'static str]) {
 }
 
 fn launch(url: &str) -> Result<(), String> {
+    // Only web pages: a `file:`, `ms-settings:` or custom-protocol URL handed
+    // to the OS launcher would run whatever handler is registered for it.
+    let scheme = url.split_once(':').map(|(s, _)| s.to_ascii_lowercase());
+    if !matches!(scheme.as_deref(), Some("http" | "https")) {
+        return Err(format!("refusing to open a non-web URL: {url}"));
+    }
     let (program, args) = platform_launcher();
 
     #[cfg(all(unix, not(target_os = "macos")))]

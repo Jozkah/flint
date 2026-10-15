@@ -262,6 +262,18 @@ pub(crate) fn stored_api_key() -> Option<String> {
         .filter(|k| !k.is_empty())
 }
 
+/// The API root the stored key was issued for, so the key is never sent to a
+/// different `$TOKAMAK_BASE_URL` set later. Falls back to [`base_url`].
+pub(crate) fn stored_base_url() -> String {
+    use crate::core::agent::global_config::load_global_config;
+    load_global_config()
+        .ok()
+        .and_then(|cfg| cfg.get(PROVIDER).and_then(|c| c.base_url.clone()))
+        .map(|u| u.trim().trim_end_matches('/').to_string())
+        .filter(|u| !u.is_empty())
+        .unwrap_or_else(base_url)
+}
+
 /// Revoke `key_id` server-side, authenticating with the key itself. Best-effort
 /// by contract -- logout must never be blocked by this call -- so the result is
 /// a plain "did it land", never an error.
@@ -273,7 +285,7 @@ async fn revoke_key(key_id: &str, api_key: &str) -> bool {
     let Ok(client) = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(VERIFY_TIMEOUT)).build() else {
         return false;
     };
-    let root = super::device_auth::api_root(&base_url());
+    let root = super::device_auth::api_root(&stored_base_url());
     client
         .delete(format!("{root}/auth/api-keys/{key_id}"))
         .header("Authorization", format!("Bearer {api_key}"))

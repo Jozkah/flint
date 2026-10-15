@@ -500,7 +500,7 @@ async fn exchange(login: &AccountLogin, code: &str) -> Result<OAuthToken, String
         "Bearer".to_string()
     }
 
-    let request = reqwest::Client::new().post(&login.token_endpoint);
+    let request = oauth_client()?.post(&login.token_endpoint);
     let request = match login.provider {
         // Anthropic's /v1/oauth/token expects a JSON body (pi posts
         // application/json); OpenAI's accepts only form-encoded.
@@ -545,6 +545,18 @@ async fn exchange(login: &AccountLogin, code: &str) -> Result<OAuthToken, String
     })
 }
 
+/// HTTP client for the token endpoints. Bounded, because a refresh runs under
+/// `REFRESH_LOCK` and a hung endpoint would otherwise stall every caller.
+fn oauth_client() -> Result<reqwest::Client, String> {
+    crate::core::net::tls::apply12(
+        reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(30)),
+    )
+    .build()
+    .map_err(|e| format!("could not build the HTTP client: {e}"))
+}
+
 /// Client id and token endpoint for the refresh grant. Kept in sync with
 /// `begin()` so a refresh always hits the same endpoint the user consented
 /// to. Both providers' OAuth servers are served from the platform host, not
@@ -582,7 +594,7 @@ pub async fn refresh(provider: AccountProvider, token: &OAuthToken) -> Result<OA
 
     let (client_id, token_endpoint) = refresh_endpoint(provider);
     let body = refresh_request_body(client_id, token)?;
-    let request = reqwest::Client::new().post(token_endpoint);
+    let request = oauth_client()?.post(token_endpoint);
     let request = match provider {
         // Anthropic refresh expects JSON plus the versioned beta header and a
         // recognizable user agent (pi's refreshAnthropicToken sends both);
@@ -765,11 +777,19 @@ async fn claude_code_access_token() -> Option<String> {
     let entry = claude_code_keychain_entry()?;
     let raw = entry.get_password().ok()?;
     let oauth = claude_code_oauth(&raw)?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_secs() as i64;
-    if oauth.expires_at.is_some_and(|expires_at| expires_at <= now) {
+    let expired = |token: &OAuthToken| unix_now().is_ok_and(|now| near_expiry(token, now));
+    if expired(&oauth) {
+        // Same rule as Flint's own tokens: one refresh at a time, and re-read
+        // under the lock, because a parallel caller may already have rotated
+        // the refresh token this copy holds.
+        let _refreshing = REFRESH_LOCK.lock().await;
+        let raw = entry.get_password().ok()?;
+        let oauth = claude_code_oauth(&raw)?;
+        if !expired(&oauth) {
+            #[cfg(not(test))]
+            CLAUDE_ALIAS_ENGAGED.store(true, std::sync::atomic::Ordering::Relaxed);
+            return Some(oauth.access_token);
+        }
         match refresh(AccountProvider::Claude, &oauth).await {
             Ok(fresh) => {
                 // Write the rotated token back into omp's keychain entry so the
@@ -872,6 +892,16 @@ fn unix_now() -> Result<i64, String> {
         .as_secs() as i64)
 }
 
+/// Refresh this long before the recorded expiry, so a token is not sent with
+/// seconds left and rejected in flight (or by a server whose clock is ahead).
+const EXPIRY_MARGIN_SECS: i64 = 60;
+
+fn near_expiry(token: &OAuthToken, now: i64) -> bool {
+    token
+        .expires_at
+        .is_some_and(|at| at <= now.saturating_add(EXPIRY_MARGIN_SECS))
+}
+
 /// [`access_token`] with the network refresh injectable, for tests.
 async fn access_token_via<F, Fut>(provider: &str, refresh_with: F) -> Result<Option<String>, String>
 where
@@ -897,7 +927,7 @@ where
         // A stored API key is a deliberate choice; never substitute a token.
         return Ok(None);
     };
-    let expired = |token: &OAuthToken, now: i64| token.expires_at.is_some_and(|at| at <= now);
+    let expired = near_expiry;
     if !expired(&token, unix_now()?) {
         return Ok(Some(token.access_token));
     }
