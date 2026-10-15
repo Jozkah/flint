@@ -1,10 +1,11 @@
 import XCTest
 @testable import MLXServer
 
-/// #75: the cache limit is 20 GiB, not 20 MiB.
+/// #75: the cache limit is 20 GiB, not 20 MiB, scaled down to a quarter of
+/// RAM on smaller machines.
 final class CacheLimitTests: XCTestCase {
-    func testGpuCacheLimitIsTwentyGibibytes() {
-        XCTAssertEqual(MLXServerCommand.gpuCacheLimitBytes, 21_474_836_480)
-        XCTAssertEqual(MLXServerCommand.gpuCacheLimitBytes / (1024 * 1024), 20_480)
+    func testGpuCacheLimitIsTwentyGibibytesOrAQuarterOfRam() {
+        let quarter = Int(ProcessInfo.processInfo.physicalMemory / 4)
+        XCTAssertEqual(MLXServerCommand.gpuCacheLimitBytes, min(21_474_836_480, quarter))
     }
 }
