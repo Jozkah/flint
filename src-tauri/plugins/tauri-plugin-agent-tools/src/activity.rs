@@ -581,15 +581,15 @@ fn store_diff(data_folder: &Path, event: &mut ToolActivityEvent) -> Result<(), S
                     &event.call,
                 ));
             }
+            // A unique temp file per write: parallel subagents reuse call ids
+            // like `call_0`, and a shared temp name collides on rename.
+            let mut stored = true;
             for target in targets {
-                if let Some(dir) = target.parent() {
-                    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-                }
-                let tmp = target.with_extension("diff.tmp");
-                std::fs::write(&tmp, diff.as_bytes()).map_err(|e| e.to_string())?;
-                std::fs::rename(&tmp, &target).map_err(|e| e.to_string())?;
+                stored &= crate::atomic_file::write_atomic(&target, diff.as_bytes()).is_ok();
             }
-            change.diff_stored = true;
+            // A diff that could not be kept loses only the diff, never the
+            // event that says the file changed.
+            change.diff_stored = stored;
         }
     }
     Ok(())

@@ -174,6 +174,11 @@ fn content_bytes(content: Option<&Value>) -> (usize, usize, u64) {
                     "text" => {
                         text += part.get("text").and_then(Value::as_str).map_or(0, str::len)
                     }
+                    // Tool calls and their results are conversation, not
+                    // attachments.
+                    "tool_use" | "tool_result" => {
+                        text += serde_json::to_string(part).map_or(0, |s| s.len())
+                    }
                     // An image or a file: its bytes are the attachment, not the
                     // conversation, and a data URI is most of the request.
                     _ => {

@@ -168,8 +168,16 @@ fn is_code_bearing_env(name: &str) -> bool {
         "GIT_EXEC_PATH",
         "GCONV_PATH",
         "DOTNET_STARTUP_HOOKS",
+        // Where package runners (npx, uvx, bunx, pip) fetch and resolve code
+        // from, and the home/config folders their config files live in.
+        "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
     ];
-    const PREFIX: &[&str] = &["LD_", "DYLD_", "PYTHON", "NODE_"];
+    const PREFIX: &[&str] = &[
+        "LD_", "DYLD_", "PYTHON", "NODE_", "NPM_CONFIG_", "UV_", "PIP_", "BUN_", "YARN_", "XDG_",
+    ];
     EXACT.contains(&n.as_str()) || PREFIX.iter().any(|p| n.starts_with(p))
 }
 
@@ -339,6 +347,15 @@ pub fn normalize_url(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Package-runner settings that redirect where code comes from count.
+    #[test]
+    fn package_registry_settings_are_code_bearing() {
+        for name in ["npm_config_registry", "NPM_CONFIG_REGISTRY", "UV_INDEX_URL", "PIP_INDEX_URL", "BUN_CONFIG_REGISTRY", "YARN_NPM_REGISTRY_SERVER", "HOME", "APPDATA", "XDG_CONFIG_HOME"] {
+            assert!(is_code_bearing_env(name), "{name}");
+        }
+        assert!(!is_code_bearing_env("API_TOKEN"));
+    }
 
     fn stdio() -> Value {
         json!({
