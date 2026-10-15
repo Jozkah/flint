@@ -86,20 +86,24 @@ vi.mock('@/hooks/useThreads', () => ({
 }))
 
 let appStateOverrides: any = {}
-vi.mock('@/hooks/useAppState', () => ({
-  useAppState: (selector: any) => {
-    const state = {
-      abortControllers: {},
-      tools: [],
-      cancelToolCall: vi.fn(),
-      activeModels: [],
-      ...appStateOverrides,
-    }
+vi.mock('@/hooks/useAppState', () => {
+  const read = () => ({
+    abortControllers: {},
+    tools: [],
+    cancelToolCall: vi.fn(),
+    cancelToolCalls: {},
+    activeModels: [],
+    ...appStateOverrides,
+  })
+  const useAppState: any = (selector: any) => {
+    const state = read()
     // zustand-style: selector may be a function returned by useShallow
     if (typeof selector === 'function') return selector(state)
     return state
-  },
-}))
+  }
+  useAppState.getState = read
+  return { useAppState }
+})
 
 vi.mock('@/hooks/useGeneralSetting', () => ({
   useGeneralSetting: (selector: any) =>
