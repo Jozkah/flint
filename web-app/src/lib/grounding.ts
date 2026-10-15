@@ -131,7 +131,8 @@ export function injectCitationMarkers(
       )
       .join('')
     const esc = sentence.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
-    stash = stash.replace(new RegExp(esc), `${sentence}${marker}`)
+    // A function, so `$$` or `$&` in the sentence (LaTeX, prices) is literal.
+    stash = stash.replace(new RegExp(esc), () => `${sentence}${marker}`)
   }
 
   stash = stash.replace(/ §(\d+)§ /g, (_, i) => codeSpans[Number(i)])
