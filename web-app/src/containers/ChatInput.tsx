@@ -1933,6 +1933,7 @@ const ChatInput = memo(function ChatInput({
           parseMode: 'inline',
         }),
         inlineContent: text,
+        injectionMode: 'inline',
         processed: true,
       })
     }

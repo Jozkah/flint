@@ -272,10 +272,19 @@ export const processAttachmentsForSend = async (
   const documents = attachments.filter((a) => a.type === 'document')
   for (const doc of documents) {
     try {
-      if (doc.processed && (doc.id || doc.injectionMode === 'inline')) {
+      // Text read in the composer (a large paste, a dropped .txt) already
+      // carries its content and has no file on disk to parse or index.
+      if (
+        doc.processed &&
+        (doc.id || doc.injectionMode === 'inline' || doc.inlineContent)
+      ) {
         hasEmbeddedDocuments =
-          hasEmbeddedDocuments || doc.injectionMode !== 'inline'
-        processedAttachments.push(doc)
+          hasEmbeddedDocuments || (!doc.inlineContent && doc.injectionMode !== 'inline')
+        processedAttachments.push(
+          doc.inlineContent && !doc.injectionMode
+            ? { ...doc, injectionMode: 'inline' }
+            : doc
+        )
         continue
       }
 
