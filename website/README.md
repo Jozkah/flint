@@ -32,11 +32,15 @@ Each page is a React component registered in `src/pages/registry.tsx` (path, tit
 
 ## Performance notes
 
-Screenshots are served as AVIF (4:4:4 chroma, so coloured UI text stays sharp) in seven widths with a WebP fallback, sized to what the layout actually needs; the hero is preloaded and the Cowork story only fetches the screenshots next to the active step. Decoding is async, far-off sections use `content-visibility`, and the hero rests flat so its text is rasterised crisply.
+Screenshots are served as AVIF (4:4:4 chroma, so coloured UI text stays sharp) in seven widths with a WebP fallback, sized to what the layout actually needs; the hero is preloaded and everything below it loads lazily. Decoding is async, far-off sections use `content-visibility`, and the hero rests flat so its text is rasterised crisply.
+
+## Home page
+
+Four sections, in order: the app window (headline and download above a mock Flint window whose sidebar is the site's own navigation; each item swaps the real screenshot inside, cropped so the app's own sidebar is hidden, cycling every 5 s until the pointer or a click pauses it), three pillars (local by default, ask before acting, bring your own models, each with a cropped real screenshot), a horizontal filmstrip of every screenshot with a lightbox, and download. Components: `AppWindow`, `Pillars`, `Gallery`, `Finish`.
 
 ## Motion
 
-Hero word reveal and stage entrance, scroll reveals and wipes, scrubbed manifesto text, the sticky Cowork stage, pointer spotlight, magnetic hero buttons, 3D tilt on tiles, gallery items and doc cards, a sliding nav indicator, pulsing annotation pins, slow embers, and page-to-page view transitions (Chromium and Safari; other browsers get a short fade-in). Pointer effects apply only to fine pointers, and `prefers-reduced-motion` turns everything off. Effects live in `src/lib/effects.ts` and `src/styles.css`.
+Headline word reveal, a breathing glow, a progress line on the active window item, crossfades between screenshots, scroll reveals and wipes, pointer spotlight, magnetic hero buttons, 3D tilt on pillars, a sliding nav indicator, and page-to-page view transitions. Pointer effects apply only to fine pointers, and `prefers-reduced-motion` turns everything off, including the window autoplay. Effects live in `src/lib/effects.ts` and `src/styles.css`.
 
 ## Where things come from
 
