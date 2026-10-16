@@ -29,4 +29,5 @@
         d.style.setProperty(k, vars[k])
   if (b.fontSize) d.style.setProperty('--font-size-base', b.fontSize)
   if (b.reduceMotion) d.classList.add('reduce-motion')
+  if (b.increaseContrast) d.classList.add('high-contrast')
 })()
