@@ -95,6 +95,29 @@ describe('processAttachmentsForSend', () => {
       expect(result.hasEmbeddedDocuments).toBe(false)
     })
 
+    it('sends text read in the composer inline without touching disk', async () => {
+      const hub = createMockServiceHub()
+      const doc = docAttachment({
+        name: 'pasted-text-1.txt',
+        path: 'pasted-text-1.txt',
+        parseMode: 'inline',
+        processed: true,
+        inlineContent: 'a very large paste',
+      })
+
+      const result = await processAttachmentsForSend({
+        attachments: [doc],
+        threadId,
+        serviceHub: hub as any,
+        parsePreference: 'auto',
+      })
+
+      expect(result.processedAttachments[0].injectionMode).toBe('inline')
+      expect(result.processedAttachments[0].inlineContent).toBe('a very large paste')
+      expect(result.hasEmbeddedDocuments).toBe(false)
+      expect(hub.uploads().ingestFileAttachment).not.toHaveBeenCalled()
+    })
+
     it('uses embeddings mode when parseMode is "embeddings"', async () => {
       const hub = createMockServiceHub()
       const doc = docAttachment({ parseMode: 'embeddings' })
