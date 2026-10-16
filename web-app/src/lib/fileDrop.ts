@@ -78,6 +78,38 @@ export function pastedPath(text: string): string | null {
   return windows || unc || posix ? s : null
 }
 
+/**
+ * The local paths in a `file://` URI list, when that is all `text` is.
+ *
+ * Linux file managers put dragged or copied files on the clipboard and drag
+ * data as `text/uri-list` / `text/plain` URIs with no File objects, so the
+ * composer would insert the raw `file:///home/me/a%20b.png` as text. One URI
+ * per line (`#` lines are comments, per RFC 2483). Returns null unless every
+ * line is a `file:` URI, so ordinary pasted text is never touched.
+ */
+export function fileUriPaths(text: string): string[] | null {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith('#'))
+  if (lines.length === 0 || lines.length > 50) return null
+  const paths: string[] = []
+  for (const line of lines) {
+    const m = /^file:\/\/([^/]*)(\/.*)$/i.exec(line)
+    if (!m || (m[1] && m[1].toLowerCase() !== 'localhost')) return null
+    let path: string
+    try {
+      path = decodeURIComponent(m[2])
+    } catch {
+      return null
+    }
+    // file:///C:/dir/a.png -> C:/dir/a.png
+    if (/^\/[A-Za-z]:[\\/]/.test(path)) path = path.slice(1)
+    paths.push(path)
+  }
+  return paths
+}
+
 /** Does this drag carry files at all, as opposed to text or a selection? */
 export function dragHasFiles(transfer: DataTransfer | null): boolean {
   if (!transfer) return false
