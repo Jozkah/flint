@@ -4,9 +4,8 @@ import { DownloadButton, ExternalLink, Icon } from './ui'
 
 const ITEMS = [
   { id: 'product', label: 'Product' },
-  { id: 'cowork', label: 'Cowork' },
-  { id: 'rooms', label: 'Rooms' },
-  { id: 'security', label: 'Security' },
+  { id: 'gallery', label: 'Screenshots' },
+  { id: 'download', label: 'Download' },
 ] as const
 
 export function Nav({ home, current }: { home: boolean; current?: string }) {

@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
-import { ExternalLink, FlintMark, Icon, Reveal, DownloadButton, useOS } from './ui'
+import { ExternalLink, Icon, Reveal, useOS } from './ui'
 import { asset, LINKS, mb, OS_LABEL, pageHref, RELEASE, sectionHref, type OS } from '../lib/site'
 
 const OSES: OS[] = ['windows', 'macos', 'linux']
@@ -115,38 +115,9 @@ export function Download() {
   )
 }
 
-export function FinalCta() {
-  return (
-    <section className="section final" aria-labelledby="final-h">
-      <div className="wrap">
-        <Reveal>
-          <div className="mark">
-            <div className="ember" aria-hidden="true">
-              {[['30%', '0s', '5.6s', '-12px'], ['50%', '1.6s', '5s', '12px'], ['66%', '2.8s', '6s', '-4px']].map(([l, d, t, dx], i) => (
-                <i key={i} style={{ ['--l' as string]: l, ['--d' as string]: d, ['--t' as string]: t, ['--dx' as string]: dx }} />
-              ))}
-            </div>
-            <FlintMark size={256} />
-          </div>
-          <h2 className="h2" id="final-h">
-            Your machine. Your models. Your rules.
-          </h2>
-          <p className="lede">A local-first AI workspace for real work.</p>
-          <div className="hero-cta">
-            <DownloadButton />
-            <ExternalLink href={LINKS.build} className="btn">
-              Build from source
-            </ExternalLink>
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  )
-}
-
 type FLink = [label: string, href: string, external?: boolean]
 const cols = (home: boolean): Array<[string, FLink[]]> => [
-  ['Product', [['Chat', sectionHref('product', home)], ['Cowork', sectionHref('cowork', home)], ['Discussion Rooms', sectionHref('rooms', home)], ['Models', sectionHref('models', home)], ['Security', sectionHref('security', home)]]],
+  ['Product', [['Overview', sectionHref('product', home)], ['Screenshots', sectionHref('gallery', home)], ['Download', sectionHref('download', home)], ['Features', LINKS.features, true]]],
   ['Resources', [['Docs', pageHref('docs')], ['Install guide', pageHref('install')], ['FAQ', pageHref('faq')], ['Changelog', pageHref('changelog')], ['Releases', LINKS.releases, true], ['Build from source', LINKS.build, true]]],
   ['Legal', [['Privacy', pageHref('privacy')], ['Terms', pageHref('terms')], ['License and attribution', pageHref('license')], ['Security policy', pageHref('security-policy')], ['Accessibility', pageHref('accessibility')]]],
   ['Open source', [['GitHub', LINKS.repo, true], ['Apache 2.0', LINKS.license, true], ['Contribute', LINKS.contributing, true], ['Report an issue', LINKS.issues, true], ['Brand assets', pageHref('brand')]]],
