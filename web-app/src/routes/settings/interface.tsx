@@ -105,6 +105,8 @@ function InterfaceSettings() {
     setAutoGenerateTitle,
     reduceMotion,
     setReduceMotion,
+    increaseContrast,
+    setIncreaseContrast,
     showComposerRailButtons,
     setShowComposerRailButtons,
   } = useInterfaceSettings()
@@ -145,6 +147,19 @@ function InterfaceSettings() {
         title={t('settings:interface.fontSize')}
         description={t('settings:interface.fontSizeDesc')}
         actions={<FontSizeSwitcher />}
+      />
+      <CardItem
+        anchor="settings-appearance-increase-contrast"
+        title={t('settings:appearance.increaseContrast')}
+        description={t('settings:appearance.increaseContrastDesc')}
+        actions={
+          <Switch
+            aria-label={t('settings:appearance.increaseContrast')}
+            data-testid="increase-contrast-switch"
+            checked={Boolean(increaseContrast)}
+            onCheckedChange={(v) => setIncreaseContrast?.(v)}
+          />
+        }
       />
       <CardItem
         title={t('settings:interface.coloredUserBubble')}

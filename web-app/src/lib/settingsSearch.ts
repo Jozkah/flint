@@ -282,6 +282,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:interface.themeDesc',
     keywords: ['dark mode', 'light mode', 'color scheme', 'appearance'],
   }),
+  item('appearance', 'increase-contrast', 'settings:appearance.increaseContrast', {
+    descriptionKey: 'settings:appearance.increaseContrastDesc',
+    keywords: ['contrast', 'text color', 'white', 'readability', 'accessibility', 'brighter'],
+  }),
   item('appearance', 'reduce-motion', 'settings:appearance.reduceMotion', {
     descriptionKey: 'settings:appearance.reduceMotionDesc',
     keywords: ['animation', 'motion', 'accessibility', 'transitions'],

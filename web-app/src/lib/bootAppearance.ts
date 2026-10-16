@@ -31,6 +31,7 @@ export type BootAppearance = {
   vars: Record<AccentTheme, Record<string, string>>
   fontSize: string
   reduceMotion: boolean
+  increaseContrast?: boolean
 }
 
 export function buildBootAppearance(input: {
@@ -39,6 +40,7 @@ export function buildBootAppearance(input: {
   accent: AccentSelection
   fontSize: string
   reduceMotion: boolean
+  increaseContrast?: boolean
 }): BootAppearance {
   const varsFor = (theme: AccentTheme) =>
     isNeutralSelection(input.accent)
@@ -54,6 +56,7 @@ export function buildBootAppearance(input: {
     vars: { light: varsFor('light'), dark: varsFor('dark') },
     fontSize: input.fontSize,
     reduceMotion: input.reduceMotion,
+    increaseContrast: Boolean(input.increaseContrast),
   }
 }
 

@@ -89,6 +89,8 @@ interface InterfaceSettingsState {
   /** Flint's own Reduce motion setting. Animations follow this, not the OS
    * preference, so the app animates unless it is turned off here. */
   reduceMotion: boolean
+  /** Brighter text for easier reading (html.high-contrast in index.css). */
+  increaseContrast: boolean
   notificationPosition: NotificationPosition
   showTokenSpeed: boolean
   coloredUserBubble: boolean
@@ -119,6 +121,7 @@ interface InterfaceSettingsState {
   previewAccent: (accent: AccentSelection) => void
   resetAccent: () => void
   setReduceMotion: (reduce: boolean) => void
+  setIncreaseContrast: (increase: boolean) => void
   setNotificationPosition: (position: NotificationPosition) => void
   setShowTokenSpeed: (show: boolean) => void
   setColoredUserBubble: (colored: boolean) => void
@@ -140,6 +143,7 @@ type InterfaceSettingsPersistedSlice = Pick<
   | 'messageZoom'
   | 'accent'
   | 'reduceMotion'
+  | 'increaseContrast'
   | 'notificationPosition'
   | 'showTokenSpeed'
   | 'coloredUserBubble'
@@ -170,6 +174,7 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     messageZoom: defaultMessageZoom,
     accent: DEFAULT_ACCENT,
     reduceMotion: false,
+    increaseContrast: false,
     notificationPosition: getDefaultNotificationPosition(),
     showTokenSpeed: true,
     coloredUserBubble: false,
@@ -230,6 +235,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             messageZoom: defaultMessageZoom,
             accent: DEFAULT_ACCENT,
             reduceMotion: false,
+            increaseContrast: false,
             notificationPosition: getDefaultNotificationPosition(),
             showTokenSpeed: true,
             coloredUserBubble: false,
@@ -266,6 +272,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
 
         setReduceMotion: (reduce) => {
           set({ reduceMotion: reduce })
+        },
+
+        setIncreaseContrast: (increase) => {
+          set({ increaseContrast: increase })
         },
 
         setFontSize: (size: FontSize) => {
@@ -365,6 +375,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         messageZoom: state.messageZoom,
         accent: state.accent,
         reduceMotion: state.reduceMotion,
+        increaseContrast: state.increaseContrast,
         notificationPosition: state.notificationPosition,
         showTokenSpeed: state.showTokenSpeed,
         coloredUserBubble: state.coloredUserBubble,
@@ -406,6 +417,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
 
           if (typeof state.reduceMotion !== 'boolean') {
             state.reduceMotion = false
+          }
+
+          if (typeof state.increaseContrast !== 'boolean') {
+            state.increaseContrast = false
           }
 
           if (
