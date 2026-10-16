@@ -28,6 +28,7 @@ export function InterfaceProvider() {
   const fontSize = useInterfaceSettings((s) => s.fontSize)
   const accent = useInterfaceSettings((s) => s.accent)
   const reduceMotion = useInterfaceSettings((s) => s.reduceMotion)
+  const increaseContrast = useInterfaceSettings((s) => s.increaseContrast)
   const isDark = useTheme((s) => s.isDark)
   const activeTheme = useTheme((s) => s.activeTheme)
 
@@ -46,6 +47,10 @@ export function InterfaceProvider() {
     document.documentElement.classList.toggle('reduce-motion', reduceMotion)
   }, [reduceMotion])
 
+  useEffect(() => {
+    document.documentElement.classList.toggle('high-contrast', increaseContrast)
+  }, [increaseContrast])
+
   // Mirror the resolved appearance for index.html's pre-paint script.
   useEffect(() => {
     writeBootAppearance(
@@ -55,9 +60,10 @@ export function InterfaceProvider() {
         accent,
         fontSize,
         reduceMotion,
+        increaseContrast,
       })
     )
-  }, [activeTheme, isDark, accent, fontSize, reduceMotion])
+  }, [activeTheme, isDark, accent, fontSize, reduceMotion, increaseContrast])
 
   useEffect(() => {
     releasePreload()

@@ -666,6 +666,8 @@
     "completionSoundApproval": "Only when approval is needed",
     "completionSoundVolume": "Volume",
     "completionSoundPreview": "Play",
+    "increaseContrast": "Increase contrast",
+    "increaseContrastDesc": "Make text brighter so it is easier to read. Whiter on the dark theme, darker on the light theme.",
     "reduceMotion": "Reduce motion",
     "reduceMotionDesc": "Turn off animations in Flint. Flint does not follow the system setting, so motion stays on unless you switch this."
   },

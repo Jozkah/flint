@@ -345,6 +345,30 @@ html.kb-open .kb-hidden {
   display: none;
 }
 
+/* Settings > Appearance > Increase contrast. Pushes every text step toward the
+   page's extreme (white on dark, black on light). Declared after the theme
+   tokens at higher specificity so it wins over :root / .dark. */
+html.high-contrast {
+  --foreground: #111827;
+  --fg-2: #111827;
+  --card-foreground: #111827;
+  --popover-foreground: #111827;
+  --secondary-foreground: #1F2937;
+  --muted-foreground: #374151;
+  --subtle-foreground: #4B5563;
+  --cell-fg: #1F2937;
+}
+html.high-contrast.dark {
+  --foreground: #FFFFFF;
+  --fg-2: #F5F6F8;
+  --card-foreground: #FFFFFF;
+  --popover-foreground: #FFFFFF;
+  --secondary-foreground: #E8EAED;
+  --muted-foreground: #D2D6DC;
+  --subtle-foreground: #B4BAC4;
+  --cell-fg: #F0F2F5;
+}
+
 /* Settings > Appearance > Reduce motion. Durations collapse rather than being
    removed so animationend/transitionend listeners still fire. */
 html.reduce-motion *,
@@ -379,6 +403,37 @@ html.reduce-motion *::after {
     --text-4xl: 2.25rem;
     zoom: var(--app-zoom);
     height: calc(var(--app-vvh, 100dvh) / var(--app-zoom)) !important;
+  }
+}
+
+/* Portalled menus and popovers render under <body>, outside .app-zoom, so only
+   their text followed the font size while padding, rows and icons stayed at
+   design size. Zoom the content element itself (not Radix's positioning
+   wrapper, whose transform must stay in screen pixels) the same way, and
+   divide the available-height cap back since Radix measures it unzoomed. */
+@supports (zoom: calc(2px / 1px)) {
+  html:not(.no-css-zoom) :is(
+    [data-slot='dropdown-menu-content'],
+    [data-slot='dropdown-menu-sub-content'],
+    [data-slot='popover-content'],
+    [data-slot='hover-card-content']
+  ) {
+    --app-zoom: calc(var(--font-size-base, 16px) / 16px);
+    --app-font-base: 16px;
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-lg: 1.125rem;
+    --text-xl: 1.25rem;
+    --text-2xl: 1.5rem;
+    --text-3xl: 1.875rem;
+    --text-4xl: 2.25rem;
+    zoom: var(--app-zoom);
+  }
+  html:not(.no-css-zoom) [data-slot='dropdown-menu-content'] {
+    max-height: calc(
+      var(--radix-dropdown-menu-content-available-height) / var(--app-zoom)
+    );
   }
 }
 

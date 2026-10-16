@@ -1,7 +1,7 @@
 import { unescapeComposerMarkdown } from '@/lib/composerText'
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
 import { toAssetUrl } from '@/lib/assetPath'
-import { pastedPath } from '@/lib/fileDrop'
+import { fileUriPaths, pastedPath } from '@/lib/fileDrop'
 import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
 import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { currentDescriber } from '@/lib/imageDescription'
@@ -2628,6 +2628,50 @@ const ChatInput = memo(function ChatInput({
     else attachMedia()
   }
 
+  // Dragged or copied files can arrive as `file://` URIs with no File objects
+  // (Linux file managers), which would land in the editor as raw text. Read
+  // them from disk and attach them like any other file.
+  const attachFileUris = async (paths: string[]) => {
+    const files: File[] = []
+    for (const path of paths) {
+      try {
+        const response = await fetch(await toAssetUrl(path))
+        if (!response.ok) throw new Error(response.statusText)
+        const blob = await response.blob()
+        const name = path.split(/[\\/]/).filter(Boolean).pop() || 'file'
+        files.push(new File([blob], name, { type: blob.type }))
+      } catch (error) {
+        toast.error(t('common:pastedPath.failed'), {
+          description: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    const documents = files.filter((f) => isDocumentAttachmentName(f.name))
+    const others = files.filter((f) => !documents.includes(f))
+    if (documents.length > 0) void attachDroppedDocuments(documents)
+    if (others.length > 0) {
+      handleFileChange({
+        target: { files: others },
+      } as unknown as React.ChangeEvent<HTMLInputElement>)
+    }
+    focusComposer()
+  }
+
+  // Runs in the capture phase so the editor never inserts the URI as text.
+  const handleUriDrop = (e: React.DragEvent) => {
+    const dt = e.dataTransfer
+    if (!dt || (dt.files?.length ?? 0) > 0 || !isPlatformTauri()) return
+    const paths = fileUriPaths(
+      dt.getData('text/uri-list') || dt.getData('text/plain')
+    )
+    if (!paths) return
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+    setDragCount(0)
+    void attachFileUris(paths)
+  }
+
   // A pasted path is still pasted as text; this only notices it and offers,
   // above the editor, to attach what it points at.
   const [pathOffer, setPathOffer] = useState<{
@@ -2700,6 +2744,15 @@ const ChatInput = memo(function ChatInput({
     // A large text paste becomes a .txt attachment; default is prevented
     // before anything below can await.
     if (largePaste.handlePaste(e)) return
+    const uriPaths =
+      isPlatformTauri() && !e.clipboardData?.files?.length
+        ? fileUriPaths(e.clipboardData?.getData('text/plain') ?? '')
+        : null
+    if (uriPaths) {
+      e.preventDefault()
+      void attachFileUris(uriPaths)
+      return
+    }
     const pasted = pastedPath(e.clipboardData?.getData('text/plain') ?? '')
     if (pasted) void offerPastedPath(pasted)
     const mediaItems = e.clipboardData?.items
@@ -2986,6 +3039,7 @@ const ChatInput = memo(function ChatInput({
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
+            onDropCapture={handleUriDrop}
             onDrop={handleDrop}
           >
             <DropRim active={isDragOver} count={dragCount} />

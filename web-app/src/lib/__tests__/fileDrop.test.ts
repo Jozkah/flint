@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   decideDrop,
+  fileUriPaths,
   inlineDroppedTexts,
   pastedPath,
   dragHasFiles,
@@ -147,5 +148,32 @@ describe('pastedPath', () => {
       '',
     ]
     for (const s of rejected) expect(pastedPath(s)).toBeNull()
+  })
+})
+
+describe('fileUriPaths', () => {
+  it('decodes file URIs into paths', () => {
+    expect(fileUriPaths('file:///home/Valkyr/Pictures/Memes/evil%20corp.png')).toEqual([
+      '/home/Valkyr/Pictures/Memes/evil corp.png',
+    ])
+  })
+
+  it('reads one path per line and skips comments', () => {
+    expect(fileUriPaths('# c\r\nfile:///a/b.png\r\nfile://localhost/c/d.txt\r\n')).toEqual([
+      '/a/b.png',
+      '/c/d.txt',
+    ])
+  })
+
+  it('drops the leading slash of a Windows drive path', () => {
+    expect(fileUriPaths('file:///C:/Users/me/a.png')).toEqual(['C:/Users/me/a.png'])
+  })
+
+  it('ignores ordinary text, URLs, remote hosts and mixed lines', () => {
+    expect(fileUriPaths('hello')).toBeNull()
+    expect(fileUriPaths('https://example.com/a.png')).toBeNull()
+    expect(fileUriPaths('file://server/share/a.png')).toBeNull()
+    expect(fileUriPaths('file:///a.png\nhello')).toBeNull()
+    expect(fileUriPaths('')).toBeNull()
   })
 })
