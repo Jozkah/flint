@@ -26,6 +26,7 @@ import {
   useCampaignStore,
 } from '../useCampaigns'
 import { campaignApi } from '@/lib/campaignApi'
+import i18n from '@/i18n/setup'
 
 beforeEach(() => {
   // Most tests exercise the older two-call path: an app without the new command.
@@ -81,6 +82,33 @@ describe('useCampaignStore.refresh', () => {
     vi.mocked(campaignApi.skipped).mockResolvedValue([{ id: 'x', reason: 'bad' }])
     await useCampaignStore.getState().refresh()
     expect(useCampaignStore.getState().skipped).toEqual([{ id: 'x', reason: 'bad' }])
+  })
+
+  it('reports an unreadable record in the app language', async () => {
+    vi.mocked(campaignApi.skipped).mockResolvedValue([])
+    vi.mocked(campaignApi.list).mockResolvedValue([{ nonsense: true }] as never)
+    await useCampaignStore.getState().refresh()
+    expect(useCampaignStore.getState().skipped[0].reason).toMatch(/cannot read/)
+    await i18n.changeLanguage('de-DE')
+    try {
+      await useCampaignStore.getState().refresh()
+      expect(useCampaignStore.getState().skipped[0].reason).toMatch(/nicht lesen kann/)
+    } finally {
+      await i18n.changeLanguage('en')
+    }
+  })
+
+  it('ignores an older reply that lands after a newer one', async () => {
+    let slow!: (v: Campaign[]) => void
+    vi.mocked(campaignApi.skipped).mockResolvedValue([])
+    vi.mocked(campaignApi.list)
+      .mockReturnValueOnce(new Promise((r) => (slow = r)) as never)
+      .mockResolvedValueOnce([camp({ id: 'new' })])
+    const older = useCampaignStore.getState().refresh()
+    await useCampaignStore.getState().refresh()
+    slow([camp({ id: 'old' })])
+    await older
+    expect(useCampaignStore.getState().campaigns.map((c) => c.id)).toEqual(['new'])
   })
 
   it('reports the real rejection text, and a non-list reply as an error', async () => {

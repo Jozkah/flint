@@ -43,7 +43,10 @@ import {
   DROP_ZONE_CLASS,
   dropLabelKey,
   isTypingTarget,
+  dropFilePaths,
 } from '@/lib/fileDrop'
+import { baseName, readDroppedPaths } from '@/lib/droppedPaths'
+import { isPlatformTauri } from '@/lib/platform/utils'
 import {
   MAX_CODE_FILE_BYTES,
   closeTab,
@@ -347,15 +350,38 @@ export function CoworkCodePanel({
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
-      if (!dragHasFiles(e.dataTransfer)) return
+      setDragOver(false)
+      const route = (files: File[]) => {
+        const intent = decideDrop('code', files)
+        if (intent.action === 'open') void openExternalFiles(intent.files)
+        else if (intent.action === 'offer-folder') onOfferFolder?.(intent.name)
+      }
+      if (e.dataTransfer.files.length > 0) {
+        e.preventDefault()
+        e.stopPropagation()
+        route(Array.from(e.dataTransfer.files))
+        return
+      }
+      // WebKitGTK: a file-manager drop may arrive as URIs only. A dragged
+      // link or text is not claimed. Only GNOME's own drag type is trusted: a
+      // web page can name any local path in the text a dragged link carries.
+      const named = isPlatformTauri() ? dropFilePaths(e.dataTransfer) : null
+      const paths = named?.trusted ? named.paths : null
+      if (!paths) return
       e.preventDefault()
       e.stopPropagation()
-      setDragOver(false)
-      const intent = decideDrop('code', Array.from(e.dataTransfer.files))
-      if (intent.action === 'open') void openExternalFiles(intent.files)
-      else if (intent.action === 'offer-folder') onOfferFolder?.(intent.name)
+      void readDroppedPaths(paths).then(({ files, folders, failed }) => {
+        if (folders.length > 0) onOfferFolder?.(baseName(folders[0]))
+        if (files.length > 0) route(files)
+        for (const folder of folders.slice(1)) {
+          toast.error(t('common:codePanel.oneFolderAtATime', { name: baseName(folder) }))
+        }
+        for (const f of failed) {
+          toast.error(t('common:codePanel.unreadable', { name: baseName(f.path) }))
+        }
+      })
     },
-    [openExternalFiles, onOfferFolder]
+    [openExternalFiles, onOfferFolder, t]
   )
 
   // Cmd+O / Ctrl+O while this panel is mounted, which is while Cowork's code

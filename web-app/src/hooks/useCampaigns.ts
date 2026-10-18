@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
+import i18n from '@/i18n/setup'
 import { campaignApi, type SkippedRecord } from '@/lib/campaignApi'
 import type { Campaign } from '@/lib/campaignModel'
 import { errorText } from '@/lib/errorText'
@@ -87,7 +88,7 @@ function withTimeout<T>(work: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
   const late = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error('The app did not answer in time.')),
+      () => reject(new Error(i18n.t('common:campaignList.timeout'))),
       LIST_TIMEOUT_MS
     )
   })
@@ -108,7 +109,7 @@ function splitCampaigns(listed: unknown[]): {
     } else {
       bad.push({
         id: c && typeof c === 'object' && typeof c.id === 'string' ? c.id : `#${i + 1}`,
-        reason: 'the backend sent a record this page cannot read',
+        reason: i18n.t('common:campaignList.unreadableRecord'),
       })
     }
   })
@@ -156,6 +157,9 @@ async function listOnce(): Promise<{ listed: unknown[]; skipped: SkippedRecord[]
   return { listed, skipped: Array.isArray(skipped) ? skipped : [] }
 }
 
+// Which refresh is the newest; an older reply landing late must not win.
+let refreshSeq = 0
+
 export const useCampaignStore = create<CampaignsState>()((set) => ({
   campaigns: [],
   loaded: false,
@@ -164,6 +168,7 @@ export const useCampaignStore = create<CampaignsState>()((set) => ({
   staleApp: false,
   skipped: [],
   refresh: async () => {
+    const seq = ++refreshSeq
     if (!hasBackend()) {
       set({ loaded: true, error: null, unavailable: 'desktop', staleApp: false })
       return
@@ -179,6 +184,7 @@ export const useCampaignStore = create<CampaignsState>()((set) => ({
       }
       const { ok, bad } = splitCampaigns(got.listed)
       const campaigns = await settleProposals(ok)
+      if (seq !== refreshSeq) return
       set({
         campaigns,
         skipped: [...got.skipped, ...bad],
@@ -188,6 +194,7 @@ export const useCampaignStore = create<CampaignsState>()((set) => ({
         staleApp: false,
       })
     } catch (e) {
+      if (seq !== refreshSeq) return
       console.error('[campaigns] could not load the list:', e)
       const error = errorText(e)
       set({

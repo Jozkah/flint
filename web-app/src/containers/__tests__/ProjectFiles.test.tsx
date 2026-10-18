@@ -296,6 +296,61 @@ describe('ProjectFiles', () => {
     await waitFor(() => expect(toastMock.info).toHaveBeenCalled())
   })
 
+  // ---------- Linux drops that name files as text ----------
+
+  const linuxDrop = async (data: Record<string, string>) => {
+    const { container } = render(<ProjectFiles projectId="p1" lng="en" />)
+    await waitFor(() =>
+      expect(screen.getByText('common:projects.filesDescription')).toBeInTheDocument()
+    )
+    const dropzone = container.querySelector('.border-dashed') as HTMLElement
+    fireEvent.drop(dropzone, {
+      dataTransfer: {
+        items: [],
+        files: [],
+        types: Object.keys(data),
+        getData: (t: string) => data[t] ?? '',
+      },
+    })
+  }
+
+  it('ignores a bare path dragged as text (never walks /home/me)', async () => {
+    fileStatMock.mockResolvedValue({ isDirectory: true, size: 0 })
+    await linuxDrop({ 'text/plain': '/home/me/projects' })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(fileStatMock).not.toHaveBeenCalled()
+    expect(readdirSyncMock).not.toHaveBeenCalled()
+    expect(ingestMock).not.toHaveBeenCalled()
+  })
+
+  it('asks before adding a dropped folder instead of walking it', async () => {
+    fileStatMock.mockResolvedValue({ isDirectory: true, size: 0 })
+    await linuxDrop({ 'text/uri-list': 'file:///home/me/proj/' })
+    await waitFor(() => expect(toastMock.info).toHaveBeenCalled())
+    expect(readdirSyncMock).not.toHaveBeenCalled()
+    expect(ingestMock).not.toHaveBeenCalled()
+    const opts = toastMock.info.mock.calls.at(-1)?.[1] as {
+      action?: { onClick: () => void }
+    }
+    expect(opts?.action?.onClick).toBeTypeOf('function')
+  })
+
+  it('asks before ingesting a file a uri-list drop names (a page can forge that text)', async () => {
+    fileStatMock.mockResolvedValue({ isDirectory: false, size: 3 })
+    await linuxDrop({ 'text/uri-list': 'file:///home/me/a%20b.pdf' })
+    await waitFor(() => expect(toastMock.info).toHaveBeenCalled())
+    expect(ingestMock).not.toHaveBeenCalled()
+    expect(toastMock.info.mock.calls.at(-1)?.[0]).toBe('common:pastedPath.file')
+  })
+
+  it('ingests a file named by the GNOME drag type', async () => {
+    await linuxDrop({
+      'x-special/gnome-copied-files': 'copy\nfile:///home/me/a%20b.pdf',
+    })
+    await waitFor(() => expect(ingestMock).toHaveBeenCalled())
+    expect(ingestMock.mock.calls[0][1][0]).toMatchObject({ path: '/home/me/a b.pdf' })
+  })
+
   // ---------- Upload flow: processFilePaths + ingest + humanizeUploadError ----------
 
   async function clickUpload() {

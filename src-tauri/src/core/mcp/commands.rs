@@ -248,6 +248,16 @@ pub async fn activate_mcp_server<R: Runtime>(
     // (an @mention, an import), as before.
     start: Option<bool>,
 ) -> Result<(), String> {
+    // The webview holds the masked view of the config (`get_mcp_configs`):
+    // put the stored secrets back before the config is stored or launched.
+    let mut config = config;
+    let mut path = get_jan_data_folder_path(app.clone());
+    path.push("mcp_config.json");
+    super::redact::restore_server_config(
+        &name,
+        &mut config,
+        &read_disk_servers(&path).unwrap_or_default(),
+    )?;
     let servers: SharedMcpServers = state.mcp_servers.clone();
     let running = servers.lock().await.contains_key(&name);
     let registered = state.mcp_active_servers.lock().await.get(&name).cloned();
@@ -911,6 +921,9 @@ pub async fn call_tool<R: Runtime>(
 
     // Iterate through servers and find the one that contains the tool
     for (srv_name, service) in servers_to_check.iter() {
+        // Idle shutdown never stops a server while this call is in flight,
+        // including while its tools are being listed.
+        let _in_flight = state.mcp_lazy.begin_call(srv_name);
         let tools = match timeout(list_timeout, service.list_all_tools()).await {
             Ok(Ok(tools)) => tools,
             Err(_) => {
@@ -936,8 +949,6 @@ pub async fn call_tool<R: Runtime>(
         }
 
         log::info!("Found tool {tool_name} in server {srv_name}");
-        // Idle shutdown never stops a server while this call is in flight.
-        let _in_flight = state.mcp_lazy.begin_call(srv_name);
 
         // AH-041. Checked here, against the server the tool was actually found
         // on -- not against `server_name`, which the request may not have set
@@ -989,33 +1000,30 @@ pub async fn call_tool<R: Runtime>(
         // The timeout rides on the request, so a stuck call is cancelled on the
         // server too, and a server that keeps timing out is stopped below.
         let call_timeout = super::stall::server_timeout(active_configs.get(srv_name), timeout_duration);
-        let tool_call = super::stall::call_tool_cancellable(service, params, call_timeout);
+        // A user cancel reaches the server as notifications/cancelled, like a timeout.
+        let has_token = cancellation_token.is_some();
+        let cancel_signal = async move {
+            if has_token {
+                let _ = cancel_rx.await;
+            } else {
+                std::future::pending::<()>().await;
+            }
+        };
+        let tool_call =
+            super::stall::call_tool_until(service, params, call_timeout, cancel_signal);
         let timed_out_message = format!(
             "Tool call '{tool_name}' timed out after {} seconds",
             call_timeout.as_secs()
         );
         let to_message = |failure: super::stall::CallFailure| match failure {
             super::stall::CallFailure::TimedOut => timed_out_message.clone(),
+            super::stall::CallFailure::Cancelled => format!("Tool call '{tool_name}' was cancelled"),
             super::stall::CallFailure::Other(e) => e,
         };
 
-        // Race between timeout, tool call, and cancellation
-        let mut stop_stalled = false;
-        let result = if cancellation_token.is_some() {
-            tokio::select! {
-                outcome = tool_call => {
-                    stop_stalled = super::stall::note_outcome(srv_name, &outcome);
-                    outcome.map_err(to_message)
-                }
-                _ = cancel_rx => {
-                    Err(format!("Tool call '{tool_name}' was cancelled"))
-                }
-            }
-        } else {
-            let outcome = tool_call.await;
-            stop_stalled = super::stall::note_outcome(srv_name, &outcome);
-            outcome.map_err(to_message)
-        };
+        let outcome = tool_call.await;
+        let stop_stalled = super::stall::note_outcome(srv_name, &outcome);
+        let result = outcome.map_err(to_message);
         let result = if stop_stalled {
             log::warn!(
                 "MCP server {srv_name} timed out {} calls in a row; stopping it (restarts on next use)",
@@ -1532,6 +1540,11 @@ pub async fn save_mcp_configs<R: Runtime>(
     // one back so a save never overwrites a real secret with the mask.
     if let Some(disk) = read_disk_servers(&path) {
         super::redact::restore_masked_secrets(&mut config_value, &disk);
+    }
+    // Never store the placeholder as a secret (a renamed key, or a server
+    // with nothing stored to restore from): drop it so the user re-enters it.
+    for entry in super::redact::strip_unrestored_masks(&mut config_value) {
+        log::warn!("save mcp configs: dropped hidden value with no stored secret: {entry}");
     }
     // The desktop's belief is its own payload; the next save diffs against it.
     remember_desktop_view(

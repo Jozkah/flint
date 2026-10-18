@@ -91,7 +91,7 @@ export function PromptLibraryCard() {
     const store = usePromptLibrary.getState()
     const out = draft.id ? store.update(draft.id, input) : store.add(input)
     if (!out.ok) {
-      setError(out.message)
+      setError(t(`common:promptLibrary.errors.${out.code}`))
       return
     }
     setDraft(null)
@@ -113,7 +113,7 @@ export function PromptLibraryCard() {
     if (!file) return
     const out = usePromptLibrary.getState().importJson(await file.text())
     if (out.ok) toast.success(t('common:promptLibrary.imported', { count: out.added }))
-    else toast.error(out.message)
+    else toast.error(t(`common:promptLibrary.errors.${out.code}`))
     if (fileRef.current) fileRef.current.value = ''
   }
 

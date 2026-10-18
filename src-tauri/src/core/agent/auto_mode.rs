@@ -378,6 +378,11 @@ fn matches_rule(rule: &str, text: &str) -> bool {
         return false;
     }
     if let Some(stripped) = rule.strip_suffix('*') {
+        // A bare `*` (or one after spaces) would match every action.
+        let stripped_trim = stripped.trim();
+        if stripped_trim.is_empty() {
+            return false;
+        }
         return text.starts_with(stripped);
     }
     text == rule || text.starts_with(&format!("{rule} "))
@@ -581,6 +586,13 @@ fn classify_write(path: &str) -> Option<Block> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_bare_star_rule_matches_nothing() {
+        assert!(!matches_rule("*", "rm -rf /"));
+        assert!(!matches_rule(" * ", "anything"));
+        assert!(matches_rule("git *", "git status"));
+    }
+
     use super::*;
     use serde_json::json;
 

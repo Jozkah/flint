@@ -238,6 +238,13 @@ impl Automation {
         if self.folders.len() > MAX_FOLDERS {
             out.push(problem("folders", format!("at most {MAX_FOLDERS} folders")));
         }
+        // A timetable mirrors into one scheduled task, which has one project.
+        if matches!(self.trigger, Trigger::Schedule { .. }) && self.folders.len() > 1 {
+            out.push(problem(
+                "folders[1]",
+                "a scheduled automation works in one folder; use a manual trigger to run it in several",
+            ));
+        }
         let mut seen = BTreeSet::new();
         for (i, f) in self.folders.iter().enumerate() {
             let field = format!("folders[{i}]");
@@ -352,6 +359,82 @@ struct File {
     automations: Vec<Automation>,
 }
 
+const LOCK_STALE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Released on drop.
+struct DirLock {
+    path: PathBuf,
+    /// What this holder wrote into the lock; it removes the lock only while
+    /// the file still says so (a stale-lock taker may have replaced it).
+    token: String,
+}
+
+impl Drop for DirLock {
+    fn drop(&mut self) {
+        if fs::read_to_string(&self.path).is_ok_and(|t| t == self.token) {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+fn lock_token() -> String {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    format!(
+        "{}-{nanos}-{}",
+        std::process::id(),
+        N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    )
+}
+
+fn is_stale(path: &Path) -> bool {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| std::time::SystemTime::now().duration_since(t).ok())
+        .is_some_and(|age| age > LOCK_STALE)
+}
+
+/// Take a stale lock out of the way. Renaming is atomic, so of two takers
+/// only one moves the file; and if what was moved turns out fresh (another
+/// taker already replaced the stale one), it is put back, not deleted.
+fn clear_stale_lock(path: &Path) {
+    let aside = path.with_extension(format!("stale-{}", lock_token()));
+    if fs::rename(path, &aside).is_err() {
+        return;
+    }
+    if !is_stale(&aside) {
+        let _ = fs::hard_link(&aside, path);
+    }
+    let _ = fs::remove_file(&aside);
+}
+
+/// Acquire `path` as an exclusive lock file.
+fn acquire_lock(path: &Path) -> Result<DirLock, String> {
+    for _ in 0..200 {
+        match fs::OpenOptions::new().write(true).create_new(true).open(path) {
+            Ok(mut f) => {
+                use std::io::Write;
+                let token = lock_token();
+                let _ = write!(f, "{token}");
+                return Ok(DirLock { path: path.to_path_buf(), token });
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                if is_stale(path) {
+                    clear_stale_lock(path);
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                }
+            }
+            Err(e) => return Err(format!("automations.json could not be locked: {e}")),
+        }
+    }
+    Err("automations.json is busy; try again".to_string())
+}
+
 /// Automations on disk: `<data folder>/automations/automations.json`.
 pub struct AutomationStore {
     dir: PathBuf,
@@ -384,6 +467,14 @@ impl AutomationStore {
         Ok(self.load()?.into_iter().find(|a| a.id == id))
     }
 
+    /// Held across a read-modify-write of automations.json so two savers (the
+    /// app and `flint cli`) cannot lose each other's change. A lock older than
+    /// `LOCK_STALE` belonged to a process that died and is taken over.
+    fn lock(&self) -> Result<DirLock, String> {
+        fs::create_dir_all(&self.dir).map_err(|e| format!("the automations folder could not be created: {e}"))?;
+        acquire_lock(&self.dir.join("automations.lock"))
+    }
+
     fn write(&self, automations: Vec<Automation>) -> Result<(), String> {
         fs::create_dir_all(&self.dir).map_err(|e| format!("the automations folder could not be created: {e}"))?;
         let body = serde_json::to_vec_pretty(&File { version: SCHEMA_VERSION, automations }).map_err(|e| e.to_string())?;
@@ -403,6 +494,7 @@ impl AutomationStore {
             return Err(problems);
         }
         let io = |e: String| vec![problem("store", e)];
+        let _lock = self.lock().map_err(io)?;
         let mut all = self.load().map_err(io)?;
         match all.iter_mut().find(|a| a.id == automation.id) {
             Some(existing) => *existing = automation.clone(),
@@ -427,6 +519,7 @@ impl AutomationStore {
 
     /// Remove an automation, its mirrored task and that task's run history.
     pub fn remove(&self, id: &str) -> Result<bool, String> {
+        let _lock = self.lock()?;
         let mut all = self.load()?;
         let before = all.len();
         all.retain(|a| a.id != id);
@@ -444,6 +537,31 @@ impl AutomationStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lock_holder_does_not_remove_a_lock_it_no_longer_owns() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.lock");
+        let held = acquire_lock(&path).unwrap();
+        fs::write(&path, "someone-else").unwrap();
+        drop(held);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "someone-else");
+    }
+
+    #[test]
+    fn a_stale_lock_is_taken_over_but_a_fresh_one_is_never_cleared() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.lock");
+        fs::write(&path, "fresh").unwrap();
+        clear_stale_lock(&path);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "fresh", "a fresh lock was removed");
+        let old = std::time::SystemTime::now() - LOCK_STALE * 2;
+        fs::OpenOptions::new().write(true).open(&path).unwrap().set_modified(old).unwrap();
+        let held = acquire_lock(&path).unwrap();
+        assert_ne!(fs::read_to_string(&path).unwrap(), "fresh");
+        drop(held);
+        assert!(!path.exists());
+    }
     use crate::core::schedule::spec::TimeOfDay;
 
     fn folder() -> tempfile::TempDir {
@@ -604,5 +722,37 @@ mod tests {
         assert!(a.task_for_run(Some(&via)).is_ok());
         // A manual automation compiles to a runnable task whose timetable never fires it.
         a.task_for_run(None).unwrap().validate().unwrap();
+    }
+
+    #[test]
+    fn a_timetable_with_several_folders_is_refused_but_a_manual_one_may_have_them() {
+        let d = folder();
+        let second = d.path().join("second");
+        fs::create_dir_all(second.join(".git")).unwrap();
+        let mut a = sample(d.path());
+        a.folders.push(second.to_string_lossy().into_owned());
+        assert!(fields(&a).contains(&"folders[1]".to_string()), "{:?}", a.problems());
+        let data = tempfile::tempdir().unwrap();
+        assert!(AutomationStore::new(data.path()).save(a.clone()).is_err());
+        a.trigger = Trigger::Manual;
+        assert!(a.problems().is_empty(), "{:?}", a.problems());
+    }
+
+    #[test]
+    fn saves_from_several_threads_all_survive() {
+        let d = folder();
+        let data = tempfile::tempdir().unwrap();
+        let handles: Vec<_> = (0..8)
+            .map(|i| {
+                let mut a = sample(d.path());
+                a.id = format!("auto{i}");
+                let root = data.path().to_path_buf();
+                std::thread::spawn(move || AutomationStore::new(&root).save(a).map(|_| ()))
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap().unwrap();
+        }
+        assert_eq!(AutomationStore::new(data.path()).load().unwrap().len(), 8);
     }
 }

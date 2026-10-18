@@ -249,6 +249,8 @@ const WRAPPERS: &[&str] = &[
     "sh", "bash", "zsh", "dash", "fish", "ksh", "csh", "tcsh", "cmd", "powershell", "pwsh", "sudo",
     "doas", "su", "env", "eval", "exec", "xargs", "nohup", "time", "timeout", "nice", "ionice",
     "command", "builtin", "start", "wsl", "runas", "busybox", "watch", "stdbuf", "setsid",
+    // Package-runner and script-host launchers: they fetch or run whatever they are given.
+    "uvx", "bunx", "pnpx", "cscript", "wscript", "mshta", "rundll32", "regsvr32", "msbuild", "ssh",
 ];
 
 /// Programs whose effect is deleting or reformatting; always asked for.
@@ -260,7 +262,7 @@ const DANGEROUS: &[&str] = &[
 /// Interpreters: fine behind a script name, not bare (`python -c ...`).
 const INTERPRETERS: &[&str] = &[
     "python", "python2", "python3", "py", "node", "deno", "bun", "ruby", "perl", "php", "lua",
-    "java", "dotnet", "pwsh", "osascript", "awk", "gawk",
+    "java", "dotnet", "pwsh", "osascript", "awk", "gawk", "rscript", "julia", "tsx", "ts-node",
 ];
 
 /// Programs with subcommands: the bare name covers every one of them
@@ -274,7 +276,15 @@ const SUBCOMMAND_TOOLS: &[&str] = &[
 /// Arguments that turn the rest of a command line into code.
 const EXEC_FLAGS: &[&str] = &[
     "-c", "-e", "-x", "-m", "--eval", "-command", "-encodedcommand", "-exec", "--exec", "-ec",
-    "--command", "-i", "--interactive",
+    "--command", "-i", "--interactive", "-delete", "-execdir", "-ok", "-okdir",
+];
+
+/// The flags of [`EXEC_FLAGS`] that run or delete things wherever they stand in a
+/// command (`find . -delete`). The short letters (`-c`, `-e`, `-i`) mean something
+/// harmless in most programs, so they are only held against the prefix itself.
+const DESTRUCTIVE_FLAGS: &[&str] = &[
+    "-delete", "-exec", "-execdir", "-ok", "-okdir", "--exec", "--eval", "-command",
+    "-encodedcommand", "-ec", "--command",
 ];
 
 fn program_of(token: &str) -> String {
@@ -382,7 +392,12 @@ fn prefix_covers(prefix: &str, command: &str) -> bool {
     }
     let want: Vec<&str> = prefix.split_whitespace().collect();
     let have: Vec<&str> = command.split_whitespace().collect();
-    have.len() >= want.len() && have[..want.len()] == want[..]
+    have.len() >= want.len()
+        && have[..want.len()] == want[..]
+        // A rule for `find .` was approved for finding, not for what `-delete` does.
+        && !have[want.len()..]
+            .iter()
+            .any(|t| DESTRUCTIVE_FLAGS.contains(&t.to_lowercase().as_str()))
 }
 
 // -- the form -----------------------------------------------------------------
@@ -960,6 +975,36 @@ mod tests {
 
     fn exec_covered(p: &str, command: &str) -> bool {
         prefix_covers(p, command)
+    }
+
+    #[test]
+    fn launchers_and_script_hosts_are_not_accepted_as_a_bare_prefix() {
+        for p in [
+            "uvx", "bunx", "pnpx", "cscript", "wscript", "mshta", "rundll32", "regsvr32",
+            "msbuild", "ssh", "UVX", "uvx.exe", "C:\\Windows\\System32\\mshta.exe", "rscript",
+            "julia", "tsx", "ts-node", "Rscript.exe", "julia -e",
+        ] {
+            assert!(prefix_problem(p).is_some(), "{p:?} must be refused");
+        }
+        assert!(prefix_problem("cargo test").is_none());
+        assert!(prefix_problem("git status").is_none());
+        assert!(prefix_problem("rscript analysis.R").is_none());
+    }
+
+    #[test]
+    fn a_find_prefix_does_not_cover_delete_or_exec_actions() {
+        assert!(exec_covered("find .", "find . -name foo"));
+        assert!(!exec_covered("find .", "find . -delete"));
+        assert!(!exec_covered("find .", "find . -name x -DELETE"));
+        assert!(!exec_covered("find .", "find . -exec rm {} +"));
+        assert!(prefix_problem("find . -delete").is_some());
+    }
+
+    #[test]
+    fn a_prefix_does_not_cover_a_powershell_quote_break() {
+        assert!(prefix_covers("git status", "git status 'a'"));
+        assert!(!prefix_covers("git status", "git status '\u{2018}; calc; #'"));
+        assert!(!prefix_covers("git status", "git status \"x\u{201C}; calc; #\""));
     }
 
     #[test]

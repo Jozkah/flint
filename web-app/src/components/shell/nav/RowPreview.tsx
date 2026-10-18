@@ -110,7 +110,19 @@ export function RowPreview({
   // focus to the row.
   const rowEl = useRef<HTMLElement | null>(null)
   const cardEl = useRef<HTMLElement | null>(null)
-  const focusInside = useRef(false)
+  // Read live, never cached in a ref: a card that unmounts with focus inside
+  // fires no blur, so a cached flag stayed true and every later close was
+  // ignored (the card stuck open). Only keyboard (focus-visible) focus holds
+  // the card; a mouse click that focused a link in it does not.
+  const keyboardFocusInside = () => {
+    const active = document.activeElement as HTMLElement | null
+    if (!active || !cardEl.current?.contains(active)) return false
+    try {
+      return active.matches(':focus-visible')
+    } catch {
+      return false
+    }
+  }
   // The card opens past the sidebar's edge, not the row's: a row ends before
   // its trailing menu button and the sidebar's own scrollbar, which the card
   // would otherwise cover.
@@ -132,7 +144,7 @@ export function RowPreview({
       closeDelay={PREVIEW_CLOSE_DELAY}
       open={shown}
       onOpenChange={(next) => {
-        if (!next && focusInside.current) return
+        if (!next && keyboardFocusInside()) return
         const allowed =
           next && (hovered.current || keyboardFocus.current) && !pressed.current
         setOpen(allowed)
@@ -189,18 +201,9 @@ export function RowPreview({
         ref={(el: HTMLDivElement | null) => {
           cardEl.current = el
         }}
-        onFocus={() => {
-          focusInside.current = true
-        }}
-        onBlur={(e: React.FocusEvent<HTMLElement>) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-            focusInside.current = false
-          }
-        }}
         onKeyDown={(e: React.KeyboardEvent<HTMLElement>) => {
           if (e.key !== 'Escape') return
           e.stopPropagation()
-          focusInside.current = false
           setOpen(false)
           rowEl.current?.focus()
         }}
@@ -241,20 +244,28 @@ function RowPreviewBody({
   useEffect(() => {
     if (!facts) return
     let current = true
-    void facts().then((f) => {
-      if (current) setRead(f)
-    })
+    void facts()
+      .then((f) => {
+        if (current) setRead(f)
+      })
+      .catch((e) => {
+        // The card still shows without its facts.
+        console.error('[row-preview] facts failed:', e)
+      })
     return () => {
       current = false
     }
     // Called once per open; the key says which conversation state it is for.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summaryKey])
+  // A thread that never picked a model carries the id '*' (or none): that is
+  // "use the default", not a model to name on the card.
+  const picked = model && model.id && model.id !== '*' ? model : null
   const modelName = useModelProvider((s) =>
-    model
+    picked
       ? s.providers
-          .find((p) => p.provider === model.provider)
-          ?.models.find((m) => m.id === model.id)?.displayName
+          .find((p) => p.provider === picked.provider)
+          ?.models.find((m) => m.id === picked.id)?.displayName
       : undefined
   )
   const messages = meta?.messages ?? read?.count
@@ -264,7 +275,7 @@ function RowPreviewBody({
       status={status}
       meta={{
         ...meta,
-        model: meta?.model ?? modelName ?? model?.id,
+        model: meta?.model ?? modelName ?? picked?.id,
         messages,
       }}
       summary={written.summary ?? summary ?? read?.first}

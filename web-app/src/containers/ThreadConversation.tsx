@@ -40,7 +40,7 @@ import {
 import { ChatWorkProfilePicker } from '@/containers/ChatWorkProfilePicker'
 import { forkThread } from '@/lib/forkThread'
 import { ConversationFindBar } from '@/containers/ConversationFindBar'
-import { useConversationFind } from '@/hooks/useConversationFind'
+import { closeFindForThread, useConversationFind } from '@/hooks/useConversationFind'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { useShallow } from 'zustand/react/shallow'
 import { MessageItem } from '@/containers/MessageItem'
@@ -203,6 +203,8 @@ import {
   isVisualizeTool,
 } from '@/lib/visualize/constants'
 import { executeVisualizeTool } from '@/lib/visualize/tools'
+import { executeChatRead, isChatReadTool } from '@/lib/chatReadTool'
+import { chatReadContextForThread } from '@/lib/chatMentionSources'
 import { WidgetHostContext, type WidgetHost } from '@/lib/visualize/hostContext'
 import { chatFolderToolOptions, chatFoldersOf } from '@/lib/chatFolders'
 import { PathRootsContext } from '@/lib/codeOpen'
@@ -283,6 +285,8 @@ function isAutoAllowedTool(toolName: string): boolean {
     useAppState.getState().ragToolNames.has(toolName) ||
     isNativeWebTool(toolName) ||
     isVisualizeTool(toolName) ||
+    // Reads only conversations the user mentioned, from local stores.
+    isChatReadTool(toolName) ||
     isImageTool(toolName) ||
     AGENT_TOOL_NAMES.has(toolName) ||
     // Handing a job to a subagent asks for nothing itself; what the child then
@@ -422,9 +426,12 @@ export function ThreadConversation({
   const titleAbortRef = useRef<AbortController | null>(null)
   // Find in chat: the bar belongs to the conversation that is active.
   const findOpen = useConversationFind((s) => s.open)
+  const findSeed = useConversationFind((s) =>
+    s.seed && s.seed.threadId === threadId ? s.seed : null
+  )
   const findRootRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    useConversationFind.getState().setOpen(false)
+    closeFindForThread(threadId)
   }, [threadId])
 
   // Steering (Steer now / Ctrl+Enter in the composer) is delivered at the
@@ -1167,6 +1174,11 @@ export function ThreadConversation({
               )
             } else if (isVisualizeTool(toolName)) {
               result = executeVisualizeTool(toolName, toolCall.input, threadId)
+            } else if (isChatReadTool(toolName)) {
+              result = await executeChatRead(
+                toolCall.input,
+                chatReadContextForThread(threadId)
+              )
             } else if (isImageTool(toolName)) {
               result = await runImageTool(toolName, toolCall.input, threadId)
             } else if (chatAgentToolRefusal(toolName)) {
@@ -1305,15 +1317,29 @@ export function ThreadConversation({
                     .allowOnceForServer(server, toolName, approvedFingerprint)
                     .catch(() => undefined)
                 : undefined
-              result = await serviceHub.mcp().callTool({
-                toolName,
-                serverName: server,
-                arguments: toolCall.input,
-                approvalTicket,
-                maxOutputChars: deriveToolOutputCap(
-                  typeof ctxLen === 'number' ? ctxLen : undefined
-                ),
+              // The call carries a token so Stop can cancel it while it runs.
+              const cancellationToken = `tool_call_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+              const appState = useAppState.getState()
+              appState.setThreadCancelToolCall(threadId, () => {
+                void serviceHub
+                  .mcp()
+                  .cancelToolCall(cancellationToken)
+                  .catch(() => {})
               })
+              try {
+                result = await serviceHub.mcp().callTool({
+                  toolName,
+                  serverName: server,
+                  arguments: toolCall.input,
+                  approvalTicket,
+                  cancellationToken,
+                  maxOutputChars: deriveToolOutputCap(
+                    typeof ctxLen === 'number' ? ctxLen : undefined
+                  ),
+                })
+              } finally {
+                useAppState.getState().setThreadCancelToolCall(threadId, undefined)
+              }
               const failure = result.error
                 ? String(result.error)
                 : (result as { isError?: unknown }).isError === true
@@ -1709,11 +1735,15 @@ export function ThreadConversation({
 
     // The read may already have started when the pointer reached the row.
     loadThreadMessages(threadId, (id) => serviceHub.messages().fetchMessages(id))
-      .then((fetchedMessages) => {
-        if (fetchedMessages && fetchedMessages.length > 0) {
-          const currentLocalMessages = useMessages
-            .getState()
-            .getMessages(threadId)
+      .then((fetched) => {
+        // A chat opened straight after it was made (a continued chat's summary
+        // seed) may not be on disk yet: its messages are only in the store, and
+        // the model must still be sent them.
+        const localNow = useMessages.getState().getMessages(threadId)
+        const fetchedMessages =
+          fetched && fetched.length > 0 ? fetched : (localNow ?? [])
+        if (fetchedMessages.length > 0) {
+          const currentLocalMessages = localNow
 
           let messagesToSet = fetchedMessages
 
@@ -2996,7 +3026,6 @@ export function ThreadConversation({
   const controlsWith = (extra: ReactNode) => (
     <>
       <TemporaryChatBanner threadId={threadId} />
-      <FolderTrustBanner folder={chatPathRoots[0] ?? null} />
       {/* On a phone the page header has room for one button: Split and Details
           move into an overflow menu. A split pane's header row keeps them all. */}
       <div className="flex shrink-0 items-center gap-1.5">
@@ -3191,6 +3220,7 @@ export function ThreadConversation({
             <ConversationFindBar
               messages={chatMessages}
               root={() => findRootRef.current}
+              seed={findSeed}
               onClose={() => useConversationFind.getState().setOpen(false)}
             />
           )}
@@ -3438,6 +3468,7 @@ export function ThreadConversation({
           )}
         >
           {/* Approvals a subagent raises have no tool card to sit under. */}
+          <FolderTrustBanner folder={chatPathRoots[0] ?? null} />
           <CoworkChildApprovals sessionId={threadId} />
           <ChatTasks threadId={threadId} />
           <ChatInput

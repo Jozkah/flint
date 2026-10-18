@@ -36,6 +36,29 @@ pub struct MessageHit {
     pub updated: f64,
 }
 
+/// The message text without the `<conversation-mention ...>...</conversation-mention>`
+/// blocks the composer appends: they are context for the model, not what the
+/// person wrote, so a phrase inside one is not a match.
+fn strip_mention_blocks(text: &str) -> String {
+    const OPEN: &str = "<conversation-mention ";
+    const CLOSE: &str = "</conversation-mention>";
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find(OPEN) {
+        out.push_str(&rest[..start]);
+        match rest[start..].find(CLOSE) {
+            Some(end) => rest = &rest[start + end + CLOSE.len()..],
+            // Not a well-formed block: keep the text, it is what was written.
+            None => {
+                rest = &rest[start..];
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    out.trim().to_string()
+}
+
 fn text_of(message: &Value) -> String {
     let mut out = String::new();
     match message.get("content") {
@@ -162,7 +185,7 @@ pub fn search_messages_in(
             {
                 continue;
             }
-            let text = text_of(&message);
+            let text = strip_mention_blocks(&text_of(&message));
             if text.is_empty() {
                 continue;
             }
@@ -251,6 +274,37 @@ mod tests {
         assert!(search_messages_in(tmp.path(), "needle", 20)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn an_unclosed_mention_tag_keeps_the_rest_of_the_message() {
+        assert_eq!(
+            strip_mention_blocks("a <conversation-mention kind=x> the quartz codeword"),
+            "a <conversation-mention kind=x> the quartz codeword"
+        );
+        assert_eq!(
+            strip_mention_blocks("a <conversation-mention k>x</conversation-mention> b <conversation-mention c"),
+            "a  b <conversation-mention c"
+        );
+    }
+
+    #[test]
+    fn ignores_text_inside_mention_blocks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let block = "see this
+<conversation-mention kind=\"chat\" id=\"x\" title=\"T\" chars=\"9\" messages=\"1\">
+the quartz codeword
+</conversation-mention>";
+        thread(
+            tmp.path(),
+            "t1",
+            "T",
+            1,
+            vec![msg("m1", "user", block), msg("m2", "user", "plain quartz")],
+        );
+        let hits = search_messages_in(tmp.path(), "quartz", 20).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].message_id, "m2");
     }
 
     #[test]

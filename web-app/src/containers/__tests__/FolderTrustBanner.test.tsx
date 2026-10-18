@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { FolderTrustBanner } from '../FolderTrustBanner'
 import * as trust from '@/lib/folderTrust'
 
@@ -25,6 +27,27 @@ describe('FolderTrustBanner', () => {
     vi.mocked(trust.folderTrustStatus).mockResolvedValue(untrusted())
     render(<FolderTrustBanner folder="C:/code/app" />)
     expect(await screen.findByTestId('folder-trust-banner')).toBeTruthy()
+  })
+
+  it('is a full-width bar, not a centred card, so it can sit over the composer', async () => {
+    vi.mocked(trust.folderTrustStatus).mockResolvedValue(untrusted())
+    render(<FolderTrustBanner folder="C:/code/app" />)
+    const banner = await screen.findByTestId('folder-trust-banner')
+    expect(banner.className).not.toMatch(/mx-auto|max-w-3xl|(^|\s)my-2(\s|$)/)
+    expect(banner.className).toContain('mb-1.5')
+  })
+
+  it('is mounted over the composers, not in the transcript or the page header', () => {
+    const src = (p: string) => readFileSync(resolve(__dirname, p), 'utf8')
+    const chat = src('../ThreadConversation.tsx')
+    expect(chat.indexOf('<FolderTrustBanner')).toBeGreaterThan(chat.indexOf('Chat Input - Fixed at bottom'))
+    const cowork = src('../../routes/cowork.tsx')
+    const at = cowork.indexOf('<FolderTrustBanner')
+    const stack = cowork.indexOf('<CoworkBarStack>')
+    // Directly above the bar stack that sits over the composer.
+    expect(at).toBeGreaterThan(-1)
+    expect(at).toBeLessThan(stack)
+    expect(stack - at).toBeLessThan(400)
   })
 
   it('stays quiet for a folder with nothing to run, or one already trusted', async () => {

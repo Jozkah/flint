@@ -387,6 +387,12 @@ pub async fn start_mcp_server<R: Runtime>(
     name: String,
     config: Value,
 ) -> Result<(), String> {
+    // Never launch with the redaction placeholder as a token.
+    if let Some((field, key)) = super::redact::find_mask(&config) {
+        return Err(format!(
+            "{name}: {field} \"{key}\" holds a hidden placeholder, not the secret; re-enter it in the server settings"
+        ));
+    }
     let app_state = app.state::<AppState>();
     let active_servers_state = app_state.mcp_active_servers.clone();
 
@@ -1843,7 +1849,26 @@ pub async fn stop_running_mcp_server<R: Runtime>(
     name: &str,
     config: Option<&Value>,
 ) -> Result<bool, String> {
+    stop_running_mcp_server_if(app, name, config, || true).await
+}
+
+/// [`stop_running_mcp_server`], but only when `still_wanted` holds at the
+/// moment the service is taken out of the running set (checked under that
+/// lock, so a call that has begun by then keeps its server).
+async fn stop_running_mcp_server_if<R: Runtime>(
+    app: &AppHandle<R>,
+    name: &str,
+    config: Option<&Value>,
+    still_wanted: impl FnOnce() -> bool,
+) -> Result<bool, String> {
     let app_state = app.state::<AppState>();
+    let service = {
+        let mut servers = app_state.mcp_servers.lock().await;
+        if !servers.contains_key(name) || !still_wanted() {
+            return Ok(false);
+        }
+        servers.remove(name)
+    };
     {
         let mut generations = app_state.mcp_generation.lock().await;
         let next = generations.get(name).copied().unwrap_or(0) + 1;
@@ -1851,7 +1876,7 @@ pub async fn stop_running_mcp_server<R: Runtime>(
     }
     abort_mcp_monitor(&app_state.mcp_monitoring_tasks, name).await;
     app_state.mcp_lazy.forget(name);
-    let Some(service) = app_state.mcp_servers.lock().await.remove(name) else {
+    let Some(service) = service else {
         return Ok(false);
     };
     log::info!("Stopping MCP server {name}...");
@@ -1897,9 +1922,18 @@ pub fn spawn_idle_shutdown_loop<R: Runtime>(app: AppHandle<R>) {
                 Duration::from_secs(minutes * 60),
                 std::time::Instant::now(),
             );
+            let idle_after = Duration::from_secs(minutes * 60);
             for name in idle {
-                log::info!("MCP server {name} idle for {minutes} min; stopping until needed");
-                let _ = stop_running_mcp_server(&app, &name, active.get(&name)).await;
+                // Checked again as the server is removed: a call may have
+                // begun since the list above was taken.
+                let lazy = &app_state.mcp_lazy;
+                let stopped = stop_running_mcp_server_if(&app, &name, active.get(&name), || {
+                    lazy.is_idle(&name, idle_after, std::time::Instant::now())
+                })
+                .await;
+                if matches!(stopped, Ok(true)) {
+                    log::info!("MCP server {name} idle for {minutes} min; stopped until needed");
+                }
                 emit_mcp_update_event(&app, &name);
             }
         }

@@ -879,7 +879,26 @@ fn strip_base(t: &str) -> String {
 pub fn simple_commands(command: &str) -> Vec<String> {
     let mut out = Vec::new();
     collect_commands(command, &mut out, 0);
+    if quotes_differ_by_shell(command, super::proc::shell().flavor) {
+        out.push(non_plain(command));
+    }
     out
+}
+
+/// Whether `command` holds a character this scanner reads with POSIX quoting
+/// but the shell that may run it reads otherwise. PowerShell (the flavor of
+/// every sandboxed Windows run) ends a single-quoted string on U+2018..U+201B
+/// and a double-quoted one on U+201C..U+201E, so a typographic quote inside
+/// `'...'` turns one quoted word here into several commands there. cmd has no
+/// single quotes and expands `%` and `^` inside double quotes.
+fn quotes_differ_by_shell(command: &str, flavor: super::proc::ShellFlavor) -> bool {
+    if command
+        .chars()
+        .any(|c| ('\u{2018}'..='\u{201F}').contains(&c) || c == '\u{2032}' || c == '\u{2033}')
+    {
+        return true;
+    }
+    flavor == super::proc::ShellFlavor::Cmd && command.contains(['\'', '^', '%'])
 }
 
 /// `command` as an extra, marked entry for the gate: see [`NON_PLAIN_MARK`].
@@ -1239,6 +1258,22 @@ mod plain_invocation_tests {
 
     fn marked(command: &str) -> bool {
         simple_commands(command).iter().any(|c| c.starts_with(NON_PLAIN_MARK))
+    }
+
+    #[test]
+    fn powershell_typographic_quotes_are_never_plain() {
+        assert!(marked("git status '\u{2018}; calc; #'"));
+        assert!(marked("git status \"x\u{201C}; calc; #\""));
+        assert!(marked("git status x\u{2032}"));
+        assert!(!marked("git status 'a b'"));
+    }
+
+    #[test]
+    fn cmd_quoting_is_never_plain_under_cmd() {
+        use super::super::proc::ShellFlavor;
+        assert!(quotes_differ_by_shell("git status 'x&calc&'", ShellFlavor::Cmd));
+        assert!(quotes_differ_by_shell("echo \"%PATH%\"", ShellFlavor::Cmd));
+        assert!(!quotes_differ_by_shell("git status 'x&calc&'", ShellFlavor::Posix));
     }
 
     const BASH: &[&str] = &[

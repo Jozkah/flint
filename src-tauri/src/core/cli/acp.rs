@@ -284,10 +284,16 @@ pub(crate) fn permission_request(
     event: &StreamEvent,
     tracker: &ToolTracker,
 ) -> Option<Value> {
-    let StreamEvent::PermissionRequest { request_id, tool_name, path, command, diff, reason, .. } = event else {
+    let StreamEvent::PermissionRequest { request_id, tool_name, path, command, diff, reason, call_id, .. } = event
+    else {
         return None;
     };
-    let tool_call_id = tracker.latest.get(tool_name).cloned().unwrap_or_else(|| request_id.clone());
+    // The call the prompt is about; the latest call of that tool only for an
+    // event that does not say (parallel calls of one tool would be confused).
+    let tool_call_id = call_id
+        .clone()
+        .or_else(|| tracker.latest.get(tool_name).cloned())
+        .unwrap_or_else(|| request_id.clone());
     let mut raw_input = serde_json::Map::new();
     if let Some(path) = path {
         raw_input.insert("path".into(), json!(path));
@@ -713,7 +719,22 @@ mod tests {
             offers_always: true,
             reason: None,
             args_digest: None,
+            call_id: None,
         }
+    }
+
+    #[test]
+    fn a_prompt_for_one_of_two_parallel_calls_names_that_call() {
+        let mut tracker = ToolTracker::default();
+        for id in ["c1", "c2"] {
+            map_event("s", &StreamEvent::ToolCall { id: id.into(), name: "bash".into(), args: json!({"command":"ls"}) }, &mut tracker);
+        }
+        let mut event = prompt_event();
+        if let StreamEvent::PermissionRequest { call_id, .. } = &mut event {
+            *call_id = Some("c1".into());
+        }
+        let request = permission_request(7, "s", &event, &tracker).unwrap();
+        assert_eq!(request["params"]["toolCall"]["toolCallId"], "c1");
     }
 
     #[test]

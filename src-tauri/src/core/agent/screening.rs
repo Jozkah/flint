@@ -85,13 +85,24 @@ impl Screening {
 
     /// The project's `[screening]`, else the global one, else the default.
     pub(crate) fn load(project_root: &Path) -> Self {
-        let project = super::project::agent_toml_path(project_root);
-        let global = super::plugins::global_agent_toml_path();
-        [project, global]
-            .iter()
-            .filter_map(|p| std::fs::read_to_string(p).ok())
-            .find_map(|raw| Self::from_toml(&raw))
+        let trusted = super::project::project_trusted(project_root);
+        let project = std::fs::read_to_string(super::project::agent_toml_path(project_root))
+            .ok()
+            .and_then(|raw| Self::from_toml(&raw))
+            .filter(|s| trusted || !s.loosens());
+        project
+            .or_else(|| {
+                std::fs::read_to_string(super::plugins::global_agent_toml_path())
+                    .ok()
+                    .and_then(|raw| Self::from_toml(&raw))
+            })
             .unwrap_or_default()
+    }
+
+    /// Whether this turns any screening off: an untrusted project's
+    /// `[screening]` may only keep it on.
+    pub(crate) fn loosens(&self) -> bool {
+        !self.enabled || !self.secrets || self.control == ControlMode::Off
     }
 }
 
@@ -267,6 +278,18 @@ pub(crate) fn screen_outcomes(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_screening_section_that_turns_anything_off_loosens() {
+        assert!(Screening::from_toml("[screening]
+enabled = false").unwrap().loosens());
+        assert!(Screening::from_toml("[screening]
+secrets = \"off\"").unwrap().loosens());
+        assert!(Screening::from_toml("[screening]
+control = \"off\"").unwrap().loosens());
+        assert!(!Screening::from_toml("[screening]
+control = \"redact\"").unwrap().loosens());
+    }
+
     use super::*;
     use serde_json::json;
 

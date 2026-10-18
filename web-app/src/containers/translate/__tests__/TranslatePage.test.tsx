@@ -57,7 +57,12 @@ vi.mock('../LanguagePicker', () => ({
   ),
 }))
 
+import { toast } from 'sonner'
 import { TranslatePage } from '../TranslatePage'
+import {
+  useTranslateDraft,
+  TRANSLATE_DRAFT_DEFAULTS,
+} from '@/hooks/useTranslateDraft'
 
 const provider = { provider: 'p', models: [{ id: 'm1' }] }
 
@@ -70,6 +75,7 @@ function streamOf(...chunks: string[]) {
 }
 
 beforeEach(() => {
+  useTranslateDraft.setState({ ...TRANSLATE_DRAFT_DEFAULTS })
   streamText.mockReset()
   navigate.mockReset()
   createModel.mockReset()
@@ -312,5 +318,111 @@ describe('TranslatePage', () => {
       expect(screen.getByTestId('translate-output')).toHaveValue('Hello')
     )
     expect(screen.queryByTestId('translate-error')).not.toBeInTheDocument()
+  })
+
+  it('drops the blank lines a model puts before the answer', async () => {
+    streamText.mockReturnValue(streamOf('\n', '\nHola ', 'mundo\n'))
+    await runWith()
+    await waitFor(() =>
+      expect(screen.getByTestId('translate-output')).toHaveValue('Hola mundo')
+    )
+  })
+
+  it('hides a reasoning block from the output', async () => {
+    streamText.mockReturnValue(streamOf('<think>plan</think>\n\n', 'Hola'))
+    await runWith()
+    await waitFor(() =>
+      expect(screen.getByTestId('translate-output')).toHaveValue('Hola')
+    )
+  })
+
+  it('shows the status of an HTML 502 instead of a bare failure', async () => {
+    createModel.mockRejectedValue({
+      message: '',
+      statusCode: 502,
+      responseBody: '<html><title>Bad Gateway</title></html>',
+    })
+    await runWith()
+    expect(await screen.findByTestId('translate-error')).toHaveTextContent(
+      'HTTP 502: Bad Gateway'
+    )
+  })
+
+  it('falls back to focusing the box with a Ctrl+V hint when the clipboard is refused', async () => {
+    Object.assign(navigator, {
+      clipboard: { readText: vi.fn().mockRejectedValue(new Error('denied')) },
+    })
+    render(<TranslatePage />)
+    fireEvent.click(screen.getByTestId('translate-paste'))
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(screen.getByTestId('translate-input')).toHaveFocus()
+    expect(toast.error).toHaveBeenCalledWith(
+      'common:translate.pasteFailed',
+      expect.objectContaining({
+        description: expect.stringContaining('common:translate.pasteHint'),
+      })
+    )
+  })
+
+  it('aborts the stream when the page unmounts mid-run', async () => {
+    let signal: AbortSignal | undefined
+    streamText.mockImplementation((o: { abortSignal: AbortSignal }) => {
+      signal = o.abortSignal
+      return {
+        textStream: (async function* () {
+          yield 'a'
+          await new Promise(() => {})
+        })(),
+      }
+    })
+    const { unmount } = render(<TranslatePage />)
+    const input = screen.getByTestId('translate-input')
+    fireEvent.change(input, { target: { value: 'hola' } })
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(signal).toBeDefined())
+    unmount()
+    expect(signal?.aborted).toBe(true)
+  })
+
+  it('inserts pasted text at the caret instead of replacing the input', async () => {
+    Object.assign(navigator, {
+      clipboard: { readText: vi.fn().mockResolvedValue('XX') },
+    })
+    render(<TranslatePage />)
+    const input = screen.getByTestId('translate-input') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'abcd' } })
+    input.setSelectionRange(2, 2)
+    fireEvent.click(screen.getByTestId('translate-paste'))
+    await waitFor(() => expect(input).toHaveValue('abXXcd'))
+  })
+
+  it('pastes into an empty input as the whole text', async () => {
+    Object.assign(navigator, {
+      clipboard: { readText: vi.fn().mockResolvedValue('XX') },
+    })
+    render(<TranslatePage />)
+    fireEvent.click(screen.getByTestId('translate-paste'))
+    await waitFor(() =>
+      expect(screen.getByTestId('translate-input')).toHaveValue('XX')
+    )
+  })
+
+  it('restores input, languages and output after leaving and returning', async () => {
+    streamText.mockReturnValue(streamOf('Hi'))
+    const first = render(<TranslatePage />)
+    const input = screen.getByTestId('translate-input')
+    fireEvent.change(input, { target: { value: 'hola' } })
+    fireEvent.change(screen.getByTestId('translate-target'), {
+      target: { value: 'Spanish' },
+    })
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
+    await waitFor(() =>
+      expect(screen.getByTestId('translate-output')).toHaveValue('Hi')
+    )
+    first.unmount()
+    render(<TranslatePage />)
+    expect(screen.getByTestId('translate-input')).toHaveValue('hola')
+    expect(screen.getByTestId('translate-output')).toHaveValue('Hi')
+    expect(screen.getByTestId('translate-target')).toHaveValue('Spanish')
   })
 })

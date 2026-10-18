@@ -71,10 +71,31 @@ describe('promptSlug', () => {
     expect(promptSlug('Weekly  Standup!')).toBe('weekly-standup')
     expect(promptSlug('???')).toBe('prompt')
   })
+
+  it('keeps ASCII slugs and drops Latin accents', () => {
+    expect(promptSlug('Code Review v2')).toBe('code-review-v2')
+    expect(promptSlug('Café Menü')).toBe('cafe-menu')
+  })
+
+  it('gives non-Latin names their own slug instead of "prompt"', () => {
+    expect(promptSlug('週次レポート')).toBe('週次レポート')
+    expect(promptSlug('Еженедельный отчёт!')).toBe('еженедельный-отчёт')
+    expect(promptSlug('がぎぐ')).toBe('がぎぐ')
+    expect(promptSlug('週次レポート')).not.toBe(promptSlug('日次レポート'))
+  })
 })
 
 describe('usePromptLibrary', () => {
   beforeEach(() => usePromptLibrary.setState({ prompts: [] }))
+
+  it('refuses with a code, not English prose', () => {
+    const s = usePromptLibrary.getState()
+    expect(s.add({ name: ' ', body: 'x' })).toEqual({ ok: false, code: 'nameRequired' })
+    expect(s.add({ name: 'a', body: ' ' })).toEqual({ ok: false, code: 'bodyRequired' })
+    expect(s.update('nope', { name: 'a', body: 'b' })).toEqual({ ok: false, code: 'gone' })
+    expect(s.importJson('{')).toEqual({ ok: false, code: 'invalidJson' })
+    expect(s.importJson('{}')).toEqual({ ok: false, code: 'noPrompts' })
+  })
 
   it('adds, updates and removes', () => {
     const add = usePromptLibrary.getState().add({ name: ' Standup ', body: 'What I did: {{x}}', tags: ['Work', 'work'] })

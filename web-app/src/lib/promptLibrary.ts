@@ -79,19 +79,29 @@ export type PromptInput = {
   tags?: string[]
 }
 
+/** Why a save or import was refused. The card turns it into the user's language. */
+export type PromptErrorCode =
+  | 'nameRequired'
+  | 'nameTooLong'
+  | 'bodyRequired'
+  | 'bodyTooLong'
+  | 'gone'
+  | 'invalidJson'
+  | 'noPrompts'
+
 export type PromptResult =
   | { ok: true; prompt: LibraryPrompt }
-  | { ok: false; message: string }
+  | { ok: false; code: PromptErrorCode }
 
 const cleanTags = (tags?: string[]) =>
   [...new Set((tags ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 12)
 
-function validate(input: PromptInput): { ok: true; value: PromptInput } | { ok: false; message: string } {
+function validate(input: PromptInput): { ok: true; value: PromptInput } | { ok: false; code: PromptErrorCode } {
   const name = input.name.replace(/\s+/g, ' ').trim()
-  if (!name) return { ok: false, message: 'A prompt needs a name' }
-  if (name.length > MAX_PROMPT_NAME) return { ok: false, message: 'That name is too long' }
-  if (!input.body.trim()) return { ok: false, message: 'A prompt needs some text' }
-  if (input.body.length > MAX_PROMPT_BODY) return { ok: false, message: 'That prompt is too long' }
+  if (!name) return { ok: false, code: 'nameRequired' }
+  if (name.length > MAX_PROMPT_NAME) return { ok: false, code: 'nameTooLong' }
+  if (!input.body.trim()) return { ok: false, code: 'bodyRequired' }
+  if (input.body.length > MAX_PROMPT_BODY) return { ok: false, code: 'bodyTooLong' }
   const folder = input.folder?.replace(/\s+/g, ' ').trim()
   const tags = cleanTags(input.tags)
   return {
@@ -116,7 +126,7 @@ type PromptState = {
   /** Put a removed prompt back at its old position (the Undo of a delete). */
   restore: (prompt: LibraryPrompt, index: number) => void
   /** Merge prompts from an exported file. Returns how many were added. */
-  importJson: (raw: string) => { ok: true; added: number } | { ok: false; message: string }
+  importJson: (raw: string) => { ok: true; added: number } | { ok: false; code: PromptErrorCode }
   exportJson: () => string
 }
 
@@ -134,7 +144,7 @@ export const usePromptLibrary = create<PromptState>()(
       },
       update: (id, input) => {
         const existing = get().prompts.find((p) => p.id === id)
-        if (!existing) return { ok: false, message: 'That prompt no longer exists' }
+        if (!existing) return { ok: false, code: 'gone' }
         const v = validate(input)
         if (!v.ok) return v
         const prompt: LibraryPrompt = {
@@ -159,14 +169,14 @@ export const usePromptLibrary = create<PromptState>()(
         try {
           parsed = JSON.parse(raw)
         } catch {
-          return { ok: false, message: 'That file is not valid JSON' }
+          return { ok: false, code: 'invalidJson' }
         }
         const list = Array.isArray(parsed)
           ? parsed
           : parsed && typeof parsed === 'object' && Array.isArray((parsed as { prompts?: unknown }).prompts)
             ? (parsed as { prompts: unknown[] }).prompts
             : null
-        if (!list) return { ok: false, message: 'No prompts found in that file' }
+        if (!list) return { ok: false, code: 'noPrompts' }
         const have = new Set(get().prompts.map((p) => `${p.name}\u0000${p.body}`))
         const next: LibraryPrompt[] = []
         const now = Date.now()
@@ -218,9 +228,14 @@ export const usePromptLibrary = create<PromptState>()(
 
 /** Lowercase slug for the `/prompt:<slug>` trigger. */
 export function promptSlug(name: string): string {
+  // Letters and digits of any script count, so a Japanese or Russian name keeps
+  // its own slug. Accents on Latin letters are dropped (Café -> cafe); other scripts keep theirs (й, ё).
   const slug = name
+    .normalize('NFD')
+    .replace(/([A-Za-z])[̀-ͯ]+/g, '$1')
+    .normalize('NFC')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, '-')
     .replace(/^-+|-+$/g, '')
   return slug || 'prompt'
 }

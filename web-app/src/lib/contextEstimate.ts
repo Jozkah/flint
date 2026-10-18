@@ -35,21 +35,39 @@ export function assertEstimatedContextFits(
   }
 }
 
-/** Calibrate heuristic prompt counts against this engine's reported usage. */
+/** Bounds of the calibration ratio: the heuristic is never trusted to over-count, nor a tokenizer to count 1.6x denser. */
+export const MIN_ESTIMATE_RATIO = 1
+export const MAX_ESTIMATE_RATIO = 1.6
+/** Observations the median is taken over: old ones fall out. */
+const RECENT_SAMPLES = 5
+/** Slack over the median, so a typical request still has some margin. */
+const RATIO_SLACK = 1.1
+
+/**
+ * Calibrate heuristic prompt counts against this engine's reported usage.
+ *
+ * The median of the last few reported/estimated ratios, with slack, bounded to
+ * [1, 1.6]. It used to keep the all-time maximum, so one odd request (a
+ * tokenizer-dense paste, a miscounted image) shrank every later budget for
+ * good.
+ */
 export class ContextEstimate {
-  private ratios = new Map<string, number>()
+  private samples = new Map<string, number[]>()
 
   ratio(key: string): number {
-    return this.ratios.get(key) ?? 1
+    const recent = this.samples.get(key)
+    if (!recent?.length) return 1
+    const sorted = [...recent].sort((a, b) => a - b)
+    const mid = Math.floor(sorted.length / 2)
+    const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+    const r = median > 1 ? median * RATIO_SLACK : median
+    return Math.min(MAX_ESTIMATE_RATIO, Math.max(MIN_ESTIMATE_RATIO, r))
   }
 
   observe(key: string, estimated: number, reported: number | undefined): void {
     if (!Number.isFinite(estimated) || estimated <= 0 ||
         reported == null || !Number.isFinite(reported) || reported <= 0) return
-    // Never expand the budget on a low estimate. Add slack when the provider
-    // counts more densely, and keep the largest discrepancy seen for it.
-    if (reported > estimated) {
-      this.ratios.set(key, Math.max(this.ratio(key), reported / estimated * 1.1))
-    }
+    const recent = [...(this.samples.get(key) ?? []), reported / estimated]
+    this.samples.set(key, recent.slice(-RECENT_SAMPLES))
   }
 }

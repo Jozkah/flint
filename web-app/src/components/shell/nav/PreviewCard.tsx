@@ -114,7 +114,7 @@ const PR_NUMBER: Record<PrState, string> = {
   closed: 'text-destructive',
 }
 
-const fmt = (n: number) => n.toLocaleString()
+const fmt = (n: number) => n.toLocaleString(lang())
 
 const Dot = ({ className }: { className: string }) => (
   <i aria-hidden className={cn('inline-block size-1.5 shrink-0 rounded-full', className)} />

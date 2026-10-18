@@ -2530,6 +2530,7 @@ impl CompositeToolInvoker {
             offers_always: true,
             reason: None,
             args_digest: None,
+            call_id: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -2587,6 +2588,7 @@ impl CompositeToolInvoker {
             offers_always: false,
             reason: Some(NULL_DEVICE_RETRY_REASON.to_string()),
             args_digest: None,
+            call_id: None,
         });
         if sent.is_err() {
             self.permission_requests.lock().await.remove(&request_id);
@@ -2656,6 +2658,7 @@ impl CompositeToolInvoker {
             offers_always: false,
             reason: None,
             args_digest: None,
+            call_id: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -2721,6 +2724,7 @@ impl CompositeToolInvoker {
             offers_always: forced_reason.is_none(),
             reason: forced_reason,
             args_digest: None,
+            call_id: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -2755,6 +2759,7 @@ impl CompositeToolInvoker {
             offers_always: false,
             reason: None,
             args_digest: None,
+            call_id: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -4319,6 +4324,7 @@ impl ToolInvoker for CompositeToolInvoker {
                 "Spend pause: this run has spent about ${spent_usd:.2}, past its ${pause_at_usd:.2} pause. Allow to continue, deny to stop the run."
             )),
             args_digest: None,
+            call_id: None,
         });
         if sent.is_err() {
             self.permission_requests.lock().await.remove(&request_id);
@@ -5268,6 +5274,7 @@ impl CompositeToolInvoker {
                                 offers_always: forced_reason.is_none(),
                                 reason: forced_reason.clone(),
                                 args_digest: Some(args_digest),
+                                call_id: Some(id.clone()),
                             });
                             // AH-023. The wait itself is cancellable: a run stopped
                             // while someone is deciding must not sit here until they
@@ -6227,6 +6234,13 @@ fn settle_lease_loss(
             HarnessError::new(
                 ErrorKind::LeaseLost,
                 "another process took over this run's lease, so this process stopped driving it",
+            )
+            .at(Stage::Persistence),
+        ),
+        (Err(e), Some(session)) if e.is_cancellation() && crate::core::agent::lease::take_unrefreshed(session) => Err(
+            HarnessError::new(
+                ErrorKind::Io,
+                "could not refresh the run's lease (io error) for longer than its ttl, so this process stopped driving it",
             )
             .at(Stage::Persistence),
         ),

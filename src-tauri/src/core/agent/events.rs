@@ -361,6 +361,11 @@ pub enum StreamEvent {
         /// arguments.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         args_digest: Option<String>,
+        /// The model's id for the tool call being asked about, so a client
+        /// showing parallel calls of one tool ties the prompt to the right one.
+        /// `None` for a prompt not about one tool call.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        call_id: Option<String>,
     },
     /// A host-registered tool was called and the run is waiting for the host to
     /// execute it. The client replies with a `tool_result` line carrying this
@@ -777,6 +782,7 @@ pub(crate) mod tests {
                     offers_always: true,
                     reason: None,
                     args_digest: None,
+                    call_id: None,
                 },
             ),
             (
@@ -1052,6 +1058,7 @@ pub(crate) mod tests {
             offers_always: true,
             reason: None,
             args_digest: None,
+            call_id: None,
         })
         .unwrap();
         assert_eq!(

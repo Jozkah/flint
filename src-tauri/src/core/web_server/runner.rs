@@ -310,6 +310,11 @@ enum Cmd {
         decision: PermissionDecision,
         /// Why the user refused, shown to the model. Only used with `deny`.
         reason: Option<String>,
+        /// The form's scope and "answer later" mark. Recorded only once the
+        /// request is found pending on this session, so a client cannot plant
+        /// them for another run's request id.
+        scope: Option<tauri_plugin_agent_tools::scoped_rules::ApprovalScope>,
+        defer: bool,
         by: String,
         ip_hash: String,
         reply: Option<Reply>,
@@ -610,10 +615,6 @@ impl Runner {
                     if scope.is_standing() && decision != PermissionDecision::AllowAlways {
                         return Err(fail(400, "a folder or command-prefix scope goes with allow_always"));
                     }
-                    crate::core::agent::approval_flow::record_scope_choice(request_id.as_str(), scope);
-                }
-                if defer {
-                    crate::core::agent::approval_flow::mark_defer(request_id.as_str());
                 }
                 let reason = args
                     .get("reason")
@@ -625,6 +626,8 @@ impl Runner {
                     request_id,
                     decision,
                     reason,
+                    scope,
+                    defer,
                     by,
                     ip_hash: ip,
                     reply: Some(reply),
@@ -1727,7 +1730,7 @@ async fn actor(
                         ping("idle");
                         let _ = reply.send(Ok(json!({})));
                     }
-                    Cmd::Approve { request_id, decision, reason, by, ip_hash, reply } => {
+                    Cmd::Approve { request_id, decision, reason, scope, defer, by, ip_hash, reply } => {
                         let answer = match approvals.remove(&request_id) {
                             None => Err(fail(404, "no permission request with that id is pending on this session")),
                             Some(tool) => {
@@ -1737,6 +1740,12 @@ async fn actor(
                                     Some(sender) => {
                                         if let Some(reason) = reason.as_deref() {
                                             crate::core::agent::r#loop::record_deny_reason(&request_id, reason);
+                                        }
+                                        if let Some(scope) = scope {
+                                            crate::core::agent::approval_flow::record_scope_choice(&request_id, scope);
+                                        }
+                                        if defer {
+                                            crate::core::agent::approval_flow::mark_defer(&request_id);
                                         }
                                         let _ = sender.send(decision);
                                         let word = match decision {
@@ -1993,6 +2002,8 @@ async fn actor(
                                             request_id: request,
                                             decision: PermissionDecision::Deny,
                                             reason: None,
+                                            scope: None,
+                                            defer: false,
                                             by: "timeout".to_owned(),
                                             ip_hash: String::new(),
                                             reply: None,
@@ -2304,6 +2315,36 @@ fn x() {}
         shared.publish("b", json!({}));
         assert_eq!(snapshot, vec![1]);
         assert_eq!(rx.recv().await.unwrap().0, 2);
+    }
+
+    #[tokio::test]
+    async fn an_approve_for_a_request_not_pending_here_records_no_scope_or_defer() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner = Arc::new(Runner::new(
+            dir.path(),
+            &[],
+            RunnerOptions { allow_always: true, ..RunnerOptions::default() },
+            Bus::new(),
+        ));
+        // A session whose actor knows no such request, like any run that is
+        // not the one that asked.
+        let (tx, mut rx) = mpsc::channel::<Cmd>(4);
+        tokio::spawn(async move {
+            while let Some(cmd) = rx.recv().await {
+                if let Cmd::Approve { reply: Some(reply), .. } = cmd {
+                    let _ = reply.send(Err(fail(404, "not pending")));
+                }
+            }
+        });
+        let live = Arc::new(Live { tx, shared: Arc::new(Shared::new("m", "ask")) });
+        runner.live.lock().unwrap().insert("mine".into(), live);
+        let caller = Caller::digest("t", "10.0.0.1".parse().unwrap());
+        for (decision, scope) in [("allow_always", json!({"type": "run"})), ("defer", Value::Null)] {
+            let args = json!({ "id": "mine", "requestId": "perm-victim-1", "decision": decision, "scope": scope });
+            assert!(runner.call("agent_run_approve", &args, &caller, None).await.is_err());
+        }
+        assert_eq!(crate::core::agent::approval_flow::take_scope_choice("perm-victim-1"), None);
+        assert!(!crate::core::agent::approval_flow::take_defer_mark("perm-victim-1"));
     }
 
     #[test]

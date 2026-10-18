@@ -1,6 +1,17 @@
 import { Check, ChevronDown, Search } from 'lucide-react'
-import { middleTruncate } from '@/lib/modelDisplayName'
-import { useState, type ReactNode } from 'react'
+import { disambiguateModels, middleTruncate } from '@/lib/modelDisplayName'
+import { useMemo, useState, type ReactNode } from 'react'
+import { useTranslation } from '@/i18n/react-i18next-compat'
+import {
+  EMPTY_PICKER_FILTERS,
+  applyPickerFilters,
+  hasFacets,
+  isFiltered,
+  pickerFacets,
+  type PickerFilterState,
+  type PickerMeta,
+} from '@/lib/pickerFilters'
+import { PickerFilterButton, PickerFilterPanel } from './PickerFilterPanel'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -12,11 +23,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
-export type PickerItem = {
+export type PickerItem = PickerMeta & {
   value: string
   label: string
   /** A quiet second line: what the choice does, or who serves it. */
   hint?: string
+  /** Another quiet line beneath: where it is served, its size, a variant. */
+  secondary?: ReactNode
   /** The mark shown before the label, in the menu and on the button. */
   icon?: ReactNode
   /** Choosing it leaves the menu open, for a row that opens a field beneath it. */
@@ -43,6 +56,7 @@ export function PickerDropdown({
   inlineInput,
   footer,
   searchAction,
+  emptyLabel,
   disabled,
   invalid,
   describedBy,
@@ -72,25 +86,64 @@ export function PickerDropdown({
   footer?: { label: string; icon?: ReactNode; onSelect: () => void }[]
   /** A control beside the search box, such as a filter button. */
   searchAction?: ReactNode
+  /** Shown in place of the list when there is nothing to pick (or nothing matches). */
+  emptyLabel?: string
   disabled?: boolean
   invalid?: boolean
   describedBy?: string
 }) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
+  // What the filters say is kept for as long as this picker is on screen.
+  const [filters, setFilters] = useState<PickerFilterState>(EMPTY_PICKER_FILTERS)
+  const [panelOpen, setPanelOpen] = useState(false)
   const current = groups.flatMap((g) => g.items).find((i) => i.value === value)
   const label = shownLabel ?? current?.label
+  // Rows that read alike (two quants of one model) carry what tells them apart.
+  const disambiguation = useMemo(() => {
+    const items = groups.flatMap((g) => g.items)
+    // Only rows that still read alike once cut to the width the list shows;
+    // names that differ in full need no chip. `value` is an encoded key
+    // (JSON for the model pickers), never a file name, so it is not read.
+    const shown = new Map<string, number>()
+    for (const i of items) {
+      const cut = middleTruncate(i.label, 38)
+      shown.set(cut, (shown.get(cut) ?? 0) + 1)
+    }
+    return disambiguateModels(
+      items
+        .filter((i) => (shown.get(middleTruncate(i.label, 38)) ?? 0) > 1)
+        .map((i) => ({ key: i.value, name: i.label }))
+    )
+  }, [groups])
   const q = query.trim().toLowerCase()
+  const facets = useMemo(() => pickerFacets(groups), [groups])
+  const canFilter = Boolean(searchPlaceholder) && hasFacets(facets)
+  const filtered = canFilter ? applyPickerFilters(groups, filters) : groups
   const shown = q
-    ? groups
+    ? filtered
         .map((g) => ({
           ...g,
           items: g.items.filter((i) => `${i.label} ${i.hint ?? ''}`.toLowerCase().includes(q)),
         }))
         .filter((g) => g.items.length > 0)
-    : groups
+    : filtered
+  const filtersOn = canFilter && isFiltered(filters)
+  const filterNames = [
+    filters.source !== 'all' && t(`common:picker.source${filters.source === 'local' ? 'Local' : 'Cloud'}`),
+    ...filters.capabilities.map((c) => t(`common:picker.cap.${c}`)),
+    filters.loadedOnly && t('common:picker.loadedNow'),
+  ].filter(Boolean)
 
   return (
-    <DropdownMenu onOpenChange={(open) => !open && setQuery('')}>
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (!open) {
+          setQuery('')
+          setPanelOpen(false)
+        }
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <Button
           id={id}
@@ -118,8 +171,19 @@ export function PickerDropdown({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
+        side="bottom"
+        sideOffset={8}
         collisionPadding={12}
-        className="max-h-[min(20rem,var(--radix-dropdown-menu-content-available-height))] w-(--radix-dropdown-menu-trigger-width) min-w-[280px] max-w-[380px] overflow-y-auto p-1"
+        // Esc folds the filter panel away before it closes the menu.
+        onEscapeKeyDown={(e) => {
+          if (panelOpen) {
+            e.preventDefault()
+            setPanelOpen(false)
+          }
+        }}
+        // Exactly the field's width and left edge, whatever the screen: on a phone
+        // the field is the full row, so the menu is too. Never wider than the screen.
+        className="max-h-[min(20rem,var(--radix-dropdown-menu-content-available-height))] w-(--radix-dropdown-menu-trigger-width) min-w-(--radix-dropdown-menu-trigger-width) max-w-[min(var(--radix-dropdown-menu-trigger-width),calc(100vw-1.5rem))] overflow-y-auto rounded-lg p-1"
       >
         {searchPlaceholder && (
           <div className="mb-1 flex items-center gap-2 border-b border-border px-2 pb-2 pt-1">
@@ -133,17 +197,62 @@ export function PickerDropdown({
               onChange={(e) => setQuery(e.target.value)}
               // Typing searches; it must not jump the menu to a row by its first letter.
               onKeyDown={(e) => {
-                if (e.key !== 'Escape' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') {
+                if (e.key === 'ArrowDown') {
+                  // Down from the box goes into the list, to its first row.
+                  e.preventDefault()
+                  e.stopPropagation()
+                  e.currentTarget
+                    .closest('[data-slot="dropdown-menu-content"]')
+                    ?.querySelector<HTMLElement>('[role="menuitemradio"]')
+                    ?.focus()
+                } else if (e.key !== 'Escape' && e.key !== 'ArrowUp') {
                   e.stopPropagation()
                 }
               }}
             />
             {searchAction}
+            {canFilter && (
+              <PickerFilterButton
+                state={filters}
+                open={panelOpen}
+                onToggle={() => setPanelOpen((o) => !o)}
+              />
+            )}
+          </div>
+        )}
+        {canFilter && panelOpen && (
+          // Tab and typing belong to the panel's own buttons, not to the menu's row jumps.
+          <div
+            onKeyDown={(e) => {
+              if (e.key !== 'Escape') e.stopPropagation()
+            }}
+          >
+            <PickerFilterPanel facets={facets} state={filters} onChange={setFilters} />
           </div>
         )}
         {menuLabel && !searchPlaceholder && <DropdownMenuLabel>{menuLabel}</DropdownMenuLabel>}
         {shown.length === 0 && (
-          <div className="px-2.5 py-3 text-xs text-muted-foreground">—</div>
+          <div className="flex flex-col items-start gap-1 px-2.5 py-3 text-xs text-muted-foreground">
+            {filtersOn || q ? (
+              <span>
+                {filterNames.length > 0
+                  ? t('common:picker.noMatchFilters', { filters: filterNames.join(', ') })
+                  : t('common:picker.noMatch')}
+              </span>
+            ) : (
+              <span>{emptyLabel ?? '—'}</span>
+            )}
+            {filtersOn && !panelOpen && (
+              <button
+                type="button"
+                onClick={() => setFilters(EMPTY_PICKER_FILTERS)}
+                onKeyDown={(e) => e.stopPropagation()}
+                className="cursor-pointer underline underline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+              >
+                {t('common:picker.clearFilters')}
+              </button>
+            )}
+          </div>
         )}
         {shown.map((group, gi) => (
           <div key={group.label ?? gi}>
@@ -164,14 +273,28 @@ export function PickerDropdown({
                 >
                   {item.icon && <span className="shrink-0">{item.icon}</span>}
                   <span className="flex min-w-0 flex-1 flex-col gap-px">
-                    <span
-                      className="truncate text-[13px] font-medium"
-                      title={item.label}
-                    >
-                      {middleTruncate(item.label, 38)}
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span
+                        className="truncate text-[13px] font-medium"
+                        title={item.label}
+                      >
+                        {middleTruncate(item.label, 38)}
+                      </span>
+                      {disambiguation.has(item.value) && (
+                        <span
+                          className="shrink-0 rounded bg-muted px-1 font-mono text-[10.5px] text-muted-foreground"
+                          title={item.label}
+                          data-testid="picker-disambiguator"
+                        >
+                          {disambiguation.get(item.value)!.label}
+                        </span>
+                      )}
                     </span>
                     {item.hint && (
                       <span className="text-[11px] leading-[1.35] text-muted-foreground">{item.hint}</span>
+                    )}
+                    {item.secondary && (
+                      <span className="text-[11px] leading-[1.35] text-muted-foreground">{item.secondary}</span>
                     )}
                   </span>
                   {selected ? (

@@ -19715,6 +19715,7 @@ mod tests {
             offers_always: true,
             reason: None,
             args_digest: None,
+            call_id: None,
         });
         let p = app.pending().unwrap();
         assert_eq!(p.diff.as_deref(), Some("@@ created file @@\n+ hi"));
@@ -19755,6 +19756,7 @@ mod tests {
             offers_always: true,
             reason: None,
             args_digest: None,
+            call_id: None,
         });
         assert!(app.pending().unwrap().diff_preview(60).is_empty());
     }
@@ -25691,6 +25693,7 @@ mod tests {
                 offers_always: true,
                 reason: None,
                 args_digest: None,
+                call_id: None,
             },
         ));
         assert_eq!(
@@ -25732,6 +25735,7 @@ mod tests {
                 offers_always: true,
                 reason: None,
                 args_digest: None,
+                call_id: None,
             },
         ));
         // Second subagent's request arrives while the first is still pending.
@@ -25750,6 +25754,7 @@ mod tests {
                 offers_always: false,
                 reason: None,
                 args_digest: None,
+                call_id: None,
             },
         ));
 
@@ -27939,6 +27944,7 @@ mod tests {
                 offers_always: true,
                 reason: None,
                 args_digest: None,
+                call_id: None,
             });
             app.pending_queue.clear(); // simulate approval
             app.apply(StreamEvent::ToolResult {

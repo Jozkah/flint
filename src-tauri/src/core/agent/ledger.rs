@@ -253,7 +253,9 @@ pub(crate) fn append(data_folder: &Path, session: &str, run: &str, invocation: &
     let _ = event_log::append(
         data_folder,
         event_log::NewEvent {
-            id: format!("ledger:{run}:{}", entry.call_id),
+            // Call ids repeat across turns (Gemini restarts at call_0 every
+            // completion), so the request the call came from is part of the id.
+            id: format!("ledger:{run}:{invocation}:{}", entry.call_id),
             session: session.to_string(),
             run: run.to_string(),
             invocation: invocation.to_string(),
@@ -442,5 +444,15 @@ mod tests {
         append(data.path(), "s2", "s2#run-1", "i", &entry);
         append(data.path(), "s2", "s2#run-1", "i", &entry);
         assert_eq!(read(data.path(), "s2").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_call_id_reused_in_a_later_turn_is_a_new_entry() {
+        let data = tempfile::tempdir().unwrap();
+        let pending = before_batch(None, &[call("call_0", "bash", json!({"command": "ls"}))]);
+        let entry = finish(pending.into_iter().next().unwrap(), false);
+        append(data.path(), "s3", "s3#run-1", "turn-1", &entry);
+        append(data.path(), "s3", "s3#run-1", "turn-2", &entry);
+        assert_eq!(read(data.path(), "s3").unwrap().len(), 2);
     }
 }

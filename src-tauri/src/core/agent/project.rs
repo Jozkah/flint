@@ -73,7 +73,8 @@ pub(crate) struct AgentToml {
     pub subagents: SubagentsSection,
     /// `[mcp]` -- which programs a stdio MCP server may be started with.
     /// Declared so the section parses with the rest; the launch check reads the
-    /// global file itself, so nothing reads this field.
+    /// global file itself, so nothing reads this field (a project file that
+    /// sets it gets a warning, see `ignored_mcp_allowlist_note`).
     #[allow(dead_code)]
     #[serde(default)]
     pub mcp: McpSection,
@@ -271,9 +272,70 @@ pub(crate) fn load_agent_config_with_profile(
 ) -> Result<AgentToml, String> {
     let cfg = load_agent_config(project_root)?;
     match profile.map(str::trim).filter(|p| !p.is_empty()) {
-        Some(name) => apply_profile(cfg, name),
+        // A profile lives in the same project file: loosening keys it sets
+        // are dropped the same way for an untrusted folder.
+        Some(name) => apply_profile(cfg, name).map(|mut cfg| {
+            if !project_trusted(project_root) {
+                drop_loosening_keys(&mut cfg);
+            }
+            cfg
+        }),
         None => Ok(cfg),
     }
+}
+
+/// Whether the user trusts `project_root`. Unit tests run without a trust
+/// store and read project files as trusted; [`drop_loosening_keys`] is tested
+/// on its own.
+pub(crate) fn project_trusted(project_root: &Path) -> bool {
+    cfg!(test) || tauri_plugin_agent_tools::folder_trust::is_trusted(project_root)
+}
+
+/// Clear every key of a project agent.toml that widens what the agent may do:
+/// the tools default when it allows, allow lists, an opted-out sandbox, the
+/// network and home-read grants, and the auto-mode allow and soft-deny rules.
+/// Tightening keys (deny, ask, tool rules) stay. Returns the keys it cleared.
+///
+/// The project file is written by whoever wrote the repository, so in a
+/// folder the user has not trusted it may only make the agent stricter.
+pub(crate) fn drop_loosening_keys(cfg: &mut AgentToml) -> Vec<&'static str> {
+    let mut dropped = Vec::new();
+    let tools = &mut cfg.tools;
+    if tools.default.as_deref().is_some_and(|d| {
+        PermissionDefault::from_str_lenient(d) == PermissionDefault::Allow
+    }) {
+        tools.default = None;
+        dropped.push("[tools] default");
+    }
+    if !tools.allow.is_empty() {
+        tools.allow.clear();
+        dropped.push("[tools] allow");
+    }
+    if !tools.allow_write.is_empty() {
+        tools.allow_write.clear();
+        dropped.push("[tools] allow_write");
+    }
+    if tools.sandbox == Some(false) {
+        tools.sandbox = None;
+        dropped.push("[tools] sandbox");
+    }
+    if tools.allow_network == Some(true) {
+        tools.allow_network = None;
+        dropped.push("[tools] allow_network");
+    }
+    if tools.allow_home_read == Some(true) {
+        tools.allow_home_read = None;
+        dropped.push("[tools] allow_home_read");
+    }
+    if !cfg.auto_mode.allow.is_empty() {
+        cfg.auto_mode.allow.clear();
+        dropped.push("[auto_mode] allow");
+    }
+    if !cfg.auto_mode.soft_deny.is_empty() {
+        cfg.auto_mode.soft_deny.clear();
+        dropped.push("[auto_mode] soft_deny");
+    }
+    dropped
 }
 
 /// `[plugins]` — plugin installs and marketplace. Installed plugins live in
@@ -731,7 +793,57 @@ pub(crate) fn agent_toml_path(project_root: &Path) -> PathBuf {
 
 /// Load + parse agent.toml. Err if missing or malformed (path included in message).
 pub(crate) fn load_agent_config(project_root: &Path) -> Result<AgentToml, String> {
-    load_agent_config_at(&agent_toml_path(project_root))
+    let path = agent_toml_path(project_root);
+    let mut cfg = load_agent_config_at(&path)?;
+    if let Some(note) = ignored_mcp_allowlist_note(&cfg, &path) {
+        warn_once(&path, &note);
+    }
+    if !project_trusted(project_root) {
+        let dropped = drop_loosening_keys(&mut cfg);
+        if !dropped.is_empty() {
+            warn_once(
+                &path,
+                &format!(
+                    "{}: {} ignored; this folder is not trusted (trust it to apply them)",
+                    path.display(),
+                    dropped.join(", ")
+                ),
+            );
+        }
+    }
+    Ok(cfg)
+}
+
+/// `[mcp] allow_commands` / `allow_hosts` are read from the global agent.toml
+/// only (MCP servers are configured for the whole app, and a project must not
+/// be able to widen a machine-wide allowlist). Say so when a project file sets
+/// them, so nobody believes a restriction is in force that is not.
+fn ignored_mcp_allowlist_note(cfg: &AgentToml, path: &Path) -> Option<String> {
+    let keys: Vec<&str> = [
+        ("allow_commands", !cfg.mcp.allow_commands.is_empty()),
+        ("allow_hosts", !cfg.mcp.allow_hosts.is_empty()),
+    ]
+    .into_iter()
+    .filter_map(|(k, set)| set.then_some(k))
+    .collect();
+    (!keys.is_empty()).then(|| {
+        format!(
+            "{}: [mcp] {} {} ignored here; MCP allowlists are read only from the global agent.toml",
+            path.display(),
+            keys.join(" and "),
+            if keys.len() == 1 { "is" } else { "are" }
+        )
+    })
+}
+
+fn warn_once(path: &Path, note: &str) {
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+    static TOLD: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
+    let mut told = TOLD.lock().unwrap_or_else(|e| e.into_inner());
+    if told.get_or_insert_with(HashSet::new).insert(path.to_path_buf()) {
+        log::warn!("{note}");
+    }
 }
 
 /// [`load_agent_config`] at an explicit path rather than a project root's
@@ -1080,6 +1192,52 @@ pub(crate) fn set_skills_enabled_in_agent_toml(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_untrusted_project_cannot_loosen_but_can_tighten() {
+        let mut cfg: AgentToml = toml::from_str(
+            r#"
+[tools]
+default = "allow"
+allow = ["bash"]
+allow_write = ["/"]
+deny = ["web_fetch"]
+ask = ["bash:git push"]
+sandbox = false
+allow_network = true
+allow_home_read = true
+[auto_mode]
+allow = ["*"]
+soft_deny = ["git push"]
+"#,
+        )
+        .unwrap();
+        let dropped = drop_loosening_keys(&mut cfg);
+        assert_eq!(dropped.len(), 8, "{dropped:?}");
+        assert_eq!(cfg.tools.default, None);
+        assert!(cfg.tools.allow.is_empty() && cfg.tools.allow_write.is_empty());
+        assert_eq!(cfg.tools.sandbox, None);
+        assert_eq!(cfg.tools.allow_network, None);
+        assert_eq!(cfg.tools.allow_home_read, None);
+        assert!(cfg.auto_mode.allow.is_empty() && cfg.auto_mode.soft_deny.is_empty());
+        assert_eq!(cfg.tools.deny, vec!["web_fetch".to_string()]);
+        assert_eq!(cfg.tools.ask, vec!["bash:git push".to_string()]);
+    }
+
+    #[test]
+    fn tightening_values_of_loosening_keys_stay() {
+        let mut cfg: AgentToml = toml::from_str(
+            "[tools]
+default = \"deny\"
+sandbox = true
+allow_network = false
+",
+        )
+        .unwrap();
+        assert!(drop_loosening_keys(&mut cfg).is_empty());
+        assert_eq!(cfg.tools.sandbox, Some(true));
+        assert_eq!(cfg.tools.default.as_deref(), Some("deny"));
+    }
+
     use super::*;
 
     /// A project with the profile written into its agent.toml.
@@ -1853,5 +2011,19 @@ skills = ["two", "three"]
         let raw = std::fs::read_to_string(&path).expect("read");
         assert!(raw.contains("read-only | deny | allow"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_project_agent_toml_setting_the_mcp_allowlists_is_called_out() {
+        let path = Path::new("/p/.jan/agent/agent.toml");
+        let none: AgentToml = toml::from_str("[mcp]\n").unwrap();
+        assert!(ignored_mcp_allowlist_note(&none, path).is_none());
+        let both: AgentToml =
+            toml::from_str("[mcp]\nallow_commands = [\"npx\"]\nallow_hosts = [\"a.com\"]\n").unwrap();
+        let note = ignored_mcp_allowlist_note(&both, path).unwrap();
+        assert!(note.contains("allow_commands and allow_hosts are ignored"), "{note}");
+        assert!(note.contains("global agent.toml"), "{note}");
+        let one: AgentToml = toml::from_str("[mcp]\nallow_hosts = [\"a.com\"]\n").unwrap();
+        assert!(ignored_mcp_allowlist_note(&one, path).unwrap().contains("allow_hosts is ignored"));
     }
 }

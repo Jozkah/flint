@@ -41,6 +41,10 @@ describe('nested groups', () => {
   it('refuses a cycle and a move into itself', () => {
     expect(() => setGroupParent(base(), 'home', 'a', 'c', 5)).toThrow()
     expect(() => setGroupParent(base(), 'home', 'a', 'a', 5)).toThrow()
+    // A code, never prose: the store translates it.
+    expect(() => setGroupParent(base(), 'home', 'a', 'a', 5)).toThrow(
+      expect.objectContaining({ code: 'intoItself' })
+    )
   })
 
   it('refuses a move that pushes a subtree past the cap', () => {

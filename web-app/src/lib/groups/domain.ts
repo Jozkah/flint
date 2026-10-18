@@ -19,7 +19,14 @@ import {
   type SurfaceLayout,
 } from './types'
 
-export class GroupError extends Error {}
+export type GroupErrorCode = 'nameEmpty' | 'notFound' | 'tooDeep' | 'intoItself'
+
+/** Carries a code, not prose: the store turns it into the user's language. */
+export class GroupError extends Error {
+  constructor(readonly code: GroupErrorCode) {
+    super(code)
+  }
+}
 
 export const emptySurface = (): SurfaceGroups => ({ groups: [], memberships: {}, contexts: {} })
 
@@ -31,7 +38,7 @@ export const emptyGroupsState = (): GroupsState => ({
 /** Trimmed name; empty names are rejected, duplicates are allowed. */
 export function normalizeGroupName(name: string): string {
   const trimmed = name.replace(/\s+/g, ' ').trim()
-  if (!trimmed) throw new GroupError('Group name cannot be empty')
+  if (!trimmed) throw new GroupError('nameEmpty')
   return trimmed.slice(0, 120)
 }
 
@@ -59,7 +66,7 @@ function membersOf(s: SurfaceGroups, groupId: string): GroupMembership[] {
 
 function requireGroup(s: SurfaceGroups, groupId: string): ConversationGroup {
   const g = s.groups.find((x) => x.id === groupId)
-  if (!g) throw new GroupError('Group not found')
+  if (!g) throw new GroupError('notFound')
   return g
 }
 
@@ -120,7 +127,7 @@ export function createGroup(
   if (parentId !== null) {
     requireGroup(s, parentId)
     if (groupDepth(s, parentId) + 1 > MAX_GROUP_DEPTH)
-      throw new GroupError('Groups cannot be nested that deep')
+      throw new GroupError('tooDeep')
   }
   const group: ConversationGroup = {
     id: input.id,
@@ -181,9 +188,9 @@ export function setGroupParent(
   if (parentId !== null) {
     requireGroup(s, parentId)
     if (parentId === groupId || descendantIds(s, groupId).has(parentId))
-      throw new GroupError('A group cannot be moved into itself')
+      throw new GroupError('intoItself')
     if (groupDepth(s, parentId) + subtreeHeight(s, groupId) > MAX_GROUP_DEPTH)
-      throw new GroupError('Groups cannot be nested that deep')
+      throw new GroupError('tooDeep')
   }
   if (g.parentId === parentId) return state
   return patchGroup(state, surface, groupId, (x) => ({ ...x, parentId, updatedAt: now }))
@@ -247,7 +254,7 @@ export function reorderGroup(
   const s = state.surfaces[surface]
   const groups = sortedGroups(s)
   const from = groups.findIndex((g) => g.id === groupId)
-  if (from < 0) throw new GroupError('Group not found')
+  if (from < 0) throw new GroupError('notFound')
   const [moved] = groups.splice(from, 1)
   groups.splice(clamp(toIndex, 0, groups.length), 0, moved)
   return withSurface(state, surface, { ...s, groups: renumberGroups(groups) })

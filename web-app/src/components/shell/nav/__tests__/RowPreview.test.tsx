@@ -38,6 +38,31 @@ describe('previewSideOffset', () => {
   })
 })
 
+describe('RowPreview model', () => {
+  const open = (model: { provider: string; id: string } | null) => {
+    vi.useFakeTimers()
+    render(
+      <RowPreview title="Chat title" model={model} suppressed={false}>
+        <button>row</button>
+      </RowPreview>
+    )
+    fireEvent.pointerEnter(screen.getByText('row'))
+    fireEvent.mouseEnter(screen.getByText('row'))
+    act(() => void vi.advanceTimersByTime(800))
+  }
+  it("shows no model for a thread that never picked one ('*')", () => {
+    open({ provider: 'llama.cpp', id: '*' })
+    expect(screen.queryByText('Chat title')).toBeTruthy()
+    expect(screen.queryByText('*')).toBeNull()
+    vi.useRealTimers()
+  })
+  it('still names a real model id', () => {
+    open({ provider: 'llama.cpp', id: 'qwen-7b' })
+    expect(screen.queryByText('qwen-7b')).toBeTruthy()
+    vi.useRealTimers()
+  })
+})
+
 describe('RowPreview', () => {
   it('does not come back when the menu closes after a hover', () => {
     vi.useFakeTimers()
@@ -129,6 +154,35 @@ describe('RowPreview', () => {
     expect(screen.getByTestId('row-preview-summary').textContent).toBe('hello there')
     expect(screen.getByTestId('row-preview-count').textContent).toBe('common:previewMessageCount#2')
     vi.useRealTimers()
+  })
+
+  it('survives a facts loader that rejects without an unhandled rejection', async () => {
+    vi.useFakeTimers()
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    const facts = vi.fn(async () => {
+      throw new Error('disk')
+    })
+    render(
+      <RowPreview title="T" facts={facts} suppressed={false}>
+        <button>row</button>
+      </RowPreview>
+    )
+    fireEvent.pointerEnter(screen.getByText('row'))
+    fireEvent.mouseEnter(screen.getByText('row'))
+    await act(async () => {
+      vi.advanceTimersByTime(600)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    vi.useRealTimers()
+    await new Promise((r) => setTimeout(r, 10))
+    process.off('unhandledRejection', unhandled)
+    expect(facts).toHaveBeenCalled()
+    expect(unhandled).not.toHaveBeenCalled()
+    expect(screen.getByTestId('row-preview-title')).toBeTruthy()
+    err.mockRestore()
   })
 
   it('shows the keyboard hint when opened from focus, not from the pointer', () => {

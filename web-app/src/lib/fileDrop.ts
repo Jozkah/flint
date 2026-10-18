@@ -88,33 +88,181 @@ export function pastedPath(text: string): string | null {
  * line is a `file:` URI, so ordinary pasted text is never touched.
  */
 export function fileUriPaths(text: string): string[] | null {
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith('#'))
+  const lines = splitLines(text).filter((l) => !l.startsWith('#'))
   if (lines.length === 0 || lines.length > 50) return null
   const paths: string[] = []
   for (const line of lines) {
-    const m = /^file:\/\/([^/]*)(\/.*)$/i.exec(line)
-    if (!m || (m[1] && m[1].toLowerCase() !== 'localhost')) return null
-    let path: string
-    try {
-      path = decodeURIComponent(m[2])
-    } catch {
-      return null
-    }
-    // file:///C:/dir/a.png -> C:/dir/a.png
-    if (/^\/[A-Za-z]:[\\/]/.test(path)) path = path.slice(1)
+    const path = fileUriPath(line)
+    if (path === null) return null
     paths.push(path)
   }
   return paths
 }
 
+/** Lines of `text`, trimmed, without blanks or the NUL some tools append. */
+function splitLines(text: string): string[] {
+  return text
+    .split('\u0000')
+    .join('')
+    .split(/\r\n|\r|\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+}
+
+/** One `file:` URI as a local path, or null. Accepts `file:/p` and localhost. */
+function fileUriPath(line: string): string | null {
+  const m = /^file:(?:\/\/([^/]*))?(\/.*)$/i.exec(line)
+  if (!m || (m[1] && m[1].toLowerCase() !== 'localhost')) return null
+  // A stray `%` (a file literally named `100%.txt`) must not lose the file.
+  let path = m[2].replace(/(%[0-9A-Fa-f]{2})+/g, (seq) => {
+    try {
+      return decodeURIComponent(seq)
+    } catch {
+      return seq
+    }
+  })
+  // file:///C:/dir/a.png -> C:/dir/a.png
+  if (/^\/[A-Za-z]:[\\/]/.test(path)) path = path.slice(1)
+  if (!isSafeLocalPath(path)) return null
+  // Strip a trailing slash, but keep a root (`/`, `C:/`) whole.
+  if (!/^([A-Za-z]:)?[\\/]$/.test(path)) path = path.replace(/[\\/]+$/, '')
+  return path
+}
+
+/**
+ * A local path that cannot reach the network or climb out of where it points.
+ *
+ * `//host/share` and `\\host\share` are UNC paths on Windows: reading one makes
+ * the OS connect to that host (and offer NTLM credentials), so a drop or paste
+ * must never produce one. `..` segments and NUL bytes are refused outright.
+ */
+function isSafeLocalPath(path: string): boolean {
+  if (/^[\\/]{2}/.test(path)) return false
+  if (path.includes('\u0000')) return false
+  return !path.split(/[\\/]/).some((seg) => seg === '..')
+}
+
+/** The part of DataTransfer this module reads; lets tests pass plain objects. */
+export type TransferLike = {
+  types?: ReadonlyArray<string> | null
+  getData: (type: string) => string
+}
+
+function readType(transfer: TransferLike, type: string): string {
+  try {
+    return transfer.getData(type) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/** `copy`/`cut` headers GNOME (and the old Nautilus text/plain hack) prepend. */
+const COPIED_FILES_HEADER = /^(x-special\/nautilus-clipboard|copy|cut)$/i
+
+/** Only the `file:` lines of `text`, if there is at least one and no prose. */
+function copiedFileLines(text: string, skipOdd = false): string[] | null {
+  let lines = splitLines(text).filter((l) => !COPIED_FILES_HEADER.test(l))
+  // text/x-moz-url is url, title, url, title...
+  if (skipOdd) lines = lines.filter((_, i) => i % 2 === 0)
+  return lines.length > 0 ? fileUriPaths(lines.join('\n')) : null
+}
+
+/** Every line an absolute path (quotes stripped), as a file manager's text. */
+function barePaths(text: string): string[] | null {
+  const lines = splitLines(text)
+  if (lines.length === 0 || lines.length > 50) return null
+  const paths: string[] = []
+  for (const line of lines) {
+    const p = pastedPath(line)
+    if (!p || !isSafeLocalPath(p)) return null
+    paths.push(p)
+  }
+  return paths
+}
+
+/**
+ * Local files a drop or paste names as text, whatever MIME type carried them.
+ *
+ * Linux file managers do not agree: GNOME Files offers `text/uri-list` and
+ * `x-special/gnome-copied-files` (`copy\nfile:///…`), older Nautilus puts the
+ * same `x-special/nautilus-clipboard` block in `text/plain`, KDE Dolphin and
+ * Thunar/PCManFM offer `text/uri-list` and `file://` text, Firefox-style
+ * sources use `text/x-moz-url`. WebKitGTK only exposes some of these to the
+ * page and, from 2.52, may send no File objects at all, so every one is tried.
+ *
+ * Bare absolute paths in `text/plain` only count when `allowBarePaths` (a
+ * drop): a pasted path stays text and is offered instead.
+ */
+export function transferFilePaths(
+  transfer: TransferLike | null | undefined,
+  { allowBarePaths = false }: { allowBarePaths?: boolean } = {}
+): string[] | null {
+  if (!transfer) return null
+  const plain = readType(transfer, 'text/plain')
+  const candidates = [
+    fileUriPaths(readType(transfer, 'text/uri-list')),
+    copiedFileLines(readType(transfer, 'x-special/gnome-copied-files')),
+    copiedFileLines(readType(transfer, 'text/x-moz-url'), true),
+    copiedFileLines(plain),
+    allowBarePaths ? barePaths(plain) : null,
+  ]
+  const found = candidates.find((c) => c && c.length > 0)
+  return found ? [...new Set(found)] : null
+}
+
+/**
+ * Files named by a paste or a drop, and whether that naming can be trusted.
+ *
+ * One trust model for both. Any web page can put `file:///home/me/.bashrc`, or
+ * a bare `/home/me/.ssh/id_rsa`, in text/plain or text/uri-list from a copy
+ * handler or a draggable link, so only GNOME's `x-special/gnome-copied-files`
+ * (which a page cannot write) is trusted to attach on its own. Anything else
+ * must be confirmed by the user first. Null when real File objects came with
+ * it (use those) or nothing names a file.
+ *
+ * Bare paths in text/plain are accepted only for a drop (`allowBarePaths`),
+ * and are never trusted.
+ */
+export function namedFilePaths(
+  transfer: (TransferLike & { files?: { length: number } | null }) | null | undefined,
+  { allowBarePaths = false }: { allowBarePaths?: boolean } = {}
+): { paths: string[]; trusted: boolean } | null {
+  if (!transfer || (transfer.files?.length ?? 0) > 0) return null
+  const gnome = copiedFileLines(readType(transfer, 'x-special/gnome-copied-files'))
+  if (gnome?.length) return { paths: [...new Set(gnome)], trusted: true }
+  const paths = transferFilePaths(transfer, { allowBarePaths })
+  return paths ? { paths, trusted: false } : null
+}
+
+/** A paste's named files (see `namedFilePaths`). */
+export const pasteFilePaths = (
+  transfer: Parameters<typeof namedFilePaths>[0]
+): { paths: string[]; trusted: boolean } | null => namedFilePaths(transfer)
+
+/** A drop's named files (see `namedFilePaths`). */
+export const dropFilePaths = (
+  transfer: Parameters<typeof namedFilePaths>[0]
+): { paths: string[]; trusted: boolean } | null =>
+  namedFilePaths(transfer, { allowBarePaths: true })
+
+/** The text a paste or drop carried, to put back if the user declines to attach it. */
+export function transferText(transfer: TransferLike | null | undefined): string {
+  if (!transfer) return ''
+  return readType(transfer, 'text/plain') || readType(transfer, 'text/uri-list')
+}
+
 /** Does this drag carry files at all, as opposed to text or a selection? */
 export function dragHasFiles(transfer: DataTransfer | null): boolean {
   if (!transfer) return false
-  if (transfer.types?.includes?.('Files')) return true
-  return (transfer.files?.length ?? 0) > 0
+  const types = transfer.types
+  if (types?.includes?.('Files')) return true
+  if ((transfer.files?.length ?? 0) > 0) return true
+  // WebKitGTK may hand a file-manager drag over as a bare uri-list. Only a
+  // readable `file:` list counts: a browser address-bar drag is a uri-list
+  // too. Unreadable (protected dragover data) falls back to Files-only.
+  if (types?.includes?.('x-special/gnome-copied-files')) return true
+  if (!types?.includes?.('text/uri-list') || types.includes('text/html')) return false
+  return fileUriPaths(readType(transfer, 'text/uri-list')) !== null
 }
 
 /**

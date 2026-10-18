@@ -6,6 +6,11 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { answerFor, buildOptions } from '@/lib/askOptions'
 import { PLAN_REVIEW_QUESTION_ID } from '@/lib/coworkPrompt'
+import { pasteFilePaths } from '@/lib/fileDrop'
+import { readDroppedPaths } from '@/lib/droppedPaths'
+import { isPlatformTauri } from '@/lib/platform/utils'
+
+const IMAGE_PATH = /\.(png|jpe?g|gif|webp|bmp)$/i
 import type {
   AskAnswer,
   AskRequestPayload,
@@ -327,9 +332,30 @@ export function CoworkAskCard({
                       .filter((i) => i.type.startsWith('image/'))
                       .map((i) => i.getAsFile())
                       .filter((f): f is File => !!f)
-                    if (files.length === 0) return
-                    e.preventDefault()
                     const qid = question.id
+                    if (files.length === 0) {
+                      // A copied image file in GNOME Files pastes as a URI.
+                      // Only its own clipboard type is trusted; forgeable
+                      // text stays text.
+                      const named = isPlatformTauri()
+                        ? pasteFilePaths(e.clipboardData)
+                        : null
+                      const images = named?.trusted
+                        ? named.paths.filter((p) => IMAGE_PATH.test(p))
+                        : null
+                      if (!images?.length) return
+                      e.preventDefault()
+                      void readDroppedPaths(images)
+                        .then(({ files: read }) => Promise.all(read.map(readPastedImage)))
+                        .then((imgs) =>
+                          setPasted((prev) => ({
+                            ...prev,
+                            [qid]: [...(prev[qid] ?? []), ...imgs],
+                          }))
+                        )
+                      return
+                    }
+                    e.preventDefault()
                     void Promise.all(files.map(readPastedImage)).then(
                       (imgs) =>
                         setPasted((prev) => ({

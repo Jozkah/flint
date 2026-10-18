@@ -1,3 +1,4 @@
+import { useConversationFind } from '@/hooks/useConversationFind'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { UIMessage } from 'ai'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
@@ -10,6 +11,8 @@ type Props = {
   /** The element holding the rendered conversation. */
   root: () => HTMLElement | null
   onClose: () => void
+  /** A search hit being opened: start on its phrase, at its message. */
+  seed?: { query: string; messageId?: string } | null
 }
 
 const HIGHLIGHT_ALL = 'conv-find'
@@ -38,9 +41,9 @@ function elementsOf(root: HTMLElement, messageId: string): Element[] {
  * text; the one in use is scrolled into view and highlighted where the browser
  * can paint a highlight.
  */
-export function ConversationFindBar({ messages, root, onClose }: Props) {
+export function ConversationFindBar({ messages, root, onClose, seed }: Props) {
   const { t } = useTranslation()
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(seed?.query ?? '')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -89,6 +92,16 @@ export function ConversationFindBar({ messages, root, onClose }: Props) {
 
   // A new query starts from the first match.
   useEffect(() => setActive(0), [query])
+
+  // Land on the message the search hit named, once its text has loaded.
+  const seedPending = useRef(!!seed?.messageId)
+  useEffect(() => {
+    if (!seedPending.current || matches.length === 0) return
+    seedPending.current = false
+    const at = matches.findIndex((m) => m.messageId === seed?.messageId)
+    if (at > 0) setActive(at)
+    useConversationFind.getState().clearSeed()
+  }, [matches, seed?.messageId])
 
   const count = matches.length
   const current = count > 0 ? matches[Math.min(active, count - 1)] : undefined

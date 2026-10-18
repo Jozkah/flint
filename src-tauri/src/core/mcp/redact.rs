@@ -101,31 +101,117 @@ pub fn redact_mcp_config(config: &Value) -> Value {
 
 /// Replace every value in `config` that is still [`MASK`] with the real value
 /// `real_servers` (the file as it is on disk) holds for the same server, field
-/// and key. A mask with nothing to restore from (a renamed or new server) is
-/// left as it is: there is no real value to put back.
+/// and key. A mask with nothing to restore from is left as it is;
+/// [`strip_unrestored_masks`] removes it.
+///
+/// `config` is the whole server list, so a rename is visible: when exactly one
+/// stored server left the payload and exactly one payload server is new, the
+/// new one is that server renamed and its masks are restored from it.
 pub fn restore_masked_secrets(config: &mut Value, real_servers: &Map<String, Value>) {
+    restore_masks(config, real_servers, true);
+}
+
+fn restore_masks(config: &mut Value, real_servers: &Map<String, Value>, full_list: bool) {
     let Some(Value::Object(servers)) = config.get_mut("mcpServers") else {
         return;
     };
+    let vanished: Vec<&Value> = real_servers
+        .iter()
+        .filter(|(name, _)| !servers.contains_key(*name))
+        .map(|(_, v)| v)
+        .collect();
+    let new_names: Vec<String> = servers
+        .keys()
+        .filter(|name| !real_servers.contains_key(*name))
+        .cloned()
+        .collect();
+    let renamed_from = match (full_list, vanished.as_slice(), new_names.as_slice()) {
+        (true, [old], [new]) => Some((new.clone(), *old)),
+        _ => None,
+    };
     for (name, server) in servers.iter_mut() {
-        let (Some(server), Some(real)) = (server.as_object_mut(), real_servers.get(name)) else {
+        let Some(server) = server.as_object_mut() else {
             continue;
         };
+        let real = real_servers.get(name).or(renamed_from
+            .as_ref()
+            .filter(|(new, _)| new == name)
+            .map(|(_, old)| *old));
         for field in SECRET_BEARING_FIELDS {
-            let (Some(Value::Object(map)), Some(Value::Object(real_map))) =
-                (server.get_mut(field), real.get(field))
-            else {
+            let Some(Value::Object(map)) = server.get_mut(field) else {
                 continue;
             };
             for (key, value) in map.iter_mut() {
-                if value.as_str() == Some(MASK) {
-                    if let Some(real_value) = real_map.get(key) {
-                        *value = real_value.clone();
-                    }
+                if value.as_str() != Some(MASK) {
+                    continue;
+                }
+                let stored = |s: &Value| -> Option<Value> {
+                    s.get(field)
+                        .and_then(|m| m.get(key))
+                        .filter(|v| v.as_str() != Some(MASK))
+                        .cloned()
+                };
+                if let Some(real_value) = real.and_then(stored) {
+                    *value = real_value;
                 }
             }
         }
     }
+}
+
+/// The first `(field, key)` of `server` whose value is still [`MASK`].
+pub fn find_mask(server: &Value) -> Option<(&'static str, String)> {
+    SECRET_BEARING_FIELDS.iter().find_map(|field| {
+        server
+            .get(*field)
+            .and_then(|m| m.as_object())
+            .and_then(|m| m.iter().find(|(_, v)| v.as_str() == Some(MASK)))
+            .map(|(k, _)| (*field, k.clone()))
+    })
+}
+
+/// Drop every secret entry that is still [`MASK`] after restoring: the
+/// placeholder must never be written to disk as if it were the secret.
+/// Returns `server/field/key` for each dropped entry.
+pub fn strip_unrestored_masks(config: &mut Value) -> Vec<String> {
+    let mut dropped = Vec::new();
+    let Some(Value::Object(servers)) = config.get_mut("mcpServers") else {
+        return dropped;
+    };
+    for (name, server) in servers.iter_mut() {
+        for field in SECRET_BEARING_FIELDS {
+            if let Some(Value::Object(map)) = server.get_mut(field) {
+                map.retain(|key, v| {
+                    let masked = v.as_str() == Some(MASK);
+                    if masked {
+                        dropped.push(format!("{name}/{field}/{key}"));
+                    }
+                    !masked
+                });
+            }
+        }
+    }
+    dropped
+}
+
+/// Make one webview-supplied server config launchable: put the stored real
+/// value back for every masked secret, and refuse if a mask is still there
+/// (nothing stored to restore from). The placeholder must never be stored as
+/// the active config or become a launched server's token.
+pub fn restore_server_config(
+    name: &str,
+    config: &mut Value,
+    real_servers: &Map<String, Value>,
+) -> Result<(), String> {
+    let mut wrapper = serde_json::json!({ "mcpServers": { name: config.take() } });
+    restore_masks(&mut wrapper, real_servers, false);
+    *config = wrapper["mcpServers"][name].take();
+    if let Some((field, key)) = find_mask(config) {
+        return Err(format!(
+            "{name}: the saved value for {field} \"{key}\" is hidden and no stored secret was found; re-enter it in the server settings"
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -275,5 +361,62 @@ mod tests {
         assert_eq!(saved["mcpServers"]["github"]["env"]["GITHUB_TOKEN"], "ghp_real");
         assert_eq!(saved["mcpServers"]["remote"], disk["mcpServers"]["remote"]);
         assert!(!saved.to_string().contains(MASK));
+    }
+
+    #[test]
+    fn activating_a_masked_config_restores_the_stored_secret() {
+        let disk = config();
+        let disk_servers = disk["mcpServers"].as_object().unwrap().clone();
+        let mut sent = redact_mcp_config(&disk)["mcpServers"]["github"].clone();
+        restore_server_config("github", &mut sent, &disk_servers).unwrap();
+        assert_eq!(sent, disk["mcpServers"]["github"]);
+        assert!(!sent.to_string().contains(MASK));
+    }
+
+    #[test]
+    fn activating_a_masked_config_with_no_stored_secret_is_refused() {
+        let disk = config();
+        let disk_servers = disk["mcpServers"].as_object().unwrap().clone();
+        let mut sent = json!({"command": "x", "env": {"API_KEY": MASK}});
+        let err = restore_server_config("brand-new", &mut sent, &disk_servers).unwrap_err();
+        assert!(err.contains("API_KEY"));
+        let mut gone = json!({"env": {"NOT_ON_DISK_TOKEN": MASK}});
+        assert!(restore_server_config("github", &mut gone, &disk_servers).is_err());
+    }
+
+    #[test]
+    fn a_renamed_server_keeps_its_stored_secret() {
+        let disk = config();
+        let disk_servers = disk["mcpServers"].as_object().unwrap().clone();
+        let mut sent = redact_mcp_config(&disk);
+        let gh = sent["mcpServers"].as_object_mut().unwrap().remove("github").unwrap();
+        sent["mcpServers"]["github-work"] = gh;
+        restore_masked_secrets(&mut sent, &disk_servers);
+        assert!(strip_unrestored_masks(&mut sent).is_empty());
+        assert_eq!(sent["mcpServers"]["github-work"]["env"]["GITHUB_TOKEN"], "ghp_real");
+    }
+
+    #[test]
+    fn a_renamed_secret_key_is_dropped_not_saved_as_the_mask() {
+        let disk = config();
+        let disk_servers = disk["mcpServers"].as_object().unwrap().clone();
+        let mut sent = redact_mcp_config(&disk);
+        let env = sent["mcpServers"]["github"]["env"].as_object_mut().unwrap();
+        let v = env.remove("GITHUB_TOKEN").unwrap();
+        env.insert("GH_TOKEN".into(), v);
+        restore_masked_secrets(&mut sent, &disk_servers);
+        let dropped = strip_unrestored_masks(&mut sent);
+        assert_eq!(dropped, vec!["github/env/GH_TOKEN".to_string()]);
+        assert!(!sent.to_string().contains(MASK));
+        assert_eq!(sent["mcpServers"]["github"]["env"]["API_KEY"], "k-real");
+    }
+
+    #[test]
+    fn a_launch_config_holding_the_mask_is_detected() {
+        assert_eq!(
+            find_mask(&json!({"headers": {"Authorization": MASK}})),
+            Some(("headers", "Authorization".to_string()))
+        );
+        assert_eq!(find_mask(&json!({"env": {"A": "real"}})), None);
     }
 }

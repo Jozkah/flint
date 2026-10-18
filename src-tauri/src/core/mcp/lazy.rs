@@ -164,6 +164,13 @@ impl LazyMcp {
         }
     }
 
+    /// Whether `name` is idle now: no call in flight and none for `idle_after`.
+    pub fn is_idle(&self, name: &str, idle_after: Duration, now: Instant) -> bool {
+        self.activity.lock().unwrap().get(name).is_some_and(|a| {
+            a.in_flight == 0 && now.saturating_duration_since(a.last_used) >= idle_after
+        })
+    }
+
     /// Running servers idle for at least `idle_after` with nothing in flight.
     /// A server with no recorded activity is left alone.
     pub fn idle_servers(&self, running: &[String], idle_after: Duration, now: Instant) -> Vec<String> {
@@ -415,6 +422,17 @@ mod tests {
         assert!(!starts_with_flint(&serde_json::json!({"command": "x"})));
         assert!(!starts_with_flint(&serde_json::json!({"startWithFlint": false})));
         assert!(starts_with_flint(&serde_json::json!({"startWithFlint": true})));
+    }
+
+    #[test]
+    fn a_call_begun_after_the_idle_scan_keeps_the_server() {
+        let lazy = LazyMcp::default();
+        lazy.touch("s");
+        let later = Instant::now() + Duration::from_secs(16 * 60);
+        let idle = Duration::from_secs(15 * 60);
+        assert_eq!(lazy.idle_servers(&["s".to_string()], idle, later), vec!["s".to_string()]);
+        let _call = lazy.begin_call("s");
+        assert!(!lazy.is_idle("s", idle, later), "the re-check must see the new call");
     }
 
     #[test]

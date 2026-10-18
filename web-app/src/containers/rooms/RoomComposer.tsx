@@ -17,7 +17,15 @@ import { slashOptionId } from '@/lib/slashCommands'
 import { useSlashCommands } from '@/hooks/useSlashCommands'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { DropRim } from '@/components/ui/drop-rim'
-import { dragHasFiles, inlineDroppedTexts, looksLikeDirectory } from '@/lib/fileDrop'
+import {
+  dragHasFiles,
+  inlineDroppedTexts,
+  looksLikeDirectory,
+  pasteFilePaths,
+  dropFilePaths,
+} from '@/lib/fileDrop'
+import { baseName, readDroppedPaths } from '@/lib/droppedPaths'
+import { isPlatformTauri } from '@/lib/platform/utils'
 
 const toValue = (a: Address) =>
   a.kind === 'participant' ? `participant:${a.participantId}` : a.kind
@@ -168,8 +176,16 @@ export function RoomComposer({ room }: { room: Room }) {
   }
 
   // A room message is text, so a dropped file is added as its contents.
-  const dropFiles = async (dropped: File[]) => {
-    const folders = dropped.filter((f) => looksLikeDirectory(f)).map((f) => f.name)
+  const dropPaths = async (paths: string[]) => {
+    const { files, folders, failed } = await readDroppedPaths(paths)
+    await dropFiles(files, [...folders, ...failed.map((f) => f.path)].map(baseName))
+  }
+
+  const dropFiles = async (dropped: File[], unreadable: string[] = []) => {
+    const folders = [
+      ...unreadable,
+      ...dropped.filter((f) => looksLikeDirectory(f)).map((f) => f.name),
+    ]
     const read = await Promise.all(
       dropped
         .filter((f) => !looksLikeDirectory(f))
@@ -220,10 +236,21 @@ export function RoomComposer({ room }: { room: Room }) {
           if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false)
         }}
         onDrop={(e) => {
-          if (!dragHasFiles(e.dataTransfer)) return
-          e.preventDefault()
           setDragOver(false)
-          void dropFiles(Array.from(e.dataTransfer.files))
+          if (e.dataTransfer.files.length > 0) {
+            e.preventDefault()
+            void dropFiles(Array.from(e.dataTransfer.files))
+            return
+          }
+          // WebKitGTK: a file-manager drop may arrive as URIs only. Anything
+          // else (a dragged link or text) is left to the textarea.
+          // Only GNOME's own drag type is trusted: a web page can name any
+          // local path in the text a dragged link carries.
+          const named = isPlatformTauri() ? dropFilePaths(e.dataTransfer) : null
+          const paths = named?.trusted ? named.paths : null
+          if (!paths) return
+          e.preventDefault()
+          void dropPaths(paths)
         }}
         className="relative z-10 mx-auto flex w-full max-w-[780px] flex-col rounded-xl border-[0.8px] border-border bg-card shadow-[0_4px_14px_rgba(0,0,0,.04)] transition-[border-color,box-shadow,transform] duration-300 ease-expo focus-within:border-border-strong focus-within:shadow-[0_0_0_3px_rgba(156,163,175,.18),0_12px_30px_-12px_rgba(0,0,0,.25)] motion-safe:focus-within:-translate-y-0.5"
         onSubmit={(e) => {
@@ -313,6 +340,14 @@ export function RoomComposer({ room }: { room: Room }) {
           placeholder={placeholder}
           aria-describedby={`${id}-hint`}
           onChange={(e) => changeText(e.target.value)}
+          onPaste={(e) => {
+            // Files copied in GNOME Files paste as URIs, not files. Only its
+            // own clipboard type is trusted; forgeable text stays text here.
+            const named = isPlatformTauri() ? pasteFilePaths(e.clipboardData) : null
+            if (!named?.trusted) return
+            e.preventDefault()
+            void dropPaths(named.paths)
+          }}
           onKeyDown={(e) => {
             const slashKey = slash.onKeyDown(e)
             if (typeof slashKey === 'string') {

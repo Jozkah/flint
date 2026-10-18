@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { streamText } from 'ai'
 import {
   ArrowLeftRight,
@@ -18,27 +18,16 @@ import { Skeleton } from '@/components/ui/skeleton'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { LanguagePicker } from './LanguagePicker'
 import { Textarea } from '@/components/ui/textarea'
+import { useTranslateDraft } from '@/hooks/useTranslateDraft'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { ModelFactory } from '@/lib/model-factory'
-import { classifyTranslateError } from '@/lib/translateError'
+import {
+  classifyTranslateError,
+  cleanTranslation,
+  describeFailure,
+} from '@/lib/translateError'
 import { AUTO_LANGUAGE, buildTranslatePrompt } from '@/lib/translatePrompt'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-
-/**
- * The real message behind a failure. Provider errors arrive as `Error`s,
- * strings, or plain objects (a serialized engine error, or the `{ error }`
- * wrapper the stream hands to `onError`); none may collapse to a blank.
- */
-function failureMessage(e: unknown, depth = 0): string {
-  if (e instanceof Error && e.message) return e.message
-  if (typeof e === 'string') return e.trim()
-  if (e && typeof e === 'object' && depth < 3) {
-    const o = e as { message?: unknown; error?: unknown }
-    if (typeof o.message === 'string' && o.message.trim()) return o.message
-    if (o.error !== undefined) return failureMessage(o.error, depth + 1)
-  }
-  return ''
-}
 
 const ERROR_KEYS = {
   auth: 'common:translate.errorAuth',
@@ -62,13 +51,21 @@ export function TranslatePage() {
   const selectedProvider = useModelProvider((s) => s.selectedProvider)
   const getProviderByName = useModelProvider((s) => s.getProviderByName)
 
-  const [source, setSource] = useState(AUTO_LANGUAGE)
-  const [target, setTarget] = useState('English')
-  const [input, setInput] = useState('')
-  const [output, setOutput] = useState('')
+  const source = useTranslateDraft((s) => s.source)
+  const target = useTranslateDraft((s) => s.target)
+  const input = useTranslateDraft((s) => s.input)
+  const output = useTranslateDraft((s) => s.output)
+  const setSource = useTranslateDraft((s) => s.setSource)
+  const setTarget = useTranslateDraft((s) => s.setTarget)
+  const setInput = useTranslateDraft((s) => s.setInput)
+  const setOutput = useTranslateDraft((s) => s.setOutput)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Leaving the page mid-stream must stop pulling tokens.
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   const provider = getProviderByName(selectedProvider)
   const errorKind = error ? classifyTranslateError(error) : null
@@ -108,15 +105,16 @@ export function TranslatePage() {
       let text = ''
       for await (const delta of result.textStream) {
         text += delta
-        setOutput(text)
+        setOutput(cleanTranslation(text))
       }
+      setOutput(cleanTranslation(text, true))
       if (streamError !== undefined) throw streamError
-      if (!text.trim() && !controller.signal.aborted) {
+      if (!cleanTranslation(text, true) && !controller.signal.aborted) {
         throw new Error(t('common:translate.failed'))
       }
     } catch (e) {
       if (!controller.signal.aborted) {
-        setError(failureMessage(e) || t('common:translate.failed'))
+        setError(describeFailure(e) || t('common:translate.failed'))
       }
     } finally {
       setRunning(false)
@@ -146,12 +144,29 @@ export function TranslatePage() {
     }
   }
 
+  // Only ever read on a click. If the browser or webview refuses (the first
+  // click can raise a permission prompt the user dismisses), fall back to the
+  // normal paste gesture: focus the box and say so.
   const paste = async () => {
     try {
       const text = await navigator.clipboard.readText()
-      if (text) setInput(text)
+      if (!text) return
+      const el = inputRef.current
+      if (!input || !el) {
+        setInput(text)
+        return
+      }
+      // Never replace what the user typed: insert at the caret.
+      const start = el.selectionStart ?? input.length
+      const end = el.selectionEnd ?? start
+      setInput(input.slice(0, start) + text + input.slice(end))
     } catch {
-      toast.error(t('common:translate.pasteFailed'))
+      inputRef.current?.focus()
+      toast.error(t('common:translate.pasteFailed'), {
+        description: t('common:translate.pasteHint', {
+          keys: isMac ? '⌘V' : 'Ctrl+V',
+        }),
+      })
     }
   }
 
@@ -258,6 +273,7 @@ export function TranslatePage() {
           </FrameHeader>
           <FrameBody>
             <Textarea
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={t('common:translate.inputPlaceholder')}
@@ -357,7 +373,7 @@ export function TranslatePage() {
                       <Button
                         variant="link"
                         size="xs"
-                        className="h-auto p-0 text-xs"
+                        className="h-auto p-0 text-xs font-medium underline underline-offset-2"
                         onClick={() => navigate({ to: '/settings/providers' })}
                         data-testid="translate-error-settings"
                       >

@@ -24,9 +24,14 @@
 //!   that this holder wrote. A holder that finds another token (it was frozen
 //!   past the ttl and replaced) marks itself lost, stops the run's scope and
 //!   the run ends as `lease_lost` instead of two processes writing one thread.
+//! * **Not lost by a hiccup.** Only a different token counts as a takeover. A
+//!   heartbeat that cannot be written (an antivirus lock, a full disk) is
+//!   logged and retried on the next tick; the holder gives up, with its own
+//!   error, only once the last good heartbeat is older than the ttl, which is
+//!   when another process may legitimately take the run.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -105,7 +110,12 @@ pub struct Lease {
     run_id: String,
     ttl: Duration,
     lost: Arc<AtomicBool>,
+    /// When the file was last renewed (or taken), for judging a failing write.
+    last_ok_ms: AtomicU64,
+    writer: Writer,
 }
+
+type Writer = Box<dyn Fn(&Path, &Record) -> std::io::Result<()> + Send + Sync>;
 
 /// What a lease file says right now, for a reader that does not hold it.
 #[derive(Debug, Clone, PartialEq)]
@@ -165,7 +175,15 @@ impl Lease {
             heartbeat_ms: now,
             ttl_ms: ttl.as_millis() as u64,
         };
-        let lease = Lease { file: file.clone(), token, run_id: run_id.to_string(), ttl, lost: Arc::new(AtomicBool::new(false)) };
+        let lease = Lease {
+            file: file.clone(),
+            token,
+            run_id: run_id.to_string(),
+            ttl,
+            lost: Arc::new(AtomicBool::new(false)),
+            last_ok_ms: AtomicU64::new(now),
+            writer: Box::new(write_atomic),
+        };
 
         // At most one retry: a fresh file is created, or a stale one is moved
         // aside and a fresh file is created in its place.
@@ -239,25 +257,78 @@ impl Lease {
     }
 
     /// Renew the lease. Errors with `LeaseLost` when the file no longer carries
-    /// this holder's token (replaced, or deleted), and records the loss.
+    /// this holder's token (replaced, or deleted), and records the loss. A file
+    /// that cannot be read or written right now is an `Io` error instead: the
+    /// lease is not known to be lost.
     pub fn heartbeat(&self) -> Result<(), HarnessError> {
         self.heartbeat_at(now_ms())
     }
 
     pub(crate) fn heartbeat_at(&self, now: u64) -> Result<(), HarnessError> {
-        let Some(mut record) = read(&self.file).filter(|r| r.token == self.token) else {
-            self.lost.store(true, Ordering::SeqCst);
-            return Err(HarnessError::new(
-                ErrorKind::LeaseLost,
+        let bytes = match std::fs::read(&self.file) {
+            Ok(bytes) => Some(bytes),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(self.hiccup(e, "could not be read", now)),
+        };
+        let Some(mut record) = bytes
+            .and_then(|b| serde_json::from_slice::<Record>(&b).ok())
+            .filter(|r| r.token == self.token)
+        else {
+            return Err(self.lose());
+        };
+        // Past the ttl since the last good renewal the lease is fair game: a
+        // taker may be replacing the file right now, and a read-then-write
+        // here could overwrite the taker's lease. Never write; the holder
+        // gives up as unrefreshed (see `keep_alive`).
+        if self.refresh_overdue(now) {
+            return Err(self.hiccup(
+                std::io::Error::other("the last renewal is older than the ttl"),
+                "could not be renewed",
+                now,
+            ));
+        }
+        record.heartbeat_ms = now;
+        match (self.writer)(&self.file, &record) {
+            Ok(()) => {
+                self.last_ok_ms.store(now, Ordering::SeqCst);
+                Ok(())
+            }
+            Err(e) => Err(self.hiccup(e, "could not be renewed", now)),
+        }
+    }
+
+    fn lose(&self) -> HarnessError {
+        self.lost.store(true, Ordering::SeqCst);
+        HarnessError::new(
+            ErrorKind::LeaseLost,
+            format!(
+                "another process took over run {}: this process lost its lease and stopped driving it",
+                self.run_id
+            ),
+        )
+        .at(Stage::Persistence)
+    }
+
+    /// A failed read or write of the lease file. Past the ttl since the last
+    /// good heartbeat it says so plainly; before that it is a passing error.
+    fn hiccup(&self, e: std::io::Error, what: &str, now: u64) -> HarnessError {
+        if self.refresh_overdue(now) {
+            HarnessError::new(
+                ErrorKind::Io,
                 format!(
-                    "another process took over run {}: this process lost its lease and stopped driving it",
+                    "could not refresh the lease on run {} (io error): {e}; another process may now take it",
                     self.run_id
                 ),
             )
-            .at(Stage::Persistence));
-        };
-        record.heartbeat_ms = now;
-        write_atomic(&self.file, &record).map_err(|e| io(e, "could not be renewed"))
+            .at(Stage::Persistence)
+        } else {
+            io(e, what)
+        }
+    }
+
+    /// Whether the last good heartbeat is older than the ttl.
+    fn refresh_overdue(&self, now: u64) -> bool {
+        now.saturating_sub(self.last_ok_ms.load(Ordering::SeqCst)) > self.ttl.as_millis() as u64
     }
 
     /// Give the lease up. Only removes the file when it is still this
@@ -287,9 +358,20 @@ impl Lease {
                     continue;
                 }
                 waited = Duration::ZERO;
-                if lease.heartbeat().is_err() {
-                    mark_lost(&session);
-                    break;
+                match lease.heartbeat() {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == ErrorKind::LeaseLost => {
+                        mark_lost(&session);
+                        break;
+                    }
+                    Err(e) => {
+                        // Not a takeover: keep going until the ttl runs out.
+                        log::warn!("agent: lease heartbeat failed for {session}: {}", e.message());
+                        if lease.refresh_overdue(now_ms()) {
+                            mark_unrefreshed(&session);
+                            break;
+                        }
+                    }
                 }
             }
         });
@@ -324,8 +406,12 @@ fn create_new(file: &Path, record: &Record) -> std::io::Result<()> {
 
 fn write_atomic(file: &Path, record: &Record) -> std::io::Result<()> {
     let tmp = file.with_extension(format!("json.tmp-{}", &record.token[..8]));
-    std::fs::write(&tmp, serde_json::to_vec(record).map_err(std::io::Error::other)?)?;
-    std::fs::rename(&tmp, file)
+    let result = std::fs::write(&tmp, serde_json::to_vec(record).map_err(std::io::Error::other)?)
+        .and_then(|()| std::fs::rename(&tmp, file));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// Sessions whose lease was found lost, so the loop can end their run as
@@ -333,6 +419,30 @@ fn write_atomic(file: &Path, record: &Record) -> std::io::Result<()> {
 fn lost_sessions() -> &'static Mutex<std::collections::HashSet<String>> {
     static LOST: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
     LOST.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+}
+
+/// Sessions that gave up because the lease could not be written for longer
+/// than its ttl: nobody took it, so the run must not say anyone did.
+fn unrefreshed_sessions() -> &'static Mutex<std::collections::HashSet<String>> {
+    static GONE: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+    GONE.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+}
+
+/// Remember that `session` could not refresh its lease in time and stop its run.
+pub fn mark_unrefreshed(session: &str) {
+    if let Ok(mut set) = unrefreshed_sessions().lock() {
+        set.insert(session.to_string());
+    }
+    tauri_plugin_agent_tools::lifecycle::stop_scope(
+        &tauri_plugin_agent_tools::lifecycle::Scope::new(session, "", ""),
+        tauri_plugin_agent_tools::lifecycle::StopReason::Cancelled,
+    );
+}
+
+/// Whether `session` stopped because its lease could not be refreshed,
+/// forgetting it like [`take_lost`].
+pub fn take_unrefreshed(session: &str) -> bool {
+    unrefreshed_sessions().lock().map(|mut set| set.remove(session)).unwrap_or(false)
 }
 
 /// Remember that `session` lost its lease and stop its run.
@@ -393,6 +503,19 @@ mod tests {
         // ... and its late release leaves the new holder's lease alone.
         stale.release();
         assert!(matches!(status_at(dir.path(), now + 3, &always), Status::Held(r) if r.token == fresh.token));
+    }
+
+    #[test]
+    fn a_holder_resuming_past_the_ttl_does_not_write_over_a_taker() {
+        let dir = tempfile::tempdir().unwrap();
+        let stalled = Lease::acquire_with(dir.path(), "run-1", TTL, 1_000, &always).unwrap();
+        let late = 1_000 + TTL.as_millis() as u64 + 1;
+        let before = std::fs::read(&stalled.file).unwrap();
+        // Still its own token on disk, but too late to renew safely.
+        let err = stalled.heartbeat_at(late).expect_err("overdue");
+        assert_eq!(err.kind(), ErrorKind::Io);
+        assert!(err.message().contains("could not refresh the lease"), "{}", err.message());
+        assert_eq!(std::fs::read(&stalled.file).unwrap(), before, "a late heartbeat wrote");
     }
 
     #[test]
@@ -476,6 +599,91 @@ mod tests {
         drop(guard);
         // The replacement's file is still there: the lost holder did not delete it.
         assert!(path(dir.path()).exists());
+    }
+
+    fn with_writer(lease: &mut Lease, w: Writer) {
+        lease.writer = w;
+    }
+
+    #[test]
+    fn a_transient_write_error_is_not_a_lost_lease_and_is_retried() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut lease = Lease::acquire_with(dir.path(), "run-1", TTL, 1_000, &always).unwrap();
+        let fail = Arc::new(AtomicBool::new(true));
+        let f = fail.clone();
+        with_writer(
+            &mut lease,
+            Box::new(move |file, rec| {
+                if f.load(Ordering::SeqCst) {
+                    Err(std::io::Error::from_raw_os_error(32)) // file in use
+                } else {
+                    write_atomic(file, rec)
+                }
+            }),
+        );
+        let err = lease.heartbeat_at(2_000).expect_err("write failed");
+        assert_eq!(err.kind(), ErrorKind::Io);
+        assert!(!lease.is_lost(), "an I/O error is not a takeover");
+        assert!(!err.message().contains("could not refresh"), "{}", err.message());
+        // The next tick works and the lease is still ours.
+        fail.store(false, Ordering::SeqCst);
+        lease.heartbeat_at(12_000).unwrap();
+        assert!(!lease.is_lost());
+        assert_eq!(read(&path(dir.path())).unwrap().heartbeat_ms, 12_000);
+    }
+
+    #[test]
+    fn a_write_that_keeps_failing_past_the_ttl_is_reported_as_an_io_error_not_a_takeover() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut lease = Lease::acquire_with(dir.path(), "run-1", TTL, 1_000, &always).unwrap();
+        with_writer(&mut lease, Box::new(|_, _| Err(std::io::Error::from_raw_os_error(112))));
+        let past = 1_000 + TTL.as_millis() as u64 + 1;
+        let err = lease.heartbeat_at(past).expect_err("overdue");
+        assert_eq!(err.kind(), ErrorKind::Io);
+        assert!(err.message().contains("could not refresh the lease"), "{}", err.message());
+        assert!(!err.message().contains("took over run"), "{}", err.message());
+        assert!(!lease.is_lost());
+    }
+
+    #[test]
+    fn a_heartbeat_thread_survives_write_errors_and_gives_up_distinctly_after_the_ttl() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut lease = Lease::acquire_with(dir.path(), "run-1", Duration::from_millis(300), now_ms(), &always).unwrap();
+        with_writer(&mut lease, Box::new(|_, _| Err(std::io::Error::other("locked"))));
+        let lease = Arc::new(lease);
+        let session = "lease-test-hiccup";
+        let guard = lease.keep_alive(session);
+        // A few failed ticks inside the ttl: still alive.
+        std::thread::sleep(Duration::from_millis(150));
+        assert!(!take_lost_peek(session) && !unrefreshed_sessions().lock().unwrap().contains(session));
+        // Past the ttl it gives up, as "unrefreshed", never as "lost".
+        for _ in 0..300 {
+            if unrefreshed_sessions().lock().unwrap().contains(session) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(take_unrefreshed(session));
+        assert!(!take_lost(session));
+        assert!(!lease.is_lost());
+        drop(guard);
+    }
+
+    #[test]
+    fn a_failed_rename_leaves_no_temp_file_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let _lease = Lease::acquire_with(dir.path(), "run-1", TTL, 1_000, &always).unwrap();
+        let record = read(&path(dir.path())).unwrap();
+        // A directory where the file belongs makes the rename fail.
+        let target = dir.path().join("sub").join("lease.json");
+        std::fs::create_dir_all(&target).unwrap();
+        assert!(write_atomic(&target, &record).is_err());
+        let leftovers: Vec<_> = std::fs::read_dir(target.parent().unwrap())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".tmp-"))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
     }
 
     fn take_lost_peek(session: &str) -> bool {

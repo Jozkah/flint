@@ -41,6 +41,8 @@ import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
 import { isBrowserTool } from '@/lib/browserAgent'
 import { BROWSER_TOOL_NAME } from '@/lib/browserTool'
 import { isVisualizeTool } from '@/lib/visualize/constants'
+import { executeChatRead, isChatReadTool } from '@/lib/chatReadTool'
+import { chatReadContextForSession } from '@/lib/chatMentionSources'
 import { executeVisualizeTool } from '@/lib/visualize/tools'
 import { attribute, sealed } from '@/lib/coworkPrompt'
 import {
@@ -409,12 +411,20 @@ function scopedInstructionsOwed(
   }
 }
 
-/** The user was asked to allow this call and said no. */
-function deniedByUser(toolName: string): ToolOutcome {
+/**
+ * The user was asked to allow this call and said no. Takes what the approval
+ * card left for this call -- the reason typed with the deny, which the model is
+ * told, and any command edit, which no longer applies -- so neither outlives it.
+ */
+function deniedByUser(toolName: string, toolCallId?: string): ToolOutcome {
+  const approvals = useToolApprovalRequests.getState()
+  const reason = toolCallId ? approvals.takeRefusalReason?.(toolCallId) : undefined
+  if (toolCallId) approvals.takeEditedInput?.(toolCallId)
   return {
     output:
-      `The user did not allow \`${toolName}\`. Do not retry it. Say what you ` +
-      'would have changed, and wait for instructions.',
+      `The user did not allow \`${toolName}\`. Do not retry it. ` +
+      (reason ? `Their reason: ${reason}. ` : '') +
+      'Say what you would have changed, and wait for instructions.',
     isError: true,
   }
 }
@@ -510,7 +520,7 @@ async function callMcpTool(
         }
       : {}),
   })
-  if (!allowed) return deniedByUser(toolName)
+  if (!allowed) return deniedByUser(toolName, call.toolCallId)
 
   try {
     const mcp = getServiceHub().mcp()
@@ -580,6 +590,7 @@ export async function dispatchCoworkTool(
 const READ_ONLY_TIMEOUT_MS = 45_000
 const BOUNDED_READ_TOOLS = new Set([
   'read', 'ls', 'find', 'grep', 'web_search', 'web_fetch', 'image_search',
+  'chat_read',
 ])
 
 /** Stop waiting when the run stops; bound reads that can otherwise hold a turn forever. */
@@ -1086,11 +1097,23 @@ async function routeCoworkTool(
           isError: true,
         }
       }
+      // The person rewrote the shell command before allowing it once: run what
+      // they approved, never the model's original. Only `bash` can be edited.
+      const edited = allowed
+        ? useToolApprovalRequests.getState().takeEditedInput?.(call.toolCallId)
+        : undefined
+      const runsEdited = edited !== undefined && toolName === 'bash'
+      if (runsEdited) {
+        call = { ...call, input: { ...(call.input as object), ...edited } }
+      }
       await recordToolActivity({
         ...permission,
         phase: allowed ? 'allowed' : 'refused',
+        ...(runsEdited
+          ? { detail: 'allowed after the user edited the command' }
+          : {}),
       })
-      if (!allowed) return deniedByUser(toolName)
+      if (!allowed) return deniedByUser(toolName, call.toolCallId)
     }
   }
 
@@ -1156,6 +1179,17 @@ async function routeCoworkTool(
       return viz.error !== undefined
         ? { output: viz.error, isError: true }
         : { output: viz.content ?? '' }
+    }
+
+    // Another conversation the user mentioned: local, read-only, bounded.
+    if (isChatReadTool(toolName)) {
+      const read = await executeChatRead(
+        call.input,
+        chatReadContextForSession(ctx.sessionId)
+      )
+      return read.error !== undefined
+        ? { output: read.error, isError: true }
+        : { output: read.content ?? '' }
     }
 
     if (WEB_TOOL_NAMES.has(toolName)) {

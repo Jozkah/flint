@@ -42,6 +42,7 @@ import { ExtensionManager } from '@/lib/extension'
 import { Loader2, Paperclip } from 'lucide-react'
 import { useProjectUploads } from '@/stores/project-uploads-store'
 import { collectFilesFromDirectory } from '@/lib/directoryWalk'
+import { namedFilePaths } from '@/lib/fileDrop'
 import { buildProjectFileTree, type TreeNode } from '@/lib/projectFileTree'
 
 type ProjectFilesProps = {
@@ -678,6 +679,34 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
         if ('path' in file && typeof file.path === 'string') {
           paths.push(file.path)
         }
+      }
+    }
+
+    // WebKitGTK may give no File objects (and Tauri's File has no `path`),
+    // but a file-manager drop names its files as URIs. Bare text paths are
+    // not taken: dragging `/home/me` out of a terminal is not an upload. A
+    // folder named this way is never walked without the user saying so.
+    if (paths.length === 0) {
+      // Bare text paths are not taken: dragging `/home/me` is not an upload.
+      const found = namedFilePaths(e.dataTransfer)
+      const named = found?.paths ?? []
+      const { fs } = await import('@janhq/core')
+      for (const p of named) {
+        const stat = await fs.fileStat(p).catch(() => undefined)
+        // Only GNOME's own drag type is trusted to attach by itself: a page
+        // can name any path in text a dragged link carries. Everything else is
+        // asked about, like a folder.
+        if (!stat?.isDirectory && found?.trusted) {
+          paths.push(p)
+          continue
+        }
+        const name = p.split(/[\\/]/).filter(Boolean).pop() || p
+        toast.info(t(stat?.isDirectory ? 'common:pastedPath.folder' : 'common:pastedPath.file', { name }), {
+          action: {
+            label: t('common:pastedPath.attach'),
+            onClick: () => void processFilePaths([p]),
+          },
+        })
       }
     }
 
