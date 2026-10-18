@@ -71,6 +71,17 @@ export type MailEnvelope = {
   depth: number
   /** `auto`: the sender's final answer, sent for it when its run did not reply. */
   origin: 'agent' | 'user' | 'auto'
+  /** The chain this message belongs to; stamped by the backend. */
+  chainId?: string
+  /** Hops along the chain; 0 for a message a person started. */
+  hops?: number
+  /** Sessions that sent along the chain, ending with the sender. */
+  chainPath?: string[]
+  /**
+   * Set when the backend held this message for the user instead of letting it
+   * wake its recipient: `chain_cycle`, `chain_wakes` or `wake_rate`.
+   */
+  hold?: string | null
 }
 
 /** The error codes the contract names, plus the renderer's own. */
@@ -89,6 +100,7 @@ export type MailboxErrorCode =
   | 'unknown_reply_target'
   | 'timeout'
   | 'target_unavailable'
+  | 'chain_limit_reached'
   | 'invalid_session_id'
   | 'unknown_message'
   | 'invalid_timeout'
@@ -124,6 +136,7 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<MailboxErrorCode>([
   'unknown_reply_target',
   'timeout',
   'target_unavailable',
+  'chain_limit_reached',
   'invalid_session_id',
   'unknown_message',
   'invalid_timeout',

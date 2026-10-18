@@ -30,6 +30,8 @@ export type QueuedMessageSender = {
   messageId: string
   replyTo?: string | null
   depth: number
+  /** The backend held it for the user (chain guard): never auto-woken. */
+  hold?: string | null
 }
 
 // Stable reference for empty queues so selectors don't trigger unnecessary re-renders
