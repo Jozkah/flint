@@ -367,7 +367,7 @@
     "open": "Leisten der Sitzung anzeigen",
     "waiting": "Wartet auf dich: {{count}}",
     "files": "Dateien bereit zur Prüfung: {{count}}",
-    "branch": "Branch: {{branch}}"
+    "branch": "Zweig: {{branch}}"
   },
   "coworkLayout": {
     "views": "Cowork-Ansicht",

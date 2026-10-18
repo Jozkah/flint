@@ -369,7 +369,7 @@
     "open": "Mostrar as barras da sessão",
     "waiting": "Aguardando você: {{count}}",
     "files": "Arquivos prontos para revisão: {{count}}",
-    "branch": "Branch: {{branch}}"
+    "branch": "Ramificação: {{branch}}"
   },
   "coworkLayout": {
     "views": "Visualização do Cowork",

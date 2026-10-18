@@ -22,6 +22,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { BarRowCompact } from '@/components/ui/bar-row'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 
@@ -70,6 +71,8 @@ export type NarrowStatusStripProps = {
   onWaiting?: () => void
   /** Opens the sheet with the full bars. */
   onOpen: () => void
+  /** A phone: the most urgent item with its words, and "+N" for the rest. */
+  condensed?: boolean
 }
 
 const CHIP =
@@ -89,6 +92,7 @@ export function NarrowStatusStrip({
   branch,
   onWaiting,
   onOpen,
+  condensed = false,
 }: NarrowStatusStripProps) {
   const { t } = useTranslation()
   // The row never wraps: when its chips do not fit (a large interface font
@@ -120,78 +124,107 @@ export function NarrowStatusStrip({
     e.stopPropagation()
     onOpen()
   }
-  return (
-    <div
-      role="group"
-      aria-label={t('common:coworkStrip.label')}
-      ref={rowRef}
-      data-testid="narrow-status-strip"
-      // The strip itself is a target too; its keyboard twin is the last button.
-      onClick={anyBar ? onOpen : undefined}
-      className="mb-1.5 flex h-9 min-w-0 items-center gap-0.5 overflow-hidden rounded-[10px] bg-muted px-1 shadow-[inset_0_0_0_0.8px_var(--border)] pointer-coarse:h-11"
-    >
-      {waiting > 0 && (
-        <button
-          type="button"
-          data-testid="strip-chip-waiting"
-          aria-label={t('common:coworkStrip.waiting', { count: waiting })}
-          onClick={(e) => {
-            e.stopPropagation()
-            onWaiting?.()
-          }}
-          className={cn(CHIP, 'bg-warning/15 text-warning hover:bg-warning/25')}
-        >
+  type Chip = {
+    id: string
+    aria: string
+    /** The words a condensed strip shows beside the first chip's icon. */
+    label: string
+    body: ReactNode
+    className?: string
+    onClick: (e: MouseEvent) => void
+  }
+  const chips: Chip[] = []
+  if (waiting > 0)
+    chips.push({
+      id: 'waiting',
+      aria: t('common:coworkStrip.waiting', { count: waiting }),
+      label: t('common:waitingForYou'),
+      body: (
+        <>
           <Hand className="size-3.5" aria-hidden />
           {waiting}
-        </button>
-      )}
-      {summary.trust && (
-        <button
-          type="button"
-          data-testid="strip-chip-trust"
-          aria-label={t('permissions:folderTrust.title')}
-          onClick={open}
-          className={cn(CHIP, 'text-warning')}
-        >
-          <ShieldQuestionIcon className="size-3.5" aria-hidden />
-        </button>
-      )}
-      {summary.files && files && (
-        <button
-          type="button"
-          data-testid="strip-chip-files"
-          aria-label={t('common:coworkStrip.files', { count: files.count })}
-          onClick={open}
-          className={CHIP}
-        >
+        </>
+      ),
+      className: 'bg-warning/15 text-warning hover:bg-warning/25',
+      onClick: (e) => {
+        e.stopPropagation()
+        onWaiting?.()
+      },
+    })
+  if (summary.trust)
+    chips.push({
+      id: 'trust',
+      aria: t('permissions:folderTrust.title'),
+      label: t('permissions:folderTrust.trust'),
+      body: <ShieldQuestionIcon className="size-3.5" aria-hidden />,
+      className: 'text-warning',
+      onClick: open,
+    })
+  if (summary.files && files)
+    chips.push({
+      id: 'files',
+      aria: t('common:coworkStrip.files', { count: files.count }),
+      label: t('common:coworkReview.ready', { count: files.count }),
+      body: (
+        <>
           <FileDiff className="size-3.5" aria-hidden />
           {files.count}
           <span data-strip-diff="" hidden={tight} className="font-mono">
             <span className="text-diff-add">+{files.additions}</span>{' '}
             <span className="text-diff-del">−{files.deletions}</span>
           </span>
-        </button>
-      )}
-      {summary.branch && (
+        </>
+      ),
+      onClick: open,
+    })
+  if (summary.branch)
+    chips.push({
+      id: 'branch',
+      aria: t('common:coworkStrip.branch', { branch: branch ?? '' }),
+      label: branch ?? '',
+      body: <GitBranch className="size-3.5" aria-hidden />,
+      onClick: open,
+    })
+  // A condensed strip (a phone) shows the most urgent item with its words
+  // and counts the rest; a wider one shows every chip.
+  const shown = condensed ? chips.slice(0, 1) : chips
+  const rest =
+    (condensed ? chips.length - shown.length : 0) + summary.more
+  return (
+    <div
+      role="group"
+      aria-label={t('common:coworkStrip.label')}
+      ref={rowRef}
+      data-testid="narrow-status-strip"
+      data-condensed={condensed ? '' : undefined}
+      // The strip itself is a target too; its keyboard twin is the last button.
+      onClick={anyBar ? onOpen : undefined}
+      className="mb-1.5 flex h-9 min-w-0 items-center gap-0.5 overflow-hidden rounded-[10px] bg-muted px-1 shadow-[inset_0_0_0_0.8px_var(--border)] pointer-coarse:h-11"
+    >
+      {shown.map((c) => (
         <button
+          key={c.id}
           type="button"
-          data-testid="strip-chip-branch"
-          aria-label={t('common:coworkStrip.branch', { branch: branch ?? '' })}
-          onClick={open}
-          className={CHIP}
+          data-testid={`strip-chip-${c.id}`}
+          aria-label={c.aria}
+          onClick={c.onClick}
+          className={cn(CHIP, c.className)}
         >
-          <GitBranch className="size-3.5" aria-hidden />
+          {c.body}
+          {condensed && c.label && (
+            <span className="font-sans">{c.label}</span>
+          )}
         </button>
-      )}
-      {summary.more > 0 && (
+      ))}
+      {rest > 0 && (
         <button
           type="button"
           data-testid="strip-chip-more"
-          aria-label={t('common:coworkBars.showMore', { count: summary.more })}
+          aria-label={t('common:coworkBars.showMore', { count: rest })}
           onClick={open}
           className={CHIP}
         >
-          +{summary.more}
+          +{rest}
         </button>
       )}
       {anyBar && (
@@ -266,15 +299,18 @@ export function NarrowBarsSheet({
   return (
     <>
       <div ref={setPark} hidden={!inline || open} />
-      {createPortal(children, el)}
+      {createPortal(
+        <BarRowCompact value={open}>{children}</BarRowCompact>,
+        el
+      )}
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="bottom"
           data-testid="narrow-bars-sheet"
-          className="max-h-[80dvh] gap-0 overflow-y-auto rounded-t-xl pb-[max(env(safe-area-inset-bottom),12px)] sm:mx-auto sm:max-w-[780px] sm:border-x"
+          className="max-h-[60dvh] gap-0 overflow-y-auto rounded-t-xl pb-[max(env(safe-area-inset-bottom),12px)] sm:mx-auto sm:max-w-[780px] sm:border-x"
         >
-          <SheetHeader className="pb-2">
-            <SheetTitle>{t('common:coworkStrip.label')}</SheetTitle>
+          <SheetHeader className="px-4 pt-3 pb-1.5">
+            <SheetTitle className="text-sm">{t('common:coworkStrip.label')}</SheetTitle>
             <SheetDescription className="sr-only">
               {t('common:coworkStrip.open')}
             </SheetDescription>

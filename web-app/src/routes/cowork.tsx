@@ -5501,6 +5501,9 @@ export function CoworkPage() {
   // into one Run chip under the composer.
   const windowCompact = useMediaQuery('(max-width: 900px)')
   const compactRun = paneWidth != null ? paneWidth <= 900 : windowCompact
+  // A phone (640px and below): the status strip names only its most urgent item.
+  const windowPhoneStrip = useMediaQuery('(max-width: 640px)')
+  const phoneStrip = paneWidth != null ? paneWidth <= 640 : windowPhoneStrip
   const [phoneView, setPhoneView] = useState<CoworkPhoneView>('content')
   const view: CoworkPhoneView = phone ? phoneView : 'content'
   const transcriptScroll = useRef<number | null>(null)
@@ -6677,6 +6680,7 @@ export function CoworkPage() {
                         if (waitingIds[0]) void scrollToApproval(waitingIds[0])
                       }}
                       onOpen={() => setBarsSheetOpen(true)}
+                      condensed={phoneStrip}
                     />
                     )}
                     <NarrowBarsSheet

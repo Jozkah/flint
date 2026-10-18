@@ -52,11 +52,13 @@ function Bars({ onAct, trust = true }: { onAct: (n: string) => void; trust?: boo
 function Harness({
   waiting = 1,
   trust = true,
+  condensed = false,
   onAct = () => {},
   onWaiting = () => {},
 }: {
   waiting?: number
   trust?: boolean
+  condensed?: boolean
   onAct?: (n: string) => void
   onWaiting?: () => void
 }) {
@@ -71,6 +73,7 @@ function Harness({
         branch="flint/radar-retry"
         onWaiting={onWaiting}
         onOpen={() => setOpen(true)}
+        condensed={condensed}
       />
       <NarrowBarsSheet open={open} onOpenChange={setOpen} onSummary={setSummary}>
         <Bars onAct={onAct} trust={trust} />
@@ -104,6 +107,23 @@ describe('NarrowStatusStrip', () => {
       'aria-label',
       'common:coworkStrip.branch flint/radar-retry'
     )
+  })
+
+  it('on a phone names the most urgent item and counts the rest', async () => {
+    render(<Harness condensed />)
+    await waitFor(() =>
+      expect(chipIds()).toEqual(['strip-chip-waiting', 'strip-chip-more', 'strip-open'])
+    )
+    expect(screen.getByTestId('strip-chip-waiting')).toHaveTextContent('common:waitingForYou')
+    // trust, files, branch and the PR bar
+    expect(screen.getByTestId('strip-chip-more')).toHaveTextContent('+4')
+  })
+
+  it('on a phone without an approval the trust question leads', async () => {
+    render(<Harness condensed waiting={0} />)
+    await waitFor(() => expect(chipIds()[0]).toBe('strip-chip-trust'))
+    expect(screen.getByTestId('strip-chip-trust')).toHaveTextContent('permissions:folderTrust.trust')
+    expect(screen.getByTestId('strip-chip-more')).toHaveTextContent('+3')
   })
 
   it('drops chips for bars that are gone', async () => {
