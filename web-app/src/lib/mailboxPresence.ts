@@ -24,7 +24,7 @@ type PresenceMailbox = Pick<
   SessionMailbox,
   'register' | 'setStatus' | 'heartbeat' | 'remove' | 'revive'
 > &
-  Partial<Pick<SessionMailbox, 'setWaiting'>>
+  Partial<Pick<SessionMailbox, 'setWaiting' | 'setArchived'>>
 
 function safe(label: string, fn: () => Promise<unknown>): void {
   try {
@@ -52,16 +52,25 @@ const archivedSessions = new Set<string>()
 /**
  * The session is leaving the list because it was archived, not deleted. The
  * backend tombstone for a deleted id can never be registered again, so an
- * archived session must not get one or a restore could not register it.
+ * archived session must not get one or a restore could not register it. The
+ * backend is told it is archived: mail to it is refused and `list_sessions`
+ * leaves it out (live test 9a).
  */
 export function notifySessionArchived(sessionId: string): void {
-  if (!removedSessions.has(sessionId)) archivedSessions.add(sessionId)
+  if (removedSessions.has(sessionId)) return
+  archivedSessions.add(sessionId)
+  const setArchived = removalMailbox.setArchived
+  if (setArchived) safe('archive', () => setArchived(sessionId, true))
 }
 
 /** The session is back in the list (a restore): forget any removal state. */
 export function notifySessionRestored(sessionId: string): void {
   archivedSessions.delete(sessionId)
   removedSessions.delete(sessionId)
+  // Registering again also restores it; this covers the archive having
+  // happened in an earlier run of the app.
+  const setArchived = removalMailbox.setArchived
+  if (setArchived) safe('unarchive', () => setArchived(sessionId, false))
 }
 
 const acceptsMessages = (sessionId: string) =>

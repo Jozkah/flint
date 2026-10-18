@@ -64,7 +64,7 @@ import {
 } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
-import { useNeedsApproval } from '@/hooks/useNeedsApproval'
+import { useHeldMailCount, useWaitingOnUser } from '@/hooks/useHeldMail'
 import { usePrompt } from '@/hooks/usePrompt'
 import { OpenInSubmenu } from '@/components/shell/nav/OpenInSubmenu'
 import { CursorAnchor, useCursorAnchor } from '@/components/shell/nav/CursorAnchor'
@@ -153,7 +153,7 @@ const SessionItem = memo(function SessionItem({
     useCoworkRun((s) => !!s.runs[session.id]) ||
     (session.remote === true && session.remoteStatus === 'running')
   const waiting =
-    useNeedsApproval(session.id) ||
+    useWaitingOnUser(session.id) ||
     (session.remote === true && session.remoteStatus?.startsWith('awaiting') === true)
   // The session's own worktree when it has one: the card names the repository
   // it was cut from and its branch, and the pull requests are its branch's.
@@ -460,8 +460,11 @@ function SessionMark({
   // The session's own worktree when it has one: its branch, not the folder's.
   const worktreePath = useCoworkWorktrees((s) => s.bySession[session.id]?.path)
   const pr = usePrStatus(worktreePath ?? session.folder, session.id)
-  // Waiting on the user: a tool approval or a question the run asked.
-  const waiting = useNeedsApproval(session.id)
+  // Waiting on the user: a tool approval, a question the run asked, or mail
+  // from another session held for them.
+  const waiting = useWaitingOnUser(session.id)
+  const heldMail = useHeldMailCount(session.id)
+  const { t } = useTranslation()
   const recency = useThreadStatus(
     { updated: session.updated },
     running,
@@ -481,10 +484,27 @@ function SessionMark({
           : pr.state
         : recency
   return (
-    <ThreadStatusMark
-      status={status}
-      detail={pr ? `#${pr.number}` : undefined}
-    />
+    <span className="relative inline-flex shrink-0">
+      <ThreadStatusMark
+        status={status}
+        detail={
+          heldMail > 0
+            ? t('messaging:waitingCount', { count: heldMail })
+            : pr
+              ? `#${pr.number}`
+              : undefined
+        }
+      />
+      {heldMail > 1 && (
+        <span
+          data-testid="held-mail-count"
+          aria-hidden
+          className="absolute -top-1.5 -right-1.5 min-w-3 rounded-full bg-warning px-0.5 text-center text-[length:calc(var(--ui-font-base)*0.5625)] leading-3 font-medium text-background"
+        >
+          {heldMail > 9 ? '9+' : heldMail}
+        </span>
+      )}
+    </span>
   )
 }
 

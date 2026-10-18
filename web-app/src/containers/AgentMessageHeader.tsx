@@ -59,7 +59,10 @@ export function AgentMessageHeader({
     <div data-testid="agent-message-header" className="mb-1 text-xs">
       <div className="flex items-center gap-2 opacity-80">
         <Mail size={12} aria-hidden className="shrink-0" />
-        <span>{t('messaging:messageFrom', { name: message.displayName })}</span>
+        {/* The untrusted note stays one hover away instead of repeating. */}
+        <span title={t('messaging:untrustedNote')}>
+          {t('messaging:messageFrom', { name: message.displayName })}
+        </span>
         {receiver && !replying && (
           <Button
             size="sm"

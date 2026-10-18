@@ -40,7 +40,8 @@
     "notSent": "未发送",
     "open": "打开",
     "openLabel": "打开 {{name}}",
-    "untrusted": "该回答是另一个会话的文本，不是你的。"
+    "untrusted": "该回答是另一个会话的文本，不是你的。",
+    "notSentReason": "未发送：{{reason}}"
   },
   "errors": {
     "invalid_text": "回复必须为 1 到 8000 个字符。",
@@ -65,6 +66,19 @@
     "not_available": "此处无法使用消息功能。",
     "io": "无法读取或写入邮箱。",
     "no_data_folder": "Flint 的数据文件夹不可用。",
-    "unknown": "无法发送回复。"
-  }
+    "unknown": "无法发送回复。",
+    "chain_limit_reached": "这条消息在会话之间转发的次数过多。请由你继续。",
+    "session_archived": "该会话已归档。",
+    "unknownRefusal": "消息被拒绝。"
+  },
+  "chainLimitHeld": "已达到链条上限，正在等待你。这条消息由其他会话转发而来，因此没有唤醒此会话。",
+  "moreHeld": "另外 {{count}} 条",
+  "dismissAll": "全部忽略",
+  "waitingNotice": "来自 {{name}} 的消息等待处理",
+  "heldBanner_one": "有 {{count}} 条来自其他会话的消息在等你",
+  "heldBanner_other": "有 {{count}} 条来自其他会话的消息在等你",
+  "waitingCount_one": "{{count}} 条消息等待中",
+  "waitingCount_other": "{{count}} 条消息等待中",
+  "waitingIn_one": "{{session}} 中有 {{count}} 条消息",
+  "waitingIn_other": "{{session}} 中有 {{count}} 条消息"
 }

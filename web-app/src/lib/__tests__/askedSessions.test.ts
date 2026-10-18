@@ -55,4 +55,45 @@ describe('askedFromParts', () => {
     expect(out[2].sessionId).toBeNull()
     expect(out[2].name).toBe('Beta')
   })
+  it('treats a failed call (output-error) as finished, with its reason', () => {
+    const errorText =
+      'ERROR: ' +
+      JSON.stringify({
+        error: { code: 'recipient_opted_out', message: 'no messages' },
+      })
+    const [a] = askedFromParts([
+      part({ state: 'output-error', output: undefined, errorText }),
+    ])
+    expect(a.status).toBe('notSent')
+    expect(a.reason).toBe('recipient_opted_out')
+  })
+
+  it('names the refusal code of every refused send', () => {
+    const codes = [
+      'rate_limited',
+      'self_target',
+      'unknown_session',
+      'chain_limit_reached',
+      'session_archived',
+    ]
+    const out = askedFromParts(
+      codes.map((code, i) =>
+        part({
+          toolCallId: `x${i}`,
+          output:
+            'ERROR: ' + JSON.stringify({ error: { code, message: 'no' } }),
+        })
+      )
+    )
+    expect(out.map((o) => [o.status, o.reason])).toEqual(
+      codes.map((c) => ['notSent', c])
+    )
+  })
+
+  it('a failed call with no parsable reason still finishes', () => {
+    const [a] = askedFromParts([
+      part({ state: 'output-error', output: undefined, errorText: 'boom' }),
+    ])
+    expect(a).toMatchObject({ status: 'notSent', reason: null })
+  })
 })

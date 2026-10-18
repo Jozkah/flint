@@ -40,7 +40,8 @@
     "notSent": "Not sent",
     "open": "Open",
     "openLabel": "Open {{name}}",
-    "untrusted": "The answer is another session's text, not yours."
+    "untrusted": "The answer is another session's text, not yours.",
+    "notSentReason": "Not sent: {{reason}}"
   },
   "errors": {
     "invalid_text": "The reply must be between 1 and 8000 characters.",
@@ -65,6 +66,19 @@
     "not_available": "Messaging is not available here.",
     "io": "The mailbox could not be read or written.",
     "no_data_folder": "Flint's data folder is unavailable.",
-    "unknown": "The reply could not be sent."
-  }
+    "unknown": "The reply could not be sent.",
+    "chain_limit_reached": "The message was passed on between sessions too many times. Continue it yourself.",
+    "session_archived": "That session is archived.",
+    "unknownRefusal": "The message was refused."
+  },
+  "chainLimitHeld": "Chain limit reached, waiting for you. This message was passed along by other sessions, so it did not wake this one.",
+  "moreHeld": "+{{count}} more",
+  "dismissAll": "Dismiss all",
+  "waitingNotice": "Message from {{name}} waiting",
+  "heldBanner_one": "{{count}} message from another session is waiting for you",
+  "heldBanner_other": "{{count}} messages from other sessions are waiting for you",
+  "waitingCount_one": "{{count}} message waiting",
+  "waitingCount_other": "{{count}} messages waiting",
+  "waitingIn_one": "{{count}} message in {{session}}",
+  "waitingIn_other": "{{count}} messages in {{session}}"
 }

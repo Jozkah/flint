@@ -407,6 +407,7 @@ export const DESKTOP_ONLY_GROUPS: ReadonlyArray<{ reason: string; commands: read
       'mailbox_mark_read',
       'mailbox_pending',
       'mailbox_reply',
+      'mailbox_session_archive',
       'mailbox_session_heartbeat',
       'mailbox_session_register',
       'mailbox_session_remove',

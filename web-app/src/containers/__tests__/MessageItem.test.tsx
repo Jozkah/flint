@@ -128,6 +128,7 @@ vi.mock('@/hooks/useToolApprovalRequests', () => ({
 // Import after mocks
 import { MessageItem } from '../MessageItem'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
+import { wrapForModel } from '@/lib/sessionMailbox'
 
 const makeMsg = (overrides: any = {}) => ({
   id: 'msg-1',
@@ -165,6 +166,56 @@ describe('MessageItem', () => {
     expect(anchor.style.left).toBe('100px')
     expect(anchor.style.top).toBe('50px')
     expect(await screen.findByRole('menu')).toBeTruthy()
+  })
+
+  it('shows only the text of a delivered agent message, not the harness fence', () => {
+    useInterfaceSettings.setState({ renderUserMarkdown: false })
+    const text = wrapForModel({
+      v: 1,
+      id: 'msg-1a-0',
+      from: { sessionId: 'S1', displayName: 'Alpha' },
+      to: { sessionId: 'S2' },
+      project: 'p',
+      text: 'Hello from Alpha, please count the lines',
+      createdAt: 0,
+      replyTo: null,
+      depth: 0,
+      origin: 'agent',
+    })
+    const { container } = render(
+      <MessageItem
+        message={makeMsg({
+          role: 'user',
+          parts: [{ type: 'text', text }],
+          metadata: {
+            createdAt: new Date(),
+            agentMessage: { sessionId: 'S1', displayName: 'Alpha', messageId: 'msg-1a-0' },
+          },
+        }) as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    const bubble = container.querySelector('[data-slot="user-bubble"]') as HTMLElement
+    expect(bubble).toHaveTextContent('Hello from Alpha, please count the lines')
+    expect(bubble.textContent).not.toContain('Coordination message')
+    expect(bubble.textContent).not.toContain('MAIL-msg-1a-0')
+    expect(bubble.textContent).not.toContain('End of coordination message')
+  })
+
+  it('leaves a typed message that only looks like the fence alone', () => {
+    useInterfaceSettings.setState({ renderUserMarkdown: false })
+    const text = '[Coordination message from session "x" typed by hand'
+    const { container } = render(
+      <MessageItem
+        message={makeMsg({ role: 'user', parts: [{ type: 'text', text }] }) as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+      />
+    )
+    expect(container.querySelector('[data-slot="user-bubble"]')).toHaveTextContent(text)
   })
 
   it('renders the continue-from-summary seed as Markdown', () => {

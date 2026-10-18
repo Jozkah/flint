@@ -40,7 +40,8 @@
     "notSent": "Nie wysłano",
     "open": "Otwórz",
     "openLabel": "Otwórz {{name}}",
-    "untrusted": "Odpowiedź to tekst innej sesji, a nie Twój."
+    "untrusted": "Odpowiedź to tekst innej sesji, a nie Twój.",
+    "notSentReason": "Nie wysłano: {{reason}}"
   },
   "errors": {
     "invalid_text": "Odpowiedź musi mieć od 1 do 8000 znaków.",
@@ -65,6 +66,25 @@
     "not_available": "Wiadomości nie są tutaj dostępne.",
     "io": "Nie udało się odczytać ani zapisać skrzynki.",
     "no_data_folder": "Folder danych Flint jest niedostępny.",
-    "unknown": "Nie udało się wysłać odpowiedzi."
-  }
+    "unknown": "Nie udało się wysłać odpowiedzi.",
+    "chain_limit_reached": "Wiadomość była przekazywana między sesjami zbyt wiele razy. Kontynuuj samodzielnie.",
+    "session_archived": "Ta sesja jest zarchiwizowana.",
+    "unknownRefusal": "Wiadomość została odrzucona."
+  },
+  "chainLimitHeld": "Osiągnięto limit łańcucha, czeka na ciebie. Tę wiadomość przekazały inne sesje, więc nie wybudziła tej sesji.",
+  "moreHeld": "Więcej: {{count}}",
+  "dismissAll": "Odrzuć wszystkie",
+  "waitingNotice": "Czeka wiadomość od {{name}}",
+  "heldBanner_one": "Czeka na ciebie {{count}} wiadomość z innej sesji",
+  "heldBanner_few": "Czekają na ciebie {{count}} wiadomości z innych sesji",
+  "heldBanner_many": "Czeka na ciebie {{count}} wiadomości z innych sesji",
+  "heldBanner_other": "Czeka na ciebie {{count}} wiadomości z innych sesji",
+  "waitingCount_one": "{{count}} wiadomość czeka",
+  "waitingCount_few": "{{count}} wiadomości czekają",
+  "waitingCount_many": "{{count}} wiadomości czeka",
+  "waitingCount_other": "{{count}} wiadomości czeka",
+  "waitingIn_one": "{{count}} wiadomość w {{session}}",
+  "waitingIn_few": "{{count}} wiadomości w {{session}}",
+  "waitingIn_many": "{{count}} wiadomości w {{session}}",
+  "waitingIn_other": "{{count}} wiadomości w {{session}}"
 }

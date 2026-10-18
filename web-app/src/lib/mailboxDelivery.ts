@@ -234,6 +234,7 @@ export function envelopeToQueued(
       messageId: envelope.id,
       replyTo: envelope.replyTo ?? null,
       depth: envelope.depth,
+      ...(envelope.hold ? { hold: envelope.hold } : {}),
     },
   }
 }
@@ -271,13 +272,19 @@ export function createMailboxDelivery(
     }
   }
 
-  /** Held mail that a wake-up may release now, given the loop guard. */
-  const wakeable = (sid: string) => {
+  /**
+   * Whether a wake-up may release this held message: mail the backend held
+   * for its chain guard (`from.hold`) waits for the user, and so does a reply
+   * while the session's last run was itself a wake-up.
+   */
+  const mayWake = (sid: string, m: QueuedMessage) => {
+    if (!m.held || !m.from || m.from.hold) return false
     const { lastRunWasWake } = useSessionMessaging.getState()
-    return queueOf(sid).filter(
-      (m) => m.held && m.from && !(m.from.depth > 0 && lastRunWasWake[sid])
-    )
+    return !(m.from.depth > 0 && lastRunWasWake[sid])
   }
+
+  /** Held mail that a wake-up may release now, given the loop guard. */
+  const wakeable = (sid: string) => queueOf(sid).filter((m) => mayWake(sid, m))
 
   /**
    * Release this session's held mail if Automatic wake-ups allow it: the
@@ -289,7 +296,7 @@ export function createMailboxDelivery(
    * sessions cannot wake each other in a loop.
    */
   const applyAutoWake = (sid: string) => {
-    const { autoWake, lastRunWasWake } = useSessionMessaging.getState()
+    const { autoWake } = useSessionMessaging.getState()
     if (autoWake[sid] === false) return
     if (isRunning(sid)) return
     if (!isSessionInView(sid)) {
@@ -302,8 +309,7 @@ export function createMailboxDelivery(
     }
     let released = false
     for (const m of queueOf(sid)) {
-      if (!m.held || !m.from) continue
-      if (m.from.depth > 0 && lastRunWasWake[sid]) continue
+      if (!mayWake(sid, m)) continue
       useMessageQueue.getState().release(sid, m.id)
       released = true
     }

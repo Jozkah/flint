@@ -427,6 +427,33 @@ import { deletePromptSnapshots } from '@/lib/promptSnapshotRetention'
 
 const now = () => Date.now()
 
+const timeOf = (m: UIMessage): unknown =>
+  (m.metadata as { createdAt?: unknown } | undefined)?.createdAt
+
+/**
+ * Every stored message keeps the time it was first stored with. A message
+ * without one (assistant replies, delivered mail) used to be shown with the
+ * time it was rendered, so after a restart old messages read as new (live
+ * test 10). It takes the time it had when last stored, or `at`.
+ */
+function withStoredTimes(
+  before: readonly UIMessage[],
+  next: UIMessage[],
+  at: number
+): UIMessage[] {
+  if (next.every((m) => timeOf(m) !== undefined)) return next
+  let previous: Map<string, unknown> | null = null
+  return next.map((m) => {
+    if (timeOf(m) !== undefined) return m
+    previous ??= new Map(before.map((b) => [b.id, timeOf(b)]))
+    const createdAt = previous.get(m.id) ?? new Date(at)
+    return {
+      ...m,
+      metadata: { ...((m.metadata as object | undefined) ?? {}), createdAt },
+    }
+  })
+}
+
 /** An imported session's usage, normalised the same way a live one is. */
 function importedUsage(raw: unknown): Usage | undefined {
   const usage = fromCoworkUsage(
@@ -771,7 +798,13 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       setMessages: (id, messages) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
-            x.id === id ? { ...x, messages, updated: now() } : x
+            x.id === id
+              ? {
+                  ...x,
+                  messages: withStoredTimes(x.messages, messages, now()),
+                  updated: now(),
+                }
+              : x
           ),
         })),
 

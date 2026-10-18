@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({
@@ -127,6 +127,60 @@ describe('CoworkHeldInput with mail', () => {
     q().enqueue('A', envelopeToQueued(envelope(), false))
     const { container } = render(<CoworkHeldInput sessionId="A" running />)
     expect(container).toBeEmptyDOMElement()
+  })
+
+  const many = (n: number) => {
+    // Enqueued newest first, so the stack has to order them itself.
+    for (let i = n; i >= 1; i--) {
+      const e = { ...envelope(`flood ${i}`), id: `m${i}`, createdAt: i * 60_000 }
+      q().enqueue('A', envelopeToQueued(e, true))
+    }
+  }
+
+  it('says once per stack that the mail is untrusted, with a time on every card', () => {
+    many(2)
+    render(<CoworkHeldInput sessionId="A" running={false} />)
+    const stack = screen.getByTestId('cowork-held-mail')
+    expect(stack.querySelectorAll('[data-testid="held-mail-untrusted"]')).toHaveLength(1)
+    expect(stack).not.toHaveTextContent(/messaging:untrustedNote.*messaging:untrustedNote/)
+    const times = stack.querySelectorAll('time')
+    expect(times).toHaveLength(2)
+    expect(times[0].getAttribute('dateTime')).toBe(new Date(60_000).toISOString())
+  })
+
+  it('shows the three oldest cards, then "+N more", and dismisses all', () => {
+    many(5)
+    render(<CoworkHeldInput sessionId="A" running={false} />)
+    const texts = screen.getAllByTestId('agent-message-text').map((n) => n.textContent)
+    expect(texts).toEqual(['flood 1', 'flood 2', 'flood 3'])
+    const more = screen.getByTestId('held-mail-more')
+    expect(more).toHaveTextContent('messaging:moreHeld#2')
+    fireEvent.click(more)
+    expect(screen.getAllByTestId('agent-message-text')).toHaveLength(5)
+    fireEvent.click(screen.getByTestId('held-mail-dismiss-all'))
+    expect(q().getQueue('A')).toEqual([])
+    expect(markRead).toHaveBeenCalledWith('A', ['m1', 'm2', 'm3', 'm4', 'm5'])
+  })
+
+  it('announces itself: a banner that is scrolled into view when mail arrives', async () => {
+    const scrolled = vi.fn()
+    Element.prototype.scrollIntoView = scrolled
+    render(<CoworkHeldInput sessionId="A" running={false} />)
+    act(() => {
+      many(1)
+    })
+    const banner = await screen.findByTestId('held-mail-banner')
+    expect(banner).toHaveTextContent('messaging:heldBanner#1')
+    await waitFor(() => expect(scrolled).toHaveBeenCalled())
+  })
+
+  it('a message held by the chain guard says the chain limit was reached', () => {
+    const e = { ...envelope('relay'), hold: 'chain_cycle', hops: 3 }
+    q().enqueue('A', envelopeToQueued(e, true))
+    render(<CoworkHeldInput sessionId="A" running={false} />)
+    expect(screen.getByTestId('held-mail-chain-limit')).toHaveTextContent(
+      'messaging:chainLimitHeld'
+    )
   })
 })
 

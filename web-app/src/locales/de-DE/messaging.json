@@ -40,7 +40,8 @@
     "notSent": "Nicht gesendet",
     "open": "Öffnen",
     "openLabel": "{{name}} öffnen",
-    "untrusted": "Die Antwort ist der Text einer anderen Sitzung, nicht deiner."
+    "untrusted": "Die Antwort ist der Text einer anderen Sitzung, nicht deiner.",
+    "notSentReason": "Nicht gesendet: {{reason}}"
   },
   "errors": {
     "invalid_text": "Die Antwort muss zwischen 1 und 8000 Zeichen lang sein.",
@@ -65,6 +66,19 @@
     "not_available": "Nachrichten sind hier nicht verfügbar.",
     "io": "Das Postfach konnte nicht gelesen oder geschrieben werden.",
     "no_data_folder": "Der Datenordner von Flint ist nicht verfügbar.",
-    "unknown": "Die Antwort konnte nicht gesendet werden."
-  }
+    "unknown": "Die Antwort konnte nicht gesendet werden.",
+    "chain_limit_reached": "Die Nachricht wurde zu oft zwischen Sitzungen weitergegeben. Mach selbst weiter.",
+    "session_archived": "Diese Sitzung ist archiviert.",
+    "unknownRefusal": "Die Nachricht wurde abgelehnt."
+  },
+  "chainLimitHeld": "Kettenlimit erreicht, wartet auf dich. Diese Nachricht wurde von anderen Sitzungen weitergereicht und hat diese deshalb nicht geweckt.",
+  "moreHeld": "{{count}} weitere",
+  "dismissAll": "Alle verwerfen",
+  "waitingNotice": "Nachricht von {{name}} wartet",
+  "heldBanner_one": "{{count}} Nachricht aus einer anderen Sitzung wartet auf dich",
+  "heldBanner_other": "{{count}} Nachrichten aus anderen Sitzungen warten auf dich",
+  "waitingCount_one": "{{count}} Nachricht wartet",
+  "waitingCount_other": "{{count}} Nachrichten warten",
+  "waitingIn_one": "{{count}} Nachricht in {{session}}",
+  "waitingIn_other": "{{count}} Nachrichten in {{session}}"
 }

@@ -45,10 +45,46 @@ reads as `unavailable`.
 | Wait for a reply | 1 to 120 s |
 | Retention | 7 days |
 
+| Chain length | 4 hops (`[messaging] max_hops`) |
+| Wake-ups one chain causes in one session | 3 |
+| Wake-ups by relayed mail per session | 6 per 60 s |
+
 Refusals are typed (`rate_limited`, `pair_limit_exceeded`,
-`reply_depth_exceeded`, `self_target`, `recipient_opted_out`, ...). A session
-cannot message itself. A loop A -> B -> A made of replies stops at the depth
-cap; a loop made of fresh sends stops at the rate limits.
+`reply_depth_exceeded`, `chain_limit_reached`, `self_target`,
+`recipient_opted_out`, `session_archived`, ...). A session cannot message
+itself, by id or by its own title.
+
+### Chains (loop guard)
+
+Every envelope carries a `chainId`, a `hops` count and the `chainPath` of
+sessions that sent along it. The backend stamps them; no tool argument can set
+or reset them:
+
+- A message the user sends (the Reply form), or one an agent sends in a run
+  the user started, starts a chain: `hops` 0, `chainId` its own id.
+- When mail is handed to a session (`mailbox_claim`, `mailbox_take_for_delivery`)
+  the session's registry record arms that chain; the next run start takes it
+  (a run nothing handed mail to starts clean). A message sent by that run
+  continues the chain at `hops + 1`; an automatic reply continues the message
+  it answers.
+- A send whose `hops` would reach `max_hops` (default 4) is refused with
+  `chain_limit_reached`, telling the agent to ask the user. So a ring of N
+  sessions told to forward a message wakes at most `max_hops` sessions.
+- Mail that would revisit a session already in the chain twice
+  (`chain_cycle`), the 4th wake-up of one session by one chain
+  (`chain_wakes`), or the 7th wake-up of one session by relayed mail within a
+  minute (`wake_rate`) is delivered with a `hold` reason: it never auto-wakes
+  its recipient, which shows it as "Chain limit reached, waiting for you".
+
+`max_hops` is read from the sender's project `.jan/agent/agent.toml`:
+
+```toml
+[messaging]
+max_hops = 3   # 1..=16; an untrusted folder may only lower the default
+```
+
+Chain fields are persisted with the mail and the registry, so they survive a
+restart.
 
 ## Opt-out
 
@@ -58,8 +94,9 @@ turned it off is still listed, but sends to it are refused with
 
 ## Tools (Cowork sessions only)
 
-- `list_sessions` -- other sessions: id, title, folder, status, accepts
-  messages, last activity.
+- `list_sessions({include_archived?})` -- other sessions: id, title, folder,
+  status, accepts messages, last activity; `you` names the calling session.
+  Archived sessions are left out unless asked for.
 - `send_message({to, message, wait_seconds?})` -- `to` is a title or id. Fire
   and forget by default; with `wait_seconds` it waits for the answer and returns
   it as the tool result.
@@ -74,6 +111,9 @@ Chat threads and subagents do not get these tools.
   shown as a "from <title>" card in the target thread. The user can see it and
   stop it like any run.
 - Running target: delivered at the next step boundary of the run.
+- Archived target: refused with `session_archived` until the session is
+  restored (the app reports archive with `mailbox_session_archive`; a restore
+  registers it again).
 - A run that handled a message and ended without replying has its final answer
   sent back as the reply.
 
