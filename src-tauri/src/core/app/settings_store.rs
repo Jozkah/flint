@@ -234,14 +234,46 @@ fn read_map(path: &PathBuf) -> BTreeMap<String, String> {
     }
 }
 
+/// Set when the settings file was unreadable and copied aside, until the
+/// webview collects it (see [`take_settings_recovery_notice`]). Without it the
+/// app started with defaults and the user never learned why.
+static RECOVERY_NOTICE: Mutex<Option<SettingsRecovery>> = Mutex::new(None);
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct SettingsRecovery {
+    /// The settings file that could not be read.
+    pub file: String,
+    /// Where its contents were kept; `None` when the copy failed too.
+    pub backup: Option<String>,
+}
+
 fn backup_unreadable(path: &PathBuf) {
     if path.is_file() {
         let aside = path.with_extension(format!("json.corrupt-{}", std::process::id()));
-        match fs::copy(path, &aside) {
-            Ok(_) => log::warn!("settings: unreadable {}; kept a copy at {}", path.display(), aside.display()),
-            Err(e) => log::warn!("settings: unreadable {} and could not copy it: {e}", path.display()),
-        }
+        let backup = match fs::copy(path, &aside) {
+            Ok(_) => {
+                log::warn!("settings: unreadable {}; kept a copy at {}", path.display(), aside.display());
+                Some(aside.display().to_string())
+            }
+            Err(e) => {
+                log::warn!("settings: unreadable {} and could not copy it: {e}", path.display());
+                None
+            }
+        };
+        *RECOVERY_NOTICE.lock().unwrap_or_else(|e| e.into_inner()) = Some(SettingsRecovery {
+            file: path.display().to_string(),
+            backup,
+        });
     }
+}
+
+/// The one-shot notice that the settings file was corrupt and a fresh one
+/// started, for the webview to show once. Cleared by reading it.
+#[tauri::command]
+pub fn take_settings_recovery_notice() -> Option<SettingsRecovery> {
+    // Make sure the startup read has happened, so a notice recorded there exists.
+    let _ = store();
+    RECOVERY_NOTICE.lock().unwrap_or_else(|e| e.into_inner()).take()
 }
 
 fn write_map_atomic(path: &PathBuf, map: &BTreeMap<String, String>) -> Result<(), String> {
@@ -553,5 +585,19 @@ mod tests {
             .flatten()
             .any(|e| e.file_name().to_string_lossy().contains("corrupt"));
         assert!(kept);
+    }
+
+    #[test]
+    fn an_unparseable_file_records_a_notice_naming_the_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, "{ not json").unwrap();
+        RECOVERY_NOTICE.lock().unwrap().take();
+        let _ = read_map(&path);
+        let notice = RECOVERY_NOTICE.lock().unwrap().take().expect("notice recorded");
+        assert!(notice.file.ends_with("settings.json"));
+        let backup = notice.backup.expect("backup path");
+        assert!(backup.contains("settings.json.corrupt-"));
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "{ not json");
     }
 }

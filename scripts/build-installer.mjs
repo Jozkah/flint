@@ -201,6 +201,7 @@ if (isWindows) {
     cuda13: 'engine-cuda',
     hip: 'engine-hip',
     rocm: 'engine-hip',
+    sycl: 'engine-sycl',
   }
   const tokens = variant.split('-')
   const unknown = tokens.filter((t) => !featureOf[t])
@@ -209,7 +210,7 @@ if (isWindows) {
   }
   const features = new Set(tokens.map((t) => featureOf[t]))
   // A vendor runtime ships with Vulkan as its fallback, as in the Makefile.
-  if ((features.has('engine-cuda') || features.has('engine-hip')) && process.env.JAN_ENGINE_VULKAN_FALLBACK !== '0') {
+  if ((features.has('engine-cuda') || features.has('engine-hip') || features.has('engine-sycl')) && process.env.JAN_ENGINE_VULKAN_FALLBACK !== '0') {
     features.add('engine-vulkan')
   }
   const featureList = [...features].sort().join(',')

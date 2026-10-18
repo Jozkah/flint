@@ -81,6 +81,7 @@ export const REBINDABLE: ShortcutAction[] = [
   ShortcutAction.TOGGLE_SIDEBAR,
   ShortcutAction.GO_TO_SETTINGS,
   ShortcutAction.SEARCH,
+  ShortcutAction.FIND_IN_CHAT,
   ShortcutAction.SWITCH_ASSISTANT,
   ShortcutAction.COMMAND_PALETTE,
   ShortcutAction.SPLIT_VIEW,

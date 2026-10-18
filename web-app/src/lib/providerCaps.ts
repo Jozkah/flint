@@ -27,7 +27,7 @@ const set = (...c: SamplerCap[]) =>
   new Set<SamplerCap>([...CORE_ONLY, ...c])
 
 const OPENAI_STRICT: ProviderCaps = {
-  supported: set('penalties', 'json_schema', 'verbosity'),
+  supported: set('penalties', 'json_schema', 'verbosity', 'seed'),
   maybe: new Set(),
 }
 
@@ -53,11 +53,11 @@ const MISTRAL: ProviderCaps = {
 
 const GROQ: ProviderCaps = {
   supported: set(),
-  maybe: new Set(['penalties']),
+  maybe: new Set(['penalties', 'seed']),
 }
 
 const OPENROUTER: ProviderCaps = {
-  supported: set('penalties', 'top_k', 'min_p', 'repetition', 'openrouter'),
+  supported: set('penalties', 'top_k', 'min_p', 'repetition', 'openrouter', 'seed'),
   maybe: new Set(['typical_p']),
 }
 
@@ -82,7 +82,7 @@ const NVIDIA: ProviderCaps = {
 }
 
 const AZURE: ProviderCaps = {
-  supported: set('penalties', 'json_schema'),
+  supported: set('penalties', 'json_schema', 'seed'),
   maybe: new Set(),
 }
 
@@ -109,7 +109,8 @@ const LLAMACPP: ProviderCaps = {
     'sampler_order',
     'backend_sampling',
     'thinking_budget',
-    'stop'
+    'stop',
+    'seed'
   ),
   maybe: new Set(),
 }
@@ -145,6 +146,7 @@ const CUSTOM_PERMISSIVE: ProviderCaps = {
     'thinking_budget',
     'stop',
     'openrouter',
+    'seed',
   ]),
 }
 

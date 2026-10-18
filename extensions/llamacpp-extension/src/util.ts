@@ -433,6 +433,20 @@ export function assertSha256Matches(
 }
 
 /**
+ * The first shard of a split GGUF, whichever shard was given. llama.cpp loads
+ * a split model from shard 1 and finds the rest itself, so a model must be
+ * registered under that file. A path that is not a split file, or is shard 1
+ * already, comes back unchanged.
+ */
+export function ggufFirstShardPath(path: string): string {
+  const m = /^(.*)-(\d{5})-of-(\d{5})(\.gguf)$/i.exec(path)
+  if (!m) return path
+  const total = parseInt(m[3], 10)
+  if (!Number.isFinite(total) || total < 2 || total > 999) return path
+  return `${m[1]}-00001-of-${m[3]}${m[4]}`
+}
+
+/**
  * Paths of every shard of a split GGUF (`name-00001-of-00005.gguf`), the
  * given path included. A path that is not a split file returns `[path]`.
  */

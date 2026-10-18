@@ -1,3 +1,7 @@
+const KV_CACHE_TYPE_OPTIONS = ['f32', 'f16', 'bf16', 'q8_0', 'q4_0', 'q4_1', 'iq4_nl', 'q5_0', 'q5_1'].map(
+  (v) => ({ value: v, name: v })
+)
+
 export const modelSettings = {
   ctx_len: {
     key: 'ctx_len',
@@ -37,6 +41,20 @@ export const modelSettings = {
       type: 'number',
       min: 0,
       step: 0.01,
+    },
+  },
+  seed: {
+    key: 'seed',
+    title: 'Seed',
+    description:
+      'Fixed random seed for this model, so the same prompt and settings give the same reply. Leave empty (or -1) for a new random seed each time. This is the default on load and can be overridden by the assistant settings.',
+    controller_type: 'input',
+    controller_props: {
+      value: '',
+      placeholder: '-1',
+      type: 'number',
+      min: -1,
+      step: 1,
     },
   },
   top_k: {
@@ -203,6 +221,49 @@ export const modelSettings = {
     controller_type: 'checkbox',
     controller_props: {
       value: false,
+    },
+  },
+  ctx_shift: {
+    key: 'ctx_shift',
+    title: 'Context Shift',
+    description:
+      "Let this model drop the oldest text when its context fills up. 'Use global' follows the Context Shift setting of the engine.",
+    controller_type: 'dropdown',
+    controller_props: {
+      value: 'auto',
+      options: [
+        { value: 'auto', name: 'Use global' },
+        { value: 'on', name: 'On' },
+        { value: 'off', name: 'Off' },
+      ],
+    },
+  },
+  cache_type_k: {
+    key: 'cache_type_k',
+    title: 'KV Cache K Type',
+    description:
+      "KV cache data type for this model's Keys. 'Use global' follows the engine setting.",
+    controller_type: 'dropdown',
+    controller_props: {
+      value: 'auto',
+      options: [
+        { value: 'auto', name: 'Use global' },
+        ...KV_CACHE_TYPE_OPTIONS,
+      ],
+    },
+  },
+  cache_type_v: {
+    key: 'cache_type_v',
+    title: 'KV Cache V Type',
+    description:
+      "KV cache data type for this model's Values. A quantized V cache needs Flash Attention. 'Use global' follows the engine setting.",
+    controller_type: 'dropdown',
+    controller_props: {
+      value: 'auto',
+      options: [
+        { value: 'auto', name: 'Use global' },
+        ...KV_CACHE_TYPE_OPTIONS,
+      ],
     },
   },
   batch_size: {

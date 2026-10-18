@@ -116,6 +116,40 @@ export const predefinedProviders = [
           value: '',
         },
       },
+      {
+        key: 'api-version',
+        title: 'API version',
+        description:
+          'Only for a deployments-style endpoint (/openai/deployments/<name>) whose URL has no ?api-version=. The /openai/v1 endpoint needs none.',
+        controller_type: 'input',
+        controller_props: {
+          placeholder: '2024-10-21',
+          value: '',
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    // The region is part of the host. Requests are signed (SigV4) by the
+    // backend from AWS credentials kept in the OS keyring.
+    base_url: 'https://bedrock-runtime.us-east-1.amazonaws.com',
+    explore_models_url: 'https://console.aws.amazon.com/bedrock/home#/models',
+    provider: 'bedrock',
+    settings: [
+      {
+        key: 'base-url',
+        title: 'Endpoint',
+        description:
+          'The Bedrock runtime endpoint for your region, e.g. https://bedrock-runtime.eu-west-1.amazonaws.com',
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'https://bedrock-runtime.us-east-1.amazonaws.com',
+          value: 'https://bedrock-runtime.us-east-1.amazonaws.com',
+        },
+      },
     ],
     models: [],
   },
@@ -265,7 +299,9 @@ export const predefinedProviders = [
   {
     active: true,
     api_key: '',
-    base_url: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    // The native Gemini API: the factory talks to it directly (thought
+    // signatures need it), so the stored URL says so.
+    base_url: 'https://generativelanguage.googleapis.com/v1beta',
     explore_models_url: 'https://ai.google.dev/gemini-api/docs/models/gemini',
     provider: 'gemini',
     settings: [

@@ -934,9 +934,33 @@ export const useModelProvider = create<ModelProviderState>()(
           })
         }
 
+        if (version <= 22 && state?.providers) {
+          // Per-model Context Shift and KV cache types: add the controls to
+          // persisted llamacpp models. They default to "use global".
+          state.providers.forEach((provider) => {
+            if (provider.provider !== 'llamacpp' || !provider.models) return
+            provider.models.forEach((model) => {
+              if (!model.settings) model.settings = {}
+              for (const key of [
+                'ctx_shift',
+                'seed',
+                'cache_type_k',
+                'cache_type_v',
+              ] as const) {
+                if (!model.settings[key]) {
+                  model.settings[key] = {
+                    ...modelSettings[key],
+                    controller_props: { ...modelSettings[key].controller_props },
+                  }
+                }
+              }
+            })
+          })
+        }
+
         return state
       },
-      version: 22,
+      version: 23,
     }
   )
 )

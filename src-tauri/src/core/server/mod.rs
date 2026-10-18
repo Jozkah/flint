@@ -7,6 +7,8 @@ pub mod converters;
 pub mod images_route;
 pub mod provider_secrets;
 #[cfg(not(feature = "cli"))]
+pub mod bedrock;
+#[cfg(not(feature = "cli"))]
 pub mod proxy;
 #[cfg(not(feature = "cli"))]
 pub mod remote_provider_commands;

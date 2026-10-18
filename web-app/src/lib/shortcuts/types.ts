@@ -10,6 +10,7 @@ export enum ShortcutAction {
   TOGGLE_SIDEBAR = 'toggleSidebar',
   GO_TO_SETTINGS = 'goSettings',
   SEARCH = 'search',
+  FIND_IN_CHAT = 'findInChat',
   SWITCH_ASSISTANT = 'switchAssistant',
   ZOOM_IN = 'zoomIn',
   ZOOM_OUT = 'zoomOut',

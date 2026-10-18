@@ -53,3 +53,15 @@ export async function findSiblingMmproj(
     return null
   }
 }
+
+/**
+ * A model picked as any shard of a split GGUF (`name-00002-of-00005.gguf`)
+ * becomes shard 1, the file llama.cpp loads. Other paths come back unchanged.
+ */
+export function firstGgufShard(path: string): string {
+  const m = /^(.*)-(\d{5})-of-(\d{5})(\.gguf)$/i.exec(path)
+  if (!m) return path
+  const total = parseInt(m[3], 10)
+  if (!Number.isFinite(total) || total < 2 || total > 999) return path
+  return `${m[1]}-00001-of-${m[3]}${m[4]}`
+}

@@ -136,6 +136,8 @@ vi.mock('../model-factory', () => ({
 }))
 
 import { CustomChatTransport } from '../custom-chat-transport'
+import { ModelFactory } from '../model-factory'
+import { useModelOverrides } from '@/hooks/useModelOverrides'
 
 const user = (id: string, text: string): UIMessage =>
   ({ id, role: 'user', parts: [{ type: 'text', text }] }) as UIMessage
@@ -381,5 +383,66 @@ describe('CustomChatTransport assistant completion (continuation prefill)', () =
       role: string
     }).role
     expect(last).toBe('user')
+  })
+})
+
+describe('resolveContextShift', () => {
+  it('prefers the per-model choice and falls back to the global one', async () => {
+    const { resolveContextShift } = await import('../custom-chat-transport')
+    expect(resolveContextShift('on', false)).toBe(true)
+    expect(resolveContextShift('off', true)).toBe(false)
+    expect(resolveContextShift('auto', true)).toBe(true)
+    expect(resolveContextShift(undefined, false)).toBe(false)
+  })
+})
+
+describe('fixed seed reaches the model parameters', () => {
+  const seedOf = () => {
+    const calls = vi.mocked(ModelFactory.createModel).mock.calls
+    return (calls[calls.length - 1][2] as Record<string, unknown>).seed
+  }
+  const run = async () => {
+    const transport = new CustomChatTransport('you are jan', 'thread-1')
+    await drain(await send(transport, [user('u1', 'hello')]))
+  }
+
+  beforeEach(() => {
+    streamTextCalls.length = 0
+    vi.mocked(ModelFactory.createModel).mockClear()
+    h.providerId = 'openai'
+    h.assistantParameters = null
+    provider.provider = 'openai'
+    provider.settings = []
+    selectedModel.id = 'gpt'
+    ;(selectedModel as Record<string, unknown>).settings = {
+      seed: { controller_props: { value: '5' } },
+    }
+    useModelOverrides.getState().resetThread('thread-1')
+  })
+
+  it('uses the model default seed as a number', async () => {
+    await run()
+    expect(seedOf()).toBe(5)
+  })
+
+  it('lets a per-chat override beat the model default', async () => {
+    useModelOverrides.getState().setForThread('thread-1', 'seed', 7)
+    await run()
+    expect(seedOf()).toBe(7)
+  })
+
+  it('lets the assistant parameter beat both', async () => {
+    useModelOverrides.getState().setForThread('thread-1', 'seed', 7)
+    h.assistantParameters = { seed: 99 }
+    await run()
+    expect(seedOf()).toBe(99)
+  })
+
+  it('sends no seed for a random (-1 or empty) model default', async () => {
+    ;(selectedModel as Record<string, unknown>).settings = {
+      seed: { controller_props: { value: '-1' } },
+    }
+    await run()
+    expect(seedOf()).toBeUndefined()
   })
 })

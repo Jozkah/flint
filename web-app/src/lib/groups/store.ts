@@ -62,9 +62,11 @@ type GroupsStore = {
   createGroup: (
     surface: GroupSurface,
     name: string,
-    opts?: { id?: string; folderBindings?: GroupFolderBinding[] }
+    opts?: { id?: string; folderBindings?: GroupFolderBinding[]; parentId?: string | null }
   ) => Promise<string | null>
   renameGroup: (surface: GroupSurface, groupId: string, name: string) => Promise<boolean>
+  /** Nests a group under another (or null for top level); false when refused. */
+  setGroupParent: (surface: GroupSurface, groupId: string, parentId: string | null) => Promise<boolean>
   setCollapsed: (surface: GroupSurface, groupId: string, collapsed: boolean) => Promise<boolean>
   reorderGroup: (surface: GroupSurface, groupId: string, toIndex: number) => Promise<boolean>
   moveItem: (
@@ -189,7 +191,7 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
       const id = opts?.id ?? env.newId()
       const ok = await commit(
         surface,
-        (s) => domain.createGroup(s, surface, { id, name, now: env.now(), folderBindings: opts?.folderBindings }),
+        (s) => domain.createGroup(s, surface, { id, name, now: env.now(), folderBindings: opts?.folderBindings, parentId: opts?.parentId }),
         'Could not create the group'
       )
       if (ok) announce(`Group ${name.trim()} created`)
@@ -198,6 +200,13 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
 
     renameGroup: (surface, groupId, name) =>
       commit(surface, (s) => domain.renameGroup(s, surface, groupId, name, env.now()), 'Could not rename the group'),
+
+    setGroupParent: (surface, groupId, parentId) =>
+      commit(
+        surface,
+        (s) => domain.setGroupParent(s, surface, groupId, parentId, env.now()),
+        'Could not move the folder'
+      ),
 
     setCollapsed: async (surface, groupId, collapsed) => {
       const ok = await commit(

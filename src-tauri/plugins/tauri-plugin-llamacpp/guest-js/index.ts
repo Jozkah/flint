@@ -242,13 +242,15 @@ export async function isModelSupported(
   path: string,
   ctxSize?: number,
   cacheTypeK?: string,
-  cacheTypeV?: string
+  cacheTypeV?: string,
+  noKvOffload?: boolean
 ): Promise<'RED' | 'YELLOW' | 'GREEN'> {
   return await invoke('plugin:llamacpp|is_model_supported', {
     path,
     ctxSize,
     cacheTypeK,
     cacheTypeV,
+    noKvOffload,
   })
 }
 

@@ -36,6 +36,7 @@ export type SamplerCap =
   | 'stop'
   | 'openrouter'
   | 'verbosity'
+  | 'seed'
   | 'client_only'
 
 export interface ParamControllerProps {
@@ -107,6 +108,17 @@ export const paramsSettings: Record<string, ParamDef> = {
     value: false,
     controllerType: 'checkbox',
     capability: 'client_only',
+  },
+  seed: {
+    key: 'seed',
+    title: 'Seed',
+    description:
+      'Fixed random seed so the same prompt and settings give the same reply. -1 (or empty) picks a new random seed each time.',
+    value: -1,
+    controllerType: 'input',
+    controllerProps: { min: -1, step: 1, placeholder: '-1' },
+    capability: 'seed',
+    effectHint: 'Same seed + same settings = same reply; -1 = random.',
   },
   temperature: {
     key: 'temperature',
@@ -469,6 +481,7 @@ export const SAMPLER_DEFAULT_KEYS = [
   'repeat_last_n',
   'presence_penalty',
   'frequency_penalty',
+  'seed',
 ] as const
 
 // The MLX server only forwards these to GenerateParameters (top_k/min_p/
@@ -622,7 +635,14 @@ export const paramCategories: CategoryDef[] = [
   {
     id: 'common',
     title: 'Common',
-    paramKeys: ['temperature', 'top_p', 'top_k', 'min_p', 'max_output_tokens'],
+    paramKeys: [
+      'temperature',
+      'top_p',
+      'top_k',
+      'min_p',
+      'max_output_tokens',
+      'seed',
+    ],
     groupIds: [],
   },
   {

@@ -1,5 +1,5 @@
 import { Assistant, AssistantExtension, fs, joinPath, logger } from '@janhq/core'
-import { BUILT_IN_ASSISTANTS } from './builtInAssistants'
+import { BUILT_IN_ASSISTANTS, STARTER_ASSISTANTS } from './builtInAssistants'
 
 const V2_IDENTITY_LINE =
   'You are Flint, a helpful AI assistant who assists users with their requests. Flint is trained by Menlo Research (https://www.menlo.ai).'
@@ -9,7 +9,7 @@ const V2_IDENTITY_LINE =
  * functionality for managing assistants.
  */
 export default class JanAssistantExtension extends AssistantExtension {
-  private readonly CURRENT_MIGRATION_VERSION = 4
+  private readonly CURRENT_MIGRATION_VERSION = 5
   private readonly MIGRATION_FILE = 'file://assistants/.migration_version'
 
   /**
@@ -93,6 +93,12 @@ export default class JanAssistantExtension extends AssistantExtension {
       logger.info('Running migration v4: Seed specialized built-in assistants')
       await this.migrateSeedBuiltInAssistants()
       await this.saveMigrationVersion(4)
+    }
+
+    if (currentVersion < 5) {
+      logger.info('Running migration v5: Seed starter assistants')
+      await this.migrateSeedStarterAssistants()
+      await this.saveMigrationVersion(5)
     }
 
     logger.info(
@@ -268,6 +274,21 @@ Current date: {{current_date}}`
     }
 
     for (const assistant of BUILT_IN_ASSISTANTS) {
+      if (existingIds.has(assistant.id)) continue
+      await this.createAssistant(assistant)
+      existingIds.add(assistant.id)
+    }
+  }
+
+  /**
+   * Migration v5: Add the starter assistants once. Only missing ids are
+   * created, so a user's edited copy is never overwritten. The v4 specialists
+   * are not re-added here, so one the user deleted stays deleted.
+   */
+  private async migrateSeedStarterAssistants(): Promise<void> {
+    const persisted = await this.readAssistantsFromDisk()
+    const existingIds = new Set(persisted.map((assistant) => assistant.id))
+    for (const assistant of STARTER_ASSISTANTS) {
       if (existingIds.has(assistant.id)) continue
       await this.createAssistant(assistant)
       existingIds.add(assistant.id)

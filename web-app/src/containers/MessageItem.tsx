@@ -481,7 +481,7 @@ export const MessageItem = memo(
       }
 
       return (
-        <div key={`${message.id}-${partIndex}`} className="w-full">
+        <div key={`${message.id}-${partIndex}`} data-message-id={message.id} className="w-full">
           {message.role === 'user' ? (
             <div className="flex justify-end w-full h-full text-start wrap-break-word whitespace-normal">
               <div
@@ -776,6 +776,7 @@ export const MessageItem = memo(
     return (
       <div
         data-role={message.role}
+        data-message-id={message.id}
         className={cn(
           'group/message relative mb-3 w-full',
           // A different assistant took over: a rule and some air mark the change.

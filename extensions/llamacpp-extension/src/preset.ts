@@ -47,6 +47,7 @@ type ModelYaml = ModelConfig & {
   repeat_penalty?: number
   presence_penalty?: number
   frequency_penalty?: number
+  seed?: number
   spec_draft_n_max?: number
   spec_draft_n_min?: number
   spec_draft_p_min?: number
@@ -55,6 +56,8 @@ type ModelYaml = ModelConfig & {
   n_cpu_moe?: number
   n_cpu_ffn?: number
   no_kv_offload?: boolean
+  /** Per-model override of the global Context Shift setting. */
+  ctx_shift?: boolean
   override_tensor?: string
   mmproj_offload?: boolean
   reasoning?: 'on' | 'off'
@@ -311,6 +314,11 @@ export async function generatePreset(
     reservedBackgroundSlots?: number
     /** Models whose KV cache defaults failed to load; they get f16 instead. */
     kvFallbackModels?: ReadonlySet<string>
+    /**
+     * Models whose load crashed on a CPU instruction the machine lacks; each is
+     * written with `device = none` so it runs on the CPU backend only.
+     */
+    cpuFallbackModels?: ReadonlySet<string>
     /**
      * Device ids the engine currently reports. When given and non-empty, a
      * saved `device` that is not among them is dropped: after a driver update
@@ -815,6 +823,9 @@ export async function generatePreset(
         lines.push(`cache-type-v = ${escapeIniValue(modelKv.v)}`)
       }
     }
+    if (opts.cpuFallbackModels?.has(modelId)) {
+      lines.push('device = none')
+    }
     // MTP either lives in the main gguf (mtp_layers > 0) or ships as a separate
     // draft gguf (mtp_model_path), which is passed to the engine as the draft.
     const hasMtpModel =
@@ -865,6 +876,14 @@ export async function generatePreset(
     }
     if (typeof mc.n_cpu_ffn === 'number' && mc.n_cpu_ffn > 0) {
       lines.push(`n-cpu-ffn = ${Math.floor(mc.n_cpu_ffn)}`)
+    }
+    // A model's own Context Shift choice wins over the global one; a line is
+    // written only when it differs from what the [*] block already gives it.
+    if (
+      typeof mc.ctx_shift === 'boolean' &&
+      mc.ctx_shift !== (config.ctx_shift === true)
+    ) {
+      lines.push(`context-shift = ${mc.ctx_shift}`)
     }
     if (mc.no_kv_offload === true) {
       // INI key is the negated form; parse_bool_arg flips it server-side.
@@ -947,6 +966,9 @@ export async function generatePreset(
       ['repeat_penalty', 'repeat-penalty', 1.0],
       ['presence_penalty', 'presence-penalty', null],
       ['frequency_penalty', 'frequency-penalty', null],
+      // llama.cpp's own default is -1 (a random seed each request); only a
+      // fixed, non-negative seed is written.
+      ['seed', 'seed', -1],
     ]
     for (const [yamlKey, iniKey, upstreamDefault] of samplingIniKeys) {
       const v = mc[yamlKey]
@@ -957,6 +979,7 @@ export async function generatePreset(
       // the load; a legacy -1 from the old "-1 = full context" UI must not reach
       // the preset.
       if (iniKey === 'repeat-last-n' && v < 0) continue
+      if (iniKey === 'seed' && (v < 0 || !Number.isInteger(v))) continue
       lines.push(`${iniKey} = ${v}`)
     }
 

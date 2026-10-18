@@ -12,6 +12,35 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ai-sdk/amazon-bedrock@npm:^4.0.0":
+  version: 4.0.198
+  resolution: "@ai-sdk/amazon-bedrock@npm:4.0.198"
+  dependencies:
+    "@ai-sdk/anthropic": "npm:3.0.132"
+    "@ai-sdk/openai": "npm:3.0.129"
+    "@ai-sdk/provider": "npm:3.0.19"
+    "@ai-sdk/provider-utils": "npm:4.0.60"
+    "@smithy/eventstream-codec": "npm:^4.0.1"
+    "@smithy/util-utf8": "npm:^4.0.0"
+    aws4fetch: "npm:^1.0.20"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/92afc1bb15bd5d279b1c8bf04f16346bcd99bff20177e28bdbc95c175866d880c7f57fcd73c9355b007c5d33c6b1fe85b2090262b88dc6b5408850ab35dfff18
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/anthropic@npm:3.0.132":
+  version: 3.0.132
+  resolution: "@ai-sdk/anthropic@npm:3.0.132"
+  dependencies:
+    "@ai-sdk/provider": "npm:3.0.19"
+    "@ai-sdk/provider-utils": "npm:4.0.60"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/fd8c53b263848a5def70ef3418d3b8f2479c7be3ef029f180addf4d23c4e0b8d7fc682a279632c6dde7686fdefa03fbcdd2a30202533a7b90ce1f3f74beca416
+  languageName: node
+  linkType: hard
+
 "@ai-sdk/anthropic@npm:^3.0.0":
   version: 3.0.77
   resolution: "@ai-sdk/anthropic@npm:3.0.77"
@@ -86,6 +115,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ai-sdk/openai@npm:3.0.129":
+  version: 3.0.129
+  resolution: "@ai-sdk/openai@npm:3.0.129"
+  dependencies:
+    "@ai-sdk/provider": "npm:3.0.19"
+    "@ai-sdk/provider-utils": "npm:4.0.60"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/e23b40c54dd8784b8c7a38ff7b2d428f5ca3d25011c14738d028bacfdef7fb56258cf6e35f1e834d9b66890fdd8a995aa71efba1b608dc0891e37d8de8c63cc6
+  languageName: node
+  linkType: hard
+
 "@ai-sdk/openai@npm:^3.0.0":
   version: 3.0.63
   resolution: "@ai-sdk/openai@npm:3.0.63"
@@ -124,6 +165,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ai-sdk/provider-utils@npm:4.0.60":
+  version: 4.0.60
+  resolution: "@ai-sdk/provider-utils@npm:4.0.60"
+  dependencies:
+    "@ai-sdk/provider": "npm:3.0.19"
+    "@standard-schema/spec": "npm:^1.1.0"
+    eventsource-parser: "npm:^3.0.8"
+    undici: "npm:^6.28.0"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/c6049df71eaaf2ead9e6fad560142b37347d5f10aa56b8f521a5810d7bdea6803816a43687bf7af3fdcab7606f4f2c526e6905888712e7ac7984f924622308dc
+  languageName: node
+  linkType: hard
+
 "@ai-sdk/provider@npm:2.0.0":
   version: 2.0.0
   resolution: "@ai-sdk/provider@npm:2.0.0"
@@ -139,6 +194,15 @@ __metadata:
   dependencies:
     json-schema: "npm:^0.4.0"
   checksum: 10c0/c9b162165c3fd4684e4f7a1c041db3ad75785c841d904bac577006b7b2299d1b465557b1d32e3f59b6d8536a0ef5741b195aad86fc3e0e1d2a39f077062a83c4
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider@npm:3.0.19":
+  version: 3.0.19
+  resolution: "@ai-sdk/provider@npm:3.0.19"
+  dependencies:
+    json-schema: "npm:^0.4.0"
+  checksum: 10c0/f77fcae35b7e388704a2594d59eb2d89bb2311c1b8c794937bcb2dfcd566fc83a870bbe0e03d96349539e465e69cce29ce9b3cdf32b708304a09830c0a459ea5
   languageName: node
   linkType: hard
 
@@ -3273,6 +3337,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@janhq/web-app@workspace:web-app"
   dependencies:
+    "@ai-sdk/amazon-bedrock": "npm:^4.0.0"
     "@ai-sdk/anthropic": "npm:^3.0.0"
     "@ai-sdk/google": "npm:^3.0.0"
     "@ai-sdk/mistral": "npm:^3.0.0"
@@ -6309,6 +6374,45 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@smithy/core@npm:^3.33.2":
+  version: 3.36.0
+  resolution: "@smithy/core@npm:3.36.0"
+  dependencies:
+    "@smithy/types": "npm:^4.19.0"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/35abd554f06d2f2fd1c4b9d73765b08bb8d82bdc4ccf9c83ac244df774b0de131ca0cf0250e0fae43d481f83a0d221c04c154cce8f142664aea53145b2676b3c
+  languageName: node
+  linkType: hard
+
+"@smithy/eventstream-codec@npm:^4.0.1":
+  version: 4.5.2
+  resolution: "@smithy/eventstream-codec@npm:4.5.2"
+  dependencies:
+    "@smithy/core": "npm:^3.33.2"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/898a60f1f5cc8c8d0e876b636d957eb9e7c0374460c7275129bfcaf592849310d6790eac0e9a6b53d11bebc8604fa4b4065875034377660e5782fdc2e131e2b6
+  languageName: node
+  linkType: hard
+
+"@smithy/types@npm:^4.19.0":
+  version: 4.19.0
+  resolution: "@smithy/types@npm:4.19.0"
+  dependencies:
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/0e9f026e1774aa0089ebd4b67abef7215b09869bd41afc9affdd3382c91e5e3ae4daac54eb2e6b8262c5deaf37019ca7c15e77bcc4be311a69681a40ae047ab0
+  languageName: node
+  linkType: hard
+
+"@smithy/util-utf8@npm:^4.0.0":
+  version: 4.5.2
+  resolution: "@smithy/util-utf8@npm:4.5.2"
+  dependencies:
+    "@smithy/core": "npm:^3.33.2"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/f29fc11997b94a1579a7697e18a0d4e4a43853666f6479cdc23131e87072b677751dbc2d6ccf070ba0fd2829e7b23e1b178fa6f0bb19c0fbcc8aa531ff2d9f30
+  languageName: node
+  linkType: hard
+
 "@standard-schema/spec@npm:^1.0.0, @standard-schema/spec@npm:^1.1.0":
   version: 1.1.0
   resolution: "@standard-schema/spec@npm:1.1.0"
@@ -8968,6 +9072,13 @@ __metadata:
   version: 1.13.2
   resolution: "aws4@npm:1.13.2"
   checksum: 10c0/c993d0d186d699f685d73113733695d648ec7d4b301aba2e2a559d0cd9c1c902308cc52f4095e1396b23fddbc35113644e7f0a6a32753636306e41e3ed6f1e79
+  languageName: node
+  linkType: hard
+
+"aws4fetch@npm:^1.0.20":
+  version: 1.0.20
+  resolution: "aws4fetch@npm:1.0.20"
+  checksum: 10c0/a4eac7bd0d1c3e611c17ed1ef41ac0b48c0a8e74a985ad968c071e74d94586d3572edc943b43fa5ca756c686ea73baa2f48e264d657bb8c2e95c8e0037d48a87
   languageName: node
   linkType: hard
 
@@ -20681,6 +20792,13 @@ __metadata:
   version: 8.9.0
   resolution: "undici-types@npm:8.9.0"
   checksum: 10c0/51c712c20c087368f62c6fc0f2bc49fa76bfe5dec28ff01584bb677ff29b0622569783c02d43e151143808c48c0503f804093bd2c491b10f2a830138034cb451
+  languageName: node
+  linkType: hard
+
+"undici@npm:^6.28.0":
+  version: 6.29.1
+  resolution: "undici@npm:6.29.1"
+  checksum: 10c0/2d6970289fcbaca69a484e968fbb5e6fdadf7d9bff30bb5476f71b619d143ec76df1c75a309ac3cb3b3d78238793c613dcaad47dc9d92b63f9e8e73b86ffec23
   languageName: node
   linkType: hard
 

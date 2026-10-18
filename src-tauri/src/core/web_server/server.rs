@@ -989,7 +989,8 @@ async fn rpc_route(
             let ctx = args.get("ctxSize").and_then(serde_json::Value::as_u64).map(|v| v as u32);
             let key = str_field(&args, "cacheTypeK").map(str::to_owned);
             let value = str_field(&args, "cacheTypeV").map(str::to_owned);
-            match tauri_plugin_llamacpp::gguf::commands::is_model_supported(path, ctx, key, value).await {
+            let no_kv_offload = args.get("noKvOffload").and_then(serde_json::Value::as_bool);
+            match tauri_plugin_llamacpp::gguf::commands::is_model_supported(path, ctx, key, value, no_kv_offload).await {
                 Ok(status) => json(&status),
                 Err(message) => reply(StatusCode::UNPROCESSABLE_ENTITY, "text/plain; charset=utf-8", message),
             }

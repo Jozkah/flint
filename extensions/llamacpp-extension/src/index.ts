@@ -48,6 +48,7 @@ import {
   getDefaultEmbeddingModelId,
   modelFileProblem,
   ggufShardPaths,
+  ggufFirstShardPath,
   assertSha256Matches,
   setDefaultEmbeddingModelId,
   type EmbedBatchResult,
@@ -62,6 +63,7 @@ import {
   resolveKvCacheTypes,
   shouldRetryLoadWithF16Kv,
 } from './kvCache'
+import { shouldRetryLoadOnCpu } from './cpuFallback'
 import {
   evaluateEmbeddingVector,
   evaluateGpuOffload,
@@ -248,6 +250,22 @@ const coerceIntSetting = (v: unknown): YamlSettingValue => {
   return Number.isFinite(n) ? Math.floor(n) : null
 }
 
+const KV_CACHE_TYPE_SETTINGS = new Set([
+  'f32',
+  'f16',
+  'bf16',
+  'q8_0',
+  'q4_0',
+  'q4_1',
+  'iq4_nl',
+  'q5_0',
+  'q5_1',
+])
+const coerceKvCacheTypeSetting = (v: unknown): YamlSettingValue =>
+  typeof v === 'string' && KV_CACHE_TYPE_SETTINGS.has(v.trim().toLowerCase())
+    ? v.trim().toLowerCase()
+    : null
+
 const MODEL_SETTINGS_YAML_MAPPING: Record<
   string,
   {
@@ -280,6 +298,15 @@ const MODEL_SETTINGS_YAML_MAPPING: Record<
   frequency_penalty: {
     yamlKey: 'frequency_penalty',
     coerce: coerceFloatSetting,
+  },
+  // Fixed seed. A negative value means "random" upstream, so it is dropped.
+  seed: {
+    yamlKey: 'seed',
+    coerce: (v) => {
+      if (v === '' || v == null) return null
+      const n = typeof v === 'number' ? v : Number(v)
+      return Number.isInteger(n) && n >= 0 ? n : null
+    },
   },
   ctx_len: {
     yamlKey: 'ctx_size',
@@ -348,6 +375,22 @@ const MODEL_SETTINGS_YAML_MAPPING: Record<
   no_kv_offload: {
     yamlKey: 'no_kv_offload',
     coerce: (v) => (v === true ? true : null),
+  },
+  // Per-model overrides of the global setting. `auto` / empty means "inherit the
+  // global one", so it is dropped rather than written as a value that would pin
+  // the model to the auto default.
+  ctx_shift: {
+    yamlKey: 'ctx_shift',
+    coerce: (v) =>
+      v === 'on' || v === true ? true : v === 'off' || v === false ? false : null,
+  },
+  cache_type_k: {
+    yamlKey: 'cache_type_k',
+    coerce: coerceKvCacheTypeSetting,
+  },
+  cache_type_v: {
+    yamlKey: 'cache_type_v',
+    coerce: coerceKvCacheTypeSetting,
   },
   override_tensor_buffer_t: {
     yamlKey: 'override_tensor',
@@ -444,6 +487,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   // for the session so the next load does not fail the same way; cleared when
   // a KV or flash-attn setting changes.
   private kvFallbackModels = new Set<string>()
+  /** Models whose load crashed on an unsupported CPU instruction; kept off the GPU. */
+  private cpuFallbackModels = new Set<string>()
 
   // The engine worker spawn runs off the onLoad critical path; awaited via
   // ensureEngineReady() before any model load so inference never races it.
@@ -817,6 +862,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       this.config,
       {
         kvFallbackModels: this.kvFallbackModels,
+        cpuFallbackModels: this.cpuFallbackModels,
         knownDeviceIds: await this.knownDeviceIds(),
       }
     )
@@ -886,8 +932,9 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   }
 
   /**
-   * Minutes a model may sit unused before the worker unloads it. 0 (the
-   * default) is off, so a missing, blank or invalid value changes nothing.
+   * Minutes a model may sit unused before the worker unloads it. The setting
+   * defaults to 30 (settings.json); 0 is off, and a missing, blank or invalid
+   * value is treated as 0 so it changes nothing.
    */
   private resolveIdleUnloadMinutes(): number {
     const raw = Number((this.config as { idle_unload_minutes?: unknown }).idle_unload_minutes)
@@ -941,6 +988,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       this.config,
       {
         kvFallbackModels: this.kvFallbackModels,
+        cpuFallbackModels: this.cpuFallbackModels,
         knownDeviceIds: await this.knownDeviceIds(),
       }
     )
@@ -1982,7 +2030,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       return path
     }
 
-    let modelPath = await requireLocalFile(opts.modelPath)
+    // Picking shard 2 of a split model registers shard 1: that is the file
+    // llama.cpp loads, and it keeps the size and shard checks below honest.
+    const pickedModelPath = await requireLocalFile(opts.modelPath)
+    let modelPath = ggufFirstShardPath(pickedModelPath)
+    if (modelPath !== pickedModelPath) await requireLocalFile(modelPath)
     let mmprojPath = opts.mmprojPath
       ? await requireLocalFile(opts.mmprojPath)
       : undefined
@@ -2002,7 +2054,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       assertSha256Matches(
         'model',
         opts.modelSha256,
-        await sha256File(fullModelPath)
+        // The checksum belongs to the file that was picked, not to shard 1.
+        await sha256File(await joinPath([janDataFolderPath, pickedModelPath]))
       )
     }
     if (opts.mmprojSha256 && mmprojPath) {
@@ -2272,14 +2325,34 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
         info = await loadLlamaModel(modelId, isEmbedding)
       } catch (error) {
         // One retry with f16 KV when the `auto` defaults are what failed.
-        if (!(await this.shouldFallBackToF16Kv(modelId, error))) throw error
-        logger.warn(
-          `Load of ${modelId} failed with the quantized KV cache default; retrying once with an f16 KV cache:`,
-          error
-        )
-        this.kvFallbackModels.add(modelId)
-        await this.refreshEnginePreset()
-        info = await loadLlamaModel(modelId, isEmbedding)
+        if (await this.shouldFallBackToF16Kv(modelId, error)) {
+          logger.warn(
+            `Load of ${modelId} failed with the quantized KV cache default; retrying once with an f16 KV cache:`,
+            error
+          )
+          this.kvFallbackModels.add(modelId)
+          await this.refreshEnginePreset()
+          info = await loadLlamaModel(modelId, isEmbedding)
+        } else if (
+          shouldRetryLoadOnCpu({
+            error,
+            alreadyRetried: this.cpuFallbackModels.has(modelId),
+            configuredDevice: (this.config as { device?: unknown }).device,
+          })
+        ) {
+          // An engine process that hit an instruction this CPU lacks. One
+          // retry with the model off the GPU; a slower run beats no run.
+          logger.warn(
+            `Load of ${modelId} crashed on a CPU instruction this machine lacks; retrying once on the CPU only (slower):`,
+            error
+          )
+          this.cpuFallbackModels.add(modelId)
+          await this.refreshEnginePreset()
+          await this.ensureEngineReady()
+          info = await loadLlamaModel(modelId, isEmbedding)
+        } else {
+          throw error
+        }
       }
       if (!isEmbedding) {
         this.loadedChatOrder = this.loadedChatOrder.filter((m) => m !== modelId)
@@ -3236,17 +3309,35 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
    */
   async isModelSupported(
     path: string,
-    ctxSize?: number
+    ctxSize?: number,
+    overrides?: {
+      cacheTypeK?: string
+      cacheTypeV?: string
+      noKvOffload?: boolean
+    }
   ): Promise<'RED' | 'YELLOW' | 'GREEN'> {
     try {
-      // The estimate must use the cache width the model will load with.
+      // The estimate must use the cache width the model will load with: its
+      // own setting when it has one, else the engine-wide one.
       const cfg = this.config as Partial<LlamacppConfig> | undefined
+      const has = (v: unknown): v is string =>
+        typeof v === 'string' && v.length > 0
       const kv = resolveKvCacheTypes({
-        cacheTypeK: cfg?.cache_type_k,
-        cacheTypeV: cfg?.cache_type_v,
+        cacheTypeK: has(overrides?.cacheTypeK)
+          ? overrides?.cacheTypeK
+          : cfg?.cache_type_k,
+        cacheTypeV: has(overrides?.cacheTypeV)
+          ? overrides?.cacheTypeV
+          : cfg?.cache_type_v,
         flashAttn: cfg?.flash_attn,
       })
-      const result = await isModelSupported(path, Number(ctxSize), kv.k, kv.v)
+      const result = await isModelSupported(
+        path,
+        Number(ctxSize),
+        kv.k,
+        kv.v,
+        overrides?.noKvOffload === true ? true : cfg?.no_kv_offload === true
+      )
       return result
     } catch (e) {
       throw new Error(String(e))

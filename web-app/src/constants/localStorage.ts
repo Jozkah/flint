@@ -24,6 +24,7 @@ export const localStorageKey = {
   favoriteModels: 'favorite-models',
   modelOrder: 'model-order',
   modelFilter: 'model-filter',
+  modelLibrary: 'model-library',
   setupCompleted: 'setup-completed',
   threadManagement: 'thread-management',
   /** Conversation groups, one key per surface: `conversation-groups:home` etc. */
@@ -45,6 +46,8 @@ export const localStorageKey = {
   coworkCheckpoints: 'cowork-checkpoints',
   keybindings: 'keybindings',
   referenceAliases: 'reference-aliases',
+  /** Named reusable prompts, inserted from the `@` and `/` menus. */
+  promptLibrary: 'prompt-library',
   projectInitDrafts: 'project-init-drafts',
   /** Measured model test results, preferred default model, dismissed hints. */
   modelEvidence: 'model-evidence',

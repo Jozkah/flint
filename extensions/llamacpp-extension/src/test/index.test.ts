@@ -218,6 +218,38 @@ describe('llamacpp_extension', () => {
     })
   })
 
+  describe('list with a broken model.yml', () => {
+    it('keeps the readable models when one model.yml cannot be parsed', async () => {
+      const { getJanDataFolderPath, joinPath, fs } = await import('@janhq/core')
+      const { invoke } = await import('@tauri-apps/api/core')
+
+      extension['providerPath'] = '/jan/llamacpp'
+      const modelsDir = '/jan/llamacpp/models'
+      vi.mocked(getJanDataFolderPath).mockResolvedValue('/jan')
+      vi.mocked(joinPath).mockImplementation((paths) => Promise.resolve(paths.join('/')))
+      vi.mocked(fs.existsSync).mockImplementation(async (p: string) =>
+        p === modelsDir || p.endsWith('/good/model.yml') || p.endsWith('/bad/model.yml')
+      )
+      vi.mocked(fs.readdirSync).mockImplementation(async (p: string) =>
+        p === modelsDir ? [`${modelsDir}/bad`, `${modelsDir}/good`] : []
+      )
+      vi.mocked(fs.fileStat).mockResolvedValue({ isDirectory: true, size: 0 })
+      vi.mocked(invoke).mockImplementation(async (cmd: string, args?: any) => {
+        if (cmd === 'read_yaml' && String(args?.path).includes('/bad/')) {
+          throw new Error('invalid yaml: expected a mapping at line 3')
+        }
+        if (cmd === 'read_yaml') {
+          return { model_path: 'good/model.gguf', name: 'Good', size_bytes: 5 }
+        }
+        return undefined
+      })
+
+      const result = await extension.list()
+
+      expect(result.map((m) => m.id)).toEqual(['good'])
+    })
+  })
+
   describe('import', () => {
     it('installs a downloaded file outside the process working directory', async () => {
       vi.mocked(getJanDataFolderPath).mockResolvedValue('/home/user/.flint')

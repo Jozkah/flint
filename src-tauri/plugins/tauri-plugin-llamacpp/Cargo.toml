@@ -81,6 +81,9 @@ engine-cuda = ["engine"]
 engine-vulkan = ["engine"]
 engine-hip = ["engine"]
 engine-metal = ["engine"]
+# Intel oneAPI SYCL (needs icx/icpx and the oneAPI MKL). Build plumbing only:
+# not verified on Intel hardware, so not a supported backend.
+engine-sycl = ["engine"]
 
 [dev-dependencies]
 tempfile = "3.0"

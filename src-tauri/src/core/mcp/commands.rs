@@ -986,32 +986,50 @@ pub async fn call_tool<R: Runtime>(
         if let Some(args) = arguments.clone() {
             params = params.with_arguments(args);
         }
-        let tool_call = service.call_tool(params);
+        // The timeout rides on the request, so a stuck call is cancelled on the
+        // server too, and a server that keeps timing out is stopped below.
+        let call_timeout = super::stall::server_timeout(active_configs.get(srv_name), timeout_duration);
+        let tool_call = super::stall::call_tool_cancellable(service, params, call_timeout);
+        let timed_out_message = format!(
+            "Tool call '{tool_name}' timed out after {} seconds",
+            call_timeout.as_secs()
+        );
+        let to_message = |failure: super::stall::CallFailure| match failure {
+            super::stall::CallFailure::TimedOut => timed_out_message.clone(),
+            super::stall::CallFailure::Other(e) => e,
+        };
 
         // Race between timeout, tool call, and cancellation
+        let mut stop_stalled = false;
         let result = if cancellation_token.is_some() {
             tokio::select! {
-                result = timeout(timeout_duration, tool_call) => {
-                    match result {
-                        Ok(call_result) => call_result.map_err(|e| e.to_string()),
-                        Err(_) => Err(format!(
-                            "Tool call '{tool_name}' timed out after {} seconds",
-                            timeout_duration.as_secs()
-                        )),
-                    }
+                outcome = tool_call => {
+                    stop_stalled = super::stall::note_outcome(srv_name, &outcome);
+                    outcome.map_err(to_message)
                 }
                 _ = cancel_rx => {
                     Err(format!("Tool call '{tool_name}' was cancelled"))
                 }
             }
         } else {
-            match timeout(timeout_duration, tool_call).await {
-                Ok(call_result) => call_result.map_err(|e| e.to_string()),
-                Err(_) => Err(format!(
-                    "Tool call '{tool_name}' timed out after {} seconds",
-                    timeout_duration.as_secs()
-                )),
-            }
+            let outcome = tool_call.await;
+            stop_stalled = super::stall::note_outcome(srv_name, &outcome);
+            outcome.map_err(to_message)
+        };
+        let result = if stop_stalled {
+            log::warn!(
+                "MCP server {srv_name} timed out {} calls in a row; stopping it (restarts on next use)",
+                super::stall::STALL_STOP_THRESHOLD
+            );
+            let _ =
+                super::helpers::stop_running_mcp_server(&app, srv_name, active_configs.get(srv_name))
+                    .await;
+            super::helpers::emit_mcp_update_event(&app, srv_name);
+            result.map_err(|e| {
+                format!("{e}. The server was stopped after repeated timeouts and starts again on its next use.")
+            })
+        } else {
+            result
         };
 
         // Signal reconnect if the tool call itself hit a transport error

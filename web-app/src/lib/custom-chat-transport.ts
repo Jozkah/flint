@@ -326,10 +326,13 @@ const MODEL_SAMPLING_SETTING_KEYS = [
   'repeat_penalty',
   'presence_penalty',
   'frequency_penalty',
+  'seed',
 ] as const
 
 /** Keys whose upstream handler throws on a negative value. */
 const NON_NEGATIVE_SAMPLING_KEYS = new Set<string>([
+  // A negative seed is "random", the same as not sending one.
+  'seed',
   'repeat_last_n',
   'dry_penalty_last_n',
 ])
@@ -410,6 +413,20 @@ function extractModelTemplateKwargs(
     }
   }
   return out
+}
+
+/**
+ * Whether llama.cpp shifts this model's context when it fills. The model's own
+ * setting (`on` / `off`; `auto` or absent means "use global") wins over the
+ * engine-wide Context Shift checkbox.
+ */
+export function resolveContextShift(
+  modelSetting: unknown,
+  globalSetting: unknown
+): boolean {
+  if (modelSetting === 'on' || modelSetting === true) return true
+  if (modelSetting === 'off' || modelSetting === false) return false
+  return globalSetting === true
 }
 
 export function effectiveContextWindow(
@@ -3088,11 +3105,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       usableContextValue(inferenceParams.max_context_tokens) ?? 0
     const contextShiftEnabled =
       providerId === 'llamacpp' &&
-      provider.settings?.some(
-        (setting) =>
-          setting.key === 'ctx_shift' &&
-          setting.controller_props?.value === true
-      ) === true
+      resolveContextShift(
+        selectedModel?.settings?.ctx_shift?.controller_props?.value,
+        provider.settings?.find((setting) => setting.key === 'ctx_shift')
+          ?.controller_props?.value
+      )
     let liveContextTokens: number | undefined
     if (contextShiftEnabled) {
       try {

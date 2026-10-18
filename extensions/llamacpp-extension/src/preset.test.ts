@@ -570,6 +570,63 @@ describe('generatePreset context-shift', () => {
   })
 })
 
+describe('generatePreset per-model context-shift', () => {
+  const modelSection = () =>
+    writtenFiles['/p/router.preset.ini'].split('[llama]')[1] ?? ''
+
+  it('lets one model turn context shift on while the global stays off', async () => {
+    setupModel('llama', { ctx_shift: true })
+    await generatePreset('/p', '/jan', { ctx_shift: false } as any, {})
+    expect(modelSection()).toContain('context-shift = true')
+  })
+
+  it('lets one model turn it off under a global on', async () => {
+    setupModel('llama', { ctx_shift: false })
+    await generatePreset('/p', '/jan', { ctx_shift: true } as any, {})
+    expect(modelSection()).toContain('context-shift = false')
+  })
+
+  it('writes nothing for a model that agrees with the global setting', async () => {
+    setupModel('llama', { ctx_shift: true })
+    await generatePreset('/p', '/jan', { ctx_shift: true } as any, {})
+    expect(modelSection()).not.toContain('context-shift')
+  })
+})
+
+describe('generatePreset per-model seed', () => {
+  it('writes a fixed seed into the model section', async () => {
+    setupModel('llama', { seed: 42 })
+    await generatePreset('/p', '/jan', {} as any, {})
+    expect(writtenFiles['/p/router.preset.ini']).toContain('seed = 42')
+  })
+
+  it('writes nothing for the random default or a negative seed', async () => {
+    setupModel('llama', { seed: -1 })
+    await generatePreset('/p', '/jan', {} as any, {})
+    expect(writtenFiles['/p/router.preset.ini']).not.toMatch(/^seed =/m)
+  })
+
+  it('keeps a seed of zero', async () => {
+    setupModel('llama', { seed: 0 })
+    await generatePreset('/p', '/jan', {} as any, {})
+    expect(writtenFiles['/p/router.preset.ini']).toContain('seed = 0')
+  })
+})
+
+describe('generatePreset CPU fallback', () => {
+  it('pins a fallback model to the CPU backend and leaves others alone', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', {} as any, {
+      cpuFallbackModels: new Set(['llama']),
+    })
+    expect(writtenFiles['/p/router.preset.ini']).toContain('device = none')
+    await generatePreset('/p', '/jan', {} as any, {
+      cpuFallbackModels: new Set(['other']),
+    })
+    expect(writtenFiles['/p/router.preset.ini']).not.toContain('device = none')
+  })
+})
+
 describe('generatePreset embedding ctx-size', () => {
   it('pins embedders to native ctx-size = 0 so they do not inherit the global 8192', async () => {
     setupModel('minilm', { embedding: true })

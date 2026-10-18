@@ -270,6 +270,22 @@ describe('useThreads - coverage', () => {
     expect(result.current.threads['t1'].title).toBe('New')
   })
 
+  it('toggles a chat as favourite (shown under Pinned) and back', () => {
+    const { result } = renderHook(() => useThreads())
+
+    act(() => {
+      result.current.setThreads([{ id: 't1', title: 'A', updated: 1 } as any])
+    })
+    act(() => result.current.toggleFavorite('t1'))
+    expect(result.current.threads['t1'].isFavorite).toBe(true)
+    expect(result.current.getFavoriteThreads().map((t) => t.id)).toEqual(['t1'])
+    act(() => result.current.toggleFavorite('t1'))
+    expect(result.current.threads['t1'].isFavorite).toBe(false)
+    // an unknown id is ignored
+    act(() => result.current.toggleFavorite('gone'))
+    expect(result.current.threads['gone']).toBeUndefined()
+  })
+
   it('should not update non-existent thread', () => {
     const { result } = renderHook(() => useThreads())
 

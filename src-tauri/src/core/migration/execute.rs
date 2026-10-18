@@ -1619,4 +1619,65 @@ mod tests {
             br#"{"orig":1}"#
         );
     }
+
+    /// A fuller JAN install than `seed_legacy`: every kind of file an older
+    /// release leaves behind. After a Copy migration of all categories, every
+    /// source file must exist at the mapped destination with the same bytes:
+    /// nothing dropped, nothing rewritten.
+    #[test]
+    fn a_full_older_install_survives_copy_migration_byte_for_byte() {
+        let (_td, roots) = setup();
+        let l = legacy_paths(&roots);
+        let d = &l.data_folder;
+        let put = |rel: &str, bytes: &[u8]| {
+            let p = d.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, bytes).unwrap();
+        };
+        put("threads/thread_1/messages.jsonl", b"{\"id\":\"m1\",\"role\":\"user\"}\n{\"id\":\"m2\",\"role\":\"assistant\"}\n");
+        put("threads/thread_2/thread.json", "{\"id\":\"thread_2\",\"title\":\"Za\u{17c}\u{f3}\u{142}\u{107} g\u{119}\u{15b}l\u{105}\"}".as_bytes());
+        put("threads/thread_2/messages.jsonl", "{\"id\":\"m3\"}\n".as_bytes());
+        put("assistants/jan/assistant.json", br#"{"id":"jan","instructions":"be kind"}"#);
+        put("models/m1/model.yml", b"name: M1\nmodel_path: models/m1/model.gguf\nsize_bytes: 12\n");
+        put("models/org/repo/sub model.yml", b"name: nested\n");
+        put("models/org/repo/mmproj.gguf", b"\x01\x02\x03");
+        put("llamacpp/backends/v1/build/bin/server.exe", b"MZ");
+        put("mlx/models/x/config.json", b"{}");
+        put("extensions/ext/package.json", br#"{"name":"ext"}"#);
+        put("logs/app.log", b"line\n");
+        put(".npx/cache.json", b"{}");
+        put("rooms/r1/room.json", br#"{"id":"r1"}"#);
+        put("agent-workspace/notes/n.md", b"# n");
+        put("my-custom-dir/keep.me", b"user data in a folder this app never named");
+        put("mcp_config.json", br#"{"mcpServers":{"a":{"command":"npx"}}}"#);
+        // Config dir (not the data folder).
+        fs::write(l.config_dir.join("settings.json"), br#"{"theme":"\"dark\"","model-provider":"{\"state\":{}}"}"#).unwrap();
+
+        let p = make_plan(&roots, Mode::Copy, Conflict::KeepBoth);
+        let r = execute(&p, &ExecuteOpts::with_holder("test"));
+        assert_eq!(r.status, Status::Complete, "err={:?}", r.error);
+
+        let f = flint_paths(&roots);
+        let mut lost: Vec<String> = Vec::new();
+        let mut changed: Vec<String> = Vec::new();
+        for src in fsutil::list_files(d) {
+            let rel = src.strip_prefix(d).unwrap();
+            let dst = f.data_folder.join(rel);
+            match fs::read(&dst) {
+                Err(_) => lost.push(rel.display().to_string()),
+                Ok(bytes) if bytes != fs::read(&src).unwrap() => {
+                    changed.push(rel.display().to_string())
+                }
+                Ok(_) => {}
+            }
+        }
+        let settings_src = fs::read(l.config_dir.join("settings.json")).unwrap();
+        match fs::read(f.config_dir.join("settings.json")) {
+            Err(_) => lost.push("<config>/settings.json".into()),
+            Ok(b) if b != settings_src => changed.push("<config>/settings.json".into()),
+            Ok(_) => {}
+        }
+        assert!(lost.is_empty(), "files missing after migration: {lost:?}");
+        assert!(changed.is_empty(), "files rewritten by migration: {changed:?}");
+    }
 }

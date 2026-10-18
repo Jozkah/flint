@@ -38,6 +38,9 @@ pub struct ScanEnv {
     pub hf_home: Option<PathBuf>,
     pub llama_cache: Option<PathBuf>,
     pub ollama_models: Option<PathBuf>,
+    /// Folders the user added by hand; each is scanned for GGUF files, and as
+    /// an Ollama store when it holds `manifests/` and `blobs/`.
+    pub extra_folders: Vec<PathBuf>,
 }
 
 impl ScanEnv {
@@ -54,6 +57,7 @@ impl ScanEnv {
             hf_home: var("HF_HOME"),
             llama_cache: var("LLAMA_CACHE"),
             ollama_models: var("OLLAMA_MODELS"),
+            extra_folders: Vec::new(),
         }
     }
 }
@@ -322,14 +326,32 @@ pub fn scan(env: &ScanEnv) -> Vec<ScannedModel> {
         scan_ollama(&mut out, &mut seen, &dir);
     }
 
+    for dir in &env.extra_folders {
+        if dir.join("manifests").is_dir() && dir.join("blobs").is_dir() {
+            scan_ollama(&mut out, &mut seen, dir);
+        }
+        scan_folder_of_ggufs(&mut out, &mut seen, dir, 4, "Custom folder", lmstudio_name);
+    }
+
     out
 }
 
 /// Models other apps already keep on this machine. Runs on a blocking thread:
 /// it walks directories.
 #[tauri::command]
-pub async fn scan_local_models() -> Result<Vec<ScannedModel>, String> {
-    tauri::async_runtime::spawn_blocking(|| scan(&ScanEnv::from_process()))
+pub async fn scan_local_models(
+    extra_folders: Option<Vec<String>>,
+) -> Result<Vec<ScannedModel>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut env = ScanEnv::from_process();
+        env.extra_folders = extra_folders
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| !f.trim().is_empty())
+            .map(PathBuf::from)
+            .collect();
+        scan(&env)
+    })
         .await
         .map_err(|e| format!("Model scan failed: {e}"))
 }
@@ -353,6 +375,7 @@ mod tests {
             hf_home: None,
             llama_cache: None,
             ollama_models: None,
+            extra_folders: Vec::new(),
         }
     }
 
@@ -444,6 +467,43 @@ mod tests {
             .unwrap();
         }
         assert_eq!(scan(&env(dir.path())).len(), 1);
+    }
+
+    #[test]
+    fn scans_a_user_added_folder_of_ggufs() {
+        let dir = tempfile::tempdir().unwrap();
+        let extra = dir.path().join("D-drive-models");
+        gguf(&extra.join("org/repo/m-q4.gguf"), 2_000_000);
+        gguf(&extra.join("mmproj-x.gguf"), 2_000_000);
+        let mut e = env(dir.path());
+        e.extra_folders = vec![extra.clone(), dir.path().join("does-not-exist")];
+        let found = scan(&e);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].source, "Custom folder");
+        assert_eq!(found[0].name, "org/repo / m-q4");
+        // The path handed to the loader is absolute and readable.
+        assert!(Path::new(&found[0].path).is_absolute());
+        assert!(fs::File::open(&found[0].path).is_ok());
+    }
+
+    #[test]
+    fn a_user_added_folder_can_be_an_ollama_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("moved-ollama");
+        gguf(&root.join("blobs/sha256-cafe"), 2_000_000);
+        let manifest = root.join("manifests/registry.ollama.ai/library/llama3/latest");
+        fs::create_dir_all(manifest.parent().unwrap()).unwrap();
+        fs::write(
+            &manifest,
+            r#"{"layers":[{"mediaType":"application/vnd.ollama.image.model","digest":"sha256:cafe"}]}"#,
+        )
+        .unwrap();
+        let mut e = env(dir.path());
+        e.extra_folders = vec![root];
+        let found = scan(&e);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "llama3:latest");
+        assert_eq!(found[0].source, "Ollama");
     }
 
     #[test]

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
+  checklistStatus,
   destinationFor,
   guideSteps,
   INITIAL_GUIDE_STATE,
@@ -92,5 +93,30 @@ describe('useOnboardingGuide', () => {
   it('remembers the setup page so an interrupted setup resumes there', () => {
     useOnboardingGuide.getState().setSetupPage('finish')
     expect(useOnboardingGuide.getState().setupPage).toBe('finish')
+  })
+})
+
+describe('home checklist', () => {
+  const s = state({ intent: 'question', threadCountAtStart: 2 })
+
+  it('ticks model, first chat and first project from real state only', () => {
+    expect(
+      checklistStatus(s, { hasUsableModel: false, threadCount: 2, projectCount: 0 })
+    ).toEqual([
+      { id: 'model-added', done: false },
+      { id: 'first-chat', done: false },
+      { id: 'first-project', done: false },
+    ])
+    expect(
+      checklistStatus(s, { hasUsableModel: true, threadCount: 3, projectCount: 1 }).map(
+        (item) => item.done
+      )
+    ).toEqual([true, true, true])
+  })
+
+  it('does not count conversations from before the guide, and tolerates a missing project signal', () => {
+    const items = checklistStatus(s, { hasUsableModel: true, threadCount: 2 })
+    expect(items.find((i) => i.id === 'first-chat')?.done).toBe(false)
+    expect(items.find((i) => i.id === 'first-project')?.done).toBe(false)
   })
 })
