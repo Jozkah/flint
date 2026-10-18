@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use std::future::pending;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -114,7 +113,6 @@ fn alt_scroll_restore() -> &'static str {
     }
 }
 
-const ACCOUNT_CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
 /// The private modes to set on entry, in one write. Keyboard enhancement is
 /// unconditional -- it is what the editing keys are decoded from -- while mouse
 /// tracking follows the `mouse` config key.
@@ -937,40 +935,6 @@ impl LoginPrompt {
 
     fn paste(&mut self, text: &str) {
         if self.editable() {
-            self.input.push_str(super::secret_input::pasted(text));
-        }
-    }
-}
-
-/// `/login` account entry: owns an OAuth descriptor while the browser callback
-/// task races the loopback callback with a manually pasted redirect URL/code.
-struct AccountLoginPrompt {
-    login: crate::core::cli::auth::account::AccountLogin,
-    input: String,
-    error: Option<String>,
-    submitting: bool,
-}
-
-impl AccountLoginPrompt {
-    fn new(login: crate::core::cli::auth::account::AccountLogin) -> Self {
-        Self {
-            login,
-            input: String::new(),
-            error: None,
-            submitting: false,
-        }
-    }
-
-    fn provider_id(&self) -> &'static str {
-        self.login.provider().credential_provider()
-    }
-
-    fn masked(&self) -> String {
-        super::secret_input::mask(self.input.chars().count())
-    }
-
-    fn paste(&mut self, text: &str) {
-        if !self.submitting {
             self.input.push_str(super::secret_input::pasted(text));
         }
     }
@@ -2095,15 +2059,6 @@ struct App {
     model_fetch_wants_picker: bool,
     /// Key handed off to the loop to verify off the render loop. Taken once.
     login_submit: Option<(String, String)>,
-    /// Active OAuth account prompt; owns the keyboard while open.
-    account_login: Option<AccountLoginPrompt>,
-    /// Account sign-in handed off to the loop after its local callback is ready.
-    account_login_submit: Option<crate::core::cli::auth::account::AccountLogin>,
-    /// Manual OAuth redirect/code sender for the active account task.
-    account_login_manual_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
-    /// Manual OAuth input submitted while no task sender is active; delivered to
-    /// the fresh task channel on retry spawn.
-    account_login_pending_manual_input: Option<String>,
     /// `/login` asked for the browser flow: `chat_loop` creates the session.
     login_device_request: bool,
     /// A `/mcp` authorization waiting on the user's yes/no before a browser is
@@ -2618,10 +2573,6 @@ impl App {
             model_fetch_running: false,
             model_fetch_wants_picker: false,
             login_submit: None,
-            account_login: None,
-            account_login_submit: None,
-            account_login_manual_tx: None,
-            account_login_pending_manual_input: None,
             login_device_request: false,
             browser_confirm: None,
             plugin_install_request: None,
@@ -3457,7 +3408,7 @@ impl App {
     /// every keystroke but leaves a cursor blinking in the composer promises a
     /// field that is not there.
     fn blocking_dock(&self) -> Option<&'static str> {
-        if self.account_login.is_some() || self.login.is_some() {
+        if self.login.is_some() {
             Some("sign in in the dock above")
         } else if self.browser_confirm.is_some() {
             Some("answer the question above")
@@ -8518,31 +8469,6 @@ async fn await_tokamak_login(
     joined.map_err(|e| format!("Tokamak sign-in task failed: {e}"))?
 }
 
-async fn await_account_login(
-    task: &mut Option<tokio::task::JoinHandle<Result<String, String>>>,
-) -> Result<String, String> {
-    let joined = match task.as_mut() {
-        Some(h) => h.await,
-        None => return pending().await,
-    };
-    *task = None;
-    joined.map_err(|e| format!("account sign-in task failed: {e}"))?
-}
-
-/// Await the post-Claude-login plan-report task, parking forever when none is
-/// running so this can sit in the loop's `select!` unconditionally.
-async fn await_account_usage(task: &mut Option<tokio::task::JoinHandle<String>>) -> String {
-    let joined = match task.as_mut() {
-        Some(h) => h.await,
-        None => return pending().await,
-    };
-    *task = None;
-    match joined {
-        Ok(summary) => summary,
-        Err(e) => format!("could not check the Claude plan: {e}"),
-    }
-}
-
 /// Await the session-creation half of the browser sign-in, parking forever when
 /// none is running so this can sit in the loop's `select!` unconditionally.
 async fn await_login_begin(
@@ -8882,13 +8808,6 @@ pub async fn run(
     res
 }
 
-const CLAUDE_ALIAS_NOTICE: &str = crate::core::cli::auth::account::CLAUDE_ALIAS_NOTICE;
-
-fn note_claude_alias_if_engaged(app: &mut App) {
-    if crate::core::cli::auth::account::take_claude_alias_engaged() {
-        app.system(Level::Warn, CLAUDE_ALIAS_NOTICE);
-    }
-}
 /// Apply one event from the active run's stream, clearing `current` on a
 /// terminal one. `None` is a stream that closed without a terminal event (an
 /// aborted task).
@@ -8897,7 +8816,6 @@ async fn apply_stream_event(
     ev: Option<StreamEvent>,
     current: &mut Option<CurrentRun>,
 ) {
-    note_claude_alias_if_engaged(app);
     match ev {
         Some(StreamEvent::Done { stop_reason, usage }) => {
             app.on_done(stop_reason, usage);
@@ -9002,12 +8920,6 @@ async fn chat_loop<B: Backend>(
         >,
     > = None;
 
-    let mut account_login_task: Option<tokio::task::JoinHandle<Result<String, String>>> = None;
-    // Claude sign-in reports which org/plan the token resolved to (personal
-    // free vs enterprise premium) so a wrong-org consent is caught immediately
-    // instead of surfacing later as sonnet/opus 429s. Detached like the update
-    // check: the probe is a network round trip and must not block sign-in.
-    let mut account_usage_task: Option<tokio::task::JoinHandle<String>> = None;
     // The browser-approval sign-in, in two off-loop halves: `begin` creates the
     // session (one round trip), then the claim polls until the user approves --
     // which can take minutes, so it must never touch the render loop.
@@ -9099,47 +9011,6 @@ async fn chat_loop<B: Backend>(
             }
             app.login_device_request = false;
         }
-        if app.account_login.is_none() {
-            app.account_login_pending_manual_input = None;
-            app.account_login_manual_tx = None;
-            if let Some(task) = account_login_task.take() {
-                task.abort();
-            }
-        }
-
-        if account_login_task.is_none() {
-            if let Some(mut login) = app.account_login_submit.take() {
-                let (manual_rx, has_pending_manual_input) = account_login_manual_channel(app);
-                match crate::core::cli::auth::account::bind_callback(&mut login).await {
-                    Err(error) => finish_account_login(app, Err(error)),
-                    Ok(listener) => {
-                        if let Some(prompt) = app.account_login.as_mut() {
-                            prompt.login = login.clone();
-                        }
-                        account_login_task = Some(tokio::spawn(async move {
-                            if let Err(error) = open_browser(&login.authorization_url) {
-                                if !has_pending_manual_input {
-                                    return Err(error);
-                                }
-                            }
-                            let provider = tokio::time::timeout(
-                                ACCOUNT_CALLBACK_TIMEOUT,
-                                crate::core::cli::auth::account::
-                                    complete_callback_login_with_manual(
-                                        listener,
-                                        login,
-                                        manual_rx,
-                                    ),
-                            )
-                            .await
-                            .map_err(|_| "account sign-in timed out".to_string())??;
-                            Ok(provider.credential_provider().to_string())
-                        }));
-                    }
-                }
-            }
-        }
-
         // The detail screen asked for something off-loop. One job at a time, and
         // a request arriving while one is in flight *waits* rather than being
         // dropped: an authorization owns the slot for up to `CALLBACK_TIMEOUT`
@@ -9414,24 +9285,6 @@ async fn chat_loop<B: Backend>(
                 if login_ok {
                     reload_provider_configs(app).await;
                 }
-            }
-            account_login = await_account_login(&mut account_login_task) => {
-                let anthropic = matches!(account_login.as_deref(), Ok("anthropic"));
-                finish_account_login(app, account_login);
-                if anthropic {
-                    // Fallback text is only shown if the stored token or the
-                    // probe itself errors (no credential, network failure), so
-                    // a straightforward down/rate-limit state stays visible.
-                    account_usage_task = Some(tokio::spawn(async move {
-                        crate::core::cli::auth::account::claude_plan_summary(
-                            "could not check which Claude plan this account resolves to.",
-                        )
-                        .await
-                    }));
-                }
-            }
-            usage = await_account_usage(&mut account_usage_task) => {
-                app.note(&usage);
             }
             begun = await_login_begin(&mut login_begin_task) => {
                 match begun {
@@ -10003,11 +9856,6 @@ fn route_paste_event(app: &mut App, event: Event) {
     let Event::Paste(text) = event else {
         return;
     };
-    if let Some(prompt) = app.account_login.as_mut() {
-        // A pasted redirect/code belongs to the OAuth prompt, not chat.
-        prompt.paste(&text);
-        return;
-    }
     if let Some(prompt) = app.login.as_mut() {
         // A pasted API key belongs to the login field, not the chat composer
         // (where it would echo).
@@ -10106,96 +9954,6 @@ async fn handle_ask_mouse(
     true
 }
 
-fn cancel_account_login(app: &mut App) {
-    app.account_login = None;
-    app.account_login_submit = None;
-    app.account_login_manual_tx = None;
-    clear_account_login_pending(app);
-}
-
-fn account_login_manual_channel(
-    app: &mut App,
-) -> (tokio::sync::mpsc::UnboundedReceiver<String>, bool) {
-    let (manual_tx, manual_rx) = tokio::sync::mpsc::unbounded_channel();
-    let pending = app.account_login_pending_manual_input.take();
-    let has_pending = pending.is_some();
-    if let Some(input) = pending {
-        let _ = manual_tx.send(input);
-    }
-    app.account_login_manual_tx = Some(manual_tx);
-    (manual_rx, has_pending)
-}
-
-fn clear_account_login_pending(app: &mut App) {
-    app.account_login_pending_manual_input = None;
-}
-/// Keys for the account OAuth prompt. Manual input is locally validated for fast
-/// feedback; the account task validates again before exchanging anything.
-fn handle_account_login_key(app: &mut App, key: KeyEvent, ctrl: bool) {
-    let cancel = key.code == KeyCode::Esc
-        || (ctrl && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d')));
-    if cancel {
-        cancel_account_login(app);
-        return;
-    }
-    if ctrl && key.code == KeyCode::Char('v') {
-        match clipboard_text() {
-            Ok(text) => {
-                if let Some(prompt) = app.account_login.as_mut() {
-                    prompt.paste(&text);
-                }
-            }
-            Err(e) => {
-                if let Some(prompt) = app.account_login.as_mut() {
-                    prompt.error = Some(format!("could not read the clipboard: {e}"));
-                }
-            }
-        }
-        return;
-    }
-
-    let Some(prompt) = app.account_login.as_mut() else {
-        return;
-    };
-    if prompt.submitting {
-        return;
-    }
-    match key.code {
-        KeyCode::Enter => {
-            if prompt.input.trim().is_empty() {
-                prompt.error = Some("enter the redirect URL or authorization code".to_string());
-                return;
-            }
-            match prompt.login.parse_manual_input(&prompt.input) {
-                Ok(_) => {
-                    prompt.submitting = true;
-                    prompt.error = None;
-                    let input = prompt.input.clone();
-                    let retry = prompt.login.clone();
-                    let sent = app
-                        .account_login_manual_tx
-                        .as_ref()
-                        .is_some_and(|tx| tx.send(input.clone()).is_ok());
-                    if !sent {
-                        app.account_login_manual_tx = None;
-                        app.account_login_pending_manual_input = Some(input);
-                        app.account_login_submit = Some(retry);
-                    }
-                }
-                Err(e) => {
-                    prompt.input.clear();
-                    prompt.error = Some(e);
-                }
-            }
-        }
-        KeyCode::Backspace => {
-            prompt.input.pop();
-        }
-        KeyCode::Char(ch) if !ctrl => prompt.input.push(ch),
-        _ => {}
-    }
-}
-
 /// Keys for the `/login` prompt. Enter hands the key to the loop for
 /// verification (`login_submit`); Esc or Ctrl-C abandons sign-in. While a
 /// verification is in flight the field is read-only, so a stray keystroke cannot
@@ -10276,12 +10034,6 @@ fn handle_login_key(app: &mut App, key: KeyEvent, ctrl: bool) {
         KeyCode::Char(ch) if !ctrl => prompt.input.push(ch),
         _ => {}
     }
-}
-
-/// Plain text from the OS clipboard, for Ctrl-V in the `/login` prompt (the
-/// image path is `clipboard_image`).
-fn clipboard_text() -> Result<String, String> {
-    super::secret_input::clipboard_text()
 }
 
 fn handle_model_picker_key(app: &mut App, key: KeyEvent, ctrl: bool) {
@@ -10381,13 +10133,6 @@ async fn handle_key(
         key.code == KeyCode::Enter && (alt || key.modifiers.contains(KeyModifiers::SHIFT));
     let ctrl_c = ctrl && key.code == KeyCode::Char('c');
     let ctrl_d = ctrl && key.code == KeyCode::Char('d');
-
-    // The account OAuth prompt also owns typed/pasted secrets and callback URLs,
-    // and outranks the API-key prompt if both are somehow present.
-    if app.account_login.is_some() {
-        handle_account_login_key(app, key, ctrl);
-        return;
-    }
 
     // The `/login` prompt owns the keyboard while open: every keystroke is part
     // of a secret being typed, so none of it may reach the input box or the
@@ -10793,11 +10538,7 @@ async fn handle_key(
                         resume_thread(app, &value).await
                     }
                     PickerKind::LoginProvider => {
-                        if crate::core::cli::auth::account::AccountProvider::from_credential_provider(&value)
-                            .is_some()
-                        {
-                            open_account_login(app, &value);
-                        } else if value == "tokamak" {
+                        if value == "tokamak" {
                             open_login(app);
                         } else {
                             open_login_prompt(app, &value);
@@ -14668,7 +14409,6 @@ fn open_login_picker_at(app: &mut App, selected_provider: Option<&str>) {
 /// legacy API-key field.
 fn login_command(app: &mut App, arg: &str) {
     if app.login.is_some()
-        || app.account_login.is_some()
         || app
             .picker
             .as_ref()
@@ -14765,47 +14505,6 @@ fn resolve_mcp_browser(app: &mut App, open: bool) {
     }
 }
 
-fn open_account_login(app: &mut App, provider: &str) {
-    open_account_login_with_begin(app, provider, crate::core::cli::auth::account::begin);
-}
-
-fn open_account_login_with_begin(
-    app: &mut App,
-    provider: &str,
-    begin: impl FnOnce(
-        crate::core::cli::auth::account::AccountProvider,
-    ) -> Result<crate::core::cli::auth::account::AccountLogin, String>,
-) {
-    let Some(provider) =
-        crate::core::cli::auth::account::AccountProvider::from_credential_provider(provider)
-    else {
-        return app.note(&format!(
-            "{provider} sign-in failed: selected account is unavailable"
-        ));
-    };
-    let provider_id = provider.credential_provider();
-    match begin(provider) {
-        Ok(login) => {
-            app.account_login = Some(AccountLoginPrompt::new(login.clone()));
-            app.account_login_submit = Some(login);
-            app.account_login_manual_tx = None;
-        }
-        Err(_) => app.note(&account_login_error_message(provider_id)),
-    }
-}
-
-fn open_browser(url: &str) -> Result<(), String> {
-    // Shared with `browser::launch`: on Windows, `cmd /C start` cut the OAuth
-    // URL at its first `&` (#59).
-    let (program, args) = super::browser::platform_launcher();
-    Command::new(program)
-        .args(args)
-        .arg(url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|_| "could not open the browser".to_string())
-}
-
 fn logout_command(app: &mut App, provider: &str) {
     if provider.trim().is_empty() {
         return app.note("usage: /logout <provider>");
@@ -14840,6 +14539,9 @@ fn open_login_prompt(app: &mut App, provider: &str) {
     let Some(definition) = crate::core::cli::auth::provider_by_id(provider) else {
         return app.note("selected provider is unavailable");
     };
+    if crate::core::cli::auth::has_removed_account_login(provider) {
+        app.note(crate::core::cli::auth::REMOVED_ACCOUNT_LOGIN_NOTICE);
+    }
     app.note(&format!("sign in to {} with an API key:", definition.name));
     app.system_detail(vec![Span::styled(
         definition.api_key.keys_url,
@@ -14919,62 +14621,9 @@ fn finish_tokamak_login(app: &mut App, result: Result<super::tokamak::Login, Str
     }
 }
 
-fn finish_account_login(app: &mut App, result: Result<String, String>) {
-    app.account_login_manual_tx = None;
-    if app.account_login.is_none() {
-        clear_account_login_pending(app);
-        return;
-    }
-    match result {
-        Ok(provider) => {
-            clear_account_login_pending(app);
-            app.account_login = None;
-            app.account_login_submit = None;
-            app.note(&login_success_message(&provider));
-            warn_on_claude_login(app, &provider);
-            adopt_account_login_model(app, &provider);
-        }
-        Err(error) => {
-            if let Some(prompt) = app.account_login.as_mut() {
-                let provider = prompt.provider_id();
-                crate::core::cli::auth::account::debug_log(&format!(
-                    "account login failed for {provider}: {error}"
-                ));
-                prompt.submitting = false;
-                prompt.input.clear();
-                prompt.error = Some(if error == "could not open the browser" {
-                    "could not open the browser; use the URL below".to_string()
-                } else {
-                    account_login_error_message(provider)
-                });
-            }
-        }
-    }
-}
-
 fn login_success_message(provider: &str) -> String {
     format!("signed in to {provider}. Use /model to select a model.")
 }
-/// Warn after a Claude account sign-in that Flint reaches Anthropic directly
-/// with the user's OAuth token. Since Flint is a third-party client (not the
-/// official Claude Code CLI), usage proceeds against Anthropic's Claude Code
-/// Terms of Service at the user's own risk; there is no guarantee that
-/// Anthropic permits third-party access to the same quota.
-fn warn_on_claude_login(app: &mut App, provider: &str) {
-    if provider == "anthropic" {
-        app.system(
-            Level::Warn,
-            "Claude sign-in: Flint is a third-party client. Using the Claude Code \
-             quota through Jan may not be sanctioned by Anthropic; proceed at \
-             your own risk and review Anthropic's Terms of Service.",
-        );
-    }
-}
-
-fn account_login_error_message(provider: &str) -> String {
-    format!("{provider} sign-in failed: could not complete browser sign-in")
-}
-
 fn login_error_message(provider: &str, error: crate::core::cli::auth::LoginError) -> String {
     let message = match error {
         crate::core::cli::auth::LoginError::InvalidKey(message)
@@ -14995,19 +14644,6 @@ fn login_error_message(provider: &str, error: crate::core::cli::auth::LoginError
     format!("{provider} sign-in failed: {message}")
 }
 
-fn adopt_account_login_model(app: &mut App, provider: &str) {
-    let models = crate::core::agent::global_config::load_global_config()
-        .ok()
-        .and_then(|configs| configs.get(provider).map(|config| config.models.clone()))
-        .unwrap_or_default();
-    let login = crate::core::cli::auth::LoginResult {
-        provider: provider.to_string(),
-        models,
-        config_path: std::path::PathBuf::new(),
-        default_model: None,
-    };
-    adopt_login_model(app, &login);
-}
 fn adopt_login_model(app: &mut App, login: &crate::core::cli::auth::LoginResult) {
     let runnable = super::providers::list_provider_models(Some(&app.project_root));
     if runnable.iter().any(|(_, model)| *model == app.model) {
@@ -16756,19 +16392,8 @@ fn draw(f: &mut Frame, app: &mut App) {
 
     // Login prompts are modal and user-initiated (only reachable while idle), so
     // they outrank the queues below: nothing else may take keystrokes meant for
-    // a secret or OAuth redirect.
-    if let Some(prompt) = &app.account_login {
-        let height =
-            (ACCOUNT_LOGIN_PROMPT_ROWS + u16::from(prompt.error.is_some())).min(chunks[1].height);
-        let y = chunks[2].y.saturating_sub(height).max(chunks[1].y);
-        let rect = ratatui::layout::Rect {
-            x: chunks[2].x,
-            y,
-            width: chunks[2].width,
-            height,
-        };
-        draw_account_login(f, rect, prompt);
-    } else if let Some(prompt) = &app.login {
+    // a secret.
+    if let Some(prompt) = &app.login {
         let height = (LOGIN_PROMPT_ROWS + u16::from(prompt.error.is_some())).min(chunks[1].height);
         let y = chunks[2].y.saturating_sub(height).max(chunks[1].y);
         let rect = ratatui::layout::Rect {
@@ -16972,75 +16597,6 @@ fn draw_ask(f: &mut Frame, area: Rect, ask: &mut PendingAsk, queue_len: usize) {
         )
     };
     f.render_widget(Paragraph::new(help), rows[2]);
-}
-
-/// Rows the account OAuth box needs: two borders plus status, authorization
-/// destination, callback URI, masked field, and help. An error adds one more.
-const ACCOUNT_LOGIN_PROMPT_ROWS: u16 = 7;
-
-fn safe_url_origin_path(raw: &str) -> String {
-    url::Url::parse(raw).map_or_else(
-        |_| "unknown URL".to_string(),
-        |mut url| {
-            url.set_query(None);
-            url.set_fragment(None);
-            format!("{}{}", url.origin().ascii_serialization(), url.path())
-        },
-    )
-}
-
-fn draw_account_login(f: &mut Frame, area: ratatui::layout::Rect, prompt: &AccountLoginPrompt) {
-    use ratatui::widgets::Clear;
-
-    let dim = Style::new().dark_gray();
-    let provider = prompt.provider_id();
-    let name = crate::core::cli::auth::provider_by_id(provider)
-        .map_or("provider", |definition| definition.name);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::new().cyan())
-        .title(Span::styled(
-            format!(" {name} sign-in "),
-            Style::new().on_cyan().black().bold(),
-        ));
-    let mut lines = vec![
-        Line::styled("open the browser to continue", dim),
-        Line::from(vec![
-            Span::styled("authorization: ", dim),
-            Span::styled(
-                safe_url_origin_path(&prompt.login.authorization_url),
-                Style::new().cyan(),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("callback: ", dim),
-            Span::styled(
-                safe_url_origin_path(&prompt.login.redirect_uri),
-                Style::new().cyan(),
-            ),
-        ]),
-    ];
-    if let Some(error) = &prompt.error {
-        lines.push(Line::styled(error.clone(), Style::new().red()));
-    }
-    lines.push(Line::from(vec![
-        Span::styled("authorization code or redirect URL: ", Style::new().bold()),
-        Span::raw(prompt.masked()),
-        Span::styled("█", Style::new().cyan()),
-    ]));
-    lines.push(Line::styled(
-        if prompt.submitting {
-            "waiting for browser sign-in · Esc cancel"
-        } else {
-            "Enter submit · Esc cancel"
-        },
-        dim,
-    ));
-
-    f.render_widget(Clear, area);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    f.render_widget(Paragraph::new(lines), inner);
 }
 
 /// Rows the `/login` box needs: two borders, the URL, the field, and the help
@@ -19027,10 +18583,10 @@ mod tests {
     use tokio::sync::mpsc;
     use super::{
         age_closed_todos, alt_scroll_restore, alt_scroll_save_off, answer_without_reasoning,
-        apply_repaint, apply_resume, apply_stream_event, assistant_is_awaiting_user_answer, assistant_runs,
+        apply_repaint, apply_resume, assistant_is_awaiting_user_answer, assistant_runs,
         autoscroll_selection, await_branch_poll, backgrounded_job_id, brand, build_user_message,
         clipboard_path, compact_tokens, context_lines, diff_lines, drain_stream_events,
-        estimate_token_count, finish_account_login, finish_compaction, finish_context_report,
+        estimate_token_count, finish_compaction, finish_context_report,
         finish_login, finish_plugin_install, finish_tokamak_login, format_tokens,
         group_detail_lines, group_summary, handle_ask_key, handle_ask_mouse, handle_key,
         handle_mouse, header_spans, image_mime, image_mime_of, input_content_lines,
@@ -19545,30 +19101,6 @@ mod tests {
         assert_eq!(tokens_per_second(0, 500), 0.0);
     }
 
-    #[tokio::test]
-    async fn claude_alias_notice_is_rendered_once() {
-        crate::core::cli::auth::account::mark_claude_alias_engaged_for_test();
-        let mut app = test_app();
-        let mut current = None;
-
-        apply_stream_event(
-            &mut app,
-            Some(StreamEvent::Step { index: 1, max: 0 }),
-            &mut current,
-        )
-        .await;
-        let first = transcript_text(&app);
-        assert!(first.contains("Claude Code keychain"));
-
-        apply_stream_event(
-            &mut app,
-            Some(StreamEvent::Step { index: 2, max: 0 }),
-            &mut current,
-        )
-        .await;
-        let second = transcript_text(&app);
-        assert_eq!(second.matches("Claude Code keychain").count(), 1);
-    }
     fn transcript_text(app: &App) -> String {
         app.transcript.iter().map(message_text_of).collect()
     }
@@ -23175,7 +22707,7 @@ mod tests {
             let catalog = crate::core::cli::auth::provider_catalog();
             // Expected picker order: Tokamak pinned to the top (the default
             // provider), then the remaining providers in name order:
-            // Claude, Codex, DeepSeek, OpenCode. (catalog keeps its own order.)
+            // Anthropic, DeepSeek, OpenAI, OpenCode. (catalog keeps its own order.)
             let ordered = |catalog: &Vec<crate::core::cli::auth::ProviderDefinition>| {
                 let mut providers = catalog.clone();
                 providers.sort_by(|a, b| match (a.id == "tokamak", b.id == "tokamak") {
@@ -23254,7 +22786,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn login_provider_selection_starts_account_login_directly() {
+    async fn login_provider_selection_starts_the_api_key_prompt() {
         let mut app = test_app();
         super::open_login_picker(&mut app);
         let openai = app
@@ -23270,9 +22802,10 @@ mod tests {
         press(&mut app, KeyCode::Enter, KeyModifiers::NONE).await;
 
         assert!(app.picker.is_none());
-        assert!(app.account_login.is_some());
-        assert!(app.account_login_submit.is_some());
-        assert!(app.login.is_none());
+        assert_eq!(
+            app.login.as_ref().map(|p| p.provider.as_str()),
+            Some("openai")
+        );
     }
 
     #[tokio::test]
@@ -23296,7 +22829,6 @@ mod tests {
             app.login.as_ref().map(|p| p.provider.as_str()),
             Some("tokamak")
         );
-        assert!(app.account_login.is_none());
     }
 
     #[tokio::test]
@@ -23309,8 +22841,6 @@ mod tests {
         assert!(app.picker.is_none());
         assert!(app.login.is_none());
         assert!(app.login_submit.is_none());
-        assert!(app.account_login_submit.is_none());
-        assert!(app.account_login.is_none());
     }
 
     #[tokio::test]
@@ -23439,287 +22969,6 @@ mod tests {
             prompt.error.as_deref(),
             Some("tokamak sign-in failed: Tokamak rejected that API key.")
         );
-    }
-
-    #[tokio::test]
-    async fn esc_cancels_a_pending_account_sign_in() {
-        let mut app = test_app();
-        super::open_account_login(&mut app, "openai");
-        assert!(app.account_login.is_some());
-        assert!(app.account_login_submit.is_some());
-
-        press(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
-
-        assert!(app.account_login.is_none());
-        assert!(app.account_login_submit.is_none());
-        assert!(app.account_login_manual_tx.is_none());
-        assert!(!transcript_text(&app).contains("cancelled"));
-        assert!(!transcript_text(&app).contains("failed"));
-        assert!(!transcript_text(&app).contains("signed in"));
-    }
-
-    #[tokio::test]
-    async fn account_prompt_captures_manual_input_and_never_renders_secrets() {
-        let mut app = test_app();
-        super::open_account_login(&mut app, "openai");
-        let state = app.account_login.as_ref().unwrap().login.state.clone();
-        let verifier = app.account_login.as_ref().unwrap().login.verifier.clone();
-        let authorization_url = app
-            .account_login
-            .as_ref()
-            .unwrap()
-            .login
-            .authorization_url
-            .clone();
-        let manual = format!("authorization-code#{state}");
-
-        for ch in manual.chars() {
-            press(&mut app, KeyCode::Char(ch), KeyModifiers::NONE).await;
-        }
-
-        let prompt = app.account_login.as_ref().unwrap();
-        assert_eq!(prompt.input, manual);
-        assert_eq!(prompt.masked().chars().count(), 32);
-        let screen = render_rows(&mut app, 100, 24).join("\n");
-        assert!(screen.contains("Codex sign-in"), "{screen}");
-        assert!(
-            screen.contains("authorization: https://auth.openai.com/oauth/authorize"),
-            "{screen}"
-        );
-        assert!(
-            screen.contains("callback: http://localhost:1455/auth/callback"),
-            "{screen}"
-        );
-        assert!(!screen.contains("authorization-code"), "{screen}");
-        assert!(!screen.contains(&state), "{screen}");
-        assert!(!screen.contains(&verifier), "{screen}");
-        assert!(!screen.contains(&authorization_url), "{screen}");
-        assert!(!screen.contains("code_challenge"), "{screen}");
-    }
-
-    #[tokio::test]
-    async fn account_enter_rejects_bad_manual_input_before_sending() {
-        let mut app = test_app();
-        super::open_account_login(&mut app, "openai");
-        app.account_login
-            .as_mut()
-            .unwrap()
-            .paste("authorization-code#wrong-state");
-
-        press(&mut app, KeyCode::Enter, KeyModifiers::NONE).await;
-
-        let prompt = app.account_login.as_ref().unwrap();
-        assert!(!prompt.submitting);
-        assert!(prompt.input.is_empty());
-        assert_eq!(
-            prompt.error.as_deref(),
-            Some("the redirect state did not match")
-        );
-    }
-
-    #[tokio::test]
-    async fn account_enter_sends_manual_input_to_active_task_sender() {
-        let mut app = test_app();
-        super::open_account_login(&mut app, "openai");
-        let state = app.account_login.as_ref().unwrap().login.state.clone();
-        let manual = format!("authorization-code#{state}");
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        app.account_login_manual_tx = Some(tx);
-        app.account_login.as_mut().unwrap().paste(&manual);
-
-        press(&mut app, KeyCode::Enter, KeyModifiers::NONE).await;
-
-        assert_eq!(rx.recv().await.as_deref(), Some(manual.as_str()));
-        assert!(app.account_login.as_ref().unwrap().submitting);
-    }
-
-    #[tokio::test]
-    async fn account_enter_retries_after_task_failure() {
-        let mut app = test_app();
-        super::open_account_login(&mut app, "openai");
-        finish_account_login(
-            &mut app,
-            Err("could not discover account models".to_string()),
-        );
-        let state = app.account_login.as_ref().unwrap().login.state.clone();
-        app.account_login_submit = None;
-        let manual = format!("authorization-code#{state}");
-        app.account_login.as_mut().unwrap().paste(&manual);
-
-        press(&mut app, KeyCode::Enter, KeyModifiers::NONE).await;
-
-        let (mut rx, has_pending) = super::account_login_manual_channel(&mut app);
-        assert!(has_pending);
-        assert_eq!(rx.recv().await.as_deref(), Some(manual.as_str()));
-        assert!(app.account_login.as_ref().unwrap().submitting);
-        assert!(app.account_login_submit.is_some());
-        assert!(app.account_login_pending_manual_input.is_none());
-    }
-
-    #[tokio::test]
-    async fn account_retry_keeps_pending_manual_input_after_failure_result() {
-        let mut app = test_app();
-        super::open_account_login(&mut app, "openai");
-        let (rx, _) = super::account_login_manual_channel(&mut app);
-        drop(rx);
-        let state = app.account_login.as_ref().unwrap().login.state.clone();
-        let manual = format!("authorization-code#{state}");
-        app.account_login.as_mut().unwrap().paste(&manual);
-
-        press(&mut app, KeyCode::Enter, KeyModifiers::NONE).await;
-        assert_eq!(
-            app.account_login_pending_manual_input.as_deref(),
-            Some(manual.as_str())
-        );
-
-        finish_account_login(
-            &mut app,
-            Err("could not discover account models".to_string()),
-        );
-
-        assert_eq!(
-            app.account_login_pending_manual_input.as_deref(),
-            Some(manual.as_str()),
-            "failed old task result must not clear input queued for retry"
-        );
-        let (mut rx, has_pending) = super::account_login_manual_channel(&mut app);
-        assert!(has_pending);
-        assert_eq!(rx.recv().await.as_deref(), Some(manual.as_str()));
-        assert!(app.account_login_pending_manual_input.is_none());
-    }
-
-    #[test]
-    fn account_login_completion_handles_success_failure_and_stale_results() {
-        crate::core::agent::global_config::with_temp_home(|_| {
-            crate::core::agent::global_config::set_provider(
-                "openai",
-                crate::core::agent::global_config::ProviderUpdate {
-                    api_key: None,
-                    clear_api_key: true,
-                    base_url: Some("https://api.openai.com/v1".into()),
-                    models: Some(vec!["gpt-4o-mini".into()]),
-                    api_type: None,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-            let mut app = test_app();
-            super::open_account_login(&mut app, "openai");
-
-            finish_account_login(&mut app, Ok("openai".to_string()));
-            let text = transcript_text(&app);
-            assert!(
-                text.contains("signed in to openai. Use /model to select a model."),
-                "{text}"
-            );
-            assert!(app.account_login.is_none());
-            assert_eq!(app.model, "gpt-4o-mini");
-        });
-
-        let mut app = test_app();
-        finish_account_login(&mut app, Ok("openai".to_string()));
-        assert!(
-            !transcript_text(&app).contains("signed in"),
-            "stale result must stay silent"
-        );
-
-        let mut app = test_app();
-        super::open_account_login(&mut app, "anthropic");
-        finish_account_login(
-            &mut app,
-            Err("the redirect state did not match".to_string()),
-        );
-        let prompt = app.account_login.as_ref().expect("prompt stays open");
-        assert_eq!(
-            prompt.error.as_deref(),
-            Some("anthropic sign-in failed: could not complete browser sign-in")
-        );
-        assert!(!prompt.submitting);
-        assert!(!transcript_text(&app).contains("signed in to anthropic"));
-    }
-
-    #[test]
-    fn account_login_failure_sanitizes_callback_and_secret_details() {
-        let mut app = test_app();
-        super::open_account_login(&mut app, "anthropic");
-
-        finish_account_login(
-            &mut app,
-            Err("could not save provider configuration to /Users/alice/.jan/config.toml after callback code=callback-code-do-not-render with client_secret=sk-secret-do-not-render access_token=tok-secret-do-not-render scope=openid profile model.write model=claude-3 provider_payload={\"error\":\"invalid_grant\"}".to_string()),
-        );
-
-        let screen = render_rows(&mut app, 100, 24).join("\n");
-        assert!(
-            screen.contains("anthropic sign-in failed: could not complete browser sign-in"),
-            "{screen}"
-        );
-        assert!(
-            !screen.contains("/Users/alice/.jan/config.toml"),
-            "{screen}"
-        );
-        assert!(!screen.contains("callback-code-do-not-render"), "{screen}");
-        assert!(!screen.contains("sk-secret-do-not-render"), "{screen}");
-        assert!(!screen.contains("tok-secret-do-not-render"), "{screen}");
-        assert!(!screen.contains("model.write"), "{screen}");
-        assert!(!screen.contains("claude-3"), "{screen}");
-        assert!(!screen.contains("invalid_grant"), "{screen}");
-    }
-
-    #[test]
-    fn claude_account_login_warns_about_third_party_use() {
-        crate::core::agent::global_config::with_temp_home(|_| {
-            crate::core::agent::global_config::set_provider(
-                "anthropic",
-                crate::core::agent::global_config::ProviderUpdate {
-                    api_key: None,
-                    clear_api_key: true,
-                    base_url: Some("https://api.anthropic.com/v1".into()),
-                    models: Some(vec!["claude-sonnet-5".into()]),
-                    api_type: Some("anthropic".into()),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-            let mut app = test_app();
-            super::open_account_login(&mut app, "anthropic");
-            super::finish_account_login(&mut app, Ok("anthropic".to_string()));
-            let text = transcript_text(&app);
-            assert!(
-                text.contains("signed in to anthropic. Use /model to select a model."),
-                "{text}"
-            );
-            assert!(
-                text.contains("third-party client"),
-                "Claude success must warn about third-party use: {text}"
-            );
-            assert!(
-                text.contains("Terms of Service"),
-                "Claude warning must mention the ToS: {text}"
-            );
-            assert!(
-                text.contains("own risk"),
-                "Claude warning must flag user risk: {text}"
-            );
-        });
-    }
-
-    #[test]
-    fn account_login_begin_failure_uses_safe_provider_message() {
-        let mut app = test_app();
-
-        super::open_account_login_with_begin(&mut app, "anthropic", |_| {
-            Err("could not create callback from /Users/alice/.jan/config.toml with client_secret=sk-secret-do-not-render".to_string())
-        });
-
-        let text = transcript_text(&app);
-        assert!(
-            text.contains("anthropic sign-in failed: could not complete browser sign-in"),
-            "{text}"
-        );
-        assert!(!text.contains("/Users/alice/.jan/config.toml"), "{text}");
-        assert!(!text.contains("sk-secret-do-not-render"), "{text}");
-        assert!(app.account_login.is_none());
-        assert!(app.account_login_submit.is_none());
     }
 
     /// `/login --paste-token` skips straight to the legacy field, the same
@@ -24038,12 +23287,12 @@ mod tests {
         assert!(app.input.is_empty(), "the composer must not see the key");
     }
 
-    /// `/context` and the account sign-in prompt own the keyboard in
+    /// `/context` and the sign-in prompt own the keyboard in
     /// `handle_key` too, so a queued ask must defer to them: Esc meant to
     /// close `/context` silently cancelled the agent's question (#127).
     #[tokio::test]
-    async fn a_queued_ask_defers_to_the_context_view_and_account_login() {
-        for dock in ["context_view", "account_login"] {
+    async fn a_queued_ask_defers_to_the_context_view_and_login() {
+        for dock in ["context_view", "login"] {
             let mut app = test_app();
             let registry = crate::core::agent::interaction::new_registry();
             let (request_id, _receiver) =
@@ -24055,13 +23304,7 @@ mod tests {
             });
             match dock {
                 "context_view" => app.context_view = Some(ContextView::Loading),
-                _ => {
-                    let login = crate::core::cli::auth::account::begin(
-                        crate::core::cli::auth::account::AccountProvider::Claude,
-                    )
-                    .unwrap();
-                    app.account_login = Some(crate::core::cli::tui::AccountLoginPrompt::new(login));
-                }
+                _ => app.login = Some(confirmed_paste_prompt()),
             }
             let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
             assert!(

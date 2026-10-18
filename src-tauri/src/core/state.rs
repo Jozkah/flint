@@ -41,7 +41,7 @@ pub struct ProviderConfig {
     #[serde(default)]
     pub api_type: Option<String>,
     /// Whether credentials kept outside this config -- the auth credential
-    /// store, the OS keyring, account (OAuth) tokens -- may be attached to
+    /// store and the OS keyring -- may be attached to
     /// requests for it. Never persisted: it is decided afresh each time the
     /// configs are layered, from where this entry's `base_url` came from.
     #[serde(skip)]

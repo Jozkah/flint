@@ -146,9 +146,11 @@ pub fn has_usable_provider(project_root: Option<&std::path::Path>) -> bool {
 
 /// Whether `provider` has a stored credential or resolves to a usable config.
 pub fn provider_is_signed_in(project_root: Option<&Path>, provider: &str) -> bool {
+    // Only an API key counts: a stored account login from a removed sign-in
+    // cannot authenticate anything.
     if matches!(
         crate::core::cli::auth::CredentialStore::load(provider),
-        Ok(Some(_))
+        Ok(Some(credential)) if credential.as_api_key().is_some()
     ) {
         return true;
     }
@@ -567,31 +569,14 @@ pub fn has_credential(config: &ProviderConfig) -> bool {
 }
 
 /// Whether a credential is stored under `provider`'s name anywhere a request
-/// could have taken it from. Presence only: no secret is read. Claude's
-/// account also falls back to Claude Code's own keychain entry, which cannot
-/// be probed without reading it, so that name counts -- except for a loopback
-/// `base_url`, where a keyless local proxy is the common case and nothing
-/// leaves the machine either way.
-pub(crate) fn has_stored_credential(provider: &str, base_url: &str) -> bool {
-    use crate::core::cli::auth::account::AccountProvider;
-    matches!(crate::core::cli::auth::CredentialStore::load(provider), Ok(Some(_)))
-        || crate::core::server::provider_secrets::has_stored_key(provider)
-        || matches!(
-            AccountProvider::from_credential_provider(provider),
-            Some(AccountProvider::Claude)
-        ) && !parsed_loopback(base_url)
-}
-
-/// Whether `url`'s host, as a URL parser reads it, is this machine. Unlike
-/// [`is_loopback_url`], user info (`http://localhost:80@evil.example`) cannot
-/// pass for the host.
-fn parsed_loopback(url: &str) -> bool {
-    match url::Url::parse(url.trim()).ok().and_then(|u| u.host().map(|h| h.to_owned())) {
-        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("localhost"),
-        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
-        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
-        None => false,
-    }
+/// could have taken it from. Presence only: no secret is read. A stored
+/// account login left by the removed Codex/Claude sign-in is not a credential
+/// anything can send, so it does not count.
+pub(crate) fn has_stored_credential(provider: &str, _base_url: &str) -> bool {
+    matches!(
+        crate::core::cli::auth::CredentialStore::load(provider),
+        Ok(Some(credential)) if credential.as_api_key().is_some()
+    ) || crate::core::server::provider_secrets::has_stored_key(provider)
 }
 
 /// The error for a provider whose endpoint does not match the one its stored
@@ -1695,7 +1680,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_is_signed_in_when_oauth_credential_exists() {
+    fn provider_is_not_signed_in_with_only_a_legacy_account_credential() {
         use crate::core::agent::global_config::with_temp_home;
         use crate::core::cli::auth::{Credential, CredentialStore, OAuthToken};
 
@@ -1713,7 +1698,7 @@ mod tests {
                 )
                 .unwrap();
 
-                assert!(provider_is_signed_in(None, "anthropic"));
+                assert!(!provider_is_signed_in(None, "anthropic"));
             });
         });
     }
@@ -2031,49 +2016,45 @@ mod credential_origin_tests {
         })
     }
 
+    /// A stored account login from the removed Codex/Claude sign-in loads
+    /// without panic and is never sent: not to the trusted endpoint, not to a
+    /// project-supplied one.
     #[test]
-    fn an_account_token_is_not_paired_with_a_project_base_url() {
+    fn a_legacy_account_token_is_never_sent() {
         with_store(|| {
             trust("openai", "https://api.openai.com/v1", &["gpt-x"]);
             CredentialStore::store("openai", &oauth("account-access")).unwrap();
-            let root = project("openai", "https://evil.example/v1", None, &["gpt-x"]);
-            let configs = load(&root, &ProviderOverrides::default());
-            let err = resolve(configs, "gpt-x")
-                .expect_err("a withheld stored credential is a configuration error");
-            assert!(err.contains("openai") && err.contains("base_url"), "{err}");
-        });
-    }
-
-    #[test]
-    fn an_account_token_still_reaches_the_trusted_endpoint() {
-        with_store(|| {
-            trust("openai", "https://api.openai.com/v1", &["gpt-x"]);
-            CredentialStore::store("openai", &oauth("account-access")).unwrap();
+            // Selecting it at the trusted endpoint gives the clear "was
+            // removed, use an API key" error.
             let root = project("openai", "https://api.openai.com/v1/", None, &["gpt-x"]);
             let configs = load(&root, &ProviderOverrides::default());
+            let err = resolve(configs, "gpt-x").expect_err("no usable credential");
+            assert!(err.contains("API key"), "{err}");
+            assert!(!err.contains("account-access"), "{err}");
+
+            // A project-supplied endpoint gets no stored credential at all.
+            let root = project("openai", "https://evil.example/v1", None, &["gpt-x"]);
+            let configs = load(&root, &ProviderOverrides::default());
             let (_, keys) = resolve(configs, "gpt-x").unwrap();
-            assert_eq!(keys, vec!["account-access".to_string()]);
+            assert!(keys.is_empty(), "{keys:?}");
         });
     }
 
-    /// Claude's account falls back to Claude Code's keychain, which cannot be
-    /// probed, so a redirected `anthropic` is refused -- but not a keyless
-    /// local proxy, where nothing leaves the machine.
+    /// With no stored credential there is nothing to withhold: a redirected
+    /// `anthropic` carries no key and resolves like any keyless provider.
     #[test]
-    fn a_redirected_anthropic_is_refused_unless_it_is_a_local_proxy() {
+    fn a_redirected_anthropic_carries_no_credential() {
         with_store(|| {
-            let root = project("anthropic", "https://evil.example/v1", None, &["claude-x"]);
-            let err = resolve(load(&root, &ProviderOverrides::default()), "claude-x")
-                .expect_err("Claude Code's credential must not be assumed away");
-            assert!(err.contains("anthropic"), "{err}");
-
-            let root = project("anthropic", "http://localhost:4000/v1", None, &["claude-x"]);
-            let (url, keys) = resolve(load(&root, &ProviderOverrides::default()), "claude-x").unwrap();
-            assert_eq!(url, "http://localhost:4000/v1/chat/completions");
-            assert!(keys.is_empty());
-
-            let root = project("anthropic", "http://localhost:80@evil.example/v1", None, &["claude-x"]);
-            assert!(resolve(load(&root, &ProviderOverrides::default()), "claude-x").is_err());
+            for url in [
+                "https://evil.example/v1",
+                "http://localhost:4000/v1",
+                "http://localhost:80@evil.example/v1",
+            ] {
+                let root = project("anthropic", url, None, &["claude-x"]);
+                let (_, keys) =
+                    resolve(load(&root, &ProviderOverrides::default()), "claude-x").unwrap();
+                assert!(keys.is_empty(), "{url}: {keys:?}");
+            }
         });
     }
 

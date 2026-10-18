@@ -44,8 +44,6 @@ const GLOBAL_CONFIG_TEMPLATE: &str = r#"# Jan Agent global provider config.
 #                                     # /terminal-setup when this terminal is
 #                                     # dropping Shift+Enter or Option+Delete.
 #                                     # On by default
-# claude_code_alias = true              # allow Flint to reuse Claude Code's
-#                                     # keychain login; off by default
 # hide_secrets = true                 # replace secret-named env values, URL
 #                                     # passwords and credential-shaped tokens
 #                                     # with placeholders before a request goes
@@ -115,10 +113,6 @@ struct GlobalConfigToml {
     /// for the check to know it was answered.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     terminal_hint: Option<bool>,
-    /// Allow Flint to reuse Claude Code's keychain login. `None` = the default,
-    /// on; set false to keep Flint from reading or refreshing that credential.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    claude_code_alias: Option<bool>,
     /// Hide secrets from model requests (`core::agent::secrets`). `None` = the
     /// default, off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -324,17 +318,6 @@ pub(crate) fn terminal_hint_enabled() -> bool {
         .ok()
         .and_then(|config| config.terminal_hint)
         .unwrap_or(true)
-}
-
-/// Whether Flint may reuse Claude Code's keychain login
-/// (`claude_code_alias` in `~/.jan/config.toml`), defaulting to off. Reading
-/// another app's keychain secret is opt-in so the cross-tool credential reuse
-/// is always an explicit user decision.
-pub(crate) fn claude_code_alias_enabled() -> bool {
-    load_raw()
-        .ok()
-        .and_then(|config| config.claude_code_alias)
-        .unwrap_or(false)
 }
 
 /// Whether `bash` runs sandboxed by default (`sandbox` in `~/.jan/config.toml`).
@@ -970,22 +953,20 @@ mod tests {
         });
     }
 
+    /// The Claude Code keychain alias was removed. A config that still carries
+    /// the old key must keep parsing: the key is ignored, the rest is read.
     #[test]
-    fn claude_code_alias_defaults_off_and_reads_the_toml_key() {
+    fn a_removed_claude_code_alias_key_is_ignored_without_error() {
         with_temp_home(|_| {
-            assert!(!claude_code_alias_enabled(), "missing file -> alias off");
             let path = ensure_global_config().expect("ensure");
-            assert!(!claude_code_alias_enabled(), "scaffolded file -> alias off");
-
-            std::fs::write(&path, "claude_code_alias = false\n").unwrap();
-            assert!(!claude_code_alias_enabled());
-            std::fs::write(&path, "claude_code_alias = true\n").unwrap();
-            assert!(claude_code_alias_enabled());
-
-            std::fs::write(&path, "not valid toml [[[").unwrap();
+            std::fs::write(&path, "claude_code_alias = true\nterminal_hint = false\n").unwrap();
             assert!(
-                !claude_code_alias_enabled(),
-                "an unreadable config keeps the default"
+                load_raw().is_ok(),
+                "a config with the old key must still parse"
+            );
+            assert!(
+                !terminal_hint_enabled(),
+                "the other keys are still read next to the removed one"
             );
         });
     }

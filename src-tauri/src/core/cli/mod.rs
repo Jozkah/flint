@@ -3514,18 +3514,6 @@ async fn print_event(
     density: Density,
     duplex: bool,
 ) {
-    if crate::core::cli::auth::account::take_claude_alias_engaged() {
-        eprintln!(
-            "{}",
-            color::paint(
-                "33",
-                format_args!(
-                    "[warning] {}",
-                    crate::core::cli::auth::account::CLAUDE_ALIAS_NOTICE,
-                ),
-            ),
-        );
-    }
     match ev {
         // AH-078. The snapshot is already written to the data folder by the
         // dispatcher; this event only says one exists. Headless stdout is the

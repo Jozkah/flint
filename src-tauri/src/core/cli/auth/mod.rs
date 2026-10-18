@@ -7,13 +7,15 @@
 //! verifier/state values never live here. They move through
 //! [`crate::core::server::provider_secrets`] only.
 
-pub mod account;
 pub mod credentials;
 pub mod providers;
 
 use std::path::PathBuf;
 
-pub use credentials::{Credential, CredentialStore, OAuthToken};
+pub use credentials::{
+    has_removed_account_login, Credential, CredentialStore, OAuthToken,
+    REMOVED_ACCOUNT_LOGIN_NOTICE,
+};
 
 /// Wire transport a provider speaks, chosen at credential resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,7 +52,7 @@ pub fn provider_catalog() -> Vec<ProviderDefinition> {
     let catalog = vec![
         ProviderDefinition {
             id: "openai",
-            name: "Codex",
+            name: "OpenAI",
             default_base_url: "https://api.openai.com/v1".to_string(),
             transport: Transport::OpenAi,
             api_key: ApiKeyMetadata {
@@ -61,7 +63,7 @@ pub fn provider_catalog() -> Vec<ProviderDefinition> {
         },
         ProviderDefinition {
             id: "anthropic",
-            name: "Claude",
+            name: "Anthropic",
             default_base_url: "https://api.anthropic.com/v1".to_string(),
             transport: Transport::Anthropic,
             api_key: ApiKeyMetadata {

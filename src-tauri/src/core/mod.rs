@@ -8,6 +8,9 @@ pub mod archive {
     pub mod store;
 }
 pub mod app;
+// Uses the Tauri runtime for its commands, so it is not part of the CLI build.
+#[cfg(not(feature = "cli"))]
+pub mod autostart;
 // Saving files dropped onto the chat so they can be attached; desktop-only.
 #[cfg(not(feature = "cli"))]
 pub mod attachments;
