@@ -140,8 +140,7 @@
     "needsExtension": "Memerlukan ekstensi peramban",
     "moreActions": "Tindakan lain untuk {{serverName}}",
     "addTile": "Tambah server MCP",
-    "addTileHint": "STDIO, HTTP atau SSE",
-    "toolsCount": "{{count}} alat"
+    "addTileHint": "STDIO, HTTP atau SSE"
   },
   "extensions": {
     "description": "Plugin, skill, dan bagian engine yang menyusun Flint.",

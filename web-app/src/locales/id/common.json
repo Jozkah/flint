@@ -2592,8 +2592,7 @@
     "errorEngine": "Engine yang menjalankan model ini tidak tersedia. Mulai ulang Flint lalu coba lagi.",
     "openProvider": "Buka pengaturan penyedia",
     "errorDetails": "Detail",
-    "pasteHint": "Akses papan klip diblokir. Klik kotak teks lalu tekan {{keys}}.",
-    "characters": "{{count}} karakter"
+    "pasteHint": "Akses papan klip diblokir. Klik kotak teks lalu tekan {{keys}}."
   },
   "markdownImage": {
     "load": "Muat gambar dari {{host}}"
@@ -2639,8 +2638,7 @@
       "gone": "Prompt itu sudah tidak ada",
       "invalidJson": "File itu bukan JSON yang valid",
       "noPrompts": "Tidak ada prompt di file itu"
-    },
-    "imported": "{{count}} prompt ditambahkan"
+    }
   },
   "memoryProposal": {
     "title": "Ingat ini?",

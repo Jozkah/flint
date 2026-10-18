@@ -2635,8 +2635,7 @@
     "errorEngine": "執行此模型的引擎無法使用。請重新啟動 Flint 後再試一次。",
     "openProvider": "開啟供應商設定",
     "errorDetails": "詳細資料",
-    "pasteHint": "剪貼簿存取遭到封鎖。請點擊文字方塊並按 {{keys}}。",
-    "characters": "{{count}} 個字元"
+    "pasteHint": "剪貼簿存取遭到封鎖。請點擊文字方塊並按 {{keys}}。"
   },
   "markdownImage": {
     "load": "從 {{host}} 載入圖片"
@@ -2682,8 +2681,7 @@
       "gone": "該提示詞已不存在",
       "invalidJson": "該檔案不是有效的 JSON",
       "noPrompts": "該檔案中找不到提示詞"
-    },
-    "imported": "已新增 {{count}} 則提示詞"
+    }
   },
   "memoryProposal": {
     "title": "要記住這個嗎？",

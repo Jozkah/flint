@@ -2684,8 +2684,7 @@
     "errorEngine": "El motor que executa aquest model no està disponible. Reinicia Flint i torna-ho a provar.",
     "openProvider": "Obre la configuració del proveïdor",
     "errorDetails": "Detalls",
-    "pasteHint": "L'accés al porta-retalls s'ha bloquejat. Fes clic al quadre de text i prem {{keys}}.",
-    "characters": "{{count}} caràcters"
+    "pasteHint": "L'accés al porta-retalls s'ha bloquejat. Fes clic al quadre de text i prem {{keys}}."
   },
   "markdownImage": {
     "load": "Carrega la imatge de {{host}}"
@@ -2732,8 +2731,7 @@
       "gone": "Aquest prompt ja no existeix",
       "invalidJson": "Aquest fitxer no és un JSON vàlid",
       "noPrompts": "No s'ha trobat cap prompt en aquest fitxer"
-    },
-    "imported": "S'han afegit {{count}} consignes"
+    }
   },
   "memoryProposal": {
     "title": "Vols recordar això?",

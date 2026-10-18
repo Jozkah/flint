@@ -35,10 +35,8 @@ import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { executeVisualizeTool, visualizeSchemas } from '@/lib/visualize/tools'
 import { READ_ME_TOOL } from '@/lib/visualize/constants'
 
-/** The read-only built-in file tools a room participant may use. */
-export const ROOM_READ_TOOLS = ['read', 'ls', 'find', 'grep'] as const
-/** The write tools added for `edit` access, confined to the folder by a grant. */
-export const ROOM_WRITE_TOOLS = ['write', 'edit'] as const
+import { ROOM_READ_TOOLS, ROOM_WRITE_TOOLS, disabledMcpServers } from './toolCatalog'
+export { ROOM_READ_TOOLS, ROOM_WRITE_TOOLS }
 
 /** Upper bound on tool steps in one participant turn, so a turn cannot loop. */
 export const ROOM_TOOL_MAX_STEPS = 8
@@ -90,6 +88,28 @@ function webResultText(content: unknown): string {
 
 import { buildFullFolderTools, type RoomDelegation } from './fullTools'
 
+/**
+ * Stamp each settled call with how long it took, measured from the `running`
+ * report that started it. Calls of one tool are matched first-in first-out, so
+ * a parallel batch of the same tool reads close enough for the transcript.
+ */
+function timed(
+  onActivity?: (a: RoomToolActivity) => void
+): ((a: RoomToolActivity) => void) | undefined {
+  if (!onActivity) return undefined
+  const started = new Map<string, number[]>()
+  return (a) => {
+    if (a.running) {
+      started.set(a.name, [...(started.get(a.name) ?? []), Date.now()])
+      onActivity(a)
+      return
+    }
+    const queue = started.get(a.name)
+    const t0 = queue?.shift()
+    onActivity(t0 === undefined ? a : { ...a, ms: Date.now() - t0 })
+  }
+}
+
 type ExecOptions = {
   readOnlyProject?: string
   extraProjects?: string[]
@@ -103,6 +123,7 @@ export async function buildRoomTools(
   delegation?: RoomDelegation
 ): Promise<Record<string, Tool>> {
   const tools: Record<string, Tool> = {}
+  onActivity = timed(onActivity)
 
   const run = (name: string, options: ExecOptions) => async (input: unknown) => {
     const result = await executeAgentTool(name, input, ctx.roomId, options)
@@ -138,8 +159,11 @@ export async function buildRoomTools(
             ? await directEditAuthorize(dataFolder, ctx.roomId, ctx.folder, extras)
             : await directEditAuthorize(dataFolder, ctx.roomId, ctx.folder)
         }
-      } catch {
-        // No grant -> no write tools; reads still work.
+      } catch (e) {
+        // No grant -> no write tools; reads still work. Said out loud: a
+        // participant told it can edit but given no edit tool only loops on
+        // reads and ends up writing its edits as text.
+        console.warn(`Room ${ctx.roomId}: editing ${ctx.folder} is not available:`, e)
       }
     }
     const readOptions: ExecOptions = {
@@ -245,7 +269,7 @@ export async function buildRoomTools(
   // MCP tools from the user's connected servers -- no folder required. Same set
   // the main chat exposes, minus the globally disabled ones. A built-in tool of
   // the same name wins (already added above), so MCP never shadows file tools.
-  const mcpTools = await buildMcpTools(onActivity)
+  const mcpTools = await buildMcpTools(onActivity, disabledMcpServers(ctx.disabledTools))
   for (const [name, tool] of Object.entries(mcpTools)) {
     if (!tools[name]) tools[name] = tool
   }
@@ -273,7 +297,9 @@ export async function buildRoomTools(
  * model and an error surfaces as `ERROR: ...`, matching the built-in tools.
  */
 export async function buildMcpTools(
-  onActivity?: (a: RoomToolActivity) => void
+  onActivity?: (a: RoomToolActivity) => void,
+  /** Servers the participant switched off as a whole (see `mcpServerKey`). */
+  offServers?: ReadonlySet<string>
 ): Promise<Record<string, Tool>> {
   const out: Record<string, Tool> = {}
   let mcp: ReturnType<ReturnType<typeof getServiceHub>['mcp']>
@@ -307,6 +333,7 @@ export async function buildMcpTools(
   const serverTrusted = (server: string) => trustedSet.has(server)
   for (const t of mcpTools) {
     if (isDisabled(t.server, t.name)) continue
+    if (offServers?.has(t.server)) continue
     if (!serverTrusted(t.server)) continue // withhold untrusted servers, never refuse mid-call
     if (out[t.name]) continue // first server wins on a name clash, like the chat
     out[t.name] = {

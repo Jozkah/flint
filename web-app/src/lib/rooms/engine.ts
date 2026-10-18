@@ -71,6 +71,9 @@ import {
 import { messagesFromJournal, repairJournal } from './recovery'
 import { isRepetitive, recentSpeech } from './repetition'
 import { stripConclusion } from './consensus'
+import { compareGrid, compareHistory, missingQuestions } from './compareGrid'
+import { changesFromToolCalls } from './turnChanges'
+import { noteIsolation, participantIsolated, type RoomWorkspaceDeps } from './isolation'
 import {
   composeSynthesisText,
   computeDissent,
@@ -81,18 +84,21 @@ import {
 import {
   ROOM_LIMIT_CEILINGS,
   ROOM_SCHEMA_VERSION,
+  compareRunOf,
   type Address,
   type LiveTurn,
   type ModeratorDirective,
   type Participant,
   type Room,
   type RoomAuthor,
+  type RoomChangedFile,
   type RoomJournalRecord,
   type RoomMessage,
   type RoomModelRef,
   type RoomStatus,
   type StopReason,
   type ToolAccess,
+  turnToolAccess,
 } from './types'
 import { parseVote, renderTally, tallyVotes, votePrompt } from './votes'
 
@@ -141,6 +147,11 @@ export type EngineDeps = {
   sleep?: (ms: number, signal: AbortSignal) => Promise<boolean>
   random?: () => number
   onUpdate?: (update: EngineUpdate) => void
+  /**
+   * Isolated workspaces for compare-room writers (see `isolation.ts`). Absent:
+   * writers keep the read-only compare fallback.
+   */
+  workspace?: RoomWorkspaceDeps
 }
 
 export type AbortIntent = 'pause' | 'stop' | 'cancel-turn'
@@ -150,6 +161,12 @@ export type RunCommand =
   | { kind: 'vote'; proposal: string }
   | { kind: 'final-positions' }
   | { kind: 'synthesize' }
+  /**
+   * Compare rooms: answer with some participants (null: everyone included).
+   * `latest` answers the newest question again; `missing` answers, in order,
+   * every question a participant has no answer to yet.
+   */
+  | { kind: 'compare-run'; participantIds: string[] | null; scope: 'latest' | 'missing' }
 
 export type RunOptions = {
   command?: RunCommand
@@ -166,6 +183,13 @@ class RunAborted extends Error {
   constructor() {
     super('Aborted')
     this.name = 'AbortError'
+  }
+}
+
+/** Thrown out of a compare job when a room limit is reached. */
+class LimitStop extends Error {
+  constructor(readonly limit: LimitBreach) {
+    super('Limit reached')
   }
 }
 
@@ -200,6 +224,14 @@ const DEFAULT_TOOL_GROWTH_TOKENS: Record<ToolAccess, number> = {
   edit: 4_000,
   full: 6_000,
 }
+/** Whether two change listings name the same files with the same counts. */
+function sameFiles(a: readonly RoomChangedFile[], b: readonly RoomChangedFile[]): boolean {
+  if (a.length !== b.length) return false
+  const key = (f: RoomChangedFile) => `${f.path}\u0000${f.additions}\u0000${f.deletions}`
+  const set = new Set(a.map(key))
+  return b.every((f) => set.has(key(f)))
+}
+
 /** Tool turns kept per participant to estimate how much the next one grows. */
 const GROWTH_SAMPLES = 4
 /** The most passes the built-in summariser makes for one summary. */
@@ -276,6 +308,10 @@ class RoomRun {
   /** Per participant: how far recent tool turns grew past their prompt. */
   readonly toolGrowth = new Map<string, number[]>()
   droppedNoted = false
+  /** Compare rooms: participant id -> the question its current turn answers. */
+  readonly compareTargets = new Map<string, string>()
+  /** Each isolated participant's workspace path this run, made on first use. */
+  readonly workspaces = new Map<string, string>()
   readonly lookup: ProviderLookup
 
   constructor(
@@ -636,10 +672,15 @@ class RoomRun {
   ): Promise<BuiltPrompt> {
     const compaction = this.deps.compaction?.(model) ?? { enabled: true }
     const window = this.contextWindow(model)
+    const workspacePath =
+      speaker.kind === 'participant' ? this.workspaces.get(speaker.participant.id) : undefined
     const built = await buildPrompt({
       room: this.room,
-      messages: this.messages,
+      messages: this.historyFor(speaker),
       speaker,
+      ...(workspacePath && this.room.folder
+        ? { workspace: { path: workspacePath, source: this.room.folder } }
+        : {}),
       instruction,
       contextWindow: window,
       maxOutputTokens: this.maxOutputTokens(),
@@ -685,6 +726,29 @@ class RoomRun {
   }
 
   /**
+   * The participant's isolated workspace, when this room isolates it: made on
+   * first use, remembered for the run. Null when it is not isolated or the
+   * workspace could not be made (then the reason is noted for the editor and
+   * the participant keeps the read-only fallback).
+   */
+  async workspaceFor(p: Participant): Promise<string | null> {
+    if (!participantIsolated(this.room, p) || !this.room.folder) return null
+    const known = this.workspaces.get(p.id)
+    if (known) return known
+    if (!this.deps.workspace) return null
+    try {
+      const { path } = await this.deps.workspace.ensure(this.roomId, p.id, this.room.folder)
+      this.workspaces.set(p.id, path)
+      noteIsolation(this.roomId, null)
+      return path
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : typeof e === 'object' && e && 'message' in e ? String((e as { message: unknown }).message) : String(e)
+      noteIsolation(this.roomId, reason)
+      return null
+    }
+  }
+
+  /**
    * One model turn: turn-start record, streamed call with retries, then
    * exactly one message closing the turn.
    */
@@ -727,6 +791,20 @@ class RoomRun {
       // File tools need the room's folder; web tools do not, so a participant
       // can research even with no folder attached. With no access the context
       // is absent and the turn behaves exactly as before.
+      const workspace =
+        args.participant &&
+        args.participant.toolAccess !== 'none' &&
+        modelSupportsTools(args.participant.model, this.lookup)
+          ? await this.workspaceFor(args.participant)
+          : null
+      // The turn's starting point, so its change card shows this turn alone.
+      if (workspace && args.participant && this.deps.workspace?.markTurn) {
+        try {
+          await this.deps.workspace.markTurn(this.roomId, args.participant.id)
+        } catch {
+          // The card then shows everything since the workspace was made.
+        }
+      }
       const toolContext =
         args.participant &&
         args.participant.toolAccess !== 'none' &&
@@ -736,10 +814,20 @@ class RoomRun {
         modelSupportsTools(args.participant.model, this.lookup)
           ? {
               roomId: this.roomId,
-              folder: this.room.folder ?? null,
-              extraFolders: this.room.extraFolders ?? [],
-              access: args.participant.toolAccess,
+              // An isolated writer works in its own copy, and only there: the
+              // shared extra folders would let two writers collide again.
+              folder: workspace ?? this.room.folder ?? null,
+              extraFolders: workspace ? [] : (this.room.extraFolders ?? []),
+              // Writers read only in compare mode unless isolated (see
+              // turnToolAccess).
+              access: turnToolAccess(this.room, args.participant.toolAccess, workspace !== null),
               participantName: args.participant.name,
+              participantId: args.participant.id,
+              ...(this.room.toolBudget ? { budget: this.room.toolBudget } : {}),
+              ...(args.participant.disabledTools?.length
+                ? { disabledTools: args.participant.disabledTools }
+                : {}),
+              holdLabel: () => (this.signal.aborted && (this.opts.intent?.() ?? 'pause') === 'pause' ? 'room paused' : null),
               // What the room can still spend, for a subagent's budget.
               tokenBudget: Math.max(
                 0,
@@ -753,7 +841,7 @@ class RoomRun {
       let attempt = 0
       const toolsInfo =
         toolContext && args.participant
-          ? { id: args.participant.id, access: args.participant.toolAccess }
+          ? { id: args.participant.id, access: toolContext.access }
           : null
       let instruction = args.instruction
       let built = await this.prompt(args.speaker, args.model, instruction, shrink, toolsInfo, live)
@@ -846,12 +934,41 @@ class RoomRun {
             usage: speed ? { ...usage, tokensPerSecond: speed } : usage,
             ...extra,
             ...(res.toolActivity ? { toolCalls: res.toolActivity } : {}),
+            ...(res.budgetHit ? { budgetHit: res.budgetHit } : {}),
+            ...(typeof res.finishReason === 'string' && res.finishReason
+              ? { finishReason: res.finishReason }
+              : {}),
+            // A turn that wrote nothing keeps its thinking, so the transcript
+            // can show where the tokens went instead of a blank answer.
+            ...(!raw.trim() && res.reasoning?.trim()
+              ? { reasoning: res.reasoning.slice(-ROOM_LIMIT_CEILINGS.maxTextLength) }
+              : {}),
           })
           // The conclude signal is a control token, never transcript prose:
           // strip it from every turn kind (final position and synthesis emit it
           // too, and their finalize does not clean the text). Detection of it
           // stays with the speech turn, on the raw reply.
           message.text = stripConclusion(message.text).text
+          if (workspace && args.participant && this.deps.workspace) {
+            try {
+              const files = await this.deps.workspace.changes(this.roomId, args.participant.id, 'turn')
+              if (files.length) {
+                const all = await this.deps.workspace
+                  .changes(this.roomId, args.participant.id, 'all')
+                  .catch(() => files)
+                message.changes = {
+                  files,
+                  workspace,
+                  ...(sameFiles(all, files) ? {} : { cumulative: all }),
+                }
+              }
+            } catch {
+              // No change card; the turn itself stands.
+            }
+          } else if (res.toolActivity?.length) {
+            const files = changesFromToolCalls(res.toolActivity)
+            if (files.length) message.changes = { files }
+          }
           // Stored after the provider `try`: a write failure is a persistence
           // error, never a provider error to classify or retry.
           completed = { raw, message }
@@ -1202,10 +1319,93 @@ class RoomRun {
   }
 
   /**
-   * Compare mode: every active participant answers at once, each from its own
-   * context (the user and itself, see `projectHistory`), then the room waits
-   * for the user's next message. A round cut short (pause, restart) is
-   * finished by the participants that have not answered yet.
+   * The messages a prompt is built from. A compare participant sees the
+   * questions up to the one it answers, each followed by its own answer, so an
+   * answer given later (a replay) sits next to its question.
+   */
+  historyFor(speaker: SpeakerIdentity): RoomMessage[] {
+    if (this.room.mode !== 'compare' || speaker.kind !== 'participant') return this.messages
+    const target = this.compareTargets.get(speaker.participant.id) ?? null
+    return compareHistory(this.messages, speaker.participant.id, target)
+  }
+
+  /**
+   * One compare answer: `p` answers question `questionId` from its own context.
+   * The message records the model, the question and how long it took. Returns
+   * null when the participant became unavailable before its turn.
+   */
+  async compareAnswer(p: Participant, questionId: string | null): Promise<TurnOutcome | null> {
+    const current = this.room.participants.find((x) => x.id === p.id)
+    if (!current || current.removed || current.availability.state === 'unavailable') return null
+    const startedAt = this.deps.now()
+    if (questionId) this.compareTargets.set(p.id, questionId)
+    try {
+      const outcome = await this.participantTurn(current, 'speech', null, () => ({
+        compare: {
+          provider: current.model.provider,
+          model: current.model.id,
+          ...(questionId ? { replyTo: questionId } : {}),
+          durationMs: Math.max(0, this.deps.now() - startedAt),
+        },
+      }))
+      if (outcome.kind === 'complete') {
+        this.room = {
+          ...this.room,
+          usage: { ...this.room.usage, turns: this.room.usage.turns + 1 },
+        }
+      }
+      return outcome
+    } finally {
+      this.compareTargets.delete(p.id)
+    }
+  }
+
+  /**
+   * Run `jobs` (each a participant and the questions it answers, in order).
+   * Together: participants run at once, each through its own questions. One by
+   * one: strictly in order, awaiting each answer. A failed answer never blocks
+   * the next; an abort stops the run between or during turns.
+   */
+  async runCompareJobs(
+    jobs: Array<{ participant: Participant; questions: Array<string | null> }>,
+    onAnswered?: (p: Participant) => void
+  ) {
+    const oneByOne = compareRunOf(this.room) === 'one-by-one'
+    const runJob = async (job: (typeof jobs)[number]) => {
+      for (const q of job.questions) {
+        this.checkAbort()
+        const limit = this.breach(true)
+        if (limit) throw new LimitStop(limit)
+        await this.compareAnswer(job.participant, q)
+        onAnswered?.(job.participant)
+        // Together, answers land at once: the room is saved once they all have.
+        if (oneByOne) await this.save()
+      }
+    }
+    if (oneByOne) {
+      for (const job of jobs) await runJob(job)
+      return
+    }
+    const outcomes = await Promise.allSettled(jobs.map(runJob))
+    let aborted = false
+    let failure: unknown = null
+    let limit: LimitStop | null = null
+    for (const o of outcomes) {
+      if (o.status !== 'rejected') continue
+      if (o.reason instanceof RunAborted || isAbortLike(o.reason, this.signal)) aborted = true
+      else if (o.reason instanceof LimitStop) limit ??= o.reason
+      else failure ??= o.reason
+    }
+    if (failure) throw failure
+    if (aborted) throw new RunAborted()
+    if (limit) throw limit
+  }
+
+  /**
+   * Compare mode: every included participant answers the newest question, each
+   * from its own context (the user and itself, see `projectHistory`), together
+   * or one by one as the room says; then the room waits for the user. A round
+   * cut short (pause, restart) is finished by those that have not answered.
    */
   async compareRound() {
     this.checkAbort()
@@ -1214,34 +1414,59 @@ class RoomRun {
     if (limit) return this.stopForLimit(limit)
 
     this.room = beginSpeakingTurn({ ...this.room, nextSpeakerId: null })
-    const speakers = activeParticipants(this.room).filter(
+    const pending = activeParticipants(this.room).filter(
       (p) => !this.room.spokenThisRound.includes(p.id)
     )
-    const outcomes = await Promise.allSettled(
-      speakers.map((p) => this.participantTurn(p, 'speech', null))
-    )
-
-    let aborted = false
-    let failure: unknown = null
-    outcomes.forEach((o, i) => {
-      if (o.status === 'rejected') {
-        if (o.reason instanceof RunAborted || isAbortLike(o.reason, this.signal)) aborted = true
-        else failure ??= o.reason
-        return
-      }
-      this.room = markSpoken(this.room, speakers[i].id)
-      if (o.value.kind === 'complete') {
-        this.room = {
-          ...this.room,
-          usage: { ...this.room.usage, turns: this.room.usage.turns + 1 },
+    // Left out of this run: counted as having passed, so the round closes.
+    for (const p of pending.filter((x) => x.compareSkip)) {
+      this.room = markSpoken(this.room, p.id)
+    }
+    const question = compareGrid(this.messages).questions.at(-1)?.id ?? null
+    try {
+      await this.runCompareJobs(
+        pending.filter((p) => !p.compareSkip).map((p) => ({ participant: p, questions: [question] })),
+        (p) => {
+          this.room = markSpoken(this.room, p.id)
         }
-      }
-    })
-    if (failure) throw failure
-    if (aborted) throw new RunAborted()
+      )
+    } catch (e) {
+      if (e instanceof LimitStop) return this.stopForLimit(e.limit)
+      throw e
+    }
     await this.save()
     if (!(await this.ensureEnough(2))) return
     await this.save({ status: 'awaiting-user', nextSpeakerId: null })
+  }
+
+  /** Compare rooms: answer with chosen participants, outside the round. */
+  async compareRun(participantIds: string[] | null, scope: 'latest' | 'missing') {
+    await this.drainUserMessages()
+    const grid = compareGrid(this.messages)
+    const latest = grid.questions.at(-1)
+    if (!latest) {
+      await this.system('Ask a question first; there is nothing to answer yet.')
+      return
+    }
+    const chosen = activeParticipants(this.room).filter((p) =>
+      participantIds ? participantIds.includes(p.id) : !p.compareSkip
+    )
+    const jobs = chosen
+      .map((p) => ({
+        participant: p,
+        questions:
+          scope === 'latest' ? [latest.id] : missingQuestions(grid, p.id).map((q) => q.id),
+      }))
+      .filter((j) => j.questions.length > 0)
+    try {
+      await this.runCompareJobs(jobs)
+    } catch (e) {
+      if (e instanceof LimitStop) {
+        await this.stopForLimit(e.limit)
+        return false
+      }
+      throw e
+    }
+    return true
   }
 
   // ---- closing -------------------------------------------------------------
@@ -1389,6 +1614,14 @@ export async function runRoom(
         await run.save({ status: 'running' })
         if (await run.finalPositions()) {
           await run.save({ status: settleAfterCommand(previous), stopReason: previousReason })
+        }
+        break
+      }
+      case 'compare-run': {
+        if (!(await run.preflight(1))) break
+        await run.save({ status: 'running', stopReason: null })
+        if (await run.compareRun(command.participantIds, command.scope)) {
+          await run.save({ status: 'awaiting-user', nextSpeakerId: null })
         }
         break
       }

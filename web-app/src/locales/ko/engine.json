@@ -141,8 +141,7 @@
     "needsExtension": "브라우저 확장 프로그램이 필요합니다",
     "moreActions": "{{serverName}} 추가 작업",
     "addTile": "MCP 서버 추가",
-    "addTileHint": "STDIO, HTTP 또는 SSE",
-    "toolsCount": "도구 {{count}}개"
+    "addTileHint": "STDIO, HTTP 또는 SSE"
   },
   "extensions": {
     "description": "플러그인, 스킬, 그리고 Flint를 구성하는 엔진 구성 요소입니다.",

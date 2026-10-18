@@ -141,8 +141,7 @@
     "needsExtension": "Yêu cầu tiện ích mở rộng trình duyệt",
     "moreActions": "Thêm thao tác cho {{serverName}}",
     "addTile": "Thêm máy chủ MCP",
-    "addTileHint": "STDIO, HTTP hoặc SSE",
-    "toolsCount": "{{count}} công cụ"
+    "addTileHint": "STDIO, HTTP hoặc SSE"
   },
   "extensions": {
     "description": "Plugin, kỹ năng và các thành phần engine mà Flint được xây dựng từ đó.",

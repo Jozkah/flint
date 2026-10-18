@@ -230,8 +230,7 @@
     "later": "Şimdi değil",
     "failed": "Klasöre güvenilemedi",
     "kept_one": "Zaten kullandığınız {{count}} klasör için hook'lar açık bırakıldı. Bunları Ayarlar > İzinler > Güvenilen klasörler bölümünden inceleyin.",
-    "kept_other": "Zaten kullandığınız {{count}} klasör için hook'lar açık bırakıldı. Bunları Ayarlar > İzinler > Güvenilen klasörler bölümünden inceleyin.",
-    "kept": "Zaten kullandığınız {{count}} klasör için hook'lar açık bırakıldı. Bunları Ayarlar > İzinler > Güvenilen klasörler bölümünden inceleyin."
+    "kept_other": "Zaten kullandığınız {{count}} klasör için hook'lar açık bırakıldı. Bunları Ayarlar > İzinler > Güvenilen klasörler bölümünden inceleyin."
   },
   "trustedFolders": {
     "title": "Güvenilen klasörler",

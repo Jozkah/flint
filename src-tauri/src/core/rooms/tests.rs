@@ -735,3 +735,140 @@ fn compare_mode_round_trips_through_save_get_and_list() {
     let listed = serde_json::to_value(&store.list().unwrap()[0]).unwrap();
     assert_eq!(listed["mode"], json!("compare"));
 }
+
+#[test]
+fn compare_run_settings_and_answer_metadata_round_trip() {
+    let (_dir, store) = new_store();
+    let mut json = room_json("r1");
+    json["mode"] = json!("compare");
+    json["compareRun"] = json!("one-by-one");
+    json["participants"][1]["compareSkip"] = json!(true);
+    let room = parse_room(json).expect("compare room parses");
+    store.save(room, 5000).unwrap();
+    let raw: Value =
+        serde_json::from_slice(&fs::read(store.root().join("r1").join(ROOM_FILE)).unwrap())
+            .unwrap();
+    assert_eq!(raw["compareRun"], json!("one-by-one"));
+    assert_eq!(raw["participants"][1]["compareSkip"], json!(true));
+    assert!(raw["participants"][0].get("compareSkip").is_none());
+
+    let mut record = message_json("r1", "m1", "four");
+    record["message"]["compare"] =
+        json!({ "provider": "p", "model": "m", "replyTo": "q1", "durationMs": 1200 });
+    let parsed = parse_record(record).expect("compare metadata parses");
+    let back = serde_json::to_value(&parsed).unwrap();
+    assert_eq!(
+        back["message"]["compare"],
+        json!({ "provider": "p", "model": "m", "replyTo": "q1", "durationMs": 1200 })
+    );
+    // Older rooms without the fields still load.
+    assert!(parse_room(room_json("r2")).unwrap().compare_run.is_none());
+}
+
+#[test]
+fn tools2_fields_round_trip_and_old_rooms_load_unchanged() {
+    let (_dir, store) = new_store();
+    // An older room has none of the new fields and loads as before.
+    let old = room("r2");
+    assert!(old.tool_budget.is_none());
+    assert!(old.participants.iter().all(|p| p.disabled_tools.is_none()));
+    let plain = serde_json::to_value(&old).unwrap();
+    assert!(plain.get("toolBudget").is_none());
+
+    let mut value = room_json("r2");
+    value["toolBudget"] = json!({ "maxToolCalls": 12, "maxSteps": 6, "toolTimeoutSec": 30 });
+    value["participants"][0]["disabledTools"] = json!(["web_fetch", "bash"]);
+    store.save(parse_room(value).unwrap(), 5000).unwrap();
+    let loaded = store.get("r2").unwrap().room;
+    let budget = loaded.tool_budget.clone().unwrap();
+    assert_eq!(
+        (
+            budget.max_tool_calls,
+            budget.max_steps,
+            budget.tool_timeout_sec
+        ),
+        (Some(12), Some(6), Some(30))
+    );
+    assert_eq!(
+        loaded.participants[0].disabled_tools.as_deref(),
+        Some(&["web_fetch".to_string(), "bash".to_string()][..])
+    );
+
+    let mut msg = message_json("r2", "m9", "hi");
+    msg["message"]["changes"] = json!({
+        "files": [{ "path": "a.txt", "additions": 2, "deletions": 1, "excerpt": "+x" }],
+        "workspace": "C:/ws",
+        "cumulative": [{ "path": "b.txt", "additions": 1, "deletions": 0 }]
+    });
+    msg["message"]["budgetHit"] = json!("tool-calls");
+    msg["message"]["finishReason"] = json!("length");
+    msg["message"]["reasoning"] = json!("thinking");
+    store.append("r2", parse_record(msg).unwrap()).unwrap();
+    let journal = store.get("r2").unwrap().journal;
+    let RoomJournalRecord::Message { message } = journal.last().unwrap() else {
+        panic!("expected message")
+    };
+    assert_eq!(message.changes.as_ref().unwrap().files[0].additions, 2);
+    assert_eq!(
+        message.changes.as_ref().unwrap().cumulative.as_ref().unwrap()[0].path,
+        "b.txt"
+    );
+    assert_eq!(message.budget_hit.as_deref(), Some("tool-calls"));
+    assert_eq!(message.finish_reason.as_deref(), Some("length"));
+    assert_eq!(message.reasoning.as_deref(), Some("thinking"));
+}
+
+#[test]
+fn change_decisions_round_trip_and_old_rooms_load_unchanged() {
+    let (_dir, store) = new_store();
+    let old = room("r3");
+    assert!(old.change_decisions.is_none());
+    assert!(serde_json::to_value(&old)
+        .unwrap()
+        .get("changeDecisions")
+        .is_none());
+    let mut value = room_json("r3");
+    value["changeDecisions"] = json!({ "m1": "kept", "m2": "discarded" });
+    store.save(parse_room(value).unwrap(), 5000).unwrap();
+    let loaded = store.get("r3").unwrap().room;
+    let d = loaded.change_decisions.clone().unwrap();
+    assert_eq!(d.get("m1").map(String::as_str), Some("kept"));
+    assert_eq!(d.get("m2").map(String::as_str), Some("discarded"));
+    // Saved again unchanged, the decisions survive.
+    store.save(loaded, 6000).unwrap();
+    assert_eq!(
+        store.get("r3").unwrap().room.change_decisions.unwrap().len(),
+        2
+    );
+}
+
+#[test]
+fn clearing_the_journal_keeps_workspaces_and_delete_removes_them() {
+    let (dir, store) = new_store();
+    store.save(room("r1"), 10).unwrap();
+    let folder = dir.path().join("project");
+    fs::create_dir_all(&folder).unwrap();
+    fs::write(folder.join("a.txt"), "one\n").unwrap();
+    let ws = super::workspace::ensure(store.root(), "r1", "p1", &folder, true).unwrap();
+    fs::write(std::path::Path::new(&ws.path).join("a.txt"), "pending\n").unwrap();
+    store.append("r1", message("r1", "m1", "hello")).unwrap();
+
+    store.clear_journal("r1").unwrap();
+    assert!(store.get("r1").unwrap().journal.is_empty());
+    // The workspace and the change waiting in it are still there.
+    assert_eq!(
+        fs::read_to_string(std::path::Path::new(&ws.path).join("a.txt")).unwrap(),
+        "pending\n"
+    );
+    let changes = super::workspace::changes(
+        store.root(),
+        "r1",
+        "p1",
+        super::workspace::ChangeScope::All,
+    )
+    .unwrap();
+    assert_eq!(changes.files.len(), 1);
+
+    store.delete("r1").unwrap();
+    assert!(!std::path::Path::new(&ws.path).exists());
+}

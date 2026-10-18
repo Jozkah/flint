@@ -141,8 +141,7 @@
     "needsExtension": "ブラウザ拡張機能が必要です",
     "moreActions": "{{serverName}} のその他の操作",
     "addTile": "MCP サーバーを追加",
-    "addTileHint": "STDIO、HTTP、SSE",
-    "toolsCount": "{{count}} 個のツール"
+    "addTileHint": "STDIO、HTTP、SSE"
   },
   "extensions": {
     "description": "プラグイン、スキル、そして Flint を構成するエンジンの部品です。",

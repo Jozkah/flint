@@ -229,8 +229,7 @@
     "trust": "Tin cậy thư mục",
     "later": "Để sau",
     "failed": "Không thể tin cậy thư mục",
-    "kept_other": "Đã giữ hook bật cho {{count}} thư mục bạn đang dùng. Xem lại trong Cài đặt > Quyền > Thư mục tin cậy.",
-    "kept": "Đã giữ hook bật cho {{count}} thư mục bạn đang dùng. Xem lại trong Cài đặt > Quyền > Thư mục tin cậy."
+    "kept_other": "Đã giữ hook bật cho {{count}} thư mục bạn đang dùng. Xem lại trong Cài đặt > Quyền > Thư mục tin cậy."
   },
   "trustedFolders": {
     "title": "Thư mục tin cậy",

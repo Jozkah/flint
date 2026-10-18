@@ -141,8 +141,7 @@
     "needsExtension": "Requires the browser extension",
     "moreActions": "More actions for {{serverName}}",
     "addTile": "Add MCP server",
-    "addTileHint": "STDIO, HTTP or SSE",
-    "toolsCount": "{{count}} tools"
+    "addTileHint": "STDIO, HTTP or SSE"
   },
   "extensions": {
     "description": "Plugins, skills and the engine pieces Flint is built from.",

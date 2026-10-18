@@ -230,8 +230,7 @@
     "later": "Ara no",
     "failed": "No s'ha pogut confiar en la carpeta",
     "kept_one": "S'han mantingut els hooks activats en {{count}} carpeta que ja fas servir. Revisa-la a Configuració > Permisos > Carpetes de confiança.",
-    "kept_other": "S'han mantingut els hooks activats en {{count}} carpetes que ja fas servir. Revisa'ls a Configuració > Permisos > Carpetes de confiança.",
-    "kept": "S'han mantingut els hooks activats en {{count}} carpetes que ja fas servir. Revisa'ls a Configuració > Permisos > Carpetes de confiança."
+    "kept_other": "S'han mantingut els hooks activats en {{count}} carpetes que ja fas servir. Revisa'ls a Configuració > Permisos > Carpetes de confiança."
   },
   "trustedFolders": {
     "title": "Carpetes de confiança",

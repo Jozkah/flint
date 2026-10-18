@@ -2684,8 +2684,7 @@
     "errorEngine": "Le moteur qui exécute ce modèle n'est pas disponible. Redémarrez Flint et réessayez.",
     "openProvider": "Ouvrir les paramètres du fournisseur",
     "errorDetails": "Détails",
-    "pasteHint": "L'accès au presse-papiers a été bloqué. Cliquez dans la zone de texte et appuyez sur {{keys}}.",
-    "characters": "{{count}} caractères"
+    "pasteHint": "L'accès au presse-papiers a été bloqué. Cliquez dans la zone de texte et appuyez sur {{keys}}."
   },
   "markdownImage": {
     "load": "Charger l'image depuis {{host}}"
@@ -2732,8 +2731,7 @@
       "gone": "Ce prompt n'existe plus",
       "invalidJson": "Ce fichier n'est pas un JSON valide",
       "noPrompts": "Aucun prompt trouvé dans ce fichier"
-    },
-    "imported": "{{count}} invites ajoutées"
+    }
   },
   "memoryProposal": {
     "title": "Mémoriser cela ?",

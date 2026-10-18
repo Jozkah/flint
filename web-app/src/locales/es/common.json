@@ -2685,8 +2685,7 @@
     "errorEngine": "El motor que ejecuta este modelo no está disponible. Reinicia Flint e inténtalo de nuevo.",
     "openProvider": "Abrir ajustes del proveedor",
     "errorDetails": "Detalles",
-    "pasteHint": "Se bloqueó el acceso al portapapeles. Haz clic en el cuadro de texto y pulsa {{keys}}.",
-    "characters": "{{count}} caracteres"
+    "pasteHint": "Se bloqueó el acceso al portapapeles. Haz clic en el cuadro de texto y pulsa {{keys}}."
   },
   "markdownImage": {
     "load": "Cargar imagen de {{host}}"
@@ -2733,8 +2732,7 @@
       "gone": "Ese prompt ya no existe",
       "invalidJson": "Ese archivo no es un JSON válido",
       "noPrompts": "No se encontraron prompts en ese archivo"
-    },
-    "imported": "Se añadieron {{count}} prompts"
+    }
   },
   "memoryProposal": {
     "title": "¿Recordar esto?",

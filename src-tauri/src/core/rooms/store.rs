@@ -221,6 +221,52 @@ pub struct Participant {
     /// The work profile (how to approach the task) this participant works in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub work_profile: Option<String>,
+    /// Compare rooms: left out of the next run without being removed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compare_skip: Option<bool>,
+    /// Tools the user switched off for this participant in the room editor.
+    /// Absent means every tool its access allows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled_tools: Option<Vec<String>>,
+}
+
+/// Per-turn tool budgets of a room. Every field is optional: absent means the
+/// built-in default for the participant's access.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomToolBudget {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tool_calls: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_steps: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_timeout_sec: Option<u64>,
+}
+
+/// What one participant turn changed in an isolated workspace or folder.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomTurnChanges {
+    pub files: Vec<RoomChangedFile>,
+    /// The participant's isolated workspace, when the turn worked in one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    /// Everything changed in the workspace since it was made, when that is
+    /// more than this turn's `files`: the card's cumulative view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cumulative: Option<Vec<RoomChangedFile>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomChangedFile {
+    pub path: String,
+    pub additions: u64,
+    pub deletions: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub excerpt: Option<String>,
 }
 
 /// A participant's reasoning setting, mirroring `ParticipantReasoning` in
@@ -328,6 +374,16 @@ pub struct Room {
     /// same access. Absent on rooms saved before this existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_folders: Vec<String>,
+    /// Compare rooms: "together" or "one-by-one". Absent means together.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compare_run: Option<CompareRun>,
+    /// Per-turn tool budgets. Absent on rooms saved before they existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_budget: Option<RoomToolBudget>,
+    /// What the user decided on a turn's change card, by message id:
+    /// "kept", "discarded" or "applied". Absent on rooms saved before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change_decisions: Option<std::collections::BTreeMap<String, String>>,
     pub limits: RoomLimits,
     pub usage: RoomUsage,
     pub round: u64,
@@ -477,6 +533,41 @@ pub struct RoomMessage {
     /// divider that expands to the summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compaction: Option<RoomCompaction>,
+    /// Compare answers: the model that wrote it and the question it answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compare: Option<RoomCompareMeta>,
+    /// Files the turn changed, for the transcript's change card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<RoomTurnChanges>,
+    /// The tool budget the turn ran into: "tool-calls", "steps" or "timeout".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_hit: Option<String>,
+    /// Why the model stopped writing: "stop", "length", "tool-calls", ...
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
+    /// The model's thinking, kept when the turn wrote no answer of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
+}
+
+/// How a compare room asks its participants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CompareRun {
+    Together,
+    OneByOne,
+}
+
+/// What a compare answer records, so runs at different dates stay comparable.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomCompareMeta {
+    pub provider: String,
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 /// A compaction of the discussion, journaled so its divider survives reloads.
@@ -1013,6 +1104,8 @@ impl RoomStore {
     /// counters; this only removes what was recorded.
     pub fn clear_journal(&self, room_id: &str) -> Result<(), RoomError> {
         let dir = self.room_dir(room_id)?;
+        // Workspaces (and the changes waiting in them) are not the journal:
+        // only "clear everything", delete and archive remove them.
         let _guard = write_guard();
         match fs::symlink_metadata(&dir) {
             Ok(meta) if meta.is_dir() => {}
@@ -1036,6 +1129,9 @@ impl RoomStore {
 
     pub fn delete(&self, room_id: &str) -> Result<(), RoomError> {
         let dir = self.room_dir(room_id)?;
+        // Unregister worktrees before the directory goes, so the repository
+        // is not left claiming checkouts that no longer exist.
+        super::workspace::remove_all(&self.root, room_id)?;
         let _guard = write_guard();
         match fs::symlink_metadata(&dir) {
             Ok(meta) if meta.is_dir() => {}
@@ -1067,6 +1163,9 @@ impl RoomStore {
     /// missing room, a link standing in for the directory).
     pub fn archive(&self, data: &Path, room_id: &str) -> Result<(), RoomError> {
         let dir = self.room_dir(room_id)?;
+        // A moved worktree would break its repository's registration; the
+        // workspaces are scratch state, so they are removed, not archived.
+        super::workspace::remove_all(&self.root, room_id)?;
         let _guard = write_guard();
         match fs::symlink_metadata(&dir) {
             Ok(meta) if meta.is_dir() => {}

@@ -47,6 +47,11 @@ describe('compare rooms in the transcript', () => {
     expect(within(first[0]).getByTestId('message-speed')).toHaveTextContent('42')
     expect(first[1]).toHaveTextContent('Bob answer')
     expect(rows[0]).toHaveAccessibleName('2 answers side by side')
+    // Wrapping flex with a 240px basis: an odd answer left on the last line
+    // grows to fill it, where an auto-fit grid left an empty cell beside it.
+    expect(rows[0]).toHaveClass('flex', 'flex-wrap')
+    expect(rows[0].className).not.toContain('grid')
+    expect(first[0].className).toContain('flex-[1_1_min(100%,240px)]')
     // The user's messages stay full-width rows of their own.
     expect(screen.getByText('Shorter').closest('[data-testid="room-compare-row"]')).toBeNull()
   })

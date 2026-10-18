@@ -141,8 +141,7 @@
     "needsExtension": "Tarayıcı uzantısı gerektirir",
     "moreActions": "{{serverName}} için diğer eylemler",
     "addTile": "MCP sunucusu ekle",
-    "addTileHint": "STDIO, HTTP veya SSE",
-    "toolsCount": "{{count}} araç"
+    "addTileHint": "STDIO, HTTP veya SSE"
   },
   "extensions": {
     "description": "Eklentiler, beceriler ve Flint'in oluşturulduğu motor parçaları.",

@@ -142,8 +142,7 @@
     "needsExtension": "Nécessite l'extension de navigateur",
     "moreActions": "Autres actions pour {{serverName}}",
     "addTile": "Ajouter un serveur MCP",
-    "addTileHint": "STDIO, HTTP ou SSE",
-    "toolsCount": "{{count}} outils"
+    "addTileHint": "STDIO, HTTP ou SSE"
   },
   "extensions": {
     "description": "Les plugins, les skills et les éléments du moteur dont Flint est constitué.",

@@ -33,8 +33,7 @@
       "gone": "That prompt no longer exists",
       "invalidJson": "That file is not valid JSON",
       "noPrompts": "No prompts found in that file"
-    },
-    "imported": "Added {{count}} prompts"
+    }
   },
   "groups": {
     "newGroup": "New group",
@@ -2077,8 +2076,7 @@
     "errorEngine": "The engine that runs this model is not available. Restart Flint and try again.",
     "openProvider": "Open provider settings",
     "errorDetails": "Details",
-    "pasteHint": "Clipboard access was blocked. Click the text box and press {{keys}}.",
-    "characters": "{{count}} characters"
+    "pasteHint": "Clipboard access was blocked. Click the text box and press {{keys}}."
   },
   "appRail": {
     "label": "Global navigation",

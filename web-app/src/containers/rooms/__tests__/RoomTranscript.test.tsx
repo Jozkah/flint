@@ -228,6 +228,21 @@ describe('RoomTranscript', () => {
     expect(within(details).getByText('ERROR: nope')).toBeInTheDocument()
   })
 
+  it('shows how long each call took in the full view', () => {
+    const msg = makeMessage({
+      text: 'Done.',
+      toolCalls: [
+        { name: 'read', ok: true, args: { path: 'a' }, output: 'A', ms: 340 },
+        { name: 'bash', ok: true, args: { command: 'x' }, output: 'B', ms: 2500 },
+      ],
+    })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+    fireEvent.click(screen.getByTestId('tool-trace-summary'))
+    fireEvent.click(screen.getByTestId('tool-trace-toggle'))
+    const times = screen.getAllByTestId('tool-duration').map((e) => e.textContent)
+    expect(times).toEqual(['340 ms', '2.5 s'])
+  })
+
   it('stays folded by default in the verbose transcript view too', () => {
     useInterfaceSettings.setState({ transcriptView: 'verbose' })
     const msg = makeMessage({

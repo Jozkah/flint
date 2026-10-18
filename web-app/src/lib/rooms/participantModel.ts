@@ -21,7 +21,9 @@ import { isAbortLike } from '@/lib/coworkRunner'
 import { notifyToolBatch } from '@/lib/agentTools'
 import { unloadLlamaModel } from '@janhq/tauri-plugin-llamacpp-api'
 import { defaultProviderLookup, type ProviderLookup } from './availability'
-import { buildRoomTools, ROOM_FULL_TOOL_MAX_STEPS, ROOM_TOOL_MAX_STEPS } from './roomTools'
+import { buildRoomTools } from './roomTools'
+import { applyToolBudget, dropDisabledTools, resolveToolBudget } from './toolBudget'
+import type { RoomBudgetHit } from './types'
 import { buildParticipantReasoningRequest } from './participantReasoning'
 import { NO_ROOM_NOTICE, estimateToolTokens, guardStepMessages } from './stepContext'
 import {
@@ -105,8 +107,9 @@ export async function streamParticipantReply(
 ): Promise<StreamReplyResult> {
   const lookup = deps.lookup ?? defaultProviderLookup
   const stream = deps.streamText ?? streamText
-  const maxSteps =
-    input.toolContext?.access === 'full' ? ROOM_FULL_TOOL_MAX_STEPS : ROOM_TOOL_MAX_STEPS
+  const budget = resolveToolBudget(input.toolContext?.budget, input.toolContext?.access ?? 'read')
+  const maxSteps = budget.maxSteps
+  let budgetHit: RoomBudgetHit | undefined
   const provider = lookup(input.model.provider)
   if (!provider) {
     throw new RoomCallError(
@@ -150,6 +153,7 @@ export async function streamParticipantReply(
   }
 
   let text = ''
+  let reasoningText = ''
   let streamError: unknown = null
   // What the subagents this turn started used; charged to the room below.
   const childUsage = { input: 0, output: 0 }
@@ -182,6 +186,10 @@ export async function streamParticipantReply(
         },
       }
     )
+    // The user's picker only narrows; the budget wraps what is left.
+    tools = applyToolBudget(dropDisabledTools(tools, input.toolContext.disabledTools), budget, (h) => {
+      budgetHit ??= h
+    })
     if (Object.keys(tools).length === 0) tools = undefined
   }
   const toolTokens = estimateToolTokens(tools)
@@ -231,6 +239,7 @@ export async function streamParticipantReply(
                     })
                   : null
               const outOfSteps = stepNumber >= maxSteps - 1
+              if (outOfSteps) budgetHit ??= 'steps'
               const outOfRoom = guard?.finish === true
               const trimmed = guard && (guard.cleared > 0 || guard.clipped > 0)
               if (!outOfSteps && !outOfRoom && !trimmed) return undefined
@@ -299,7 +308,11 @@ ${outOfSteps ? OUT_OF_STEPS_NOTICE : NO_ROOM_NOTICE}`,
         err.name = 'AbortError'
         throw err
       }
-      // reasoning-* parts are deliberately ignored.
+      // Thinking is not part of the reply; it is kept only to show when the
+      // turn wrote no answer.
+      else if (part.type === 'reasoning-delta' && part.text) {
+        reasoningText += part.text
+      }
     }
     if (streamError) throw streamError
     let usage: StreamReplyResult['usage']
@@ -344,7 +357,9 @@ ${outOfSteps ? OUT_OF_STEPS_NOTICE : NO_ROOM_NOTICE}`,
       text,
       usage,
       finishReason,
+      ...(reasoningText.trim() ? { reasoning: reasoningText } : {}),
       toolActivity: toolActivity.length ? toolActivity : undefined,
+      ...(budgetHit ? { budgetHit } : {}),
     }
   } catch (e) {
     throw toRoomCallError(e, input.signal)

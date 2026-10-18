@@ -20,6 +20,7 @@ vi.mock('@/lib/agentTools', () => ({
       'skill_write',
       'request_access',
       'send_message',
+      'todo',
     ].map((name) => ({ function: { name, description: name, parameters: { type: 'object', properties: {} } } })),
 }))
 vi.mock('@/hooks/useServiceHub', () => ({
@@ -35,7 +36,12 @@ vi.mock('@/hooks/useToolApprovalRequests', () => ({
 vi.mock('@/lib/surfaceDelegation', () => ({ createSurfaceDelegation }))
 vi.mock('@/lib/chatDelegation', () => ({ chatDelegationEnabled: () => delegationOn.value }))
 
-import { buildFullFolderTools, ROOM_CHILD_MAX_STEPS, type RoomDelegation } from '../fullTools'
+import {
+  buildFullFolderTools,
+  ROOM_CHILD_MAX_STEPS,
+  roomTodoList,
+  type RoomDelegation,
+} from '../fullTools'
 
 const ctx = {
   roomId: 'r1',
@@ -55,7 +61,7 @@ beforeEach(() => {
 describe('buildFullFolderTools', () => {
   it('offers the shell, git, files, skills and plugins, and withholds the rest', async () => {
     const tools = await buildFullFolderTools(ctx)
-    expect(Object.keys(tools).sort()).toEqual(['bash', 'git', 'list_plugins', 'read', 'skill_read', 'write'])
+    expect(Object.keys(tools).sort()).toEqual(['bash', 'git', 'list_plugins', 'read', 'skill_read', 'todo', 'write'])
   })
 
   it('covers every attached folder with one write grant', async () => {
@@ -171,5 +177,52 @@ describe('delegation in a room', () => {
 
   it('offers it to no one without a folder', async () => {
     expect(await buildFullFolderTools({ ...ctx, folder: null }, undefined, delegation)).toEqual({})
+  })
+})
+
+describe('todo list in a room', () => {
+  type Ctx = { onTodo: (i: unknown) => Promise<{ output: string; isError?: boolean }> }
+  const onTodoOf = async (who: string, roomId = 'r1') => {
+    dispatch.mockReset().mockResolvedValue({ output: 'x', isError: false })
+    const tools = await buildFullFolderTools({ ...ctx, roomId, participantName: who })
+    await (tools.bash as unknown as { execute: (i: unknown) => Promise<string> }).execute({})
+    return (dispatch.mock.calls[0][1] as Ctx).onTodo
+  }
+
+  it('keeps a plan per participant instead of refusing the tool', async () => {
+    const onTodo = await onTodoOf('Ada', 'todo-room')
+    const out = await onTodo({ op: 'init', list: [{ phase: 'Fix', items: ['read', 'patch'] }] })
+    expect(out.isError).toBeFalsy()
+    expect(out.output).toContain('patch')
+    expect(roomTodoList('todo-room', 'Ada')?.phases[0].tasks).toHaveLength(2)
+    // Another participant starts with its own empty list.
+    expect(roomTodoList('todo-room', 'Bo')).toBeUndefined()
+    // The next turn of the same participant sees the same plan.
+    const again = await onTodoOf('Ada', 'todo-room')
+    const view = await again({ op: 'done', task: 'read' })
+    expect(view.isError).toBeFalsy()
+    expect(roomTodoList('todo-room', 'Ada')?.phases[0].tasks[0].status).toBe('completed')
+  })
+
+  it('keeps separate plans for two participants with the same name', async () => {
+    const plan = async (participantId: string) => {
+      dispatch.mockReset().mockResolvedValue({ output: 'x', isError: false })
+      const tools = await buildFullFolderTools({ ...ctx, roomId: 'twins', participantName: 'Ada', participantId })
+      await (tools.bash as unknown as { execute: (i: unknown) => Promise<string> }).execute({})
+      return (dispatch.mock.calls[0][1] as Ctx).onTodo
+    }
+    await (await plan('p-1'))({ op: 'init', list: [{ phase: 'One', items: ['a'] }] })
+    expect(roomTodoList('twins', 'p-1')?.phases[0].tasks).toHaveLength(1)
+    expect(roomTodoList('twins', 'p-2')).toBeUndefined()
+    await (await plan('p-2'))({ op: 'init', list: [{ phase: 'Two', items: ['b', 'c'] }] })
+    expect(roomTodoList('twins', 'p-1')?.phases[0].tasks).toHaveLength(1)
+    expect(roomTodoList('twins', 'p-2')?.phases[0].tasks).toHaveLength(2)
+  })
+
+  it('reports a bad call as an error the model can read', async () => {
+    const onTodo = await onTodoOf('Ada', 'todo-room-2')
+    const out = await onTodo({})
+    expect(out.isError).toBe(true)
+    expect(out.output).toMatch(/^ERROR:/)
   })
 })

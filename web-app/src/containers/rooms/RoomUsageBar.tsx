@@ -12,7 +12,8 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 }
 
 export function RoomUsageBar({ room }: { room: Room }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const lang = i18n.language
   const { usage, limits } = room
   const of = (value: string, max: string) => t('rooms:usage.of', { value, max })
   const tokens = usage.inputTokens + usage.outputTokens
@@ -24,14 +25,14 @@ export function RoomUsageBar({ room }: { room: Room }) {
     >
       <dl className="flex flex-wrap gap-x-[18px] gap-y-1.5">
         <Stat label={t('rooms:usage.turns')}>
-          {of(formatNumber(usage.turns), formatNumber(limits.maxTurns))}
+          {of(formatNumber(usage.turns, lang), formatNumber(limits.maxTurns, lang))}
         </Stat>
         <Stat label={t('rooms:usage.rounds')}>
-          {of(formatNumber(usage.rounds), formatNumber(limits.maxRounds))}
+          {of(formatNumber(usage.rounds, lang), formatNumber(limits.maxRounds, lang))}
         </Stat>
         <Stat label={t('rooms:usage.tokens')}>
-          <span title={of(formatNumber(tokens), formatNumber(limits.maxTotalTokens))}>
-            {of(formatCompact(tokens), formatCompact(limits.maxTotalTokens))}
+          <span title={of(formatNumber(tokens, lang), formatNumber(limits.maxTotalTokens, lang))}>
+            {of(formatCompact(tokens, lang), formatCompact(limits.maxTotalTokens, lang))}
           </span>
           {usage.estimated && (
             <span className="ml-1 font-normal text-muted-foreground">
@@ -46,8 +47,8 @@ export function RoomUsageBar({ room }: { room: Room }) {
             </span>
           ) : (
             of(
-              formatUsd(usage.costUsd),
-              limits.maxCostUsd === null ? t('rooms:usage.noLimit') : formatUsd(limits.maxCostUsd)
+              formatUsd(usage.costUsd, lang),
+              limits.maxCostUsd === null ? t('rooms:usage.noLimit') : formatUsd(limits.maxCostUsd, lang)
             )
           )}
         </Stat>

@@ -2681,8 +2681,7 @@
     "errorEngine": "O motor que executa este modelo não está disponível. Reinicie o Flint e tente novamente.",
     "openProvider": "Abrir configurações do provedor",
     "errorDetails": "Detalhes",
-    "pasteHint": "O acesso à área de transferência foi bloqueado. Clique na caixa de texto e pressione {{keys}}.",
-    "characters": "{{count}} caracteres"
+    "pasteHint": "O acesso à área de transferência foi bloqueado. Clique na caixa de texto e pressione {{keys}}."
   },
   "markdownImage": {
     "load": "Carregar imagem de {{host}}"
@@ -2729,8 +2728,7 @@
       "gone": "Esse prompt não existe mais",
       "invalidJson": "Esse arquivo não é um JSON válido",
       "noPrompts": "Nenhum prompt encontrado nesse arquivo"
-    },
-    "imported": "{{count}} prompts adicionados"
+    }
   },
   "memoryProposal": {
     "title": "Lembrar disso?",

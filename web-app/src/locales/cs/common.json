@@ -2735,8 +2735,7 @@
     "errorEngine": "Engine, který tento model spouští, není k dispozici. Restartujte Flint a zkuste to znovu.",
     "openProvider": "Otevřít nastavení poskytovatele",
     "errorDetails": "Podrobnosti",
-    "pasteHint": "Přístup ke schránce byl zablokován. Klikněte do textového pole a stiskněte {{keys}}.",
-    "characters": "Znaků: {{count}}"
+    "pasteHint": "Přístup ke schránce byl zablokován. Klikněte do textového pole a stiskněte {{keys}}."
   },
   "markdownImage": {
     "load": "Načíst obrázek z {{host}}"
@@ -2785,8 +2784,7 @@
       "gone": "Tento prompt už neexistuje",
       "invalidJson": "Tento soubor není platný JSON",
       "noPrompts": "V tomto souboru nebyly nalezeny žádné prompty"
-    },
-    "imported": "Přidáno promptů: {{count}}"
+    }
   },
   "memoryProposal": {
     "title": "Zapamatovat si to?",

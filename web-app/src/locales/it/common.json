@@ -2683,8 +2683,7 @@
     "errorEngine": "Il motore che esegue questo modello non è disponibile. Riavvia Flint e riprova.",
     "openProvider": "Apri impostazioni del provider",
     "errorDetails": "Dettagli",
-    "pasteHint": "L'accesso agli appunti è stato bloccato. Fai clic nella casella di testo e premi {{keys}}.",
-    "characters": "{{count}} caratteri"
+    "pasteHint": "L'accesso agli appunti è stato bloccato. Fai clic nella casella di testo e premi {{keys}}."
   },
   "markdownImage": {
     "load": "Carica immagine da {{host}}"
@@ -2731,8 +2730,7 @@
       "gone": "Quel prompt non esiste più",
       "invalidJson": "Quel file non è un JSON valido",
       "noPrompts": "Nessun prompt trovato in quel file"
-    },
-    "imported": "Aggiunti {{count}} prompt"
+    }
   },
   "memoryProposal": {
     "title": "Ricordare questo?",

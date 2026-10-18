@@ -1406,14 +1406,7 @@ async fn execute_tool_inner(
         // Reading outside the workspace is what `request_access` exists for:
         // say so, or the model concludes the file is unreachable.
         Decision::Prompt(PromptKind::ReadEscape) => {
-            return Err(format!(
-                "tool '{name}' was refused: that path is outside the workspace and every \
-                 folder the user has granted. Call request_access with the narrowest \
-                 required path and explain why access is needed, then retry this call. \
-                 (Skill files are the exception: read one with skill_read and its `file` \
-                 argument; request_access cannot grant Flint's own data folder.)"
-            )
-            .into());
+            return Err(read_escape_message(&name, &args, &root, &read_roots).into());
         }
         // A `git` call that writes to a remote or can lose work. The renderer
         // puts every one of these to the user, naming the command, remote and
@@ -2368,10 +2361,50 @@ pub async fn permission_audit_recent(
     ))
 }
 
+/// The refusal for a read outside every root. It names the path that was
+/// tried and the folders that are allowed, so a model that mistyped a long
+/// path (one character off in an id) can see it and retry, instead of
+/// concluding the file is unreachable.
+fn read_escape_message(
+    name: &str,
+    args: &serde_json::Value,
+    root: &Path,
+    read_roots: &[PathBuf],
+) -> String {
+    let tried = ["path", "file_path", "dir", "directory", "cwd"]
+        .iter()
+        .find_map(|k| args.get(*k).and_then(|v| v.as_str()))
+        .map(|p| format!(" ({p})"))
+        .unwrap_or_default();
+    let mut allowed: Vec<String> = read_roots.iter().map(|r| r.display().to_string()).collect();
+    allowed.push(root.display().to_string());
+    format!(
+        "tool '{name}' was refused: that path{tried} is outside the workspace and every \
+         folder the user has granted. Allowed folders: {}. First check the path for a \
+         typo. Call request_access with the narrowest required path and explain why \
+         access is needed, then retry this call. (Skill files are the \
+         exception: read one with skill_read and its `file` argument; request_access \
+         cannot grant Flint's own data folder.)",
+        allowed.join(", ")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_read_escape_names_the_path_tried_and_the_allowed_folders() {
+        let msg = read_escape_message(
+            "read",
+            &json!({ "path": "C:/ws/abc6/src/app.js" }),
+            Path::new("C:/scratch"),
+            &[PathBuf::from("C:/ws/abc96")],
+        );
+        assert!(msg.contains("(C:/ws/abc6/src/app.js)"), "{msg}");
+        assert!(msg.contains("Allowed folders: C:/ws/abc96, C:/scratch"), "{msg}");
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 

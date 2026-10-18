@@ -7,7 +7,27 @@ import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { chatDelegationEnabled } from '@/lib/chatDelegation'
 import { createSurfaceDelegation } from '@/lib/surfaceDelegation'
+import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
+import type { TodoList } from '@/types/coworkSession'
 import type { RoomToolActivity, RoomToolContext } from './callError'
+import { withheld } from './toolCatalog'
+
+/**
+ * Each participant's plan, per room, kept for the app's lifetime so a plan
+ * made on one turn is still there on the next. Memory only: a plan is working
+ * state for the participant, not part of the room's record.
+ */
+const roomTodos = new Map<string, TodoList>()
+const todoKey = (roomId: string, owner: string) => `${roomId}:${owner}`
+
+/**
+ * A participant's current plan in a room, if it made one. `owner` is the
+ * participant's id (its name only when no id was given), so two participants
+ * sharing a name keep separate plans.
+ */
+export function roomTodoList(roomId: string, owner: string): TodoList | undefined {
+  return roomTodos.get(todoKey(roomId, owner))
+}
 
 /** Steps a subagent a participant starts may take. Rooms are bounded, and a
  * turn that delegates is one participant's single reply. */
@@ -33,24 +53,6 @@ export type RoomDelegation = {
 /** Output kept for the transcript's advanced view, as for the other tools. */
 const OUTPUT_CAP = 4000
 
-/**
- * Tools a room participant never gets, even at full access: they belong to a
- * Cowork session (its todo list, subagents, mail to other sessions) or write
- * state the room has no owner for (memory, new skills), or ask for folders the
- * room's editor already decided.
- */
-const WITHHELD = new Set([
-  'request_access',
-  'skill_write',
-  'list_sessions',
-  'send_message',
-  'read_messages',
-  'wait_for_reply',
-  'stop_session',
-  'message_send',
-  'message_check',
-])
-const withheld = (name: string) => WITHHELD.has(name) || name.startsWith('memory_')
 
 const refused = (what: string) => async () => ({
   output: `${what} is not available in a room.`,
@@ -103,7 +105,15 @@ export async function buildFullFolderTools(
     accessCapability: { managedWorktree: false, directEdit: Boolean(writeGrant) },
     writeGrant,
     bindingIntact: () => true,
-    onTodo: refused('The todo list'),
+    // The same todo tool as Cowork, one list per participant: it changes
+    // nothing outside the plan, so it needs no approval.
+    onTodo: async (input) => {
+      const key = todoKey(ctx.roomId, ctx.participantId ?? who)
+      const result = applyTodoOp(roomTodos.get(key), input)
+      if (result.error) return { output: `ERROR: ${result.error}`, isError: true }
+      roomTodos.set(key, result.list)
+      return { output: renderTodoResult(result.list) }
+    },
     onAsk: refused('Asking the user a question'),
     onTask: refused('A subagent'),
     onApprove: (callId, toolName, input, preview, signal, forced) =>
@@ -121,6 +131,9 @@ export async function buildFullFolderTools(
         preview,
         origin: who,
         signal: signal ?? ctx.signal,
+        // A pause keeps the card on screen, held; it can then only be denied
+        // or expire when the room resumes.
+        ...(ctx.holdLabel ? { holdOnAbort: ctx.holdLabel } : {}),
       }),
   }
 

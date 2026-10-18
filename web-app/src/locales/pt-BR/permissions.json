@@ -230,8 +230,7 @@
     "later": "Agora não",
     "failed": "Não foi possível confiar na pasta",
     "kept_one": "Hooks mantidos ativos em {{count}} pasta que você já usa. Revise-a em Configurações > Permissões > Pastas confiáveis.",
-    "kept_other": "Hooks mantidos ativos em {{count}} pastas que você já usa. Revise-os em Configurações > Permissões > Pastas confiáveis.",
-    "kept": "Hooks mantidos ativos em {{count}} pastas que você já usa. Revise-os em Configurações > Permissões > Pastas confiáveis."
+    "kept_other": "Hooks mantidos ativos em {{count}} pastas que você já usa. Revise-os em Configurações > Permissões > Pastas confiáveis."
   },
   "trustedFolders": {
     "title": "Pastas confiáveis",

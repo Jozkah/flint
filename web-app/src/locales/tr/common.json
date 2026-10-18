@@ -2635,8 +2635,7 @@
     "errorEngine": "Bu modeli çalıştıran motor kullanılamıyor. Flint'i yeniden başlatıp tekrar deneyin.",
     "openProvider": "Sağlayıcı ayarlarını aç",
     "errorDetails": "Ayrıntılar",
-    "pasteHint": "Panoya erişim engellendi. Metin kutusuna tıklayın ve {{keys}} tuşlarına basın.",
-    "characters": "{{count}} karakter"
+    "pasteHint": "Panoya erişim engellendi. Metin kutusuna tıklayın ve {{keys}} tuşlarına basın."
   },
   "markdownImage": {
     "load": "Görseli {{host}} adresinden yükle"
@@ -2683,8 +2682,7 @@
       "gone": "Bu istem artık yok",
       "invalidJson": "Bu dosya geçerli bir JSON değil",
       "noPrompts": "Bu dosyada istem bulunamadı"
-    },
-    "imported": "{{count}} istem eklendi"
+    }
   },
   "memoryProposal": {
     "title": "Bunu hatırlayayım mı?",

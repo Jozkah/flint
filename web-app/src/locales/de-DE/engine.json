@@ -141,8 +141,7 @@
     "needsExtension": "Erfordert die Browsererweiterung",
     "moreActions": "Weitere Aktionen für {{serverName}}",
     "addTile": "MCP-Server hinzufügen",
-    "addTileHint": "STDIO, HTTP oder SSE",
-    "toolsCount": "{{count}} Tools"
+    "addTileHint": "STDIO, HTTP oder SSE"
   },
   "extensions": {
     "description": "Plugins, Skills und die Engine-Bausteine, aus denen Flint besteht.",

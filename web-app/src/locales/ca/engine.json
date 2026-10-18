@@ -142,8 +142,7 @@
     "needsExtension": "Requereix l'extensió del navegador",
     "moreActions": "Més accions per a {{serverName}}",
     "addTile": "Afegeix un servidor MCP",
-    "addTileHint": "STDIO, HTTP o SSE",
-    "toolsCount": "{{count}} eines"
+    "addTileHint": "STDIO, HTTP o SSE"
   },
   "extensions": {
     "description": "Connectors, habilitats i les peces del motor amb què es construeix Flint.",

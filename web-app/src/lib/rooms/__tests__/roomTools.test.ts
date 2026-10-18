@@ -126,7 +126,7 @@ describe('buildRoomTools', () => {
       readOnlyProject: '/work',
       scope: 'thread',
     })
-    expect(activity).toEqual([
+    expect(activity).toMatchObject([
       { name: 'read', ok: true, args: { path: 'src/main.rs' }, output: 'FILE BODY' },
     ])
   })
@@ -141,6 +141,19 @@ describe('buildRoomTools', () => {
     expect(events[1].running).toBeUndefined()
   })
 
+  it('records how long each call took', async () => {
+    getAgentToolSchemas.mockResolvedValue([schema('read')])
+    executeAgentTool.mockImplementation(
+      () => new Promise((r) => setTimeout(() => r({ content: 'X' }), 25))
+    )
+    const events: RoomToolActivity[] = []
+    const tools = await buildRoomTools(ctx, (a) => events.push(a))
+    await (tools.read as { execute: (i: unknown) => Promise<string> }).execute({ path: 'a' })
+    const settled = events.find((e) => !e.running)!
+    expect(settled.ms).toBeGreaterThanOrEqual(20)
+    expect(events[0].ms).toBeUndefined()
+  })
+
   it('surfaces a tool error as text and marks the activity failed', async () => {
     getAgentToolSchemas.mockResolvedValue([schema('grep')])
     executeAgentTool.mockResolvedValue({ error: 'permission denied' })
@@ -152,7 +165,7 @@ describe('buildRoomTools', () => {
     })
 
     expect(out).toBe('ERROR: permission denied')
-    expect(activity).toEqual([
+    expect(activity).toMatchObject([
       { name: 'grep', ok: false, args: { pattern: 'x' }, output: 'ERROR: permission denied' },
     ])
   })
@@ -218,7 +231,7 @@ describe('buildRoomTools', () => {
       serverName: 'docs',
       arguments: { q: 'x' },
     })
-    expect(activity).toEqual([
+    expect(activity).toMatchObject([
       { name: 'search_docs', ok: true, args: { q: 'x' }, output: 'RESULT A\nRESULT B', mcp: true },
     ])
   })
@@ -239,7 +252,19 @@ describe('buildRoomTools', () => {
 
     const out = await (tools.ask as { execute: (i: unknown) => Promise<string> }).execute({})
     expect(out).toBe('ERROR: boom')
-    expect(activity).toEqual([{ name: 'ask', ok: false, args: {}, output: 'ERROR: boom', mcp: true }])
+    expect(activity).toMatchObject([{ name: 'ask', ok: false, args: {}, output: 'ERROR: boom', mcp: true }])
+  })
+
+  it('leaves out every tool of a server the participant switched off as a whole', async () => {
+    trustedServers = ['docs', 'git']
+    disabledTools = []
+    getAgentToolSchemas.mockResolvedValue([schema('read')])
+    getTools.mockResolvedValue([
+      { name: 'search_docs', description: 's', inputSchema: { type: 'object' }, server: 'docs' },
+      { name: 'git_log', description: 'g', inputSchema: { type: 'object' }, server: 'git' },
+    ])
+    const tools = await buildRoomTools({ ...ctx, disabledTools: ['mcp:docs'] })
+    expect(Object.keys(tools).sort()).toEqual(['git_log', 'read', 'skill_read'])
   })
 
   it('withholds MCP tools from servers the user has not trusted', async () => {

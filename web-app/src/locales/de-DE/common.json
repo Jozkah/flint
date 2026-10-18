@@ -2637,8 +2637,7 @@
     "errorEngine": "Die Engine, die dieses Modell ausführt, ist nicht verfügbar. Starte Flint neu und versuche es erneut.",
     "openProvider": "Anbieter-Einstellungen öffnen",
     "errorDetails": "Details",
-    "pasteHint": "Der Zugriff auf die Zwischenablage wurde blockiert. Klicke in das Textfeld und drücke {{keys}}.",
-    "characters": "{{count}} Zeichen"
+    "pasteHint": "Der Zugriff auf die Zwischenablage wurde blockiert. Klicke in das Textfeld und drücke {{keys}}."
   },
   "markdownImage": {
     "load": "Bild von {{host}} laden"
@@ -2685,8 +2684,7 @@
       "gone": "Dieser Prompt existiert nicht mehr",
       "invalidJson": "Diese Datei ist kein gültiges JSON",
       "noPrompts": "In dieser Datei wurden keine Prompts gefunden"
-    },
-    "imported": "{{count}} Prompts hinzugefügt"
+    }
   },
   "memoryProposal": {
     "title": "Soll ich mir das merken?",

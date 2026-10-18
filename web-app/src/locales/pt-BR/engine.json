@@ -142,8 +142,7 @@
     "needsExtension": "Requer a extensão do navegador",
     "moreActions": "Mais ações para {{serverName}}",
     "addTile": "Adicionar servidor MCP",
-    "addTileHint": "STDIO, HTTP ou SSE",
-    "toolsCount": "{{count}} ferramentas"
+    "addTileHint": "STDIO, HTTP ou SSE"
   },
   "extensions": {
     "description": "Plugins, skills e as peças do motor com as quais o Flint é construído.",

@@ -145,8 +145,7 @@
     "needsExtension": "Vyžaduje rozšíření prohlížeče",
     "moreActions": "Další akce pro {{serverName}}",
     "addTile": "Přidat server MCP",
-    "addTileHint": "STDIO, HTTP nebo SSE",
-    "toolsCount": "Nástrojů: {{count}}"
+    "addTileHint": "STDIO, HTTP nebo SSE"
   },
   "extensions": {
     "description": "Pluginy, dovednosti a součásti enginu, ze kterých se Flint skládá.",

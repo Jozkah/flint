@@ -2635,8 +2635,7 @@
     "errorEngine": "Engine chạy mô hình này không khả dụng. Hãy khởi động lại Flint rồi thử lại.",
     "openProvider": "Mở cài đặt nhà cung cấp",
     "errorDetails": "Chi tiết",
-    "pasteHint": "Quyền truy cập bảng nhớ tạm đã bị chặn. Nhấp vào ô văn bản và nhấn {{keys}}.",
-    "characters": "{{count}} ký tự"
+    "pasteHint": "Quyền truy cập bảng nhớ tạm đã bị chặn. Nhấp vào ô văn bản và nhấn {{keys}}."
   },
   "markdownImage": {
     "load": "Tải hình ảnh từ {{host}}"
@@ -2682,8 +2681,7 @@
       "gone": "Prompt này không còn tồn tại",
       "invalidJson": "Tệp này không phải JSON hợp lệ",
       "noPrompts": "Không tìm thấy prompt nào trong tệp này"
-    },
-    "imported": "Đã thêm {{count}} lời nhắc"
+    }
   },
   "memoryProposal": {
     "title": "Ghi nhớ điều này?",

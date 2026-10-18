@@ -2737,8 +2737,7 @@
     "errorEngine": "Silnik uruchamiający ten model jest niedostępny. Uruchom Flint ponownie i spróbuj jeszcze raz.",
     "openProvider": "Otwórz ustawienia dostawcy",
     "errorDetails": "Szczegóły",
-    "pasteHint": "Dostęp do schowka został zablokowany. Kliknij pole tekstowe i naciśnij {{keys}}.",
-    "characters": "Znaki: {{count}}"
+    "pasteHint": "Dostęp do schowka został zablokowany. Kliknij pole tekstowe i naciśnij {{keys}}."
   },
   "markdownImage": {
     "load": "Wczytaj obraz z {{host}}"
@@ -2787,8 +2786,7 @@
       "gone": "Ten prompt już nie istnieje",
       "invalidJson": "Ten plik nie jest prawidłowym JSON-em",
       "noPrompts": "W tym pliku nie znaleziono promptów"
-    },
-    "imported": "Dodano prompty: {{count}}"
+    }
   },
   "memoryProposal": {
     "title": "Zapamiętać to?",

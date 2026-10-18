@@ -229,8 +229,7 @@
     "trust": "Percayai folder",
     "later": "Nanti saja",
     "failed": "Tidak dapat memercayai folder",
-    "kept_other": "Hook tetap diaktifkan untuk {{count}} folder yang sudah Anda gunakan. Tinjau di Pengaturan > Izin > Folder tepercaya.",
-    "kept": "Hook tetap diaktifkan untuk {{count}} folder yang sudah Anda gunakan. Tinjau di Pengaturan > Izin > Folder tepercaya."
+    "kept_other": "Hook tetap diaktifkan untuk {{count}} folder yang sudah Anda gunakan. Tinjau di Pengaturan > Izin > Folder tepercaya."
   },
   "trustedFolders": {
     "title": "Folder tepercaya",

@@ -230,8 +230,7 @@
     "later": "Non ora",
     "failed": "Impossibile considerare attendibile la cartella",
     "kept_one": "Hook mantenuti attivi per {{count}} cartella che già usi. Controllala in Impostazioni > Autorizzazioni > Cartelle attendibili.",
-    "kept_other": "Hook mantenuti attivi per {{count}} cartelle che già usi. Controllali in Impostazioni > Autorizzazioni > Cartelle attendibili.",
-    "kept": "Hook mantenuti attivi per {{count}} cartelle che già usi. Controllali in Impostazioni > Autorizzazioni > Cartelle attendibili."
+    "kept_other": "Hook mantenuti attivi per {{count}} cartelle che già usi. Controllali in Impostazioni > Autorizzazioni > Cartelle attendibili."
   },
   "trustedFolders": {
     "title": "Cartelle attendibili",

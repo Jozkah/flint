@@ -230,8 +230,7 @@
     "later": "Nicht jetzt",
     "failed": "Dem Ordner konnte nicht vertraut werden",
     "kept_one": "Hooks bleiben für {{count}} bereits genutzten Ordner aktiviert. Prüfe ihn unter Einstellungen > Berechtigungen > Vertrauenswürdige Ordner.",
-    "kept_other": "Hooks bleiben für {{count}} bereits genutzte Ordner aktiviert. Prüfe sie unter Einstellungen > Berechtigungen > Vertrauenswürdige Ordner.",
-    "kept": "Hooks bleiben für {{count}} bereits genutzte Ordner aktiviert. Prüfe sie unter Einstellungen > Berechtigungen > Vertrauenswürdige Ordner."
+    "kept_other": "Hooks bleiben für {{count}} bereits genutzte Ordner aktiviert. Prüfe sie unter Einstellungen > Berechtigungen > Vertrauenswürdige Ordner."
   },
   "trustedFolders": {
     "title": "Vertrauenswürdige Ordner",

@@ -145,8 +145,7 @@
     "needsExtension": "Требуется расширение браузера",
     "moreActions": "Другие действия для {{serverName}}",
     "addTile": "Добавить MCP-сервер",
-    "addTileHint": "STDIO, HTTP или SSE",
-    "toolsCount": "Инструментов: {{count}}"
+    "addTileHint": "STDIO, HTTP или SSE"
   },
   "extensions": {
     "description": "Плагины, навыки и части движка, из которых построен Flint.",

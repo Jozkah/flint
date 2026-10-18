@@ -141,8 +141,7 @@
     "needsExtension": "ब्राउज़र एक्सटेंशन चाहिए",
     "moreActions": "{{serverName}} के लिए और क्रियाएँ",
     "addTile": "MCP सर्वर जोड़ें",
-    "addTileHint": "STDIO, HTTP या SSE",
-    "toolsCount": "{{count}} टूल"
+    "addTileHint": "STDIO, HTTP या SSE"
   },
   "extensions": {
     "description": "प्लगइन, स्किल और इंजन के वे हिस्से जिनसे Flint बना है।",

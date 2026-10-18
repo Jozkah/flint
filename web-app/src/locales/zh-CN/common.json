@@ -2635,8 +2635,7 @@
     "errorEngine": "运行此模型的引擎不可用。请重启 Flint 后重试。",
     "openProvider": "打开提供商设置",
     "errorDetails": "详情",
-    "pasteHint": "剪贴板访问被阻止。请点击文本框并按 {{keys}}。",
-    "characters": "{{count}} 个字符"
+    "pasteHint": "剪贴板访问被阻止。请点击文本框并按 {{keys}}。"
   },
   "markdownImage": {
     "load": "从 {{host}} 加载图片"
@@ -2682,8 +2681,7 @@
       "gone": "该提示词已不存在",
       "invalidJson": "该文件不是有效的 JSON",
       "noPrompts": "该文件中没有找到提示词"
-    },
-    "imported": "已添加 {{count}} 条提示词"
+    }
   },
   "memoryProposal": {
     "title": "要记住这个吗？",

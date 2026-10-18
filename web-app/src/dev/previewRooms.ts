@@ -4,6 +4,8 @@
  * transcripts, served through the rooms engine's persistence port so the real
  * store, bindings and pages render them. Writes stay in memory.
  */
+import { noteIsolation } from '@/lib/rooms/isolation'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { setRoomPersistence, type RoomPersistence } from '@/lib/rooms/persistence'
 import { useRoomsStore, summaryOf } from '@/lib/rooms/store'
 import { participantColor } from '@/containers/rooms/roomUi'
@@ -185,6 +187,50 @@ const SPECS: Spec[] = [
       ['Sonnet', '', 'anthropic', 'claude-sonnet-5', 'none', 0],
       ['GPT', '', 'openai', 'gpt-5', 'none', 3],
       ['Qwen', '', 'llamacpp', 'qwen3-8b-instruct', 'none', 5],
+      // Added after the questions were asked: shows the unanswered cells.
+      ['Qwen 3.5', '', 'llamacpp', 'qwen3.5-9b-instruct', 'none', 2],
+    ],
+  },
+  {
+    id: 'compare-code',
+    title: 'Fix the flaky retry test',
+    objective: 'Each model fixes the flaky radar retry test in its own copy of the repo.',
+    status: 'awaiting-user',
+    mode: 'compare',
+    turns: 2,
+    rounds: 1,
+    tokens: 14_200,
+    cost: 0.08,
+    maxCost: null,
+    activeMs: 95 * 1000,
+    ageMin: 12,
+    folder: 'C:\\Projects\\weather-app',
+    parts: [
+      ['Sonnet', '', 'anthropic', 'claude-sonnet-5', 'edit', 0],
+      ['Qwen', '', 'llamacpp', 'qwen3-8b-instruct', 'full', 5],
+    ],
+  },
+  // Rich text in a compare room: markdown, code, a table, a tool call written
+  // as text, and a turn that ran out of tokens thinking. Only with
+  // `?preview&roomsRich`, so the default preview stays as the screenshots show it.
+  {
+    id: 'rich-text',
+    title: 'Add mul to app.js',
+    objective: 'Each model adds a mul function to src/app.js.',
+    status: 'awaiting-user',
+    mode: 'compare',
+    turns: 3,
+    rounds: 1,
+    tokens: 6_100,
+    cost: null,
+    maxCost: null,
+    activeMs: 40 * 1000,
+    ageMin: 5,
+    folder: 'C:\\Projects\\calc',
+    parts: [
+      ['Alice', '', 'llamacpp', 'qwen3-8b', 'edit', 4],
+      ['Bob', '', 'llamacpp', 'qwen3-8b', 'edit', 6],
+      ['Carol', '', 'llamacpp', 'qwen3-8b', 'edit', 1],
     ],
   },
   {
@@ -213,6 +259,7 @@ function roomOf(s: Spec): Room {
     objective: s.objective,
     status: s.status,
     mode: s.mode,
+    ...(s.mode === 'compare' ? { compareRun: 'one-by-one' as const } : {}),
     moderator: {
       enabled: !!s.moderator,
       name: 'Moderator',
@@ -262,6 +309,10 @@ type M = {
   /** The round, when the spread over `usage.rounds` would put it wrong. */
   round?: number
   usage?: RoomMessage['usage']
+  changes?: RoomMessage['changes']
+  budgetHit?: RoomMessage['budgetHit']
+  finishReason?: string
+  reasoning?: string
 }
 
 function journalOf(room: Room, list: M[]): RoomJournalRecord[] {
@@ -297,6 +348,13 @@ function journalOf(room: Room, list: M[]): RoomJournalRecord[] {
         status: 'complete',
         ...(m.tools ? { toolCalls: m.tools } : {}),
         ...(m.usage ? { usage: m.usage } : {}),
+        ...(m.changes ? { changes: m.changes } : {}),
+        ...(m.budgetHit ? { budgetHit: m.budgetHit } : {}),
+        ...(m.finishReason ? { finishReason: m.finishReason } : {}),
+        ...(m.reasoning ? { reasoning: m.reasoning } : {}),
+        ...(room.mode === 'compare' && p && kind === 'speech'
+          ? { compare: { provider: p.model.provider, model: p.model.id, durationMs: 1800 + i * 210 } }
+          : {}),
         ...(vote ? { vote } : {}),
         ...(m.dissent ? { dissent: m.dissent } : {}),
         ...(m.disagreements
@@ -427,6 +485,76 @@ const TRANSCRIPTS: Record<string, (room: Room) => M[]> = {
       text: 'Think of a fan on a cool day: brr! That’s wind making it feel colder. On a sticky summer day you feel extra hot because your sweat can’t dry.',
     },
   ],
+  'compare-code': () => [
+    { sys: true, text: 'Room started · Compare models · 2 participants' },
+    { you: true, round: 1, text: 'The radar retry test fails about one run in ten. Find out why and fix it.' },
+    {
+      by: 'Sonnet',
+      round: 1,
+      tools: [
+        { name: 'read', ok: true, args: { path: 'src/radar/retry.test.ts' }, ms: 40 },
+        { name: 'edit', ok: true, args: { path: 'src/radar/retry.test.ts' }, ms: 120 },
+      ],
+      changes: {
+        workspace: 'C:\\Users\\me\\AppData\\Roaming\\Flint\\rooms\\compare-code\\workspaces\\sonnet',
+        files: [
+          {
+            path: 'src/radar/retry.test.ts',
+            additions: 4,
+            deletions: 2,
+            excerpt:
+              '@@ -18,8 +18,10 @@\n-  await sleep(100)\n-  expect(calls).toBe(3)\n+  vi.useFakeTimers()\n+  const done = retry(fetchFrame)\n+  await vi.runAllTimersAsync()\n+  expect(await done).toBe(frame)',
+          },
+          { path: 'src/radar/retry.ts', additions: 1, deletions: 0, excerpt: '+export const RETRY_JITTER_MS = 50' },
+        ],
+      },
+      text: 'The test slept a fixed 100 ms while the retry waits up to 120 ms with jitter, so it raced. I switched it to fake timers; it no longer depends on the clock.',
+    },
+    {
+      by: 'Qwen',
+      round: 1,
+      tools: [{ name: 'bash', ok: true, args: { command: 'npx vitest run src/radar' }, ms: 4100 }],
+      budgetHit: 'tool-calls',
+      text: 'I ran the radar tests several times to reproduce the failure but used up my tool calls before changing anything.',
+    },
+  ],
+  'rich-text': () => [
+    { sys: true, text: 'Room started · Compare models · 3 participants' },
+    { you: true, round: 1, text: 'Edit `src/app.js`: add a function **mul(a, b)** that returns `a*b` and export it.' },
+    {
+      by: 'Alice',
+      round: 1,
+      tools: [
+        { name: 'read', ok: true, args: { path: 'C:\\Projects\\calc\\src\\app.js' }, output: 'function add(a, b) { return a + b }\nmodule.exports = { add }\n', ms: 30 },
+        { name: 'read', ok: false, args: { path: 'C:\\Projects\\calc\\src\\app.js', offset: 5 }, output: 'ERROR: offset 5 is beyond end of file (2 lines total)', ms: 12 },
+      ],
+      text:
+        '## Change\n\nAdded `mul` next to `add`:\n\n```js\nfunction add(a, b) { return a + b }\nfunction mul(a, b) { return a * b }\nmodule.exports = { add, mul } // a long line so the block has to scroll sideways inside its own column rather than widen it\n```\n\n| function | before | after |\n|---|---|---|\n| add | yes | yes |\n| mul | no | **yes** |\n\n- exported from `module.exports`\n- no other file touched\n\nSee [Node modules](https://nodejs.org/api/modules.html).',
+    },
+    {
+      by: 'Bob',
+      round: 1,
+      tools: [{ name: 'read', ok: true, args: { path: 'C:\\Projects\\calc\\src\\app.js' }, output: 'function add(a, b) { return a + b }\n', ms: 25 }],
+      text:
+        '<tool_call>\n' +
+        JSON.stringify({
+          name: 'edit',
+          arguments: {
+            path: 'C:\\Projects\\calc\\src\\app.js',
+            content: 'function add(a, b) { return a + b }\nfunction mul(a, b) { return a * b }\nmodule.exports = { add, mul }',
+          },
+        }) +
+        '\n</tool_call>',
+    },
+    {
+      by: 'Carol',
+      round: 1,
+      finishReason: 'length',
+      usage: { inputTokens: 2614, outputTokens: 1024, estimated: false, tokensPerSecond: 113 },
+      reasoning: 'Okay, the user wants mul added. First I should read the file. Wait, maybe the file uses ES modules? Let me think about both cases...',
+      text: '',
+    },
+  ],
   naming: () => [],
 }
 
@@ -436,7 +564,9 @@ const LIVE_TEXT =
 export function seedRooms() {
   const rooms = new Map<string, Room>()
   const journals = new Map<string, RoomJournalRecord[]>()
+  const rich = new URLSearchParams(window.location.search).has('roomsRich')
   for (const s of SPECS) {
+    if (s.id === 'rich-text' && !rich) continue
     const room = roomOf(s)
     rooms.set(room.id, room)
     journals.set(room.id, journalOf(room, TRANSCRIPTS[room.id](room)))
@@ -469,6 +599,22 @@ export function seedRooms() {
     },
   }
   setRoomPersistence(persistence)
+
+  // The coding compare room: isolation could not be made (shown in the
+  // editor), and a prompt from before the pause is held on screen.
+  noteIsolation('compare-code', 'the folder is not trusted')
+  const qwen = rooms.get('compare-code')?.participants.find((p) => p.name === 'Qwen')
+  if (qwen && !useToolApprovalRequests.getState().pending['preview-held-1']) {
+    const ctrl = new AbortController()
+    void useToolApprovalRequests.getState().requestApproval('preview-held-1', 'bash', 'compare-code', undefined, {
+      input: { command: 'npm install --save-dev vitest-retry' },
+      origin: qwen.name,
+      workspaceLabel: 'C:\\Projects\\weather-app',
+      signal: ctrl.signal,
+      holdOnAbort: () => 'room paused',
+    })
+    ctrl.abort()
+  }
 
   // The running room shows GPT's turn streaming in, as the mockup does. The
   // store clears the live turn whenever a room opens, so it is set again once

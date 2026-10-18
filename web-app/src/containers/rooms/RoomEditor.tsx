@@ -8,13 +8,19 @@ import type {
   Room,
   RoomLimits,
   RoomModelRef,
+  RoomToolBudget,
   SpeakingMode,
   ToolAccess,
 } from '@/lib/rooms/types'
-import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
+import { ROOM_LIMIT_CEILINGS, compareRunOf, type CompareRun } from '@/lib/rooms/types'
 import { MAX_EXTRA_FOLDERS } from '@/lib/rooms/controller'
 import type { WorkProfileId } from '@/lib/workProfiles'
 import { ParticipantPersonaFields } from './ParticipantPersonaFields'
+import { ParticipantToolsField } from './ParticipantToolsField'
+import { knownWindowFor } from '@/lib/rooms/availability'
+import { useIsolationNotes } from '@/lib/rooms/isolation'
+import { ROOM_TOOL_BUDGET_CEILINGS, resolveToolBudget } from '@/lib/rooms/toolBudget'
+import { folderTrustStatus } from '@/lib/folderTrust'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -46,6 +52,7 @@ import {
 import {
   DEFAULT_THINKING_BUDGET_LEVEL,
   THINKING_BUDGET_LEVELS,
+  thinkingBudgetLabel,
   type ThinkingBudgetLevelKey,
 } from '@/lib/thinkingBudget'
 import { effortLabel, isEffortLevel } from '@/lib/modelEffort'
@@ -53,6 +60,9 @@ import { effortLabel, isEffortLevel } from '@/lib/modelEffort'
 type T = (key: string, options?: Record<string, unknown>) => string
 
 const MODES: SpeakingMode[] = ['round-robin', 'user-selected', 'moderator-selected', 'compare']
+const COMPARE_RUNS: CompareRun[] = ['together', 'one-by-one']
+/** Providers that run on this machine, where two models at once compete for memory. */
+const LOCAL_PROVIDERS = ['llamacpp', 'mlx']
 
 export const LIMIT_KEYS: (keyof RoomLimits)[] = [
   'maxRounds',
@@ -129,6 +139,7 @@ type DraftParticipant = {
   reasoning?: ParticipantReasoning
   assistantId?: string
   workProfile?: WorkProfileId
+  disabledTools: string[]
   source: Participant
 }
 
@@ -143,6 +154,7 @@ const toDraftParticipant = (p: Participant): DraftParticipant => ({
   reasoning: p.reasoning,
   assistantId: p.assistantId,
   workProfile: p.workProfile,
+  disabledTools: p.disabledTools ?? [],
   source: p,
 })
 
@@ -207,7 +219,7 @@ function ParticipantReasoningField({
             onValueChange={(next) => !disabled && set({ level: next })}
             options={THINKING_BUDGET_LEVELS.map((l) => ({
               value: l.key,
-              label: l.label,
+              label: thinkingBudgetLabel(l.key),
             }))}
           />
           <p className="text-xs text-muted-foreground">
@@ -310,20 +322,90 @@ const toolKey = (v: ToolAccess) =>
         ? 'rooms:editor.toolEdit'
         : 'rooms:editor.toolFull'
 
+type BudgetKey = 'maxToolCalls' | 'maxSteps' | 'toolTimeoutSec'
+const BUDGET_KEYS: BudgetKey[] = ['maxToolCalls', 'maxSteps', 'toolTimeoutSec']
+type BudgetDraft = Record<BudgetKey, string>
+const toBudgetDraft = (b: RoomToolBudget | undefined): BudgetDraft => ({
+  maxToolCalls: b?.maxToolCalls != null ? String(b.maxToolCalls) : '',
+  maxSteps: b?.maxSteps != null ? String(b.maxSteps) : '',
+  toolTimeoutSec: b?.toolTimeoutSec != null ? String(b.toolTimeoutSec) : '',
+})
+const budgetFromDraft = (d: BudgetDraft): RoomToolBudget | null => {
+  const out: RoomToolBudget = {}
+  for (const k of BUDGET_KEYS) {
+    const n = Number(d[k])
+    if (d[k].trim() !== '' && Number.isFinite(n)) out[k] = n
+  }
+  return Object.keys(out).length ? out : null
+}
+/** What an empty budget field means: steps depend on access, so both are named. */
+const budgetDefault = (k: BudgetKey): string =>
+  k === 'maxSteps'
+    ? `${resolveToolBudget(undefined, 'edit').maxSteps}/${resolveToolBudget(undefined, 'full').maxSteps}`
+    : String(resolveToolBudget(undefined, 'edit')[k])
+
+/**
+ * Compare rooms with two or more writers: whether each gets its own isolated
+ * workspace, or why not (the writers then only read).
+ */
+function CompareIsolationNote({
+  roomId,
+  folder,
+  writers,
+  t,
+}: {
+  roomId: string
+  folder: string | null
+  writers: number
+  t: ReturnType<typeof useTranslation>['t']
+}) {
+  const runNote = useIsolationNotes((s) => s.notes[roomId])
+  const [trust, setTrust] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (!folder || writers < 2) return
+    let live = true
+    void folderTrustStatus(folder).then((st) => {
+      if (live) setTrust(st ? st.trusted : null)
+    })
+    return () => {
+      live = false
+    }
+  }, [folder, writers])
+  if (!folder || writers < 2) return null
+  const reason = trust === false ? t('rooms:editor.isolation.untrusted') : runNote
+  return (
+    <p
+      data-testid="compare-isolation"
+      role="note"
+      className={cn('text-xs', reason ? 'text-warning' : 'text-muted-foreground')}
+    >
+      {reason
+        ? t('rooms:editor.isolation.unavailable', { reason })
+        : t('rooms:editor.isolation.active')}
+    </p>
+  )
+}
+
 export function RoomEditor({ room }: { room: Room }) {
   const { t } = useTranslation()
   const api = useRoomsApi()
   const serviceHub = useServiceHub()
   const { pendingAction, liveTurn } = useRoomsState()
   const providers = useModelProvider((s) => s.providers)
+  const lookup = useMemo(
+    () => (name: string) => providers.find((pr) => pr.provider === name),
+    [providers]
+  )
   const uid = useId()
   const locked = !isEditable(room.status)
 
   const [title, setTitle] = useState(room.title)
   const [objective, setObjective] = useState(room.objective)
   const [mode, setMode] = useState<SpeakingMode>(room.mode)
+  const [compareRun, setCompareRun] = useState<CompareRun>(compareRunOf(room))
   const [moderator, setModerator] = useState<ModeratorConfig>(room.moderator)
   const [limits, setLimits] = useState<LimitDraft>(() => toLimitDraft(room.limits))
+  const [budget, setBudget] = useState<BudgetDraft>(() => toBudgetDraft(room.toolBudget))
   const [participants, setParticipants] = useState<DraftParticipant[]>(() =>
     activeParticipants(room).map(toDraftParticipant)
   )
@@ -352,8 +434,10 @@ export function RoomEditor({ room }: { room: Room }) {
       setTitle(room.title)
       setObjective(room.objective)
       setMode(room.mode)
+      setCompareRun(compareRunOf(room))
       setModerator(room.moderator)
       setLimits(toLimitDraft(room.limits))
+      setBudget(toBudgetDraft(room.toolBudget))
       setParticipants(fresh)
       return
     }
@@ -434,6 +518,7 @@ export function RoomEditor({ room }: { room: Room }) {
           toolAccess: d.toolAccess,
           assistantId: d.assistantId ?? null,
           workProfile: d.workProfile ?? null,
+          disabledTools: d.disabledTools,
           pricing: parsePricing(d),
           // Only what the chosen model acts on is kept; `null` returns the
           // participant to the model's default.
@@ -449,8 +534,10 @@ export function RoomEditor({ room }: { room: Room }) {
         title: title.trim(),
         objective: objective.trim(),
         mode,
+        ...(mode === 'compare' ? { compareRun } : {}),
         moderator: { ...moderator, name: moderator.name.trim() },
         limits: limitsFromDraft(limits),
+        toolBudget: budgetFromDraft(budget),
         participants: nextParticipants,
       })
       dirty.current = false
@@ -733,6 +820,18 @@ export function RoomEditor({ room }: { room: Room }) {
                               ? t('rooms:editor.toolEditHint')
                               : t('rooms:editor.toolReadHint')}
                       </p>
+                      {tools && (
+                        <ParticipantToolsField
+                          pid={pid}
+                          t={t}
+                          folder={room.folder ?? null}
+                          access={access}
+                          window={knownWindowFor(p.model, lookup)}
+                          disabledTools={p.disabledTools}
+                          disabled={disabled}
+                          onChange={(next) => updateParticipant(p.id, { disabledTools: next })}
+                        />
+                      )}
                     </div>
 
                     <ParticipantReasoningField
@@ -1005,6 +1104,49 @@ export function RoomEditor({ room }: { room: Room }) {
                 ))}
               </RadioGroup>
               <FieldError id={`${uid}-mode-error`} message={visibleErrors.mode} />
+              {mode === 'compare' && (
+                <CompareIsolationNote
+                  roomId={room.id}
+                  folder={room.folder ?? null}
+                  writers={participants.filter((p) => p.toolAccess === 'edit' || p.toolAccess === 'full').length}
+                  t={t}
+                />
+              )}
+              {mode === 'compare' && (
+                <div data-testid="compare-run-setting" className="flex min-w-0 flex-col gap-1.5 pt-1">
+                  <span id={`${uid}-run`} className="text-[12.5px] font-medium">
+                    {t('rooms:editor.compareRun')}
+                  </span>
+                  <p className="text-xs text-muted-foreground">{t('rooms:editor.compareRunHint')}</p>
+                  <RadioGroup
+                    aria-labelledby={`${uid}-run`}
+                    value={compareRun}
+                    disabled={disabled}
+                    onValueChange={(v) => edit(setCompareRun)(v as CompareRun)}
+                    className="gap-1"
+                  >
+                    {COMPARE_RUNS.map((r) => (
+                      <label
+                        key={r}
+                        htmlFor={`${uid}-run-${r}`}
+                        className={cn(
+                          'flex cursor-pointer items-center gap-2.5 rounded-[10px] border-[0.8px] border-transparent p-2 text-[13px] transition-colors hover:bg-hover-row',
+                          compareRun === r && 'border-border bg-card shadow-lift'
+                        )}
+                      >
+                        <RadioGroupItem id={`${uid}-run-${r}`} value={r} />
+                        {t(`rooms:editor.compareRunOption.${r}`)}
+                      </label>
+                    ))}
+                  </RadioGroup>
+                  {compareRun === 'together' &&
+                    participants.filter((p) => LOCAL_PROVIDERS.includes(p.model.provider)).length >= 2 && (
+                      <p data-testid="compare-run-suggest" className="text-xs text-warning">
+                        {t('rooms:editor.compareRunSuggest')}
+                      </p>
+                    )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between gap-3 border-t border-border pt-2.5">
                 <div className="min-w-0">
@@ -1096,6 +1238,33 @@ export function RoomEditor({ room }: { room: Room }) {
                     </div>
                   )
                 })}
+              </div>
+              <div data-testid="tool-budget" className="flex min-w-0 flex-col gap-2 pt-2">
+                <span className="text-[12.5px] font-medium">{t('rooms:editor.budget.heading')}</span>
+                <p className="text-xs text-muted-foreground">{t('rooms:editor.budget.hint')}</p>
+                <div className="grid gap-x-2.5 gap-y-3 sm:grid-cols-3">
+                  {BUDGET_KEYS.map((key) => {
+                    const bid = `${uid}-budget-${key}`
+                    return (
+                      <div key={key} className="flex min-w-0 flex-col gap-1.5">
+                        <Label htmlFor={bid}>{t(`rooms:editor.budget.${key}`)}</Label>
+                        <Input
+                          id={bid}
+                          type="number"
+                          className="tabular-nums"
+                          min={1}
+                          max={ROOM_TOOL_BUDGET_CEILINGS[key]}
+                          value={budget[key]}
+                          placeholder={t('rooms:editor.budget.default', { value: budgetDefault(key) })}
+                          onChange={(e) => edit(setBudget)({ ...budget, [key]: e.target.value })}
+                        />
+                        <p className="text-[11.5px] text-muted-foreground">
+                          {t('rooms:editor.ceiling', { max: ROOM_TOOL_BUDGET_CEILINGS[key] })}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </fieldset>

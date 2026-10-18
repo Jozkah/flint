@@ -145,8 +145,7 @@
     "needsExtension": "Wymaga rozszerzenia przeglądarki",
     "moreActions": "Więcej akcji dla {{serverName}}",
     "addTile": "Dodaj serwer MCP",
-    "addTileHint": "STDIO, HTTP lub SSE",
-    "toolsCount": "Narzędzia: {{count}}"
+    "addTileHint": "STDIO, HTTP lub SSE"
   },
   "extensions": {
     "description": "Wtyczki, umiejętności i elementy silnika, z których zbudowany jest Flint.",

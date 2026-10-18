@@ -7,6 +7,7 @@ import type {
   Room,
   RoomAuthor,
   RoomJournalRecord,
+  RoomChangeDecision,
   RoomMessage,
   RoomToolActivity,
 } from '@/lib/rooms/types'
@@ -30,6 +31,9 @@ import {
 } from './roomUi'
 import { RoomMessageText } from './RoomMessageText'
 import { RoomAvatar } from './RoomAvatar'
+import { TurnChangeCard, type WorkspaceActions } from './TurnChangeCard'
+import { applyRoomWorkspace, resetRoomWorkspace, roomWorkspacePatch } from '@/services/rooms'
+import { useRoomsApi } from './roomsBindings'
 import { CompactionDivider } from '@/containers/CompactionDivider'
 import { WidgetCard } from '@/containers/message/WidgetCard'
 import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
@@ -136,6 +140,25 @@ function toolIcon(name: string) {
   if (name === 'web_search') return Search
   if (name === 'web_fetch') return Globe
   return Wrench
+}
+
+/** A call's duration in a compact, unit-only form ("340 ms", "2.5 s"). */
+function formatToolDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))} ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1).replace(/\.0$/, '')} s`
+  return `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`
+}
+
+function ToolDuration({ ms }: { ms?: number }) {
+  if (ms === undefined) return null
+  return (
+    <span
+      data-testid="tool-duration"
+      className="ml-auto font-mono text-[10px] tabular-nums text-muted-foreground"
+    >
+      {formatToolDuration(ms)}
+    </span>
+  )
 }
 
 /** The Cowork tone for one room tool call: kind colours it, failure outranks. */
@@ -310,9 +333,11 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
                   <div className="flex items-center gap-1.5 text-xs font-medium">
                     <Icon className={cn('size-3.5 shrink-0', tone.icon)} aria-hidden />
                     <span className="text-foreground">{c.name}</span>
+                    <ToolDuration ms={c.ms} />
                     <span
                       className={cn(
-                        'ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium',
+                        c.ms === undefined && 'ml-auto',
+                        'rounded px-1.5 py-0.5 text-[10px] font-medium',
                         c.ok ? 'bg-success-tint text-success' : 'bg-destructive-tint text-destructive'
                       )}
                     >
@@ -370,9 +395,11 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
                   </span>
                   <Icon className={cn('size-3.5 shrink-0', tone.icon)} aria-hidden />
                   <span className="font-mono text-foreground">{c.name}</span>
+                  <ToolDuration ms={c.ms} />
                   <span
                     className={cn(
-                      'ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium',
+                      c.ms === undefined && 'ml-auto',
+                      'rounded-full px-2 py-0.5 text-[10px] font-medium',
                       c.ok ? 'bg-success-tint text-success' : 'bg-destructive-tint text-destructive'
                     )}
                   >
@@ -395,17 +422,64 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
 const isWidgetCall = (c: RoomToolActivity): boolean =>
   c.name === SHOW_WIDGET_TOOL && c.ok
 
+/** The workspace actions of an isolated participant's change card. */
+function workspaceActions(message: RoomMessage): WorkspaceActions | undefined {
+  if (!message.changes?.workspace || message.author.kind !== 'participant') return undefined
+  const { roomId } = message
+  const pid = message.author.participantId
+  return {
+    patch: () => roomWorkspacePatch(roomId, pid),
+    discard: () => resetRoomWorkspace(roomId, pid),
+    apply: () => applyRoomWorkspace(roomId, pid),
+  }
+}
+
+/**
+ * A participant turn that wrote no answer is never a blank cell: say why (the
+ * reply limit ran out, or the turn only used tools) and show the thinking the
+ * model spent its tokens on, folded as chat folds it.
+ */
+function EmptyReply({ message, t }: { message: RoomMessage; t: T }) {
+  if (message.author.kind !== 'participant' || message.kind !== 'speech') return null
+  if (message.status !== 'complete' || message.text.trim()) return null
+  const why =
+    message.finishReason === 'length'
+      ? t('rooms:transcript.emptyReply.length', { count: message.usage?.outputTokens ?? 0 })
+      : message.toolCalls?.length
+        ? t('rooms:transcript.emptyReply.tools')
+        : t('rooms:transcript.emptyReply.none')
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="empty-reply">
+      <p className="text-xs text-warning">{why}</p>
+      {message.reasoning && (
+        <details className="group text-xs text-muted-foreground" data-testid="empty-reply-thought">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 hover:text-foreground">
+            <ChevronDown className="size-3 -rotate-90 transition-transform group-open:rotate-0" aria-hidden />
+            {t('rooms:transcript.thought')}
+          </summary>
+          <p className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-words border-l-2 border-border pl-2.5">
+            {message.reasoning}
+          </p>
+        </details>
+      )}
+    </div>
+  )
+}
+
 function MessageBody({
   message,
   tally,
   mentionColors,
+  decision,
   t,
 }: {
   message: RoomMessage
   tally: VoteTally | undefined
   mentionColors: Map<string, string>
+  decision?: RoomChangeDecision
   t: T
 }) {
+  const api = useRoomsApi()
   return (
     <>
       {message.toolCalls && message.toolCalls.some((c) => !isWidgetCall(c)) && (
@@ -432,6 +506,21 @@ function MessageBody({
         mentionColors={mentionColors}
         className="text-[13.5px] leading-[1.6] text-fg-2"
       />
+      <EmptyReply message={message} t={t} />
+      {message.changes && message.changes.files.length > 0 && (
+        <TurnChangeCard
+          changes={message.changes}
+          actions={workspaceActions(message)}
+          decision={decision}
+          onDecision={(d) => api.controller.setChangeDecision(message.roomId, message.id, d)}
+          t={t}
+        />
+      )}
+      {message.budgetHit && (
+        <p data-testid="budget-hit" className="text-xs text-warning">
+          {t(`rooms:transcript.budgetHit.${message.budgetHit}`)}
+        </p>
+      )}
       {message.kind === 'vote-call' && (
         <p className="text-xs text-muted-foreground tabular-nums" data-testid="vote-tally">
           {t('rooms:transcript.tally', tally ?? { agree: 0, disagree: 0, abstain: 0 })}
@@ -565,6 +654,16 @@ function TranscriptMessage({
           </span>
         )}
         <KindLabel message={m} t={t} />
+        {m.compare && (
+          <span
+            data-testid="answer-model"
+            title={m.compare.provider}
+            className="truncate rounded-full bg-accent px-[7px] py-px text-[11px] text-muted-foreground"
+          >
+            {m.compare.model} · {answerDate(m.createdAt)}
+            {m.compare.durationMs ? ` · ${(m.compare.durationMs / 1000).toFixed(1)} s` : ''}
+          </span>
+        )}
         {m.status === 'interrupted' && (
           <Badge tone="warn">{t('rooms:transcript.interrupted')}</Badge>
         )}
@@ -602,6 +701,7 @@ function TranscriptMessage({
         message={m}
         tally={tallies.get(m.id)}
         mentionColors={mentionColors}
+        decision={room.changeDecisions?.[m.id]}
         t={t}
       />
     </article>
@@ -654,6 +754,11 @@ function LiveCard({
   )
 }
 
+/** An answer's date and time, so runs of the same model on different days tell apart. */
+function answerDate(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
 /** Where a participant's column goes: its order in the room, the removed last. */
 function columnRank(room: Room, author: RoomAuthor): number {
   if (author.kind !== 'participant') return Number.MAX_SAFE_INTEGER
@@ -675,27 +780,48 @@ function CompareRow({
   mentionColors,
   isFresh,
   approvalTool,
+  questionId = null,
+  latest = false,
+  onRun,
   t,
 }: {
   answers: RoomMessage[]
   lives: LiveTurn[]
   room: Room
+  /** The question this row answers; with it, models that have not answered show an empty cell. */
+  questionId?: string | null
+  /** The newest question: an empty cell runs just that model on it. */
+  latest?: boolean
+  onRun?: (participantId: string, scope: 'latest' | 'missing') => void
   tallies: Map<string, VoteTally>
   mentionColors: Map<string, string>
   isFresh: (id: string) => boolean
   approvalTool: string | null
   t: T
 }) {
+  const present = new Set(
+    [...answers.map((m) => m.author), ...lives.map((l) => l.author)].flatMap((a) =>
+      a.kind === 'participant' ? [a.participantId] : []
+    )
+  )
+  const missing = questionId
+    ? room.participants.filter((p) => !p.removed && !present.has(p.id))
+    : []
   const cells = [
-    ...answers.map((m) => ({ key: m.id, rank: columnRank(room, m.author), message: m, live: null })),
-    ...lives.map((l) => ({ key: l.turnId, rank: columnRank(room, l.author), message: null, live: l })),
-  ].sort((a, b) => a.rank - b.rank)
+    ...answers.map((m) => ({ key: m.id, rank: columnRank(room, m.author), at: m.createdAt, message: m, live: null, empty: null })),
+    ...lives.map((l) => ({ key: l.turnId, rank: columnRank(room, l.author), at: Number.MAX_SAFE_INTEGER, message: null, live: l, empty: null })),
+    ...missing.map((p) => ({ key: `missing-${p.id}`, rank: p.order, at: 0, message: null, live: null, empty: p })),
+  ].sort((a, b) => a.rank - b.rank || a.at - b.at)
+  if (cells.length === 0) return null
   return (
     <div
       data-testid="room-compare-row"
       role="group"
       aria-label={t('rooms:transcript.compareRow', { count: cells.length })}
-      className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] items-start gap-2.5"
+      // Wrapping flex, not a grid: when the answers do not all fit on one line the
+      // last line's cells grow to fill it, so 3 answers at a narrow width are
+      // 2 + 1 full-width, never 2 + an empty cell.
+      className="flex flex-wrap items-stretch gap-2.5"
     >
       {cells.map((c) =>
         c.message ? (
@@ -706,7 +832,7 @@ function CompareRow({
             tallies={tallies}
             mentionColors={mentionColors}
             isFresh={isFresh}
-            className="h-full"
+            className="min-w-0 flex-[1_1_min(100%,240px)]"
             t={t}
           />
         ) : c.live ? (
@@ -716,9 +842,35 @@ function CompareRow({
             room={room}
             approvalTool={approvalTool}
             mentionColors={mentionColors}
-            className="h-full"
+            className="min-w-0 flex-[1_1_min(100%,240px)]"
             t={t}
           />
+        ) : c.empty ? (
+          <div
+            key={c.key}
+            data-testid="compare-missing"
+            className="flex min-w-0 flex-[1_1_min(100%,240px)] flex-col items-start gap-1.5 rounded-[10px] border-[0.8px] border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground"
+          >
+            <span className="font-medium text-foreground">{c.empty.name}</span>
+            <span>
+              {t(
+                c.empty.compareSkip
+                  ? 'rooms:compare.state.off'
+                  : room.status === 'running' && latest
+                    ? 'rooms:compare.state.queued'
+                    : 'rooms:compare.notAnswered'
+              )}
+            </span>
+            {onRun && room.status !== 'running' && (
+              <button
+                type="button"
+                onClick={() => onRun(c.empty!.id, latest ? 'latest' : 'missing')}
+                className="inline-flex h-7 cursor-pointer items-center rounded-full border-[0.8px] border-border bg-card px-2.5 text-[11.5px] text-foreground outline-hidden hover:border-border-strong focus-visible:ring-[3px] focus-visible:ring-ring/40"
+              >
+                {t(latest ? 'rooms:compare.run' : 'rooms:compare.answerEarlier')}
+              </button>
+            )}
+          </div>
         ) : null
       )}
     </div>
@@ -770,6 +922,29 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
     : []
   // Several turns stream at once in a compare room; any of them growing follows.
   const compareStreamed = compareLives.map((l) => l.text.length).join(',')
+  const api = useRoomsApi()
+  const onRun = (participantId: string, scope: 'latest' | 'missing') =>
+    void api.controller.compareRun(room.id, [participantId], scope).catch(() => {})
+  // Each live answer goes to the first question its model has not answered
+  // (a late model answering earlier questions), else the newest one.
+  const livesFor = useMemo(() => {
+    const out = new Map<number, LiveTurn[]>()
+    if (!items) return out
+    const rows = items.flatMap((it, i) => (it.kind === 'compare' && it.questionId ? [i] : []))
+    for (const l of compareLives) {
+      const pid = l.author.kind === 'participant' ? l.author.participantId : ''
+      const at =
+        rows.find((i) => {
+          const it = items[i] as Extract<(typeof items)[number], { kind: 'compare' }>
+          return !it.answers.some(
+            (m) => m.author.kind === 'participant' && m.author.participantId === pid && m.status === 'complete'
+          )
+        }) ?? rows.at(-1) ?? items.length - 1
+      out.set(at, [...(out.get(at) ?? []), l])
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, compareLives.map((l) => l.turnId).join(',')])
   const approvalTool = useToolApprovalRequests((s) => {
     for (const p of Object.values(s.pending ?? {})) if (p.threadId === room.id) return p.toolName
     return null
@@ -860,10 +1035,12 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
                 <TranscriptMessage key={item.message.id} m={item.message} {...shared} />
               ) : (
                 <CompareRow
-                  key={item.answers[0].id}
+                  key={item.questionId ?? item.answers[0]?.id ?? i}
                   answers={item.answers}
-                  // The round still being answered gathers its live turns too.
-                  lives={i === items.length - 1 ? compareLives : []}
+                  lives={livesFor.get(i) ?? []}
+                  questionId={item.questionId}
+                  latest={!items.slice(i + 1).some((x) => x.kind === 'compare' && x.questionId)}
+                  onRun={onRun}
                   {...shared}
                   approvalTool={approvalTool}
                 />
@@ -871,7 +1048,7 @@ export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTrans
             )
           : messages.map((m) => <TranscriptMessage key={m.id} m={m} {...shared} />)}
       </div>
-      {items && compareLives.length > 0 && items[items.length - 1]?.kind !== 'compare' && (
+      {items && compareLives.length > 0 && !items.some((x) => x.kind === 'compare') && (
         <CompareRow answers={[]} lives={compareLives} {...shared} approvalTool={approvalTool} />
       )}
       {!items && live && (

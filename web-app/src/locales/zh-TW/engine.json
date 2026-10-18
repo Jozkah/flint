@@ -141,8 +141,7 @@
     "needsExtension": "需要瀏覽器擴充功能",
     "moreActions": "{{serverName}} 的更多操作",
     "addTile": "新增 MCP 伺服器",
-    "addTileHint": "STDIO、HTTP 或 SSE",
-    "toolsCount": "{{count}} 個工具"
+    "addTileHint": "STDIO、HTTP 或 SSE"
   },
   "extensions": {
     "description": "外掛程式、技能以及構成 Flint 的引擎元件。",

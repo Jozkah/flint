@@ -3,6 +3,8 @@ import type { Components } from 'react-markdown'
 import { RenderMarkdown } from '@/containers/RenderMarkdown'
 import { SlashInvocation } from '@/components/SlashInvocation'
 import { parseSlashMarker } from '@/lib/slashCommands'
+import { fenceRawToolCalls } from '@/lib/rawToolCallText'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 
 /**
  * A room message rendered as markdown (so a participant can write **bold**,
@@ -111,9 +113,13 @@ export const RoomMessageText = memo(function RoomMessageText({
   isStreaming?: boolean
   className?: string
 }) {
+  const { t } = useTranslation()
+  // A tool call the model wrote as text never ran: show it as a code block,
+  // with a note saying so, before the pseudo-tag repair strips its wrapper.
+  const raw = useMemo(() => fenceRawToolCalls(stripAddressPrefix(text)), [text])
   const content = useMemo(
-    () => linkifyMentions(normalizeToolBlocks(stripAddressPrefix(text)), mentionColors),
-    [text, mentionColors]
+    () => linkifyMentions(normalizeToolBlocks(raw.text), mentionColors),
+    [raw, mentionColors]
   )
   // A `/command` the user sent: shown as typed, expansion folded away.
   const slash = useMemo(() => parseSlashMarker(text), [text])
@@ -125,11 +131,18 @@ export const RoomMessageText = memo(function RoomMessageText({
     )
   }
   return (
-    <RenderMarkdown
-      content={content}
-      components={COMPONENTS}
-      isStreaming={isStreaming}
-      className={className}
-    />
+    <div data-testid="room-message-text" className="min-w-0 max-w-full">
+      <RenderMarkdown
+        content={content}
+        components={COMPONENTS}
+        isStreaming={isStreaming}
+        className={className}
+      />
+      {raw.found && (
+        <p data-testid="raw-tool-call-note" className="mt-1 text-xs text-muted-foreground">
+          {t('rooms:transcript.rawToolCall')}
+        </p>
+      )}
+    </div>
   )
 })

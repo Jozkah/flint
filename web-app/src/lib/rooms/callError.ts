@@ -13,12 +13,15 @@ import { redactSecrets } from '@/lib/redact'
 import type { PromptMessage } from './context'
 import type {
   ParticipantReasoning,
+  RoomBudgetHit,
   RoomModelRef,
   RoomToolActivity,
+  RoomToolBudget,
   ToolAccess,
 } from './types'
 
 export type { RoomToolActivity }
+export { turnToolAccess } from './types'
 
 /**
  * What a tool-capable participant may read while it takes its turn. Present only
@@ -36,6 +39,8 @@ export type RoomToolContext = {
   access: ToolAccess
   /** Who is speaking, named on the approval prompts their calls raise. */
   participantName?: string
+  /** The speaking participant's id: what its own state (its plan) is kept under. */
+  participantId?: string
   /** The turn's signal: stopping it withdraws any prompt still open. */
   signal?: AbortSignal
   /**
@@ -44,6 +49,15 @@ export type RoomToolContext = {
    * the room was not given.
    */
   tokenBudget?: number
+  /** The room's per-turn tool budget; absent uses the defaults. */
+  budget?: RoomToolBudget
+  /** Tools the user switched off for this participant. */
+  disabledTools?: string[]
+  /**
+   * The label an approval this turn raises keeps when the turn is stopped by
+   * a pause (`room paused`), or null when the stop is not a pause.
+   */
+  holdLabel?: () => string | null
 }
 
 export type StreamReplyInput = {
@@ -76,8 +90,12 @@ export type StreamReplyResult = {
   text: string
   usage?: { inputTokens?: number; outputTokens?: number }
   finishReason: string
+  /** What the model thought, when the provider streamed it separately. */
+  reasoning?: string
   /** The tools the participant used, in call order. */
   toolActivity?: RoomToolActivity[]
+  /** The tool budget the turn ran into, when it did. */
+  budgetHit?: RoomBudgetHit
 }
 
 export type StreamReply = (input: StreamReplyInput) => Promise<StreamReplyResult>
