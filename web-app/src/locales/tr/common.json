@@ -2846,5 +2846,18 @@
     "offlineTitle": "Flint sunucusuna ulaşılamıyor.",
     "offlineBody": "Yeniden bağlanılıyor… Sunucu dönene kadar şimdi yaptıklarınız kaydedilmeyebilir.",
     "statusOffline": "Sunucuya ulaşılamıyor"
+  },
+  "nesting": {
+    "more_one": "{{count}} iç içe daha",
+    "more_other": "{{count}} iç içe daha",
+    "new_one": "{{count}} yeni",
+    "new_other": "{{count}} yeni",
+    "working_one": "{{count}} çalışıyor",
+    "working_other": "{{count}} çalışıyor",
+    "waiting_one": "{{count}} bekliyor",
+    "waiting_other": "{{count}} bekliyor",
+    "count_one": "{{count}} iç içe",
+    "count_other": "{{count}} iç içe",
+    "fewer": "Daha az iç içe göster"
   }
 }

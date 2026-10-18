@@ -2799,5 +2799,13 @@
     "offlineTitle": "Tidak dapat menjangkau server Flint.",
     "offlineBody": "Menyambung ulang… Yang Anda lakukan sekarang mungkin tidak tersimpan sampai server kembali.",
     "statusOffline": "Server tidak terjangkau"
+  },
+  "nesting": {
+    "more_other": "{{count}} lagi bersarang",
+    "new_other": "{{count}} baru",
+    "working_other": "{{count}} berjalan",
+    "waiting_other": "{{count}} menunggu",
+    "count_other": "{{count}} bersarang",
+    "fewer": "Tampilkan lebih sedikit"
   }
 }

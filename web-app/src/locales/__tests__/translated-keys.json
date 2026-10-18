@@ -1336,5 +1336,11 @@
   "engine:loaded.speedBar",
   "common:serverConnection.offlineTitle",
   "common:serverConnection.offlineBody",
-  "common:serverConnection.statusOffline"
+  "common:serverConnection.statusOffline",
+  "common:nesting.more_other",
+  "common:nesting.new_other",
+  "common:nesting.working_other",
+  "common:nesting.waiting_other",
+  "common:nesting.count_other",
+  "common:nesting.fewer"
 ]

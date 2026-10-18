@@ -2897,5 +2897,18 @@
     "offlineTitle": "Impossibile raggiungere il server Flint.",
     "offlineBody": "Riconnessione… Ciò che fai ora potrebbe non essere salvato finché non torna.",
     "statusOffline": "Server non raggiungibile"
+  },
+  "nesting": {
+    "more_one": "{{count}} altro annidato",
+    "more_other": "{{count}} altri annidati",
+    "new_one": "{{count}} nuovo",
+    "new_other": "{{count}} nuovi",
+    "working_one": "{{count}} in corso",
+    "working_other": "{{count}} in corso",
+    "waiting_one": "{{count}} in attesa",
+    "waiting_other": "{{count}} in attesa",
+    "count_one": "{{count}} annidato",
+    "count_other": "{{count}} annidati",
+    "fewer": "Mostra meno annidati"
   }
 }

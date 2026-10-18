@@ -2898,5 +2898,18 @@
     "offlineTitle": "No es pot contactar amb el servidor de Flint.",
     "offlineBody": "S'està tornant a connectar… El que facis ara potser no es desarà fins que torni.",
     "statusOffline": "Servidor inaccessible"
+  },
+  "nesting": {
+    "more_one": "{{count}} més imbricat",
+    "more_other": "{{count}} més imbricats",
+    "new_one": "{{count}} nou",
+    "new_other": "{{count}} nous",
+    "working_one": "{{count}} treballant",
+    "working_other": "{{count}} treballant",
+    "waiting_one": "{{count}} en espera",
+    "waiting_other": "{{count}} en espera",
+    "count_one": "{{count}} imbricat",
+    "count_other": "{{count}} imbricats",
+    "fewer": "Mostra menys imbricats"
   }
 }

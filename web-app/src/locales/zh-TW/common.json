@@ -2842,5 +2842,13 @@
     "offlineTitle": "無法連線到 Flint 伺服器。",
     "offlineBody": "正在重新連線… 伺服器恢復前，現在的操作可能不會儲存。",
     "statusOffline": "伺服器無法存取"
+  },
+  "nesting": {
+    "more_other": "另有 {{count}} 個巢狀",
+    "new_other": "{{count}} 個新",
+    "working_other": "{{count}} 個執行中",
+    "waiting_other": "{{count}} 個等待中",
+    "count_other": "{{count}} 個巢狀",
+    "fewer": "收合巢狀項目"
   }
 }

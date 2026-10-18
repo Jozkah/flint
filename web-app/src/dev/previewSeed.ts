@@ -44,6 +44,11 @@ import { seedEngine } from './previewSeedEngine'
 import { seedHuggingFacePreview } from './previewHuggingFace'
 import { seedRichSearch } from './previewRichSearch'
 import {
+  nestedPreviewSessions,
+  nestedPreviewThreads,
+  seedNestingState,
+} from './previewNesting'
+import {
   PREVIEW_DATA_FOLDER,
   patchSettingsServices,
   seedSettingsPreview,
@@ -300,6 +305,14 @@ function fillerMessages(id: string, title: string): ThreadMessage[] {
 }
 
 function threads(): Thread[] {
+  const base = {
+    assistants: useAssistant.getState().assistants.filter((a) => a.id === 'jan'),
+    model: { id: 'claude-sonnet-5', provider: 'anthropic' },
+  } as Partial<Thread>
+  return [...chatThreads(), ...nestedPreviewThreads(now, base)]
+}
+
+function chatThreads(): Thread[] {
   return CHATS.map(([id, title, age, folder, pinned]) => {
     const f = FOLDERS.find((x) => x.id === folder)
     return {
@@ -1156,6 +1169,7 @@ function seedCowork() {
     session('changelog', 'Draft 1.4 changelog', 50, JAN),
     unitsSession(),
     session('sync', 'Write the API guide', 3000, null),
+    ...nestedPreviewSessions((id, title, age) => session(id, title, age, null)),
   ]
   useCoworkSessions.setState({ sessions: sessions as never, currentId: current } as never)
   useCoworkRun.setState({ runs: { escape: { startedAt: now - 8 * MIN } } } as never)
@@ -1404,6 +1418,7 @@ export function seedPreview() {
   seedHuggingFacePreview()
   seedSettingsPreview()
   seedRichSearch()
+  seedNestingState()
   // `?heavy`: a big data folder for performance runs (2,000 chats, one
   // 300-message chat with code and tables), stores exposed on window.
   if (params().has('heavy')) seedHeavy()

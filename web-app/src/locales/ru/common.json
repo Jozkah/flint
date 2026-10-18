@@ -2955,5 +2955,28 @@
     "offlineTitle": "Сервер Flint недоступен.",
     "offlineBody": "Переподключение… То, что вы сделаете сейчас, может не сохраниться, пока сервер не вернётся.",
     "statusOffline": "Сервер недоступен"
+  },
+  "nesting": {
+    "more_one": "ещё {{count}} вложенный",
+    "more_few": "ещё {{count}} вложенных",
+    "more_many": "ещё {{count}} вложенных",
+    "more_other": "ещё {{count}} вложенного",
+    "new_one": "{{count}} новый",
+    "new_few": "{{count}} новых",
+    "new_many": "{{count}} новых",
+    "new_other": "{{count}} нового",
+    "working_one": "{{count}} в работе",
+    "working_few": "{{count}} в работе",
+    "working_many": "{{count}} в работе",
+    "working_other": "{{count}} в работе",
+    "waiting_one": "{{count}} ждёт",
+    "waiting_few": "{{count}} ждут",
+    "waiting_many": "{{count}} ждут",
+    "waiting_other": "{{count}} ждут",
+    "count_one": "{{count}} вложенный",
+    "count_few": "{{count}} вложенных",
+    "count_many": "{{count}} вложенных",
+    "count_other": "{{count}} вложенного",
+    "fewer": "Свернуть вложенные"
   }
 }

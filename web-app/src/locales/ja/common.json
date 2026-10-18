@@ -2837,5 +2837,13 @@
     "offlineTitle": "Flint サーバーに接続できません。",
     "offlineBody": "再接続しています… 復旧するまで、今の操作は保存されない場合があります。",
     "statusOffline": "サーバーに接続できません"
+  },
+  "nesting": {
+    "more_other": "他 {{count}} 件のネスト",
+    "new_other": "新着 {{count}}",
+    "working_other": "実行中 {{count}}",
+    "waiting_other": "待機中 {{count}}",
+    "count_other": "ネスト {{count}} 件",
+    "fewer": "ネストを折りたたむ"
   }
 }
