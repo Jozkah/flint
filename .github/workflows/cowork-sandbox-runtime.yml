@@ -80,6 +80,12 @@ jobs:
         with:
           toolchain: stable
 
+      # rc.exe embeds icon.ico and rejects the PNG copy the stub script makes,
+      # so Windows needs the real icon set first (the stubs never overwrite it).
+      - name: Render the Windows icon
+        shell: bash
+        run: npx --yes @tauri-apps/cli@2.11.4 icon src-tauri/icons/icon.png -o src-tauri/icons
+
       # The app's build script requires every bundled sidecar and resource to
       # exist; none are built here, and no test executes them.
       - name: Stub bundled resources
