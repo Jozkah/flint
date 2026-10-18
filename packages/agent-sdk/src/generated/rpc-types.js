@@ -32,6 +32,7 @@ export const EVENT_TAGS = Object.freeze([
   "turn_usage",
   "done",
   "error",
+  "run_ended",
   "permission_request",
   "tool_request",
   "tool_request_cancelled",

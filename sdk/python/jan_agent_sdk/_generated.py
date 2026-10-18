@@ -55,6 +55,7 @@ EVENT_TAGS: tuple[str, ...] = (
     "turn_usage",
     "done",
     "error",
+    "run_ended",
     "permission_request",
     "tool_request",
     "tool_request_cancelled",
@@ -106,6 +107,7 @@ EventTag = Literal[
     "turn_usage",
     "done",
     "error",
+    "run_ended",
     "permission_request",
     "tool_request",
     "tool_request_cancelled",
@@ -504,6 +506,14 @@ class ErrorEvent(TypedDict):
     message: str
     type: Literal["error"]
 
+class RunEndedEvent(TypedDict):
+    """`item/run_ended`"""
+
+    reason: str
+    label: str
+    exit_code: int
+    type: Literal["run_ended"]
+
 class PermissionRequestEvent(TypedDict):
     """`item/permission_request`"""
 
@@ -523,6 +533,8 @@ class PermissionRequestEvent(TypedDict):
     reason: NotRequired[Union[str, None]]
     # The sha256 (hex) of the tool name and its arguments as canonical JSON (keys sorted), taken when this prompt was raised. The approved call runs only if its arguments still hash to this value; otherwise it is refused unrun. `None` for a prompt not about one tool call's arguments.
     args_digest: NotRequired[Union[str, None]]
+    # The model's id for the tool call being asked about, so a client showing parallel calls of one tool ties the prompt to the right one. `None` for a prompt not about one tool call.
+    call_id: NotRequired[Union[str, None]]
     type: Literal["permission_request"]
 
 class ToolRequestEvent(TypedDict):
@@ -578,6 +590,7 @@ StreamEvent = Union[
     TurnUsageEvent,
     DoneEvent,
     ErrorEvent,
+    RunEndedEvent,
     PermissionRequestEvent,
     ToolRequestEvent,
     ToolRequestCancelledEvent,
