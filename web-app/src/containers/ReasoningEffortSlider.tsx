@@ -179,13 +179,19 @@ export function ReasoningEffortSlider({
         data-testid="effort-track"
         className="relative h-6 cursor-pointer touch-none rounded-md bg-foreground/10 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       >
+        {/* Dots mark only the stops not reached yet; the ones at or below the
+            chosen effort are passed, and the thumb is the chosen one's mark. */}
         {stops.map((stop, at) => (
           <span
             key={stop}
             aria-hidden
             data-testid={`effort-stop-${stop}`}
+            data-dot={at > index ? '' : undefined}
             style={{ left: centre(at) }}
-            className="absolute top-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/35"
+            className={cn(
+              'absolute top-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/35',
+              at <= index && 'hidden'
+            )}
           />
         ))}
         <span
