@@ -28,8 +28,7 @@
     "apiKeys": "API 密钥",
     "fallbackSub": "{{count}} 个备用密钥",
     "noFallbackSub": "无备用密钥",
-    "avgSpeed": "平均速度",
-    "repliesSub": "已测量 {{count}} 条回复"
+    "avgSpeed": "平均速度"
   },
   "loaded": {
     "title": "当前已加载",

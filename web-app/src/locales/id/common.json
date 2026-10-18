@@ -2208,8 +2208,7 @@
       "failed": "Gagal",
       "cancelled": "Dihentikan",
       "error": "Tidak dapat dijalankan"
-    },
-    "steps": "Langkah (opsional): open, click, type, expect, wait, screenshot — satu per baris"
+    }
   },
   "jev": {
     "automationTitle": "Pilihan otomatis",

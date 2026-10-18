@@ -1664,6 +1664,12 @@ pub(crate) struct ParentRun {
     pub(crate) conversation: Option<Vec<serde_json::Value>>,
     pub(crate) model: String,
     pub(crate) budget_remaining: Option<u64>,
+    /// The parent's token rates, so a child's spend is metered in dollars and
+    /// counts toward the parent's pause and ceiling. `None`: no money meter.
+    pub(crate) token_rates: Option<crate::core::agent::session::TokenRates>,
+    /// What is left of the parent's hard money ceiling when the child starts.
+    /// A child never gets the parent's `pause_at_usd`: it stops here instead.
+    pub(crate) usd_remaining: Option<f64>,
     pub(crate) send_reasoning: bool,
     /// The Subagents settings' model choices, read from the data folder the
     /// desktop app writes them to. `Default` is "inherit".
@@ -1904,6 +1910,30 @@ pub(crate) fn child_body(
             "max_session_tokens".to_string(),
             serde_json::json!(remaining),
         );
+    }
+    // Money: the parent's rates and what is left of its ceiling, never its
+    // pause. The pause question stays with the parent; a child that reaches
+    // the ceiling stops with `budget_exceeded` (see `SpendLedger`).
+    if let Some(rates) = &parent.token_rates {
+        let mut r = serde_json::json!({
+            "prompt_usd": rates.prompt_usd,
+            "completion_usd": rates.completion_usd,
+        });
+        if let Some(v) = rates.cache_read_usd {
+            r["cache_read_usd"] = serde_json::json!(v);
+        }
+        if let Some(v) = rates.cache_write_usd {
+            r["cache_write_usd"] = serde_json::json!(v);
+        }
+        body.insert("token_rates".to_string(), r);
+        match parent.usd_remaining.filter(|v| v.is_finite()) {
+            Some(remaining) => {
+                body.insert("max_budget_usd".to_string(), serde_json::json!(remaining.max(0.0)));
+            }
+            None => {
+                body.insert("meter_usd".to_string(), serde_json::json!(true));
+            }
+        }
     }
     // A child's own tool-call turns carry `reasoning_content`, so the parent's
     // opt-out has to travel with the dispatch or a strict provider still sees
@@ -3097,6 +3127,8 @@ b")] {
             conversation: None,
             model: "big".to_string(),
             budget_remaining: None,
+            token_rates: None,
+            usd_remaining: None,
             send_reasoning: true,
             model_settings: ModelSettings::default(),
         };
@@ -3948,6 +3980,8 @@ b")] {
             conversation: None,
             model: "m".to_string(),
             budget_remaining: None,
+            token_rates: None,
+            usd_remaining: None,
             send_reasoning: true,
             model_settings: ModelSettings::default(),
         }
@@ -3978,6 +4012,55 @@ b")] {
             None,
         );
         assert_eq!(off["send_reasoning"], serde_json::json!(false));
+    }
+
+    /// A child is metered at the parent's rates against what is left of the
+    /// parent's money ceiling, and never gets a pause of its own: only the
+    /// parent asks the user about spend.
+    #[test]
+    fn child_body_carries_the_parents_rates_and_remaining_ceiling_but_no_pause() {
+        let reg = registry_with("reviewer", None);
+        let p = ToolPermissions::allow_all();
+        let resolved = resolve_dispatch(&reg, &req("reviewer", None), &p).expect("resolves");
+        let rates = crate::core::agent::session::TokenRates {
+            prompt_usd: 1e-6,
+            completion_usd: 2e-6,
+            cache_read_usd: Some(0.5e-6),
+            cache_write_usd: None,
+        };
+        let capped = child_body(
+            &resolved,
+            "task",
+            &ParentRun {
+                token_rates: Some(rates),
+                usd_remaining: Some(1.25),
+                ..parent_run()
+            },
+            None,
+            None,
+        );
+        assert_eq!(capped["max_budget_usd"], serde_json::json!(1.25));
+        assert_eq!(capped["token_rates"]["prompt_usd"], serde_json::json!(1e-6));
+        assert_eq!(capped["token_rates"]["completion_usd"], serde_json::json!(2e-6));
+        assert_eq!(capped["token_rates"]["cache_read_usd"], serde_json::json!(0.5e-6));
+        assert!(capped.get("pause_at_usd").is_none(), "no pause for a child: {capped}");
+        // A parent metered only for its pause: the child is metered (so its
+        // spend reaches the parent's pause) but has no ceiling of its own.
+        let metered = child_body(
+            &resolved,
+            "task",
+            &ParentRun {
+                token_rates: Some(rates),
+                ..parent_run()
+            },
+            None,
+            None,
+        );
+        assert!(metered.get("max_budget_usd").is_none(), "{metered}");
+        assert_eq!(metered["meter_usd"], serde_json::json!(true));
+        let unmetered = child_body(&resolved, "task", &parent_run(), None, None);
+        assert!(unmetered.get("token_rates").is_none(), "{unmetered}");
+        assert!(unmetered.get("max_budget_usd").is_none(), "{unmetered}");
     }
 
     #[test]
@@ -4536,6 +4619,7 @@ auto_compact_window = 9000
         OrchestrationArgs {
             profile: None,
             parent_run: None,
+            spend_ledger: None,
             dispatch_id: None,
             fallback_models: Vec::new(),
             client: crate::core::agent::upstream::agent_http_client(),

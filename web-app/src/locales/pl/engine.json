@@ -31,8 +31,7 @@
     "apiKeys": "Klucze API",
     "fallbackSub": "klucze zapasowe: {{count}}",
     "noFallbackSub": "brak klucza zapasowego",
-    "avgSpeed": "Średnia prędkość",
-    "repliesSub": "zmierzone odpowiedzi: {{count}}"
+    "avgSpeed": "Średnia prędkość"
   },
   "loaded": {
     "title": "Wczytane teraz",

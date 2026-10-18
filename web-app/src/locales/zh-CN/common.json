@@ -2250,8 +2250,7 @@
       "failed": "失败",
       "cancelled": "已停止",
       "error": "无法运行"
-    },
-    "steps": "步骤（可选）：open、click、type、expect、wait、screenshot — 每行一个"
+    }
   },
   "jev": {
     "automationTitle": "自动选择",

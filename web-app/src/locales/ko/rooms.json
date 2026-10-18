@@ -21,9 +21,7 @@
     "noParticipants": "아직 참여자가 없습니다",
     "noPreview": "룸을 열어 토론을 확인하세요.",
     "tokens": "토큰 {{count}}개",
-    "yours": "내 룸",
-    "participants": "참여자 {{count}}명",
-    "turns": "{{count}}턴"
+    "yours": "내 룸"
   },
   "create": {
     "title": "새 룸",
@@ -367,8 +365,7 @@
     "round": "라운드",
     "turn": "턴",
     "of": "/",
-    "question": "질문",
-    "draftHint": "참여자 {{count}}명 · {{mode}}"
+    "question": "질문"
   },
   "usage": {
     "label": "사용량",
@@ -424,8 +421,7 @@
     "turns": "이번 주 턴",
     "turnsHint_other": "{{count}}개 룸 전체",
     "models": "참여 중인 모델",
-    "modelsNone": "아직 참여자가 없습니다",
-    "turnsHint": "룸 {{count}}개 합계"
+    "modelsNone": "아직 참여자가 없습니다"
   },
   "waiting": {
     "title": "사용자 대기 중",
@@ -531,10 +527,7 @@
     "scope": "표시할 변경 사항",
     "showAll": "모든 파일 표시 ({{count}})",
     "partial_other": "파일 {{count}}개 적용됨",
-    "applyIncludesEarlier_other": "적용하면 아직 적용하지 않은 이전 파일 {{count}}개도 포함됩니다",
-    "applyTitle": "내 폴더에 적용할까요?",
-    "applyHint": "이 패치가 내 폴더에 기록됩니다. 깨끗하게 적용되지 않으면 아무것도 바뀌지 않습니다.",
-    "applyConfirm": "적용"
+    "applyIncludesEarlier_other": "적용하면 아직 적용하지 않은 이전 파일 {{count}}개도 포함됩니다"
   },
   "apply": {
     "title_one": "변경 {{count}}개를 내 폴더에 적용",

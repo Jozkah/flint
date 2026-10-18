@@ -2248,8 +2248,7 @@
       "failed": "失敗",
       "cancelled": "停止しました",
       "error": "実行できませんでした"
-    },
-    "steps": "ステップ (任意): open、click、type、expect、wait、screenshot — 1 行に 1 つ"
+    }
   },
   "jev": {
     "automationTitle": "自動選択",

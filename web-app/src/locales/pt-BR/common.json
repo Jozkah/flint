@@ -2287,8 +2287,7 @@
       "failed": "Falhou",
       "cancelled": "Interrompido",
       "error": "Não foi possível executar"
-    },
-    "steps": "Etapas (opcional): open, click, type, expect, wait, screenshot — uma por linha"
+    }
   },
   "jev": {
     "automationTitle": "Escolhas automáticas",

@@ -19,6 +19,7 @@ import {
   CONSECUTIVE_ERRORS_TO_SUSPEND,
   checkModel,
   clearSuspensions,
+  localEngineOf,
   contextWindowFor,
   defaultProviderLookup,
   effectiveToolAccess,
@@ -71,7 +72,7 @@ import {
 import { messagesFromJournal, repairJournal } from './recovery'
 import { isRepetitive, recentSpeech } from './repetition'
 import { stripConclusion } from './consensus'
-import { compareGrid, compareHistory, missingQuestions } from './compareGrid'
+import { compareGrid, compareHistory, hasAnswered, isAskedOf, missingQuestions } from './compareGrid'
 import { changesFromToolCalls } from './turnChanges'
 import { noteIsolation, participantIsolated, type RoomWorkspaceDeps } from './isolation'
 import {
@@ -202,6 +203,10 @@ type Finalize = (raw: string) => Partial<RoomMessage>
 
 /** Retries for transient and rate-limited errors (3 attempts in total). */
 const MAX_ATTEMPTS = 3
+/** Waiting for a busy local model slot: backoff from 1 s up to 15 s, a minute in all. */
+const BUSY_BACKOFF_START_MS = 1_000
+const BUSY_BACKOFF_MAX_MS = 15_000
+const BUSY_WAIT_MAX_MS = 60_000
 
 /** A pause longer than this between streamed pieces is a wait, not writing. */
 const STREAM_GAP_MS = 2000
@@ -839,6 +844,9 @@ class RoomRun {
 
       let shrink = false
       let attempt = 0
+      // Time spent waiting for a busy local model slot this turn.
+      let busyWaitedMs = 0
+      let busyTries = 0
       const toolsInfo =
         toolContext && args.participant
           ? { id: args.participant.id, access: toolContext.access }
@@ -1003,7 +1011,28 @@ class RoomRun {
             continue
           }
 
-          if ((err.kind === 'load-failed' || err.kind === 'unavailable') && args.participant) {
+          if (err.kind === 'busy') {
+            // Every slot of the local engine is taken (another participant's
+            // model holds it). Wait and try again, up to a minute; the call never
+            // happened, so it does not count toward the ceiling.
+            this.calls--
+            const delay = Math.min(BUSY_BACKOFF_MAX_MS, BUSY_BACKOFF_START_MS * 2 ** busyTries++)
+            if (busyWaitedMs + delay <= BUSY_WAIT_MAX_MS) {
+              busyWaitedMs += delay
+              const sleep = this.deps.sleep ?? waitFor
+              const waited = await sleep(delay, this.signal)
+              if (!waited || this.signal.aborted) {
+                await this.appendMessage(this.message({ ...base, text: '', status: 'interrupted' }))
+                throw new RunAborted()
+              }
+              continue
+            }
+          }
+
+          if (
+            (err.kind === 'load-failed' || err.kind === 'unavailable' || err.kind === 'busy') &&
+            args.participant
+          ) {
             const message = await this.appendMessage(
               this.message({
                 ...base,
@@ -1015,7 +1044,7 @@ class RoomRun {
             this.room = markUnavailable(
               this.room,
               args.participant.id,
-              err.kind === 'load-failed' ? 'load-failed' : 'provider-missing',
+              err.kind === 'load-failed' || err.kind === 'busy' ? err.kind : 'provider-missing',
               err.message,
               this.deps.now()
             )
@@ -1339,12 +1368,22 @@ class RoomRun {
     if (!current || current.removed || current.availability.state === 'unavailable') return null
     const startedAt = this.deps.now()
     if (questionId) this.compareTargets.set(p.id, questionId)
+    // Earlier questions it never answered: its prompt shows them unanswered, so
+    // a late joiner answers them too in this one reply. Recorded so the cell
+    // can say so instead of mixing them in silently (R-043).
+    const grid = compareGrid(this.messages)
+    const at = questionId ? grid.questions.findIndex((q) => q.id === questionId) : grid.questions.length - 1
+    const catchUp = grid.questions
+      .slice(0, Math.max(0, at))
+      .filter((q) => !hasAnswered(grid, q.id, p.id))
+      .map((q) => ({ id: q.id, text: q.text.slice(0, 160) }))
     try {
       const outcome = await this.participantTurn(current, 'speech', null, () => ({
         compare: {
           provider: current.model.provider,
           model: current.model.id,
           ...(questionId ? { replyTo: questionId } : {}),
+          ...(catchUp.length ? { catchUp } : {}),
           durationMs: Math.max(0, this.deps.now() - startedAt),
         },
       }))
@@ -1386,7 +1425,27 @@ class RoomRun {
       for (const job of jobs) await runJob(job)
       return
     }
-    const outcomes = await Promise.allSettled(jobs.map(runJob))
+    // Participants on the same local engine cannot run together (they share its
+    // model slots): each engine's participants run in turn, the rest at once.
+    const lanes = new Map<string, Array<(typeof jobs)[number]>>()
+    jobs.forEach((job, i) => {
+      const key = localEngineOf(job.participant) ?? `remote:${i}`
+      lanes.set(key, [...(lanes.get(key) ?? []), job])
+    })
+    const runLane = async (lane: Array<(typeof jobs)[number]>) => {
+      let failure: unknown = null
+      for (const job of lane) {
+        try {
+          await runJob(job)
+        } catch (e) {
+          // An abort or a limit ends the lane; a failure lets the next one run.
+          if (e instanceof RunAborted || e instanceof LimitStop || isAbortLike(e, this.signal)) throw e
+          failure ??= e
+        }
+      }
+      if (failure) throw failure
+    }
+    const outcomes = await Promise.allSettled([...lanes.values()].map(runLane))
     let aborted = false
     let failure: unknown = null
     let limit: LimitStop | null = null
@@ -1413,18 +1472,45 @@ class RoomRun {
     const limit = this.breach(true)
     if (limit) return this.stopForLimit(limit)
 
+    // Started with no question: the objective is the question, posted as one,
+    // so its answers have a row in the compare grid and can be re-run.
+    if (compareGrid(this.messages).questions.length === 0 && this.room.objective.trim()) {
+      await this.appendMessage(
+        this.message({ author: { kind: 'user' }, kind: 'user', text: this.room.objective.trim() })
+      )
+    }
+    const grid = compareGrid(this.messages)
+    const asked = grid.questions.at(-1)
+    const question = asked?.id ?? null
+    // A question written to one participant is answered by that one only.
+    const addressedTo = asked?.to?.kind === 'participant' ? asked.to.participantId : null
+    // A question nobody has answered yet opens a new round, even when the last
+    // one never closed (a participant joined or was switched back on after it):
+    // otherwise only the newcomers would answer it (R-044). A round cut short
+    // on this same question is still finished by those left.
+    const untouched =
+      question !== null && (grid.answers.get(question) ?? []).length === 0
+    if (untouched && this.room.round > 0 && this.room.spokenThisRound.length > 0) {
+      this.room = {
+        ...this.room,
+        round: this.room.round + 1,
+        spokenThisRound: [],
+        usage: { ...this.room.usage, rounds: Math.max(this.room.usage.rounds, this.room.round) },
+      }
+    }
     this.room = beginSpeakingTurn({ ...this.room, nextSpeakerId: null })
     const pending = activeParticipants(this.room).filter(
       (p) => !this.room.spokenThisRound.includes(p.id)
     )
+    const leftOut = (p: Participant) =>
+      addressedTo !== null ? p.id !== addressedTo : !!p.compareSkip
     // Left out of this run: counted as having passed, so the round closes.
-    for (const p of pending.filter((x) => x.compareSkip)) {
+    for (const p of pending.filter(leftOut)) {
       this.room = markSpoken(this.room, p.id)
     }
-    const question = compareGrid(this.messages).questions.at(-1)?.id ?? null
     try {
       await this.runCompareJobs(
-        pending.filter((p) => !p.compareSkip).map((p) => ({ participant: p, questions: [question] })),
+        pending.filter((p) => !leftOut(p)).map((p) => ({ participant: p, questions: [question] })),
         (p) => {
           this.room = markSpoken(this.room, p.id)
         }
@@ -1454,7 +1540,11 @@ class RoomRun {
       .map((p) => ({
         participant: p,
         questions:
-          scope === 'latest' ? [latest.id] : missingQuestions(grid, p.id).map((q) => q.id),
+          scope === 'latest'
+            ? isAskedOf(latest, p.id)
+              ? [latest.id]
+              : []
+            : missingQuestions(grid, p.id).map((q) => q.id),
       }))
       .filter((j) => j.questions.length > 0)
     try {
@@ -1618,6 +1708,13 @@ export async function runRoom(
         break
       }
       case 'compare-run': {
+        // Running a participant again is the user's retry: a model that failed
+        // to load (or found its slot busy) is tried again, not skipped.
+        run.room = clearSuspensions(
+          run.room,
+          command.participantIds ??
+            run.room.participants.filter((p) => !p.compareSkip).map((p) => p.id)
+        )
         if (!(await run.preflight(1))) break
         await run.save({ status: 'running', stopReason: null })
         if (await run.compareRun(command.participantIds, command.scope)) {

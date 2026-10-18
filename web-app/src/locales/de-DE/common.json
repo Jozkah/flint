@@ -2245,8 +2245,7 @@
       "failed": "Fehlgeschlagen",
       "cancelled": "Gestoppt",
       "error": "Konnte nicht ausgeführt werden"
-    },
-    "steps": "Schritte (optional): open, click, type, expect, wait, screenshot – einer pro Zeile"
+    }
   },
   "jev": {
     "automationTitle": "Automatische Entscheidungen",

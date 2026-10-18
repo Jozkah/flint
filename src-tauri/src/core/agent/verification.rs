@@ -244,12 +244,13 @@ pub(crate) async fn verify(
 
 /// [`verify`], plus the tokens the verifier's own request cost, so a run with
 /// a session token ceiling can charge them (Jozkah/jan#131). Its stream is
-/// internal and never shown; its cost is not.
+/// internal and never shown; its cost is not. The usage of every request it
+/// made comes back too, so a run metered in dollars prices them at its rates.
 pub(crate) async fn verify_counted(
     model_id: &str,
     input: &VerificationInput,
     model: &dyn ModelInvoker,
-) -> (VerificationReport, u64) {
+) -> (VerificationReport, u64, Vec<crate::core::agent::events::Usage>) {
     let request = build_request(model_id, input);
     let (sink, _rx) = mpsc::unbounded_channel();
     match model.invoke(&request, &sink).await {
@@ -265,31 +266,34 @@ pub(crate) async fn verify_counted(
                     })
                     .unwrap_or(0)
             };
+            let mut usages: Vec<_> =
+                crate::core::agent::events::Usage::from_completion(&completion).into_iter().collect();
             let mut spent = cost(&completion);
             let reply = extract_choice_message(&completion)
                 .and_then(|m| m.get("content").cloned())
                 .and_then(|c| c.as_str().map(str::to_string))
                 .unwrap_or_default();
             if reply.trim().is_empty() {
-                return (VerificationReport::blocked("the verifier returned an empty reply"), spent);
+                return (VerificationReport::blocked("the verifier returned an empty reply"), spent, usages);
             }
             if find_verdict(&reply).is_none() {
                 let again = retry_request(&request, &reply);
                 if let Ok(second) = model.invoke(&again, &sink).await {
                     // The retry is charged too, not only the first request.
                     spent = spent.saturating_add(cost(&second));
+                    usages.extend(crate::core::agent::events::Usage::from_completion(&second));
                     let text = extract_choice_message(&second)
                         .and_then(|m| m.get("content").cloned())
                         .and_then(|c| c.as_str().map(str::to_string))
                         .unwrap_or_default();
                     if find_verdict(&text).is_some() {
-                        return (parse_report(&text), spent);
+                        return (parse_report(&text), spent, usages);
                     }
                 }
             }
-            (parse_report(&reply), spent)
+            (parse_report(&reply), spent, usages)
         }
-        Err(e) => (VerificationReport::blocked(&format!("the verifier could not run: {e}")), 0),
+        Err(e) => (VerificationReport::blocked(&format!("the verifier could not run: {e}")), 0, Vec::new()),
     }
 }
 

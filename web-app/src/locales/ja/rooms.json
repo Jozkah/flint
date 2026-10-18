@@ -21,9 +21,7 @@
     "noParticipants": "参加者はまだいません",
     "noPreview": "ルームを開くと、議論が表示されます。",
     "tokens": "{{count}} トークン",
-    "yours": "あなたのルーム",
-    "participants": "参加者 {{count}} 人",
-    "turns": "{{count}} ターン"
+    "yours": "あなたのルーム"
   },
   "create": {
     "title": "新しいルーム",
@@ -367,8 +365,7 @@
     "round": "ラウンド",
     "turn": "ターン",
     "of": "/",
-    "question": "質問",
-    "draftHint": "参加者 {{count}} 人 · {{mode}}"
+    "question": "質問"
   },
   "usage": {
     "label": "使用量",
@@ -424,8 +421,7 @@
     "turns": "今週のターン数",
     "turnsHint_other": "{{count}} 件のルーム全体",
     "models": "参加しているモデル",
-    "modelsNone": "参加者はまだいません",
-    "turnsHint": "{{count}} 個のルームの合計"
+    "modelsNone": "参加者はまだいません"
   },
   "waiting": {
     "title": "あなたを待っています",
@@ -531,10 +527,7 @@
     "scope": "表示する変更",
     "showAll": "すべてのファイルを表示（{{count}}）",
     "partial_other": "{{count}} 個のファイルを適用済み",
-    "applyIncludesEarlier_other": "適用には、まだ適用していない以前のファイル {{count}} 個も含まれます",
-    "applyTitle": "フォルダーに適用しますか？",
-    "applyHint": "このパッチがあなたのフォルダーに書き込まれます。きれいに適用できない場合は何も変更されません。",
-    "applyConfirm": "適用"
+    "applyIncludesEarlier_other": "適用には、まだ適用していない以前のファイル {{count}} 個も含まれます"
   },
   "apply": {
     "title_one": "{{count}} 件の変更をフォルダーに適用",

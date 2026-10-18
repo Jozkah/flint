@@ -32,9 +32,13 @@
 //! model learns what to do first instead of seeing a bare refusal. A rule can
 //! only refuse: it never grants a call the permission gate would not.
 //!
-//! Calls in one batch run side by side, so a rule is checked against the calls
-//! of earlier batches only: `after = "read"` is met by a read from a previous
-//! turn, not by one listed next to the edit.
+//! `max_calls` and `no_repeat` count attempts: a call is noted as soon as the
+//! rules let it through, before the permission gate, so one listed earlier in
+//! the same batch counts and a call later denied or failed still used its slot.
+//!
+//! `after` counts only calls that ran and succeeded (not refused, not failed),
+//! and those are known once the batch's results are in, so it is met by a
+//! successful read from a previous batch, not by one listed next to the edit.
 
 use std::collections::HashMap;
 
@@ -67,6 +71,8 @@ const MAX_REASON_CHARS: usize = 300;
 pub struct CallLog {
     counts: HashMap<String, u32>,
     last_args: HashMap<String, String>,
+    /// Calls that ran and succeeded, which is what `after` asks for.
+    succeeded: HashMap<String, u32>,
     failures: crate::core::agent::failure_stats::FailureStats,
 }
 
@@ -85,7 +91,7 @@ impl CallLog {
                 format!("ERROR: tool '{tool}' was not run: {text}")
             };
             if let Some(before) = rule.after.as_deref() {
-                if self.counts.get(before).copied().unwrap_or(0) == 0 {
+                if self.succeeded.get(before).copied().unwrap_or(0) == 0 {
                     return Some(why(format!("call '{before}' first")));
                 }
             }
@@ -109,7 +115,12 @@ impl CallLog {
         None
     }
 
-    /// Note that `tool` was called with `args`.
+    /// Note that a call of `tool` ran and succeeded.
+    pub fn record_success(&mut self, tool: &str) {
+        *self.succeeded.entry(tool.to_string()).or_insert(0) += 1;
+    }
+
+    /// Note that `tool` was called (attempted) with `args`.
     pub fn record(&mut self, tool: &str, args: &Value) {
         *self.counts.entry(tool.to_string()).or_insert(0) += 1;
         self.last_args.insert(tool.to_string(), canonical(args));
@@ -169,6 +180,8 @@ mod tests {
         assert!(refused.contains("Read the file before editing it."), "{refused}");
         assert!(log.refusal(&rules, "write", &json!({})).is_none(), "other tools are untouched");
         log.record("read", &json!({ "path": "a.rs" }));
+        assert!(log.refusal(&rules, "edit", &json!({})).is_some(), "an attempt alone is not enough");
+        log.record_success("read");
         assert!(log.refusal(&rules, "edit", &json!({})).is_none());
     }
 

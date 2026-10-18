@@ -2328,8 +2328,7 @@
       "failed": "Neúspěšné",
       "cancelled": "Zastaveno",
       "error": "Nelze spustit"
-    },
-    "steps": "Kroky (volitelné): open, click, type, expect, wait, screenshot — jeden na řádek"
+    }
   },
   "jev": {
     "automationTitle": "Automatické volby",

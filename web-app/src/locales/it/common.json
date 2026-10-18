@@ -2283,8 +2283,7 @@
       "failed": "Non superata",
       "cancelled": "Fermata",
       "error": "Impossibile eseguire"
-    },
-    "steps": "Passaggi (facoltativi): open, click, type, expect, wait, screenshot — uno per riga"
+    }
   },
   "jev": {
     "automationTitle": "Scelte automatiche",

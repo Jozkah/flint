@@ -28,8 +28,7 @@
     "apiKeys": "Khóa API",
     "fallbackSub": "{{count}} khóa dự phòng",
     "noFallbackSub": "không có khóa dự phòng",
-    "avgSpeed": "Tốc độ trung bình",
-    "repliesSub": "Đã đo {{count}} câu trả lời"
+    "avgSpeed": "Tốc độ trung bình"
   },
   "loaded": {
     "title": "Đang tải",

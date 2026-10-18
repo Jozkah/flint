@@ -23,9 +23,7 @@
     "noParticipants": "अभी कोई प्रतिभागी नहीं",
     "noPreview": "चर्चा देखने के लिए रूम खोलें।",
     "tokens": "{{count}} टोकन",
-    "yours": "आपके रूम",
-    "participants": "{{count}} प्रतिभागी",
-    "turns": "{{count}} बारी"
+    "yours": "आपके रूम"
   },
   "create": {
     "title": "नया रूम",
@@ -370,8 +368,7 @@
     "round": "राउंड",
     "turn": "बारी",
     "of": "/",
-    "question": "प्रश्न",
-    "draftHint": "{{count}} प्रतिभागी · {{mode}}"
+    "question": "प्रश्न"
   },
   "usage": {
     "label": "उपयोग",
@@ -428,8 +425,7 @@
     "turnsHint_one": "{{count}} रूम में",
     "turnsHint_other": "{{count}} रूम में",
     "models": "हिस्सा लेने वाले मॉडल",
-    "modelsNone": "अभी कोई प्रतिभागी नहीं",
-    "turnsHint": "{{count}} रूम में"
+    "modelsNone": "अभी कोई प्रतिभागी नहीं"
   },
   "waiting": {
     "title": "आपका इंतज़ार",
@@ -537,10 +533,7 @@
     "partial_one": "{{count}} फ़ाइल लागू की गई",
     "partial_other": "{{count}} फ़ाइलें लागू की गईं",
     "applyIncludesEarlier_one": "लागू करने में {{count}} पिछली फ़ाइल भी शामिल है जो अभी लागू नहीं हुई",
-    "applyIncludesEarlier_other": "लागू करने में {{count}} पिछली फ़ाइलें भी शामिल हैं जो अभी लागू नहीं हुईं",
-    "applyTitle": "आपके फ़ोल्डर पर लागू करें?",
-    "applyHint": "यह पैच आपके फ़ोल्डर में लिखा जाएगा। अगर यह साफ़ तरह से लागू नहीं होता, तो कुछ नहीं बदलता।",
-    "applyConfirm": "लागू करें"
+    "applyIncludesEarlier_other": "लागू करने में {{count}} पिछली फ़ाइलें भी शामिल हैं जो अभी लागू नहीं हुईं"
   },
   "apply": {
     "title_one": "{{count}} बदलाव अपने फ़ोल्डर में लागू करें",

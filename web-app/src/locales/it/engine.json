@@ -30,8 +30,7 @@
     "apiKeys": "Chiavi API",
     "fallbackSub": "{{count}} chiavi di riserva",
     "noFallbackSub": "nessuna chiave di riserva",
-    "avgSpeed": "Velocità media",
-    "repliesSub": "{{count}} risposte misurate"
+    "avgSpeed": "Velocità media"
   },
   "loaded": {
     "title": "Caricati ora",

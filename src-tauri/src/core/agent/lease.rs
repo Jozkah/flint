@@ -158,6 +158,19 @@ impl Lease {
         now: u64,
         alive: &dyn Fn(&Record) -> bool,
     ) -> Result<Lease, HarnessError> {
+        Self::acquire_raced(dir, run_id, ttl, now, alive, &|| {})
+    }
+
+    /// [`Self::acquire_with`] with `before_move` run between judging the file
+    /// stale and moving it aside, so a test can let another taker in there.
+    fn acquire_raced(
+        dir: &Path,
+        run_id: &str,
+        ttl: Duration,
+        now: u64,
+        alive: &dyn Fn(&Record) -> bool,
+        before_move: &dyn Fn(),
+    ) -> Result<Lease, HarnessError> {
         std::fs::create_dir_all(dir).map_err(|e| io(e, "directory could not be made"))?;
         let file = path(dir);
         let token = uuid::Uuid::new_v4().to_string();
@@ -218,13 +231,15 @@ impl Lease {
             // Only one process can rename the stale file away; the others
             // find it gone and lose the race cleanly on the next create.
             let aside = file.with_extension(format!("json.stale-{}", &lease.token[..8]));
+            before_move();
             match std::fs::rename(&file, &aside) {
                 Ok(()) => {
                     // Between judging the file stale and moving it, another
                     // taker may have replaced it: what was moved is then a
-                    // live lease. Put it back rather than destroy it.
+                    // live lease. Put it back rather than destroy it. A file
+                    // judged unreadable that now parses was replaced too.
                     let moved = read(&aside).map(|r| r.token);
-                    if judged.is_some() && moved.is_some() && moved != judged {
+                    if moved.is_some() && moved != judged {
                         if std::fs::rename(&aside, &file).is_err() {
                             let _ = std::fs::remove_file(&aside);
                         }
@@ -556,6 +571,25 @@ mod tests {
         assert!(Lease::acquire_with(dir.path(), "run-1", TTL, 1_000, &always).is_err());
         // With a ttl of zero the same file is already old.
         assert!(Lease::acquire_with(dir.path(), "run-1", Duration::ZERO, 1_000, &always).is_ok());
+    }
+
+    #[test]
+    fn a_live_lease_written_over_old_debris_survives_a_racing_takeover() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(path(dir.path()), b"{not json").unwrap();
+        let winner = std::cell::RefCell::new(None);
+        // B judges the old garbled file debris; before it moves the file, A
+        // moves the debris away and writes its own live lease.
+        let b = Lease::acquire_raced(dir.path(), "run-b", Duration::ZERO, 1_000, &always, &|| {
+            if winner.borrow().is_none() {
+                std::fs::remove_file(path(dir.path())).unwrap();
+                *winner.borrow_mut() = Some(Lease::acquire_with(dir.path(), "run-a", TTL, 1_000, &always).unwrap());
+            }
+        });
+        assert!(b.is_err(), "B took over a live lease");
+        let a = winner.into_inner().unwrap();
+        assert!(matches!(status_at(dir.path(), 1_001, &always), Status::Held(r) if r.token == a.token));
+        assert!(a.heartbeat_at(1_002).is_ok());
     }
 
     #[test]

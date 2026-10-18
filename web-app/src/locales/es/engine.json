@@ -30,8 +30,7 @@
     "apiKeys": "Claves de API",
     "fallbackSub": "{{count}} claves de reserva",
     "noFallbackSub": "sin clave de reserva",
-    "avgSpeed": "Velocidad media",
-    "repliesSub": "{{count}} respuestas medidas"
+    "avgSpeed": "Velocidad media"
   },
   "loaded": {
     "title": "Cargados ahora",

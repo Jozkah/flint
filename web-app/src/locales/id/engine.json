@@ -28,8 +28,7 @@
     "apiKeys": "Kunci API",
     "fallbackSub": "{{count}} kunci cadangan",
     "noFallbackSub": "tanpa kunci cadangan",
-    "avgSpeed": "Kecepatan rata-rata",
-    "repliesSub": "{{count}} balasan diukur"
+    "avgSpeed": "Kecepatan rata-rata"
   },
   "loaded": {
     "title": "Dimuat sekarang",

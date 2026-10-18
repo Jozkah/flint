@@ -45,9 +45,16 @@ export function hasAnswered(grid: CompareGrid, questionId: string, participantId
   return answersBy(grid, questionId, participantId).some((m) => m.status === 'complete')
 }
 
-/** The questions a participant has no complete answer to, in order. */
+/** Whether a question is put to this participant: one written to another participant is not. */
+export function isAskedOf(question: RoomMessage, participantId: string) {
+  return question.to?.kind !== 'participant' || question.to.participantId === participantId
+}
+
+/** The questions put to a participant that it has no complete answer to, in order. */
 export function missingQuestions(grid: CompareGrid, participantId: string): RoomMessage[] {
-  return grid.questions.filter((q) => !hasAnswered(grid, q.id, participantId))
+  return grid.questions.filter(
+    (q) => isAskedOf(q, participantId) && !hasAnswered(grid, q.id, participantId)
+  )
 }
 
 /** Participants (not removed, not left out) that miss an answer to an earlier question. */
@@ -55,7 +62,7 @@ export function participantsMissingEarlier(room: Room, grid: CompareGrid): Parti
   const earlier = grid.questions.slice(0, -1)
   return room.participants
     .filter((p) => !p.removed && !p.compareSkip)
-    .filter((p) => earlier.some((q) => !hasAnswered(grid, q.id, p.id)))
+    .filter((p) => earlier.some((q) => isAskedOf(q, p.id) && !hasAnswered(grid, q.id, p.id)))
 }
 
 /**

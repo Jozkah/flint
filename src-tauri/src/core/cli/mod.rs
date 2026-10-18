@@ -1263,6 +1263,7 @@ fn build_cli_orchestration_args(
         fallback_models,
         // A CLI run is nobody's child.
         parent_run: None,
+        spend_ledger: None,
         dispatch_id: None,
         client: crate::core::agent::upstream::agent_http_client(),
         provider_configs: Arc::new(Mutex::new(provider_configs)),
@@ -1740,6 +1741,9 @@ pub(crate) fn prepare_agent_session(
     let explicit = model_override.is_some() || overrides.api_key.is_some();
     let model = model_override
         .or_else(|| cfg.agent.model.clone())
+        // Under `flint serve`, the model its browser selected outranks the
+        // user-wide default, as the browser's providers outrank `~/.jan`.
+        .or_else(crate::core::cli::providers::server_selected_model)
         .or_else(|| {
             crate::core::agent::global_config::default_model()
                 .ok()
@@ -3059,6 +3063,8 @@ pub async fn run_durable_subagent(
         conversation: None,
         model: spec.model.clone(),
         budget_remaining: spec.max_session_tokens,
+        token_rates: None,
+        usd_remaining: None,
         send_reasoning: spec.send_reasoning,
         model_settings: sub::load_model_settings(),
     };

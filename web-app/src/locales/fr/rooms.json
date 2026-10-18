@@ -25,9 +25,7 @@
     "noParticipants": "Aucun participant pour l'instant",
     "noPreview": "Ouvrez la salle pour voir la discussion.",
     "tokens": "{{count}} tokens",
-    "yours": "Vos salles",
-    "participants": "{{count}} participants",
-    "turns": "{{count}} tours"
+    "yours": "Vos salles"
   },
   "create": {
     "title": "Nouvelle salle",
@@ -373,8 +371,7 @@
     "round": "Tour de table",
     "turn": "Tour de parole",
     "of": "sur",
-    "question": "Question",
-    "draftHint": "{{count}} participants · {{mode}}"
+    "question": "Question"
   },
   "usage": {
     "label": "Utilisation",
@@ -432,8 +429,7 @@
     "turnsHint_many": "Dans {{count}} salles",
     "turnsHint_other": "Dans {{count}} salles",
     "models": "Modèles participants",
-    "modelsNone": "Aucun participant pour l'instant",
-    "turnsHint": "Dans {{count}} salles"
+    "modelsNone": "Aucun participant pour l'instant"
   },
   "waiting": {
     "title": "En attente de vous",
@@ -543,10 +539,7 @@
     "partial_other": "{{count}} fichiers appliqués",
     "applyIncludesEarlier_one": "Appliquer inclut aussi {{count}} fichier antérieur pas encore appliqué",
     "applyIncludesEarlier_many": "Appliquer inclut aussi {{count}} fichiers antérieurs pas encore appliqués",
-    "applyIncludesEarlier_other": "Appliquer inclut aussi {{count}} fichiers antérieurs pas encore appliqués",
-    "applyTitle": "Appliquer à votre dossier ?",
-    "applyHint": "Ce correctif sera écrit dans votre dossier. S'il ne s'applique pas proprement, rien n'est modifié.",
-    "applyConfirm": "Appliquer"
+    "applyIncludesEarlier_other": "Appliquer inclut aussi {{count}} fichiers antérieurs pas encore appliqués"
   },
   "apply": {
     "title_one": "Appliquer {{count}} modification à votre dossier",

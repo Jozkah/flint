@@ -2334,8 +2334,7 @@
       "failed": "Niepowodzenie",
       "cancelled": "Zatrzymane",
       "error": "Nie udało się uruchomić"
-    },
-    "steps": "Kroki (opcjonalnie): open, click, type, expect, wait, screenshot — po jednym w wierszu"
+    }
   },
   "jev": {
     "automationTitle": "Automatyczne wybory",

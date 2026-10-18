@@ -30,8 +30,7 @@
     "apiKeys": "Claus d'API",
     "fallbackSub": "{{count}} claus de reserva",
     "noFallbackSub": "sense clau de reserva",
-    "avgSpeed": "Velocitat mitjana",
-    "repliesSub": "{{count}} respostes mesurades"
+    "avgSpeed": "Velocitat mitjana"
   },
   "loaded": {
     "title": "Carregats ara",

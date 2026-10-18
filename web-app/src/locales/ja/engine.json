@@ -28,8 +28,7 @@
     "apiKeys": "API キー",
     "fallbackSub": "フォールバックキー {{count}} 個",
     "noFallbackSub": "フォールバックキーなし",
-    "avgSpeed": "平均速度",
-    "repliesSub": "測定した返信 {{count}} 件"
+    "avgSpeed": "平均速度"
   },
   "loaded": {
     "title": "現在読み込み済み",

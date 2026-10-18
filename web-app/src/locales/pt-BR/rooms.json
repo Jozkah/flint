@@ -25,9 +25,7 @@
     "noParticipants": "Nenhum participante ainda",
     "noPreview": "Abra a sala para ver a discussão.",
     "tokens": "{{count}} tokens",
-    "yours": "Suas salas",
-    "participants": "{{count}} participantes",
-    "turns": "{{count}} turnos"
+    "yours": "Suas salas"
   },
   "create": {
     "title": "Nova sala",
@@ -373,8 +371,7 @@
     "round": "Rodada",
     "turn": "Turno",
     "of": "de",
-    "question": "Pergunta",
-    "draftHint": "{{count}} participantes · {{mode}}"
+    "question": "Pergunta"
   },
   "usage": {
     "label": "Uso",
@@ -432,8 +429,7 @@
     "turnsHint_many": "Em {{count}} salas",
     "turnsHint_other": "Em {{count}} salas",
     "models": "Modelos participando",
-    "modelsNone": "Nenhum participante ainda",
-    "turnsHint": "Em {{count}} salas"
+    "modelsNone": "Nenhum participante ainda"
   },
   "waiting": {
     "title": "Aguardando você",
@@ -543,10 +539,7 @@
     "partial_other": "{{count}} arquivos aplicados",
     "applyIncludesEarlier_one": "Aplicar também inclui {{count}} arquivo anterior ainda não aplicado",
     "applyIncludesEarlier_many": "Aplicar também inclui {{count}} arquivos anteriores ainda não aplicados",
-    "applyIncludesEarlier_other": "Aplicar também inclui {{count}} arquivos anteriores ainda não aplicados",
-    "applyTitle": "Aplicar à sua pasta?",
-    "applyHint": "Este patch será gravado na sua pasta. Se não aplicar de forma limpa, nada é alterado.",
-    "applyConfirm": "Aplicar"
+    "applyIncludesEarlier_other": "Aplicar também inclui {{count}} arquivos anteriores ainda não aplicados"
   },
   "apply": {
     "title_one": "Aplicar {{count}} alteração à sua pasta",

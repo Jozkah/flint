@@ -29,8 +29,7 @@
     "apiKeys": "API कुंजियाँ",
     "fallbackSub": "{{count}} फ़ॉलबैक कुंजियाँ",
     "noFallbackSub": "कोई फ़ॉलबैक कुंजी नहीं",
-    "avgSpeed": "औसत गति",
-    "repliesSub": "{{count}} जवाब मापे गए"
+    "avgSpeed": "औसत गति"
   },
   "loaded": {
     "title": "अभी लोड",

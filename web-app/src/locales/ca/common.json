@@ -2285,8 +2285,7 @@
       "failed": "Fallit",
       "cancelled": "Aturat",
       "error": "No s'ha pogut executar"
-    },
-    "steps": "Passos (opcional): open, click, type, expect, wait, screenshot — un per línia"
+    }
   },
   "jev": {
     "automationTitle": "Eleccions automàtiques",

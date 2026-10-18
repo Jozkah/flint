@@ -23,9 +23,7 @@
     "noParticipants": "Henüz katılımcı yok",
     "noPreview": "Tartışmayı görmek için odayı açın.",
     "tokens": "{{count}} token",
-    "yours": "Odalarınız",
-    "participants": "{{count}} katılımcı",
-    "turns": "{{count}} tur"
+    "yours": "Odalarınız"
   },
   "create": {
     "title": "Yeni oda",
@@ -370,8 +368,7 @@
     "round": "Tur",
     "turn": "Sıra",
     "of": "/",
-    "question": "Soru",
-    "draftHint": "{{count}} katılımcı · {{mode}}"
+    "question": "Soru"
   },
   "usage": {
     "label": "Kullanım",
@@ -428,8 +425,7 @@
     "turnsHint_one": "{{count}} odada",
     "turnsHint_other": "{{count}} odada",
     "models": "Katılan modeller",
-    "modelsNone": "Henüz katılımcı yok",
-    "turnsHint": "{{count}} oda genelinde"
+    "modelsNone": "Henüz katılımcı yok"
   },
   "waiting": {
     "title": "Sizi bekliyor",
@@ -537,10 +533,7 @@
     "partial_one": "{{count}} dosya uygulandı",
     "partial_other": "{{count}} dosya uygulandı",
     "applyIncludesEarlier_one": "Uygula, henüz uygulanmamış {{count}} önceki dosyayı da içerir",
-    "applyIncludesEarlier_other": "Uygula, henüz uygulanmamış {{count}} önceki dosyayı da içerir",
-    "applyTitle": "Klasörünüze uygulansın mı?",
-    "applyHint": "Bu yama klasörünüze yazılacak. Temiz uygulanamazsa hiçbir şey değişmez.",
-    "applyConfirm": "Uygula"
+    "applyIncludesEarlier_other": "Uygula, henüz uygulanmamış {{count}} önceki dosyayı da içerir"
   },
   "apply": {
     "title_one": "{{count}} değişikliği klasörüne uygula",

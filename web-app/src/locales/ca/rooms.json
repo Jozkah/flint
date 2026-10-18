@@ -25,9 +25,7 @@
     "noParticipants": "Encara no hi ha participants",
     "noPreview": "Obre la sala per veure el debat.",
     "tokens": "{{count}} tokens",
-    "yours": "Les teves sales",
-    "participants": "{{count}} participants",
-    "turns": "{{count}} torns"
+    "yours": "Les teves sales"
   },
   "create": {
     "title": "Sala nova",
@@ -373,8 +371,7 @@
     "round": "Ronda",
     "turn": "Torn",
     "of": "de",
-    "question": "Pregunta",
-    "draftHint": "{{count}} participants · {{mode}}"
+    "question": "Pregunta"
   },
   "usage": {
     "label": "Ús",
@@ -432,8 +429,7 @@
     "turnsHint_many": "En {{count}} sales",
     "turnsHint_other": "En {{count}} sales",
     "models": "Models que hi participen",
-    "modelsNone": "Encara no hi ha participants",
-    "turnsHint": "En {{count}} sales"
+    "modelsNone": "Encara no hi ha participants"
   },
   "waiting": {
     "title": "Esperant-te",
@@ -543,10 +539,7 @@
     "partial_other": "{{count}} fitxers aplicats",
     "applyIncludesEarlier_one": "Aplica també {{count}} fitxer anterior encara no aplicat",
     "applyIncludesEarlier_many": "Aplica també {{count}} fitxers anteriors encara no aplicats",
-    "applyIncludesEarlier_other": "Aplica també {{count}} fitxers anteriors encara no aplicats",
-    "applyTitle": "Voleu aplicar-ho a la vostra carpeta?",
-    "applyHint": "Aquest pedaç s'escriurà a la vostra carpeta. Si no s'aplica netament, no es canvia res.",
-    "applyConfirm": "Aplica"
+    "applyIncludesEarlier_other": "Aplica també {{count}} fitxers anteriors encara no aplicats"
   },
   "apply": {
     "title_one": "Aplica {{count}} canvi a la teva carpeta",

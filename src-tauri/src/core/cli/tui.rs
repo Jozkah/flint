@@ -23717,6 +23717,7 @@ mod tests {
             let args = std::sync::Arc::new(super::OrchestrationArgs {
                 profile: None,
             parent_run: None,
+            spend_ledger: None,
             dispatch_id: None,
                 fallback_models: Vec::new(),
                 client: crate::core::agent::upstream::agent_http_client(),

@@ -21,9 +21,7 @@
     "noParticipants": "還沒有參與者",
     "noPreview": "開啟房間以查看討論。",
     "tokens": "{{count}} 個 token",
-    "yours": "你的房間",
-    "participants": "{{count}} 名參與者",
-    "turns": "{{count}} 輪"
+    "yours": "你的房間"
   },
   "create": {
     "title": "新增房間",
@@ -367,8 +365,7 @@
     "round": "輪次",
     "turn": "發言",
     "of": "/",
-    "question": "問題",
-    "draftHint": "{{count}} 名參與者 · {{mode}}"
+    "question": "問題"
   },
   "usage": {
     "label": "用量",
@@ -424,8 +421,7 @@
     "turns": "本週發言次數",
     "turnsHint_other": "共 {{count}} 個房間",
     "models": "參與的模型",
-    "modelsNone": "還沒有參與者",
-    "turnsHint": "涉及 {{count}} 個房間"
+    "modelsNone": "還沒有參與者"
   },
   "waiting": {
     "title": "等待你",
@@ -531,10 +527,7 @@
     "scope": "顯示哪些變更",
     "showAll": "顯示全部檔案（{{count}}）",
     "partial_other": "已套用 {{count}} 個檔案",
-    "applyIncludesEarlier_other": "套用也會包含 {{count}} 個先前尚未套用的檔案",
-    "applyTitle": "套用到你的資料夾？",
-    "applyHint": "此修補程式將寫入你的資料夾。若無法乾淨套用，則不會變更任何內容。",
-    "applyConfirm": "套用"
+    "applyIncludesEarlier_other": "套用也會包含 {{count}} 個先前尚未套用的檔案"
   },
   "apply": {
     "title_one": "將 {{count}} 項變更套用到你的資料夾",

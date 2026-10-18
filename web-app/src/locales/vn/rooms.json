@@ -21,9 +21,7 @@
     "noParticipants": "Chưa có người tham gia",
     "noPreview": "Mở phòng để xem cuộc thảo luận.",
     "tokens": "{{count}} token",
-    "yours": "Phòng của bạn",
-    "participants": "{{count}} người tham gia",
-    "turns": "{{count}} lượt"
+    "yours": "Phòng của bạn"
   },
   "create": {
     "title": "Phòng mới",
@@ -367,8 +365,7 @@
     "round": "Vòng",
     "turn": "Lượt",
     "of": "trên",
-    "question": "Câu hỏi",
-    "draftHint": "{{count}} người tham gia · {{mode}}"
+    "question": "Câu hỏi"
   },
   "usage": {
     "label": "Mức sử dụng",
@@ -424,8 +421,7 @@
     "turns": "Lượt trong tuần này",
     "turnsHint_other": "Trên {{count}} phòng",
     "models": "Mô hình tham gia",
-    "modelsNone": "Chưa có người tham gia",
-    "turnsHint": "Trên {{count}} phòng"
+    "modelsNone": "Chưa có người tham gia"
   },
   "waiting": {
     "title": "Đang chờ bạn",
@@ -531,10 +527,7 @@
     "scope": "Thay đổi cần hiển thị",
     "showAll": "Hiện tất cả tệp ({{count}})",
     "partial_other": "Đã áp dụng {{count}} tệp",
-    "applyIncludesEarlier_other": "Áp dụng cũng gồm {{count}} tệp trước đó chưa được áp dụng",
-    "applyTitle": "Áp dụng vào thư mục của bạn?",
-    "applyHint": "Bản vá này sẽ được ghi vào thư mục của bạn. Nếu không áp dụng sạch, sẽ không có gì thay đổi.",
-    "applyConfirm": "Áp dụng"
+    "applyIncludesEarlier_other": "Áp dụng cũng gồm {{count}} tệp trước đó chưa được áp dụng"
   },
   "apply": {
     "title_one": "Áp dụng {{count}} thay đổi vào thư mục của bạn",

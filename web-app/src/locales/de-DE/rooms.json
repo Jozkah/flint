@@ -23,9 +23,7 @@
     "noParticipants": "Noch keine Teilnehmer",
     "noPreview": "Öffne den Raum, um die Diskussion zu sehen.",
     "tokens": "{{count}} Tokens",
-    "yours": "Deine Räume",
-    "participants": "{{count}} Teilnehmer",
-    "turns": "{{count}} Beiträge"
+    "yours": "Deine Räume"
   },
   "create": {
     "title": "Neuer Raum",
@@ -370,8 +368,7 @@
     "round": "Runde",
     "turn": "Beitrag",
     "of": "von",
-    "question": "Frage",
-    "draftHint": "{{count}} Teilnehmer · {{mode}}"
+    "question": "Frage"
   },
   "usage": {
     "label": "Nutzung",
@@ -428,8 +425,7 @@
     "turnsHint_one": "In {{count}} Raum",
     "turnsHint_other": "In {{count}} Räumen",
     "models": "Teilnehmende Modelle",
-    "modelsNone": "Noch keine Teilnehmer",
-    "turnsHint": "In {{count}} Räumen"
+    "modelsNone": "Noch keine Teilnehmer"
   },
   "waiting": {
     "title": "Wartet auf dich",
@@ -537,10 +533,7 @@
     "partial_one": "{{count}} Datei übernommen",
     "partial_other": "{{count}} Dateien übernommen",
     "applyIncludesEarlier_one": "Übernehmen enthält auch {{count}} frühere, noch nicht übernommene Datei",
-    "applyIncludesEarlier_other": "Übernehmen enthält auch {{count}} frühere, noch nicht übernommene Dateien",
-    "applyTitle": "Auf deinen Ordner anwenden?",
-    "applyHint": "Dieser Patch wird in deinen Ordner geschrieben. Lässt er sich nicht sauber anwenden, wird nichts geändert.",
-    "applyConfirm": "Anwenden"
+    "applyIncludesEarlier_other": "Übernehmen enthält auch {{count}} frühere, noch nicht übernommene Dateien"
   },
   "apply": {
     "title_one": "{{count}} Änderung in deinen Ordner übernehmen",

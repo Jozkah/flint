@@ -29,8 +29,7 @@
     "apiKeys": "API-Schlüssel",
     "fallbackSub": "{{count}} Ersatzschlüssel",
     "noFallbackSub": "kein Ersatzschlüssel",
-    "avgSpeed": "Durchschnittsgeschwindigkeit",
-    "repliesSub": "{{count}} Antworten gemessen"
+    "avgSpeed": "Durchschnittsgeschwindigkeit"
   },
   "loaded": {
     "title": "Jetzt geladen",

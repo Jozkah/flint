@@ -29,8 +29,7 @@
     "apiKeys": "API keys",
     "fallbackSub": "{{count}} fallback keys",
     "noFallbackSub": "no fallback key",
-    "avgSpeed": "Average speed",
-    "repliesSub": "{{count}} replies measured"
+    "avgSpeed": "Average speed"
   },
   "loaded": {
     "title": "Loaded now",

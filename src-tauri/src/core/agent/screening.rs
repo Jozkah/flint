@@ -44,6 +44,20 @@ pub(crate) enum ControlMode {
     Redact,
 }
 
+impl ControlMode {
+    /// Strictness, weakest first: `off` < `neutralize` < `wrap` < `redact`.
+    /// `redact` ranks above `wrap` because it removes the words, where `wrap`
+    /// only fences them.
+    fn strictness(self) -> u8 {
+        match self {
+            ControlMode::Off => 0,
+            ControlMode::Neutralize => 1,
+            ControlMode::Wrap => 2,
+            ControlMode::Redact => 3,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Screening {
     pub enabled: bool,
@@ -88,21 +102,37 @@ impl Screening {
         let trusted = super::project::project_trusted(project_root);
         let project = std::fs::read_to_string(super::project::agent_toml_path(project_root))
             .ok()
-            .and_then(|raw| Self::from_toml(&raw))
-            .filter(|s| trusted || !s.loosens());
-        project
-            .or_else(|| {
-                std::fs::read_to_string(super::plugins::global_agent_toml_path())
-                    .ok()
-                    .and_then(|raw| Self::from_toml(&raw))
-            })
-            .unwrap_or_default()
+            .and_then(|raw| Self::from_toml(&raw));
+        let global = std::fs::read_to_string(super::plugins::global_agent_toml_path())
+            .ok()
+            .and_then(|raw| Self::from_toml(&raw));
+        Self::resolve(project, global, trusted)
+    }
+
+    /// Which section applies. A trusted project's wins outright; an untrusted
+    /// project's only when it is at least as strict as what would apply
+    /// without it (the global section, else the default) -- otherwise a
+    /// cloned repo could lower the user's own setting.
+    fn resolve(project: Option<Self>, global: Option<Self>, trusted: bool) -> Self {
+        let fallback = global.unwrap_or_default();
+        match project {
+            Some(p) if trusted || !p.looser_than(&fallback) => p,
+            _ => fallback,
+        }
     }
 
     /// Whether this turns any screening off: an untrusted project's
     /// `[screening]` may only keep it on.
+    #[cfg(test)]
     pub(crate) fn loosens(&self) -> bool {
-        !self.enabled || !self.secrets || self.control == ControlMode::Off
+        self.looser_than(&Self::default())
+    }
+
+    /// Whether any part of this is weaker than in `base`.
+    pub(crate) fn looser_than(&self, base: &Self) -> bool {
+        (base.enabled && !self.enabled)
+            || (base.secrets && !self.secrets)
+            || self.control.strictness() < base.control.strictness()
     }
 }
 
@@ -215,6 +245,11 @@ pub(crate) fn screen_text(cfg: &Screening, text: &str, source: &str) -> (String,
     (out, report)
 }
 
+/// Whether `name` is a built-in tool whose result comes from outside.
+pub(crate) fn is_external_builtin(name: &str) -> bool {
+    EXTERNAL_BUILTINS.contains(&name)
+}
+
 /// [`screen_outcomes`] for one batch, loading `[screening]` only when the batch
 /// holds an external call. `mcp_calls` are the batch's MCP tool calls.
 pub(crate) fn screen_batch(
@@ -292,6 +327,36 @@ control = \"redact\"").unwrap().loosens());
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn an_untrusted_project_cannot_go_below_a_stricter_global() {
+        let global = Some(cfg("[screening]\ncontrol = \"redact\""));
+        // An empty section defaults to neutralize: weaker than the global redact.
+        let empty = Some(cfg("[screening]"));
+        assert_eq!(Screening::resolve(empty, global, false).control, ControlMode::Redact);
+        let wrap = Some(cfg("[screening]\ncontrol = \"wrap\""));
+        assert_eq!(Screening::resolve(wrap, global, false).control, ControlMode::Redact);
+        // As strict, or trusted: the project's own section applies.
+        assert_eq!(Screening::resolve(Some(cfg("[screening]\ncontrol = \"redact\"")), global, false).control, ControlMode::Redact);
+        assert_eq!(Screening::resolve(empty, global, true).control, ControlMode::Neutralize);
+        // Stricter than the global: allowed.
+        let neutral_global = Some(cfg("[screening]"));
+        assert_eq!(Screening::resolve(wrap, neutral_global, false).control, ControlMode::Wrap);
+        // Without a global, the default is the floor, as before.
+        assert_eq!(Screening::resolve(Some(cfg("[screening]\ncontrol = \"off\"")), None, false), Screening::default());
+        // A global that switched a part off lets an untrusted project leave it off.
+        let lax = Some(cfg("[screening]\nsecrets = \"off\""));
+        assert!(!Screening::resolve(lax, lax, false).secrets);
+    }
+
+    #[test]
+    fn strictness_order_is_off_neutralize_wrap_redact() {
+        use ControlMode::*;
+        let order = [Off, Neutralize, Wrap, Redact];
+        for w in order.windows(2) {
+            assert!(w[0].strictness() < w[1].strictness());
+        }
+    }
 
     fn cfg(raw: &str) -> Screening {
         Screening::from_toml(raw).expect("section")

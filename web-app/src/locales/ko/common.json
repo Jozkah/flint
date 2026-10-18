@@ -2248,8 +2248,7 @@
       "failed": "실패",
       "cancelled": "중지됨",
       "error": "실행할 수 없음"
-    },
-    "steps": "단계(선택): open, click, type, expect, wait, screenshot — 한 줄에 하나"
+    }
   },
   "jev": {
     "automationTitle": "자동 선택",

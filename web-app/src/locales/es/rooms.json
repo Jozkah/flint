@@ -25,9 +25,7 @@
     "noParticipants": "Aún no hay participantes",
     "noPreview": "Abre la sala para ver el debate.",
     "tokens": "{{count}} tokens",
-    "yours": "Tus salas",
-    "participants": "{{count}} participantes",
-    "turns": "{{count}} turnos"
+    "yours": "Tus salas"
   },
   "create": {
     "title": "Sala nueva",
@@ -373,8 +371,7 @@
     "round": "Ronda",
     "turn": "Turno",
     "of": "de",
-    "question": "Pregunta",
-    "draftHint": "{{count}} participantes · {{mode}}"
+    "question": "Pregunta"
   },
   "usage": {
     "label": "Uso",
@@ -432,8 +429,7 @@
     "turnsHint_many": "En {{count}} salas",
     "turnsHint_other": "En {{count}} salas",
     "models": "Modelos participantes",
-    "modelsNone": "Aún no hay participantes",
-    "turnsHint": "En {{count}} salas"
+    "modelsNone": "Aún no hay participantes"
   },
   "waiting": {
     "title": "Esperándote",
@@ -543,10 +539,7 @@
     "partial_other": "{{count}} archivos aplicados",
     "applyIncludesEarlier_one": "Aplicar incluye también {{count}} archivo anterior aún sin aplicar",
     "applyIncludesEarlier_many": "Aplicar incluye también {{count}} archivos anteriores aún sin aplicar",
-    "applyIncludesEarlier_other": "Aplicar incluye también {{count}} archivos anteriores aún sin aplicar",
-    "applyTitle": "¿Aplicar a tu carpeta?",
-    "applyHint": "Este parche se escribirá en tu carpeta. Si no se aplica limpiamente, no se cambia nada.",
-    "applyConfirm": "Aplicar"
+    "applyIncludesEarlier_other": "Aplicar incluye también {{count}} archivos anteriores aún sin aplicar"
   },
   "apply": {
     "title_one": "Aplicar {{count}} cambio a tu carpeta",

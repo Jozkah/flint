@@ -29,8 +29,7 @@
     "apiKeys": "API anahtarları",
     "fallbackSub": "{{count}} yedek anahtar",
     "noFallbackSub": "yedek anahtar yok",
-    "avgSpeed": "Ortalama hız",
-    "repliesSub": "{{count}} yanıt ölçüldü"
+    "avgSpeed": "Ortalama hız"
   },
   "loaded": {
     "title": "Şu an yüklü",

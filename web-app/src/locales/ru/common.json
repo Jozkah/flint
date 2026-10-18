@@ -2333,8 +2333,7 @@
       "failed": "Не пройдено",
       "cancelled": "Остановлено",
       "error": "Не удалось выполнить"
-    },
-    "steps": "Шаги (необязательно): open, click, type, expect, wait, screenshot — по одному в строке"
+    }
   },
   "jev": {
     "automationTitle": "Автоматический выбор",

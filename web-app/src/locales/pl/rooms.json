@@ -27,9 +27,7 @@
     "noParticipants": "Brak uczestników",
     "noPreview": "Otwórz pokój, aby zobaczyć dyskusję.",
     "tokens": "Tokeny: {{count}}",
-    "yours": "Twoje pokoje",
-    "participants": "Uczestnicy: {{count}}",
-    "turns": "Tury: {{count}}"
+    "yours": "Twoje pokoje"
   },
   "create": {
     "title": "Nowy pokój",
@@ -378,8 +376,7 @@
     "round": "Runda",
     "turn": "Tura",
     "of": "z",
-    "question": "Pytanie",
-    "draftHint": "Uczestnicy: {{count}} · {{mode}}"
+    "question": "Pytanie"
   },
   "usage": {
     "label": "Użycie",
@@ -438,8 +435,7 @@
     "turnsHint_many": "W {{count}} pokojach",
     "turnsHint_other": "W {{count}} pokoju",
     "models": "Biorące udział modele",
-    "modelsNone": "Brak uczestników",
-    "turnsHint": "W pokojach: {{count}}"
+    "modelsNone": "Brak uczestników"
   },
   "waiting": {
     "title": "Czeka na Ciebie",
@@ -551,10 +547,7 @@
     "applyIncludesEarlier_one": "Zastosuj obejmuje też {{count}} wcześniejszy plik, jeszcze niezastosowany",
     "applyIncludesEarlier_few": "Zastosuj obejmuje też {{count}} wcześniejsze pliki, jeszcze niezastosowane",
     "applyIncludesEarlier_many": "Zastosuj obejmuje też {{count}} wcześniejszych plików, jeszcze niezastosowanych",
-    "applyIncludesEarlier_other": "Zastosuj obejmuje też {{count}} wcześniejszego pliku, jeszcze niezastosowanego",
-    "applyTitle": "Zastosować do twojego folderu?",
-    "applyHint": "Ta łatka zostanie zapisana w twoim folderze. Jeśli nie da się jej czysto zastosować, nic się nie zmieni.",
-    "applyConfirm": "Zastosuj"
+    "applyIncludesEarlier_other": "Zastosuj obejmuje też {{count}} wcześniejszego pliku, jeszcze niezastosowanego"
   },
   "apply": {
     "title_one": "Zastosuj {{count}} zmianę w swoim folderze",

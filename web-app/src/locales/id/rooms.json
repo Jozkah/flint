@@ -21,9 +21,7 @@
     "noParticipants": "Belum ada peserta",
     "noPreview": "Buka ruang untuk melihat diskusi.",
     "tokens": "{{count}} token",
-    "yours": "Ruang Anda",
-    "participants": "{{count}} peserta",
-    "turns": "{{count}} giliran"
+    "yours": "Ruang Anda"
   },
   "create": {
     "title": "Ruang baru",
@@ -367,8 +365,7 @@
     "round": "Putaran",
     "turn": "Giliran",
     "of": "dari",
-    "question": "Pertanyaan",
-    "draftHint": "{{count}} peserta · {{mode}}"
+    "question": "Pertanyaan"
   },
   "usage": {
     "label": "Penggunaan",
@@ -424,8 +421,7 @@
     "turns": "Giliran minggu ini",
     "turnsHint_other": "Di {{count}} ruang",
     "models": "Model yang ikut serta",
-    "modelsNone": "Belum ada peserta",
-    "turnsHint": "Di {{count}} ruang"
+    "modelsNone": "Belum ada peserta"
   },
   "waiting": {
     "title": "Menunggu Anda",
@@ -531,10 +527,7 @@
     "scope": "Perubahan yang ditampilkan",
     "showAll": "Tampilkan semua berkas ({{count}})",
     "partial_other": "{{count}} file diterapkan",
-    "applyIncludesEarlier_other": "Terapkan juga mencakup {{count}} file sebelumnya yang belum diterapkan",
-    "applyTitle": "Terapkan ke folder Anda?",
-    "applyHint": "Patch ini akan ditulis ke folder Anda. Jika tidak bisa diterapkan dengan bersih, tidak ada yang berubah.",
-    "applyConfirm": "Terapkan"
+    "applyIncludesEarlier_other": "Terapkan juga mencakup {{count}} file sebelumnya yang belum diterapkan"
   },
   "apply": {
     "title_one": "Terapkan {{count}} perubahan ke folder Anda",

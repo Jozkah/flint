@@ -2336,8 +2336,7 @@
       "failed": "Failed",
       "cancelled": "Stopped",
       "error": "Could not run"
-    },
-    "steps": "Steps (optional): open, click, type, expect, wait, screenshot — one per line"
+    }
   },
   "jev": {
     "automationTitle": "Automatic choices",

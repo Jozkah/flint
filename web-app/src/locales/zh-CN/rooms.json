@@ -21,9 +21,7 @@
     "noParticipants": "还没有参与者",
     "noPreview": "打开房间以查看讨论。",
     "tokens": "{{count}} 个 token",
-    "yours": "你的房间",
-    "participants": "{{count}} 名参与者",
-    "turns": "{{count}} 轮"
+    "yours": "你的房间"
   },
   "create": {
     "title": "新建房间",
@@ -367,8 +365,7 @@
     "round": "轮次",
     "turn": "发言",
     "of": "/",
-    "question": "问题",
-    "draftHint": "{{count}} 名参与者 · {{mode}}"
+    "question": "问题"
   },
   "usage": {
     "label": "用量",
@@ -424,8 +421,7 @@
     "turns": "本周发言次数",
     "turnsHint_other": "共 {{count}} 个房间",
     "models": "参与的模型",
-    "modelsNone": "还没有参与者",
-    "turnsHint": "涉及 {{count}} 个房间"
+    "modelsNone": "还没有参与者"
   },
   "waiting": {
     "title": "等待你",
@@ -531,10 +527,7 @@
     "scope": "显示哪些更改",
     "showAll": "显示全部文件（{{count}}）",
     "partial_other": "已应用 {{count}} 个文件",
-    "applyIncludesEarlier_other": "应用还会包含 {{count}} 个之前尚未应用的文件",
-    "applyTitle": "应用到你的文件夹？",
-    "applyHint": "此补丁将写入你的文件夹。如果无法干净地应用，则不会更改任何内容。",
-    "applyConfirm": "应用"
+    "applyIncludesEarlier_other": "应用还会包含 {{count}} 个之前尚未应用的文件"
   },
   "apply": {
     "title_one": "将 {{count}} 项更改应用到你的文件夹",

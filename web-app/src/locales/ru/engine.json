@@ -31,8 +31,7 @@
     "apiKeys": "API-ключи",
     "fallbackSub": "Резервных ключей: {{count}}",
     "noFallbackSub": "нет резервного ключа",
-    "avgSpeed": "Средняя скорость",
-    "repliesSub": "Измерено ответов: {{count}}"
+    "avgSpeed": "Средняя скорость"
   },
   "loaded": {
     "title": "Загружено сейчас",

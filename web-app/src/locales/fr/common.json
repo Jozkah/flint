@@ -2281,8 +2281,7 @@
       "error": "Exécution impossible"
     },
     "consoleErrors_many": "{{count}} d'erreurs de console",
-    "blocked_many": "{{count}} de requêtes hors de l'origine de l'application bloquées",
-    "steps": "Étapes (facultatif) : open, click, type, expect, wait, screenshot — une par ligne"
+    "blocked_many": "{{count}} de requêtes hors de l'origine de l'application bloquées"
   },
   "jev": {
     "automationTitle": "Choix automatiques",

@@ -25,9 +25,7 @@
     "noParticipants": "Ancora nessun partecipante",
     "noPreview": "Apri la stanza per vedere la discussione.",
     "tokens": "{{count}} token",
-    "yours": "Le tue stanze",
-    "participants": "{{count}} partecipanti",
-    "turns": "{{count}} turni"
+    "yours": "Le tue stanze"
   },
   "create": {
     "title": "Nuova stanza",
@@ -373,8 +371,7 @@
     "round": "Giro",
     "turn": "Turno",
     "of": "di",
-    "question": "Domanda",
-    "draftHint": "{{count}} partecipanti · {{mode}}"
+    "question": "Domanda"
   },
   "usage": {
     "label": "Utilizzo",
@@ -432,8 +429,7 @@
     "turnsHint_many": "In {{count}} stanze",
     "turnsHint_other": "In {{count}} stanze",
     "models": "Modelli partecipanti",
-    "modelsNone": "Ancora nessun partecipante",
-    "turnsHint": "In {{count}} stanze"
+    "modelsNone": "Ancora nessun partecipante"
   },
   "waiting": {
     "title": "In attesa di te",
@@ -543,10 +539,7 @@
     "partial_other": "{{count}} file applicati",
     "applyIncludesEarlier_one": "Applica include anche {{count}} file precedente non ancora applicato",
     "applyIncludesEarlier_many": "Applica include anche {{count}} file precedenti non ancora applicati",
-    "applyIncludesEarlier_other": "Applica include anche {{count}} file precedenti non ancora applicati",
-    "applyTitle": "Applicare alla tua cartella?",
-    "applyHint": "Questa patch verrà scritta nella tua cartella. Se non si applica in modo pulito, non cambia nulla.",
-    "applyConfirm": "Applica"
+    "applyIncludesEarlier_other": "Applica include anche {{count}} file precedenti non ancora applicati"
   },
   "apply": {
     "title_one": "Applica {{count}} modifica alla tua cartella",

@@ -2248,8 +2248,7 @@
       "failed": "Başarısız",
       "cancelled": "Durduruldu",
       "error": "Çalıştırılamadı"
-    },
-    "steps": "Adımlar (isteğe bağlı): open, click, type, expect, wait, screenshot — satır başına bir tane"
+    }
   },
   "jev": {
     "automationTitle": "Otomatik seçimler",

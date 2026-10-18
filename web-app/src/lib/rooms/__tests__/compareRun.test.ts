@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { runRoom } from '../engine'
 import { createRoomController } from '../controller'
-import { compareGrid, compareHistory, missingQuestions } from '../compareGrid'
+import { compareGrid, compareHistory, missingQuestions, participantsMissingEarlier } from '../compareGrid'
 import { compareExport } from '../compareExport'
 import type { StreamReplyInput } from '../callError'
 import {
@@ -107,6 +107,79 @@ describe('compare one-by-one', () => {
     expect(room.status).toBe('awaiting-user')
   })
 
+  it('a new question after a roster change asks everyone, in roster order (R-044)', async () => {
+    const p = memoryPersistence()
+    const [alice, bob, carol] = three()
+    await seedRoom(p, makeRoom({ mode: 'compare', compareRun: 'one-by-one', participants: [alice, bob] }))
+    await seedMessages(p, 'room-1', [{ author: { kind: 'user' }, text: 'Q one' }])
+    await runRoom('room-1', engineDeps(p, scriptedStream((i) => ({ text: `${nameOf(i)} 1` })).fn), new AbortController().signal)
+    // Carol joins (the round Alice and Bob closed is now "incomplete"), then Q two.
+    const stored = p.rooms.get('room-1')!
+    p.rooms.set('room-1', { ...stored, participants: [...stored.participants, carol] })
+    await p.appendRoomRecord('room-1', { type: 'message', message: userMsg('q-two', 'Q two') })
+    const { fn, calls } = scriptedStream((input) => ({ text: `${nameOf(input)} 2` }))
+    let n = 0
+    const room = await runRoom('room-1', engineDeps(p, fn, { newId: () => `b-${++n}` }), new AbortController().signal)
+    expect(calls.map(nameOf)).toEqual(['Alice', 'Bob', 'Carol'])
+    const answeredTwo = speech(p)
+      .filter((m) => m.compare?.replyTo === 'q-two' && m.status === 'complete')
+      .map((m) => (m.author.kind === 'participant' ? m.author.participantId : ''))
+    expect(answeredTwo).toEqual(['p-a', 'p-b', 'p-c'])
+    expect(room.status).toBe('awaiting-user')
+    // Carol never saw Q one: her answer says it covers it too (R-043).
+    const two = speech(p).filter((m) => m.compare?.replyTo === 'q-two')
+    expect(two.find((m) => m.author.kind === 'participant' && m.author.participantId === 'p-c')!.compare!.catchUp).toEqual([
+      { id: expect.any(String), text: 'Q one' },
+    ])
+    expect(two.find((m) => m.author.kind === 'participant' && m.author.participantId === 'p-a')!.compare!.catchUp).toBeUndefined()
+  })
+
+  it('a participant switched back on answers the next question with the others, in order (R-044)', async () => {
+    const parts = three()
+    parts[0] = { ...parts[0], compareSkip: true }
+    const p = memoryPersistence()
+    await seedRoom(p, makeRoom({ mode: 'compare', compareRun: 'one-by-one', participants: parts }))
+    await seedMessages(p, 'room-1', [{ author: { kind: 'user' }, text: 'Q one' }])
+    await runRoom('room-1', engineDeps(p, scriptedStream((i) => ({ text: `${nameOf(i)} 1` })).fn), new AbortController().signal)
+    const stored = p.rooms.get('room-1')!
+    p.rooms.set('room-1', {
+      ...stored,
+      participants: stored.participants.map((x) => ({ ...x, compareSkip: undefined })),
+    })
+    await p.appendRoomRecord('room-1', { type: 'message', message: userMsg('q-two', 'Q two') })
+    const { fn, calls } = scriptedStream((input) => ({ text: `${nameOf(input)} 2` }))
+    await runRoom('room-1', engineDeps(p, fn), new AbortController().signal)
+    expect(calls.map(nameOf)).toEqual(['Alice', 'Bob', 'Carol'])
+  })
+
+  it('a room started with no question asks its objective, so the answers have a row', async () => {
+    const p = memoryPersistence()
+    await seedRoom(
+      p,
+      makeRoom({ mode: 'compare', compareRun: 'one-by-one', participants: three().slice(0, 2), objective: 'Name a prime.' })
+    )
+    const { fn } = scriptedStream((input) => ({ text: `${nameOf(input)} ok` }))
+    await runRoom('room-1', engineDeps(p, fn), new AbortController().signal)
+    const grid = compareGrid(messagesOf(p))
+    expect(grid.questions.map((q) => q.text)).toEqual(['Name a prime.'])
+    const q = grid.questions[0].id
+    expect(missingQuestions(grid, 'p-a')).toEqual([])
+    expect(grid.answers.get(q)!.filter((m) => m.status === 'complete')).toHaveLength(2)
+  })
+
+  it('a question written to one participant is answered by that one only', async () => {
+    const p = memoryPersistence()
+    await seedRoom(p, makeRoom({ mode: 'compare', compareRun: 'one-by-one', participants: three() }))
+    await p.appendRoomRecord('room-1', {
+      type: 'message',
+      message: { ...userMsg('q-bob', 'Q for Bob'), to: { kind: 'participant', participantId: 'p-b' } },
+    })
+    const { fn, calls } = scriptedStream((input) => ({ text: `${nameOf(input)} ok` }))
+    const room = await runRoom('room-1', engineDeps(p, fn), new AbortController().signal)
+    expect(calls.map(nameOf)).toEqual(['Bob'])
+    expect(room.status).toBe('awaiting-user')
+  })
+
   it('leaves out a participant switched off for the run', async () => {
     const parts = three()
     parts[1] = { ...parts[1], compareSkip: true }
@@ -195,6 +268,52 @@ describe('compare-run command', () => {
   })
 })
 
+describe('compare questions addressed to one participant', () => {
+  const toAlice = (id: string, text: string): RoomMessage => ({
+    ...userMsg(id, text),
+    to: { kind: 'participant', participantId: 'p-a' },
+  })
+  const answer = (id: string, pid: string, replyTo: string): RoomMessage => ({
+    ...userMsg(id, 'answer'),
+    kind: 'speech',
+    author: { kind: 'participant', participantId: pid, name: pid },
+    compare: { provider: 'x', model: 'y', replyTo },
+  })
+
+  it('is owed only by its addressee; room questions by everyone', () => {
+    const grid = compareGrid([toAlice('q1', 'one'), answer('a1', 'p-a', 'q1'), userMsg('q2', 'two')])
+    expect(missingQuestions(grid, 'p-b').map((q) => q.id)).toEqual(['q2'])
+    expect(missingQuestions(grid, 'p-a').map((q) => q.id)).toEqual(['q2'])
+    const room = makeRoom({ mode: 'compare', participants: three() })
+    expect(participantsMissingEarlier(room, grid)).toEqual([])
+    const unanswered = compareGrid([userMsg('q1', 'one'), userMsg('q2', 'two')])
+    expect(participantsMissingEarlier(room, unanswered).map((p) => p.id)).toEqual(['p-a', 'p-b', 'p-c'])
+  })
+
+  it('"missing" does not ask another participant a question put to one', async () => {
+    const p = memoryPersistence()
+    await seedRoom(p, makeRoom({ mode: 'compare', participants: three() }))
+    await p.appendRoomRecord('room-1', { type: 'message', message: toAlice('q1', 'Q for Alice') })
+    await p.appendRoomRecord('room-1', { type: 'message', message: answer('a1', 'p-a', 'q1') })
+    const { fn, calls } = scriptedStream((input) => ({ text: `${nameOf(input)} ok` }))
+    await runRoom('room-1', engineDeps(p, fn), new AbortController().signal, {
+      command: { kind: 'compare-run', participantIds: ['p-b'], scope: 'missing' },
+    })
+    expect(calls).toHaveLength(0)
+  })
+
+  it('"latest" for everyone asks only the addressee', async () => {
+    const p = memoryPersistence()
+    await seedRoom(p, makeRoom({ mode: 'compare', participants: three() }))
+    await p.appendRoomRecord('room-1', { type: 'message', message: toAlice('q1', 'Q for Alice') })
+    const { fn, calls } = scriptedStream((input) => ({ text: `${nameOf(input)} ok` }))
+    await runRoom('room-1', engineDeps(p, fn), new AbortController().signal, {
+      command: { kind: 'compare-run', participantIds: null, scope: 'latest' },
+    })
+    expect(calls.map(nameOf)).toEqual(['Alice'])
+  })
+})
+
 describe('compareHistory', () => {
   it('places a later answer next to its question', () => {
     const q1 = userMsg('q1', 'one')
@@ -233,8 +352,10 @@ describe('compareExport', () => {
     const cell = out.json.cells.find((c) => c.text === 'four again')!
     expect(cell).toMatchObject({ questionId: 'q1', outputTokens: 40, tokensPerSecond: 33.3, durationMs: 1200, model: 'model-1' })
     expect(out.markdown).toContain('| Question |')
-    expect(out.markdown).toContain('Alice · model-1 · 2026-01-01')
-    expect(out.markdown).toContain('Alice · model-1 · 2026-06-01')
+    // Re-runs name their time and run, so the headers differ (R-028).
+    expect(out.markdown).toContain('Alice · model-1 · 2026-01-01 00:00 (run 1)')
+    expect(out.markdown).toContain('Alice · model-1 · 2026-06-01 00:00 (run 2)')
+    expect(out.markdown).toContain('Bob · model-2 · 2026-01-01 |')
     expect(out.markdown).toContain('it is \\| four')
   })
 })

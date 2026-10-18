@@ -27,9 +27,7 @@
     "noParticipants": "Zatím žádní účastníci",
     "noPreview": "Otevřete místnost a uvidíte diskusi.",
     "tokens": "Tokenů: {{count}}",
-    "yours": "Vaše místnosti",
-    "participants": "Účastníků: {{count}}",
-    "turns": "Příspěvků: {{count}}"
+    "yours": "Vaše místnosti"
   },
   "create": {
     "title": "Nová místnost",
@@ -378,8 +376,7 @@
     "round": "Kolo",
     "turn": "Příspěvek",
     "of": "z",
-    "question": "Otázka",
-    "draftHint": "Účastníků: {{count}} · {{mode}}"
+    "question": "Otázka"
   },
   "usage": {
     "label": "Využití",
@@ -438,8 +435,7 @@
     "turnsHint_many": "V {{count}} místnosti",
     "turnsHint_other": "V {{count}} místnostech",
     "models": "Zúčastněné modely",
-    "modelsNone": "Zatím žádní účastníci",
-    "turnsHint": "Napříč místnostmi: {{count}}"
+    "modelsNone": "Zatím žádní účastníci"
   },
   "waiting": {
     "title": "Čeká na vás",
@@ -551,10 +547,7 @@
     "applyIncludesEarlier_one": "Použít zahrne i {{count}} dřívější soubor, který ještě nebyl použit",
     "applyIncludesEarlier_few": "Použít zahrne i {{count}} dřívější soubory, které ještě nebyly použity",
     "applyIncludesEarlier_many": "Použít zahrne i {{count}} dřívějšího souboru, který ještě nebyl použit",
-    "applyIncludesEarlier_other": "Použít zahrne i {{count}} dřívějších souborů, které ještě nebyly použity",
-    "applyTitle": "Použít na vaši složku?",
-    "applyHint": "Tato záplata se zapíše do vaší složky. Pokud nejde použít čistě, nic se nezmění.",
-    "applyConfirm": "Použít"
+    "applyIncludesEarlier_other": "Použít zahrne i {{count}} dřívějších souborů, které ještě nebyly použity"
   },
   "apply": {
     "title_one": "Použít {{count}} změnu ve vaší složce",

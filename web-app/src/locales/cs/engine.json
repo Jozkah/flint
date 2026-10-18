@@ -31,8 +31,7 @@
     "apiKeys": "Klíče API",
     "fallbackSub": "Záložních klíčů: {{count}}",
     "noFallbackSub": "žádný záložní klíč",
-    "avgSpeed": "Průměrná rychlost",
-    "repliesSub": "Změřeno odpovědí: {{count}}"
+    "avgSpeed": "Průměrná rychlost"
   },
   "loaded": {
     "title": "Právě načteno",

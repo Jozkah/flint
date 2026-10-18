@@ -2250,8 +2250,7 @@
       "failed": "Không đạt",
       "cancelled": "Đã dừng",
       "error": "Không thể chạy"
-    },
-    "steps": "Các bước (tùy chọn): open, click, type, expect, wait, screenshot — mỗi dòng một bước"
+    }
   },
   "jev": {
     "automationTitle": "Lựa chọn tự động",

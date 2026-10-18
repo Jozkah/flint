@@ -23,9 +23,7 @@
     "noParticipants": "No participants yet",
     "noPreview": "Open the room to see the discussion.",
     "tokens": "{{count}} tokens",
-    "yours": "Your rooms",
-    "participants": "{{count}} participants",
-    "turns": "{{count}} turns"
+    "yours": "Your rooms"
   },
   "create": {
     "title": "New room",
@@ -370,8 +368,7 @@
     "round": "Round",
     "turn": "Turn",
     "of": "of",
-    "question": "Question",
-    "draftHint": "{{count}} participants · {{mode}}"
+    "question": "Question"
   },
   "usage": {
     "label": "Usage",
@@ -428,8 +425,7 @@
     "turnsHint_one": "Across {{count}} room",
     "turnsHint_other": "Across {{count}} rooms",
     "models": "Models taking part",
-    "modelsNone": "No participants yet",
-    "turnsHint": "Across {{count}} rooms"
+    "modelsNone": "No participants yet"
   },
   "waiting": {
     "title": "Waiting for you",
@@ -537,10 +533,7 @@
     "partial_one": "Applied {{count}} file",
     "partial_other": "Applied {{count}} files",
     "applyIncludesEarlier_one": "Apply also includes {{count}} earlier file not applied yet",
-    "applyIncludesEarlier_other": "Apply also includes {{count}} earlier files not applied yet",
-    "applyTitle": "Apply to your folder?",
-    "applyHint": "This patch will be written into your folder. Nothing is applied if it does not apply cleanly.",
-    "applyConfirm": "Apply"
+    "applyIncludesEarlier_other": "Apply also includes {{count}} earlier files not applied yet"
   },
   "apply": {
     "title_one": "Apply {{count}} change to your folder",

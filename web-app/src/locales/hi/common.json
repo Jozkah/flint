@@ -2243,8 +2243,7 @@
       "failed": "विफल",
       "cancelled": "रोका गया",
       "error": "चल नहीं सका"
-    },
-    "steps": "चरण (वैकल्पिक): open, click, type, expect, wait, screenshot — प्रति पंक्ति एक"
+    }
   },
   "jev": {
     "automationTitle": "स्वचालित चुनाव",

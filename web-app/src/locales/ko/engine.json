@@ -28,8 +28,7 @@
     "apiKeys": "API 키",
     "fallbackSub": "대체 키 {{count}}개",
     "noFallbackSub": "대체 키 없음",
-    "avgSpeed": "평균 속도",
-    "repliesSub": "측정된 답변 {{count}}개"
+    "avgSpeed": "평균 속도"
   },
   "loaded": {
     "title": "현재 로드됨",

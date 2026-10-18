@@ -30,8 +30,7 @@
     "apiKeys": "Clés API",
     "fallbackSub": "{{count}} clés de secours",
     "noFallbackSub": "aucune clé de secours",
-    "avgSpeed": "Vitesse moyenne",
-    "repliesSub": "{{count}} réponses mesurées"
+    "avgSpeed": "Vitesse moyenne"
   },
   "loaded": {
     "title": "Chargés maintenant",
