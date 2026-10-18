@@ -359,6 +359,13 @@
     "showMore": "Tampilkan {{count}} lagi",
     "showFewer": "Tampilkan lebih sedikit"
   },
+  "coworkStrip": {
+    "label": "Status sesi",
+    "open": "Tampilkan bilah sesi",
+    "waiting": "Menunggu Anda: {{count}}",
+    "files": "File siap ditinjau: {{count}}",
+    "branch": "Cabang: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Tampilan Cowork",
     "content": "Konten",

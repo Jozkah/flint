@@ -363,6 +363,13 @@
     "showMore": "Mostra'n {{count}} més",
     "showFewer": "Mostra'n menys"
   },
+  "coworkStrip": {
+    "label": "Estat de la sessió",
+    "open": "Mostra les barres de la sessió",
+    "waiting": "T'espera: {{count}}",
+    "files": "Fitxers a punt per revisar: {{count}}",
+    "branch": "Branca: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Vista de Cowork",
     "content": "Contingut",

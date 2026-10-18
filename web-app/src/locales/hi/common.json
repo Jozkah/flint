@@ -361,6 +361,13 @@
     "showMore": "{{count}} और दिखाएँ",
     "showFewer": "कम दिखाएँ"
   },
+  "coworkStrip": {
+    "label": "सत्र की स्थिति",
+    "open": "सत्र की पट्टियाँ दिखाएँ",
+    "waiting": "आपका इंतज़ार: {{count}}",
+    "files": "समीक्षा के लिए तैयार फ़ाइलें: {{count}}",
+    "branch": "ब्रांच: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Cowork व्यू",
     "content": "सामग्री",

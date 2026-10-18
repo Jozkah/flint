@@ -361,6 +361,13 @@
     "showMore": "さらに {{count}} 件を表示",
     "showFewer": "表示を減らす"
   },
+  "coworkStrip": {
+    "label": "セッションの状態",
+    "open": "セッションのバーを表示",
+    "waiting": "あなたの対応待ち: {{count}}",
+    "files": "レビュー待ちのファイル: {{count}}",
+    "branch": "ブランチ: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Cowork 表示",
     "content": "コンテンツ",

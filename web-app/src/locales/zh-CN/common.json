@@ -361,6 +361,13 @@
     "showMore": "再显示 {{count}} 个",
     "showFewer": "显示更少"
   },
+  "coworkStrip": {
+    "label": "会话状态",
+    "open": "显示会话栏",
+    "waiting": "等待你处理：{{count}}",
+    "files": "待审查的文件：{{count}}",
+    "branch": "分支：{{branch}}"
+  },
   "coworkLayout": {
     "views": "Cowork 视图",
     "content": "内容",

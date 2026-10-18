@@ -361,6 +361,13 @@
     "showMore": "{{count}}개 더 보기",
     "showFewer": "간단히 보기"
   },
+  "coworkStrip": {
+    "label": "세션 상태",
+    "open": "세션 막대 보기",
+    "waiting": "응답 대기 중: {{count}}",
+    "files": "검토할 파일: {{count}}",
+    "branch": "브랜치: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Cowork 보기",
     "content": "콘텐츠",

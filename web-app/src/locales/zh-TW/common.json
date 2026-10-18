@@ -361,6 +361,13 @@
     "showMore": "再顯示 {{count}} 個",
     "showFewer": "顯示較少"
   },
+  "coworkStrip": {
+    "label": "工作階段狀態",
+    "open": "顯示工作階段列",
+    "waiting": "等待你處理：{{count}}",
+    "files": "待審查的檔案：{{count}}",
+    "branch": "分支：{{branch}}"
+  },
   "coworkLayout": {
     "views": "Cowork 檢視",
     "content": "內容",

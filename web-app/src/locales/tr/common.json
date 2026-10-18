@@ -361,6 +361,13 @@
     "showMore": "{{count}} tane daha göster",
     "showFewer": "Daha az göster"
   },
+  "coworkStrip": {
+    "label": "Oturum durumu",
+    "open": "Oturum çubuklarını göster",
+    "waiting": "Sizi bekliyor: {{count}}",
+    "files": "İncelemeye hazır dosyalar: {{count}}",
+    "branch": "Dal: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Cowork görünümü",
     "content": "İçerik",

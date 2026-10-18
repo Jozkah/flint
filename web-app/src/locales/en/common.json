@@ -400,6 +400,13 @@
     "showMore": "Show {{count}} more",
     "showFewer": "Show fewer"
   },
+  "coworkStrip": {
+    "label": "Session status",
+    "open": "Show the session's bars",
+    "waiting": "Waiting for you: {{count}}",
+    "files": "Files ready for review: {{count}}",
+    "branch": "Branch: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Cowork view",
     "content": "Content",

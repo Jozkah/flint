@@ -361,6 +361,13 @@
     "showMore": "Hiện thêm {{count}}",
     "showFewer": "Hiện ít hơn"
   },
+  "coworkStrip": {
+    "label": "Trạng thái phiên",
+    "open": "Hiện các thanh của phiên",
+    "waiting": "Đang chờ bạn: {{count}}",
+    "files": "Tệp sẵn sàng để xem lại: {{count}}",
+    "branch": "Nhánh: {{branch}}"
+  },
   "coworkLayout": {
     "views": "Chế độ xem Cowork",
     "content": "Nội dung",
