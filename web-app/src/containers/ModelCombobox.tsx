@@ -17,12 +17,14 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { POPUP_COLLISION_PADDING } from '@/components/ui/popup-edge'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
 const MENU_MAX_HEIGHT = 300
 const MENU_EXIT_MS = 120
 const ROW_ESTIMATE = 32
+const EDGE = POPUP_COLLISION_PADDING
 
 type DropdownPosition = {
   top: number
@@ -55,11 +57,17 @@ function useDropdownPosition(
       )
       const below = window.innerHeight - rect.bottom
       const flip = below < needed + 8 && rect.top > below
+      // Keep the menu off the window edges like the Radix popups.
+      const width = Math.min(rect.width, window.innerWidth - EDGE * 2)
+      const left = Math.max(
+        EDGE,
+        Math.min(rect.left, window.innerWidth - width - EDGE)
+      )
       setDropdownPosition({
         // Fixed positioning: a flipped menu hangs from the field's top edge.
         top: flip ? rect.top - 4 : rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
+        left,
+        width,
         side: flip ? 'top' : 'bottom',
       })
     }

@@ -171,7 +171,7 @@ export function CoworkStopMenu({
         align="end"
         side="top"
         sideOffset={6}
-        collisionPadding={8}
+        collisionPadding={12}
         className="w-64 p-1.5"
         role="menu"
         aria-label={t('common:stopMenu.trigger')}

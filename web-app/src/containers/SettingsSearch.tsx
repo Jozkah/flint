@@ -24,7 +24,7 @@ import {
 
 /** The results panel: at least as wide as the field, up to this. */
 /** Breathing room between the panel and the window edge. */
-const EDGE = 8
+const EDGE = 12
 
 /**
  * Mark every case-insensitive occurrence of the query's words in `text`.

@@ -4085,7 +4085,7 @@ const ChatInput = memo(function ChatInput({
                                   </span>
                                 </DropdownMenuSubTrigger>
                                 <DropdownMenuSubContent
-                                  collisionPadding={{ bottom: 16 }}
+                                  collisionPadding={{ top: 12, right: 12, bottom: 16, left: 12 }}
                                 >
                                   {THINKING_BUDGET_LEVELS.map((level) => {
                                     const approxTokens =
