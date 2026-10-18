@@ -26,6 +26,7 @@ import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useSplitViewOpen } from '@/hooks/useSplitPaneTitle'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { useHeldMailSummary } from '@/hooks/useHeldMail'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { getProviderTitle, cn } from '@/lib/utils'
 import { useTitlebarLayout } from '@/stores/titlebar-layout-store'
@@ -138,6 +139,10 @@ export function TopHeader() {
   const setTheme = useTheme((s) => s.setTheme)
   const runs = useCoworkRun((s) => Object.keys(s.runs ?? {}).length)
   const approvals = useToolApprovalRequests((s) => Object.keys(s.pending ?? {}).length)
+  // Mail from other sessions that waits for the user (wake-ups off, chain
+  // limit): announced here as well as on the session's row.
+  const heldMail = useHeldMailSummary()
+  const sessionTitles = useCoworkSessions((s) => s.sessions)
   const navigate = useNavigate()
   const activity = useUsageStats((s) => s.activity)
   const recent = activity.slice(0, 4)
@@ -259,12 +264,13 @@ export function TopHeader() {
               <span className="inline-flex origin-top group-hover/bell:[animation:ring_.6s_ease]">
                 <Icon name="bell" />
               </span>
-              {(approvals > 0 || runs > 0) && (
+              {(approvals > 0 || heldMail.length > 0 || runs > 0) && (
                 <span
                   aria-hidden
+                  data-testid="header-activity-dot"
                   className={cn(
                     'absolute top-1 right-1 size-1.5 rounded-full',
-                    approvals > 0 ? 'bg-warning' : 'bg-info'
+                    approvals > 0 || heldMail.length > 0 ? 'bg-warning' : 'bg-info'
                   )}
                 />
               )}
@@ -272,7 +278,7 @@ export function TopHeader() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel>{t('common:shell.notifications')}</DropdownMenuLabel>
-            {approvals === 0 && runs === 0 && recent.length === 0 ? (
+            {approvals === 0 && heldMail.length === 0 && runs === 0 && recent.length === 0 ? (
               <p className="px-2 py-3 text-xs text-muted-foreground">
                 {t('common:shell.nothingNeedsYou')}
               </p>
@@ -281,6 +287,22 @@ export function TopHeader() {
                 {approvals > 0 && (
                   <NotifRow icon="feed-alert" title={t('common:shell.approvalWaiting')} detail={t('common:shell.approvals', { count: approvals })} />
                 )}
+                {heldMail.map((h) => (
+                  <NotifRow
+                    key={`mail-${h.sessionId}`}
+                    icon="feed-alert"
+                    title={t('messaging:waitingNotice', { name: h.from })}
+                    detail={t('messaging:waitingIn', {
+                      count: h.count,
+                      session:
+                        sessionTitles.find((s) => s.id === h.sessionId)?.title ?? '',
+                    })}
+                    onSelect={() => {
+                      useCoworkSessions.getState().selectSession(h.sessionId)
+                      void navigate({ to: route.cowork })
+                    }}
+                  />
+                ))}
                 {runs > 0 && (
                   <NotifRow icon="feed-ticket" title={t('common:shell.runsTitle')} detail={t('common:shell.runs', { count: runs })} onSelect={() => navigate({ to: route.cowork })} />
                 )}
