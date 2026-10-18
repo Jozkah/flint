@@ -27,7 +27,15 @@
     for (var k in vars)
       if (Object.prototype.hasOwnProperty.call(vars, k))
         d.style.setProperty(k, vars[k])
-  if (b.fontSize) d.style.setProperty('--font-size-base', b.fontSize)
+  // The Linux desktop app applies the size as webview zoom once the app
+  // loads (lib/interfaceScale.ts); a larger rem here would flash first.
+  var ua = navigator.userAgent
+  var nativeZoom =
+    window.__TAURI_INTERNALS__ &&
+    /Linux/.test(ua) &&
+    !/Android|Chrome|Chromium|Edg\//.test(ua)
+  if (b.fontSize && !nativeZoom)
+    d.style.setProperty('--font-size-base', b.fontSize)
   if (b.reduceMotion) d.classList.add('reduce-motion')
   if (b.increaseContrast) d.classList.add('high-contrast')
 })()
