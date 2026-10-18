@@ -475,6 +475,7 @@ import { CoworkBundleImport } from '@/containers/CoworkBundleImport'
 import { CoworkEventExport } from '@/containers/CoworkEventExport'
 import { recordEvents } from '@/lib/eventLog'
 import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
+import { FolderTrustBanner } from '@/containers/FolderTrustBanner'
 import {
   beginTeamChild,
   settleTeamChild,
@@ -6196,6 +6197,7 @@ export function CoworkPage() {
                   </WidgetHostContext.Provider>
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />
+                  <FolderTrustBanner folder={folder} />
                   <CoworkChildApprovals sessionId={session?.id} />
                   <CoworkSubagentQuestions sessionId={session?.id} />
                   {/* Once the run has ended: while it goes, the header says

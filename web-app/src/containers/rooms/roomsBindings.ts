@@ -37,6 +37,8 @@ export type RoomsUiState = {
   room: Room | null
   journal: RoomJournalRecord[]
   liveTurn: LiveTurn | null
+  /** Every turn in flight in the open room (several at once in a compare room). */
+  liveTurns: LiveTurn[]
   /** The summaries list is being (re)loaded. */
   listLoading: boolean
   /** A room and its journal are being loaded. */
@@ -93,6 +95,7 @@ export const EMPTY_ROOMS_STATE: RoomsUiState = {
   room: null,
   journal: [],
   liveTurn: null,
+  liveTurns: [],
   listLoading: false,
   roomLoading: false,
   pendingAction: null,
@@ -158,6 +161,8 @@ export function normalizeError(err: unknown): RoomsUiError | null {
   return { message: String(err) }
 }
 
+const NO_LIVE_TURNS: LiveTurn[] = []
+
 /** Map the engine store's state onto the UI's. Must stay referentially stable. */
 function adaptState(s: Record<string, unknown>): RoomsUiState {
   const pending =
@@ -169,6 +174,7 @@ function adaptState(s: Record<string, unknown>): RoomsUiState {
     room: (s.room as Room | null) ?? null,
     journal: (s.journal as RoomJournalRecord[]) ?? [],
     liveTurn: (s.liveTurn as LiveTurn | null) ?? null,
+    liveTurns: (s.liveTurns as LiveTurn[] | undefined) ?? NO_LIVE_TURNS,
     listLoading: Boolean(s.loadingSummaries ?? s.listLoading ?? s.loadingList),
     roomLoading: Boolean(s.loadingRoom ?? s.roomLoading),
     pendingAction: pending || null,

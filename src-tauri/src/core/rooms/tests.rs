@@ -716,3 +716,22 @@ fn participant_reasoning_round_trips_and_is_optional() {
     // A participant left at the model default stores nothing at all.
     assert!(raw["participants"][1].get("reasoning").is_none());
 }
+
+#[test]
+fn compare_mode_round_trips_through_save_get_and_list() {
+    let (_dir, store) = new_store();
+    let mut json = room_json("r1");
+    json["mode"] = json!("compare");
+    let room = parse_room(json).expect("compare room parses");
+    assert_eq!(room.mode, SpeakingMode::Compare);
+    store.save(room, 5000).unwrap();
+
+    let loaded = store.get("r1").unwrap().room;
+    assert_eq!(loaded.mode, SpeakingMode::Compare);
+    let raw: Value =
+        serde_json::from_slice(&fs::read(store.root().join("r1").join(ROOM_FILE)).unwrap())
+            .unwrap();
+    assert_eq!(raw["mode"], json!("compare"));
+    let listed = serde_json::to_value(&store.list().unwrap()[0]).unwrap();
+    assert_eq!(listed["mode"], json!("compare"));
+}

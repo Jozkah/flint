@@ -528,8 +528,10 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // identical copies of that loop.
         // reqwest13 because rmcp 3.x's StreamableHttpClient is implemented for
         // reqwest 0.13; apply13 keeps Flint's custom-CA TLS trust (AH-190) on it.
+        // `[mcp] allow_hosts`: refuse a URL outside the list before connecting.
+        super::netguard::enforce_url(&url)?;
         let base = crate::core::net::tls::apply13(
-            reqwest13::Client::builder()
+            super::netguard::guard13(reqwest13::Client::builder())
                 .default_headers(header_map(&config_params.headers))
                 .connect_timeout(config_params.timeout.unwrap_or(Duration::MAX)),
         )
@@ -542,7 +544,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // own `Authorization` header, which the base client already sends.
         let authorized = oauth::authorized_client(&app_path, &name, &url, &config, base.clone())
             .await
-            .map_err(|detail| oauth::NEEDS_AUTH_PREFIX.to_string() + &detail.to_string())?;
+            .map_err(|detail| oauth::NEEDS_AUTH_PREFIX.to_string() + detail.to_string().as_str())?;
         let had_credentials = authorized.is_some();
 
         // rmcp 3.x dropped the SSE client transport (MCP deprecated HTTP+SSE for

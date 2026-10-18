@@ -129,6 +129,9 @@ export function nextSpeaker(input: {
   }
 
   switch (room.mode) {
+    // Compare rooms ask everyone at once (engine `compareRound`); order is the
+    // only sensible answer when a single next speaker is still asked for.
+    case 'compare':
     case 'round-robin': {
       const p = roundRobinNext(room, messages)
       return p

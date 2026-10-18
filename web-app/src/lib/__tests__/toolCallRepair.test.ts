@@ -175,3 +175,36 @@ describe('recoverToolArgs', () => {
     expect(recoverToolArgs([1, 2])).toBeUndefined()
   })
 })
+
+describe('spellings that change no content', () => {
+  it('accepts an object wrapped in a markdown fence, with or without a language tag', () => {
+    expect(recoverToolArgs('```json\n{"path":"a.rs","line":3}\n```')).toEqual({ path: 'a.rs', line: 3 })
+    expect(recoverToolArgs('```\n{"path":"a.rs"}\n```')).toEqual({ path: 'a.rs' })
+    expect(recoverToolArgs('```{"path":"a.rs"}```')).toEqual({ path: 'a.rs' })
+  })
+
+  it('accepts a comma before a closing brace or bracket', () => {
+    expect(recoverToolArgs('{"path":"a.rs","opts":[1,2,],}')).toEqual({ path: 'a.rs', opts: [1, 2] })
+  })
+
+  it("accepts Python's True, False and None", () => {
+    expect(recoverToolArgs('{"replace_all": True, "dry_run": False, "limit": None}')).toEqual({
+      replace_all: true,
+      dry_run: false,
+      limit: null,
+    })
+  })
+
+  it('leaves words and commas inside string values alone', () => {
+    expect(recoverToolArgs('{"content":"None, True, and a, } stay",}')).toEqual({
+      content: 'None, True, and a, } stay',
+    })
+  })
+
+  it('still refuses what would need a guess', () => {
+    expect(recoverToolArgs("{'path': 'a.rs'}")).toBeUndefined()
+    expect(recoverToolArgs('{path: "a.rs"}')).toBeUndefined()
+    expect(recoverToolArgs('```json\n{"path":"a.rs","co\n```')).toBeUndefined()
+    expect(recoverToolArgs('```\n[1,2,]\n```')).toBeUndefined()
+  })
+})

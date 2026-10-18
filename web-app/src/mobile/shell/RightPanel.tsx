@@ -138,6 +138,7 @@ function RoomPanel({ id, tab }: { id: string; tab: string }) {
               <option value="round-robin">{t('rooms.mode.roundRobin')}</option>
               <option value="user-selected">{t('rooms.mode.userSelected')}</option>
               <option value="moderator-selected">{t('rooms.mode.moderatorSelected')}</option>
+              <option value="compare">{t('rooms.mode.compare')}</option>
             </select>
           </label>
           {numberField(t('rightpanel.rounds'), l.maxRounds, 'maxRounds', 1, 50)}

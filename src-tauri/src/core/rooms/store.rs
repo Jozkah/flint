@@ -149,6 +149,8 @@ pub enum SpeakingMode {
     RoundRobin,
     UserSelected,
     ModeratorSelected,
+    /// Every participant answers each user message at once, on its own.
+    Compare,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -108,7 +108,13 @@ export type SummarizeFn = (input: {
 export type EngineUpdate =
   | { type: 'room'; room: Room }
   | { type: 'record'; roomId: string; record: RoomJournalRecord }
-  | { type: 'live'; roomId: string; live: LiveTurn | null }
+  | {
+      type: 'live'
+      roomId: string
+      live: LiveTurn | null
+      /** On a clear: the one turn that ended. Absent: every live turn of the room. */
+      turnId?: string
+    }
 
 export type EngineDeps = {
   persistence: RoomPersistence
@@ -255,6 +261,11 @@ class RoomRun {
   activeSince: number | null = null
   readonly errorStreaks = new Map<string, number>()
   readonly summaryCache = new Map<string, string>()
+  /**
+   * Compare rooms: one summary cache per participant. Each one's history holds
+   * only the user and itself, so a summary written for one never reaches another.
+   */
+  readonly compareSummaryCaches = new Map<string, Map<string, string>>()
   /** The live turn in flight, so compaction can flag itself on it. */
   private activeLive: LiveTurn | null = null
   /** Consecutive speech turns addressed to the user, to break a wait-loop. */
@@ -393,6 +404,9 @@ class RoomRun {
    * covers exactly that leading part.
    */
   seedSummaryCache() {
+    // A compare room's dividers summarise one participant's own history; the
+    // shared cache would hand it to the others.
+    if (this.room.mode === 'compare') return
     const projectable = this.messages.filter(isProjectable)
     for (const m of this.messages) {
       const c = m.compaction
@@ -401,6 +415,18 @@ class RoomRun {
       const at = projectable[Math.min(c.summarizedCount, projectable.length) - 1]
       if (at && !this.summaryCache.has(at.id)) this.summaryCache.set(at.id, c.summary)
     }
+  }
+
+  /** The summary cache a speaker's prompts read and fill. */
+  summaryCacheFor(speaker: SpeakerIdentity): Map<string, string> {
+    if (this.room.mode !== 'compare' || speaker.kind !== 'participant') return this.summaryCache
+    const id = speaker.participant.id
+    let cache = this.compareSummaryCaches.get(id)
+    if (!cache) {
+      cache = new Map()
+      this.compareSummaryCaches.set(id, cache)
+    }
+    return cache
   }
 
   /** How much the next tool turn of this participant is expected to add. */
@@ -496,7 +522,9 @@ class RoomRun {
   async summarizeOlder(
     older: RoomMessage[],
     speakerModel: RoomModelRef,
-    hint?: SummarizeHint
+    hint?: SummarizeHint,
+    /** The turn being compacted for; defaults to the one in flight. */
+    forLive: LiveTurn | null = this.activeLive
   ): Promise<string | null> {
     if (this.calls >= HARD_CALL_CEILING) return null
     // The moderator writes summaries when it can; one that is unavailable would
@@ -509,11 +537,11 @@ class RoomRun {
         : speakerModel
     // Tell the UI this turn is compacting, so a "Compacting earlier messages…"
     // note shows instead of a silent pause while the summary is written.
-    if (this.activeLive) {
+    if (forLive) {
       this.emit({
         type: 'live',
         roomId: this.roomId,
-        live: { ...this.activeLive, text: '', compacting: true },
+        live: { ...forLive, text: '', compacting: true },
       })
     }
     const wanted = Math.min(
@@ -602,7 +630,9 @@ class RoomRun {
     instruction: string | null,
     shrink: boolean,
     /** Set when the speaker runs tools: its request grows past the prompt. */
-    tools: { id: string; access: ToolAccess } | null = null
+    tools: { id: string; access: ToolAccess } | null = null,
+    /** The turn this prompt is for, when several run at once (compare). */
+    live: LiveTurn | null = null
   ): Promise<BuiltPrompt> {
     const compaction = this.deps.compaction?.(model) ?? { enabled: true }
     const window = this.contextWindow(model)
@@ -620,9 +650,9 @@ class RoomRun {
       // Auto Compact off: older history is left out rather than summarized.
       ...(compaction.enabled
         ? {
-            summaryCache: this.summaryCache,
+            summaryCache: this.summaryCacheFor(speaker),
             summarize: (older: RoomMessage[], hint?: SummarizeHint) =>
-              this.summarizeOlder(older, model, hint),
+              this.summarizeOlder(older, model, hint, live ?? this.activeLive),
           }
         : {}),
     })
@@ -726,7 +756,7 @@ class RoomRun {
           ? { id: args.participant.id, access: args.participant.toolAccess }
           : null
       let instruction = args.instruction
-      let built = await this.prompt(args.speaker, args.model, instruction, shrink, toolsInfo)
+      let built = await this.prompt(args.speaker, args.model, instruction, shrink, toolsInfo, live)
       let completed: { raw: string; message: RoomMessage } | null = null
 
       while (!completed) {
@@ -852,7 +882,7 @@ class RoomRun {
               instruction = `${instruction ? `${instruction}
 ` : ''}Earlier in this turn you already ran tools (${ran}); their output was dropped to fit the context window. Do not repeat anything that changed files or state; read again only what you still need.`
             }
-            built = await this.prompt(args.speaker, args.model, instruction, true, toolsInfo)
+            built = await this.prompt(args.speaker, args.model, instruction, true, toolsInfo, live)
             continue
           }
 
@@ -947,7 +977,7 @@ class RoomRun {
         throw failure
       }
     } finally {
-      this.emit({ type: 'live', roomId: this.roomId, live: null })
+      this.emit({ type: 'live', roomId: this.roomId, live: null, turnId })
     }
   }
 
@@ -1037,6 +1067,7 @@ class RoomRun {
     this.room = clearSuspensions(this.room)
     if (!(await this.preflight(2))) return
     await this.save({ status: 'running', stopReason: null })
+    if (this.room.mode === 'compare') return this.compareRound()
 
     for (;;) {
       this.checkAbort()
@@ -1168,6 +1199,49 @@ class RoomRun {
         return
       }
     }
+  }
+
+  /**
+   * Compare mode: every active participant answers at once, each from its own
+   * context (the user and itself, see `projectHistory`), then the room waits
+   * for the user's next message. A round cut short (pause, restart) is
+   * finished by the participants that have not answered yet.
+   */
+  async compareRound() {
+    this.checkAbort()
+    await this.drainUserMessages()
+    const limit = this.breach(true)
+    if (limit) return this.stopForLimit(limit)
+
+    this.room = beginSpeakingTurn({ ...this.room, nextSpeakerId: null })
+    const speakers = activeParticipants(this.room).filter(
+      (p) => !this.room.spokenThisRound.includes(p.id)
+    )
+    const outcomes = await Promise.allSettled(
+      speakers.map((p) => this.participantTurn(p, 'speech', null))
+    )
+
+    let aborted = false
+    let failure: unknown = null
+    outcomes.forEach((o, i) => {
+      if (o.status === 'rejected') {
+        if (o.reason instanceof RunAborted || isAbortLike(o.reason, this.signal)) aborted = true
+        else failure ??= o.reason
+        return
+      }
+      this.room = markSpoken(this.room, speakers[i].id)
+      if (o.value.kind === 'complete') {
+        this.room = {
+          ...this.room,
+          usage: { ...this.room.usage, turns: this.room.usage.turns + 1 },
+        }
+      }
+    })
+    if (failure) throw failure
+    if (aborted) throw new RunAborted()
+    await this.save()
+    if (!(await this.ensureEnough(2))) return
+    await this.save({ status: 'awaiting-user', nextSpeakerId: null })
   }
 
   // ---- closing -------------------------------------------------------------

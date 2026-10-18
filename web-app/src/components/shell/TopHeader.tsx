@@ -13,6 +13,7 @@ import { useUsageStats, type ActivityKind } from '@/stores/usage-stats-store'
 import { useShellNav } from '@/components/shell/nav-kit'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
 import { HeaderLiveChips } from '@/components/shell/HeaderLiveChips'
+import { useLeaveGuard } from '@/hooks/useLeaveGuard'
 import { crumbForPath } from '@/lib/breadcrumb'
 import { route } from '@/constants/routes'
 import { useTheme } from '@/hooks/useTheme'
@@ -107,6 +108,7 @@ function NotifRow({
  * controls.
  */
 export function TopHeader() {
+  useLeaveGuard()
   const { t } = useTranslation()
   const { pathname } = useLocation()
   const { open, toggle, isMobile, setOpenMobile } = useShellNav()

@@ -110,7 +110,34 @@ function roleSuffix(role: string): string {
   return role.trim() ? ` (${role.trim()})` : ''
 }
 
+/**
+ * A compare room's participant prompt: one of several models answering the
+ * user on its own. No roster, no addressing and no conclude signal: there is
+ * no discussion to take part in.
+ */
+function compareSystemPrompt(room: Room, participant: Participant): string {
+  const lines: string[] = [
+    `You are ${participant.name}${roleSuffix(participant.role)}, one of several assistants answering the user's messages independently.`,
+    ...participantPersona(participant),
+    `Objective: ${room.objective || room.title || '(none given)'}`,
+    "Every assistant gets the same messages at the same time; you do not see the others' answers and they do not see yours. " +
+      'Answer the user directly and completely, as you would in a one-to-one chat.',
+    participant.toolAccess === 'none'
+      ? 'You have no tools here. Do not attempt tool calls or emit tool, command, or ```bash``` blocks -- they do nothing here. Reason only from the conversation and your own knowledge, and if a step would need a tool you do not have, say so plainly.'
+      : toolGuidance(room, participant.toolAccess),
+    replyLanguageLine() ||
+      "Write in the language of the objective and of the user's messages, whatever language a file or tool result is in.",
+    'Start your message with the text itself, never with a bracketed header; the room adds those.',
+    FRAMING_NOTICE,
+    UNTRUSTED_NOTICE,
+  ]
+  return lines.join('\n')
+}
+
 export function buildSystemPrompt(room: Room, speaker: SpeakerIdentity): string {
+  if (room.mode === 'compare' && speaker.kind === 'participant') {
+    return compareSystemPrompt(room, speaker.participant)
+  }
   const others = room.participants
     .filter((p) => !p.removed)
     .filter((p) => speaker.kind !== 'participant' || p.id !== speaker.participant.id)
@@ -257,7 +284,13 @@ export function isProjectable(m: RoomMessage): boolean {
   return m.text.trim() !== ''
 }
 
-export type HistoryEntry = { source: RoomMessage; message: PromptMessage; tokens: number }
+/** Whether a compare-room participant may see `m`: the user's, or its own. */
+export function visibleInCompare(m: RoomMessage, participantId: string): boolean {
+  if (m.author.kind === 'user') return true
+  return m.author.kind === 'participant' && m.author.participantId === participantId
+}
+
+export type HistoryEntry ={ source: RoomMessage; message: PromptMessage; tokens: number }
 
 export function projectHistory(
   room: Room,
@@ -265,8 +298,12 @@ export function projectHistory(
   speaker: SpeakerIdentity
 ): HistoryEntry[] {
   const out: HistoryEntry[] = []
+  // In a compare room a participant sees the user and itself only: what the
+  // other models (or a moderator) said is never part of its context.
+  const isolated = room.mode === 'compare' && speaker.kind === 'participant'
   for (const m of messages) {
     if (!isProjectable(m)) continue
+    if (isolated && !visibleInCompare(m, speaker.participant.id)) continue
     const own =
       speaker.kind === 'participant' &&
       m.author.kind === 'participant' &&

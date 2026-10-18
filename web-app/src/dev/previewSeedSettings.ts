@@ -213,6 +213,11 @@ function answers() {
       createdAt: sec(now - 12 * MIN),
     },
   ])
+  // Answering the 'Remember this?' card: remember returns the saved memory,
+  // discard returns nothing, as the real command does.
+  answer(`${at}memory_proposal_resolve`, (a) =>
+    a.approve ? memory('m_new', 'acme-weather keys cached forecasts by UTC date.', 'agent', 0, 0) : null
+  )
   answer(`${at}permission_audit_recent`, () =>
     [
       ['bash', 'Once', 'allow', 3],

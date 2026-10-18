@@ -20,6 +20,10 @@ pub struct NvidiaInfo {
     /// A backend built for a newer CUDA than this will not start.
     #[serde(default)]
     pub cuda_driver_version: Option<String>,
+    /// "turing", "ampere", ... derived from `compute_capability`; `None` when
+    /// the capability is not in the table.
+    #[serde(default)]
+    pub architecture: Option<String>,
 }
 
 /// NVML packs the CUDA driver version as `major * 1000 + minor * 10`.
@@ -264,6 +268,11 @@ fn create_gpu_info(
             index,
             compute_capability: format!("{}.{}", compute_capability.major, compute_capability.minor),
             cuda_driver_version,
+            architecture: super::cuda_arch::architecture_name((
+                compute_capability.major as u32,
+                compute_capability.minor as u32,
+            ))
+            .map(str::to_string),
         }),
         vulkan_info: None,
     })

@@ -1937,7 +1937,9 @@ pub async fn mailbox_take_for_delivery(
     data_folder: String,
     session_id: String,
 ) -> Result<Vec<MailEnvelope>, MailboxError> {
-    Mailbox::open(Path::new(&data_folder)).take_for_delivery(&session_id)
+    Mailbox::open(Path::new(&data_folder))
+        .take_for_delivery(&session_id)
+        .map(|all| all.into_iter().map(MailEnvelope::screened).collect())
 }
 
 /// Queued and delivered (unread) envelopes, without changing their state.
@@ -1946,7 +1948,9 @@ pub async fn mailbox_pending(
     data_folder: String,
     session_id: String,
 ) -> Result<Vec<MailEnvelope>, MailboxError> {
-    Mailbox::open(Path::new(&data_folder)).pending(&session_id)
+    Mailbox::open(Path::new(&data_folder))
+        .pending(&session_id)
+        .map(|all| all.into_iter().map(MailEnvelope::screened).collect())
 }
 
 /// Mark envelopes read. Returns how many changed.

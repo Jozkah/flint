@@ -170,6 +170,7 @@ pub(crate) fn dispatch(
         .project_root
         .as_ref()
         .ok_or_else(|| SubagentError::Upstream("subagents require an active project".to_string()))?;
+    sub::check_project_spawn_allowed(project_root, &req.subagent_name)?;
     let session = admissible(&req, project_root, parent_args.session_id.as_deref())?;
     let registry = sub::SubagentRegistry::load(project_root);
     let resolved = sub::resolve_dispatch(&registry, &req, &parent_args.permissions)?;
@@ -309,11 +310,15 @@ pub async fn await_child(
         };
         match record.state {
             JobState::Running => {}
+            // The child's words re-enter the parent's context: what imitates
+            // the harness or the chat protocol is neutralized on the way.
             JobState::Completed => {
-                return tauri_plugin_agent_tools::worker::output(data_folder, owner, run_id, 256 * 1024);
+                return tauri_plugin_agent_tools::worker::output(data_folder, owner, run_id, 256 * 1024)
+                    .map(|out| tauri_plugin_agent_tools::control_tags::screen(&out));
             }
             other => {
                 let tail = tauri_plugin_agent_tools::worker::output(data_folder, owner, run_id, 4 * 1024).unwrap_or_default();
+                let tail = tauri_plugin_agent_tools::control_tags::neutralize(&tail).0;
                 return Err(HarnessError::new(
                     ErrorKind::ChildFailed,
                     format!("the durable subagent '{run_id}' ended {}{}", state_tag(other), if tail.trim().is_empty() { String::new() } else { format!(": {}", tail.trim()) }),

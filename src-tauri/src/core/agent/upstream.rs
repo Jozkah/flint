@@ -301,7 +301,88 @@ fn recover_args_str(t: &str) -> Option<(Value, bool)> {
             return Some((v, true));
         }
     }
+    // Spellings small models use that change no content: a markdown fence
+    // around the object, a comma before a closing brace, Python's
+    // True/False/None. Never a repair that would have to guess a value, so
+    // truncated text, single-quoted strings and unquoted keys still refuse.
+    let mut candidate = strip_code_fence(t).unwrap_or(t).to_string();
+    if let Some(loosened) = loosen_json_literals(&candidate) {
+        candidate = loosened;
+    }
+    if candidate != t {
+        let escaped = sanitize_invalid_json_escapes(&candidate);
+        for text in [candidate.as_str(), escaped.as_str()] {
+            if let Ok(v @ Value::Object(_)) = serde_json::from_str::<Value>(text) {
+                return Some((v, true));
+            }
+        }
+    }
     None
+}
+
+/// The text inside a markdown code fence that wraps all of `t` (```json ... ```),
+/// without the fence and its optional language tag.
+fn strip_code_fence(t: &str) -> Option<&str> {
+    let body = t.trim().strip_prefix("```")?.strip_suffix("```")?;
+    let body = match body.split_once('\n') {
+        Some((tag, rest)) if tag.trim().chars().all(|c| c.is_ascii_alphanumeric()) => rest,
+        _ => body,
+    };
+    Some(body.trim())
+}
+
+/// Outside JSON strings: drop a comma that directly precedes `}` or `]`, and
+/// spell Python's `True`/`False`/`None` as JSON. `None` when nothing changed.
+fn loosen_json_literals(t: &str) -> Option<String> {
+    let chars: Vec<char> = t.chars().collect();
+    let mut out = String::with_capacity(t.len());
+    let (mut i, mut in_str, mut esc, mut changed) = (0, false, false, false);
+    while i < chars.len() {
+        let c = chars[i];
+        if in_str {
+            out.push(c);
+            if esc {
+                esc = false;
+            } else if c == '\\' {
+                esc = true;
+            } else if c == '"' {
+                in_str = false;
+            }
+            i += 1;
+            continue;
+        }
+        if c == '"' {
+            in_str = true;
+        } else if c == ',' {
+            let mut j = i + 1;
+            while j < chars.len() && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j < chars.len() && (chars[j] == '}' || chars[j] == ']') {
+                changed = true;
+                i += 1;
+                continue;
+            }
+        } else if c.is_ascii_alphabetic() {
+            let mut j = i;
+            while j < chars.len() && (chars[j].is_ascii_alphanumeric() || chars[j] == '_') {
+                j += 1;
+            }
+            let word: String = chars[i..j].iter().collect();
+            match word.as_str() {
+                "True" => out.push_str("true"),
+                "False" => out.push_str("false"),
+                "None" => out.push_str("null"),
+                _ => out.push_str(&word),
+            }
+            changed |= matches!(word.as_str(), "True" | "False" | "None");
+            i = j;
+            continue;
+        }
+        out.push(c);
+        i += 1;
+    }
+    changed.then_some(out)
 }
 
 /// The first brace-balanced `{...}` substring of `s`, quote- and
@@ -1090,7 +1171,7 @@ fn reuse_last_good_listings(
 /// a key and are treated as colliding, so the array never advertises two
 /// functions a strict provider would read as the same name.
 fn sanitize_function_name(name: &str) -> String {
-    let mut out: String = name
+    let out: String = name
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
@@ -1100,11 +1181,8 @@ fn sanitize_function_name(name: &str) -> String {
             }
         })
         .collect();
-    // Every retained byte is ASCII, so a byte truncation is a char truncation.
-    if out.len() > 64 {
-        out.truncate(64);
-    }
-    out
+    // Over-long names are cut with a stable hash tail, never plainly truncated.
+    super::tool_name_cap::cap_function_name(&out)
 }
 
 /// Advertised `function.name` for each entry of the already-sorted `flattened`
@@ -1126,18 +1204,28 @@ fn disambiguate_tool_names(flattened: &[(String, String, serde_json::Value)]) ->
     let colliding =
         |tool_name: &str| freq.get(&sanitize_function_name(tool_name)).copied() != Some(1);
 
-    // Reserve every non-colliding tool's raw name up front.
+    // A name that is unique keeps its raw form, unless it is over the 64-char
+    // provider limit: then it is advertised in its capped form.
+    let unique_name = |tool_name: &str| -> String {
+        if tool_name.len() > super::tool_name_cap::MAX_FUNCTION_NAME {
+            sanitize_function_name(tool_name)
+        } else {
+            tool_name.to_string()
+        }
+    };
+
+    // Reserve every non-colliding tool's advertised name up front.
     let mut used: std::collections::HashSet<String> = flattened
         .iter()
         .filter(|(_, tool_name, _)| !colliding(tool_name))
-        .map(|(_, tool_name, _)| tool_name.clone())
+        .map(|(_, tool_name, _)| unique_name(tool_name))
         .collect();
 
     flattened
         .iter()
         .map(|(server_name, tool_name, _)| {
             if !colliding(tool_name) {
-                return tool_name.clone();
+                return unique_name(tool_name);
             }
             let base = sanitize_function_name(&format!("{server_name}_{tool_name}"));
             let mut candidate = base.clone();
@@ -1160,7 +1248,7 @@ fn disambiguate_tool_names(flattened: &[(String, String, serde_json::Value)]) ->
 /// entry only for tools that were renamed to resolve a collision. Dispatch reads
 /// `tool_call_names` so a renamed tool still calls the server under the name the
 /// server knows; both maps are kept consistent with the sorted array.
-fn assemble_tool_array(
+pub(crate) fn assemble_tool_array(
     listings: Vec<(String, Vec<RenderedTool>)>,
 ) -> (
     Vec<serde_json::Value>,
@@ -2227,6 +2315,31 @@ fn decode_converted_response(
     Ok(completion)
 }
 
+/// Rewrite repeated tool-call ids so every call in one assistant turn is
+/// addressable on its own. Servers that restart their counter per chunk (or
+/// echo one id for parallel calls) otherwise make the second result overwrite or
+/// orphan against the first. The first occurrence keeps its id; later ones get
+/// `_2`, `_3`, ... appended.
+pub(crate) fn uniquify_tool_call_ids(calls: &mut [serde_json::Value]) {
+    let mut seen: std::collections::HashSet<String> = Default::default();
+    for call in calls.iter_mut() {
+        let id = call
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let mut candidate = id.clone();
+        let mut n = 2;
+        while !seen.insert(candidate.clone()) {
+            candidate = format!("{id}_{n}");
+            n += 1;
+        }
+        if candidate != id {
+            call["id"] = serde_json::Value::String(candidate);
+        }
+    }
+}
+
 #[derive(Default)]
 struct ToolCallAccum {
     id: String,
@@ -2278,9 +2391,14 @@ impl SseAccumulator {
         if data == "[DONE]" {
             return;
         }
-        let json: serde_json::Value = match serde_json::from_str(data) {
-            Ok(v) => v,
-            Err(_) => return,
+        // First JSON value only: a server that appends stray bytes to a data
+        // line (`{...}garbage`) must not cost the whole chunk.
+        let json: serde_json::Value = match serde_json::Deserializer::from_str(data)
+            .into_iter::<serde_json::Value>()
+            .next()
+        {
+            Some(Ok(v)) => v,
+            _ => return,
         };
 
         if let Some(err) = json.get("error").filter(|e| !e.is_null()) {
@@ -2324,7 +2442,13 @@ impl SseAccumulator {
         // consumers get the boundary for free instead of re-parsing synthetic
         // `<think>` tags. Providers that inline tags in `content` still flow
         // through `Token`; consumers keep the tag-stripping fallback for them.
-        if let Some(text) = delta.get("reasoning_content").and_then(|v| v.as_str()) {
+        // Ollama / OpenRouter-style servers name the same field `reasoning`.
+        if let Some(text) = delta
+            .get("reasoning_content")
+            .and_then(|v| v.as_str())
+            .filter(|t| !t.is_empty())
+            .or_else(|| delta.get("reasoning").and_then(|v| v.as_str()))
+        {
             if !text.is_empty() {
                 self.reasoning.push_str(text);
                 let _ = events.send(StreamEvent::Reasoning {
@@ -2343,8 +2467,14 @@ impl SseAccumulator {
         }
 
         if let Some(tcs) = delta.get("tool_calls").and_then(|v| v.as_array()) {
-            for tc in tcs {
-                let idx = tc.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            for (position, tc) in tcs.iter().enumerate() {
+                // A missing `index` falls back to the entry's position in the
+                // array, so a batch without indexes is not merged into one call.
+                let idx = tc
+                    .get("index")
+                    .and_then(|v| v.as_u64())
+                    .map(|i| i as usize)
+                    .unwrap_or(position);
                 while self.tool_calls.len() <= idx {
                     self.tool_calls.push(ToolCallAccum::default());
                 }
@@ -2362,10 +2492,15 @@ impl SseAccumulator {
                 {
                     slot.name = name.to_string();
                 }
-                let arg_delta = func
-                    .and_then(|f| f.get("arguments"))
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty());
+                // `arguments` is a JSON string on the wire, but some servers send
+                // the parsed object; keep it as its JSON text instead of "".
+                let arg_text: Option<String> =
+                    match func.and_then(|f| f.get("arguments")) {
+                        Some(serde_json::Value::String(s)) => Some(s.clone()),
+                        Some(serde_json::Value::Null) | None => None,
+                        Some(other) => Some(other.to_string()),
+                    };
+                let arg_delta = arg_text.as_deref().filter(|s| !s.is_empty());
                 if let Some(arg) = arg_delta {
                     slot.arguments.push_str(arg);
                 }
@@ -2408,18 +2543,27 @@ impl SseAccumulator {
     }
 
     fn into_completion(self) -> serde_json::Value {
-        let tool_calls: Vec<serde_json::Value> = self
+        let mut tool_calls: Vec<serde_json::Value> = self
             .tool_calls
             .into_iter()
-            .filter(|t| !t.id.is_empty() || !t.name.is_empty() || !t.arguments.is_empty())
-            .map(|t| {
+            .enumerate()
+            .filter(|(_, t)| !t.id.is_empty() || !t.name.is_empty() || !t.arguments.is_empty())
+            .map(|(idx, t)| {
+                // A server that omits the id still needs one so the tool result
+                // can be paired with the call.
+                let id = if t.id.is_empty() {
+                    format!("call_{idx}")
+                } else {
+                    t.id
+                };
                 serde_json::json!({
-                    "id": t.id,
+                    "id": id,
                     "type": "function",
                     "function": { "name": t.name, "arguments": t.arguments }
                 })
             })
             .collect();
+        uniquify_tool_call_ids(&mut tool_calls);
 
         let mut message = serde_json::Map::new();
         message.insert("role".to_string(), serde_json::json!("assistant"));
@@ -2499,6 +2643,10 @@ fn flush_trailing_line(
         acc.ingest_line(buf, events);
     }
 }
+
+#[cfg(test)]
+#[path = "provider_quirks.rs"]
+mod provider_quirks;
 
 #[cfg(test)]
 mod tests {
@@ -3813,6 +3961,47 @@ mod tests {
         assert!(recover_tool_call_args(&call_with_args_string("[1,2,3]")).is_none());
         assert!(recover_tool_call_args(&call_with_args_string("42")).is_none());
         assert!(recover_tool_call_args(&call_with_args_string("\"{\\\"path\\\":\\\"a.rs\\\"}\"")).is_none());
+    }
+
+    #[test]
+    fn recover_args_accepts_spellings_that_change_no_content() {
+        let fenced = "```json\n{\"path\":\"a.rs\",\"line\":3}\n```";
+        assert_eq!(
+            recover_tool_call_args(&call_with_args_string(fenced)).unwrap(),
+            json!({ "path": "a.rs", "line": 3 })
+        );
+        let trailing = "{\"path\":\"a.rs\",\"opts\":[1,2,],}";
+        assert_eq!(
+            recover_tool_call_args(&call_with_args_string(trailing)).unwrap(),
+            json!({ "path": "a.rs", "opts": [1, 2] })
+        );
+        let python = "{\"replace_all\": True, \"dry_run\": False, \"limit\": None}";
+        assert_eq!(
+            recover_tool_call_args(&call_with_args_string(python)).unwrap(),
+            json!({ "replace_all": true, "dry_run": false, "limit": null })
+        );
+        // Words inside a string value are left alone.
+        let inside = "{\"content\":\"None, True, and a, } stay\",}";
+        assert_eq!(
+            recover_tool_call_args(&call_with_args_string(inside)).unwrap(),
+            json!({ "content": "None, True, and a, } stay" })
+        );
+        // The repaired call is rewritten so the history resends clean JSON.
+        let fixed = normalize_tool_call_args(&call_with_args_string(trailing)).unwrap();
+        assert_eq!(
+            fixed["function"]["arguments"].as_str().unwrap(),
+            "{\"path\":\"a.rs\",\"opts\":[1,2]}"
+        );
+    }
+
+    #[test]
+    fn recover_args_still_refuses_what_would_need_a_guess() {
+        // Single-quoted strings, unquoted keys and truncation all still refuse.
+        assert!(recover_tool_call_args(&call_with_args_string("{'path': 'a.rs'}")).is_none());
+        assert!(recover_tool_call_args(&call_with_args_string("{path: \"a.rs\"}")).is_none());
+        assert!(recover_tool_call_args(&call_with_args_string("```json\n{\"path\":\"a.rs\",\"co\n```")).is_none());
+        // A fence around something that is not an object still refuses.
+        assert!(recover_tool_call_args(&call_with_args_string("```\n[1,2,]\n```")).is_none());
     }
 
     #[test]

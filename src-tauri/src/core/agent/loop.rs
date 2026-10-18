@@ -23,6 +23,7 @@ use tokio::sync::{mpsc, Mutex};
 use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
 
 use crate::core::agent::events::{CompactionPhase, CompactionReason, StreamEvent, Usage};
+use tauri_plugin_agent_tools::hooks::Event as HookEvent;
 use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
     arguments_are_executable, collect_mcp_openai_tools_noted,
@@ -254,6 +255,179 @@ fn next_permission_id() -> String {
     )
 }
 
+/// What an approval is about: the sha256 (hex) of the tool name and its
+/// arguments as canonical JSON. Taken when the prompt is raised, after every
+/// rewrite that happens before it (path repair, git attribution), and again
+/// just before the approved call runs.
+pub(crate) fn approval_digest(tool: &str, args: &serde_json::Value) -> String {
+    use sha2::{Digest, Sha256};
+    let text = canonical_json(&serde_json::json!({ "tool": tool, "args": args }));
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// The digest each open prompt was raised with, keyed by `request_id`. Kept
+/// next to the pending sender for as long as the prompt is open, and taken
+/// (removed) when its answer arrives, so a digest never outlives its prompt.
+static APPROVAL_DIGESTS: std::sync::Mutex<Option<HashMap<String, String>>> = std::sync::Mutex::new(None);
+
+fn record_approval_digest(request_id: &str, digest: &str) {
+    APPROVAL_DIGESTS
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .insert(request_id.to_string(), digest.to_string());
+}
+
+fn take_approval_digest(request_id: &str) -> Option<String> {
+    APPROVAL_DIGESTS
+        .lock()
+        .unwrap()
+        .as_mut()
+        .and_then(|table| table.remove(request_id))
+}
+
+/// `Some(refusal)` when the arguments about to run are not the ones the
+/// approval was given for. A missing digest refuses too: an approval that
+/// cannot say what it approved approves nothing.
+fn approved_args_refusal(approved: Option<&str>, tool: &str, args: &serde_json::Value) -> Option<String> {
+    match approved {
+        Some(digest) if digest == approval_digest(tool, args) => None,
+        _ => Some(format!(
+            "ERROR: tool {tool} was not run: its arguments changed after you approved them"
+        )),
+    }
+}
+
+#[cfg(test)]
+mod approval_digest_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn the_digest_is_stable_and_ignores_key_order() {
+        let a = json!({"path": "a.txt", "content": "x", "opts": {"b": 1, "a": [1, {"z": 0, "y": 1}]}});
+        let b = json!({"opts": {"a": [1, {"y": 1, "z": 0}], "b": 1}, "content": "x", "path": "a.txt"});
+        assert_eq!(approval_digest("write", &a), approval_digest("write", &a));
+        assert_eq!(approval_digest("write", &a), approval_digest("write", &b));
+        assert_eq!(approval_digest("write", &a).len(), 64);
+        assert!(approval_digest("write", &a).chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn the_digest_covers_the_tool_and_every_argument() {
+        let args = json!({"path": "a.txt", "content": "x"});
+        assert_ne!(approval_digest("write", &args), approval_digest("edit", &args));
+        assert_ne!(
+            approval_digest("write", &args),
+            approval_digest("write", &json!({"path": "a.txt", "content": "y"}))
+        );
+        // Array order is meaning, not formatting.
+        assert_ne!(
+            approval_digest("bash", &json!({"a": [1, 2]})),
+            approval_digest("bash", &json!({"a": [2, 1]}))
+        );
+    }
+
+    #[test]
+    fn changed_arguments_are_refused_and_the_same_ones_run() {
+        let shown = json!({"command": "ls"});
+        let digest = approval_digest("bash", &shown);
+        assert_eq!(approved_args_refusal(Some(&digest), "bash", &shown), None);
+        assert_eq!(
+            approved_args_refusal(Some(&digest), "bash", &json!({"command": "rm -rf ."})),
+            Some("ERROR: tool bash was not run: its arguments changed after you approved them".to_string())
+        );
+        assert!(approved_args_refusal(None, "bash", &shown).is_some(), "no digest approves nothing");
+    }
+
+    #[test]
+    fn a_digest_is_taken_once_and_never_reaches_another_prompt() {
+        let first = next_permission_id();
+        let second = next_permission_id();
+        record_approval_digest(&first, "d1");
+        assert_eq!(take_approval_digest(&first).as_deref(), Some("d1"));
+        assert_eq!(take_approval_digest(&first), None, "spent by its own answer");
+        record_approval_digest(&second, "d2");
+        assert_eq!(take_approval_digest(&first), None);
+        assert_eq!(take_approval_digest(&second).as_deref(), Some("d2"));
+    }
+}
+
+/// Why the user refused a prompt, keyed by `request_id`. The respond path
+/// records it just before it sends `Deny`; the loop takes it when it builds the
+/// tool result, so the model learns what to do differently instead of seeing a
+/// bare refusal. A request id is unique for the life of the process, so one
+/// table serves every run.
+static DENY_REASONS: std::sync::Mutex<Option<HashMap<String, String>>> = std::sync::Mutex::new(None);
+
+/// Longest reason handed to the model; the rest is dropped.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+const DENY_REASON_MAX_CHARS: usize = 500;
+
+/// Remember `reason` for the denied prompt `request_id`. Blank text is ignored,
+/// control characters are replaced by spaces and the length is capped.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+pub(crate) fn record_deny_reason(request_id: &str, reason: &str) {
+    let cleaned: String = reason
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let cleaned: String = cleaned.trim().chars().take(DENY_REASON_MAX_CHARS).collect();
+    if cleaned.is_empty() {
+        return;
+    }
+    let mut table = DENY_REASONS.lock().unwrap();
+    table
+        .get_or_insert_with(HashMap::new)
+        .insert(request_id.to_string(), cleaned);
+}
+
+/// The tool result for a prompt the user refused, with their reason when they
+/// gave one. Consumes the recorded reason.
+fn denied_by_user_message(name: &str, request_id: &str) -> String {
+    let reason = DENY_REASONS
+        .lock()
+        .unwrap()
+        .as_mut()
+        .and_then(|table| table.remove(request_id));
+    match reason {
+        Some(reason) => format!("ERROR: tool '{name}' denied by user. Their reason: {reason}"),
+        None => format!("ERROR: tool '{name}' denied by user"),
+    }
+}
+
+#[cfg(test)]
+mod deny_reason_tests {
+    use super::*;
+
+    #[test]
+    fn a_recorded_reason_reaches_the_tool_result_once() {
+        record_deny_reason("perm-test-1", "use the staging bucket instead");
+        assert_eq!(
+            denied_by_user_message("bash", "perm-test-1"),
+            "ERROR: tool 'bash' denied by user. Their reason: use the staging bucket instead"
+        );
+        assert_eq!(
+            denied_by_user_message("bash", "perm-test-1"),
+            "ERROR: tool 'bash' denied by user"
+        );
+    }
+
+    #[test]
+    fn blank_reasons_are_ignored_and_long_ones_capped() {
+        record_deny_reason("perm-test-2", "  \n\t ");
+        assert_eq!(denied_by_user_message("write", "perm-test-2"), "ERROR: tool 'write' denied by user");
+        record_deny_reason("perm-test-3", &format!("a\nb{}", "x".repeat(900)));
+        let msg = denied_by_user_message("write", "perm-test-3");
+        let reason = msg.split("Their reason: ").nth(1).unwrap();
+        assert_eq!(reason.chars().count(), DENY_REASON_MAX_CHARS);
+        assert!(reason.starts_with("a b"), "control characters become spaces: {reason}");
+    }
+}
+
 /// Outstanding unsandboxed-retry offers for `bash` calls the null device
 /// refused, keyed by run. The same one-shot registry the desktop redeems
 /// through; here the payload is the call's own arguments.
@@ -409,6 +583,8 @@ pub(crate) enum HarnessRefusal {
     /// A call whose arguments are not a plain JSON object and cannot be
     /// recovered to one. It is never executed with invented arguments.
     InvalidArgs,
+    /// A project's `[[tool_rules]]` says the call may not run yet (or again).
+    ToolRule,
 }
 
 impl HarnessRefusal {
@@ -416,6 +592,7 @@ impl HarnessRefusal {
         match self {
             HarnessRefusal::ToolNotOffered => "tool-not-offered",
             HarnessRefusal::InvalidArgs => "invalid-args",
+            HarnessRefusal::ToolRule => "tool-rule",
         }
     }
 }
@@ -446,6 +623,14 @@ impl ToolOutcome {
             parts: None,
             details: None,
             refusal: Some(refusal),
+        }
+    }
+
+    /// A call a `[[tool_rules]]` rule refused, with the rule's own words.
+    fn refused_by_rule(id: String, content: String) -> Self {
+        Self {
+            refusal: Some(HarnessRefusal::ToolRule),
+            ..Self::plain(id, content)
         }
     }
 
@@ -539,6 +724,26 @@ fn mark_parts_as_error(mut parts: Vec<serde_json::Value>) -> Vec<serde_json::Val
 /// The object lifetime is explicit so a callback may borrow its caller's state.
 pub(crate) type OnComplete<'a> = dyn Fn(&ToolOutcome) + Send + Sync + 'a;
 
+/// Put the outcomes of the calls a rule refused back among the ones that ran,
+/// in the order the model listed the calls.
+fn weave_refused(
+    ran: Vec<ToolOutcome>,
+    refused: Vec<(usize, ToolOutcome)>,
+    calls: &[serde_json::Value],
+) -> Vec<ToolOutcome> {
+    let mut ran = ran.into_iter();
+    let mut refused: std::collections::HashMap<usize, ToolOutcome> = refused.into_iter().collect();
+    let mut out = Vec::with_capacity(calls.len());
+    for index in 0..calls.len() {
+        match refused.remove(&index) {
+            Some(outcome) => out.push(outcome),
+            None => out.extend(ran.next()),
+        }
+    }
+    out.extend(ran);
+    out
+}
+
 #[allow(clippy::double_must_use)]
 #[async_trait]
 pub(crate) trait ToolInvoker: Send + Sync {
@@ -576,12 +781,60 @@ pub(crate) trait ToolInvoker: Send + Sync {
         UserGuidance::Unavailable
     }
 
+    /// `[budget] pause_at_usd` was reached: ask whether the run should go on.
+    /// The default has nobody to ask, which leaves the run going exactly as
+    /// it would with no pause set.
+    async fn confirm_spend_pause(&self, _spent_usd: f64, _pause_at_usd: f64, _max_usd: Option<f64>) -> SpendPause {
+        SpendPause::Unavailable
+    }
+
+    /// Ids of permission questions this run put off to be answered later. A run
+    /// with any ends at its next turn boundary instead of carrying on without
+    /// the call. The default defers nothing.
+    fn approval_deferred(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Tool schemas added during the run -- MCP tools the model loaded on
     /// demand (`mcp_catalog`) -- appended after the run's own tools on every
     /// later request. The default adds none.
     fn loaded_tools(&self) -> Vec<serde_json::Value> {
         Vec::new()
     }
+
+    /// A compaction of the run's conversation is about to start
+    /// (`hooks::Event::PreCompact`) or has just shrunk it (`PostCompact`), so the
+    /// project's observe-only compaction hooks can fire. Must return at once.
+    /// The default fires nothing: only the invoker that knows the project and
+    /// its jail has hooks to run.
+    fn observe_compaction(&self, _event: tauri_plugin_agent_tools::hooks::Event) {}
+
+    /// The project folder this invoker's tools work in: where the effect
+    /// ledger hashes files and where a `file` final check looks. `None` for an
+    /// invoker with no folder, which records writes without hashes and cannot
+    /// check files.
+    fn effect_root(&self) -> Option<std::path::PathBuf> {
+        None
+    }
+
+    /// Run one `[agent] final_checks` command and say whether it exited 0, with
+    /// its output. `None` when this invoker does not run commands (an
+    /// untrusted folder, a surface with no shell): the check is then reported
+    /// as skipped, never as passed.
+    async fn run_check_command(&self, _command: &str, _timeout_secs: u64) -> Option<(bool, String)> {
+        None
+    }
+}
+
+/// The answer to a spend pause (`[budget] pause_at_usd`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SpendPause {
+    /// Go on, up to the hard ceiling if there is one.
+    Continue,
+    /// Stop the run now, as `budget_exceeded`.
+    Stop,
+    /// Nobody could be asked: the run goes on as if no pause were set.
+    Unavailable,
 }
 
 /// Hand `on_complete` every outcome pushed onto `out` since the last call.
@@ -599,7 +852,7 @@ fn announce_new(out: &[ToolOutcome], announced: &mut usize, on_complete: &OnComp
 /// cannot disagree. A `bash` call that exits non-zero isn't prefixed "ERROR"
 /// (that convention is reserved for hard tool failures the model must treat as
 /// errors), but its failed exit marker still flags the call as failed.
-fn tool_outcome_failed(name: &str, content: &str) -> bool {
+pub(crate) fn tool_outcome_failed(name: &str, content: &str) -> bool {
     tauri_plugin_agent_tools::harness_error::classify_tool(name, content).is_some()
         || (name == "bash"
             && tauri_plugin_agent_tools::tools::handlers::bash_result_failed(content))
@@ -699,6 +952,13 @@ impl Invocations {
         let run = if self.run.is_empty() { "run" } else { self.run.as_str() };
         let current = self.current();
         self.record(kind, &format!("note:{run}:{n}"), &current, payload);
+    }
+
+    /// Append one side-effect to the run's ledger (`ledger`).
+    fn ledger(&self, entry: &crate::core::agent::ledger::Entry) {
+        if let Some(data) = &self.data {
+            crate::core::agent::ledger::append(data, &self.session, &self.run, &self.current(), entry);
+        }
     }
 
     /// Record one event of this run. Best effort: the record must never fail
@@ -1378,6 +1638,40 @@ fn available_tool_names(
         .collect()
 }
 
+/// The tool profile (`[tools] profile`, `[[tool_profiles]]`) for `model` in this
+/// project. No project, or an `agent.toml` that cannot be read, is `full`, as
+/// every sibling section treats it; a profile value that cannot be honoured
+/// refuses the run, like `[models]`.
+fn run_tool_profile(
+    project_root: Option<&std::path::Path>,
+    profile: Option<&str>,
+    model: &str,
+) -> Result<crate::core::agent::tool_profile::ToolProfile, String> {
+    let Some(cfg) = project_root
+        .and_then(|root| crate::core::agent::project::load_agent_config_with_profile(root, profile).ok())
+    else {
+        return Ok(Default::default());
+    };
+    crate::core::agent::tool_profile::resolve(cfg.tools.profile.as_deref(), &cfg.tool_profiles, model)
+        .map_err(|e| format!("tool profile config: {e}"))
+}
+
+/// [`run_tool_profile`] for the model as far as it is known before the router
+/// and `[models]` have finalized it: the request's own, else the assistant's.
+fn early_tool_profile(
+    project_root: Option<&std::path::Path>,
+    profile: Option<&str>,
+    requested: Option<&str>,
+    assistant_hint: Option<&str>,
+) -> Result<crate::core::agent::tool_profile::ToolProfile, String> {
+    let model = requested
+        .or(assistant_hint)
+        .map(str::trim)
+        .filter(|m| !m.is_empty() && *m != "*")
+        .unwrap_or_default();
+    run_tool_profile(project_root, profile, model)
+}
+
 type Attribution = (String, tauri_plugin_agent_tools::tools::git_attribution::Settings);
 
 /// Flint's attribution on a `git` tool call (a commit's co-author trailer, a
@@ -1440,6 +1734,8 @@ struct CompositeToolInvoker {
     /// its diff is shown (AH-149). Resolved once per run from
     /// `[tools].format_on_edit`.
     format_on_edit: bool,
+    /// `[tools].check_syntax`: unset is on, on every surface.
+    check_syntax: bool,
     /// `[tools].nul_programs`: programs besides go and git known to open NUL.
     nul_programs: Vec<String>,
     /// Every tool this run could actually call: the built-ins plus whatever
@@ -1512,6 +1808,19 @@ struct CompositeToolInvoker {
     /// `block_reason` is always `None` and auto-approval is unchanged. Only ever
     /// consulted while `auto_approve` is on.
     auto_mode: crate::core::agent::auto_mode::AutoModePolicy,
+    /// The judge `[auto_mode] judge` names, built once per run; `None` when
+    /// it is off or not in this build. It may refuse a pending call, never
+    /// approve one.
+    judge: Option<std::sync::Arc<dyn crate::core::agent::auto_mode::Classifier>>,
+    /// `[[tool_rules]]`, resolved once per run, and what the run has called so
+    /// far for them to be checked against.
+    tool_rules: Vec<crate::core::agent::tool_rules::ToolRuleSpec>,
+    call_log: std::sync::Mutex<crate::core::agent::tool_rules::CallLog>,
+    /// `[approvals]`, and the questions this run put off to be answered later.
+    approvals: crate::core::agent::approval_flow::Runtime,
+    /// `[tools] code_mode`: the `code` tool is offered and may run. Off, a call
+    /// to it is refused even when nothing else stops it.
+    code_mode: bool,
     run_mode: crate::core::agent::plan::RunMode,
     /// Who this dispatch acts as, for the permission gate. AH-007. The same
     /// subject the run's tools were advertised under: a run offered a tool and
@@ -1692,6 +2001,7 @@ struct ResolvedSettings {
     sandbox: bool,
     /// `[tools].format_on_edit` (AH-149): unset is off, on every surface.
     format_on_edit: bool,
+    check_syntax: bool,
     nul_programs: Vec<String>,
     /// The project's domain lists, capped by the machine policy.
     allow_domains: Vec<String>,
@@ -1716,6 +2026,7 @@ fn resolve_run_settings(
         allow_home_read: resolve_allow_home_read(settings.allow_home_read),
         sandbox: resolve_sandbox(sandbox_flag, settings.sandbox),
         format_on_edit: settings.format_on_edit,
+        check_syntax: settings.check_syntax,
         nul_programs: settings.nul_programs,
         allow_domains: settings.allow_domains,
         deny_domains: settings.deny_domains,
@@ -2022,6 +2333,7 @@ impl CompositeToolInvoker {
         // AH-149: whether an edited file goes through the project's formatter
         // before its diff is shown.
         .with_format_on_edit(self.format_on_edit)
+        .with_check_syntax(self.check_syntax)
         .with_nul_programs(&self.nul_programs)
     }
 
@@ -2217,6 +2529,7 @@ impl CompositeToolInvoker {
             prompt_kind: "mcp".to_string(),
             offers_always: true,
             reason: None,
+            args_digest: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -2273,6 +2586,7 @@ impl CompositeToolInvoker {
             // Once, for this exact call: an "always" would outlive the offer.
             offers_always: false,
             reason: Some(NULL_DEVICE_RETRY_REASON.to_string()),
+            args_digest: None,
         });
         if sent.is_err() {
             self.permission_requests.lock().await.remove(&request_id);
@@ -2341,6 +2655,7 @@ impl CompositeToolInvoker {
             prompt_kind: "mcp".to_string(),
             offers_always: false,
             reason: None,
+            args_digest: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -2367,6 +2682,11 @@ impl CompositeToolInvoker {
             || self.grants.lock().unwrap().covers_mcp("repo", name)
         {
             return Ok(());
+        }
+        // Headed for a prompt or auto-approval: the `[auto_mode] judge` may
+        // refuse it first, never approve it.
+        if let crate::core::agent::auto_mode::GateOutcome::Deny(block) = self.consult_judge(name, args).await {
+            return Err(judge_refusal_msg(name, &block));
         }
         let mut forced_reason = None;
         if self.auto_approve {
@@ -2400,6 +2720,7 @@ impl CompositeToolInvoker {
             prompt_kind: "exec".to_string(),
             offers_always: forced_reason.is_none(),
             reason: forced_reason,
+            args_digest: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -2433,6 +2754,7 @@ impl CompositeToolInvoker {
             prompt_kind: "subagent_create".to_string(),
             offers_always: false,
             reason: None,
+            args_digest: None,
         });
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
@@ -2443,6 +2765,42 @@ impl CompositeToolInvoker {
     /// (AH-057). The path is resolved inside the project like any other path
     /// the model names; the request runs off the async runtime and is stopped
     /// by the run's own cancellation.
+    /// Run a `code` script. The script's inner calls go back through
+    /// [`ToolInvoker::invoke`], so nothing here has a gate of its own to get
+    /// wrong: a call the gate would deny, prompt for or rule out is denied,
+    /// prompted for or ruled out, and the script sees the refusal text.
+    async fn handle_code_tool(&self, args: &serde_json::Value) -> String {
+        use crate::core::agent::code_mode;
+        let Some(script) = args.get("script").and_then(|v| v.as_str()) else {
+            return "ERROR [invalid_input]: code takes a `script` string.".to_string();
+        };
+        let next = std::sync::atomic::AtomicU32::new(0);
+        let result = code_mode::run(script, code_mode::Limits::default(), |name, call_args| {
+            let id = format!("code-{}", next.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+            async move {
+                let call = serde_json::json!({
+                    "id": id,
+                    "type": "function",
+                    "function": { "name": name, "arguments": call_args.to_string() }
+                });
+                let outcomes = ToolInvoker::invoke(self, std::slice::from_ref(&call))
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let outcome = outcomes.into_iter().next().ok_or_else(|| "no result".to_string())?;
+                if outcome.refusal.is_some() || tool_outcome_failed(&name, &outcome.content) {
+                    Err(outcome.content)
+                } else {
+                    Ok(outcome.content)
+                }
+            }
+        })
+        .await;
+        match result {
+            Ok(outcome) => code_mode::render(&outcome),
+            Err(message) => format!("ERROR [tool_failed]: {message}"),
+        }
+    }
+
     async fn handle_lsp_tool(&self, args: &serde_json::Value) -> String {
         use crate::core::agent::lsp::{Action, LspError, Query};
         let text = |key: &str| args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
@@ -2634,6 +2992,10 @@ impl CompositeToolInvoker {
             }
             "list_subagent_runs" => {
                 let mut out = crate::core::agent::subagent::format_subagent_runs(&ctx.bg.list());
+                if let Some(report) = ctx.bg.failure_report(None) {
+                    out.push_str("\n\n");
+                    out.push_str(&report);
+                }
                 let durable = crate::core::agent::durable_subagent::list(
                     std::path::Path::new(&ctx.parent_args.jan_data_folder),
                     ctx.parent_args.session_id.as_deref().unwrap_or_default(),
@@ -3293,6 +3655,12 @@ impl CompositeToolInvoker {
                     Ok(text) => text,
                     Err(e) => format!("ERROR: {e}"),
                 };
+                // Which other children have failed, so a parent collecting one
+                // answer is not the last to learn that a sibling went wrong.
+                let outcome = match ctx.bg.failure_report(Some(&run_id)) {
+                    Some(report) => format!("{outcome}\n\n{report}"),
+                    None => outcome,
+                };
                 // A child's report reads as "done" whether or not its changes
                 // are anywhere the user can see; this says where they are.
                 match ctx.bg.checkout_of(&run_id) {
@@ -3670,6 +4038,161 @@ fn auto_mode_refusal_msg(
     )
 }
 
+/// The refusal for a call the `[auto_mode] judge` turned down.
+fn judge_refusal_msg(name: &str, block: &crate::core::agent::auto_mode::Block) -> String {
+    format!(
+        "ERROR: tool '{name}' was refused before anyone was asked to approve it ({}): {}. \
+         Nothing ran. Do the user's request another way, or ask the user; a person \
+         can turn this review off with `[auto_mode] judge = \"off\"` in agent.toml.",
+        block.category, block.reason
+    )
+}
+
+/// The text of the latest user message in an OpenAI-shaped conversation:
+/// a string `content`, or its `text` parts joined. Empty when there is none.
+fn latest_user_text(messages: &[serde_json::Value]) -> String {
+    messages
+        .iter()
+        .rev()
+        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+        .and_then(|m| m.get("content"))
+        .map(|c| match c {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Array(parts) => parts
+                .iter()
+                .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => String::new(),
+        })
+        .unwrap_or_default()
+}
+
+impl CompositeToolInvoker {
+    /// Put one pending call to the `[auto_mode] judge`, with the user's latest
+    /// request as its context. Never approves (see `auto_mode::consult`).
+    async fn consult_judge(
+        &self,
+        name: &str,
+        args: &serde_json::Value,
+    ) -> crate::core::agent::auto_mode::GateOutcome {
+        let task = self
+            .live_conversation
+            .lock()
+            .map(|m| latest_user_text(&m))
+            .unwrap_or_default();
+        crate::core::agent::auto_mode::consult(
+            &self.auto_mode,
+            self.judge.as_deref(),
+            name,
+            args,
+            &task,
+            crate::core::agent::auto_mode::JUDGE_TIMEOUT,
+        )
+        .await
+    }
+}
+
+impl CompositeToolInvoker {
+    /// What an answer given while this run was paused says about a call now
+    /// put to the user. Only an answer for exactly this call (project, session,
+    /// tool, argument digest), given in time, is ever applied, and once.
+    fn settle_deferred(&self, name: &str, digest: &str) -> crate::core::agent::approval_flow::Settled {
+        use crate::core::agent::approval_flow as flow;
+        use tauri_plugin_agent_tools::deferred_approvals::{discard, redeem, Redeem};
+        let Some(data) = self.record_to.as_deref() else {
+            return flow::Settled::Ask;
+        };
+        match redeem(data, &self.project_root, &self.cancel_scope.session, name, digest) {
+            Redeem::None => flow::Settled::Ask,
+            Redeem::Allowed(_) => flow::Settled::Allow,
+            Redeem::Denied(_) => flow::Settled::Deny,
+            Redeem::Expired(d) => flow::Settled::Refuse(flow::expired_text(name, &d.id)),
+            // Someone who is here can be asked now; the old question is dropped
+            // so a late answer to it cannot approve a call they already decided.
+            Redeem::Pending(d) if self.can_prompt() => {
+                let _ = discard(data, &d.id);
+                flow::Settled::Ask
+            }
+            Redeem::Pending(d) => {
+                self.approvals.note_deferred(&d.id);
+                flow::Settled::Refuse(flow::still_pending_text(name, &d.id))
+            }
+        }
+    }
+
+    /// Record the call as a question to be answered later and say so to the
+    /// model. `None` when it cannot be recorded -- no data folder, no session to
+    /// resume, an unwritable store -- and the caller then refuses the call as it
+    /// always has: a deferral that was not saved is not one.
+    fn defer_call(
+        &self,
+        name: &str,
+        kind: tauri_plugin_agent_tools::tools::gate::PromptKind,
+        summary: &str,
+        digest: &str,
+        ttl_secs: u64,
+    ) -> Option<String> {
+        use tauri_plugin_agent_tools::deferred_approvals::{defer, NewDeferred};
+        let data = self.record_to.as_deref()?;
+        if self.cancel_scope.session.is_empty() {
+            return None;
+        }
+        match defer(
+            data,
+            NewDeferred {
+                project_root: &self.project_root,
+                session: &self.cancel_scope.session,
+                tool: name,
+                kind: tauri_plugin_agent_tools::scoped_rules::kind_name(kind),
+                summary,
+                args_digest: digest,
+            },
+            ttl_secs,
+        ) {
+            Ok(record) => {
+                self.approvals.note_deferred(&record.id);
+                Some(crate::core::agent::approval_flow::deferred_text(name, &record.id, &record.summary))
+            }
+            Err(why) => {
+                log::warn!("agent: could not defer the approval for {name}: {why}");
+                None
+            }
+        }
+    }
+
+    /// What "allow always" with a chosen scope does. `true` when the answer is a
+    /// plain run-long grant (the behavior without a form); a folder or a command
+    /// prefix is saved as a rule for this project and grants nothing more, and
+    /// "once" grants nothing at all. A prompt that offered no "always" saves
+    /// nothing whatever was chosen.
+    fn remember_choice(
+        &self,
+        chosen: Option<&tauri_plugin_agent_tools::scoped_rules::ApprovalScope>,
+        always_offered: bool,
+        tool: &tauri_plugin_agent_tools::tools::BuiltinTool,
+        kind: tauri_plugin_agent_tools::tools::gate::PromptKind,
+        args: &serde_json::Value,
+    ) -> bool {
+        use tauri_plugin_agent_tools::scoped_rules::{add, ApprovalScope};
+        match chosen {
+            None | Some(ApprovalScope::Run) => true,
+            Some(ApprovalScope::Once) => false,
+            Some(standing) => {
+                if always_offered {
+                    if let Some(data) = self.record_to.as_deref() {
+                        match add(data, &self.project_root, tool, kind, args, standing) {
+                            Ok(rule) => log::info!("agent: saved approval rule {} for {}", rule.id, rule.tool),
+                            Err(why) => log::warn!("agent: approval rule not saved: {why}"),
+                        }
+                    }
+                }
+                false
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl ToolInvoker for CompositeToolInvoker {
     fn observe_conversation(&self, messages: &[serde_json::Value]) {
@@ -3688,9 +4211,26 @@ impl ToolInvoker for CompositeToolInvoker {
         on_complete: &OnComplete<'_>,
     ) -> Result<Vec<ToolOutcome>, HarnessError> {
         self.record_requested(tool_calls);
-        let out = self.dispatch_calls(tool_calls, on_complete).await;
+        let (allowed, refused) = self.apply_tool_rules(tool_calls);
+        for (_, outcome) in &refused {
+            on_complete(outcome);
+        }
+        let out = if refused.is_empty() {
+            self.dispatch_calls(tool_calls, on_complete).await
+        } else {
+            self.dispatch_calls(&allowed, on_complete)
+                .await
+                .map(|ran| weave_refused(ran, refused, tool_calls))
+        };
         if let Ok(outcomes) = &out {
             self.record_outcomes(tool_calls, outcomes);
+            // `[[tool_rules]] max_failures` reads what failed here.
+            if !self.tool_rules.is_empty() {
+                let mut log = self.call_log.lock().unwrap();
+                for name in crate::core::agent::failure_stats::failed_tools(tool_calls, outcomes) {
+                    log.record_failure(&name);
+                }
+            }
             // Observe-only `post-tool-batch` hook: results are final here, and
             // the hook runs on a detached task that owns its inputs, so it can
             // neither delay the next model request nor reach `out`.
@@ -3704,6 +4244,97 @@ impl ToolInvoker for CompositeToolInvoker {
             .as_ref()
             .map(|d| d.loaded_schemas())
             .unwrap_or_default()
+    }
+
+    fn observe_compaction(&self, event: tauri_plugin_agent_tools::hooks::Event) {
+        self.fire_compaction_hook(event);
+    }
+
+    fn approval_deferred(&self) -> Vec<String> {
+        self.approvals.deferred_ids()
+    }
+
+    fn effect_root(&self) -> Option<std::path::PathBuf> {
+        Some(self.project_root.clone())
+    }
+
+    async fn run_check_command(&self, command: &str, timeout_secs: u64) -> Option<(bool, String)> {
+        use tauri_plugin_agent_tools::hooks::{self, Context, Event, Hook, OnFailure};
+        // A folder the user has not trusted does not get to run its own
+        // commands, whether they are named by a hooks file or by agent.toml.
+        if !tauri_plugin_agent_tools::folder_trust::is_trusted(&self.project_root) {
+            return None;
+        }
+        let hook = Hook {
+            event: Event::RunEnd,
+            command: command.to_string(),
+            on_failure: OnFailure::Warn,
+            timeout_secs,
+            tools: Vec::new(),
+        };
+        let ctx = Context {
+            project_root: &self.project_root,
+            allow_network: self.allow_network,
+            home_readonly: self.allow_home_read,
+            sandbox: self.sandbox,
+            mask_root: None,
+            cancel: tauri_plugin_agent_tools::lifecycle::current(),
+        };
+        let decision = hooks::run(&[hook], Event::RunEnd, None, &ctx).await;
+        let run = decision.runs.into_iter().next()?;
+        let output = match (&run.error, run.output.trim().is_empty()) {
+            (Some(e), true) => e.message.clone(),
+            (Some(e), false) if !run.output.contains(&e.message) => format!("{}
+{}", e.message, run.output),
+            _ => run.output,
+        };
+        Some((run.ok, output))
+    }
+
+    async fn confirm_spend_pause(&self, spent_usd: f64, pause_at_usd: f64, max_usd: Option<f64>) -> SpendPause {
+        if !self.can_prompt() {
+            return SpendPause::Unavailable;
+        }
+        let request_id = next_permission_id();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.permission_requests
+            .lock()
+            .await
+            .insert(request_id.clone(), tx);
+        let ceiling = match max_usd {
+            Some(max) => format!(" up to its ${max:.2} ceiling"),
+            None => String::new(),
+        };
+        let sent = self.events.send(StreamEvent::PermissionRequest {
+            request_id: request_id.clone(),
+            tool_name: "spend_pause".to_string(),
+            capability: "run".to_string(),
+            path: None,
+            command: Some(format!("Continue the run{ceiling} (about ${spent_usd:.2} spent so far)")),
+            diff: None,
+            patch: None,
+            prompt_kind: "mcp".to_string(),
+            offers_always: false,
+            reason: Some(format!(
+                "Spend pause: this run has spent about ${spent_usd:.2}, past its ${pause_at_usd:.2} pause. Allow to continue, deny to stop the run."
+            )),
+            args_digest: None,
+        });
+        if sent.is_err() {
+            self.permission_requests.lock().await.remove(&request_id);
+            return SpendPause::Unavailable;
+        }
+        // A dropped responder is nobody answering, not a "no": the run goes on
+        // as it would with no pause set.
+        let answer = rx.await;
+        self.permission_requests.lock().await.remove(&request_id);
+        let Ok(decision) = answer else {
+            return SpendPause::Unavailable;
+        };
+        match decision {
+            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => SpendPause::Continue,
+            PermissionDecision::Deny => SpendPause::Stop,
+        }
     }
 
     async fn ask_user_guidance(&self, summary: &str) -> UserGuidance {
@@ -3733,6 +4364,45 @@ impl ToolInvoker for CompositeToolInvoker {
 }
 
 impl CompositeToolInvoker {
+    /// Split a batch by the project's `[[tool_rules]]`: the calls that may run,
+    /// and the ones a rule refused, each with its position in the batch. Rules
+    /// are checked against earlier batches only, since a batch runs side by
+    /// side; the calls that pass are noted afterwards.
+    fn apply_tool_rules(
+        &self,
+        tool_calls: &[serde_json::Value],
+    ) -> (Vec<serde_json::Value>, Vec<(usize, ToolOutcome)>) {
+        if self.tool_rules.is_empty() {
+            return (tool_calls.to_vec(), Vec::new());
+        }
+        let mut log = self.call_log.lock().unwrap();
+        let mut allowed = Vec::new();
+        let mut refused = Vec::new();
+        let mut passed: Vec<(String, serde_json::Value)> = Vec::new();
+        for (index, call) in tool_calls.iter().enumerate() {
+            let name = call
+                .get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(|n| n.as_str())
+                .unwrap_or_default();
+            let args = parse_tool_args(call).unwrap_or(serde_json::Value::Null);
+            match log.refusal(&self.tool_rules, name, &args) {
+                Some(text) => {
+                    let id = call.get("id").and_then(|i| i.as_str()).unwrap_or_default();
+                    refused.push((index, ToolOutcome::refused_by_rule(id.to_string(), text)));
+                }
+                None => {
+                    allowed.push(call.clone());
+                    passed.push((name.to_string(), args));
+                }
+            }
+        }
+        for (name, args) in passed {
+            log.record(&name, &args);
+        }
+        (allowed, refused)
+    }
+
     /// Who this run acts as, as the execution record names an agent.
     fn agent_name(&self) -> String {
         use tauri_plugin_agent_tools::subject::Subject;
@@ -3873,6 +4543,25 @@ impl CompositeToolInvoker {
         );
     }
 
+    /// Fire-and-forget `pre-compact` / `post-compact` hooks. Returns at once;
+    /// see `tauri_plugin_agent_tools::hooks::fire_compaction`.
+    fn fire_compaction_hook(&self, event: tauri_plugin_agent_tools::hooks::Event) {
+        let agent = if matches!(self.subject, tauri_plugin_agent_tools::subject::Subject::MainAgent) {
+            "main"
+        } else {
+            "subagent"
+        };
+        let _ = tauri_plugin_agent_tools::hooks::fire_compaction(
+            &self.project_root,
+            event,
+            agent,
+            self.allow_network,
+            self.allow_home_read,
+            self.sandbox,
+            None,
+        );
+    }
+
     async fn dispatch_calls(
         &self,
         tool_calls: &[serde_json::Value],
@@ -3961,6 +4650,23 @@ impl CompositeToolInvoker {
                     continue;
                 };
                 let content = self.handle_todo_tool(&args).await;
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
+            // `[tools] code_mode`: one script, several read-only calls. Each
+            // inner call re-enters `invoke`, so it meets the same allowlist,
+            // `[[tool_rules]]` and permission gate as a call the model made.
+            if name == crate::core::agent::code_mode::TOOL_NAME {
+                let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                if !self.code_mode {
+                    out.push(ToolOutcome::refused(id, name, HarnessRefusal::ToolNotOffered));
+                    continue;
+                }
+                let Some(args) = parse_tool_args(tc) else {
+                    out.push(ToolOutcome::refused_invalid_args(id, name, &raw_args_str(tc)));
+                    continue;
+                };
+                let content = self.handle_code_tool(&args).await;
                 out.push(ToolOutcome::plain(id, content));
                 continue;
             }
@@ -4277,6 +4983,41 @@ impl CompositeToolInvoker {
                         ]),
                     )
                 }));
+            // `[auto_mode] judge`: a second model looks at a call that is about
+            // to be put to the person or waved through by auto-approval. It can
+            // refuse the call; "ask", an error, a timeout or no judge at all
+            // leave it exactly where it was. Calls the gate already allows
+            // (reads, explicit allows) or denies never reach it.
+            if self.judge.is_some()
+                && (matches!(decision, Decision::Prompt(_))
+                    || (matches!(decision, Decision::Allow) && destructive.is_some()))
+            {
+                if let crate::core::agent::auto_mode::GateOutcome::Deny(block) =
+                    self.consult_judge(name, &args).await
+                {
+                    out.push(ToolOutcome::plain(id.clone(), judge_refusal_msg(name, &block)));
+                    continue;
+                }
+            }
+            // A scoped approval the user saved with "always" (a folder, a command
+            // prefix) answers a plain prompt for a call it covers. It sits here,
+            // after every deny, `[[tool_rules]]` and the judge, and only turns an
+            // ordinary prompt into an allow: asked-every-time calls and
+            // destructive commands are out of its reach.
+            let decision = if matches!(decision, Decision::Prompt(_)) && destructive.is_none() {
+                match self.record_to.as_deref() {
+                    Some(data) => tauri_plugin_agent_tools::scoped_rules::upgrade(
+                        decision,
+                        data,
+                        &self.project_root,
+                        tool,
+                        &args,
+                    ),
+                    None => decision,
+                }
+            } else {
+                decision
+            };
             use std::sync::atomic::Ordering as StreakOrdering;
             // Said in the prompt, so the person knows why a call that would
             // otherwise have run on its own is in front of them. A forced prompt
@@ -4342,6 +5083,12 @@ impl CompositeToolInvoker {
                 let allow_home_read = self.allow_home_read;
                 let sandbox = self.sandbox;
                 let scratch = self.scratch_root.clone();
+                // The run's identity and record folder, which `write` and `edit`
+                // carry: a read is remembered against it, and without it the
+                // file a run has just read would still be "not read" when the
+                // run goes to change it.
+                let run_scope = self.cancel_scope.run.clone();
+                let record_to = self.record_to.clone();
                 // Reads run concurrently, so each needs its own token under the
                 // run's scope rather than sharing one.
                 let registered = self.call_token(&id);
@@ -4356,6 +5103,10 @@ impl CompositeToolInvoker {
                             .with_scratch_root(&scratch)
                             .with_user_skills(user_skills.as_deref())
                             .with_cancel(registered.token().clone());
+                        let ctx = match record_to.as_deref() {
+                            Some(data) => ctx.with_run(&run_scope, data),
+                            None => ctx,
+                        };
                         // Held until the future completes, then dropped, which
                         // deregisters it.
                         let _registered = registered;
@@ -4387,6 +5138,24 @@ impl CompositeToolInvoker {
                     (hard_deny_msg(name, reason, &self.project_root), None, None)
                 }
                 Decision::Prompt(kind) => {
+                    // A question answered while this run was paused, or one to put
+                    // off now because nobody is here: see `approval_flow`.
+                    let early_digest = approval_digest(name, &args);
+                    let early = self.settle_deferred(name, &early_digest);
+                    if let crate::core::agent::approval_flow::Settled::Refuse(message) = early {
+                        out.push(ToolOutcome::plain(id.clone(), message));
+                        continue;
+                    }
+                    let summary =
+                        crate::core::agent::approval_flow::call_summary(tool.name, tool.path_args, &args);
+                    if matches!(early, crate::core::agent::approval_flow::Settled::Ask) {
+                        if let Some(ttl) = self.approvals.defer_unattended.filter(|_| !self.can_prompt()) {
+                            if let Some(message) = self.defer_call(name, kind, &summary, &early_digest, ttl) {
+                                out.push(ToolOutcome::plain(id.clone(), message));
+                                continue;
+                            }
+                        }
+                    }
                     let request_id = next_permission_id();
                     let (tx, rx) = tokio::sync::oneshot::channel();
                     self.permission_requests
@@ -4474,37 +5243,60 @@ impl CompositeToolInvoker {
                     // back, because the answer is only an answer about *that*
                     // file.
                     let staged = stage_change(tool, &args, &self.tool_context()).await;
-                    let _ = self.events.send(StreamEvent::PermissionRequest {
-                        request_id: request_id.clone(),
-                        tool_name: name.to_string(),
-                        capability: capability.to_string(),
-                        path,
-                        command,
-                        diff,
-                        patch: staged.as_ref().map(|(_, patch)| patch.view()),
-                        prompt_kind: prompt_kind.to_string(),
-                        offers_always: forced_reason.is_none(),
-                        reason: forced_reason.clone(),
-                    });
-                    // AH-023. The wait itself is cancellable: a run stopped
-                    // while someone is deciding must not sit here until they
-                    // answer, and the pending request must not outlive the call
-                    // that raised it. Waiting only on `rx` meant a cancelled run
-                    // stayed parked on a question nobody was going to answer.
+                    // The approval is about these exact arguments: path repair
+                    // and git attribution have already rewritten them above, so
+                    // what is hashed here is what the prompt shows and what
+                    // must run.
+                    let args_digest = approval_digest(name, &args);
+                    record_approval_digest(&request_id, &args_digest);
                     let registered = self.call_token(&id);
                     let waiting = registered.token().clone();
-                    let decision = tokio::select! {
-                        answer = rx => answer.unwrap_or(PermissionDecision::Deny),
-                        _ = async {
-                            while !waiting.is_stopped() {
-                                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                    let decision = match early {
+                        // Answered while the run was paused: no question to raise.
+                        crate::core::agent::approval_flow::Settled::Allow => PermissionDecision::AllowOnce,
+                        crate::core::agent::approval_flow::Settled::Deny => PermissionDecision::Deny,
+                        _ => {
+                            let _ = self.events.send(StreamEvent::PermissionRequest {
+                                request_id: request_id.clone(),
+                                tool_name: name.to_string(),
+                                capability: capability.to_string(),
+                                path,
+                                command,
+                                diff,
+                                patch: staged.as_ref().map(|(_, patch)| patch.view()),
+                                prompt_kind: prompt_kind.to_string(),
+                                offers_always: forced_reason.is_none(),
+                                reason: forced_reason.clone(),
+                                args_digest: Some(args_digest),
+                            });
+                            // AH-023. The wait itself is cancellable: a run stopped
+                            // while someone is deciding must not sit here until they
+                            // answer, and the pending request must not outlive the call
+                            // that raised it. Waiting only on `rx` meant a cancelled run
+                            // stayed parked on a question nobody was going to answer.
+                            tokio::select! {
+                                answer = rx => answer.unwrap_or(PermissionDecision::Deny),
+                                _ = async {
+                                    while !waiting.is_stopped() {
+                                        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                                    }
+                                } => PermissionDecision::Deny,
                             }
-                        } => PermissionDecision::Deny,
+                        }
                     };
                     // Best-effort cleanup if the respond command didn't consume it.
                     // Also the path that removes a pending request whose call was
                     // cancelled, so the approval UI does not keep offering it.
                     self.permission_requests.lock().await.remove(&request_id);
+                    // Taken whatever the answer, so it never outlives this
+                    // prompt; checked below against what is about to run.
+                    let approved_digest = take_approval_digest(&request_id);
+                    // The form's answer and the "answer later" mark belong to this
+                    // prompt alone; taken whatever the decision so neither outlives it.
+                    let chosen_scope = crate::core::agent::approval_flow::take_scope_choice(&request_id);
+                    let put_off = crate::core::agent::approval_flow::take_defer_mark(&request_id)
+                        && matches!(decision, PermissionDecision::Deny)
+                        && matches!(early, crate::core::agent::approval_flow::Settled::Ask);
 
                     // An answer that arrives for a call that has already been
                     // stopped is stale: recorded, never acted on.
@@ -4531,6 +5323,15 @@ impl CompositeToolInvoker {
                             .map(|refusal| refusal.message(&target.display().to_string())),
                         _ => None,
                     };
+                    // The approval is bound to the arguments it was shown:
+                    // whatever is about to run is hashed again, and anything
+                    // that no longer matches the prompt is refused unrun.
+                    let stale = stale.or_else(|| match decision {
+                        PermissionDecision::AllowOnce | PermissionDecision::AllowAlways => {
+                            approved_args_refusal(approved_digest.as_deref(), name, &args)
+                        }
+                        PermissionDecision::Deny => None,
+                    });
                     if let Some(message) = stale {
                         (message, None, None)
                     } else {
@@ -4549,12 +5350,24 @@ impl CompositeToolInvoker {
                                 // `git push`, and made every chaining trick free:
                                 // `&&`, `|`, `;` and `$(...)` compose commands out of
                                 // separately-approved bases.
-                                if matches!(tool.capability, Capability::Exec) {
-                                    let command =
-                                        args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                                    self.grants.lock().unwrap().grant_command(command);
-                                } else {
-                                    self.grants.lock().unwrap().grant(kind);
+                                //
+                                // With the form's answer (`approval_flow`) the grant is
+                                // as narrow as the scope picked: a folder or a command
+                                // prefix is saved as a rule, "once" grants nothing.
+                                if self.remember_choice(
+                                    chosen_scope.as_ref(),
+                                    forced_reason.is_none(),
+                                    tool,
+                                    kind,
+                                    &args,
+                                ) {
+                                    if matches!(tool.capability, Capability::Exec) {
+                                        let command =
+                                            args.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                                        self.grants.lock().unwrap().grant_command(command);
+                                    } else {
+                                        self.grants.lock().unwrap().grant(kind);
+                                    }
                                 }
                                 let ctx = self
                                     .streaming_tool_context(&id)
@@ -4562,7 +5375,26 @@ impl CompositeToolInvoker {
                                 execute_builtin_with_diff(tool, &args, &ctx).await
                             }
                             PermissionDecision::Deny => {
-                                (format!("ERROR: tool '{name}' denied by user"), None, None)
+                                let deferred = put_off
+                                    .then(|| {
+                                        self.defer_call(
+                                            name,
+                                            kind,
+                                            &summary,
+                                            &early_digest,
+                                            self.approvals.defer_unattended.unwrap_or(0),
+                                        )
+                                    })
+                                    .flatten();
+                                match deferred {
+                                    Some(message) => (message, None, None),
+                                    None if matches!(early, crate::core::agent::approval_flow::Settled::Deny) => (
+                                        format!("ERROR: tool '{name}' denied by user (answered while the run was paused)"),
+                                        None,
+                                        None,
+                                    ),
+                                    None => (denied_by_user_message(name, &request_id), None, None),
+                                }
                             }
                         }
                     }
@@ -4672,6 +5504,9 @@ impl CompositeToolInvoker {
                 }
             }
         }
+        // `[screening]`: what MCP and web/browser tools returned is scanned for
+        // control text and secrets before the model reads it.
+        crate::core::agent::screening::screen_batch(&self.project_root, tool_calls, &mcp_calls, &mut out);
         // The MCP batch answers as one, so this is the earliest it is announceable.
         announce_new(&out, &mut announced, on_complete);
         let order: HashMap<&str, usize> = tool_calls
@@ -4868,6 +5703,11 @@ pub(crate) async fn run_orchestration_steered(
 ) -> Result<serde_json::Value, HarnessError> {
     let started = std::time::Instant::now();
     let result = orchestrate_inner(events, json_body, args, steering).await;
+    let result = settle_lease_loss(
+        result,
+        args.session_id.as_deref().filter(|_| args.parent_run.is_none()),
+    );
+    let _ = events.send(run_ended_event(&result));
     match &result {
         Ok(completion) => {
             log::info!(
@@ -5375,6 +6215,40 @@ fn advertise_local_tools(
     crate::core::agent::subagent::constrain_tool_names(openai_tools);
 }
 
+/// A holder whose lease was taken over was stopped like a cancellation, but the
+/// run did not end because anyone asked it to: say what happened. `session` is
+/// `None` for a run that holds no lease of its own (a child).
+fn settle_lease_loss(
+    result: Result<serde_json::Value, HarnessError>,
+    session: Option<&str>,
+) -> Result<serde_json::Value, HarnessError> {
+    match (&result, session) {
+        (Err(e), Some(session)) if e.is_cancellation() && crate::core::agent::lease::take_lost(session) => Err(
+            HarnessError::new(
+                ErrorKind::LeaseLost,
+                "another process took over this run's lease, so this process stopped driving it",
+            )
+            .at(Stage::Persistence),
+        ),
+        _ => result,
+    }
+}
+
+/// The typed ending of a finished run (`end_reason`), as the event every
+/// surface reads.
+fn run_ended_event(result: &Result<serde_json::Value, HarnessError>) -> StreamEvent {
+    use crate::core::agent::end_reason::EndReason;
+    let (reason, failure) = match result {
+        Ok(completion) => (EndReason::from_finish(&stop_reason_of(completion)), None),
+        Err(e) => (EndReason::from_error(e), Some(e)),
+    };
+    StreamEvent::RunEnded {
+        reason: reason.tag().to_string(),
+        label: reason.label().to_string(),
+        exit_code: reason.exit_code(failure),
+    }
+}
+
 fn stop_reason_of(completion: &serde_json::Value) -> String {
     completion
         .get("choices")
@@ -5409,6 +6283,28 @@ fn trailing_user_text(messages: &[serde_json::Value]) -> Option<String> {
         return None;
     }
     Some(text)
+}
+
+/// The text of the first user message: the task the conversation was opened
+/// with. Unlike [`trailing_user_text`] it does not change as the conversation
+/// grows, which is what keeps a prompt block derived from it byte-stable.
+fn first_user_text(messages: &[serde_json::Value]) -> Option<String> {
+    messages.iter().find_map(|m| {
+        if m.get("role").and_then(|r| r.as_str()) != Some("user") {
+            return None;
+        }
+        let text = match m.get("content")? {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Array(parts) => parts
+                .iter()
+                .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => return None,
+        };
+        (!text.trim().is_empty() && !crate::core::agent::reminder::is_reminder_text(&text))
+            .then_some(text)
+    })
 }
 
 /// Assembles the run's system prompt: `override_prompt` (a subagent's
@@ -5754,6 +6650,17 @@ async fn orchestrate_inner(
     // names the scratch, and whether there *is* one is the sandbox decision, so
     // both have to read the same answer or the model is told about a directory
     // nothing binds.
+    // An agent.toml that exists but cannot be read would otherwise drop all of
+    // the project's policy (rules, allowlists, judge) without a word. Say so
+    // and do not start, as the CLI already does.
+    if let Some(root) = project_root.as_deref() {
+        if crate::core::agent::project::agent_toml_path(root).is_file() {
+            crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref())
+                .map_err(|e| {
+                    format!("this project's agent.toml could not be used, so the run was not started: {e}")
+                })?;
+        }
+    }
     let settings = project_root
         .as_deref()
         .map(|root| resolve_run_settings(root, *sandbox, profile.as_deref()));
@@ -5795,9 +6702,36 @@ async fn orchestrate_inner(
             .and_then(|cfg| cfg.agent.context_window);
         #[cfg(not(feature = "cli"))]
         let ctx_window: Option<u64> = None;
+        // No configured window: use what this model's own overflow errors
+        // taught an earlier run, before the 128K default.
+        let learned = match ctx_window {
+            Some(_) => None,
+            None => json_body
+                .get("model")
+                .and_then(|m| m.as_str())
+                .and_then(crate::core::agent::learned_window::lookup),
+        };
+        let ctx_window = ctx_window.or(learned);
+        // A learned window can be far smaller than the default reserve, and a
+        // reserve that leaves no room would refuse the run. Keep a quarter of
+        // a learned window for output at most; a window set in the config is
+        // the user's own and is still checked as written.
+        let reserve = match (learned, reserve) {
+            (Some(window), Some(reserve)) => Some(reserve.min(window / 4)),
+            (_, reserve) => reserve,
+        };
         let window_cfg = cpol::WindowConfig::from_config(ctx_window, reserve);
-        let resolved = cpol::thresholds(&window_cfg)
-            .map_err(|e| format!("[agent] compaction config: {e}"))?;
+        let resolved = match cpol::thresholds(&window_cfg) {
+            Ok(resolved) => resolved,
+            // What a model once said about its window never refuses a run: with
+            // no usable threshold the run goes on without proactive compaction
+            // and the overflow path still catches a real overflow.
+            Err(e) if learned.is_some() => {
+                log::warn!("agent: learned context window {learned:?} gives no compaction threshold ({e}); compacting only on overflow");
+                None
+            }
+            Err(e) => return Err(format!("[agent] compaction config: {e}").into()),
+        };
         if let (Some(t), Some(obj)) = (resolved, annotated_body.as_object_mut()) {
             obj.insert(
                 BODY_COMPACT_AT.to_string(),
@@ -5809,6 +6743,53 @@ async fn orchestrate_inner(
             );
         }
     }
+    // `[agent] final_answer_on_limit`, top-level runs only (see `turn_limit`).
+    #[cfg(feature = "cli")]
+    let final_answer_on_limit = project_root
+        .as_deref()
+        .and_then(|root| {
+            crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
+        })
+        .and_then(|cfg| cfg.agent.final_answer_on_limit)
+        .unwrap_or(false);
+    #[cfg(not(feature = "cli"))]
+    let final_answer_on_limit = false;
+    // `[agent] final_checks`, top-level runs only (see `final_checks`). A
+    // declaration that cannot be evaluated refuses the run before any request.
+    #[cfg(feature = "cli")]
+    {
+        let checks = project_root
+            .as_deref()
+            .and_then(|root| {
+                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
+            })
+            .map(|cfg| cfg.agent.final_checks)
+            .unwrap_or_default();
+        crate::core::agent::final_checks::validate(&checks)?;
+        crate::core::agent::final_checks::annotate(
+            &mut annotated_body,
+            &checks,
+            args.parent_run.is_some() || child_run_id.is_some(),
+        );
+    }
+    crate::core::agent::turn_limit::annotate(
+        &mut annotated_body,
+        final_answer_on_limit,
+        args.parent_run.is_some() || child_run_id.is_some(),
+    );
+    // `[agent] min_free_ram_mb` / `min_free_vram_mb`: checked before each turn.
+    let perf = project_root
+        .as_deref()
+        .map(crate::core::agent::project::AgentPerf::load)
+        .unwrap_or_default();
+    crate::core::agent::ram_guard::annotate(
+        &mut annotated_body,
+        &crate::core::agent::ram_guard::Thresholds {
+            min_free_ram_mb: perf.min_free_ram_mb,
+            min_free_vram_mb: perf.min_free_vram_mb,
+        },
+        args.parent_run.is_some() || child_run_id.is_some(),
+    );
     let json_body = &annotated_body;
 
     let session_messaging = messaging_eligible(
@@ -5827,6 +6808,19 @@ async fn orchestrate_inner(
             .get("allowed_tools")
             .and_then(|v| v.as_array())
             .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+        // The prompt describes only the tools the profile leaves. The model is
+        // not final yet (the router and `[models]` run below), so this reads
+        // the best name known now; the list actually sent is resolved again
+        // from the final model.
+        let allowed = crate::core::agent::tool_profile::restrict(
+            allowed,
+            early_tool_profile(
+                project_root.as_deref(),
+                profile.as_deref(),
+                json_body.get("model").and_then(|v| v.as_str()),
+                assistant_model_hint.as_deref(),
+            )?,
+        );
         let mut local = Vec::new();
         advertise_local_tools(
             &mut local,
@@ -5854,16 +6848,54 @@ async fn orchestrate_inner(
     // order they have always entered the prompt, and placed through the
     // project's `[prompt]` policy once, below.
     use crate::core::agent::prompt::Composer;
-    let mut prompt_blocks: Vec<(Composer, String)> = run_prompt_blocks(
-        assistant_instructions.as_deref(),
-        system_prompt_override.as_deref(),
-        project_root.as_deref(),
-        session_id.as_deref(),
-        *subagents_enabled,
-        settings.as_ref().is_some_and(|s| s.sandbox),
-        Some(&offered),
-    )
-    .unwrap_or_default();
+    let task_text = first_user_text(&conversation_messages);
+    let mut prompt_blocks: Vec<(Composer, String)> =
+        crate::core::agent::context::with_memory_query(task_text.as_deref(), || {
+            run_prompt_blocks(
+                assistant_instructions.as_deref(),
+                system_prompt_override.as_deref(),
+                project_root.as_deref(),
+                session_id.as_deref(),
+                *subagents_enabled,
+                settings.as_ref().is_some_and(|s| s.sandbox),
+                Some(&offered),
+            )
+        })
+        .unwrap_or_default();
+    // The opt-in repository map (`[prompt] repo_map = true`): a ranked list of
+    // the project's files and symbols, sized to the context window. Never for
+    // a child run, which carries its own prompt. Built off the runtime (it
+    // refreshes the index and asks git), and absent rather than wrong when
+    // either cannot answer.
+    if system_prompt_override.is_none()
+        && !jan_data_folder.is_empty()
+        && settings.as_ref().is_some_and(|s| s.prompt.repo_map())
+    {
+        if let Some(root) = project_root.clone() {
+            let data = std::path::PathBuf::from(jan_data_folder.as_str());
+            let task = first_user_text(&conversation_messages).unwrap_or_default();
+            let window = json_body
+                .get(BODY_EFFECTIVE_WINDOW)
+                .and_then(|v| v.as_u64())
+                .unwrap_or(crate::core::agent::repo_map::DEFAULT_WINDOW_TOKENS);
+            let map = tokio::task::spawn_blocking(move || {
+                crate::core::agent::repo_map::for_run(&data, &root, &task, window)
+            })
+            .await
+            .ok()
+            .flatten();
+            if let Some(map) = map {
+                // In registry order, so the default policy keeps the bytes of
+                // every other block where they were.
+                let own = Composer::ALL.iter().position(|c| *c == Composer::RepoMap);
+                let at = prompt_blocks
+                    .iter()
+                    .position(|(c, _)| Composer::ALL.iter().position(|a| a == c) > own)
+                    .unwrap_or(prompt_blocks.len());
+                prompt_blocks.insert(at, (Composer::RepoMap, map));
+            }
+        }
+    }
     // Memory reaches the prompt only through `run_prompt_blocks`, which
     // selects canonical records by session, project identity and user scope.
     // The BM25 "# Project Memory" block that used to be appended here recalled
@@ -5936,6 +6968,33 @@ async fn orchestrate_inner(
         .as_ref()
         .map(|s| s.prompt.clone())
         .unwrap_or_default();
+    // `[agent] fast_path`: a run's trivial opening prompt is first tried with a
+    // lean prompt and the minimal tools (see `fast_path`). Decided here, on the
+    // blocks before they are consumed; the lean conversation is cloned before
+    // the full prompt is set, since setting appends to an existing system node.
+    let fast_blocks = (perf.fast_path
+        && system_prompt_override.is_none()
+        && args.parent_run.is_none()
+        && child_run_id.is_none()
+        && run_mode == crate::core::agent::plan::RunMode::Normal
+        && !eager_todo_plan
+        && !goal_mode
+        && cc_hooks.is_empty()
+        && crate::core::agent::fast_path::trivial_opening(&conversation_messages))
+    .then(|| crate::core::agent::fast_path::lean_blocks(&prompt_blocks));
+    let fast_messages = fast_blocks.and_then(|blocks| {
+        let lean = prompt_policy.arrange(blocks).ok()?;
+        let text = if prompt_policy.trim() {
+            crate::core::agent::prompt_trim::trim(&lean.prompt)
+        } else {
+            lean.prompt
+        };
+        let mut messages = conversation_messages.clone();
+        if !text.is_empty() {
+            set_system_prompt(&mut messages, &text);
+        }
+        Some(messages)
+    });
     let arranged = prompt_policy
         .arrange(prompt_blocks)
         .map_err(|e| format!("[prompt] config: {e}"))?;
@@ -5952,8 +7011,15 @@ async fn orchestrate_inner(
                 .join(", ")
         );
     }
-    if !arranged.prompt.is_empty() {
-        set_system_prompt(&mut conversation_messages, &arranged.prompt);
+    // `[prompt] trim = true`: the deterministic trimmer, after placement so the
+    // cache line is decided on the full blocks. Never a model call.
+    let system_prompt = if prompt_policy.trim() {
+        crate::core::agent::prompt_trim::trim(&arranged.prompt)
+    } else {
+        arranged.prompt.clone()
+    };
+    if !system_prompt.is_empty() {
+        set_system_prompt(&mut conversation_messages, &system_prompt);
     }
     // One id for this run, used by the cancellation scope, the execution
     // record and every request's invocation (AH-004): minted once so a stop, a
@@ -6115,6 +7181,18 @@ async fn orchestrate_inner(
                 .filter_map(|v| v.as_str().map(String::from))
                 .collect()
         });
+    // The tool profile of the model this run actually talks to (a subagent
+    // child resolves its own model here, not its parent's). It only removes
+    // tools: the allowlist above is intersected with it, so MCP tools it does
+    // not name are dropped, and the same set refuses a call to a hidden tool.
+    let tool_profile = run_tool_profile(project_root.as_deref(), profile.as_deref(), &model_id)?;
+    let allowed_names = crate::core::agent::tool_profile::restrict(allowed_names, tool_profile);
+    if tool_profile != crate::core::agent::tool_profile::ToolProfile::Full {
+        if let Some(names) = &allowed_names {
+            let names: Vec<String> = names.iter().cloned().collect();
+            apply_tool_allowlist(&mut openai_tools, &mut tool_to_server, &names);
+        }
+    }
     advertise_local_tools(
         &mut openai_tools,
         allowed_names.as_ref(),
@@ -6134,6 +7212,22 @@ async fn orchestrate_inner(
     // Too many MCP schemas to send every turn: hold them back behind
     // `mcp_tools`. Only for a project run, whose invoker can answer it, and
     // not under a per-run allowlist, which already names the few it wants.
+    // `[tools] code_mode`: the `code` tool, for a top-level project run whose
+    // allowlist and deny rules leave it standing.
+    let code_mode = args.parent_run.is_none()
+        && child_run_id.is_none()
+        && project_root
+            .as_deref()
+            .and_then(|root| {
+                crate::core::agent::project::load_agent_config_with_profile(root, profile.as_deref()).ok()
+            })
+            .and_then(|cfg| cfg.tools.code_mode)
+            .unwrap_or(false)
+        && allowed_names.as_ref().is_none_or(|set| set.contains(crate::core::agent::code_mode::TOOL_NAME))
+        && !permissions.is_denied(crate::core::agent::code_mode::TOOL_NAME, subject);
+    if code_mode {
+        openai_tools.push(crate::core::agent::code_mode::schema());
+    }
     let deferred_mcp = if project_root.is_some() && allowed_names.is_none() {
         crate::core::agent::mcp_catalog::DeferredMcpTools::hold_back(&mut openai_tools, &tool_to_server)
     } else {
@@ -6241,7 +7335,9 @@ async fn orchestrate_inner(
 
     let max_session_tokens = body_session_budget(json_body);
     let mut budget =
-        SessionBudget::new(max_session_tokens).with_cost_ceiling(body_cost_ceiling(json_body));
+        SessionBudget::new(max_session_tokens)
+            .with_cost_ceiling(body_cost_ceiling(json_body))
+            .with_pause_at(body_pause_at_usd(json_body));
 
     if let Some(root) = project_root {
         // Background subagents are scoped to this run: `_bg_guard` aborts any
@@ -6278,6 +7374,21 @@ async fn orchestrate_inner(
             tauri_plugin_agent_tools::workspace::ensure_scratch_dir_path(&scratch_root).await?;
         }
         let available_tools = available_tool_names(&mcp_tools, allowed_names.as_ref());
+        // Stale large tool results may be moved into this run's scratch, but
+        // only when the model has the `read` tool to get them back.
+        let offload_body = {
+            let mut body = json_body.clone();
+            if let (true, Some(map)) = (
+                available_tools.iter().any(|t| t == "read"),
+                body.as_object_mut(),
+            ) {
+                map.insert(
+                    BODY_OFFLOAD_ROOT.to_string(),
+                    serde_json::json!(scratch_root.to_string_lossy()),
+                );
+            }
+            body
+        };
         // Rules that cannot be honoured were already refused where the run was
         // started; a project whose file is unreadable here simply has none,
         // rather than failing a run twice for one reason.
@@ -6302,6 +7413,36 @@ async fn orchestrate_inner(
         // A scheduled task's child has nobody to ask, so the classifier is on
         // for it whatever the project says.
         let auto_mode = crate::core::agent::auto_mode::enforce_unattended(auto_mode);
+        // `[[tool_rules]]`: order and count rules over the run's tool calls.
+        // None when the project has none or its file cannot be read.
+        let tool_rules = crate::core::agent::tool_rules::usable(
+            project_root
+                .as_deref()
+                .and_then(|root| {
+                    crate::core::agent::project::load_agent_config_with_profile(
+                        root,
+                        profile.as_deref(),
+                    )
+                    .ok()
+                })
+                .map(|cfg| cfg.tool_rules)
+                .unwrap_or_default(),
+        );
+        // `[approvals]`: whether a prompt nobody can answer is put off to be
+        // answered later instead of being denied.
+        let approvals = crate::core::agent::approval_flow::Runtime::from_section(
+            &project_root
+                .as_deref()
+                .and_then(|root| {
+                    crate::core::agent::project::load_agent_config_with_profile(
+                        root,
+                        profile.as_deref(),
+                    )
+                    .ok()
+                })
+                .map(|cfg| cfg.approvals)
+                .unwrap_or_default(),
+        );
         // How many auto-approved calls in a row before the run checks in with
         // the user; `0` turns the pause off.
         let auto_approve_limit_from_body =
@@ -6325,8 +7466,19 @@ async fn orchestrate_inner(
             auto_approve_limit: auto_approve_limit_from_body,
             auto_approved_streak: std::sync::atomic::AtomicU32::new(0),
             routing,
+            // The judge sends the user's prompt and the call's arguments to a
+            // paid service, so a project the user has not trusted cannot turn
+            // it on from its own agent.toml.
+            judge: tauri_plugin_agent_tools::folder_trust::is_trusted(root.as_path())
+                .then(|| crate::core::agent::auto_mode::judge_for(&auto_mode))
+                .flatten(),
             auto_mode,
+            tool_rules,
+            approvals,
+            call_log: Default::default(),
+            code_mode,
             format_on_edit: settings.format_on_edit,
+            check_syntax: settings.check_syntax,
             nul_programs: settings.nul_programs.clone(),
             available_tools,
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
@@ -6408,6 +7560,16 @@ async fn orchestrate_inner(
                 );
             }
         };
+        // After a checkpoint restore, the run is told which earlier approvals and
+        // refusals no longer stand, so it asks again rather than assuming.
+        let mut conversation_messages = conversation_messages;
+        if let Some(data) = tools.record_to.as_deref() {
+            crate::core::agent::approval_flow::apply_restore_note(
+                data,
+                &tools.cancel_scope.session,
+                &mut conversation_messages,
+            );
+        }
         record_run(
             "run.started",
             serde_json::json!({
@@ -6422,9 +7584,10 @@ async fn orchestrate_inner(
         );
         let result = tauri_plugin_agent_tools::lifecycle::with_current(
             run_registered.token().clone(),
-            run_turn_cycle(
+            run_with_fast_path(
+                fast_messages,
                 events,
-                json_body,
+                &offload_body,
                 &model_id,
                 &openai_tools,
                 conversation_messages,
@@ -6483,7 +7646,8 @@ async fn orchestrate_inner(
         }
         result
     } else {
-        run_turn_cycle(
+        run_with_fast_path(
+            fast_messages,
             events,
             json_body,
             &model_id,
@@ -6501,6 +7665,74 @@ async fn orchestrate_inner(
         )
         .await
     }
+}
+
+/// [`run_turn_cycle`], preceded by the `[agent] fast_path` attempt when the run
+/// qualified for one (`fast_messages` is `Some`). The attempt goes through a
+/// probe that abandons it the moment the model asks for a tool, before anything
+/// is dispatched; the run then starts over on the full path from the untouched
+/// conversation, so a fast answer is always a plain-text one and every tool call
+/// still meets the full prompt, tool set and gates.
+#[allow(clippy::too_many_arguments)]
+async fn run_with_fast_path(
+    fast_messages: Option<Vec<serde_json::Value>>,
+    events: &mpsc::UnboundedSender<StreamEvent>,
+    json_body: &serde_json::Value,
+    model_id: &str,
+    openai_tools: &[serde_json::Value],
+    conversation_messages: Vec<serde_json::Value>,
+    max_turns: usize,
+    budget: &mut SessionBudget,
+    model: &dyn ModelInvoker,
+    tools: &dyn ToolInvoker,
+    run_mode: crate::core::agent::plan::RunMode,
+    todo_registry: Option<&crate::core::agent::todo::TodoRegistry>,
+    force_first_tool: Option<&str>,
+    steering: Option<&mpsc::UnboundedSender<SteeringRequest>>,
+    record: Option<&Invocations>,
+) -> Result<serde_json::Value, HarnessError> {
+    if let Some(messages) = fast_messages {
+        let probe = crate::core::agent::fast_path::FastProbe::new(model);
+        let lean = crate::core::agent::fast_path::lean_tools(openai_tools);
+        let attempt = run_turn_cycle(
+            events,
+            json_body,
+            model_id,
+            &lean,
+            messages,
+            max_turns,
+            budget,
+            &probe,
+            tools,
+            run_mode,
+            todo_registry,
+            force_first_tool,
+            steering,
+            record,
+        )
+        .await;
+        if !probe.missed() {
+            return attempt;
+        }
+        log::info!("agent: fast path missed (the model asked for a tool); running the full path");
+    }
+    run_turn_cycle(
+        events,
+        json_body,
+        model_id,
+        openai_tools,
+        conversation_messages,
+        max_turns,
+        budget,
+        model,
+        tools,
+        run_mode,
+        todo_registry,
+        force_first_tool,
+        steering,
+        record,
+    )
+    .await
 }
 
 /// Upper bound on compaction retries per model call, so a persistently
@@ -6890,13 +8122,26 @@ pub(crate) fn body_send_reasoning(json_body: &serde_json::Value) -> bool {
 /// `token_rates` to meter it against. Both or neither: a limit with no rates
 /// has nothing to meter, which the CLI refuses up front (`resolve_cost_ceiling`);
 /// here it simply does not meter.
+/// `[budget] pause_at_usd` as carried on the body: the spend at which the run
+/// asks once whether to go on. Absent or invalid means no pause.
+fn body_pause_at_usd(json_body: &serde_json::Value) -> Option<f64> {
+    json_body
+        .get("pause_at_usd")
+        .and_then(|v| v.as_f64())
+        .filter(|v| v.is_finite() && *v >= 0.0)
+}
+
 fn body_cost_ceiling(
     json_body: &serde_json::Value,
 ) -> Option<crate::core::agent::session::CostCeiling> {
+    // A run with only a `pause_at_usd` is metered against an infinite
+    // ceiling: the rates are needed to know when the pause is reached, and an
+    // infinite ceiling never stops anything.
     let max_usd = json_body
         .get("max_budget_usd")
         .and_then(|v| v.as_f64())
-        .filter(|v| v.is_finite() && *v >= 0.0)?;
+        .filter(|v| v.is_finite() && *v >= 0.0)
+        .or_else(|| body_pause_at_usd(json_body).map(|_| f64::INFINITY))?;
     let rates = json_body.get("token_rates")?;
     let rate = |key: &str| rates.get(key).and_then(|v| v.as_f64());
     Some(crate::core::agent::session::CostCeiling {
@@ -6980,7 +8225,31 @@ fn finished_background_jobs(owed: &mut Vec<String>) -> Option<String> {
 /// The last completion of a run stopped by its money ceiling, rewritten into a
 /// terminal answer: `finish_reason` becomes `budget_exceeded`, and any
 /// `tool_calls` are dropped because they will never be answered.
-fn halted_over_budget(mut completion: serde_json::Value) -> serde_json::Value {
+fn halted_over_budget(completion: serde_json::Value) -> serde_json::Value {
+    halted_with(completion, "budget_exceeded")
+}
+
+/// The last completion of a run that ends because a call is waiting for an
+/// answer to be given later: `finish_reason` becomes `awaiting_approval` and,
+/// when the model had said nothing, the content says what the run is waiting for.
+fn halted_for_approval(completion: serde_json::Value, note: &str) -> serde_json::Value {
+    let mut completion = halted_with(completion, "awaiting_approval");
+    if let Some(message) = completion
+        .pointer_mut("/choices/0/message")
+        .and_then(|m| m.as_object_mut())
+    {
+        let silent = message
+            .get("content")
+            .and_then(|c| c.as_str())
+            .is_none_or(|c| c.trim().is_empty());
+        if silent {
+            message.insert("content".to_string(), serde_json::json!(note));
+        }
+    }
+    completion
+}
+
+fn halted_with(mut completion: serde_json::Value, finish_reason: &str) -> serde_json::Value {
     if let Some(choice) = completion
         .get_mut("choices")
         .and_then(|c| c.as_array_mut())
@@ -6989,7 +8258,7 @@ fn halted_over_budget(mut completion: serde_json::Value) -> serde_json::Value {
         if let Some(message) = choice.get_mut("message").and_then(|m| m.as_object_mut()) {
             message.remove("tool_calls");
         }
-        choice["finish_reason"] = serde_json::json!("budget_exceeded");
+        choice["finish_reason"] = serde_json::json!(finish_reason);
     }
     completion
 }
@@ -7085,6 +8354,12 @@ async fn receive_steering(
 /// for this run (disabled by config, or a caller that never set them).
 pub(crate) const BODY_COMPACT_AT: &str = "jan_compaction_compact_at";
 pub(crate) const BODY_EFFECTIVE_WINDOW: &str = "jan_compaction_effective_window";
+
+/// Body key naming the run's scratch directory, where microcompaction may move
+/// stale large tool results (`compaction_policy::Offloader`). Set only when the
+/// run has a scratch the `read` tool can reach; absent means results are
+/// condensed in place.
+pub(crate) const BODY_OFFLOAD_ROOT: &str = "jan_compaction_offload_root";
 
 /// Body key a subagent dispatch sets from its definition's
 /// `auto_compact_window`: the token count at which this child compacts.
@@ -7197,11 +8472,20 @@ async fn run_turn_cycle(
     let mut refill_guard = crate::core::agent::compaction_policy::RefillGuard::new(
         crate::core::agent::compaction_policy::RefillLimits::default(),
     );
+    // Holds this cycle's offload budget; `None` condenses stale results in place.
+    let mut offloader = json_body
+        .get(BODY_OFFLOAD_ROOT)
+        .and_then(|v| v.as_str())
+        .map(|root| crate::core::agent::compaction_policy::Offloader::new(std::path::Path::new(root)));
 
     // Independent completion verification (opt-in): when required, the run does
     // not finish on the worker's own say-so — a separate verifier grades the
     // work, and a non-PASS verdict with retries left sends the worker back with
     // the verifier's evidence. Absent the trigger this stays inert.
+    // `[agent] final_checks`: files that must exist and commands that must
+    // exit 0 before the run may answer. One retry turn, then it finishes.
+    let final_checks = crate::core::agent::final_checks::from_body(json_body);
+    let mut final_checks_retried = false;
     let verify_completion = body_verification_enabled(json_body);
     let mut verify_budget = crate::core::agent::verification::RepairBudget::new(
         body_verification_retries(json_body),
@@ -7218,6 +8502,11 @@ async fn run_turn_cycle(
     let mut shells_scanned = conversation_messages.len();
 
     while unlimited || turn < max_turns {
+        // Low memory is waited out briefly, then stops the run cleanly rather
+        // than letting the next request take the machine down.
+        crate::core::agent::ram_guard::guard(json_body)
+            .await
+            .map_err(|reason| HarnessError::new(ErrorKind::BudgetExhausted, reason))?;
         // A compaction replaces the vector with a shorter one, so the index of
         // what was already scanned can be past the end: clamp it rather than
         // slice out of range (which panicked the whole run).
@@ -7230,10 +8519,62 @@ async fn run_turn_cycle(
             crate::core::agent::reminder::attach(&mut conversation_messages, &text);
             shells_scanned = conversation_messages.len();
         }
+        // A call was put off to be answered later (`[approvals] defer`): the run
+        // ends here instead of carrying on without it. Once the answer is given
+        // and the session resumed, the model proposes the call again.
+        let waiting_for_answer = tools.approval_deferred();
+        if !waiting_for_answer.is_empty() {
+            // The completion is only kept when a money ceiling is set; without
+            // one the run ends on an empty answer that says what it waits for.
+            let completion = last_completion.take().unwrap_or_else(|| {
+                serde_json::json!({
+                    "choices": [{
+                        "message": { "role": "assistant", "content": "" },
+                        "finish_reason": "stop",
+                    }]
+                })
+            });
+            let note = crate::core::agent::approval_flow::halt_note(&waiting_for_answer);
+            log::info!("agent: stopping the run, {note}");
+            conversation_messages.push(serde_json::json!({
+                "role": "system",
+                "content": format!("[waiting for approval] {note}"),
+            }));
+            let _ = events.send(StreamEvent::MessagesUpdated {
+                messages: conversation_messages.clone(),
+            });
+            return Ok(halted_for_approval(completion, &note));
+        }
         // The money ceiling (upstream #9034) is enforced here, at the one point
         // every path that would start another request passes through. A
         // ceiling stops the run; it does not fail it: the answer comes back
         // with `finish_reason: "budget_exceeded"`.
+        //
+        // `[budget] pause_at_usd` is checked first, at the same boundary: once
+        // spend reaches it the run asks, once, whether to go on. Allow goes on
+        // to the hard ceiling (if any); deny stops here exactly as the ceiling
+        // would; nobody to ask leaves the run as if no pause were set.
+        // Only once a request has been billed: a pause of `0` must not ask
+        // before there is anything to stop with.
+        if let Some(pause) = last_completion.is_some().then(|| budget.take_pause()).flatten() {
+            let spent = budget.spent_usd().unwrap_or(0.0);
+            let max = budget.hard_max_usd();
+            if tools.confirm_spend_pause(spent, pause, max).await == SpendPause::Stop {
+                if let Some(completion) = last_completion.take() {
+                    log::info!("agent: stopping the run at the spend pause, spent ${spent:.4}");
+                    conversation_messages.push(serde_json::json!({
+                        "role": "system",
+                        "content": format!(
+                            "[spend pause] This run stopped after spending about ${spent:.4}:                              it reached its ${pause:.4} pause and the user chose to stop.                              The task may be unfinished."
+                        ),
+                    }));
+                    let _ = events.send(StreamEvent::MessagesUpdated {
+                        messages: conversation_messages.clone(),
+                    });
+                    return Ok(halted_over_budget(completion));
+                }
+            }
+        }
         if budget.over_cost_ceiling() {
             if let Some(completion) = last_completion.take() {
                 let spent = budget.spent_usd().unwrap_or(0.0);
@@ -7301,9 +8642,10 @@ async fn run_turn_cycle(
                     cpol::CompactionDecision::Proceed => {
                         let before = cpol::estimate_tokens(&conversation_messages);
                         // 1. Microcompaction: cheap, in place, pairing-safe.
-                        let (mut projected, micro_stats) = cpol::microcompact(
+                        let (mut projected, micro_stats) = cpol::microcompact_offloading(
                             &conversation_messages,
                             &cpol::MicrocompactConfig::default(),
+                            offloader.as_mut(),
                         );
                         // 2. Full compaction only if still over the threshold.
                         let mut full_shrunk = false;
@@ -7316,6 +8658,7 @@ async fn run_turn_cycle(
                                 CompactionReason::Preflight,
                                 None,
                             );
+                            tools.observe_compaction(HookEvent::PreCompact);
                             match crate::core::agent::compaction::compact_conversation_with(
                                 &projected, model_id, model, &opts,
                             )
@@ -7328,6 +8671,7 @@ async fn run_turn_cycle(
                                         CompactionReason::Preflight,
                                         Some(projected.len() - full.len()),
                                     );
+                                    tools.observe_compaction(HookEvent::PostCompact);
                                     projected = full;
                                     full_shrunk = true;
                                 }
@@ -7374,6 +8718,7 @@ async fn run_turn_cycle(
                                         "tokensBefore": before,
                                         "tokensAfter": after,
                                         "condensed": micro_stats.condensed,
+                                        "offloaded": micro_stats.offloaded,
                                         "full": full_shrunk,
                                     }),
                                 );
@@ -7433,6 +8778,14 @@ async fn run_turn_cycle(
                         if e.kind() == ErrorKind::ContextOverflow
                             && attempts < MAX_COMPACTION_ATTEMPTS =>
                     {
+                        // The error often says what the limit is: keep it, so the
+                        // next run compacts before it instead of after.
+                        if let (Some(limit), Some(requested)) = (
+                            crate::core::agent::learned_window::parse_context_limit(&e.to_string()),
+                            json_body.get("model").and_then(|m| m.as_str()),
+                        ) {
+                            crate::core::agent::learned_window::record(requested, limit);
+                        }
                         if let Some(record) = record {
                             record.note(
                                 "compaction.started",
@@ -7450,6 +8803,7 @@ async fn run_turn_cycle(
                             CompactionReason::ContextOverflow,
                             None,
                         );
+                        tools.observe_compaction(HookEvent::PreCompact);
                         let compacted = match crate::core::agent::compaction::compact_conversation_with(
                             &conversation_messages,
                             model_id,
@@ -7519,6 +8873,7 @@ async fn run_turn_cycle(
                             CompactionReason::ContextOverflow,
                             Some(conversation_messages.len() - compacted.len()),
                         );
+                        tools.observe_compaction(HookEvent::PostCompact);
                         log::info!(
                             "agent: context overflow, compacted {} -> {} messages (attempt {})",
                             conversation_messages.len(),
@@ -7654,6 +9009,55 @@ async fn run_turn_cycle(
                     continue;
                 }
             }
+            // `[agent] final_checks`: the project's own machine-checkable
+            // definition of done, tested before the answer is handed back. A
+            // failure gets one retry turn carrying what failed; a second
+            // failure does not loop -- the answer goes out marked unverified.
+            if !final_checks.is_empty()
+                && !awaiting_user
+                && run_mode == crate::core::agent::plan::RunMode::Normal
+            {
+                use crate::core::agent::final_checks as fc;
+                let root = tools.effect_root();
+                let outcomes = fc::evaluate(&final_checks, root.as_deref(), |command, secs| async move {
+                    tools.run_check_command(&command, secs).await
+                })
+                .await;
+                let failing = fc::failures(&outcomes).len();
+                if let Some(record) = record {
+                    record.note(
+                        if failing == 0 { "final_checks.passed" } else { "final_checks.failed" },
+                        serde_json::json!({
+                            "checks": outcomes.len(),
+                            "failed": failing,
+                            "retried": final_checks_retried,
+                        }),
+                    );
+                }
+                if failing > 0 && !final_checks_retried && !budget.exhausted() && (unlimited || turn + 1 < max_turns) {
+                    final_checks_retried = true;
+                    conversation_messages.push(serde_json::json!({
+                        "role": "assistant",
+                        "content": final_text,
+                    }));
+                    crate::core::agent::reminder::attach(&mut conversation_messages, &fc::retry_note(&outcomes));
+                    turn += 1;
+                    continue;
+                }
+                if failing > 0 {
+                    let note = fc::unresolved_note(&outcomes);
+                    if let Some(serde_json::Value::String(content)) =
+                        completion.pointer_mut("/choices/0/message/content")
+                    {
+                        content.push_str("\n\n");
+                        content.push_str(&note);
+                    }
+                    let _ = events.send(StreamEvent::Token { text: format!("\n\n{note}") });
+                }
+                if let Some(obj) = completion.as_object_mut() {
+                    obj.insert("final_checks".to_string(), fc::report(&outcomes, final_checks_retried));
+                }
+            }
             // Independent completion verification. The worker does not grade
             // itself: a separate verifier reads the task spec, the recent tool
             // output, and the worker's final answer, and issues a verdict. A
@@ -7728,6 +9132,7 @@ async fn run_turn_cycle(
                     CompactionReason::SessionBudget,
                     None,
                 );
+                tools.observe_compaction(HookEvent::PreCompact);
                 match crate::core::agent::compaction::compact_conversation_with(
                     &conversation_messages,
                     model_id,
@@ -7743,6 +9148,7 @@ async fn run_turn_cycle(
                             CompactionReason::SessionBudget,
                             Some(conversation_messages.len() - compacted.len()),
                         );
+                        tools.observe_compaction(HookEvent::PostCompact);
                         log::info!(
                             "agent: budget exhausted at end of run, compacted {} -> {} messages",
                             conversation_messages.len(),
@@ -8025,6 +9431,12 @@ async fn run_turn_cycle(
         // here, which keeps it to exactly one `ToolResult` per id.
         let announced: std::sync::Mutex<HashMap<String, bool>> =
             std::sync::Mutex::new(HashMap::new());
+        // The tool-effect ledger: what each side-effecting call is about to
+        // touch, seen before it runs so a file's hash before the call is real.
+        let ledger_pending = match record {
+            Some(_) => crate::core::agent::ledger::before_batch(tools.effect_root().as_deref(), &executable),
+            None => Vec::new(),
+        };
         let mut tool_results: Vec<ToolOutcome> = if executable.is_empty() {
             Vec::new()
         } else {
@@ -8032,12 +9444,25 @@ async fn run_turn_cycle(
             // dispatched from, so a dispatch that asks to fork has the
             // parent's history to copy rather than an empty one.
             tools.observe_conversation(&conversation_messages);
-            tools
+            let invoked = tools
                 .invoke_streaming(&executable, &|outcome| {
                     let is_error = emit_tool_result(events, &tool_names, outcome);
                     announced.lock().unwrap().insert(outcome.id.clone(), is_error);
                 })
-                .await?
+                .await;
+            match invoked {
+                Ok(results) => results,
+                Err(e) => {
+                    // The batch ended abnormally, but its calls may have run:
+                    // the ledger says they were attempted and did not report.
+                    if let Some(record) = record {
+                        for pending in ledger_pending {
+                            record.ledger(&crate::core::agent::ledger::finish(pending, true));
+                        }
+                    }
+                    return Err(e);
+                }
+            }
         };
         // Results are matched to calls by id, so appending the failed calls
         // after the executed ones keeps the protocol intact.
@@ -8077,6 +9502,7 @@ async fn run_turn_cycle(
         };
 
         let mut todo_touched_this_batch = false;
+        let mut ledger_failed: HashMap<String, bool> = HashMap::new();
         for outcome in tool_results {
             // Emitted here only when the invoker did not announce it already
             // (the default invoker never does; a call refused before execution
@@ -8086,6 +9512,7 @@ async fn run_turn_cycle(
                 Some(is_error) => is_error,
                 None => emit_tool_result(events, &tool_names, &outcome),
             };
+            ledger_failed.insert(outcome.id.clone(), is_error);
             let ToolOutcome {
                 id,
                 content,
@@ -8127,6 +9554,12 @@ async fn run_turn_cycle(
                 "tool_call_id": id,
                 "content": wire_content
             }));
+        }
+        if let Some(record) = record {
+            for pending in ledger_pending {
+                let failed = ledger_failed.get(pending.call_id()).copied().unwrap_or(true);
+                record.ledger(&crate::core::agent::ledger::finish(pending, failed));
+            }
         }
         if let Some(reason) = stuck_reason {
             let summary = reason.summary();
@@ -8218,6 +9651,40 @@ async fn run_turn_cycle(
             messages: conversation_messages.clone(),
         });
         turn += 1;
+    }
+
+    // `[agent] final_answer_on_limit`: one closing request with tool use
+    // withheld, so the run ends with an account of itself. If that request
+    // fails the run ends with the turn-limit error as before. Not past the
+    // money ceiling: that one is never crossed for another request.
+    if crate::core::agent::turn_limit::enabled(json_body) && !budget.over_cost_ceiling() {
+        use crate::core::agent::turn_limit as tl;
+        crate::core::agent::reminder::attach(&mut conversation_messages, tl::OUT_OF_TURNS_NOTE);
+        let request = tl::without_tool_use(build_completion_request(
+            model_id,
+            &conversation_messages,
+            openai_tools,
+            json_body,
+            None,
+        ));
+        match model.invoke(&request, events).await {
+            Ok(completion) => {
+                let usage = Usage::from_completion(&completion);
+                if let Some(usage) = usage.clone() {
+                    let _ = events.send(StreamEvent::TurnUsage {
+                        usage,
+                        execution_id: crate::core::agent::correlation::execution_id_of(&completion),
+                    });
+                }
+                budget.record(&usage);
+                let _ = events.send(StreamEvent::MessagesUpdated {
+                    messages: conversation_messages.clone(),
+                });
+                return Ok(tl::as_final_answer(completion));
+            }
+            Err(e) if e.is_cancellation() => return Err(e),
+            Err(e) => log::warn!("agent: the closing answer at the turn limit failed: {e}"),
+        }
     }
 
     Err(HarnessError::new(
@@ -8621,6 +10088,201 @@ mod tests {
         );
     }
 
+    /// A tool invoker that answers the spend pause with `answer` and counts
+    /// how often it was asked.
+    struct PausingTool {
+        inner: MockTool,
+        answer: SpendPause,
+        asked: StdMutex<Vec<(f64, f64, Option<f64>)>>,
+    }
+    impl PausingTool {
+        fn new(answer: SpendPause) -> Self {
+            Self { inner: MockTool::default(), answer, asked: StdMutex::new(Vec::new()) }
+        }
+    }
+    #[async_trait]
+    impl ToolInvoker for PausingTool {
+        async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {
+            self.inner.invoke(tool_calls).await
+        }
+        async fn confirm_spend_pause(&self, spent: f64, pause: f64, max: Option<f64>) -> SpendPause {
+            self.asked.lock().unwrap().push((spent, pause, max));
+            self.answer
+        }
+    }
+
+    /// A billed turn that costs $1 at $1/M prompt tokens and calls a tool.
+    fn dollar_tool_turn(id: &str) -> serde_json::Value {
+        json!({
+            "choices": [{
+                "message": {
+                    "content": "working",
+                    "tool_calls": [{
+                        "id": id,
+                        "type": "function",
+                        "function": {"name": "read", "arguments": "{\"path\":\"a\"}"}
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }],
+            "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 0, "total_tokens": 1_000_000}
+        })
+    }
+
+    fn dollar_rates_budget(max_usd: f64, pause: Option<f64>) -> SessionBudget {
+        SessionBudget::new(None)
+            .with_cost_ceiling(Some(crate::core::agent::session::CostCeiling {
+                rates: crate::core::agent::session::TokenRates {
+                    prompt_usd: 1e-6,
+                    completion_usd: 1e-6,
+                    cache_read_usd: None,
+                    cache_write_usd: None,
+                },
+                max_usd,
+            }))
+            .with_pause_at(pause)
+    }
+
+    async fn run_paused(
+        model: &MockModel,
+        tools: &dyn ToolInvoker,
+        budget: &mut SessionBudget,
+    ) -> serde_json::Value {
+        let (events, _rx) = mpsc::unbounded_channel();
+        run_turn_cycle(
+            &events,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({"role": "user", "content": "go"})],
+            0,
+            budget,
+            model,
+            tools,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("a pause never fails the run")
+    }
+
+    fn three_turns() -> MockModel {
+        MockModel::new(vec![
+            dollar_tool_turn("c1"),
+            dollar_tool_turn("c2"),
+            json!({"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}]}),
+        ])
+    }
+
+    /// Allow: the run goes on, and is asked only once though every later turn
+    /// is past the pause too.
+    #[tokio::test]
+    async fn an_allowed_spend_pause_continues_and_asks_once() {
+        let model = three_turns();
+        let tools = PausingTool::new(SpendPause::Continue);
+        let mut budget = dollar_rates_budget(f64::INFINITY, Some(0.5));
+        let result = run_paused(&model, &tools, &mut budget).await;
+        assert_eq!(result["choices"][0]["finish_reason"], json!("stop"));
+        assert_eq!(model.requests.lock().unwrap().len(), 3);
+        let asked = tools.asked.lock().unwrap().clone();
+        assert_eq!(asked.len(), 1, "{asked:?}");
+        assert_eq!(asked[0].1, 0.5);
+        assert_eq!(asked[0].2, None, "an infinite ceiling is reported as none");
+    }
+
+    /// Deny: the run stops at once, as the ceiling would.
+    #[tokio::test]
+    async fn a_denied_spend_pause_stops_as_budget_exceeded() {
+        let model = three_turns();
+        let tools = PausingTool::new(SpendPause::Stop);
+        let mut budget = dollar_rates_budget(10.0, Some(0.5));
+        let result = run_paused(&model, &tools, &mut budget).await;
+        assert_eq!(result["choices"][0]["finish_reason"], json!("budget_exceeded"));
+        assert!(result["choices"][0]["message"].get("tool_calls").is_none(), "{result}");
+        assert_eq!(model.requests.lock().unwrap().len(), 1, "no request past the pause");
+        assert_eq!(tools.asked.lock().unwrap()[0].2, Some(10.0));
+    }
+
+    /// Nobody to ask: the run goes on exactly as with no pause set.
+    #[tokio::test]
+    async fn a_spend_pause_with_nobody_to_ask_changes_nothing() {
+        let model = three_turns();
+        let mut budget = dollar_rates_budget(f64::INFINITY, Some(0.5));
+        let result = run_paused(&model, &MockTool::default(), &mut budget).await;
+        assert_eq!(result["choices"][0]["finish_reason"], json!("stop"));
+        assert_eq!(model.requests.lock().unwrap().len(), 3);
+    }
+
+    /// Allowed past the pause, the hard ceiling still stops the run.
+    #[tokio::test]
+    async fn an_allowed_spend_pause_still_stops_at_the_hard_ceiling() {
+        let model = three_turns();
+        let tools = PausingTool::new(SpendPause::Continue);
+        let mut budget = dollar_rates_budget(1.5, Some(0.5));
+        let result = run_paused(&model, &tools, &mut budget).await;
+        assert_eq!(result["choices"][0]["finish_reason"], json!("budget_exceeded"));
+        assert_eq!(model.requests.lock().unwrap().len(), 2);
+        assert_eq!(tools.asked.lock().unwrap().len(), 1);
+    }
+
+    /// Absent key: no pause, and no ceiling is invented from nothing.
+    #[test]
+    fn the_body_carries_a_pause_only_when_set() {
+        let rates = json!({"prompt_usd": 1e-6, "completion_usd": 1e-6});
+        assert_eq!(body_pause_at_usd(&json!({})), None);
+        assert_eq!(body_cost_ceiling(&json!({"token_rates": rates})), None);
+        assert_eq!(body_pause_at_usd(&json!({"pause_at_usd": -1.0})), None);
+        let paused = json!({"pause_at_usd": 0.5, "token_rates": rates});
+        assert_eq!(body_pause_at_usd(&paused), Some(0.5));
+        let ceiling = body_cost_ceiling(&paused).expect("metered for the pause");
+        assert!(ceiling.max_usd.is_infinite());
+        let both = json!({"pause_at_usd": 0.5, "max_budget_usd": 2.0, "token_rates": rates});
+        assert_eq!(body_cost_ceiling(&both).unwrap().max_usd, 2.0);
+    }
+
+    /// The real invoker asks through the permission prompt, once, with a
+    /// reason and no "always"; allow continues and deny stops.
+    #[tokio::test]
+    async fn the_spend_pause_is_a_permission_prompt() {
+        for (answer, expected) in [
+            (PermissionDecision::AllowOnce, SpendPause::Continue),
+            (PermissionDecision::Deny, SpendPause::Stop),
+        ] {
+            let root = unique_project_root();
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+            let mut invoker = build_prompting_invoker(root.clone(), tx, registry.clone());
+            invoker.ask_requests = Some(Arc::new(Mutex::new(HashMap::new())));
+            let answering = registry.clone();
+            let responder = tokio::spawn(async move {
+                while let Some(event) = rx.recv().await {
+                    if let StreamEvent::PermissionRequest {
+                        request_id, tool_name, reason, offers_always, args_digest, ..
+                    } = event
+                    {
+                        if let Some(tx) = answering.lock().await.remove(&request_id) {
+                            let _ = tx.send(answer);
+                        }
+                        return Some((tool_name, reason, offers_always, args_digest));
+                    }
+                }
+                None
+            });
+            let got = invoker.confirm_spend_pause(1.0, 0.5, Some(5.0)).await;
+            let (tool_name, reason, offers_always, args_digest) = responder.await.unwrap().expect("asked");
+            assert_eq!(got, expected);
+            assert_eq!(tool_name, "spend_pause");
+            assert!(reason.unwrap_or_default().contains("Spend pause"));
+            assert!(!offers_always);
+            assert_eq!(args_digest, None);
+            assert!(registry.lock().await.is_empty());
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
     /// jan#8976: the proactive compaction policy is exercised through the real
     /// request path. When the projected request crosses the configured
     /// threshold carried on the body, the turn cycle compacts *before* the
@@ -8707,6 +10369,69 @@ mod tests {
         assert_eq!(announced[0], (CompactionPhase::Started, None));
         assert_eq!(announced[1].0, CompactionPhase::Finished);
         assert!(announced[1].1.is_some_and(|n| n > 0), "{announced:?}");
+    }
+
+    /// The tool invoker is told a compaction is about to start and that it
+    /// shrank the conversation, in that order, so the project's observe-only
+    /// `pre-compact` / `post-compact` hooks fire around it.
+    #[tokio::test]
+    async fn a_compaction_is_announced_to_the_tool_invoker_for_its_hooks() {
+        #[derive(Default)]
+        struct Watcher {
+            seen: StdMutex<Vec<HookEvent>>,
+        }
+        #[async_trait]
+        impl ToolInvoker for Watcher {
+            async fn invoke(
+                &self,
+                _tool_calls: &[serde_json::Value],
+            ) -> Result<Vec<ToolOutcome>, HarnessError> {
+                Ok(Vec::new())
+            }
+            fn observe_compaction(&self, event: HookEvent) {
+                self.seen.lock().unwrap().push(event);
+            }
+        }
+        let (events, _rx) = mpsc::unbounded_channel();
+        let conversation: Vec<serde_json::Value> = (0..40)
+            .map(|i| {
+                let role = if i % 2 == 0 { "user" } else { "assistant" };
+                json!({ "role": role, "content": format!("message number {i} carrying a few words of content") })
+            })
+            .collect();
+        let model = MockModel::new(vec![
+            json!({"choices": [{"message": {"content": "CONDENSED SUMMARY OF EARLIER TURNS"}}]}),
+            json!({"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}]}),
+        ]);
+        let mut body = serde_json::Map::new();
+        body.insert(BODY_COMPACT_AT.to_string(), json!(50));
+        body.insert(BODY_EFFECTIVE_WINDOW.to_string(), json!(100));
+        body.insert(crate::core::agent::compaction::BODY_KEEP_RECENT.to_string(), json!(4));
+        let body = serde_json::Value::Object(body);
+        let watcher = Watcher::default();
+        let mut budget = SessionBudget::new(None);
+        run_turn_cycle(
+            &events,
+            &body,
+            "m",
+            &[],
+            conversation,
+            4,
+            &mut budget,
+            &model,
+            &watcher,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            *watcher.seen.lock().unwrap(),
+            vec![HookEvent::PreCompact, HookEvent::PostCompact]
+        );
     }
 
     /// The circuit breaker blocks proactive compaction once it has failed to
@@ -11728,6 +13453,102 @@ mod tests {
         assert_eq!(tool.calls.lock().unwrap().len(), 3, "it ran exactly its turns, no more");
     }
 
+    /// `[agent] final_answer_on_limit`: at the cap the run makes one more
+    /// request, with tool use off and the out-of-turns note, and returns its
+    /// reply as the answer instead of the turn-limit error.
+    #[tokio::test]
+    async fn turn_cycle_at_the_cap_asks_for_a_closing_answer_when_enabled() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let call = |n: u32| {
+            let mut c = tool_call_completion();
+            c["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] =
+                json!(format!("{{\"q\":\"query {n}\"}}"));
+            c
+        };
+        let closing = json!({ "choices": [{
+            "message": { "content": "searched twice; the rest is unfinished" },
+            "finish_reason": "stop"
+        }]});
+        let model = MockModel::new(vec![call(1), call(2), closing]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let mut body = json!({});
+        crate::core::agent::turn_limit::annotate(&mut body, true, false);
+
+        let result = run_turn_cycle(
+            &tx,
+            &body,
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            2,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("the closing answer is the run's answer");
+
+        assert_eq!(result["choices"][0]["finish_reason"], "turn_limit_exceeded");
+        assert_eq!(
+            result["choices"][0]["message"]["content"],
+            "searched twice; the rest is unfinished"
+        );
+        assert_eq!(tool.calls.lock().unwrap().len(), 2, "no tool runs after the cap");
+        let requests = model.requests.lock().unwrap();
+        assert_eq!(requests.len(), 3);
+        let last = &requests[2];
+        assert_eq!(last["tool_choice"], "none");
+        let sent = last["messages"].to_string();
+        assert!(sent.contains("You are out of turns."), "{sent}");
+    }
+
+    /// Off (the default), and for a child whatever the project says, the cap
+    /// still ends the run with the turn-limit error and no extra request.
+    #[tokio::test]
+    async fn turn_cycle_at_the_cap_keeps_the_error_when_off_or_for_a_child() {
+        for (enabled, is_child) in [(false, false), (true, true)] {
+            let (tx, _rx) = mpsc::unbounded_channel();
+            let call = |n: u32| {
+                let mut c = tool_call_completion();
+                c["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] =
+                    json!(format!("{{\"q\":\"query {n}\"}}"));
+                c
+            };
+            let model = MockModel::new(vec![call(1), call(2), call(3)]);
+            let tool = MockTool::default();
+            let mut budget = SessionBudget::new(None);
+            let mut body = json!({});
+            crate::core::agent::turn_limit::annotate(&mut body, enabled, is_child);
+
+            let err = run_turn_cycle(
+                &tx,
+                &body,
+                "m",
+                &[],
+                vec![json!({ "role": "user", "content": "hi" })],
+                2,
+                &mut budget,
+                &model,
+                &tool,
+                crate::core::agent::plan::RunMode::Normal,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect_err("the cap stays an error");
+            assert_eq!(err.kind(), ErrorKind::BudgetExhausted, "{}", err.message());
+            assert_eq!(model.requests.lock().unwrap().len(), 2, "no closing request");
+        }
+    }
+
     #[test]
     fn absent_turn_cap_is_unbounded() {
         assert_eq!(body_turn_cap(&json!({})), 0);
@@ -11784,7 +13605,7 @@ mod tests {
 
     static TEST_ROOT_SEQ: AtomicUsize = AtomicUsize::new(0);
 
-    fn unique_project_root() -> std::path::PathBuf {
+    pub(super) fn unique_project_root() -> std::path::PathBuf {
         let n = TEST_ROOT_SEQ.fetch_add(1, Ordering::SeqCst);
         let dir =
             std::env::temp_dir().join(format!("jan_loop_perm_test_{}_{}", std::process::id(), n));
@@ -11924,7 +13745,7 @@ mod tests {
         assert!(outcomes[1].content.starts_with("ERROR [sandbox_denied]"), "{}", outcomes[1].content);
     }
 
-    fn build_prompting_invoker(
+    pub(super) fn build_prompting_invoker(
         root: std::path::PathBuf,
         events: mpsc::UnboundedSender<StreamEvent>,
         registry: PermissionRegistry,
@@ -11940,7 +13761,7 @@ mod tests {
 
     /// The same invoker, for tests that need to choose the permissions or say
     /// which agent the call is being made by.
-    fn build_invoker_for(
+    pub(super) fn build_invoker_for(
         root: std::path::PathBuf,
         events: mpsc::UnboundedSender<StreamEvent>,
         registry: PermissionRegistry,
@@ -11954,6 +13775,7 @@ mod tests {
             auto_approved_streak: std::sync::atomic::AtomicU32::new(0),
             routing: Vec::new(),
             format_on_edit: false,
+            check_syntax: true,
             nul_programs: Vec::new(),
             available_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
                 .iter()
@@ -11994,6 +13816,11 @@ mod tests {
             auto_approve: false,
             attribution: None,
             auto_mode: crate::core::agent::auto_mode::AutoModePolicy::default(),
+            judge: None,
+            tool_rules: Vec::new(),
+            approvals: Default::default(),
+            call_log: Default::default(),
+            code_mode: false,
             run_mode: crate::core::agent::plan::RunMode::Normal,
             #[cfg(feature = "cli")]
             host_tools: crate::core::agent::host_tools::HostToolSet::new(),
@@ -13319,6 +15146,147 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// `[[tool_rules]]`: a call held back by a rule is answered with the rule's
+    /// words and the rest of its batch still runs, in the order they were
+    /// listed; once the earlier tool has been called the rule lets it through.
+    /// (Read-only tools, so nothing here waits for an approval.)
+    #[tokio::test]
+    async fn tool_rules_hold_a_call_back_until_the_earlier_tool_ran() {
+        use crate::core::agent::tool_rules::ToolRuleSpec;
+        let root = std::env::temp_dir().join(format!("flint-tool-rules-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.txt"), "hello
+").unwrap();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            PermissionRegistry::default(),
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        invoker.tool_rules = vec![ToolRuleSpec {
+            tool: "ls".to_string(),
+            after: Some("read".to_string()),
+            reason: Some("Read a file before listing the folder.".to_string()),
+            ..Default::default()
+        }];
+        let call = |id: &str, name: &str, args: &str| {
+            serde_json::json!({ "id": id, "type": "function",
+                "function": { "name": name, "arguments": args } })
+        };
+        let first = invoker
+            .invoke(&[call("l1", "ls", "{\"path\":\".\"}"), call("r1", "read", "{\"path\":\"a.txt\"}")])
+            .await
+            .expect("dispatch");
+        assert_eq!(first.len(), 2);
+        assert_eq!(first[0].id, "l1");
+        assert_eq!(first[0].refusal, Some(HarnessRefusal::ToolRule), "{}", first[0].content);
+        assert!(first[0].content.contains("Read a file before listing the folder."), "{}", first[0].content);
+        assert_eq!(first[1].id, "r1");
+        assert_eq!(first[1].refusal, None, "{}", first[1].content);
+        assert!(first[1].content.contains("hello"), "{}", first[1].content);
+
+        let second = invoker.invoke(&[call("l2", "ls", "{\"path\":\".\"}")]).await.expect("dispatch");
+        assert_eq!(second[0].refusal, None, "the rule is met once read has run: {}", second[0].content);
+        assert!(second[0].content.contains("a.txt"), "{}", second[0].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `[[tool_rules]] max_failures`: once a tool has failed that many times
+    /// in the run, the next call of it is refused with a typed rule refusal,
+    /// and other tools still run.
+    #[tokio::test]
+    async fn max_failures_refuses_a_tool_that_kept_failing() {
+        use crate::core::agent::tool_rules::ToolRuleSpec;
+        let root = std::env::temp_dir().join(format!("flint-max-failures-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.txt"), "hello
+").unwrap();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            PermissionRegistry::default(),
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        invoker.tool_rules = vec![ToolRuleSpec {
+            tool: "read".to_string(),
+            max_failures: Some(2),
+            ..Default::default()
+        }];
+        let call = |id: &str, name: &str, args: &str| {
+            serde_json::json!({ "id": id, "type": "function",
+                "function": { "name": name, "arguments": args } })
+        };
+        for n in 0..2 {
+            let id = format!("r{n}");
+            let out = invoker
+                .invoke(&[call(&id, "read", "{\"path\":\"missing.txt\"}")])
+                .await
+                .expect("dispatch");
+            assert_eq!(out[0].refusal, None, "under the budget the call runs: {}", out[0].content);
+            assert!(out[0].content.starts_with("ERROR"), "{}", out[0].content);
+        }
+        let out = invoker
+            .invoke(&[
+                call("r2", "read", "{\"path\":\"a.txt\"}"),
+                call("l1", "ls", "{\"path\":\".\"}"),
+            ])
+            .await
+            .expect("dispatch");
+        assert_eq!(out[0].refusal, Some(HarnessRefusal::ToolRule), "{}", out[0].content);
+        assert_eq!(
+            out[0].content,
+            "ERROR: tool 'read' was not run: it failed 2 times in this run; try a different approach"
+        );
+        assert_eq!(out[1].refusal, None, "{}", out[1].content);
+        assert!(out[1].content.contains("a.txt"), "other tools still run: {}", out[1].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A file the run has just read counts as read when the run goes to
+    /// overwrite it. The read-only path builds its own context, and without the
+    /// run's identity there the read was never remembered, so every overwrite of
+    /// an existing file was refused as "not read in this session" on a surface
+    /// that records runs (the headless CLI).
+    #[tokio::test]
+    async fn a_file_read_in_this_run_can_be_overwritten_in_it() {
+        let root = std::env::temp_dir().join(format!("flint-read-then-write-{}", std::process::id()));
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(root.join("a.txt"), "before
+").unwrap();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            PermissionRegistry::default(),
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        invoker.record_to = Some(data);
+        invoker.auto_approve = true;
+        invoker.cancel_scope = tauri_plugin_agent_tools::lifecycle::Scope::new("rw-s1", "rw-s1#run-1", "");
+        let call = |id: &str, name: &str, args: &str| {
+            serde_json::json!({ "id": id, "type": "function",
+                "function": { "name": name, "arguments": args } })
+        };
+        let read = invoker
+            .invoke(&[call("r1", "read", "{\"path\":\"a.txt\"}")])
+            .await
+            .expect("dispatch");
+        assert!(read[0].content.contains("before"), "{}", read[0].content);
+        let wrote = invoker
+            .invoke(&[call("w1", "write", "{\"path\":\"a.txt\",\"content\":\"after\"}")])
+            .await
+            .expect("dispatch");
+        assert!(!wrote[0].content.contains("not been read"), "{}", wrote[0].content);
+        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap().trim_end(), "after");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// R18: `default = "allow"` does not let a model open or update a pull
     /// request. Without an explicit allow the run asks; a refusal (or nobody to
     /// ask) stops it, and an explicit allow proceeds without asking.
@@ -13545,6 +15513,131 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The names `advertise_local_tools` puts in front of the model, for a run
+    /// with `ask` offered, narrowed by `allowed` the way the run does.
+    fn advertised_names(allowed: Option<&std::collections::HashSet<String>>) -> Vec<String> {
+        let root = std::env::temp_dir();
+        let mut tools = Vec::new();
+        advertise_local_tools(
+            &mut tools,
+            allowed,
+            &ToolPermissions::allow_all(),
+            &tauri_plugin_agent_tools::subject::Subject::MainAgent,
+            Some(&root),
+            crate::core::agent::plan::RunMode::Normal,
+            true,
+            1,
+            true,
+            false,
+            true,
+            true,
+            #[cfg(feature = "cli")]
+            &crate::core::agent::host_tools::HostToolSet::new(),
+        );
+        tools
+            .iter()
+            .filter_map(|t| t["function"]["name"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    /// `profile = "full"`, or no section at all, advertises exactly what a run
+    /// without the feature did; `minimal` advertises exactly the coding set
+    /// and `ask`, and never anything the full list lacked.
+    #[test]
+    fn tool_profile_minimal_advertises_only_the_coding_set_and_full_is_unchanged() {
+        use crate::core::agent::tool_profile::{restrict, ToolProfile, MINIMAL_TOOLS};
+        let baseline = advertised_names(None);
+        assert!(baseline.len() > MINIMAL_TOOLS.len(), "{baseline:?}");
+        let full = advertised_names(restrict(None, ToolProfile::Full).as_ref());
+        assert_eq!(full, baseline, "a full profile changed the advertised list");
+
+        let minimal = advertised_names(restrict(None, ToolProfile::Minimal).as_ref());
+        let mut got: Vec<&str> = minimal.iter().map(String::as_str).collect();
+        got.sort_unstable();
+        let mut want: Vec<&str> = MINIMAL_TOOLS.to_vec();
+        want.sort_unstable();
+        assert_eq!(got, want);
+        assert!(minimal.iter().all(|n| baseline.contains(n)));
+
+        // Intersection with a role-style allowlist: only what both name.
+        let role: std::collections::HashSet<String> =
+            ["read", "git", "bash"].iter().map(|s| s.to_string()).collect();
+        let both = advertised_names(restrict(Some(role), ToolProfile::Minimal).as_ref());
+        let mut both: Vec<&str> = both.iter().map(String::as_str).collect();
+        both.sort_unstable();
+        assert_eq!(both, ["bash", "read"]);
+    }
+
+    /// A tool the profile hides is refused at dispatch even when the model
+    /// names it anyway, before any gate or approval.
+    #[tokio::test]
+    async fn a_tool_hidden_by_the_minimal_profile_is_refused_as_not_offered() {
+        let root = std::env::temp_dir().join(format!("jan_loop_profile_{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("create root");
+        let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            registry,
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        invoker.auto_approve = true;
+        invoker.allowed_tools = crate::core::agent::tool_profile::restrict(
+            None,
+            crate::core::agent::tool_profile::ToolProfile::Minimal,
+        );
+        let call = |id: &str, name: &str, args: &str| {
+            serde_json::json!({ "id": id, "type": "function",
+                "function": { "name": name, "arguments": args } })
+        };
+        let out = invoker
+            .invoke(&[
+                call("h1", "git", "{}"),
+                call("h2", "memory_list", "{}"),
+                call("h3", "srv__tool", "{}"),
+                call("ok", "ls", "{\"path\":\".\"}"),
+            ])
+            .await
+            .expect("dispatch");
+        for o in &out[..3] {
+            assert_eq!(o.refusal, Some(HarnessRefusal::ToolNotOffered), "{}: {}", o.id, o.content);
+        }
+        assert_eq!(out[3].refusal, None, "{}", out[3].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `run_tool_profile` reads the project's agent.toml: no section is full,
+    /// `[tools] profile` applies, a `[[tool_profiles]]` rule beats it for the
+    /// model it names, and a bad value refuses rather than falling back.
+    #[test]
+    fn run_tool_profile_reads_agent_toml() {
+        use crate::core::agent::tool_profile::ToolProfile;
+        let root = std::env::temp_dir().join(format!("jan_loop_toolprofile_{}", std::process::id()));
+        let agent_dir = root.join(".jan").join("agent");
+        std::fs::create_dir_all(&agent_dir).expect("create agent dir");
+        let write = |body: &str| std::fs::write(agent_dir.join("agent.toml"), body).expect("write");
+        write("[tools]
+default = \"allow\"
+");
+        assert_eq!(run_tool_profile(Some(&root), None, "qwen3-8b").unwrap(), ToolProfile::Full);
+        write("[tools]
+profile = \"minimal\"
+[[tool_profiles]]
+model = \"GPT-*\"
+profile = \"full\"
+");
+        assert_eq!(run_tool_profile(Some(&root), None, "qwen3-8b").unwrap(), ToolProfile::Minimal);
+        assert_eq!(run_tool_profile(Some(&root), None, "gpt-4o").unwrap(), ToolProfile::Full);
+        write("[tools]
+profile = \"tiny\"
+");
+        assert!(run_tool_profile(Some(&root), None, "m").is_err());
+        assert_eq!(run_tool_profile(None, None, "m").unwrap(), ToolProfile::Full);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// The whole point of the setting: what agent.toml says has to survive the
     /// trip into the invoker. This is the assertion that was missing when the
     /// resolution passed `None` and silently ignored the file.
@@ -13756,7 +15849,7 @@ mod tests {
         assert!(!invoker.tool_context().allow_network);
     }
 
-    async fn respond_once(
+    pub(super) async fn respond_once(
         rx: &mut mpsc::UnboundedReceiver<StreamEvent>,
         registry: &PermissionRegistry,
         decision: PermissionDecision,
@@ -13910,6 +16003,103 @@ mod tests {
         );
         assert!(!root.join("out.txt").exists(), "file must not be written");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A judge for the dispatcher tests: a fixed verdict, counting calls and
+    /// keeping the task text it was shown.
+    struct ScriptedJudge {
+        verdict: crate::core::agent::auto_mode::Verdict,
+        calls: std::sync::atomic::AtomicUsize,
+        tasks: std::sync::Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl crate::core::agent::auto_mode::Classifier for ScriptedJudge {
+        async fn judge(
+            &self,
+            input: &crate::core::agent::auto_mode::JudgeInput,
+        ) -> Result<crate::core::agent::auto_mode::Verdict, crate::core::agent::auto_mode::JudgeError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.tasks.lock().unwrap().push(input.task.clone());
+            Ok(self.verdict.clone())
+        }
+    }
+
+    fn judged_invoker(
+        verdict: crate::core::agent::auto_mode::Verdict,
+    ) -> (CompositeToolInvoker, Arc<ScriptedJudge>, std::path::PathBuf) {
+        let root = unique_project_root();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let permissions: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, permissions);
+        invoker.auto_approve = true;
+        invoker.auto_mode.judge = crate::core::agent::auto_mode::JudgeKind::Jev;
+        let judge = Arc::new(ScriptedJudge {
+            verdict,
+            calls: Default::default(),
+            tasks: Default::default(),
+        });
+        invoker.judge = Some(judge.clone());
+        invoker.observe_conversation(&[
+            json!({ "role": "user", "content": "say hi in out.txt" }),
+            json!({ "role": "assistant", "content": "ok" }),
+        ]);
+        (invoker, judge, root)
+    }
+
+    #[tokio::test]
+    async fn the_judge_can_refuse_an_auto_approved_write() {
+        let (invoker, judge, root) = judged_invoker(crate::core::agent::auto_mode::Verdict::Deny {
+            reason: "it writes where the user did not ask".into(),
+        });
+        let out = invoker.invoke(&[write_call()]).await.unwrap();
+        assert_eq!(out.len(), 1);
+        assert!(out[0].content.contains("judge-deny"), "{}", out[0].content);
+        assert!(out[0].content.contains("it writes where the user did not ask"), "{}", out[0].content);
+        assert!(!root.join("out.txt").exists(), "a refused write must not run");
+        assert_eq!(judge.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(judge.tasks.lock().unwrap()[0], "say hi in out.txt");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn an_ask_verdict_leaves_auto_approval_as_it_was() {
+        let (invoker, judge, root) = judged_invoker(crate::core::agent::auto_mode::Verdict::Ask);
+        let out = invoker.invoke(&[write_call()]).await.unwrap();
+        assert_eq!(out.len(), 1);
+        assert!(!out[0].content.contains("refused"), "{}", out[0].content);
+        assert!(root.join("out.txt").exists(), "the auto-approved write ran");
+        assert_eq!(judge.calls.load(Ordering::SeqCst), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_call_the_gate_already_allows_is_not_judged() {
+        let (invoker, judge, root) = judged_invoker(crate::core::agent::auto_mode::Verdict::Deny {
+            reason: "x".into(),
+        });
+        std::fs::write(root.join("in.txt"), "hello").unwrap();
+        let read = json!({
+            "id": "r1",
+            "type": "function",
+            "function": { "name": "read", "arguments": "{\"path\":\"in.txt\"}" }
+        });
+        let out = invoker.invoke(&[read]).await.unwrap();
+        assert!(!out[0].content.contains("judge-deny"), "{}", out[0].content);
+        assert_eq!(judge.calls.load(Ordering::SeqCst), 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_task_is_the_latest_user_message() {
+        assert_eq!(latest_user_text(&[]), "");
+        let msgs = [
+            json!({ "role": "user", "content": "first" }),
+            json!({ "role": "assistant", "content": "x" }),
+            json!({ "role": "user", "content": [{ "type": "text", "text": "second" }, { "type": "image_url" }] }),
+            json!({ "role": "tool", "content": "result" }),
+        ];
+        assert_eq!(latest_user_text(&msgs), "second");
     }
 
     #[tokio::test]
@@ -14613,6 +16803,62 @@ mod tests {
             out[0].content
         );
         assert_eq!(std::fs::read_to_string(root.join("out.txt")).unwrap(), "hi");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The prompt names the digest of the exact arguments it shows; approving
+    /// it runs them, and each prompt's digest is spent by its own answer, so a
+    /// second prompt is judged only against its own arguments.
+    #[tokio::test]
+    async fn an_approval_is_bound_to_the_arguments_it_was_shown() {
+        let root = unique_project_root();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let invoker = Arc::new(build_prompting_invoker(root.clone(), tx, registry.clone()));
+        let responder = {
+            let registry = registry.clone();
+            tokio::spawn(async move {
+                let mut seen = Vec::new();
+                while let Some(event) = rx.recv().await {
+                    if let StreamEvent::PermissionRequest { request_id, args_digest, .. } = event {
+                        seen.push((request_id.clone(), args_digest));
+                        if let Some(tx) = registry.lock().await.remove(&request_id) {
+                            let _ = tx.send(PermissionDecision::AllowOnce);
+                        }
+                        if seen.len() == 2 {
+                            break;
+                        }
+                    }
+                }
+                seen
+            })
+        };
+        let second = json!({
+            "id": "c2",
+            "type": "function",
+            "function": { "name": "write", "arguments": "{\"content\":\"bye\",\"path\":\"two.txt\"}" }
+        });
+        let first = invoker.invoke(&[write_call()]).await.unwrap();
+        let then = invoker.invoke(&[second]).await.unwrap();
+        let seen = responder.await.unwrap();
+
+        assert!(!first[0].content.starts_with("ERROR"), "{}", first[0].content);
+        assert!(!then[0].content.starts_with("ERROR"), "{}", then[0].content);
+        assert_eq!(std::fs::read_to_string(root.join("out.txt")).unwrap(), "hi");
+        assert_eq!(std::fs::read_to_string(root.join("two.txt")).unwrap(), "bye");
+        assert_eq!(seen.len(), 2);
+        assert_eq!(
+            seen[0].1.as_deref(),
+            Some(approval_digest("write", &json!({"path": "out.txt", "content": "hi"})).as_str())
+        );
+        assert_eq!(
+            seen[1].1.as_deref(),
+            Some(approval_digest("write", &json!({"path": "two.txt", "content": "bye"})).as_str())
+        );
+        assert_ne!(seen[0].0, seen[1].0);
+        for (request_id, _) in &seen {
+            assert_eq!(take_approval_digest(request_id), None, "spent by its answer");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -15434,4 +17680,489 @@ mod tests {
             "{err}"
         );
     }
+
+    // ---- [agent] fast_path ------------------------------------------------
+
+    fn plain_reply(text: &str) -> serde_json::Value {
+        json!({ "choices": [{ "message": { "role": "assistant", "content": text }, "finish_reason": "stop" }] })
+    }
+
+    fn named_tools(names: &[&str]) -> Vec<serde_json::Value> {
+        names
+            .iter()
+            .map(|n| json!({ "type": "function", "function": { "name": n } }))
+            .collect()
+    }
+
+    fn tool_names_of(request: &serde_json::Value) -> Vec<String> {
+        request["tools"]
+            .as_array()
+            .map(|a| a.iter().map(|t| t["function"]["name"].as_str().unwrap().to_string()).collect())
+            .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn fast_path_answers_a_plain_reply_with_the_lean_prompt_and_minimal_tools() {
+        let (events, _rx) = mpsc::unbounded_channel();
+        let model = RecordingQueueModel {
+            replies: StdMutex::new(VecDeque::from([plain_reply("Hello!")])),
+            requests: StdMutex::new(Vec::new()),
+        };
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let lean = vec![json!({ "role": "system", "content": "LEAN" }), json!({ "role": "user", "content": "hi" })];
+        let full = vec![json!({ "role": "system", "content": "FULL" }), json!({ "role": "user", "content": "hi" })];
+        let result = run_with_fast_path(
+            Some(lean),
+            &events,
+            &json!({}),
+            "m",
+            &named_tools(&["read", "bash", "browser", "dispatch_subagent", "ask"]),
+            full,
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("answers");
+        assert_eq!(result["choices"][0]["message"]["content"], "Hello!");
+        let requests = model.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1, "one request, no second attempt");
+        assert_eq!(requests[0]["messages"][0]["content"], "LEAN");
+        assert_eq!(tool_names_of(&requests[0]), ["read", "bash", "ask"]);
+        assert!(tool.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn fast_path_falls_back_to_the_full_path_when_the_model_asks_for_a_tool() {
+        let (events, _rx) = mpsc::unbounded_channel();
+        let model = RecordingQueueModel {
+            replies: StdMutex::new(VecDeque::from([
+                tool_call_reply("c1", "read", "{\"path\":\"a.txt\"}"),
+                plain_reply("full answer"),
+            ])),
+            requests: StdMutex::new(Vec::new()),
+        };
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let lean = vec![json!({ "role": "system", "content": "LEAN" }), json!({ "role": "user", "content": "hi" })];
+        let full = vec![json!({ "role": "system", "content": "FULL" }), json!({ "role": "user", "content": "hi" })];
+        let result = run_with_fast_path(
+            Some(lean),
+            &events,
+            &json!({}),
+            "m",
+            &named_tools(&["read", "bash", "browser", "dispatch_subagent", "ask"]),
+            full,
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("the full path answers");
+        assert_eq!(result["choices"][0]["message"]["content"], "full answer");
+        let requests = model.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[1]["messages"][0]["content"], "FULL", "the retry starts from the untouched conversation");
+        assert_eq!(
+            tool_names_of(&requests[1]),
+            ["read", "bash", "browser", "dispatch_subagent", "ask"],
+            "the retry sees every tool"
+        );
+        assert!(
+            tool.calls.lock().unwrap().is_empty(),
+            "nothing the fast attempt asked for was dispatched"
+        );
+    }
+
+    #[tokio::test]
+    async fn without_a_fast_attempt_the_full_path_runs_exactly_as_before() {
+        let (events, _rx) = mpsc::unbounded_channel();
+        let model = RecordingQueueModel {
+            replies: StdMutex::new(VecDeque::from([plain_reply("ok")])),
+            requests: StdMutex::new(Vec::new()),
+        };
+        let mut budget = SessionBudget::new(None);
+        let full = vec![json!({ "role": "system", "content": "FULL" }), json!({ "role": "user", "content": "hi" })];
+        run_with_fast_path(
+            None,
+            &events,
+            &json!({}),
+            "m",
+            &named_tools(&["read", "browser"]),
+            full,
+            0,
+            &mut budget,
+            &model,
+            &MockTool::default(),
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("answers");
+        let requests = model.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(tool_names_of(&requests[0]), ["read", "browser"]);
+    }
+
+    // ---- [tools] code_mode --------------------------------------------------
+
+    fn code_call(id: &str, script: &str) -> serde_json::Value {
+        json!({ "id": id, "type": "function",
+            "function": { "name": "code", "arguments": json!({ "script": script }).to_string() } })
+    }
+
+    fn code_root(tag: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("flint-code-mode-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.txt"), "hello from a").unwrap();
+        root
+    }
+
+    #[tokio::test]
+    async fn code_is_refused_unless_code_mode_is_on() {
+        let root = code_root("off");
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            PermissionRegistry::default(),
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        let out = invoker.invoke(&[code_call("c1", "read(\"a.txt\")")]).await.expect("dispatch");
+        assert_eq!(out[0].refusal, Some(HarnessRefusal::ToolNotOffered), "{}", out[0].content);
+        assert!(!out[0].content.contains("hello from a"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_script_reads_and_lists_in_one_call() {
+        let root = code_root("reads");
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            PermissionRegistry::default(),
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        invoker.code_mode = true;
+        let out = invoker
+            .invoke(&[code_call("c1", "let a = read(\"a.txt\"); let l = ls(\".\"); `${a} || ${l}`")])
+            .await
+            .expect("dispatch");
+        assert_eq!(out[0].refusal, None, "{}", out[0].content);
+        assert!(out[0].content.contains("hello from a"), "{}", out[0].content);
+        assert!(out[0].content.contains("a.txt"), "{}", out[0].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_script_cannot_write_or_run_commands_even_with_everything_allowed() {
+        let root = code_root("nowrite");
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            PermissionRegistry::default(),
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        invoker.code_mode = true;
+        invoker.auto_approve = true;
+        for script in [
+            "tool(\"write\", #{ path: \"b.txt\", content: \"x\" })",
+            "tool(\"bash\", #{ command: \"echo hi > c.txt\" })",
+            "tool(\"code\", #{ script: \"1\" })",
+        ] {
+            let out = invoker.invoke(&[code_call("c1", script)]).await.expect("dispatch");
+            assert!(out[0].content.contains("not available in code mode"), "{script}: {}", out[0].content);
+        }
+        assert!(!root.join("b.txt").exists() && !root.join("c.txt").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn an_inner_call_meets_the_runs_allowlist() {
+        let root = code_root("allowlist");
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            PermissionRegistry::default(),
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        invoker.code_mode = true;
+        // The run was offered `code` and `ls`, not `read`.
+        invoker.allowed_tools = Some(["code".to_string(), "ls".to_string()].into_iter().collect());
+        let out = invoker
+            .invoke(&[code_call("c1", "ls(\".\") + \" / \" + read(\"a.txt\")")])
+            .await
+            .expect("dispatch");
+        assert!(!out[0].content.contains("hello from a"), "{}", out[0].content);
+        assert!(out[0].content.contains("was not offered"), "{}", out[0].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn an_inner_call_meets_the_tool_rules() {
+        use crate::core::agent::tool_rules::ToolRuleSpec;
+        let root = code_root("rules");
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            PermissionRegistry::default(),
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        invoker.code_mode = true;
+        invoker.tool_rules = vec![ToolRuleSpec {
+            tool: "read".to_string(),
+            max_calls: Some(1),
+            reason: Some("One read per run.".to_string()),
+            ..Default::default()
+        }];
+        let out = invoker
+            .invoke(&[code_call("c1", "read(\"a.txt\") + read(\"a.txt\")")])
+            .await
+            .expect("dispatch");
+        assert!(out[0].content.contains("One read per run."), "{}", out[0].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- run endings, final checks, the effect ledger ----------------------
+
+    /// A tool invoker with a project folder, a scriptable check command, and a
+    /// `write` that really writes, so the loop sees what a real one would.
+    struct FolderTool {
+        root: std::path::PathBuf,
+        /// Answers for `run_check_command`, front first; empty means "cannot run".
+        command_answers: StdMutex<VecDeque<(bool, String)>>,
+        commands_run: StdMutex<Vec<String>>,
+    }
+    impl FolderTool {
+        fn new(root: &std::path::Path) -> Self {
+            Self { root: root.to_path_buf(), command_answers: StdMutex::new(VecDeque::new()), commands_run: StdMutex::new(Vec::new()) }
+        }
+    }
+    #[async_trait]
+    impl ToolInvoker for FolderTool {
+        async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {
+            Ok(tool_calls
+                .iter()
+                .map(|tc| {
+                    let id = tc["id"].as_str().unwrap_or("").to_string();
+                    if tc["function"]["name"] == "write" {
+                        let args: serde_json::Value =
+                            serde_json::from_str(tc["function"]["arguments"].as_str().unwrap_or("{}")).unwrap();
+                        std::fs::write(self.root.join(args["path"].as_str().unwrap()), args["content"].as_str().unwrap()).unwrap();
+                    }
+                    ToolOutcome::plain(id, "ok".to_string())
+                })
+                .collect())
+        }
+        fn effect_root(&self) -> Option<std::path::PathBuf> {
+            Some(self.root.clone())
+        }
+        async fn run_check_command(&self, command: &str, _timeout_secs: u64) -> Option<(bool, String)> {
+            self.commands_run.lock().unwrap().push(command.to_string());
+            self.command_answers.lock().unwrap().pop_front()
+        }
+    }
+
+    fn answer(text: &str) -> serde_json::Value {
+        json!({"choices": [{"message": {"content": text}, "finish_reason": "stop"}]})
+    }
+
+    fn write_tool_call(path: &str, content: &str) -> serde_json::Value {
+        json!({"choices": [{"message": {"content": null, "tool_calls": [{
+            "id": "w1", "type": "function",
+            "function": { "name": "write", "arguments": json!({"path": path, "content": content}).to_string() }
+        }]}, "finish_reason": "tool_calls"}]})
+    }
+
+    async fn cycle(
+        model: &MockModel,
+        tool: &FolderTool,
+        body: &serde_json::Value,
+        record: Option<&Invocations>,
+    ) -> Result<serde_json::Value, HarnessError> {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut budget = SessionBudget::new(None);
+        run_turn_cycle(
+            &tx,
+            body,
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "make the report" })],
+            0,
+            &mut budget,
+            model,
+            tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            record,
+        )
+        .await
+    }
+
+    fn body_with_checks(checks: serde_json::Value) -> serde_json::Value {
+        json!({ crate::core::agent::final_checks::BODY_FINAL_CHECKS: checks })
+    }
+
+    #[tokio::test]
+    async fn a_failing_final_check_gets_one_retry_and_then_the_run_finishes_marked_unverified() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = FolderTool::new(dir.path());
+        // The model answers twice and never writes the file.
+        let model = MockModel::new(vec![answer("all done"), answer("really done")]);
+        let completion = cycle(&model, &tool, &body_with_checks(json!([{ "file": "report.md" }])), None)
+            .await
+            .expect("the run finishes");
+        let requests = model.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2, "exactly one retry turn, never a loop");
+        let retry_prompt = serde_json::to_string(&requests[1]["messages"]).unwrap();
+        assert!(retry_prompt.contains("held back") && retry_prompt.contains("report.md does not exist"), "{retry_prompt}");
+        let text = completion["choices"][0]["message"]["content"].as_str().unwrap();
+        assert!(text.starts_with("really done"), "{text}");
+        assert!(text.contains("final checks did not pass after one retry"), "{text}");
+        assert_eq!(completion["final_checks"]["passed"], false);
+        assert_eq!(completion["final_checks"]["retried"], true);
+    }
+
+    #[tokio::test]
+    async fn a_run_that_fixes_what_failed_passes_on_the_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = FolderTool::new(dir.path());
+        tool.command_answers.lock().unwrap().extend([(false, "2 tests failed".to_string()), (true, String::new())]);
+        let model = MockModel::new(vec![
+            answer("done"),
+            write_tool_call("report.md", "# report"),
+            answer("fixed it"),
+        ]);
+        let body = body_with_checks(json!([{ "file": "report.md" }, { "command": "cargo test" }]));
+        let completion = cycle(&model, &tool, &body, None).await.expect("finishes");
+        let text = completion["choices"][0]["message"]["content"].as_str().unwrap();
+        assert_eq!(text, "fixed it", "a passing answer is not annotated");
+        assert_eq!(completion["final_checks"]["passed"], true);
+        assert_eq!(completion["final_checks"]["retried"], true);
+        assert_eq!(tool.commands_run.lock().unwrap().len(), 2, "the command ran again after the retry");
+        let requests = model.requests.lock().unwrap();
+        let retry_prompt = serde_json::to_string(&requests[1]["messages"]).unwrap();
+        assert!(retry_prompt.contains("2 tests failed"), "the failure output reaches the model: {retry_prompt}");
+    }
+
+    #[tokio::test]
+    async fn passing_checks_cost_no_extra_turn_and_a_question_is_not_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("report.md"), "x").unwrap();
+        let tool = FolderTool::new(dir.path());
+        let model = MockModel::new(vec![answer("done")]);
+        let completion = cycle(&model, &tool, &body_with_checks(json!([{ "file": "report.md" }])), None).await.unwrap();
+        assert_eq!(model.requests.lock().unwrap().len(), 1);
+        assert_eq!(completion["final_checks"]["passed"], true);
+        assert_eq!(completion["final_checks"]["retried"], false);
+
+        // An answer that asks the user something is waiting on them, not done.
+        let tool = FolderTool::new(tempfile::tempdir().unwrap().path());
+        let model = MockModel::new(vec![answer("Which file do you want?")]);
+        let completion = cycle(&model, &tool, &body_with_checks(json!([{ "file": "nope" }])), None).await.unwrap();
+        assert_eq!(model.requests.lock().unwrap().len(), 1);
+        assert!(completion.get("final_checks").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_command_check_that_cannot_run_is_skipped_not_passed_and_never_retried() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = FolderTool::new(dir.path()); // answers nothing: an untrusted folder
+        let model = MockModel::new(vec![answer("done")]);
+        let completion = cycle(&model, &tool, &body_with_checks(json!([{ "command": "make test" }])), None).await.unwrap();
+        assert_eq!(model.requests.lock().unwrap().len(), 1, "a skipped check is not a reason to retry");
+        assert_eq!(completion["final_checks"]["checks"][0]["skipped"], true);
+        assert_eq!(completion["final_checks"]["checks"][0]["passed"], false);
+    }
+
+    #[tokio::test]
+    async fn the_ledger_records_a_write_with_its_hashes_and_what_the_run_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "before").unwrap();
+        let tool = FolderTool::new(dir.path());
+        let model = MockModel::new(vec![write_tool_call("a.txt", "after"), answer("done")]);
+        let record = Invocations::new("ledger-loop".into(), "ledger-loop#run-1".into(), Some(data.path().to_path_buf()));
+        cycle(&model, &tool, &json!({}), Some(&record)).await.unwrap();
+        let entries = crate::core::agent::ledger::read(data.path(), "ledger-loop#run-1").unwrap();
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        let e = &entries[0];
+        assert_eq!((e.tool.as_str(), e.target.as_str(), e.ok, e.changed), ("write", "a.txt", true, Some(true)));
+        use sha2::{Digest, Sha256};
+        assert_eq!(e.before.as_deref(), Some(format!("{:x}", Sha256::digest(b"before")).as_str()));
+        assert_eq!(e.after.as_deref(), Some(format!("{:x}", Sha256::digest(b"after")).as_str()));
+    }
+
+    #[test]
+    fn a_run_ends_with_one_typed_reason_for_each_way_it_can_end() {
+        let ended = |r: &Result<serde_json::Value, HarnessError>| match run_ended_event(r) {
+            StreamEvent::RunEnded { reason, exit_code, label } => (reason, exit_code, label),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(ended(&Ok(answer("x"))).0, "completed");
+        assert_eq!(ended(&Ok(json!({"choices": [{"finish_reason": "turn_limit_exceeded"}]}))).0, "turn_limit");
+        assert_eq!(ended(&Ok(json!({"choices": [{"finish_reason": "budget_exceeded"}]}))).0, "budget");
+        assert_eq!(ended(&Ok(json!({"choices": [{"finish_reason": "content_filter"}]}))).0, "refusal");
+        assert_eq!(ended(&Err(HarnessError::cancelled("stop"))), ("user_stop".into(), 130, "Stopped by you.".into()));
+        assert_eq!(ended(&Err(HarnessError::new(ErrorKind::BudgetExhausted, "tokens"))).1, 75);
+        assert_eq!(ended(&Err(HarnessError::new(ErrorKind::Upstream, "502"))).0, "error");
+        let turn_limit = Err(HarnessError::new(
+            ErrorKind::BudgetExhausted,
+            "reached the 3-turn limit while the model was still calling tools",
+        ));
+        assert_eq!(ended(&turn_limit).1, 53);
+    }
+
+    #[test]
+    fn a_stopped_run_whose_lease_was_taken_ends_as_lease_lost_and_only_then() {
+        let cancelled = || Err::<serde_json::Value, _>(HarnessError::cancelled("stopped"));
+        // Nobody took the lease: the stop stays a stop.
+        let plain = settle_lease_loss(cancelled(), Some("loop-lease-a"));
+        assert_eq!(plain.unwrap_err().kind(), ErrorKind::Cancelled);
+        // The lease was lost and the run was stopped for it.
+        crate::core::agent::lease::mark_lost("loop-lease-b");
+        let lost = settle_lease_loss(cancelled(), Some("loop-lease-b")).unwrap_err();
+        assert_eq!(lost.kind(), ErrorKind::LeaseLost);
+        assert!(matches!(run_ended_event(&Err(lost)), StreamEvent::RunEnded { ref reason, exit_code: 73, .. } if reason == "lease_lost"));
+        // A child, which holds no lease, never takes the parent's loss.
+        crate::core::agent::lease::mark_lost("loop-lease-c");
+        assert_eq!(settle_lease_loss(cancelled(), None).unwrap_err().kind(), ErrorKind::Cancelled);
+        assert!(crate::core::agent::lease::take_lost("loop-lease-c"));
+        // A real failure is not rewritten because the lease also went.
+        crate::core::agent::lease::mark_lost("loop-lease-d");
+        let failed = settle_lease_loss(Err(HarnessError::new(ErrorKind::Upstream, "502")), Some("loop-lease-d"));
+        assert_eq!(failed.unwrap_err().kind(), ErrorKind::Upstream);
+        assert!(crate::core::agent::lease::take_lost("loop-lease-d"));
+    }
 }
+
+#[cfg(test)]
+#[path = "approval_loop_tests.rs"]
+mod approval_loop_tests;

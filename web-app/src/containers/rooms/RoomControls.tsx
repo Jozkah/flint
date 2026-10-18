@@ -60,8 +60,18 @@ function stageFor(
   room: Room,
   live: LiveTurn | null,
   t: T,
-  modelName: (p: Participant) => string
+  modelName: (p: Participant) => string,
+  /** Turns in flight in this room (several at once in a compare room). */
+  liveCount = live ? 1 : 0
 ) {
+  if (room.mode === 'compare' && live && liveCount > 1) {
+    return {
+      title: t('rooms:stage.comparing', { count: liveCount }),
+      hint: t('rooms:stage.comparingHint'),
+      speaker: undefined,
+      speakerName: '',
+    }
+  }
   if (live && live.author.kind !== 'system') {
     const p =
       live.author.kind === 'participant'
@@ -82,14 +92,20 @@ function stageFor(
   const hint: Record<Room['status'], string> = {
     draft: t('rooms:stage.draftHint', { count, mode: t(`rooms:mode.${room.mode}`) }),
     running: t('rooms:stage.runningHint'),
-    'awaiting-user': t('rooms:stage.awaitingHint'),
+    'awaiting-user': t(
+      room.mode === 'compare' ? 'rooms:stage.compareAwaitingHint' : 'rooms:stage.awaitingHint'
+    ),
     paused: t('rooms:stage.pausedHint'),
     stopped: t('rooms:stage.stoppedHint'),
     completed: t('rooms:stage.completedHint'),
     failed: t('rooms:stage.failedHint'),
   }
   return {
-    title: t(`rooms:stage.${room.status}`),
+    title: t(
+      room.mode === 'compare' && room.status === 'awaiting-user'
+        ? 'rooms:stage.compareAwaiting'
+        : `rooms:stage.${room.status}`
+    ),
     hint: hint[room.status],
     speaker: undefined,
     speakerName: '',
@@ -169,7 +185,7 @@ export function RoomControls({ room }: { room: Room }) {
   const { t } = useTranslation()
   const api = useRoomsApi()
   const providers = useModelProvider((s) => s.providers)
-  const { liveTurn, pendingAction, lastError } = useRoomsState()
+  const { liveTurn, liveTurns, pendingAction, lastError } = useRoomsState()
   const [localError, setLocalError] = useState<RoomsUiError | null>(null)
   const [voteOpen, setVoteOpen] = useState(false)
   const [proposal, setProposal] = useState('')
@@ -221,10 +237,16 @@ export function RoomControls({ room }: { room: Room }) {
   }
 
   const speakers = availableParticipants(room)
-  const stage = stageFor(room, live, t, (p) => {
-    const m = findModel(providers, p.model)
-    return m?.displayName || m?.name || p.model.id
-  })
+  const stage = stageFor(
+    room,
+    live,
+    t,
+    (p) => {
+      const m = findModel(providers, p.model)
+      return m?.displayName || m?.name || p.model.id
+    },
+    (liveTurns ?? []).filter((l) => l.roomId === room.id).length || (live ? 1 : 0)
+  )
   const queue = speakingQueue(
     room,
     live?.author.kind === 'participant' ? live.author.participantId : null

@@ -151,10 +151,69 @@ export function recoverToolArgs(raw: unknown): Record<string, unknown> | undefin
 
   // 3: exactly one complete leading object, nothing but harmless trailing junk.
   const first = firstJsonObject(trimmed)
-  if (!first) return undefined
-  const rest = trimmed.slice(first.length)
-  if (!/^[}\s]*$/.test(rest)) return undefined
-  return asPlainObject(first)
+  if (first) {
+    const rest = trimmed.slice(first.length)
+    if (/^[}\s]*$/.test(rest)) {
+      const object = asPlainObject(first)
+      if (object) return object
+    }
+  }
+
+  // 4: spellings that change no content: a markdown fence around the object, a
+  // comma before a closing brace, Python's True/False/None. Never a repair that
+  // would have to guess a value, so truncated text, single-quoted strings and
+  // unquoted keys are still refused.
+  const loosened = loosenJsonLiterals(stripCodeFence(trimmed) ?? trimmed)
+  return loosened === trimmed ? undefined : asPlainObject(loosened)
+}
+
+/** The text inside a markdown fence that wraps all of `text`, without the fence and its language tag. */
+export function stripCodeFence(text: string): string | undefined {
+  const t = text.trim()
+  if (t.length < 6 || !t.startsWith('```') || !t.endsWith('```')) return undefined
+  let body = t.slice(3, -3)
+  const newline = body.indexOf('\n')
+  if (newline >= 0 && /^[A-Za-z0-9]*$/.test(body.slice(0, newline).trim())) {
+    body = body.slice(newline + 1)
+  }
+  return body.trim()
+}
+
+/**
+ * Outside JSON strings: drop a comma that directly precedes `}` or `]`, and
+ * spell Python's `True`/`False`/`None` as JSON. Text without those is returned
+ * as it came.
+ */
+export function loosenJsonLiterals(text: string): string {
+  let out = ''
+  let inStr = false
+  let esc = false
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (inStr) {
+      out += c
+      if (esc) esc = false
+      else if (c === '\\') esc = true
+      else if (c === '"') inStr = false
+      continue
+    }
+    if (c === '"') {
+      inStr = true
+    } else if (c === ',') {
+      let j = i + 1
+      while (j < text.length && /\s/.test(text[j])) j++
+      if (text[j] === '}' || text[j] === ']') continue
+    } else if (/[A-Za-z]/.test(c)) {
+      let j = i
+      while (j < text.length && /[A-Za-z0-9_]/.test(text[j])) j++
+      const word = text.slice(i, j)
+      out += word === 'True' ? 'true' : word === 'False' ? 'false' : word === 'None' ? 'null' : word
+      i = j - 1
+      continue
+    }
+    out += c
+  }
+  return out
 }
 
 /**

@@ -165,7 +165,12 @@ export function RoomView({ roomId }: { roomId: string }) {
               the body only bounds its height and pins the composer beneath it. */}
           <FrameBody className="min-h-0 overflow-hidden">
             <RoomUsageBar room={room} />
-            <RoomTranscript room={room} journal={state.journal} liveTurn={state.liveTurn} />
+            <RoomTranscript
+              room={room}
+              journal={state.journal}
+              liveTurn={state.liveTurn}
+              liveTurns={state.liveTurns}
+            />
             {/* A subagent a participant started: its approvals have no tool card
                 to sit under, and its rows are the same Tasks panel as elsewhere. */}
             <CoworkChildApprovals sessionId={room.id} />

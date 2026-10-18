@@ -60,7 +60,9 @@ export function controlAvailability(
     resume: s === 'paused',
     stop: ACTIVE.includes(s),
     cancelTurn: midTurn,
-    selectNext: betweenTurns && availableParticipants(room).length > 0,
+    // A compare room asks everyone at once: there is no next speaker to pick.
+    selectNext:
+      betweenTurns && availableParticipants(room).length > 0 && room.mode !== 'compare',
     callVote: wrapUp,
     requestFinalPositions: wrapUp,
     synthesize: wrapUp,
@@ -117,6 +119,36 @@ export const messagesOf = (journal: RoomJournalRecord[]): RoomMessage[] =>
   journal
     .flatMap((r) => (r.type === 'message' ? [r.message] : []))
     .sort((a, b) => a.seq - b.seq)
+
+export type TranscriptItem =
+  | { kind: 'message'; message: RoomMessage }
+  /** A compare round: the participants' answers to one user message, side by side. */
+  | { kind: 'compare'; round: number; answers: RoomMessage[] }
+
+/**
+ * A compare room's transcript as rows: the participants' answers of one round
+ * become one `compare` row placed where the first answer arrived. System lines
+ * in between (an availability note, a compaction divider) stay rows of their
+ * own; anything else said (the user's next message) closes the round's row.
+ */
+export function compareLayout(messages: RoomMessage[]): TranscriptItem[] {
+  const out: TranscriptItem[] = []
+  let open: Extract<TranscriptItem, { kind: 'compare' }> | null = null
+  for (const m of messages) {
+    if (m.kind === 'speech' && m.author.kind === 'participant') {
+      if (open && open.round === m.round) {
+        open.answers.push(m)
+      } else {
+        open = { kind: 'compare', round: m.round, answers: [m] }
+        out.push(open)
+      }
+      continue
+    }
+    out.push({ kind: 'message', message: m })
+    if (m.kind !== 'system') open = null
+  }
+  return out
+}
 
 /** A room with its journal, read without opening it (the rooms list). */
 export type RoomDetail = { room: Room; journal: RoomJournalRecord[] }

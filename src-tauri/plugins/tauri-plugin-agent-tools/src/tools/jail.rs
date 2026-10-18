@@ -33,6 +33,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use super::appcontainer;
+use super::sandbox_integrity;
 use super::proc::{self, OriginRoots, ProbeOutcome, ShellConfig, ShellReport};
 
 /// `sandbox-exec` is only trusted at its absolute system path: resolving it via
@@ -430,7 +431,11 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
             // Never mid-sweep: see `appcontainer::start_startup_sweep`.
             program: {
                 appcontainer::await_startup_sweep();
-                helper_exe()?
+                let helper = helper_exe()?;
+                // The helper is what applies the confinement: a swapped file
+                // would run the command unconfined. Refuse, never fall back.
+                sandbox_integrity::verify(&helper).ok()?;
+                helper
             },
             args: {
                 let mut args = appcontainer::helper_args_at(
@@ -1745,6 +1750,9 @@ pub fn select_shell(policy: &Policy) -> Result<SelectedShell, String> {
     let reports = shell_reports(policy);
     if let Some(usable) = reports.iter().find(|r| r.outcome.usable()) {
         let Some(wrapped) = wrap(&usable.cfg, policy) else {
+            if let Some(why) = sandbox_integrity::last_refusal() {
+                return Err(why);
+            }
             return Err(
                 "no OS sandbox backend is available on this system, so no shell can be confined here"
                     .to_string(),

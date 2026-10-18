@@ -52,7 +52,7 @@ import { effortLabel, isEffortLevel } from '@/lib/modelEffort'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
-const MODES: SpeakingMode[] = ['round-robin', 'user-selected', 'moderator-selected']
+const MODES: SpeakingMode[] = ['round-robin', 'user-selected', 'moderator-selected', 'compare']
 
 export const LIMIT_KEYS: (keyof RoomLimits)[] = [
   'maxRounds',

@@ -392,6 +392,12 @@ const MARKET = [
 ]
 const PROJECTS = [{ id: 'weather', folder: 'C:\\Projects\\acme-weather', name: 'acme-weather' }]
 
+/** Folders the preview's trust banner has been answered for. */
+const previewTrusted = new Set<string>([
+  'C:/Users/you/code/flint-app',
+  'C:/Users/you/work/client-site',
+])
+
 function previewInvoke(
   command: string,
   args?: Record<string, unknown>
@@ -429,6 +435,21 @@ function previewInvoke(
           ref: null,
         }))
       )
+    case 'folder_trust_list':
+      return ok([...previewTrusted])
+    case 'folder_trust_status':
+    case 'folder_trust_grant':
+    case 'folder_trust_revoke': {
+      // A folder that carries its own hooks, trusted for good once granted.
+      const folder = String(args?.folder ?? '')
+      if (command === 'folder_trust_grant') previewTrusted.add(folder)
+      if (command === 'folder_trust_revoke') previewTrusted.delete(folder)
+      return ok({
+        folder,
+        trusted: previewTrusted.has(folder),
+        carries: { hooks: true, subagents: false },
+      })
+    }
     case 'agent_skill_list':
       return ok(
         args?.store

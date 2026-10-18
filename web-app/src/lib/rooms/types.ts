@@ -34,7 +34,12 @@ export type RoomStatus =
   | 'completed' // reached synthesis or a clean end
   | 'failed' // could not continue (e.g. fewer than two usable participants)
 
-export type SpeakingMode = 'round-robin' | 'user-selected' | 'moderator-selected'
+/**
+ * `compare` is not a discussion: each user message goes to every participant
+ * at once, each answers on its own without seeing the others' answers, and the
+ * transcript shows the answers side by side.
+ */
+export type SpeakingMode = 'round-robin' | 'user-selected' | 'moderator-selected' | 'compare'
 
 /**
  * Tool access per participant. Only the user sets it. `read` runs Flint's Cowork
@@ -360,3 +365,7 @@ export type LiveTurn = {
   /** The call running right now, if any. */
   activity?: { name: string; args?: unknown }
 }
+
+/** Whether a room runs in compare mode (see `SpeakingMode`). */
+export const isCompareRoom = (room: Pick<Room, 'mode'> | null | undefined): boolean =>
+  room?.mode === 'compare'

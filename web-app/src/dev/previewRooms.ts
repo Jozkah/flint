@@ -169,6 +169,25 @@ const SPECS: Spec[] = [
     ],
   },
   {
+    id: 'compare',
+    title: 'Which model explains it best?',
+    objective: 'Compare how each model explains a weather concept to a new user of the app.',
+    status: 'awaiting-user',
+    mode: 'compare',
+    turns: 6,
+    rounds: 2,
+    tokens: 9_300,
+    cost: 0.05,
+    maxCost: null,
+    activeMs: (1 * 60 + 25) * 1000,
+    ageMin: 25,
+    parts: [
+      ['Sonnet', '', 'anthropic', 'claude-sonnet-5', 'none', 0],
+      ['GPT', '', 'openai', 'gpt-5', 'none', 3],
+      ['Qwen', '', 'llamacpp', 'qwen3-8b-instruct', 'none', 5],
+    ],
+  },
+  {
     id: 'naming',
     title: 'Name the mobile app',
     objective: 'Short, memorable names for the weather app.',
@@ -213,8 +232,9 @@ function roomOf(s: Spec): Room {
       consecutiveRepetitive: 0,
     },
     round: s.rounds,
-    spokenThisRound: parts.slice(0, 1).map((p) => p.id),
-    nextSpeakerId: parts[1]?.id ?? null,
+    // A compare room waiting for the user has heard everyone this round.
+    spokenThisRound: (s.mode === 'compare' ? parts : parts.slice(0, 1)).map((p) => p.id),
+    nextSpeakerId: s.mode === 'compare' ? null : (parts[1]?.id ?? null),
     stopReason:
       s.status === 'completed'
         ? { kind: 'synthesized' }
@@ -239,6 +259,9 @@ type M = {
   vote?: RoomMessage['vote']
   dissent?: RoomMessage['dissent']
   disagreements?: string[]
+  /** The round, when the spread over `usage.rounds` would put it wrong. */
+  round?: number
+  usage?: RoomMessage['usage']
 }
 
 function journalOf(room: Room, list: M[]): RoomJournalRecord[] {
@@ -269,10 +292,11 @@ function journalOf(room: Room, list: M[]): RoomJournalRecord[] {
         to: m.to ?? { kind: 'room' },
         kind,
         text: m.text,
-        round: Math.max(1, Math.ceil(((i + 1) / list.length) * room.usage.rounds)),
+        round: m.round ?? Math.max(1, Math.ceil(((i + 1) / list.length) * room.usage.rounds)),
         createdAt: start + i * 2 * MIN,
         status: 'complete',
         ...(m.tools ? { toolCalls: m.tools } : {}),
+        ...(m.usage ? { usage: m.usage } : {}),
         ...(vote ? { vote } : {}),
         ...(m.dissent ? { dissent: m.dissent } : {}),
         ...(m.disagreements
@@ -361,6 +385,47 @@ const TRANSCRIPTS: Record<string, (room: Room) => M[]> = {
     { by: 'Haiku', text: 'Apache-2.0 keeps it permissive and adds a patent grant, which company users tend to ask for.' },
     { by: 'Qwen', text: 'Agreed. Keep third-party notices in a NOTICE file.' },
     { sys: true, text: 'Stopped by you.' },
+  ],
+  compare: () => [
+    { sys: true, text: 'Room started · Compare models · 3 participants' },
+    { you: true, round: 1, text: 'In one short paragraph: what does "feels like" temperature mean?' },
+    {
+      by: 'Sonnet',
+      round: 1,
+      usage: { inputTokens: 410, outputTokens: 96, estimated: false, tokensPerSecond: 71 },
+      text: '“Feels like” is how warm or cold the air seems on your skin, not what the thermometer reads. Wind pulls heat away from you, so a windy 5 °C can feel like 1 °C; humidity stops sweat from cooling you, so a muggy 30 °C can feel like 35 °C.',
+    },
+    {
+      by: 'GPT',
+      round: 1,
+      usage: { inputTokens: 402, outputTokens: 74, estimated: false, tokensPerSecond: 88 },
+      text: 'It is the temperature your body perceives once wind chill (in the cold) or the heat index (in the heat) is taken into account. Dress for the “feels like” number, not the actual one.',
+    },
+    {
+      by: 'Qwen',
+      round: 1,
+      usage: { inputTokens: 398, outputTokens: 112, estimated: true, tokensPerSecond: 34 },
+      text: 'The apparent temperature combines air temperature with wind speed and relative humidity to estimate the thermal sensation on exposed skin. Below about 10 °C wind lowers it; above about 27 °C humidity raises it.',
+    },
+    { you: true, round: 2, text: 'Now say it so a ten-year-old gets it.' },
+    {
+      by: 'Sonnet',
+      round: 2,
+      usage: { inputTokens: 640, outputTokens: 58, estimated: false, tokensPerSecond: 69 },
+      text: 'Wind blows your warmth away, so it feels colder than it is. Sticky, wet air keeps you from cooling down, so it feels hotter.',
+    },
+    {
+      by: 'GPT',
+      round: 2,
+      usage: { inputTokens: 588, outputTokens: 41, estimated: false, tokensPerSecond: 90 },
+      text: 'It’s how cold or hot it feels to you, not to the thermometer. Wind makes it feel colder; muggy air makes it feel hotter.',
+    },
+    {
+      by: 'Qwen',
+      round: 2,
+      usage: { inputTokens: 671, outputTokens: 63, estimated: true, tokensPerSecond: 31 },
+      text: 'Think of a fan on a cool day: brr! That’s wind making it feel colder. On a sticky summer day you feel extra hot because your sweat can’t dry.',
+    },
   ],
   naming: () => [],
 }

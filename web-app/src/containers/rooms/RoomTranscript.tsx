@@ -10,6 +10,7 @@ import type {
   RoomMessage,
   RoomToolActivity,
 } from '@/lib/rooms/types'
+import { isCompareRoom } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
@@ -18,6 +19,7 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { summarizeTrace, summaryLabelParts } from '@/lib/traceSummary'
 import {
   addressLabel,
+  compareLayout,
   findParticipant,
   messagesOf,
   participantAttribution,
@@ -481,10 +483,254 @@ function MessageBody({
   )
 }
 
+/** One transcript message: a compaction divider, a system line or a card. */
+function TranscriptMessage({
+  m,
+  room,
+  tallies,
+  mentionColors,
+  isFresh,
+  className,
+  t,
+}: {
+  m: RoomMessage
+  room: Room
+  tallies: Map<string, VoteTally>
+  mentionColors: Map<string, string>
+  isFresh: (id: string) => boolean
+  /** Extra classes for the card (a compare column fills its cell). */
+  className?: string
+  t: T
+}) {
+  const toUser = m.to.kind === 'user'
+  const chip = addressLabel(m.to, room, t)
+  if (m.kind === 'system' && m.compaction) {
+    return (
+      <div data-testid="room-message" data-kind="compaction">
+        <CompactionDivider record={m.compaction} />
+      </div>
+    )
+  }
+  if (m.kind === 'system') {
+    return (
+      <div
+        data-testid="room-message"
+        data-kind={m.kind}
+        className={cn(
+          'px-2 text-center text-xs text-muted-foreground',
+          isFresh(m.id) && 'motion-safe:animate-fade-in'
+        )}
+      >
+        <span className="sr-only">{t('rooms:transcript.system')}: </span>
+        <span className="whitespace-pre-wrap break-words">{m.text}</span>
+      </div>
+    )
+  }
+  return (
+    <article
+      data-testid="room-message"
+      data-kind={m.kind}
+      data-status={m.status}
+      data-addressed-to-user={toUser || undefined}
+      className={cn(
+        'flex min-w-0 flex-col gap-1.5 rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5',
+        m.kind === 'user' && 'bg-secondary',
+        m.kind === 'synthesis' && 'border-[1.5px] border-border-strong',
+        toUser && 'shadow-[inset_4px_0_0_var(--primary)]',
+        isFresh(m.id) && 'motion-safe:animate-msg-in',
+        className
+      )}
+    >
+      <header className="flex flex-wrap items-center gap-1.5 text-xs">
+        <AuthorName author={m.author} room={room} t={t} />
+        {chip && (
+          <span
+            data-testid="message-to"
+            // A message to a participant wears that participant's colour,
+            // like their own name does.
+            style={
+              m.to.kind === 'participant'
+                ? {
+                    color: participantColor(m.to.participantId),
+                    backgroundColor: `color-mix(in oklab, ${participantColor(m.to.participantId)} 14%, transparent)`,
+                  }
+                : undefined
+            }
+            className={cn(
+              'rounded-full px-[7px] py-px text-[11px]',
+              m.to.kind !== 'participant' && 'bg-accent text-muted-foreground'
+            )}
+          >
+            {chip}
+          </span>
+        )}
+        <KindLabel message={m} t={t} />
+        {m.status === 'interrupted' && (
+          <Badge tone="warn">{t('rooms:transcript.interrupted')}</Badge>
+        )}
+        {(m.status === 'failed' || m.kind === 'error') && (
+          <Badge tone="error">{t('rooms:transcript.failed')}</Badge>
+        )}
+        {toUser && (
+          <span className="text-[11.5px] font-medium text-foreground">
+            {t('rooms:transcript.addressedToYou')}
+          </span>
+        )}
+        {m.usage?.outputTokens || m.usage?.tokensPerSecond ? (
+          <span
+            data-testid="message-speed"
+            title={t('rooms:transcript.speedTitle')}
+            className="ml-auto tabular-nums text-muted-foreground"
+          >
+            {[
+              m.usage?.outputTokens
+                ? t('rooms:transcript.tokensOut', {
+                    count: m.usage.outputTokens,
+                    approx: m.usage.estimated ? '~' : '',
+                  })
+                : null,
+              m.usage?.tokensPerSecond
+                ? t('rooms:transcript.speed', { tps: Math.round(m.usage.tokensPerSecond) })
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        ) : null}
+      </header>
+      <MessageBody
+        message={m}
+        tally={tallies.get(m.id)}
+        mentionColors={mentionColors}
+        t={t}
+      />
+    </article>
+  )
+}
+
+/** The turn being streamed, drawn as a dashed card. */
+function LiveCard({
+  live,
+  room,
+  approvalTool,
+  mentionColors,
+  className,
+  t,
+}: {
+  live: LiveTurn
+  room: Room
+  approvalTool: string | null
+  mentionColors: Map<string, string>
+  className?: string
+  t: T
+}) {
+  return (
+    <article
+      data-testid="room-live-turn"
+      aria-busy="true"
+      className={cn(
+        'flex min-w-0 flex-col gap-1.5 rounded-[10px] border-[0.8px] border-dashed border-border-strong bg-card px-3 py-2.5 motion-safe:animate-msg-in',
+        className
+      )}
+    >
+      <header className="flex flex-wrap items-center gap-1.5 text-xs">
+        <AuthorName author={live.author} room={room} t={t} />
+        <span className="text-muted-foreground motion-safe:animate-pulse">
+          {liveStatusLabel(liveStatus(live, approvalTool), t)}
+        </span>
+      </header>
+      {live.tools && live.tools.length > 0 && <ToolTrace calls={live.tools} t={t} />}
+      {live.compacting ? (
+        <p className="text-[13px] text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
+      ) : live.text ? (
+        <RoomMessageText
+          text={stripConclusion(live.text).text}
+          mentionColors={mentionColors}
+          isStreaming
+          className="text-[13.5px] leading-[1.6] text-fg-2"
+        />
+      ) : null}
+    </article>
+  )
+}
+
+/** Where a participant's column goes: its order in the room, the removed last. */
+function columnRank(room: Room, author: RoomAuthor): number {
+  if (author.kind !== 'participant') return Number.MAX_SAFE_INTEGER
+  const p = findParticipant(room, author.participantId)
+  return p ? p.order : Number.MAX_SAFE_INTEGER
+}
+
+/**
+ * A compare round: every participant's answer to the same user message in a
+ * column of its own (stacked when the transcript is narrow), each headed by the
+ * participant and model, with the same token and speed figures as any message.
+ * Turns still being written sit in their column beside the finished ones.
+ */
+function CompareRow({
+  answers,
+  lives,
+  room,
+  tallies,
+  mentionColors,
+  isFresh,
+  approvalTool,
+  t,
+}: {
+  answers: RoomMessage[]
+  lives: LiveTurn[]
+  room: Room
+  tallies: Map<string, VoteTally>
+  mentionColors: Map<string, string>
+  isFresh: (id: string) => boolean
+  approvalTool: string | null
+  t: T
+}) {
+  const cells = [
+    ...answers.map((m) => ({ key: m.id, rank: columnRank(room, m.author), message: m, live: null })),
+    ...lives.map((l) => ({ key: l.turnId, rank: columnRank(room, l.author), message: null, live: l })),
+  ].sort((a, b) => a.rank - b.rank)
+  return (
+    <div
+      data-testid="room-compare-row"
+      role="group"
+      aria-label={t('rooms:transcript.compareRow', { count: cells.length })}
+      className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] items-start gap-2.5"
+    >
+      {cells.map((c) =>
+        c.message ? (
+          <TranscriptMessage
+            key={c.key}
+            m={c.message}
+            room={room}
+            tallies={tallies}
+            mentionColors={mentionColors}
+            isFresh={isFresh}
+            className="h-full"
+            t={t}
+          />
+        ) : c.live ? (
+          <LiveCard
+            key={c.key}
+            live={c.live}
+            room={room}
+            approvalTool={approvalTool}
+            mentionColors={mentionColors}
+            className="h-full"
+            t={t}
+          />
+        ) : null
+      )}
+    </div>
+  )
+}
+
 type RoomTranscriptProps = {
   room: Room
   journal: RoomJournalRecord[]
   liveTurn: LiveTurn | null
+  /** Every turn in flight; a compare room streams one per participant. */
+  liveTurns?: LiveTurn[]
 }
 
 /**
@@ -509,14 +755,21 @@ function liveStatusLabel(status: ReturnType<typeof liveStatus>, t: T): string {
   }
 }
 
-export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps) {
+export function RoomTranscript({ room, journal, liveTurn, liveTurns }: RoomTranscriptProps) {
   const { t } = useTranslation()
   const messages = useMemo(() => messagesOf(journal), [journal])
+  const compare = isCompareRoom(room)
+  const items = useMemo(() => (compare ? compareLayout(messages) : null), [compare, messages])
   const tallies = useMemo(() => voteTallies(messages), [messages])
   // Name -> color for the participants, so an @mention of one is painted in the
   // same color as that participant's name. Rebuilt only when the roster changes.
   const mentionColors = useMemo(() => participantColorsByName(room), [room])
   const live = liveTurn?.roomId === room.id ? liveTurn : null
+  const compareLives = compare
+    ? (liveTurns ?? (live ? [live] : [])).filter((l) => l.roomId === room.id)
+    : []
+  // Several turns stream at once in a compare room; any of them growing follows.
+  const compareStreamed = compareLives.map((l) => l.text.length).join(',')
   const approvalTool = useToolApprovalRequests((s) => {
     for (const p of Object.values(s.pending ?? {})) if (p.threadId === room.id) return p.toolName
     return null
@@ -559,7 +812,7 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [messages.length, live?.text, live?.author])
+  }, [messages.length, live?.text, live?.author, compareStreamed])
 
   const showJump = !follow
 
@@ -570,6 +823,7 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
     seenRef.current = new Set(messages.map((m) => m.id))
   }
   const isFresh = (id: string) => seenRef.current !== null && !seenRef.current.has(id)
+  const shared = { room, tallies, mentionColors, isFresh, t }
 
   return (
     <div
@@ -579,7 +833,15 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
       data-testid="room-transcript-scroll"
       className="relative flex-1 min-h-0 overflow-y-auto outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
     >
-      <div className="flex flex-col gap-2.5 px-[max(16px,calc((100%-760px)/2))] pt-3.5 pb-2">
+      <div
+        className={cn(
+          'flex flex-col gap-2.5 pt-3.5 pb-2',
+          // Side-by-side answers need more width than one column of speech.
+          compare
+            ? 'px-[max(16px,calc((100%-1200px)/2))]'
+            : 'px-[max(16px,calc((100%-760px)/2))]'
+        )}
+      >
       <div
         role="log"
         aria-live="polite"
@@ -592,138 +854,28 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
             {t('rooms:transcript.empty')}
           </p>
         )}
-        {messages.map((m) => {
-          const toUser = m.to.kind === 'user'
-          const chip = addressLabel(m.to, room, t)
-          if (m.kind === 'system' && m.compaction) {
-            return (
-              <div key={m.id} data-testid="room-message" data-kind="compaction">
-                <CompactionDivider record={m.compaction} />
-              </div>
+        {items
+          ? items.map((item, i) =>
+              item.kind === 'message' ? (
+                <TranscriptMessage key={item.message.id} m={item.message} {...shared} />
+              ) : (
+                <CompareRow
+                  key={item.answers[0].id}
+                  answers={item.answers}
+                  // The round still being answered gathers its live turns too.
+                  lives={i === items.length - 1 ? compareLives : []}
+                  {...shared}
+                  approvalTool={approvalTool}
+                />
+              )
             )
-          }
-          if (m.kind === 'system') {
-            return (
-              <div
-                key={m.id}
-                data-testid="room-message"
-                data-kind={m.kind}
-                className={cn(
-                  'px-2 text-center text-xs text-muted-foreground',
-                  isFresh(m.id) && 'motion-safe:animate-fade-in'
-                )}
-              >
-                <span className="sr-only">{t('rooms:transcript.system')}: </span>
-                <span className="whitespace-pre-wrap break-words">{m.text}</span>
-              </div>
-            )
-          }
-          return (
-            <article
-              key={m.id}
-              data-testid="room-message"
-              data-kind={m.kind}
-              data-status={m.status}
-              data-addressed-to-user={toUser || undefined}
-              className={cn(
-                'flex min-w-0 flex-col gap-1.5 rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5',
-                m.kind === 'user' && 'bg-secondary',
-                m.kind === 'synthesis' && 'border-[1.5px] border-border-strong',
-                toUser && 'shadow-[inset_4px_0_0_var(--primary)]',
-                isFresh(m.id) && 'motion-safe:animate-msg-in'
-              )}
-            >
-              <header className="flex flex-wrap items-center gap-1.5 text-xs">
-                <AuthorName author={m.author} room={room} t={t} />
-                {chip && (
-                  <span
-                    data-testid="message-to"
-                    // A message to a participant wears that participant's colour,
-                    // like their own name does.
-                    style={
-                      m.to.kind === 'participant'
-                        ? {
-                            color: participantColor(m.to.participantId),
-                            backgroundColor: `color-mix(in oklab, ${participantColor(m.to.participantId)} 14%, transparent)`,
-                          }
-                        : undefined
-                    }
-                    className={cn(
-                      'rounded-full px-[7px] py-px text-[11px]',
-                      m.to.kind !== 'participant' && 'bg-accent text-muted-foreground'
-                    )}
-                  >
-                    {chip}
-                  </span>
-                )}
-                <KindLabel message={m} t={t} />
-                {m.status === 'interrupted' && (
-                  <Badge tone="warn">{t('rooms:transcript.interrupted')}</Badge>
-                )}
-                {(m.status === 'failed' || m.kind === 'error') && (
-                  <Badge tone="error">{t('rooms:transcript.failed')}</Badge>
-                )}
-                {toUser && (
-                  <span className="text-[11.5px] font-medium text-foreground">
-                    {t('rooms:transcript.addressedToYou')}
-                  </span>
-                )}
-                {m.usage?.outputTokens || m.usage?.tokensPerSecond ? (
-                  <span
-                    data-testid="message-speed"
-                    title={t('rooms:transcript.speedTitle')}
-                    className="ml-auto tabular-nums text-muted-foreground"
-                  >
-                    {[
-                      m.usage?.outputTokens
-                        ? t('rooms:transcript.tokensOut', {
-                            count: m.usage.outputTokens,
-                            approx: m.usage.estimated ? '~' : '',
-                          })
-                        : null,
-                      m.usage?.tokensPerSecond
-                        ? t('rooms:transcript.speed', { tps: Math.round(m.usage.tokensPerSecond) })
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </span>
-                ) : null}
-              </header>
-              <MessageBody
-                message={m}
-                tally={tallies.get(m.id)}
-                mentionColors={mentionColors}
-                t={t}
-              />
-            </article>
-          )
-        })}
+          : messages.map((m) => <TranscriptMessage key={m.id} m={m} {...shared} />)}
       </div>
-      {live && (
-        <article
-          data-testid="room-live-turn"
-          aria-busy="true"
-          className="flex min-w-0 flex-col gap-1.5 rounded-[10px] border-[0.8px] border-dashed border-border-strong bg-card px-3 py-2.5 motion-safe:animate-msg-in"
-        >
-          <header className="flex flex-wrap items-center gap-1.5 text-xs">
-            <AuthorName author={live.author} room={room} t={t} />
-            <span className="text-muted-foreground motion-safe:animate-pulse">
-              {liveStatusLabel(liveStatus(live, approvalTool), t)}
-            </span>
-          </header>
-          {live.tools && live.tools.length > 0 && <ToolTrace calls={live.tools} t={t} />}
-          {live.compacting ? (
-            <p className="text-[13px] text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
-          ) : live.text ? (
-            <RoomMessageText
-              text={stripConclusion(live.text).text}
-              mentionColors={mentionColors}
-              isStreaming
-              className="text-[13.5px] leading-[1.6] text-fg-2"
-            />
-          ) : null}
-        </article>
+      {items && compareLives.length > 0 && items[items.length - 1]?.kind !== 'compare' && (
+        <CompareRow answers={[]} lives={compareLives} {...shared} approvalTool={approvalTool} />
+      )}
+      {!items && live && (
+        <LiveCard live={live} room={room} approvalTool={approvalTool} mentionColors={mentionColors} t={t} />
       )}
       </div>
       {/*
