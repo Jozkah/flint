@@ -71,6 +71,8 @@ jobs:
         env:
           IS_WEB_APP: "true"
           IS_TAURI: "false"
+          # The web-app production build runs out of the runner's default heap.
+          NODE_OPTIONS: '--max-old-space-size=4096'
         run: yarn build:web
 
       - name: Build the server binary
