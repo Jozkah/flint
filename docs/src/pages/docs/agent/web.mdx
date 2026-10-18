@@ -39,6 +39,15 @@ A failed search or fetch comes back as an error the agent can see, prefixed so i
 a successful empty result. That matters: a silent empty result would look like "nothing exists,"
 which is a very different conclusion from "the lookup failed."
 
+### Rate limits
+
+The default keyless search uses a free shared pool that can rate limit. When any provider (the
+keyless default or one you added a key for) answers with a rate limit, Flint waits it out: it honours
+the provider's `Retry-After`, otherwise it backs off from 30 seconds up to 15 minutes on repeated
+limits. Until then no request is sent, and the agent gets one plain sentence saying how long to wait.
+Your query is never sent to a different provider in the meantime; the provider you picked in
+Settings > Web Search is the only one used. Adding a provider key there lifts the shared-pool limit.
+
 ## Going further with MCP
 
 For anything beyond reading public pages - a private wiki, an internal search index, a browser that
