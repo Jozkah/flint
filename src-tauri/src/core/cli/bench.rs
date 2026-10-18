@@ -23,8 +23,30 @@
 //! ```
 //!
 //! Checks are objective and read-only: `file_equals`, `file_contains`,
-//! `file_absent`, `result_contains` (the run's final answer). A check that needs
+//! `file_absent`, `result_contains` (the run's final answer), and two about the
+//! run's trajectory, `tools_called` and `tools_not_called`. A check that needs
 //! judgement is not a check.
+//!
+//! ## Trajectory
+//!
+//! ```toml
+//! checks = [
+//!   { kind = "tools_called", tools = ["read", "write"], mode = "in_order" },
+//!   { kind = "tools_not_called", tools = ["bash"] },
+//! ]
+//! ```
+//!
+//! The tools are the ones the run asked for, in the order it asked, read from the
+//! child's `--events` stream (`tool.requested`). `mode` is `in_order` (these
+//! appear in this order, other calls may sit between), `any_order` (each appears
+//! at least once) or `exact` (these and no others, in this order; an empty list
+//! means the run called no tool). A trajectory that could not be read fails every
+//! trajectory check rather than passing it.
+//!
+//! Beside the checks every task records efficiency numbers -- turns, tool calls,
+//! calls the permission gate refused -- in the report, the progress line and
+//! `compare`. They never fail a task or the exit code. A report written before
+//! they existed loads with them absent.
 //!
 //! ## How a task runs
 //!
@@ -83,6 +105,21 @@ pub enum Check {
     FileContains { path: String, text: String },
     FileAbsent { path: String },
     ResultContains { text: String },
+    /// The run called these tools; see [`ToolMode`].
+    ToolsCalled { tools: Vec<String>, mode: ToolMode },
+    /// The run called none of these tools.
+    ToolsNotCalled { tools: Vec<String> },
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolMode {
+    /// In this order, other calls allowed between.
+    InOrder,
+    /// Each at least once, any order.
+    AnyOrder,
+    /// Exactly this sequence.
+    Exact,
 }
 
 fn refuse(kind: ErrorKind, message: impl Into<String>) -> HarnessError {
@@ -139,6 +176,19 @@ pub fn load_tasks(path: &Path) -> Result<(TaskSet, String), HarnessError> {
                     inside(path)?;
                 }
                 Check::ResultContains { .. } => {}
+                Check::ToolsCalled { tools, mode } => {
+                    if tools.is_empty() && *mode != ToolMode::Exact {
+                        return Err(refuse(ErrorKind::InvalidInput, format!("task {:?}: tools_called needs at least one tool (only mode \"exact\" may be empty)", task.id)));
+                    }
+                    if tools.iter().any(|t| t.trim().is_empty()) {
+                        return Err(refuse(ErrorKind::InvalidInput, format!("task {:?}: a tool name is empty", task.id)));
+                    }
+                }
+                Check::ToolsNotCalled { tools } => {
+                    if tools.is_empty() || tools.iter().any(|t| t.trim().is_empty()) {
+                        return Err(refuse(ErrorKind::InvalidInput, format!("task {:?}: tools_not_called needs named tools", task.id)));
+                    }
+                }
             }
         }
     }
@@ -160,6 +210,13 @@ pub struct TaskOutcome {
     pub turns: u32,
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
+    /// Efficiency, never a pass condition: tools the run requested, and how many
+    /// of those the permission gate refused. `None` when the trajectory was not
+    /// recorded (an older report, or a run that did not get that far).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refused_calls: Option<u32>,
     /// One line per check that failed, and the run's own error when it had one.
     pub notes: Vec<String>,
 }
@@ -178,6 +235,52 @@ pub struct Report {
     pub tasks: Vec<TaskOutcome>,
 }
 
+impl TaskOutcome {
+    /// `3 turns, 5 tools, 1 refused` for the progress line; what was not
+    /// recorded is left out.
+    pub fn efficiency(&self) -> String {
+        let mut parts = vec![format!("{} turns", self.turns)];
+        if let Some(calls) = self.tool_calls {
+            parts.push(format!("{calls} tools"));
+        }
+        if let Some(refused) = self.refused_calls.filter(|n| *n > 0) {
+            parts.push(format!("{refused} refused"));
+        }
+        parts.join(", ")
+    }
+}
+
+/// The tools a run requested, in order, and how many calls were refused, from its
+/// `--events` stream (canonical JSON lines). Lines that are not events are
+/// skipped; only the first run's events count, so a subagent's calls are not
+/// taken for the task's own.
+pub fn trajectory_from_events(text: &str) -> (Vec<String>, u32) {
+    let mut tools = Vec::new();
+    let mut refused = 0u32;
+    let mut run: Option<String> = None;
+    for line in text.lines() {
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        let this_run = event["run"].as_str().unwrap_or("");
+        if !this_run.is_empty() {
+            match &run {
+                None => run = Some(this_run.to_string()),
+                Some(first) if first != this_run => continue,
+                Some(_) => {}
+            }
+        }
+        match event["kind"].as_str() {
+            Some("tool.requested") => {
+                if let Some(tool) = event["payload"]["tool"].as_str() {
+                    tools.push(tool.to_string());
+                }
+            }
+            Some("tool.refused") => refused += 1,
+            _ => {}
+        }
+    }
+    (tools, refused)
+}
+
 impl Report {
     pub fn passed(&self) -> usize {
         self.tasks.iter().filter(|t| t.passed).count()
@@ -185,7 +288,8 @@ impl Report {
 }
 
 /// Evaluate a task's checks against its project and the run's final answer.
-pub fn evaluate(project: &Path, result: &str, checks: &[Check]) -> Vec<String> {
+/// `tools` is the run's trajectory, `None` when it is unknown.
+pub fn evaluate(project: &Path, result: &str, tools: Option<&[String]>, checks: &[Check]) -> Vec<String> {
     let mut failures = Vec::new();
     for check in checks {
         match check {
@@ -209,6 +313,36 @@ pub fn evaluate(project: &Path, result: &str, checks: &[Check]) -> Vec<String> {
                     failures.push(format!("the final answer does not contain {:?}", truncate(text)));
                 }
             }
+            Check::ToolsCalled { tools: want, mode } => match tools {
+                None => failures.push("the run's tool trajectory was not recorded".to_string()),
+                Some(got) => {
+                    let ok = match mode {
+                        ToolMode::Exact => got == want.as_slice(),
+                        ToolMode::AnyOrder => want.iter().all(|w| got.contains(w)),
+                        ToolMode::InOrder => {
+                            let mut next = got.iter();
+                            want.iter().all(|w| next.any(|g| g == w))
+                        }
+                    };
+                    if !ok {
+                        let how = match mode {
+                            ToolMode::Exact => "exactly",
+                            ToolMode::AnyOrder => "in any order",
+                            ToolMode::InOrder => "in order",
+                        };
+                        failures.push(format!("tools called {:?}, expected {} {:?}", truncate(&got.join(",")), how, want));
+                    }
+                }
+            },
+            Check::ToolsNotCalled { tools: banned } => match tools {
+                None => failures.push("the run's tool trajectory was not recorded".to_string()),
+                Some(got) => {
+                    let hit: Vec<&String> = banned.iter().filter(|b| got.contains(b)).collect();
+                    if !hit.is_empty() {
+                        failures.push(format!("called {hit:?}, which it should not"));
+                    }
+                }
+            },
         }
     }
     failures
@@ -289,6 +423,8 @@ pub fn run_tasks(
             turns: 0,
             prompt_tokens: 0,
             completion_tokens: 0,
+            tool_calls: None,
+            refused_calls: None,
             notes: Vec::new(),
         };
         match outcome {
@@ -296,6 +432,12 @@ pub fn run_tasks(
                 entry.turns = result["num_turns"].as_u64().unwrap_or(0) as u32;
                 entry.prompt_tokens = result["usage"]["prompt_tokens"].as_u64().unwrap_or(0);
                 entry.completion_tokens = result["usage"]["completion_tokens"].as_u64().unwrap_or(0);
+                // `None` when the runner could not supply a trajectory.
+                let tools: Option<Vec<String>> = result["tools"]
+                    .as_array()
+                    .map(|a| a.iter().filter_map(|t| t.as_str().map(str::to_string)).collect());
+                entry.tool_calls = tools.as_ref().map(|t| t.len() as u32);
+                entry.refused_calls = tools.as_ref().map(|_| result["refused"].as_u64().unwrap_or(0) as u32);
                 if result["is_error"].as_bool().unwrap_or(true) {
                     entry.state = "run_error".to_string();
                     entry.notes.push(format!(
@@ -303,7 +445,7 @@ pub fn run_tasks(
                         truncate(result["error"]["message"].as_str().unwrap_or("no message"))
                     ));
                 } else {
-                    let failures = evaluate(&project, result["result"].as_str().unwrap_or(""), &task.checks);
+                    let failures = evaluate(&project, result["result"].as_str().unwrap_or(""), tools.as_deref(), &task.checks);
                     entry.passed = failures.is_empty();
                     entry.state = if entry.passed { "completed" } else { "failed_checks" }.to_string();
                     entry.notes = failures;
@@ -341,6 +483,11 @@ pub struct Delta {
     pub after: Option<bool>,
     pub duration_ms_change: i64,
     pub tokens_change: i64,
+    /// Efficiency changes, never a regression; `None` when either report did
+    /// not record the number.
+    pub turns_change: i64,
+    pub tool_calls_change: Option<i64>,
+    pub refused_calls_change: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -392,6 +539,7 @@ pub fn compare(before: &Report, after: &Report) -> Result<Comparison, HarnessErr
             comparison.fixed.push(id.clone());
         }
         let tokens = |t: Option<&TaskOutcome>| t.map(|t| (t.prompt_tokens + t.completion_tokens) as i64).unwrap_or(0);
+        let both = |a: Option<u32>, b: Option<u32>| Some(i64::from(b?) - i64::from(a?));
         let millis = |t: Option<&TaskOutcome>| t.map(|t| t.duration_ms as i64).unwrap_or(0);
         comparison.deltas.push(Delta {
             id,
@@ -399,6 +547,9 @@ pub fn compare(before: &Report, after: &Report) -> Result<Comparison, HarnessErr
             after: now.map(|t| t.passed),
             duration_ms_change: millis(now) - millis(was),
             tokens_change: tokens(now) - tokens(was),
+            turns_change: now.map_or(0, |t| t.turns as i64) - was.map_or(0, |t| t.turns as i64),
+            tool_calls_change: both(was.and_then(|t| t.tool_calls), now.and_then(|t| t.tool_calls)),
+            refused_calls_change: both(was.and_then(|t| t.refused_calls), now.and_then(|t| t.refused_calls)),
         });
     }
     Ok(comparison)
@@ -488,8 +639,14 @@ pub struct ProcessRunner {
 impl Runner for ProcessRunner {
     fn run(&self, project: &Path, prompt: &str, timeout: Duration, cancelled: &dyn Fn() -> bool) -> RunnerOutcome {
         use std::io::Read;
+        // The run's event stream, beside the project (not in it: the task's own
+        // checks look at the project). Read after the run for its tool calls.
+        let events = project.with_extension("events.jsonl");
+        let _ = std::fs::remove_file(&events);
         let mut cmd = std::process::Command::new(&self.program);
-        cmd.args(["cli", "agent", "run", "--output-format", "json", "--model", &self.model, "--project"])
+        cmd.args(["cli", "agent", "run", "--output-format", "json", "--model", &self.model, "--events"])
+            .arg(&events)
+            .arg("--project")
             .arg(project)
             // A prompt that starts with `-` is still the prompt, not a flag.
             .arg("--")
@@ -535,11 +692,21 @@ impl Runner for ProcessRunner {
         drop(owned);
         let _ = child.wait();
         let out = reader.join().unwrap_or_default();
+        let stream = std::fs::read_to_string(&events);
+        let _ = std::fs::remove_file(&events);
         if let Some(stopped) = stop {
             return stopped;
         }
         match serde_json::from_str::<serde_json::Value>(&out) {
-            Ok(result) => RunnerOutcome::Finished(result),
+            Ok(mut result) => {
+                // Without a readable stream the trajectory is unknown, not empty.
+                if let (Ok(text), Some(map)) = (stream, result.as_object_mut()) {
+                    let (tools, refused) = trajectory_from_events(&text);
+                    map.insert("tools".to_string(), serde_json::json!(tools));
+                    map.insert("refused".to_string(), serde_json::json!(refused));
+                }
+                RunnerOutcome::Finished(result)
+            }
             Err(_) => RunnerOutcome::CouldNotRun(format!("the agent printed no result envelope: {}", truncate(out.trim()))),
         }
     }
@@ -761,6 +928,164 @@ checks = [{ kind = "result_contains", text = "42" }, { kind = "file_absent", pat
         assert_eq!(swept_reused, vec![stale.clone()], "scratch whose pid was reused was kept");
         assert!(!stale.exists());
         assert!(swept_live.is_empty() && running.exists(), "a running benchmark's scratch was removed");
+    }
+
+    /// A runner that answers with a fixed trajectory (or none).
+    struct Tooled(Option<Vec<&'static str>>, u32);
+
+    impl Runner for Tooled {
+        fn run(&self, _: &Path, _: &str, _: Duration, _: &dyn Fn() -> bool) -> RunnerOutcome {
+            let mut result = serde_json::json!({ "is_error": false, "result": "ok", "num_turns": 3 });
+            if let Some(tools) = &self.0 {
+                result["tools"] = serde_json::json!(tools);
+                result["refused"] = serde_json::json!(self.1);
+            }
+            RunnerOutcome::Finished(result)
+        }
+    }
+
+    fn trajectory_set(checks: &str) -> String {
+        format!("name = \"t\"\n[[task]]\nid = \"a\"\nprompt = \"go\"\nchecks = [{checks}]\n")
+    }
+
+    fn run_with(checks: &str, runner: &Tooled) -> TaskOutcome {
+        let dir = tempfile::tempdir().unwrap();
+        let (set, digest) = load_tasks(&write(dir.path(), "t.toml", &trajectory_set(checks))).unwrap();
+        let report = run_tasks(&set, &digest, "m", "x", &dir.path().join("s"), runner, &|| false, &mut |_| {}).unwrap();
+        report.tasks[0].clone()
+    }
+
+    #[test]
+    fn tools_called_checks_each_mode() {
+        let run = Tooled(Some(vec!["read", "grep", "write"]), 0);
+        let called = |tools: &str, mode: &str| run_with(&format!("{{ kind = \"tools_called\", tools = [{tools}], mode = \"{mode}\" }}"), &run);
+        assert!(called("\"read\", \"write\"", "in_order").passed, "a subsequence is in order");
+        assert!(!called("\"write\", \"read\"", "in_order").passed);
+        assert!(called("\"write\", \"read\"", "any_order").passed);
+        assert!(!called("\"read\", \"edit\"", "any_order").passed);
+        assert!(called("\"read\", \"grep\", \"write\"", "exact").passed);
+        let short = called("\"read\", \"write\"", "exact");
+        assert!(!short.passed && short.state == "failed_checks");
+        assert!(short.notes[0].contains("exactly"), "{:?}", short.notes);
+        assert!(!called("\"write\", \"read\", \"grep\"", "exact").passed, "order matters for exact");
+    }
+
+    #[test]
+    fn tools_not_called_and_empty_trajectories() {
+        let run = Tooled(Some(vec!["read"]), 0);
+        assert!(run_with(r#"{ kind = "tools_not_called", tools = ["bash", "write"] }"#, &run).passed);
+        let hit = run_with(r#"{ kind = "tools_not_called", tools = ["bash", "read"] }"#, &run);
+        assert!(!hit.passed && hit.notes[0].contains("read"), "{:?}", hit.notes);
+
+        let none = Tooled(Some(vec![]), 0);
+        assert!(run_with(r#"{ kind = "tools_not_called", tools = ["bash"] }"#, &none).passed);
+        assert!(run_with(r#"{ kind = "tools_called", tools = [], mode = "exact" }"#, &none).passed, "no tools at all");
+        assert!(!run_with(r#"{ kind = "tools_called", tools = ["read"], mode = "any_order" }"#, &none).passed);
+        assert!(!run_with(r#"{ kind = "tools_called", tools = [], mode = "exact" }"#, &run).passed);
+    }
+
+    #[test]
+    fn an_unrecorded_trajectory_fails_trajectory_checks_but_not_others() {
+        let unknown = Tooled(None, 0);
+        let task = run_with(r#"{ kind = "tools_not_called", tools = ["bash"] }"#, &unknown);
+        assert!(!task.passed && task.notes[0].contains("not recorded"), "{:?}", task.notes);
+        assert_eq!((task.tool_calls, task.refused_calls), (None, None));
+        assert!(run_with(r#"{ kind = "result_contains", text = "ok" }"#, &unknown).passed);
+    }
+
+    #[test]
+    fn trajectory_checks_are_validated_when_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let kind = |checks: &str| load_tasks(&write(dir.path(), "v.toml", &trajectory_set(checks))).map(|_| ()).map_err(|e| e.kind());
+        assert_eq!(kind(r#"{ kind = "tools_called", tools = [], mode = "in_order" }"#), Err(ErrorKind::InvalidInput));
+        assert_eq!(kind(r#"{ kind = "tools_called", tools = ["read"], mode = "sometimes" }"#), Err(ErrorKind::InvalidInput));
+        assert_eq!(kind(r#"{ kind = "tools_called", tools = ["read"] }"#), Err(ErrorKind::InvalidInput), "mode is required");
+        assert_eq!(kind(r#"{ kind = "tools_called", tools = [" "], mode = "any_order" }"#), Err(ErrorKind::InvalidInput));
+        assert_eq!(kind(r#"{ kind = "tools_not_called", tools = [] }"#), Err(ErrorKind::InvalidInput));
+        assert_eq!(kind(r#"{ kind = "tools_not_called", tools = ["bash"], extra = 1 }"#), Err(ErrorKind::InvalidInput));
+        assert_eq!(kind(r#"{ kind = "tools_called", tools = ["read"], mode = "exact" }"#), Ok(()));
+    }
+
+    /// Efficiency numbers are recorded and compared but never gate anything.
+    #[test]
+    fn efficiency_is_recorded_compared_and_never_fails_a_task() {
+        let check = r#"{ kind = "result_contains", text = "ok" }"#;
+        let heavy = run_with(check, &Tooled(Some(vec!["read"; 40]), 7));
+        assert!(heavy.passed, "many tool calls and refusals still pass");
+        assert_eq!((heavy.tool_calls, heavy.refused_calls), (Some(40), Some(7)));
+        assert_eq!(heavy.efficiency(), "3 turns, 40 tools, 7 refused");
+        let light = run_with(check, &Tooled(Some(vec!["read"]), 0));
+        assert_eq!(light.efficiency(), "3 turns, 1 tools");
+        assert_eq!(run_with(check, &Tooled(None, 0)).efficiency(), "3 turns");
+
+        let dir = tempfile::tempdir().unwrap();
+        let (set, digest) = load_tasks(&write(dir.path(), "t.toml", &trajectory_set(check))).unwrap();
+        let report = |outcome: TaskOutcome| Report {
+            version: REPORT_VERSION,
+            task_set: set.name.clone(),
+            task_set_sha256: digest.clone(),
+            model: "m".into(),
+            label: "x".into(),
+            started_at: String::new(),
+            complete: true,
+            tasks: vec![outcome],
+        };
+        let comparison = compare(&report(heavy.clone()), &report(light.clone())).unwrap();
+        assert!(comparison.regressions.is_empty(), "a cheaper or dearer run is not a regression");
+        assert_eq!(comparison.deltas[0].tool_calls_change, Some(-39));
+        assert_eq!(comparison.deltas[0].refused_calls_change, Some(-7));
+        assert_eq!(comparison.deltas[0].turns_change, 0);
+        let worse = compare(&report(light.clone()), &report(heavy)).unwrap();
+        assert!(worse.regressions.is_empty() && worse.deltas[0].tool_calls_change == Some(39));
+
+        // Against a report from before the numbers existed they are unknown.
+        let old = TaskOutcome { tool_calls: None, refused_calls: None, ..light };
+        let vs_old = compare(&report(old), &report(run_with(check, &Tooled(Some(vec!["read"]), 0)))).unwrap();
+        assert_eq!((vs_old.deltas[0].tool_calls_change, vs_old.deltas[0].refused_calls_change), (None, None));
+    }
+
+    #[test]
+    fn reports_round_trip_with_and_without_the_efficiency_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let (set, digest) = load_tasks(&write(dir.path(), "t.toml", &trajectory_set(r#"{ kind = "result_contains", text = "ok" }"#))).unwrap();
+        let now = run_tasks(&set, &digest, "m", "x", &dir.path().join("s"), &Tooled(Some(vec!["read", "write"]), 1), &|| false, &mut |_| {}).unwrap();
+        let path = dir.path().join("new.json");
+        std::fs::write(&path, serde_json::to_string(&now).unwrap()).unwrap();
+        assert_eq!(load_report(&path).unwrap(), now);
+        assert_eq!(now.tasks[0].tool_calls, Some(2));
+
+        // A report written before the fields existed still loads, with them absent.
+        let mut raw: serde_json::Value = serde_json::to_value(&now).unwrap();
+        for task in raw["tasks"].as_array_mut().unwrap() {
+            task.as_object_mut().unwrap().remove("tool_calls");
+            task.as_object_mut().unwrap().remove("refused_calls");
+        }
+        let old = write(dir.path(), "old.json", &raw.to_string());
+        let loaded = load_report(&old).unwrap();
+        assert_eq!((loaded.tasks[0].tool_calls, loaded.tasks[0].refused_calls), (None, None));
+        assert_eq!(compare(&loaded, &now).unwrap().deltas[0].tool_calls_change, None);
+
+        // A task set with a different digest is still refused.
+        let other = Report { task_set_sha256: "0".repeat(64), ..now.clone() };
+        assert!(compare(&now, &other).is_err());
+    }
+
+    #[test]
+    fn the_event_stream_gives_tools_in_order_and_refusals() {
+        let line = |run: &str, kind: &str, payload: serde_json::Value| serde_json::json!({ "run": run, "kind": kind, "payload": payload }).to_string();
+        let stream = [
+            line("r1", "run.started", serde_json::json!({})),
+            line("r1", "tool.requested", serde_json::json!({ "tool": "read", "call": "call_1_0" })),
+            "not json".to_string(),
+            line("r1", "tool.succeeded", serde_json::json!({ "tool": "read" })),
+            line("r2", "tool.requested", serde_json::json!({ "tool": "subagent_tool" })),
+            line("r1", "tool.requested", serde_json::json!({ "tool": "bash" })),
+            line("r1", "tool.refused", serde_json::json!({ "tool": "bash" })),
+            line("r1", "tool.requested", serde_json::json!({})),
+        ]
+        .join("\n");
+        assert_eq!(trajectory_from_events(&stream), (vec!["read".to_string(), "bash".to_string()], 1));
+        assert_eq!(trajectory_from_events(""), (Vec::new(), 0));
     }
 
     /// Cancellation: a benchmark stopped part-way says it is incomplete, runs

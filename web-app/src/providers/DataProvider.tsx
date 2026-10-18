@@ -32,6 +32,7 @@ import { sweepThreadWorkspaces } from '@/lib/agentTools'
 import { invoke } from '@tauri-apps/api/core'
 import { isChatWindow } from '@/lib/soloFlag'
 import { hostInvoke } from '@/lib/hostInvoke'
+import { grandfatherFolderTrust } from '@/lib/grandfatherFolderTrust'
 import { providerHasRemoteApiKeys, providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
 import {
   fillSecretHeaderValues,
@@ -277,6 +278,7 @@ export function DataProvider() {
   // The thread fetch re-runs on extension re-registration; the sandbox sweep
   // should not.
   const sweptWorkspaces = useRef(false)
+  const grandfathered = useRef(false)
   const serviceHub = useServiceHub()
 
   // Local API Server hooks
@@ -442,6 +444,13 @@ export function DataProvider() {
           }
           setThreads(threads)
           setThreadsLoading(false)
+          // Sessions and chats are both loaded now: the one-time migration that
+          // keeps hooks on for folders the person already works in can run. It does
+          // nothing after the first time.
+          if (IS_TAURI && !grandfathered.current) {
+            grandfathered.current = true
+            void grandfatherFolderTrust()
+          }
           // Collect agent sandboxes whose thread is gone (crash, or a thread
           // deleted while the app was closed). Once per session, and only on a
           // non-empty result: sweeping against an empty list would delete live

@@ -227,7 +227,7 @@ fn read_line(reader: &mut impl BufRead) -> std::io::Result<Option<(Vec<u8>, bool
     }
 }
 
-fn input_lines() -> mpsc::Receiver<(Vec<u8>, bool)> {
+pub(super) fn input_lines() -> mpsc::Receiver<(Vec<u8>, bool)> {
     let (tx, rx) = mpsc::channel(INPUT_CAPACITY);
     std::thread::spawn(move || {
         let mut stdin = std::io::stdin().lock();
@@ -240,7 +240,7 @@ fn input_lines() -> mpsc::Receiver<(Vec<u8>, bool)> {
     rx
 }
 
-fn output_lines(mut rx: mpsc::Receiver<Value>) -> std::thread::JoinHandle<()> {
+pub(super) fn output_lines(mut rx: mpsc::Receiver<Value>) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let stdout = std::io::stdout();
         let mut writer = stdout.lock();
@@ -318,7 +318,7 @@ async fn rebuild_agent(source: &Session, model: Option<String>) -> Result<AgentS
 
 /// Wait for the session's active MCP servers to connect, so its first turn
 /// (and the `session/start` tool list) already has their tools.
-async fn await_mcp(agent: &mut AgentSession) {
+pub(super) async fn await_mcp(agent: &mut AgentSession) {
     if let Some(task) = agent.mcp_task.take() {
         match task.await {
             Ok(outcome) => {

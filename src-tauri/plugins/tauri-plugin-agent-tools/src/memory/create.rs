@@ -763,6 +763,62 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Forgetting is invalidate-not-delete: the line stays as a tombstone that
+    /// keeps identity, provenance, scope, creator and the hash of what it said,
+    /// plus when it was forgotten (`updated_at`). Only the words leave. Never
+    /// injected afterwards.
+    #[test]
+    fn forgetting_keeps_a_tombstone_with_provenance_and_the_time() {
+        let root = unique_root();
+        let p = propose_user("Deploys go out on Fridays", &[]).unwrap();
+        let id = commit(&root, &p).unwrap();
+        let before = store::load(&root, Scope::User).records.remove(0);
+
+        assert!(forget(&root, Scope::User, &id, 7_777).unwrap());
+        let loaded = store::load(&root, Scope::User);
+        assert_eq!(loaded.records.len(), 1, "forget hard-deleted the record");
+        let t = &loaded.records[0];
+        assert_eq!(t.id, id);
+        assert_eq!(t.status, Status::Deleted);
+        assert!(t.content.is_empty(), "the words must leave");
+        assert_eq!(t.content_hash, before.content_hash);
+        assert_eq!(t.provenance, before.provenance);
+        assert_eq!((t.scope, t.creator, t.created_at), (before.scope, before.creator, before.created_at));
+        assert_eq!(t.updated_at, 7_777, "when it was forgotten");
+        assert!(!t.is_usable(8_000));
+        let sel = super::super::retrieve::select(
+            &loaded.records,
+            &super::super::retrieve::RetrievalContext { now: 8_000, budget_chars: 10_000, ..Default::default() },
+        );
+        assert!(sel.injected.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A store written before optional fields existed still loads and can be
+    /// forgotten: nothing in the tombstone path needs a newer schema.
+    #[test]
+    fn an_old_minimal_store_line_loads_and_forgets() {
+        let root = unique_root();
+        let path = store::records_path(&root, Scope::User);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let h = super::super::record::content_hash("Old fact");
+        let line = format!(
+            r#"{{"schema_version":1,"id":"old1","content":"Old fact","content_hash":"{h}","scope":"user","creator":"user","origin":"explicit","status":{{"state":"active"}},"provenance":{{}},"created_at":5,"updated_at":5}}"#
+        );
+        std::fs::write(&path, format!("{line}
+")).unwrap();
+        let loaded = store::load(&root, Scope::User);
+        assert_eq!((loaded.records.len(), loaded.skipped_unreadable), (1, 0));
+        assert!(loaded.records[0].is_usable(10));
+
+        let id = MemoryId::new("old1");
+        assert!(forget(&root, Scope::User, &id, 99).unwrap());
+        let after = store::load(&root, Scope::User).records;
+        assert_eq!(after[0].status, Status::Deleted);
+        assert_eq!(after[0].updated_at, 99);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// Undo cannot put different words under a forgotten memory's identity.
     #[test]
     fn restoring_with_different_text_is_refused() {

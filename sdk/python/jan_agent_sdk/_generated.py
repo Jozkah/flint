@@ -521,6 +521,8 @@ class PermissionRequestEvent(TypedDict):
     offers_always: bool
     # Why this call is being asked about when a grant or auto-approval would otherwise have let it run: a destructive shell command, or the check-in after a long streak of auto-approved calls. `None` for an ordinary prompt.
     reason: NotRequired[Union[str, None]]
+    # The sha256 (hex) of the tool name and its arguments as canonical JSON (keys sorted), taken when this prompt was raised. The approved call runs only if its arguments still hash to this value; otherwise it is refused unrun. `None` for a prompt not about one tool call's arguments.
+    args_digest: NotRequired[Union[str, None]]
     type: Literal["permission_request"]
 
 class ToolRequestEvent(TypedDict):

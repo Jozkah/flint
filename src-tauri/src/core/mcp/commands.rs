@@ -1282,10 +1282,12 @@ pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, St
         *settings_guard = settings.clone();
     }
 
-    // #118: remember the server list the desktop now believes is on disk.
-    remember_desktop_view(&path, config_value.get("mcpServers"));
+    // The renderer only sees masked secrets; the disk copy stays real. #118:
+    // remember the (masked) server list the desktop now believes is on disk.
+    let for_renderer = super::redact::redact_mcp_config(&config_value);
+    remember_desktop_view(&path, for_renderer.get("mcpServers"));
 
-    serde_json::to_string_pretty(&config_value)
+    serde_json::to_string_pretty(&for_renderer)
         .map_err(|e| format!("Failed to serialize MCP config: {e}"))
 }
 
@@ -1316,7 +1318,7 @@ fn remember_desktop_view(path: &Path, servers: Option<&Value>) {
 /// disk version, including being absent because another writer removed it;
 /// a server the desktop added, edited or removed takes the desktop's version;
 /// a server only on disk (added elsewhere) is kept.
-fn merge_mcp_servers(
+pub(super) fn merge_mcp_servers(
     base: &Map<String, Value>,
     ours: &Map<String, Value>,
     disk: &Map<String, Value>,
@@ -1526,8 +1528,16 @@ pub async fn save_mcp_configs<R: Runtime>(
         let merged = merge_mcp_servers(&base, &ours, &disk);
         config_object.insert("mcpServers".to_string(), Value::Object(merged));
     }
+    // A value that came back as the mask is not a new secret: put the stored
+    // one back so a save never overwrites a real secret with the mask.
+    if let Some(disk) = read_disk_servers(&path) {
+        super::redact::restore_masked_secrets(&mut config_value, &disk);
+    }
     // The desktop's belief is its own payload; the next save diffs against it.
-    remember_desktop_view(&path, Some(&Value::Object(ours)));
+    remember_desktop_view(
+        &path,
+        Some(&Value::Object(super::redact::redact_mcp_servers(&ours))),
+    );
 
     let serialized = serde_json::to_string_pretty(&config_value)
         .map_err(|e| format!("Failed to serialize MCP config: {e}"))?;

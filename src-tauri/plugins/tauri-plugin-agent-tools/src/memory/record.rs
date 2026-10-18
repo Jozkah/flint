@@ -548,6 +548,27 @@ pub fn prefer<'a>(
     }
 }
 
+/// Order records best-first, the order retrieval injects them in.
+///
+/// This is [`prefer`] applied as a sort, and nothing more: scope (user above
+/// project above session), then pinned, then creator trust, then explicit over
+/// inferred, then `updated_at` (newer first), then the id as the stable
+/// tiebreak (smaller id first). The store has no importance field, so no blend
+/// is added; recency is already the last real signal and the id makes the
+/// result identical for any input order.
+pub fn rank(records: &mut [MemoryRecord]) {
+    records.sort_by(|a, b| {
+        if a.id == b.id {
+            return std::cmp::Ordering::Equal;
+        }
+        if prefer(a, b).0.id == a.id {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        }
+    });
+}
+
 /// Records that make incompatible claims about the same subject.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Conflict {
@@ -689,6 +710,38 @@ mod tests {
             Origin::Explicit,
             1_000,
         )
+    }
+
+    #[test]
+    fn rank_is_best_first_and_ignores_input_order() {
+        let mut user = rec("b-user", "user fact", Scope::User);
+        user.updated_at = 1;
+        let mut pinned = rec("a-proj-pinned", "pinned", Scope::Project);
+        pinned.pinned = true;
+        pinned.updated_at = 1;
+        let mut newer = rec("a-proj-new", "newer", Scope::Project);
+        newer.updated_at = 9;
+        let mut older = rec("a-proj-old", "older", Scope::Project);
+        older.updated_at = 2;
+        let mut session = rec("a-sess", "session", Scope::Session);
+        session.updated_at = 99;
+        let want = ["b-user", "a-proj-pinned", "a-proj-new", "a-proj-old", "a-sess"];
+        let all = vec![user, pinned, newer, older, session];
+        for rot in 0..all.len() {
+            let mut v = all.clone();
+            v.rotate_left(rot);
+            rank(&mut v);
+            let got: Vec<&str> = v.iter().map(|r| r.id.as_str()).collect();
+            assert_eq!(got, want);
+        }
+    }
+
+    #[test]
+    fn rank_breaks_a_full_tie_on_the_smaller_id() {
+        let mut v = vec![rec("z", "x", Scope::User), rec("a", "y", Scope::User), rec("m", "w", Scope::User)];
+        rank(&mut v);
+        let got: Vec<&str> = v.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(got, ["a", "m", "z"]);
     }
 
     #[test]

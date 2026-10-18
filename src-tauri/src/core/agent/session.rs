@@ -68,6 +68,11 @@ pub(crate) struct SessionBudget {
     /// `None` leaves money unmetered, which is the default.
     ceiling: Option<CostCeiling>,
     spent_usd: f64,
+    /// `[budget] pause_at_usd`: the spend at which the run asks, once, whether
+    /// to go on. Metered by `ceiling`'s rates, so it does nothing without them.
+    pause_at_usd: Option<f64>,
+    /// The pause has been offered; it is never offered again in this run.
+    paused: bool,
 }
 
 impl SessionBudget {
@@ -81,7 +86,28 @@ impl SessionBudget {
             recorded: false,
             ceiling: None,
             spent_usd: 0.0,
+            pause_at_usd: None,
+            paused: false,
         }
+    }
+
+    /// Ask once when spend reaches `pause_at_usd`. `None` (or a value that is
+    /// not a non-negative number) never pauses.
+    pub(crate) fn with_pause_at(mut self, pause_at_usd: Option<f64>) -> Self {
+        self.pause_at_usd = pause_at_usd.filter(|v| v.is_finite() && *v >= 0.0);
+        self
+    }
+
+    /// The pause threshold, when spend has just reached it and it has not been
+    /// offered yet. Returns it at most once per run: the caller asks, and the
+    /// answer stands for the rest of the run.
+    pub(crate) fn take_pause(&mut self) -> Option<f64> {
+        let pause = self.pause_at_usd?;
+        if self.paused || self.ceiling.is_none() || self.spent_usd < pause {
+            return None;
+        }
+        self.paused = true;
+        Some(pause)
     }
 
     /// Meter this run's spend against a money ceiling.
@@ -154,6 +180,12 @@ impl SessionBudget {
         self.ceiling.as_ref().map(|c| c.max_usd)
     }
 
+    /// The hard ceiling, when there is one: a run metered only for its pause
+    /// carries an infinite one, which is no ceiling at all.
+    pub(crate) fn hard_max_usd(&self) -> Option<f64> {
+        self.max_usd().filter(|max| max.is_finite())
+    }
+
     /// True once the money ceiling is reached. This **stops the run**. Checked
     /// after a request rather than before, because a request's cost is not
     /// known until the provider reports its usage, so the overshoot is bounded
@@ -223,6 +255,42 @@ mod tests {
         assert_eq!(b.spent_usd(), None);
         assert_eq!(b.max_usd(), None);
         assert!(!b.over_cost_ceiling(), "nothing to be over");
+    }
+
+    #[test]
+    fn the_pause_is_offered_once_when_spend_reaches_it() {
+        // $0.20 a request, pause at $0.30, hard ceiling at $1.
+        let mut b = capped(1.0).with_pause_at(Some(0.3));
+        b.record(&usage_with_parts(100_000, 10_000, 110_000));
+        assert_eq!(b.take_pause(), None, "$0.20 is under the pause");
+        b.record(&usage_with_parts(100_000, 10_000, 110_000));
+        assert_eq!(b.take_pause(), Some(0.3), "$0.40 reached it");
+        assert_eq!(b.take_pause(), None, "offered once");
+        b.record(&usage_with_parts(100_000, 10_000, 110_000));
+        assert_eq!(b.take_pause(), None, "still once");
+        assert!(!b.over_cost_ceiling());
+    }
+
+    #[test]
+    fn no_pause_without_a_threshold_or_without_rates() {
+        let mut b = capped(1.0);
+        b.record(&usage_with_parts(100_000, 10_000, 110_000));
+        assert_eq!(b.take_pause(), None, "unset means today's behaviour");
+        let mut b = SessionBudget::new(None).with_pause_at(Some(0.0));
+        b.record(&usage_with_parts(100_000, 10_000, 110_000));
+        assert_eq!(b.take_pause(), None, "nothing metered, nothing to pause on");
+        let b = capped(1.0).with_pause_at(Some(-1.0));
+        assert_eq!(b.pause_at_usd, None, "a negative threshold is ignored");
+    }
+
+    #[test]
+    fn an_infinite_ceiling_is_no_hard_ceiling() {
+        let mut b = capped(f64::INFINITY).with_pause_at(Some(0.1));
+        b.record(&usage_with_parts(100_000, 10_000, 110_000));
+        assert_eq!(b.hard_max_usd(), None);
+        assert!(!b.over_cost_ceiling());
+        assert_eq!(b.take_pause(), Some(0.1));
+        assert_eq!(capped(2.0).hard_max_usd(), Some(2.0));
     }
 
     #[test]

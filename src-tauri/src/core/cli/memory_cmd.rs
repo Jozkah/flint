@@ -10,6 +10,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use tauri_plugin_agent_tools::memory::audit as audit_mod;
 use tauri_plugin_agent_tools::memory::create;
 use tauri_plugin_agent_tools::memory::identity;
 use tauri_plugin_agent_tools::memory::record::{MemoryId, MemoryRecord, Scope};
@@ -140,6 +141,40 @@ pub fn clear(project: &str, session: Option<&str>, scope: &str, yes: bool) -> Re
     Ok(())
 }
 
+/// `memory audit [--json] [--stale-days N]`: a read-only report over the user
+/// and chat stores and, when the project folder is usable, the project store.
+/// Advice, not a gate: it prints and returns Ok whatever it finds.
+pub fn audit(project: &str, json: bool, stale_days: u32) -> Result<(), String> {
+    let (a, _) = access(project, None);
+    let mut records: Vec<MemoryRecord> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+    for scope in [Scope::User, Scope::Session, Scope::Project] {
+        match store_for(&a, scope) {
+            Ok(root) => {
+                let loaded = tauri_plugin_agent_tools::memory::store::load(&root, scope);
+                if let Some(issue) = loaded.issue(scope) {
+                    notes.push(issue);
+                }
+                records.extend(loaded.records);
+            }
+            Err(_) => notes.push(format!(
+                "{scope:?} scope skipped: {}",
+                a.project_refused.clone().unwrap_or_else(|| "no store here".to_string())
+            )),
+        }
+    }
+    let report = audit_mod::audit(&records, now(), stale_days);
+    if json {
+        print(&serde_json::json!({ "report": report, "notes": notes }))?;
+    } else {
+        print!("{}", audit_mod::render(&report));
+        for n in &notes {
+            println!("note: {n}");
+        }
+    }
+    Ok(())
+}
+
 /// `memory pin|unpin <scope> <id>`
 pub fn pin(project: &str, session: Option<&str>, scope: &str, id: &str, pinned: bool) -> Result<(), String> {
     let scope = parse_scope(scope)?;
@@ -203,6 +238,18 @@ mod tests {
             let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(out).unwrap()).unwrap();
             assert_eq!(v["scope"], "user");
             assert!(v["memories"].as_array().unwrap().is_empty());
+        });
+    }
+
+    #[test]
+    fn audit_reads_the_stores_and_never_fails() {
+        crate::core::app::commands::with_temp_data_folder(|_| {
+            let project = tempfile::tempdir().unwrap();
+            let p = project.path().to_string_lossy().to_string();
+            audit(&p, false, 90).unwrap();
+            audit(&p, true, 30).unwrap();
+            // A folder that cannot be a project is a note, not an error.
+            audit("Z:/definitely/not/here", true, 90).unwrap();
         });
     }
 }
