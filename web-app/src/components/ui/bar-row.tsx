@@ -161,7 +161,9 @@ export function BarRow({
     let width = el.clientWidth
     const observer = new ResizeObserver(() => {
       const next = el.clientWidth
-      if (next > width) setStage(0)
+      // Already at the widest form (a row shown from hidden, 0px wide, says
+      // nothing changed): step on at once when it does not fit.
+      if (next > width) setStage((s) => (s === 0 && overflows(el) ? 1 : 0))
       else if (overflows(el)) setStage((s) => Math.min(s + 1, maxStage.current))
       width = next
     })
