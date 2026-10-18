@@ -479,7 +479,8 @@
     "mode": {
       "roundRobin": "Round-robin",
       "userSelected": "You choose",
-      "moderatorSelected": "Moderator chooses"
+      "moderatorSelected": "Moderator chooses",
+      "compare": "Compare models"
     },
     "untitled": "Untitled room",
     "menu": "Room menu",

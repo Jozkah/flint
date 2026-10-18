@@ -21,7 +21,15 @@
     "alwaysAllow": "Zawsze zezwalaj",
     "approvalNeeded": "Wymagana zgoda",
     "permissionDetails": "Szczegóły uprawnienia",
-    "moreOptions": "Więcej opcji"
+    "moreOptions": "Więcej opcji",
+    "denyWithReason": "Odmów z uzasadnieniem",
+    "denyReasonLabel": "Dlaczego to odrzucasz?",
+    "denyReasonPlaceholder": "Powiedz agentowi, co zrobić zamiast tego",
+    "denyAndSend": "Odmów i wyślij",
+    "editCommand": "Edytuj polecenie",
+    "editCommandLabel": "Polecenie do uruchomienia",
+    "editCommandHint": "Zmień polecenie, a potem wybierz Zezwól raz, aby uruchomić swoją wersję.",
+    "editCommandNote": "Zezwól raz uruchamia Twoje edytowane polecenie. Nie zachowuje się dla niego stałe uprawnienie."
   },
   "toolCall": {
     "awaitingApproval": "Oczekuje na zatwierdzenie: {{tool}}",

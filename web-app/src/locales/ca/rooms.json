@@ -54,7 +54,9 @@
     "user-selected": "Tria tu",
     "user-selectedHint": "Després de cada torn la sala espera que triïs el proper orador.",
     "moderator-selected": "Tria el moderador",
-    "moderator-selectedHint": "Un model moderador tria cada orador i pot tancar el debat."
+    "moderator-selectedHint": "Un model moderador tria cada orador i pot tancar el debat.",
+    "compare": "Compara models",
+    "compareHint": "Cada missatge arriba a tots els participants alhora; responen per separat, sense veure's, un al costat de l'altre."
   },
   "clear": {
     "command": "Neteja aquesta sala: el seu xat, el que ha après, els seus fitxers temporals",
@@ -216,6 +218,7 @@
     "moderatorNote": "Nota del moderador",
     "disagreements": "Desacords",
     "jumpToLatest": "Salta a l'últim",
+    "compareRow": "{{count}} respostes una al costat de l'altra",
     "toolDetails": "Detalls",
     "toolHide": "Amaga",
     "toolArgs": "Entrada",
@@ -279,6 +282,10 @@
     "runningHint": "El proper orador s'està preparant.",
     "awaiting-user": "Et toca triar",
     "awaitingHint": "Tria qui parla a continuació, o escriu a la sala.",
+    "comparing": "{{count}} models responent",
+    "comparingHint": "Cadascun respon per separat; les respostes apareixen una al costat de l'altra.",
+    "compareAwaiting": "El teu torn",
+    "compareAwaitingHint": "Escriu un missatge i tots els participants hi responen.",
     "paused": "En pausa",
     "pausedHint": "Represa per continuar des d'aquí.",
     "stopped": "Aturat",

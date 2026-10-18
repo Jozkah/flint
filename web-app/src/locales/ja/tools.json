@@ -21,7 +21,15 @@
     "alwaysAllow": "常に許可",
     "approvalNeeded": "承認が必要です",
     "permissionDetails": "権限の詳細",
-    "moreOptions": "その他のオプション"
+    "moreOptions": "その他のオプション",
+    "denyWithReason": "理由を添えて拒否",
+    "denyReasonLabel": "なぜ拒否しますか?",
+    "denyReasonPlaceholder": "代わりに何をすべきかエージェントに伝えてください",
+    "denyAndSend": "拒否して送信",
+    "editCommand": "コマンドを編集",
+    "editCommandLabel": "実行するコマンド",
+    "editCommandHint": "コマンドを変更し、「一度だけ許可」を選ぶとあなたのバージョンが実行されます。",
+    "editCommandNote": "「一度だけ許可」は編集したコマンドを実行します。そのコマンドに対する継続的な許可は保存されません。"
   },
   "toolCall": {
     "awaitingApproval": "承認待ち: {{tool}}",

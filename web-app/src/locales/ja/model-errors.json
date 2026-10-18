@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "前回のリクエストがコンテキストウィンドウを超過しました。",
   "contextOverflowDetail": "このリクエストには {{request}} token が必要でしたが、モデルのコンテキストウィンドウは {{context}} token しか保持できません。",
   "contextOverflowGeneric": "リクエストが利用可能なコンテキストサイズを超えています。",
+  "refusal": "モデルはこの回答を拒否しました。リクエストの言い方を変えてみてください。",
   "engine": {
     "unknown": "モデルエンジンが予期しないエラーを報告しました。",
     "MODEL_LOAD_FAILED": "モデルを読み込めませんでした。",

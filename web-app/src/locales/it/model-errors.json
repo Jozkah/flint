@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "L'ultima richiesta ha superato la finestra di contesto.",
   "contextOverflowDetail": "Questa richiesta richiedeva {{request}} token, ma la finestra di contesto del modello ne contiene solo {{context}}.",
   "contextOverflowGeneric": "La richiesta supera la dimensione di contesto disponibile.",
+  "refusal": "Il modello ha rifiutato di rispondere. Prova a riformulare la richiesta.",
   "engine": {
     "unknown": "Il motore del modello ha segnalato un errore imprevisto.",
     "MODEL_LOAD_FAILED": "Non è stato possibile caricare il modello.",

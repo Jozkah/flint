@@ -217,6 +217,75 @@
     "gitDestructive": "Destrutivo: {{why}}. Confira o comando, o remoto e a branch antes de permitir.",
     "selfApproval": "{{tool}} aprova comandos em {{server}} por conta própria, o que deixaria o modelo responder por você. O Flint pergunta sempre e nunca lembra a resposta."
   },
+  "folderTrust": {
+    "title": "Confiar nesta pasta?",
+    "bodyHooks": "{{folder}} tem hooks próprios. Eles executam comandos e ficam desativados até você confiar na pasta.",
+    "bodySubagents": "{{folder}} tem definições de agentes próprias. Elas ficam desativadas até você confiar na pasta.",
+    "bodyBoth": "{{folder}} tem hooks e definições de agentes próprios. Eles ficam desativados até você confiar na pasta.",
+    "keepsOff": "Confie apenas em pastas que você escreveu ou leu. A confiança é mantida de forma permanente; você pode desfazê-la depois.",
+    "trust": "Confiar na pasta",
+    "later": "Agora não",
+    "failed": "Não foi possível confiar na pasta",
+    "kept": "Hooks mantidos ativos em {{count}} pastas que você já usa. Revise-os em Configurações > Permissões > Pastas confiáveis."
+  },
+  "trustedFolders": {
+    "title": "Pastas confiáveis",
+    "description": "Pastas cujos hooks e definições de agentes próprios podem ser executados. A confiança é mantida até você retirá-la.",
+    "empty": "Ainda não há pastas confiáveis; o Flint pergunta na primeira vez que uma pasta tem hooks ou definições de agentes.",
+    "add": "Confiar em uma pasta…",
+    "stop": "Parar de confiar",
+    "stopLabel": "Parar de confiar em {{folder}}",
+    "confirm": "Parar de confiar em {{folder}}? Os hooks e as definições de agentes dela ficam desativados até você confiar nela de novo.",
+    "confirmYes": "Parar de confiar",
+    "cancel": "Cancelar",
+    "loadFailed": "Não foi possível ler as pastas confiáveis",
+    "grantFailed": "Não foi possível confiar na pasta",
+    "revokeFailed": "Não foi possível parar de confiar na pasta"
+  },
+  "scopeForm": {
+    "question": "Se você escolher Sempre, lembrar para:",
+    "folder": "Dentro de {{dir}}",
+    "folderHint": "Somente arquivos nessa pasta, não importa como o caminho seja escrito. Um link para fora dela não conta.",
+    "prefix": "Comandos que começam com {{prefix}}",
+    "prefixHint": "Somente um comando simples. Um comando encadeado, com pipe ou redirecionado é perguntado de novo.",
+    "everywhere": "Toda chamada de {{tool}}, em todos os projetos",
+    "everywhereHint": "O significado antigo de Sempre. Amplo; raramente o que você quer.",
+    "saveFailed": "Não foi possível lembrar essa escolha"
+  },
+  "rules": {
+    "title": "Aprovações lembradas",
+    "description": "O que você permitiu com Sempre, limitado a uma pasta ou a um prefixo de comando. Uma regra vale só dentro do projeto dela e nunca substitui uma negação ou uma pergunta que o Flint faz sempre.",
+    "empty": "Nada foi lembrado ainda. Escolha Sempre em um pedido e depois uma pasta ou um prefixo de comando.",
+    "folder": "Dentro de {{dir}}",
+    "prefix": "Comandos que começam com {{prefix}}",
+    "run": "O resto desta execução",
+    "once": "Uma vez",
+    "project": "Em {{project}}",
+    "revoke": "Revogar",
+    "revokeLabel": "Revogar a aprovação de {{tool}}: {{scope}}",
+    "loadFailed": "Não foi possível ler as aprovações lembradas",
+    "revokeFailed": "Não foi possível revogar a aprovação"
+  },
+  "deferred": {
+    "title": "Aprovações aguardando",
+    "description": "Execuções que chegaram a uma pergunta quando ninguém podia responder anotaram-na e pararam. Responda aqui e retome a sessão: a chamada é executada uma vez se for proposta de novo antes do prazo.",
+    "empty": "Nada aguarda resposta.",
+    "allow": "Permitir",
+    "deny": "Negar",
+    "discard": "Remover",
+    "session": "Sessão {{session}}",
+    "deadline": "Responder até {{when}}",
+    "status": {
+      "pending": "Aguardando",
+      "allowed": "Permitida",
+      "denied": "Negada",
+      "expired": "Expirada",
+      "void": "Anulada",
+      "consumed": "Usada"
+    },
+    "loadFailed": "Não foi possível ler as aprovações aguardando",
+    "answerFailed": "Não foi possível registrar a resposta"
+  },
   "toast": {
     "trustFailed": "Não foi possível lembrar esse servidor",
     "cancelledOne": "A aprovação de {{names}} foi cancelada",

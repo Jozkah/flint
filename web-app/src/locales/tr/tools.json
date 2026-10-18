@@ -21,7 +21,15 @@
     "alwaysAllow": "Her Zaman İzin Ver",
     "approvalNeeded": "Onay gerekiyor",
     "permissionDetails": "İzin ayrıntıları",
-    "moreOptions": "Diğer seçenekler"
+    "moreOptions": "Diğer seçenekler",
+    "denyWithReason": "Gerekçeyle reddet",
+    "denyReasonLabel": "Bunu neden reddediyorsunuz?",
+    "denyReasonPlaceholder": "Aracıya bunun yerine ne yapacağını söyleyin",
+    "denyAndSend": "Reddet ve gönder",
+    "editCommand": "Komutu düzenle",
+    "editCommandLabel": "Çalıştırılacak komut",
+    "editCommandHint": "Komutu değiştirin, ardından sürümünüzü çalıştırmak için Bir kez izin ver'i seçin.",
+    "editCommandNote": "Bir kez izin ver, düzenlediğiniz komutu çalıştırır. Bunun için kalıcı bir izin saklanmaz."
   },
   "toolCall": {
     "awaitingApproval": "Onay bekleniyor: {{tool}}",

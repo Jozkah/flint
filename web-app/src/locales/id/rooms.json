@@ -54,7 +54,9 @@
     "user-selected": "Anda yang memilih",
     "user-selectedHint": "Setelah setiap giliran ruang menunggu Anda memilih pembicara berikutnya.",
     "moderator-selected": "Moderator yang memilih",
-    "moderator-selectedHint": "Model moderator memilih setiap pembicara dan dapat menutup diskusi."
+    "moderator-selectedHint": "Model moderator memilih setiap pembicara dan dapat menutup diskusi.",
+    "compare": "Bandingkan model",
+    "compareHint": "Setiap pesan dikirim ke semua peserta sekaligus; mereka menjawab sendiri-sendiri tanpa saling melihat, berdampingan."
   },
   "clear": {
     "command": "Bersihkan ruang ini: obrolannya, yang dipelajarinya, file sementaranya",
@@ -216,6 +218,7 @@
     "moderatorNote": "Catatan moderator",
     "disagreements": "Ketidaksepakatan",
     "jumpToLatest": "Ke yang terbaru",
+    "compareRow": "{{count}} jawaban berdampingan",
     "toolDetails": "Detail",
     "toolHide": "Sembunyikan",
     "toolArgs": "Input",
@@ -279,6 +282,10 @@
     "runningHint": "Pembicara berikutnya sedang bersiap.",
     "awaiting-user": "Giliran Anda memilih",
     "awaitingHint": "Pilih siapa yang berbicara berikutnya, atau tulis ke ruang.",
+    "comparing": "{{count}} model menjawab",
+    "comparingHint": "Masing-masing menjawab sendiri; jawabannya muncul berdampingan.",
+    "compareAwaiting": "Giliran Anda",
+    "compareAwaitingHint": "Tulis pesan dan setiap peserta akan menjawabnya.",
     "paused": "Dijeda",
     "pausedHint": "Lanjutkan untuk meneruskan dari sini.",
     "stopped": "Dihentikan",

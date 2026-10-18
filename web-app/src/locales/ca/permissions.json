@@ -217,6 +217,75 @@
     "gitDestructive": "Destructiu: {{why}}. Comprova l'ordre, el remot i la branca abans de permetre-ho.",
     "selfApproval": "{{tool}} aprova ordres a {{server}} per si mateix, cosa que permetria que el model respongués per tu. Flint ho pregunta cada vegada i mai recorda la resposta."
   },
+  "folderTrust": {
+    "title": "Confies en aquesta carpeta?",
+    "bodyHooks": "{{folder}} té hooks propis. Executen ordres i romanen desactivats fins que confiïs en la carpeta.",
+    "bodySubagents": "{{folder}} té definicions d'agents pròpies. Romanen desactivades fins que confiïs en la carpeta.",
+    "bodyBoth": "{{folder}} té hooks i definicions d'agents propis. Romanen desactivats fins que confiïs en la carpeta.",
+    "keepsOff": "Confia només en carpetes que hagis escrit o llegit. La confiança es conserva de manera permanent; la pots desfer més tard.",
+    "trust": "Confia en la carpeta",
+    "later": "Ara no",
+    "failed": "No s'ha pogut confiar en la carpeta",
+    "kept": "S'han mantingut els hooks activats en {{count}} carpetes que ja fas servir. Revisa'ls a Configuració > Permisos > Carpetes de confiança."
+  },
+  "trustedFolders": {
+    "title": "Carpetes de confiança",
+    "description": "Carpetes els hooks i les definicions d'agents propis de les quals es poden executar. La confiança es manté fins que la retiris.",
+    "empty": "Encara no hi ha carpetes de confiança; Flint pregunta la primera vegada que una carpeta porta hooks o definicions d'agents.",
+    "add": "Confia en una carpeta…",
+    "stop": "Deixa de confiar",
+    "stopLabel": "Deixa de confiar en {{folder}}",
+    "confirm": "Vols deixar de confiar en {{folder}}? Els seus hooks i definicions d'agents romanen desactivats fins que hi tornis a confiar.",
+    "confirmYes": "Deixa de confiar",
+    "cancel": "Cancel·la",
+    "loadFailed": "No s'han pogut llegir les carpetes de confiança",
+    "grantFailed": "No s'ha pogut confiar en la carpeta",
+    "revokeFailed": "No s'ha pogut deixar de confiar en la carpeta"
+  },
+  "scopeForm": {
+    "question": "Si tries Sempre, recorda-ho per a:",
+    "folder": "Dins de {{dir}}",
+    "folderHint": "Només els fitxers d'aquesta carpeta, tant se val com s'escrigui la ruta. Un enllaç que en surti no compta.",
+    "prefix": "Ordres que comencen per {{prefix}}",
+    "prefixHint": "Només una ordre simple. Una d'encadenada, amb canonada o redirigida es torna a preguntar.",
+    "everywhere": "Cada crida a {{tool}}, en tots els projectes",
+    "everywhereHint": "L'antic significat de Sempre. Molt ampli; poques vegades el que vols.",
+    "saveFailed": "No s'ha pogut recordar aquesta elecció"
+  },
+  "rules": {
+    "title": "Aprovacions recordades",
+    "description": "El que has permès amb Sempre, limitat a una carpeta o a un prefix d'ordre. Una regla només s'aplica dins del seu projecte i mai no anul·la una denegació ni una pregunta que Flint fa cada vegada.",
+    "empty": "Encara no s'ha recordat res. Tria Sempre en una sol·licitud i després una carpeta o un prefix d'ordre.",
+    "folder": "Dins de {{dir}}",
+    "prefix": "Ordres que comencen per {{prefix}}",
+    "run": "La resta d'aquesta execució",
+    "once": "Una vegada",
+    "project": "A {{project}}",
+    "revoke": "Revoca",
+    "revokeLabel": "Revoca l'aprovació de {{tool}}: {{scope}}",
+    "loadFailed": "No s'han pogut llegir les aprovacions recordades",
+    "revokeFailed": "No s'ha pogut revocar l'aprovació"
+  },
+  "deferred": {
+    "title": "Aprovacions en espera",
+    "description": "Les execucions que han arribat a una pregunta quan ningú podia respondre l'han anotada i s'han aturat. Respon aquí i represa la sessió: la crida s'executa una vegada si es torna a proposar abans del termini.",
+    "empty": "No hi ha res esperant resposta.",
+    "allow": "Permet",
+    "deny": "Denega",
+    "discard": "Elimina",
+    "session": "Sessió {{session}}",
+    "deadline": "Respon abans de {{when}}",
+    "status": {
+      "pending": "En espera",
+      "allowed": "Permesa",
+      "denied": "Denegada",
+      "expired": "Caducada",
+      "void": "Anul·lada",
+      "consumed": "Utilitzada"
+    },
+    "loadFailed": "No s'han pogut llegir les aprovacions en espera",
+    "answerFailed": "No s'ha pogut registrar la resposta"
+  },
   "toast": {
     "trustFailed": "No s'ha pogut recordar aquest servidor",
     "cancelledOne": "S'ha cancel·lat l'aprovació de {{names}}",

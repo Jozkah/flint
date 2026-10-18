@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "Poslední požadavek přetekl kontextové okno.",
   "contextOverflowDetail": "Tento požadavek potřeboval {{request}} tokenů, ale kontextové okno modelu pojme jen {{context}}.",
   "contextOverflowGeneric": "Požadavek překračuje dostupnou velikost kontextu.",
+  "refusal": "Model odmítl odpovědět. Zkuste požadavek přeformulovat.",
   "engine": {
     "unknown": "Engine modelu nahlásil neočekávanou chybu.",
     "MODEL_LOAD_FAILED": "Model se nepodařilo načíst.",

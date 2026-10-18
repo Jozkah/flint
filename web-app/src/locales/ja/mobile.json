@@ -390,7 +390,8 @@
     "mode": {
       "roundRobin": "ラウンドロビン",
       "userSelected": "あなたが選択",
-      "moderatorSelected": "モデレーターが選択"
+      "moderatorSelected": "モデレーターが選択",
+      "compare": "モデルを比較"
     },
     "untitled": "無題のルーム",
     "menu": "ルームメニュー",

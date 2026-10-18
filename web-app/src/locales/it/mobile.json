@@ -400,7 +400,8 @@
     "mode": {
       "roundRobin": "A turno",
       "userSelected": "Scegli tu",
-      "moderatorSelected": "Sceglie il moderatore"
+      "moderatorSelected": "Sceglie il moderatore",
+      "compare": "Confronta i modelli"
     },
     "untitled": "Stanza senza titolo",
     "menu": "Menu della stanza",

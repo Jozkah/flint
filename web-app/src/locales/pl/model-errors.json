@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "Ostatnie żądanie przekroczyło okno kontekstu.",
   "contextOverflowDetail": "To żądanie wymagało {{request}} tokenów, ale okno kontekstu modelu mieści tylko {{context}}.",
   "contextOverflowGeneric": "Żądanie przekracza dostępny rozmiar kontekstu.",
+  "refusal": "Model odmówił odpowiedzi. Spróbuj przeformułować prośbę.",
   "engine": {
     "unknown": "Silnik modelu zgłosił nieoczekiwany błąd.",
     "MODEL_LOAD_FAILED": "Nie udało się wczytać modelu.",

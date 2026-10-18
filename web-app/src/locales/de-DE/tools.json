@@ -21,7 +21,15 @@
     "alwaysAllow": "Immer erlauben",
     "approvalNeeded": "Freigabe erforderlich",
     "permissionDetails": "Details zur Berechtigung",
-    "moreOptions": "Weitere Optionen"
+    "moreOptions": "Weitere Optionen",
+    "denyWithReason": "Mit Begründung ablehnen",
+    "denyReasonLabel": "Warum lehnst du das ab?",
+    "denyReasonPlaceholder": "Sag dem Agenten, was er stattdessen tun soll",
+    "denyAndSend": "Ablehnen und senden",
+    "editCommand": "Befehl bearbeiten",
+    "editCommandLabel": "Auszuführender Befehl",
+    "editCommandHint": "Ändere den Befehl und wähle dann Einmal erlauben, um deine Version auszuführen.",
+    "editCommandNote": "Einmal erlauben führt deinen bearbeiteten Befehl aus. Dafür wird keine dauerhafte Berechtigung gespeichert."
   },
   "toolCall": {
     "awaitingApproval": "Wartet auf Genehmigung: {{tool}}",

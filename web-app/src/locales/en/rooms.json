@@ -54,7 +54,9 @@
     "user-selected": "You choose",
     "user-selectedHint": "After each turn the room waits for you to pick the next speaker.",
     "moderator-selected": "Moderator chooses",
-    "moderator-selectedHint": "A moderator model picks each speaker and can close the discussion."
+    "moderator-selectedHint": "A moderator model picks each speaker and can close the discussion.",
+    "compare": "Compare models",
+    "compareHint": "Each message goes to every participant at once; they answer on their own, without seeing each other, side by side."
   },
   "clear": {
     "command": "Clear this room: its chat, what it learned, its scratch files",
@@ -216,6 +218,7 @@
     "moderatorNote": "Moderator note",
     "disagreements": "Disagreements",
     "jumpToLatest": "Jump to latest",
+    "compareRow": "{{count}} answers side by side",
     "toolDetails": "Details",
     "toolHide": "Hide",
     "toolArgs": "Input",
@@ -279,6 +282,10 @@
     "runningHint": "The next speaker is getting ready.",
     "awaiting-user": "Your turn to choose",
     "awaitingHint": "Pick who speaks next, or write to the room.",
+    "comparing": "{{count}} models answering",
+    "comparingHint": "Each answers on its own; the answers appear side by side.",
+    "compareAwaiting": "Your turn",
+    "compareAwaitingHint": "Write a message and every participant answers it.",
     "paused": "Paused",
     "pausedHint": "Resume to continue from here.",
     "stopped": "Stopped",

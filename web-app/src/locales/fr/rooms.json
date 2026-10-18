@@ -54,7 +54,9 @@
     "user-selected": "Vous choisissez",
     "user-selectedHint": "Après chaque tour, la salle attend que vous choisissiez le prochain intervenant.",
     "moderator-selected": "Le modérateur choisit",
-    "moderator-selectedHint": "Un modèle modérateur choisit chaque intervenant et peut clore la discussion."
+    "moderator-selectedHint": "Un modèle modérateur choisit chaque intervenant et peut clore la discussion.",
+    "compare": "Comparer les modèles",
+    "compareHint": "Chaque message est envoyé à tous les participants en même temps ; ils répondent chacun de leur côté, sans voir les autres, côte à côte."
   },
   "clear": {
     "command": "Vider cette salle : sa conversation, ce qu'elle a appris, ses fichiers temporaires",
@@ -216,6 +218,7 @@
     "moderatorNote": "Note du modérateur",
     "disagreements": "Désaccords",
     "jumpToLatest": "Aller au dernier message",
+    "compareRow": "{{count}} réponses côte à côte",
     "toolDetails": "Détails",
     "toolHide": "Masquer",
     "toolArgs": "Entrée",
@@ -279,6 +282,10 @@
     "runningHint": "Le prochain intervenant se prépare.",
     "awaiting-user": "À vous de choisir",
     "awaitingHint": "Choisissez qui parle ensuite, ou écrivez à la salle.",
+    "comparing": "{{count}} modèles répondent",
+    "comparingHint": "Chacun répond de son côté ; les réponses s'affichent côte à côte.",
+    "compareAwaiting": "À vous",
+    "compareAwaitingHint": "Écrivez un message et chaque participant y répond.",
     "paused": "En pause",
     "pausedHint": "Reprenez pour continuer à partir d'ici.",
     "stopped": "Arrêtée",

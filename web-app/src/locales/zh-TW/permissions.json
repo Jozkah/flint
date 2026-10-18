@@ -217,6 +217,75 @@
     "gitDestructive": "破壞性：{{why}}。允許之前請檢查指令、遠端儲存庫和分支。",
     "selfApproval": "{{tool}} 會自行核准 {{server}} 上的指令，這會讓模型替你作答。Flint 每次都會詢問，並且從不記住答案。"
   },
+  "folderTrust": {
+    "title": "信任此資料夾?",
+    "bodyHooks": "{{folder}} 帶有自己的掛鉤。掛鉤會執行指令，在你信任該資料夾之前保持關閉。",
+    "bodySubagents": "{{folder}} 帶有自己的代理程式定義。在你信任該資料夾之前保持關閉。",
+    "bodyBoth": "{{folder}} 帶有自己的掛鉤與代理程式定義。在你信任該資料夾之前保持關閉。",
+    "keepsOff": "只信任你自己撰寫或已閱讀過的資料夾。信任會長期保留，你可以稍後撤銷。",
+    "trust": "信任資料夾",
+    "later": "稍後再說",
+    "failed": "無法信任該資料夾",
+    "kept": "已為你正在使用的 {{count}} 個資料夾保持開啟掛鉤。請在「設定 > 權限 > 信任的資料夾」中檢視。"
+  },
+  "trustedFolders": {
+    "title": "信任的資料夾",
+    "description": "允許執行其自帶掛鉤與代理程式定義的資料夾。信任會一直保留，直到你收回。",
+    "empty": "目前沒有信任的資料夾；當某個資料夾首次帶有掛鉤或代理程式定義時，Flint 會詢問。",
+    "add": "信任資料夾…",
+    "stop": "停止信任",
+    "stopLabel": "停止信任 {{folder}}",
+    "confirm": "要停止信任 {{folder}} 嗎？它的掛鉤與代理程式定義將保持關閉，直到你再次信任它。",
+    "confirmYes": "停止信任",
+    "cancel": "取消",
+    "loadFailed": "無法讀取信任的資料夾",
+    "grantFailed": "無法信任該資料夾",
+    "revokeFailed": "無法停止信任該資料夾"
+  },
+  "scopeForm": {
+    "question": "如果選擇「一律允許」，記住的範圍是：",
+    "folder": "{{dir}} 內",
+    "folderHint": "僅限該資料夾中的檔案，無論路徑如何書寫。指向其外部的連結不算。",
+    "prefix": "以 {{prefix}} 開頭的指令",
+    "prefixHint": "僅限單一一般指令。串接、管線或重新導向的指令會再次詢問。",
+    "everywhere": "所有專案中對 {{tool}} 的每次呼叫",
+    "everywhereHint": "「一律允許」的舊有意義。範圍很廣，很少是你想要的。",
+    "saveFailed": "無法記住該選擇"
+  },
+  "rules": {
+    "title": "已記住的核准",
+    "description": "你用「一律允許」放行的內容，僅限一個資料夾或一個指令前綴。規則只在其所屬專案內生效，絕不會覆蓋拒絕，也不會覆蓋 Flint 每次都會詢問的問題。",
+    "empty": "目前尚未記住任何內容。在提示中選擇「一律允許」，然後選擇資料夾或指令前綴。",
+    "folder": "{{dir}} 內",
+    "prefix": "以 {{prefix}} 開頭的指令",
+    "run": "本次執行的其餘部分",
+    "once": "僅一次",
+    "project": "在 {{project}} 中",
+    "revoke": "撤銷",
+    "revokeLabel": "撤銷 {{tool}} 的核准：{{scope}}",
+    "loadFailed": "無法讀取已記住的核准",
+    "revokeFailed": "無法撤銷該核准"
+  },
+  "deferred": {
+    "title": "等待中的核准",
+    "description": "在無人能回答時遇到問題的執行，會把問題記下來並停止。請在此回答，然後繼續工作階段：如果該呼叫在截止前被再次提出，將執行一次。",
+    "empty": "沒有等待回答的內容。",
+    "allow": "允許",
+    "deny": "拒絕",
+    "discard": "移除",
+    "session": "工作階段 {{session}}",
+    "deadline": "請在 {{when}} 前回答",
+    "status": {
+      "pending": "等待中",
+      "allowed": "已允許",
+      "denied": "已拒絕",
+      "expired": "已過期",
+      "void": "已失效",
+      "consumed": "已使用"
+    },
+    "loadFailed": "無法讀取等待中的核准",
+    "answerFailed": "無法記錄該回答"
+  },
   "toast": {
     "trustFailed": "無法記住該伺服器",
     "cancelledOne": "{{names}} 的核准已取消",

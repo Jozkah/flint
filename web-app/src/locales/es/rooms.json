@@ -54,7 +54,9 @@
     "user-selected": "Tú eliges",
     "user-selectedHint": "Tras cada turno, la sala espera a que elijas al siguiente orador.",
     "moderator-selected": "Elige el moderador",
-    "moderator-selectedHint": "Un modelo moderador elige a cada orador y puede cerrar el debate."
+    "moderator-selectedHint": "Un modelo moderador elige a cada orador y puede cerrar el debate.",
+    "compare": "Comparar modelos",
+    "compareHint": "Cada mensaje llega a todos los participantes a la vez; responden por su cuenta, sin verse entre sí, uno junto a otro."
   },
   "clear": {
     "command": "Vaciar esta sala: su chat, lo que aprendió y sus archivos temporales",
@@ -216,6 +218,7 @@
     "moderatorNote": "Nota del moderador",
     "disagreements": "Desacuerdos",
     "jumpToLatest": "Ir al último",
+    "compareRow": "{{count}} respuestas lado a lado",
     "toolDetails": "Detalles",
     "toolHide": "Ocultar",
     "toolArgs": "Entrada",
@@ -279,6 +282,10 @@
     "runningHint": "El siguiente orador se está preparando.",
     "awaiting-user": "Te toca elegir",
     "awaitingHint": "Elige quién habla a continuación o escribe a la sala.",
+    "comparing": "{{count}} modelos respondiendo",
+    "comparingHint": "Cada uno responde por su cuenta; las respuestas aparecen lado a lado.",
+    "compareAwaiting": "Tu turno",
+    "compareAwaitingHint": "Escribe un mensaje y todos los participantes lo responden.",
     "paused": "En pausa",
     "pausedHint": "Reanuda para continuar desde aquí.",
     "stopped": "Detenida",

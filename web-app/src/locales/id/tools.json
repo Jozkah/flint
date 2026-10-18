@@ -21,7 +21,15 @@
     "alwaysAllow": "Selalu izinkan",
     "approvalNeeded": "Perlu persetujuan",
     "permissionDetails": "Detail izin",
-    "moreOptions": "Opsi lainnya"
+    "moreOptions": "Opsi lainnya",
+    "denyWithReason": "Tolak dengan alasan",
+    "denyReasonLabel": "Mengapa Anda menolak ini?",
+    "denyReasonPlaceholder": "Beri tahu agen apa yang harus dilakukan sebagai gantinya",
+    "denyAndSend": "Tolak dan kirim",
+    "editCommand": "Edit perintah",
+    "editCommandLabel": "Perintah yang dijalankan",
+    "editCommandHint": "Ubah perintahnya, lalu pilih Izinkan sekali untuk menjalankan versi Anda.",
+    "editCommandNote": "Izinkan sekali menjalankan perintah yang Anda edit. Tidak ada izin tetap yang disimpan untuknya."
   },
   "toolCall": {
     "awaitingApproval": "Menunggu persetujuan: {{tool}}",

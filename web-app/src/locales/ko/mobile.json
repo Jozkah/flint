@@ -390,7 +390,8 @@
     "mode": {
       "roundRobin": "라운드 로빈",
       "userSelected": "직접 선택",
-      "moderatorSelected": "진행자가 선택"
+      "moderatorSelected": "진행자가 선택",
+      "compare": "모델 비교"
     },
     "untitled": "제목 없는 룸",
     "menu": "룸 메뉴",

@@ -395,7 +395,8 @@
     "mode": {
       "roundRobin": "Reihum",
       "userSelected": "Du wählst",
-      "moderatorSelected": "Moderator wählt"
+      "moderatorSelected": "Moderator wählt",
+      "compare": "Modelle vergleichen"
     },
     "untitled": "Unbenannter Raum",
     "menu": "Raummenü",

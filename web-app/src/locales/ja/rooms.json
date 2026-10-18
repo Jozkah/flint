@@ -54,7 +54,9 @@
     "user-selected": "あなたが選ぶ",
     "user-selectedHint": "各ターンの後、次の発言者をあなたが選ぶまでルームは待機します。",
     "moderator-selected": "モデレーターが選ぶ",
-    "moderator-selectedHint": "モデレーターのモデルが各発言者を選び、議論を終了できます。"
+    "moderator-selectedHint": "モデレーターのモデルが各発言者を選び、議論を終了できます。",
+    "compare": "モデルを比較",
+    "compareHint": "各メッセージはすべての参加者に同時に送られ、互いに見えないまま、それぞれが独自に回答して並べて表示されます。"
   },
   "clear": {
     "command": "このルームをクリア: チャット、学習した内容、一時ファイル",
@@ -216,6 +218,7 @@
     "moderatorNote": "モデレーターのメモ",
     "disagreements": "意見の相違",
     "jumpToLatest": "最新へ移動",
+    "compareRow": "{{count}} 件の回答を並べて表示",
     "toolDetails": "詳細",
     "toolHide": "非表示",
     "toolArgs": "入力",
@@ -279,6 +282,10 @@
     "runningHint": "次の発言者が準備しています。",
     "awaiting-user": "あなたが選ぶ番です",
     "awaitingHint": "次に発言する人を選ぶか、ルームに書き込んでください。",
+    "comparing": "{{count}} 個のモデルが回答中",
+    "comparingHint": "それぞれが独自に回答し、回答は並べて表示されます。",
+    "compareAwaiting": "あなたの番です",
+    "compareAwaitingHint": "メッセージを書くと、すべての参加者が回答します。",
     "paused": "一時停止中",
     "pausedHint": "再開すると、ここから続行します。",
     "stopped": "停止",

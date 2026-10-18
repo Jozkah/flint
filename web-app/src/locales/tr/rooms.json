@@ -54,7 +54,9 @@
     "user-selected": "Siz seçersiniz",
     "user-selectedHint": "Her turdan sonra oda, sizin sonraki konuşmacıyı seçmenizi bekler.",
     "moderator-selected": "Moderatör seçer",
-    "moderator-selectedHint": "Bir moderatör modeli her konuşmacıyı seçer ve tartışmayı kapatabilir."
+    "moderator-selectedHint": "Bir moderatör modeli her konuşmacıyı seçer ve tartışmayı kapatabilir.",
+    "compare": "Modelleri karşılaştır",
+    "compareHint": "Her mesaj tüm katılımcılara aynı anda gider; birbirlerini görmeden, kendi başlarına yanıtlar, yan yana."
   },
   "clear": {
     "command": "Bu odayı temizle: sohbeti, öğrendikleri, geçici dosyaları",
@@ -216,6 +218,7 @@
     "moderatorNote": "Moderatör notu",
     "disagreements": "Anlaşmazlıklar",
     "jumpToLatest": "En sona git",
+    "compareRow": "{{count}} yanıt yan yana",
     "toolDetails": "Ayrıntılar",
     "toolHide": "Gizle",
     "toolArgs": "Girdi",
@@ -279,6 +282,10 @@
     "runningHint": "Sıradaki konuşmacı hazırlanıyor.",
     "awaiting-user": "Seçme sırası sizde",
     "awaitingHint": "Sıradaki konuşmacıyı seçin veya odaya yazın.",
+    "comparing": "{{count}} model yanıtlıyor",
+    "comparingHint": "Her biri kendi başına yanıtlar; yanıtlar yan yana görünür.",
+    "compareAwaiting": "Sıra sizde",
+    "compareAwaitingHint": "Bir mesaj yazın, her katılımcı yanıtlasın.",
     "paused": "Duraklatıldı",
     "pausedHint": "Buradan devam etmek için sürdürün.",
     "stopped": "Durduruldu",

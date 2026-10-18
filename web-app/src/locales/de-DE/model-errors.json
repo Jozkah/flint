@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "Die letzte Anfrage hat das Kontextfenster überschritten.",
   "contextOverflowDetail": "Diese Anfrage benötigte {{request}} Tokens, aber das Kontextfenster des Modells fasst nur {{context}}.",
   "contextOverflowGeneric": "Die Anfrage überschreitet die verfügbare Kontextgröße.",
+  "refusal": "Das Modell hat die Antwort verweigert. Formuliere die Anfrage anders.",
   "engine": {
     "unknown": "Die Modell-Engine hat einen unerwarteten Fehler gemeldet.",
     "MODEL_LOAD_FAILED": "Das Modell konnte nicht geladen werden.",

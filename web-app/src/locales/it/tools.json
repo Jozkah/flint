@@ -21,7 +21,15 @@
     "alwaysAllow": "Consenti sempre",
     "approvalNeeded": "Approvazione richiesta",
     "permissionDetails": "Dettagli dell’autorizzazione",
-    "moreOptions": "Altre opzioni"
+    "moreOptions": "Altre opzioni",
+    "denyWithReason": "Rifiuta con un motivo",
+    "denyReasonLabel": "Perché rifiuti?",
+    "denyReasonPlaceholder": "Dì all'agente cosa fare invece",
+    "denyAndSend": "Rifiuta e invia",
+    "editCommand": "Modifica comando",
+    "editCommandLabel": "Comando da eseguire",
+    "editCommandHint": "Cambia il comando, poi scegli Consenti una volta per eseguire la tua versione.",
+    "editCommandNote": "Consenti una volta esegue il comando modificato. Non viene conservata alcuna autorizzazione permanente."
   },
   "toolCall": {
     "awaitingApproval": "In attesa di approvazione: {{tool}}",

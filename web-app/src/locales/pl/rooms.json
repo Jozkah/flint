@@ -54,7 +54,9 @@
     "user-selected": "Ty wybierasz",
     "user-selectedHint": "Po każdej turze pokój czeka, aż wybierzesz następnego mówcę.",
     "moderator-selected": "Wybiera moderator",
-    "moderator-selectedHint": "Model moderatora wybiera każdego mówcę i może zamknąć dyskusję."
+    "moderator-selectedHint": "Model moderatora wybiera każdego mówcę i może zamknąć dyskusję.",
+    "compare": "Porównaj modele",
+    "compareHint": "Każda wiadomość trafia do wszystkich uczestników naraz; odpowiadają niezależnie, nie widząc siebie nawzajem, obok siebie."
   },
   "clear": {
     "command": "Wyczyść ten pokój: jego czat, to czego się nauczył, jego pliki robocze",
@@ -216,6 +218,7 @@
     "moderatorNote": "Uwaga moderatora",
     "disagreements": "Rozbieżności",
     "jumpToLatest": "Przejdź do najnowszych",
+    "compareRow": "Odpowiedzi obok siebie: {{count}}",
     "toolDetails": "Szczegóły",
     "toolHide": "Ukryj",
     "toolArgs": "Wejście",
@@ -279,6 +282,10 @@
     "runningHint": "Następny mówca się przygotowuje.",
     "awaiting-user": "Twoja kolej na wybór",
     "awaitingHint": "Wybierz, kto mówi następny, lub napisz do pokoju.",
+    "comparing": "Modele odpowiadają: {{count}}",
+    "comparingHint": "Każdy odpowiada sam; odpowiedzi pojawiają się obok siebie.",
+    "compareAwaiting": "Twoja kolej",
+    "compareAwaitingHint": "Napisz wiadomość, a każdy uczestnik na nią odpowie.",
     "paused": "Wstrzymany",
     "pausedHint": "Wznów, aby kontynuować od tego miejsca.",
     "stopped": "Zatrzymany",

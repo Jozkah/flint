@@ -54,7 +54,9 @@
     "user-selected": "Vybíráte vy",
     "user-selectedHint": "Po každém příspěvku místnost čeká, až vyberete dalšího mluvčího.",
     "moderator-selected": "Vybírá moderátor",
-    "moderator-selectedHint": "Model moderátora vybírá každého mluvčího a může diskusi uzavřít."
+    "moderator-selectedHint": "Model moderátora vybírá každého mluvčího a může diskusi uzavřít.",
+    "compare": "Porovnat modely",
+    "compareHint": "Každá zpráva jde všem účastníkům najednou; odpovídají samostatně, aniž by se navzájem viděli, vedle sebe."
   },
   "clear": {
     "command": "Vymazat tuto místnost: její chat, co se naučila, její pracovní soubory",
@@ -216,6 +218,7 @@
     "moderatorNote": "Poznámka moderátora",
     "disagreements": "Neshody",
     "jumpToLatest": "Přejít na nejnovější",
+    "compareRow": "Odpovědí vedle sebe: {{count}}",
     "toolDetails": "Podrobnosti",
     "toolHide": "Skrýt",
     "toolArgs": "Vstup",
@@ -279,6 +282,10 @@
     "runningHint": "Další mluvčí se připravuje.",
     "awaiting-user": "Je řada na vás",
     "awaitingHint": "Vyberte, kdo mluví dál, nebo napište do místnosti.",
+    "comparing": "Modelů odpovídá: {{count}}",
+    "comparingHint": "Každý odpovídá sám; odpovědi se zobrazí vedle sebe.",
+    "compareAwaiting": "Jste na řadě",
+    "compareAwaitingHint": "Napište zprávu a každý účastník na ni odpoví.",
     "paused": "Pozastaveno",
     "pausedHint": "Pokračujte od tohoto místa.",
     "stopped": "Zastaveno",

@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "La dernière requête a dépassé la fenêtre de contexte.",
   "contextOverflowDetail": "Cette requête nécessitait {{request}} tokens, mais la fenêtre de contexte du modèle n'en contient que {{context}}.",
   "contextOverflowGeneric": "La requête dépasse la taille de contexte disponible.",
+  "refusal": "Le modèle a refusé de répondre. Essayez de reformuler la demande.",
   "engine": {
     "unknown": "Le moteur du modèle a signalé une erreur inattendue.",
     "MODEL_LOAD_FAILED": "Le modèle n'a pas pu être chargé.",

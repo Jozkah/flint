@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "마지막 요청이 컨텍스트 창을 초과했습니다.",
   "contextOverflowDetail": "이 요청에는 토큰 {{request}}개가 필요했지만 모델의 컨텍스트 창은 {{context}}개만 담을 수 있습니다.",
   "contextOverflowGeneric": "요청이 사용 가능한 컨텍스트 크기를 초과합니다.",
+  "refusal": "모델이 이 요청에 답하기를 거부했습니다. 요청을 다르게 표현해 보세요.",
   "engine": {
     "unknown": "모델 엔진이 예기치 않은 오류를 보고했습니다.",
     "MODEL_LOAD_FAILED": "모델을 로드할 수 없습니다.",

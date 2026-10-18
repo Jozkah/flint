@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "Yêu cầu gần nhất đã làm tràn cửa sổ ngữ cảnh.",
   "contextOverflowDetail": "Yêu cầu này cần {{request}} token, nhưng cửa sổ ngữ cảnh của mô hình chỉ chứa {{context}}.",
   "contextOverflowGeneric": "Yêu cầu vượt quá kích thước ngữ cảnh khả dụng.",
+  "refusal": "Mô hình đã từ chối trả lời. Hãy thử diễn đạt lại yêu cầu.",
   "engine": {
     "unknown": "Engine mô hình báo một lỗi không mong đợi.",
     "MODEL_LOAD_FAILED": "Không thể tải mô hình.",

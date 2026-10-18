@@ -54,7 +54,9 @@
     "user-selected": "Du wählst",
     "user-selectedHint": "Nach jedem Beitrag wartet der Raum darauf, dass du den nächsten Sprecher wählst.",
     "moderator-selected": "Moderator wählt",
-    "moderator-selectedHint": "Ein Moderator-Modell wählt jeden Sprecher und kann die Diskussion beenden."
+    "moderator-selectedHint": "Ein Moderator-Modell wählt jeden Sprecher und kann die Diskussion beenden.",
+    "compare": "Modelle vergleichen",
+    "compareHint": "Jede Nachricht geht gleichzeitig an alle Teilnehmer; sie antworten unabhängig voneinander, ohne die anderen zu sehen, nebeneinander."
   },
   "clear": {
     "command": "Diesen Raum leeren: Chat, Gelerntes, temporäre Dateien",
@@ -216,6 +218,7 @@
     "moderatorNote": "Hinweis des Moderators",
     "disagreements": "Meinungsverschiedenheiten",
     "jumpToLatest": "Zum Neuesten springen",
+    "compareRow": "{{count}} Antworten nebeneinander",
     "toolDetails": "Details",
     "toolHide": "Ausblenden",
     "toolArgs": "Eingabe",
@@ -279,6 +282,10 @@
     "runningHint": "Der nächste Sprecher bereitet sich vor.",
     "awaiting-user": "Du bist an der Reihe",
     "awaitingHint": "Wähle, wer als Nächstes spricht, oder schreibe in den Raum.",
+    "comparing": "{{count}} Modelle antworten",
+    "comparingHint": "Jedes antwortet für sich; die Antworten erscheinen nebeneinander.",
+    "compareAwaiting": "Du bist dran",
+    "compareAwaitingHint": "Schreibe eine Nachricht, und jeder Teilnehmer antwortet darauf.",
     "paused": "Pausiert",
     "pausedHint": "Setze fort, um von hier aus weiterzumachen.",
     "stopped": "Gestoppt",

@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "Son istek bağlam penceresini aştı.",
   "contextOverflowDetail": "Bu istek {{request}} jeton gerektiriyor ancak modelin bağlam penceresi yalnızca {{context}} jeton alabiliyor.",
   "contextOverflowGeneric": "İstek, kullanılabilir bağlam boyutunu aşıyor.",
+  "refusal": "Model bunu yanıtlamayı reddetti. İsteği farklı ifade etmeyi deneyin.",
   "engine": {
     "unknown": "Model motoru beklenmeyen bir hata bildirdi.",
     "MODEL_LOAD_FAILED": "Model yüklenemedi.",

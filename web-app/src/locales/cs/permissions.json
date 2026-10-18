@@ -217,6 +217,75 @@
     "gitDestructive": "Destruktivní: {{why}}. Před povolením zkontrolujte příkaz, vzdálený repozitář a větev.",
     "selfApproval": "{{tool}} schvaluje příkazy na {{server}} samo, což by modelu umožnilo odpovídat za vás. Flint se na to ptá pokaždé a odpověď si nikdy nepamatuje."
   },
+  "folderTrust": {
+    "title": "Důvěřovat této složce?",
+    "bodyHooks": "{{folder}} má vlastní hooky. Spouštějí příkazy a zůstávají vypnuté, dokud složce nebudete důvěřovat.",
+    "bodySubagents": "{{folder}} má vlastní definice agentů. Zůstávají vypnuté, dokud složce nebudete důvěřovat.",
+    "bodyBoth": "{{folder}} má vlastní hooky a definice agentů. Zůstávají vypnuté, dokud složce nebudete důvěřovat.",
+    "keepsOff": "Důvěřujte jen složkám, které jste napsali nebo přečetli. Důvěra se uchovává trvale; později ji můžete zrušit.",
+    "trust": "Důvěřovat složce",
+    "later": "Teď ne",
+    "failed": "Složce se nepodařilo důvěřovat",
+    "kept": "Hooky ponechány zapnuté pro složky, které už používáte: {{count}}. Zkontrolujte je v Nastavení > Oprávnění > Důvěryhodné složky."
+  },
+  "trustedFolders": {
+    "title": "Důvěryhodné složky",
+    "description": "Složky, jejichž vlastní hooky a definice agentů smějí běžet. Důvěra platí, dokud ji nevezmete zpět.",
+    "empty": "Zatím žádné důvěryhodné složky; Flint se zeptá poprvé, když složka obsahuje hooky nebo definice agentů.",
+    "add": "Důvěřovat složce…",
+    "stop": "Přestat důvěřovat",
+    "stopLabel": "Přestat důvěřovat složce {{folder}}",
+    "confirm": "Přestat důvěřovat složce {{folder}}? Její hooky a definice agentů zůstanou vypnuté, dokud jí znovu nebudete důvěřovat.",
+    "confirmYes": "Přestat důvěřovat",
+    "cancel": "Zrušit",
+    "loadFailed": "Důvěryhodné složky se nepodařilo načíst",
+    "grantFailed": "Složce se nepodařilo důvěřovat",
+    "revokeFailed": "Důvěru ke složce se nepodařilo zrušit"
+  },
+  "scopeForm": {
+    "question": "Pokud zvolíte Vždy, zapamatovat pro:",
+    "folder": "Uvnitř {{dir}}",
+    "folderHint": "Jen soubory v této složce, bez ohledu na zápis cesty. Odkaz mimo ni se nepočítá.",
+    "prefix": "Příkazy začínající na {{prefix}}",
+    "prefixHint": "Jen jeden obyčejný příkaz. Zřetězený, s rourou nebo přesměrovaný se zeptá znovu.",
+    "everywhere": "Každé volání {{tool}} v každém projektu",
+    "everywhereHint": "Původní význam Vždy. Velmi široké; zřídka to, co chcete.",
+    "saveFailed": "Tuto volbu se nepodařilo zapamatovat"
+  },
+  "rules": {
+    "title": "Zapamatovaná schválení",
+    "description": "Co jste povolili tlačítkem Vždy, omezené na jednu složku nebo jednu předponu příkazu. Pravidlo platí jen ve svém projektu a nikdy neruší zamítnutí ani otázku, kterou Flint pokládá pokaždé.",
+    "empty": "Zatím není nic zapamatováno. Zvolte u výzvy Vždy a pak složku nebo předponu příkazu.",
+    "folder": "Uvnitř {{dir}}",
+    "prefix": "Příkazy začínající na {{prefix}}",
+    "run": "Zbytek tohoto běhu",
+    "once": "Jednou",
+    "project": "V {{project}}",
+    "revoke": "Odvolat",
+    "revokeLabel": "Odvolat schválení pro {{tool}}: {{scope}}",
+    "loadFailed": "Zapamatovaná schválení se nepodařilo načíst",
+    "revokeFailed": "Schválení se nepodařilo odvolat"
+  },
+  "deferred": {
+    "title": "Čekající schválení",
+    "description": "Běhy, které narazily na otázku, když nikdo nemohl odpovědět, si ji zapsaly a zastavily se. Odpovězte zde a obnovte relaci: volání se provede jednou, pokud bude před uplynutím lhůty navrženo znovu.",
+    "empty": "Nic nečeká na odpověď.",
+    "allow": "Povolit",
+    "deny": "Zamítnout",
+    "discard": "Odebrat",
+    "session": "Relace {{session}}",
+    "deadline": "Odpovědět do {{when}}",
+    "status": {
+      "pending": "Čeká",
+      "allowed": "Povoleno",
+      "denied": "Zamítnuto",
+      "expired": "Vypršelo",
+      "void": "Neplatné",
+      "consumed": "Použito"
+    },
+    "loadFailed": "Čekající schválení se nepodařilo načíst",
+    "answerFailed": "Odpověď se nepodařilo zaznamenat"
+  },
   "toast": {
     "trustFailed": "Tento server se nepodařilo zapamatovat",
     "cancelledOne": "Schválení pro {{names}} bylo zrušeno",

@@ -21,7 +21,15 @@
     "alwaysAllow": "Vždy povolit",
     "approvalNeeded": "Vyžaduje schválení",
     "permissionDetails": "Podrobnosti oprávnění",
-    "moreOptions": "Další možnosti"
+    "moreOptions": "Další možnosti",
+    "denyWithReason": "Zamítnout s důvodem",
+    "denyReasonLabel": "Proč to zamítáte?",
+    "denyReasonPlaceholder": "Řekněte agentovi, co má dělat místo toho",
+    "denyAndSend": "Zamítnout a odeslat",
+    "editCommand": "Upravit příkaz",
+    "editCommandLabel": "Příkaz ke spuštění",
+    "editCommandHint": "Změňte příkaz a pak zvolte Povolit jednou, aby se spustila vaše verze.",
+    "editCommandNote": "Povolit jednou spustí váš upravený příkaz. Žádné trvalé oprávnění se pro něj neuchovává."
   },
   "toolCall": {
     "awaitingApproval": "Čeká na schválení: {{tool}}",

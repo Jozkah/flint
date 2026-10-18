@@ -217,6 +217,75 @@
     "gitDestructive": "Destrukcyjne: {{why}}. Sprawdź polecenie, zdalne repozytorium i gałąź, zanim zezwolisz.",
     "selfApproval": "{{tool}} samo zatwierdza polecenia na {{server}}, co pozwoliłoby modelowi odpowiadać za Ciebie. Flint pyta o to za każdym razem i nigdy nie zapamiętuje odpowiedzi."
   },
+  "folderTrust": {
+    "title": "Zaufać temu folderowi?",
+    "bodyHooks": "{{folder}} ma własne hooki. Uruchamiają polecenia i pozostają wyłączone, dopóki nie zaufasz folderowi.",
+    "bodySubagents": "{{folder}} ma własne definicje agentów. Pozostają wyłączone, dopóki nie zaufasz folderowi.",
+    "bodyBoth": "{{folder}} ma własne hooki i definicje agentów. Pozostają wyłączone, dopóki nie zaufasz folderowi.",
+    "keepsOff": "Ufaj tylko folderom, które sam napisałeś lub przeczytałeś. Zaufanie jest zapamiętywane na stałe; możesz je później cofnąć.",
+    "trust": "Zaufaj folderowi",
+    "later": "Nie teraz",
+    "failed": "Nie udało się zaufać folderowi",
+    "kept": "Hooki pozostawiono włączone dla folderów, których już używasz: {{count}}. Sprawdź je w Ustawienia > Uprawnienia > Zaufane foldery."
+  },
+  "trustedFolders": {
+    "title": "Zaufane foldery",
+    "description": "Foldery, których własne hooki i definicje agentów mogą być uruchamiane. Zaufanie trwa, dopóki go nie cofniesz.",
+    "empty": "Nie ma jeszcze zaufanych folderów; Flint zapyta, gdy pierwszy raz folder będzie zawierał hooki lub definicje agentów.",
+    "add": "Zaufaj folderowi…",
+    "stop": "Cofnij zaufanie",
+    "stopLabel": "Cofnij zaufanie do {{folder}}",
+    "confirm": "Cofnąć zaufanie do {{folder}}? Jego hooki i definicje agentów pozostaną wyłączone, dopóki znów mu nie zaufasz.",
+    "confirmYes": "Cofnij zaufanie",
+    "cancel": "Anuluj",
+    "loadFailed": "Nie udało się odczytać zaufanych folderów",
+    "grantFailed": "Nie udało się zaufać folderowi",
+    "revokeFailed": "Nie udało się cofnąć zaufania do folderu"
+  },
+  "scopeForm": {
+    "question": "Jeśli wybierzesz Zawsze, zapamiętaj dla:",
+    "folder": "Wewnątrz {{dir}}",
+    "folderHint": "Tylko pliki w tym folderze, niezależnie od zapisu ścieżki. Dowiązanie prowadzące poza niego się nie liczy.",
+    "prefix": "Polecenia zaczynające się od {{prefix}}",
+    "prefixHint": "Tylko jedno zwykłe polecenie. Łączone, potokowe lub z przekierowaniem będzie pytane ponownie.",
+    "everywhere": "Każde wywołanie {{tool}} w każdym projekcie",
+    "everywhereHint": "Dawne znaczenie Zawsze. Bardzo szerokie; rzadko to, czego chcesz.",
+    "saveFailed": "Nie udało się zapamiętać tego wyboru"
+  },
+  "rules": {
+    "title": "Zapamiętane zatwierdzenia",
+    "description": "To, na co zezwolisz przyciskiem Zawsze, ograniczone do jednego folderu lub jednego prefiksu polecenia. Reguła działa tylko w swoim projekcie i nigdy nie uchyla odmowy ani pytania, które Flint zadaje za każdym razem.",
+    "empty": "Nic jeszcze nie zapamiętano. Wybierz Zawsze w monicie, a potem folder lub prefiks polecenia.",
+    "folder": "Wewnątrz {{dir}}",
+    "prefix": "Polecenia zaczynające się od {{prefix}}",
+    "run": "Do końca tego uruchomienia",
+    "once": "Jednorazowo",
+    "project": "W {{project}}",
+    "revoke": "Cofnij",
+    "revokeLabel": "Cofnij zatwierdzenie dla {{tool}}: {{scope}}",
+    "loadFailed": "Nie udało się odczytać zapamiętanych zatwierdzeń",
+    "revokeFailed": "Nie udało się cofnąć zatwierdzenia"
+  },
+  "deferred": {
+    "title": "Oczekujące zatwierdzenia",
+    "description": "Uruchomienia, które natrafiły na pytanie, gdy nikt nie mógł odpowiedzieć, zapisały je i zatrzymały się. Odpowiedz tutaj, a potem wznów sesję: wywołanie wykona się raz, jeśli zostanie zaproponowane ponownie przed terminem.",
+    "empty": "Nic nie czeka na odpowiedź.",
+    "allow": "Zezwól",
+    "deny": "Odmów",
+    "discard": "Usuń",
+    "session": "Sesja {{session}}",
+    "deadline": "Odpowiedz do {{when}}",
+    "status": {
+      "pending": "Oczekuje",
+      "allowed": "Dozwolone",
+      "denied": "Odmówione",
+      "expired": "Wygasło",
+      "void": "Nieważne",
+      "consumed": "Użyte"
+    },
+    "loadFailed": "Nie udało się odczytać oczekujących zatwierdzeń",
+    "answerFailed": "Nie udało się zapisać odpowiedzi"
+  },
   "toast": {
     "trustFailed": "Nie udało się zapamiętać tego serwera",
     "cancelledOne": "Zatwierdzenie dla {{names}} zostało anulowane",

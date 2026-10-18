@@ -405,7 +405,8 @@
     "mode": {
       "roundRobin": "Po kolei",
       "userSelected": "Ty wybierasz",
-      "moderatorSelected": "Wybiera moderator"
+      "moderatorSelected": "Wybiera moderator",
+      "compare": "Porównaj modele"
     },
     "untitled": "Pokój bez tytułu",
     "menu": "Menu pokoju",

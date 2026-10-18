@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "L'última sol·licitud ha desbordat la finestra de context.",
   "contextOverflowDetail": "Aquesta sol·licitud necessitava {{request}} tokens, però la finestra de context del model només en té {{context}}.",
   "contextOverflowGeneric": "La sol·licitud supera la mida de context disponible.",
+  "refusal": "El model s'ha negat a respondre. Prova de reformular la petició.",
   "engine": {
     "unknown": "El motor del model ha informat d'un error inesperat.",
     "MODEL_LOAD_FAILED": "No s'ha pogut carregar el model.",

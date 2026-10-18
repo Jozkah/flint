@@ -400,7 +400,8 @@
     "mode": {
       "roundRobin": "Rodízio",
       "userSelected": "Você escolhe",
-      "moderatorSelected": "Moderador escolhe"
+      "moderatorSelected": "Moderador escolhe",
+      "compare": "Comparar modelos"
     },
     "untitled": "Sala sem título",
     "menu": "Menu da sala",

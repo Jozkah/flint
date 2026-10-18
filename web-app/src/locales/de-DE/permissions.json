@@ -217,6 +217,75 @@
     "gitDestructive": "Destruktiv: {{why}}. Prüfe Befehl, Remote und Branch, bevor du es erlaubst.",
     "selfApproval": "{{tool}} genehmigt Befehle auf {{server}} selbst, wodurch das Modell für dich antworten könnte. Flint fragt jedes Mal nach und merkt sich die Antwort nie."
   },
+  "folderTrust": {
+    "title": "Diesem Ordner vertrauen?",
+    "bodyHooks": "{{folder}} enthält eigene Hooks. Sie führen Befehle aus und bleiben deaktiviert, bis du dem Ordner vertraust.",
+    "bodySubagents": "{{folder}} enthält eigene Agentendefinitionen. Sie bleiben deaktiviert, bis du dem Ordner vertraust.",
+    "bodyBoth": "{{folder}} enthält eigene Hooks und Agentendefinitionen. Sie bleiben deaktiviert, bis du dem Ordner vertraust.",
+    "keepsOff": "Vertraue nur Ordnern, die du selbst geschrieben oder gelesen hast. Das Vertrauen bleibt dauerhaft bestehen; du kannst es später widerrufen.",
+    "trust": "Ordner vertrauen",
+    "later": "Nicht jetzt",
+    "failed": "Dem Ordner konnte nicht vertraut werden",
+    "kept": "Hooks bleiben für {{count}} bereits genutzte Ordner aktiviert. Prüfe sie unter Einstellungen > Berechtigungen > Vertrauenswürdige Ordner."
+  },
+  "trustedFolders": {
+    "title": "Vertrauenswürdige Ordner",
+    "description": "Ordner, deren eigene Hooks und Agentendefinitionen ausgeführt werden dürfen. Das Vertrauen bleibt bestehen, bis du es widerrufst.",
+    "empty": "Noch keine vertrauenswürdigen Ordner; Flint fragt beim ersten Mal nach, wenn ein Ordner Hooks oder Agentendefinitionen enthält.",
+    "add": "Einem Ordner vertrauen…",
+    "stop": "Nicht mehr vertrauen",
+    "stopLabel": "{{folder}} nicht mehr vertrauen",
+    "confirm": "{{folder}} nicht mehr vertrauen? Seine Hooks und Agentendefinitionen bleiben deaktiviert, bis du ihm erneut vertraust.",
+    "confirmYes": "Nicht mehr vertrauen",
+    "cancel": "Abbrechen",
+    "loadFailed": "Die vertrauenswürdigen Ordner konnten nicht gelesen werden",
+    "grantFailed": "Dem Ordner konnte nicht vertraut werden",
+    "revokeFailed": "Das Vertrauen konnte nicht entzogen werden"
+  },
+  "scopeForm": {
+    "question": "Wenn du Immer wählst, merke dir das für:",
+    "folder": "In {{dir}}",
+    "folderHint": "Nur Dateien in diesem Ordner, egal wie der Pfad geschrieben ist. Ein Link aus dem Ordner heraus zählt nicht.",
+    "prefix": "Befehle, die mit {{prefix}} beginnen",
+    "prefixHint": "Nur ein einzelner einfacher Befehl. Verkettete, weitergeleitete oder umgeleitete Befehle werden erneut abgefragt.",
+    "everywhere": "Jeder {{tool}}-Aufruf, in jedem Projekt",
+    "everywhereHint": "Die alte Bedeutung von Immer. Sehr weit gefasst; selten das, was du willst.",
+    "saveFailed": "Diese Auswahl konnte nicht gespeichert werden"
+  },
+  "rules": {
+    "title": "Gemerkte Genehmigungen",
+    "description": "Was du mit Immer erlaubt hast, beschränkt auf einen Ordner oder ein Befehlspräfix. Eine Regel gilt nur innerhalb ihres Projekts und setzt nie eine Ablehnung oder eine Frage außer Kraft, die Flint jedes Mal stellt.",
+    "empty": "Noch nichts gemerkt. Wähle bei einer Abfrage Immer und dann einen Ordner oder ein Befehlspräfix.",
+    "folder": "In {{dir}}",
+    "prefix": "Befehle, die mit {{prefix}} beginnen",
+    "run": "Für den Rest dieses Laufs",
+    "once": "Einmal",
+    "project": "In {{project}}",
+    "revoke": "Widerrufen",
+    "revokeLabel": "Genehmigung für {{tool}} widerrufen: {{scope}}",
+    "loadFailed": "Die gemerkten Genehmigungen konnten nicht gelesen werden",
+    "revokeFailed": "Die Genehmigung konnte nicht widerrufen werden"
+  },
+  "deferred": {
+    "title": "Wartende Genehmigungen",
+    "description": "Läufe, die auf eine Frage stießen, während niemand antworten konnte, haben sie notiert und angehalten. Antworte hier und setze dann die Sitzung fort: Der Aufruf wird einmal ausgeführt, wenn er vor Ablauf der Frist erneut vorgeschlagen wird.",
+    "empty": "Nichts wartet auf eine Antwort.",
+    "allow": "Erlauben",
+    "deny": "Ablehnen",
+    "discard": "Entfernen",
+    "session": "Sitzung {{session}}",
+    "deadline": "Antworten bis {{when}}",
+    "status": {
+      "pending": "Wartend",
+      "allowed": "Erlaubt",
+      "denied": "Abgelehnt",
+      "expired": "Abgelaufen",
+      "void": "Ungültig",
+      "consumed": "Verwendet"
+    },
+    "loadFailed": "Die wartenden Genehmigungen konnten nicht gelesen werden",
+    "answerFailed": "Die Antwort konnte nicht gespeichert werden"
+  },
   "toast": {
     "trustFailed": "Dieser Server konnte nicht gemerkt werden",
     "cancelledOne": "Die Genehmigung für {{names}} wurde abgebrochen",

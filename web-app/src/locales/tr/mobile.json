@@ -395,7 +395,8 @@
     "mode": {
       "roundRobin": "Sırayla",
       "userSelected": "Siz seçersiniz",
-      "moderatorSelected": "Moderatör seçer"
+      "moderatorSelected": "Moderatör seçer",
+      "compare": "Modelleri karşılaştır"
     },
     "untitled": "Başlıksız oda",
     "menu": "Oda menüsü",

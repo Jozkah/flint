@@ -54,7 +54,9 @@
     "user-selected": "由你選擇",
     "user-selectedHint": "每輪之後，房間會等待你選擇下一位發言者。",
     "moderator-selected": "由主持人選擇",
-    "moderator-selectedHint": "由主持人模型選擇每位發言者，並可結束討論。"
+    "moderator-selectedHint": "由主持人模型選擇每位發言者，並可結束討論。",
+    "compare": "比較模型",
+    "compareHint": "每則訊息會同時傳給所有參與者；他們各自獨立作答，彼此看不到，並排顯示。"
   },
   "clear": {
     "command": "清空此房間：它的聊天、它學到的內容、它的暫存檔案",
@@ -216,6 +218,7 @@
     "moderatorNote": "主持人備註",
     "disagreements": "分歧",
     "jumpToLatest": "跳到最新",
+    "compareRow": "並排顯示 {{count}} 個回答",
     "toolDetails": "詳細資料",
     "toolHide": "隱藏",
     "toolArgs": "輸入",
@@ -279,6 +282,10 @@
     "runningHint": "下一位發言者正在準備。",
     "awaiting-user": "輪到你選擇",
     "awaitingHint": "選擇誰下一個發言，或向房間傳送訊息。",
+    "comparing": "{{count}} 個模型正在回答",
+    "comparingHint": "各自獨立作答；回答會並排顯示。",
+    "compareAwaiting": "輪到你了",
+    "compareAwaitingHint": "寫一則訊息，每位參與者都會回答。",
     "paused": "已暫停",
     "pausedHint": "繼續以從這裡接著進行。",
     "stopped": "已停止",

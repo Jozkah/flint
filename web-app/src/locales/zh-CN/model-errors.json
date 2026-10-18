@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "上次请求超出了上下文窗口。",
   "contextOverflowDetail": "此请求需要 {{request}} tokens，但模型的上下文窗口仅能容纳 {{context}}。",
   "contextOverflowGeneric": "请求超出了可用的上下文大小。",
+  "refusal": "模型拒绝回答此请求。请尝试换一种方式表述。",
   "engine": {
     "unknown": "模型引擎报告了一个意外错误。",
     "MODEL_LOAD_FAILED": "无法加载模型。",

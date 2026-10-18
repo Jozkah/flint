@@ -7,6 +7,7 @@
   "lastRequestOverflowed": "A última requisição estourou a janela de contexto.",
   "contextOverflowDetail": "Esta requisição precisava de {{request}} tokens, mas a janela de contexto do modelo comporta apenas {{context}}.",
   "contextOverflowGeneric": "A requisição excede o tamanho de contexto disponível.",
+  "refusal": "O modelo se recusou a responder. Tente reformular o pedido.",
   "engine": {
     "unknown": "O motor do modelo informou um erro inesperado.",
     "MODEL_LOAD_FAILED": "Não foi possível carregar o modelo.",

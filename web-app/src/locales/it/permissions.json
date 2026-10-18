@@ -217,6 +217,75 @@
     "gitDestructive": "Distruttivo: {{why}}. Controlla il comando, il remote e il branch prima di consentirlo.",
     "selfApproval": "{{tool}} approva da sé i comandi su {{server}}, il che permetterebbe al modello di rispondere al posto tuo. Flint lo chiede ogni volta e non ricorda mai la risposta."
   },
+  "folderTrust": {
+    "title": "Considerare attendibile questa cartella?",
+    "bodyHooks": "{{folder}} ha hook propri. Eseguono comandi e restano disattivati finché non consideri attendibile la cartella.",
+    "bodySubagents": "{{folder}} ha definizioni di agenti proprie. Restano disattivate finché non consideri attendibile la cartella.",
+    "bodyBoth": "{{folder}} ha hook e definizioni di agenti propri. Restano disattivati finché non consideri attendibile la cartella.",
+    "keepsOff": "Considera attendibili solo cartelle che hai scritto o letto. La fiducia viene mantenuta in modo permanente; puoi annullarla più tardi.",
+    "trust": "Considera attendibile",
+    "later": "Non ora",
+    "failed": "Impossibile considerare attendibile la cartella",
+    "kept": "Hook mantenuti attivi per {{count}} cartelle che già usi. Controllali in Impostazioni > Autorizzazioni > Cartelle attendibili."
+  },
+  "trustedFolders": {
+    "title": "Cartelle attendibili",
+    "description": "Cartelle i cui hook e definizioni di agenti propri possono essere eseguiti. La fiducia resta finché non la revochi.",
+    "empty": "Ancora nessuna cartella attendibile; Flint chiede la prima volta che una cartella contiene hook o definizioni di agenti.",
+    "add": "Considera attendibile una cartella…",
+    "stop": "Revoca fiducia",
+    "stopLabel": "Revoca la fiducia a {{folder}}",
+    "confirm": "Revocare la fiducia a {{folder}}? I suoi hook e le sue definizioni di agenti restano disattivati finché non la consideri di nuovo attendibile.",
+    "confirmYes": "Revoca fiducia",
+    "cancel": "Annulla",
+    "loadFailed": "Impossibile leggere le cartelle attendibili",
+    "grantFailed": "Impossibile considerare attendibile la cartella",
+    "revokeFailed": "Impossibile revocare la fiducia alla cartella"
+  },
+  "scopeForm": {
+    "question": "Se scegli Sempre, ricordalo per:",
+    "folder": "Dentro {{dir}}",
+    "folderHint": "Solo i file in quella cartella, comunque sia scritto il percorso. Un collegamento che ne esce non conta.",
+    "prefix": "Comandi che iniziano con {{prefix}}",
+    "prefixHint": "Solo un comando semplice. Uno concatenato, con pipe o reindirizzato viene richiesto di nuovo.",
+    "everywhere": "Ogni chiamata a {{tool}}, in ogni progetto",
+    "everywhereHint": "Il vecchio significato di Sempre. Molto ampio; raramente quello che vuoi.",
+    "saveFailed": "Impossibile ricordare quella scelta"
+  },
+  "rules": {
+    "title": "Approvazioni ricordate",
+    "description": "Ciò che hai consentito con Sempre, limitato a una cartella o a un prefisso di comando. Una regola vale solo nel suo progetto e non scavalca mai un rifiuto o una domanda che Flint pone ogni volta.",
+    "empty": "Non è ancora stato ricordato nulla. Scegli Sempre in una richiesta e poi una cartella o un prefisso di comando.",
+    "folder": "Dentro {{dir}}",
+    "prefix": "Comandi che iniziano con {{prefix}}",
+    "run": "Il resto di questa esecuzione",
+    "once": "Una volta",
+    "project": "In {{project}}",
+    "revoke": "Revoca",
+    "revokeLabel": "Revoca l'approvazione per {{tool}}: {{scope}}",
+    "loadFailed": "Impossibile leggere le approvazioni ricordate",
+    "revokeFailed": "Impossibile revocare l'approvazione"
+  },
+  "deferred": {
+    "title": "Approvazioni in attesa",
+    "description": "Le esecuzioni che hanno incontrato una domanda quando nessuno poteva rispondere l'hanno annotata e si sono fermate. Rispondi qui e riprendi la sessione: la chiamata viene eseguita una volta se viene proposta di nuovo prima della scadenza.",
+    "empty": "Nessuna risposta in attesa.",
+    "allow": "Consenti",
+    "deny": "Rifiuta",
+    "discard": "Rimuovi",
+    "session": "Sessione {{session}}",
+    "deadline": "Rispondi entro {{when}}",
+    "status": {
+      "pending": "In attesa",
+      "allowed": "Consentita",
+      "denied": "Rifiutata",
+      "expired": "Scaduta",
+      "void": "Annullata",
+      "consumed": "Usata"
+    },
+    "loadFailed": "Impossibile leggere le approvazioni in attesa",
+    "answerFailed": "Impossibile registrare la risposta"
+  },
   "toast": {
     "trustFailed": "Impossibile ricordare quel server",
     "cancelledOne": "L'approvazione per {{names}} è stata annullata",

@@ -217,6 +217,75 @@
     "gitDestructive": "Destructive: {{why}}. Check the command, remote and branch before allowing it.",
     "selfApproval": "{{tool}} approves commands on {{server}} itself, which would let the model answer for you. Flint asks about it every time and never remembers the answer."
   },
+  "folderTrust": {
+    "title": "Trust this folder?",
+    "bodyHooks": "{{folder}} has hooks of its own. They run commands, and stay off until you trust the folder.",
+    "bodySubagents": "{{folder}} has agent definitions of its own. They stay off until you trust the folder.",
+    "bodyBoth": "{{folder}} has hooks and agent definitions of its own. They stay off until you trust the folder.",
+    "keepsOff": "Only trust folders you wrote or have read. Trusting is kept for good; you can undo it later.",
+    "trust": "Trust folder",
+    "later": "Not now",
+    "failed": "Could not trust the folder",
+    "kept": "Kept hooks on for {{count}} folders you already use. Review them in Settings > Permissions > Trusted folders."
+  },
+  "trustedFolders": {
+    "title": "Trusted folders",
+    "description": "Folders whose own hooks and agent definitions may run. Trust is kept until you take it back.",
+    "empty": "No trusted folders yet; Flint asks the first time a folder carries hooks or agent definitions.",
+    "add": "Trust a folder…",
+    "stop": "Stop trusting",
+    "stopLabel": "Stop trusting {{folder}}",
+    "confirm": "Stop trusting {{folder}}? Its hooks and agent definitions stay off until you trust it again.",
+    "confirmYes": "Stop trusting",
+    "cancel": "Cancel",
+    "loadFailed": "Could not read the trusted folders",
+    "grantFailed": "Could not trust the folder",
+    "revokeFailed": "Could not stop trusting the folder"
+  },
+  "scopeForm": {
+    "question": "If you choose Always, remember it for:",
+    "folder": "Inside {{dir}}",
+    "folderHint": "Only files in that folder, however the path is spelled. A link out of it does not count.",
+    "prefix": "Commands that start with {{prefix}}",
+    "prefixHint": "Only one plain command. A chained, piped or redirected one is asked about again.",
+    "everywhere": "Every {{tool}} call, in every project",
+    "everywhereHint": "The old meaning of Always. Broad; rarely what you want.",
+    "saveFailed": "Could not remember that choice"
+  },
+  "rules": {
+    "title": "Remembered approvals",
+    "description": "What you chose to allow with Always, limited to one folder or one command prefix. A rule applies only inside its project and never overrides a denial or a question Flint asks every time.",
+    "empty": "Nothing is remembered yet. Choose Always on a prompt and pick a folder or a command prefix.",
+    "folder": "Inside {{dir}}",
+    "prefix": "Commands that start with {{prefix}}",
+    "run": "The rest of this run",
+    "once": "Once",
+    "project": "In {{project}}",
+    "revoke": "Revoke",
+    "revokeLabel": "Revoke the approval for {{tool}}: {{scope}}",
+    "loadFailed": "Could not read the remembered approvals",
+    "revokeFailed": "Could not revoke the approval"
+  },
+  "deferred": {
+    "title": "Approvals waiting",
+    "description": "Runs that reached a question while nobody could answer wrote it down and stopped. Answer here, then resume the session: the call runs once if it is proposed again before the deadline.",
+    "empty": "Nothing is waiting for an answer.",
+    "allow": "Allow",
+    "deny": "Deny",
+    "discard": "Remove",
+    "session": "Session {{session}}",
+    "deadline": "Answer by {{when}}",
+    "status": {
+      "pending": "Waiting",
+      "allowed": "Allowed",
+      "denied": "Denied",
+      "expired": "Expired",
+      "void": "Void",
+      "consumed": "Used"
+    },
+    "loadFailed": "Could not read the waiting approvals",
+    "answerFailed": "Could not record the answer"
+  },
   "toast": {
     "trustFailed": "Could not remember that server",
     "cancelledOne": "Approval for {{names}} was cancelled",

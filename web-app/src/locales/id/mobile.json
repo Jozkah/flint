@@ -390,7 +390,8 @@
     "mode": {
       "roundRobin": "Bergiliran",
       "userSelected": "Anda yang memilih",
-      "moderatorSelected": "Moderator yang memilih"
+      "moderatorSelected": "Moderator yang memilih",
+      "compare": "Bandingkan model"
     },
     "untitled": "Ruang tanpa judul",
     "menu": "Menu ruang",

@@ -54,7 +54,9 @@
     "user-selected": "직접 선택",
     "user-selectedHint": "각 턴이 끝나면 룸이 사용자가 다음 발언자를 고르기를 기다립니다.",
     "moderator-selected": "사회자가 선택",
-    "moderator-selectedHint": "사회자 모델이 각 발언자를 고르고 토론을 마칠 수 있습니다."
+    "moderator-selectedHint": "사회자 모델이 각 발언자를 고르고 토론을 마칠 수 있습니다.",
+    "compare": "모델 비교",
+    "compareHint": "각 메시지가 모든 참여자에게 동시에 전달되며, 참여자는 서로를 보지 못한 채 각자 답하고 답변은 나란히 표시됩니다."
   },
   "clear": {
     "command": "이 룸 비우기: 채팅, 학습한 내용, 임시 파일",
@@ -216,6 +218,7 @@
     "moderatorNote": "사회자 메모",
     "disagreements": "이견",
     "jumpToLatest": "최신으로 이동",
+    "compareRow": "답변 {{count}}개를 나란히 표시",
     "toolDetails": "세부 정보",
     "toolHide": "숨기기",
     "toolArgs": "입력",
@@ -279,6 +282,10 @@
     "runningHint": "다음 발언자가 준비하고 있습니다.",
     "awaiting-user": "선택할 차례입니다",
     "awaitingHint": "다음 발언자를 고르거나 룸에 글을 쓰세요.",
+    "comparing": "모델 {{count}}개가 답변 중",
+    "comparingHint": "각자 따로 답하며, 답변은 나란히 표시됩니다.",
+    "compareAwaiting": "당신 차례입니다",
+    "compareAwaitingHint": "메시지를 작성하면 모든 참여자가 답합니다.",
     "paused": "일시 중지됨",
     "pausedHint": "재개하면 여기서부터 계속합니다.",
     "stopped": "중지됨",

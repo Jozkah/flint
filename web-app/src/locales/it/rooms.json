@@ -54,7 +54,9 @@
     "user-selected": "Scegli tu",
     "user-selectedHint": "Dopo ogni turno la stanza attende che tu scelga il prossimo a parlare.",
     "moderator-selected": "Sceglie il moderatore",
-    "moderator-selectedHint": "Un modello moderatore sceglie ogni interlocutore e può chiudere la discussione."
+    "moderator-selectedHint": "Un modello moderatore sceglie ogni interlocutore e può chiudere la discussione.",
+    "compare": "Confronta i modelli",
+    "compareHint": "Ogni messaggio va a tutti i partecipanti insieme; rispondono ciascuno per conto proprio, senza vedersi, affiancati."
   },
   "clear": {
     "command": "Svuota questa stanza: la sua chat, ciò che ha appreso, i suoi file temporanei",
@@ -216,6 +218,7 @@
     "moderatorNote": "Nota del moderatore",
     "disagreements": "Disaccordi",
     "jumpToLatest": "Vai all'ultimo",
+    "compareRow": "{{count}} risposte affiancate",
     "toolDetails": "Dettagli",
     "toolHide": "Nascondi",
     "toolArgs": "Input",
@@ -279,6 +282,10 @@
     "runningHint": "Il prossimo interlocutore si sta preparando.",
     "awaiting-user": "Tocca a te scegliere",
     "awaitingHint": "Scegli chi parla dopo, o scrivi alla stanza.",
+    "comparing": "{{count}} modelli in risposta",
+    "comparingHint": "Ognuno risponde per conto suo; le risposte compaiono affiancate.",
+    "compareAwaiting": "Tocca a te",
+    "compareAwaitingHint": "Scrivi un messaggio e ogni partecipante risponde.",
     "paused": "In pausa",
     "pausedHint": "Riprendi per continuare da qui.",
     "stopped": "Fermata",

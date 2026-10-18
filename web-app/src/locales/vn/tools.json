@@ -21,7 +21,15 @@
     "alwaysAllow": "Luôn cho phép",
     "approvalNeeded": "Cần phê duyệt",
     "permissionDetails": "Chi tiết quyền",
-    "moreOptions": "Tùy chọn khác"
+    "moreOptions": "Tùy chọn khác",
+    "denyWithReason": "Từ chối kèm lý do",
+    "denyReasonLabel": "Tại sao bạn từ chối điều này?",
+    "denyReasonPlaceholder": "Cho tác tử biết cần làm gì thay thế",
+    "denyAndSend": "Từ chối và gửi",
+    "editCommand": "Sửa lệnh",
+    "editCommandLabel": "Lệnh sẽ chạy",
+    "editCommandHint": "Hãy đổi lệnh, rồi chọn Cho phép một lần để chạy phiên bản của bạn.",
+    "editCommandNote": "Cho phép một lần sẽ chạy lệnh bạn đã sửa. Không có quyền thường trực nào được lưu cho lệnh đó."
   },
   "toolCall": {
     "awaitingApproval": "Đang chờ phê duyệt: {{tool}}",

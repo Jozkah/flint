@@ -405,7 +405,8 @@
     "mode": {
       "roundRobin": "Střídavě",
       "userSelected": "Vybíráte vy",
-      "moderatorSelected": "Vybírá moderátor"
+      "moderatorSelected": "Vybírá moderátor",
+      "compare": "Porovnat modely"
     },
     "untitled": "Místnost bez názvu",
     "menu": "Nabídka místnosti",

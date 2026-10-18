@@ -217,6 +217,75 @@
     "gitDestructive": "Destructivo: {{why}}. Revisa el comando, el remoto y la rama antes de permitirlo.",
     "selfApproval": "{{tool}} aprueba comandos en {{server}} por sí mismo, lo que permitiría que el modelo respondiera por ti. Flint pregunta siempre y nunca recuerda la respuesta."
   },
+  "folderTrust": {
+    "title": "¿Confiar en esta carpeta?",
+    "bodyHooks": "{{folder}} tiene hooks propios. Ejecutan comandos y permanecen desactivados hasta que confíes en la carpeta.",
+    "bodySubagents": "{{folder}} tiene definiciones de agentes propias. Permanecen desactivadas hasta que confíes en la carpeta.",
+    "bodyBoth": "{{folder}} tiene hooks y definiciones de agentes propios. Permanecen desactivados hasta que confíes en la carpeta.",
+    "keepsOff": "Confía solo en carpetas que hayas escrito o leído. La confianza se conserva de forma permanente; puedes deshacerla más tarde.",
+    "trust": "Confiar en la carpeta",
+    "later": "Ahora no",
+    "failed": "No se pudo confiar en la carpeta",
+    "kept": "Se mantuvieron los hooks activados en {{count}} carpetas que ya usas. Revísalos en Ajustes > Permisos > Carpetas de confianza."
+  },
+  "trustedFolders": {
+    "title": "Carpetas de confianza",
+    "description": "Carpetas cuyos hooks y definiciones de agentes propios pueden ejecutarse. La confianza se mantiene hasta que la retires.",
+    "empty": "Aún no hay carpetas de confianza; Flint pregunta la primera vez que una carpeta incluye hooks o definiciones de agentes.",
+    "add": "Confiar en una carpeta…",
+    "stop": "Dejar de confiar",
+    "stopLabel": "Dejar de confiar en {{folder}}",
+    "confirm": "¿Dejar de confiar en {{folder}}? Sus hooks y definiciones de agentes permanecen desactivados hasta que vuelvas a confiar en ella.",
+    "confirmYes": "Dejar de confiar",
+    "cancel": "Cancelar",
+    "loadFailed": "No se pudieron leer las carpetas de confianza",
+    "grantFailed": "No se pudo confiar en la carpeta",
+    "revokeFailed": "No se pudo dejar de confiar en la carpeta"
+  },
+  "scopeForm": {
+    "question": "Si eliges Siempre, recordarlo para:",
+    "folder": "Dentro de {{dir}}",
+    "folderHint": "Solo los archivos de esa carpeta, se escriba como se escriba la ruta. Un enlace que salga de ella no cuenta.",
+    "prefix": "Comandos que empiezan por {{prefix}}",
+    "prefixHint": "Solo un comando simple. Uno encadenado, con tubería o redirigido se vuelve a preguntar.",
+    "everywhere": "Cada llamada a {{tool}}, en todos los proyectos",
+    "everywhereHint": "El antiguo significado de Siempre. Muy amplio; pocas veces lo que quieres.",
+    "saveFailed": "No se pudo recordar esa elección"
+  },
+  "rules": {
+    "title": "Aprobaciones recordadas",
+    "description": "Lo que permitiste con Siempre, limitado a una carpeta o a un prefijo de comando. Una regla solo se aplica dentro de su proyecto y nunca anula una denegación ni una pregunta que Flint hace siempre.",
+    "empty": "Aún no se recuerda nada. Elige Siempre en una solicitud y selecciona una carpeta o un prefijo de comando.",
+    "folder": "Dentro de {{dir}}",
+    "prefix": "Comandos que empiezan por {{prefix}}",
+    "run": "El resto de esta ejecución",
+    "once": "Una vez",
+    "project": "En {{project}}",
+    "revoke": "Revocar",
+    "revokeLabel": "Revocar la aprobación de {{tool}}: {{scope}}",
+    "loadFailed": "No se pudieron leer las aprobaciones recordadas",
+    "revokeFailed": "No se pudo revocar la aprobación"
+  },
+  "deferred": {
+    "title": "Aprobaciones en espera",
+    "description": "Las ejecuciones que llegaron a una pregunta cuando nadie podía responder la anotaron y se detuvieron. Responde aquí y reanuda la sesión: la llamada se ejecuta una vez si se propone de nuevo antes del plazo.",
+    "empty": "No hay nada esperando respuesta.",
+    "allow": "Permitir",
+    "deny": "Denegar",
+    "discard": "Quitar",
+    "session": "Sesión {{session}}",
+    "deadline": "Responder antes de {{when}}",
+    "status": {
+      "pending": "En espera",
+      "allowed": "Permitida",
+      "denied": "Denegada",
+      "expired": "Caducada",
+      "void": "Anulada",
+      "consumed": "Usada"
+    },
+    "loadFailed": "No se pudieron leer las aprobaciones en espera",
+    "answerFailed": "No se pudo registrar la respuesta"
+  },
   "toast": {
     "trustFailed": "No se pudo recordar ese servidor",
     "cancelledOne": "Se canceló la aprobación de {{names}}",

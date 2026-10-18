@@ -217,6 +217,75 @@
     "gitDestructive": "Yıkıcı: {{why}}. İzin vermeden önce komutu, uzak depoyu ve dalı kontrol edin.",
     "selfApproval": "{{tool}}, {{server}} üzerindeki komutları kendisi onaylıyor; bu, modelin sizin yerinize cevap vermesine izin verirdi. Flint bunu her seferinde sorar ve cevabı asla hatırlamaz."
   },
+  "folderTrust": {
+    "title": "Bu klasöre güvenilsin mi?",
+    "bodyHooks": "{{folder}} klasörünün kendi hook'ları var. Komut çalıştırırlar ve klasöre güvenene kadar kapalı kalırlar.",
+    "bodySubagents": "{{folder}} klasörünün kendi aracı tanımları var. Klasöre güvenene kadar kapalı kalırlar.",
+    "bodyBoth": "{{folder}} klasörünün kendi hook'ları ve aracı tanımları var. Klasöre güvenene kadar kapalı kalırlar.",
+    "keepsOff": "Yalnızca kendi yazdığınız veya okuduğunuz klasörlere güvenin. Güven kalıcı olarak saklanır; sonra geri alabilirsiniz.",
+    "trust": "Klasöre güven",
+    "later": "Şimdi değil",
+    "failed": "Klasöre güvenilemedi",
+    "kept": "Zaten kullandığınız {{count}} klasör için hook'lar açık bırakıldı. Bunları Ayarlar > İzinler > Güvenilen klasörler bölümünden inceleyin."
+  },
+  "trustedFolders": {
+    "title": "Güvenilen klasörler",
+    "description": "Kendi hook'ları ve aracı tanımları çalışabilecek klasörler. Güven, siz geri alana kadar sürer.",
+    "empty": "Henüz güvenilen klasör yok; bir klasör ilk kez hook veya aracı tanımı içerdiğinde Flint size sorar.",
+    "add": "Bir klasöre güven…",
+    "stop": "Güvenmeyi bırak",
+    "stopLabel": "{{folder}} klasörüne güvenmeyi bırak",
+    "confirm": "{{folder}} klasörüne güvenmeyi bırakmak istiyor musunuz? Hook'ları ve aracı tanımları, ona yeniden güvenene kadar kapalı kalır.",
+    "confirmYes": "Güvenmeyi bırak",
+    "cancel": "İptal",
+    "loadFailed": "Güvenilen klasörler okunamadı",
+    "grantFailed": "Klasöre güvenilemedi",
+    "revokeFailed": "Klasöre güvenmek bırakılamadı"
+  },
+  "scopeForm": {
+    "question": "Her zaman'ı seçerseniz şunun için hatırla:",
+    "folder": "{{dir}} içinde",
+    "folderHint": "Yalnızca o klasördeki dosyalar, yol nasıl yazılırsa yazılsın. Klasörün dışına çıkan bir bağlantı sayılmaz.",
+    "prefix": "{{prefix}} ile başlayan komutlar",
+    "prefixHint": "Yalnızca tek bir düz komut. Zincirlenmiş, borulanmış veya yönlendirilmiş komutlar yeniden sorulur.",
+    "everywhere": "Her projede her {{tool}} çağrısı",
+    "everywhereHint": "Her zaman'ın eski anlamı. Geniş kapsamlı; nadiren istediğiniz şeydir.",
+    "saveFailed": "Bu seçim hatırlanamadı"
+  },
+  "rules": {
+    "title": "Hatırlanan onaylar",
+    "description": "Her zaman ile izin verdikleriniz, tek bir klasörle veya tek bir komut önekiyle sınırlı. Bir kural yalnızca kendi projesinde geçerlidir ve bir reddi ya da Flint'in her seferinde sorduğu bir soruyu asla geçersiz kılmaz.",
+    "empty": "Henüz hatırlanan bir şey yok. Bir istemde Her zaman'ı seçin, ardından bir klasör veya komut öneki seçin.",
+    "folder": "{{dir}} içinde",
+    "prefix": "{{prefix}} ile başlayan komutlar",
+    "run": "Bu çalıştırmanın geri kalanı",
+    "once": "Bir kez",
+    "project": "{{project}} içinde",
+    "revoke": "Geri al",
+    "revokeLabel": "{{tool}} onayını geri al: {{scope}}",
+    "loadFailed": "Hatırlanan onaylar okunamadı",
+    "revokeFailed": "Onay geri alınamadı"
+  },
+  "deferred": {
+    "title": "Bekleyen onaylar",
+    "description": "Kimse yanıtlayamazken bir soruya ulaşan çalıştırmalar onu not edip durdu. Burada yanıtlayın, sonra oturumu sürdürün: çağrı, son tarihten önce yeniden önerilirse bir kez çalışır.",
+    "empty": "Yanıt bekleyen bir şey yok.",
+    "allow": "İzin ver",
+    "deny": "Reddet",
+    "discard": "Kaldır",
+    "session": "Oturum {{session}}",
+    "deadline": "Şu tarihe kadar yanıtlayın: {{when}}",
+    "status": {
+      "pending": "Bekliyor",
+      "allowed": "İzin verildi",
+      "denied": "Reddedildi",
+      "expired": "Süresi doldu",
+      "void": "Geçersiz",
+      "consumed": "Kullanıldı"
+    },
+    "loadFailed": "Bekleyen onaylar okunamadı",
+    "answerFailed": "Yanıt kaydedilemedi"
+  },
   "toast": {
     "trustFailed": "Bu sunucu hatırlanamadı",
     "cancelledOne": "{{names}} için onay iptal edildi",

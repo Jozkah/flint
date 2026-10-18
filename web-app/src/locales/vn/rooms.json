@@ -54,7 +54,9 @@
     "user-selected": "Bạn chọn",
     "user-selectedHint": "Sau mỗi lượt, phòng chờ bạn chọn người nói tiếp theo.",
     "moderator-selected": "Người điều phối chọn",
-    "moderator-selectedHint": "Một mô hình điều phối chọn từng người nói và có thể kết thúc cuộc thảo luận."
+    "moderator-selectedHint": "Một mô hình điều phối chọn từng người nói và có thể kết thúc cuộc thảo luận.",
+    "compare": "So sánh các mô hình",
+    "compareHint": "Mỗi tin nhắn được gửi đến mọi người tham gia cùng lúc; họ trả lời riêng, không thấy nhau, cạnh nhau."
   },
   "clear": {
     "command": "Xóa sạch phòng này: cuộc trò chuyện, những gì nó đã học, các tệp tạm của nó",
@@ -216,6 +218,7 @@
     "moderatorNote": "Ghi chú của người điều phối",
     "disagreements": "Bất đồng",
     "jumpToLatest": "Nhảy đến mới nhất",
+    "compareRow": "{{count}} câu trả lời cạnh nhau",
     "toolDetails": "Chi tiết",
     "toolHide": "Ẩn",
     "toolArgs": "Đầu vào",
@@ -279,6 +282,10 @@
     "runningHint": "Người nói tiếp theo đang chuẩn bị.",
     "awaiting-user": "Đến lượt bạn chọn",
     "awaitingHint": "Chọn ai nói tiếp theo, hoặc viết vào phòng.",
+    "comparing": "{{count}} mô hình đang trả lời",
+    "comparingHint": "Mỗi mô hình trả lời riêng; các câu trả lời hiện cạnh nhau.",
+    "compareAwaiting": "Đến lượt bạn",
+    "compareAwaitingHint": "Viết một tin nhắn và mọi người tham gia sẽ trả lời.",
     "paused": "Đã tạm dừng",
     "pausedHint": "Tiếp tục để đi tiếp từ đây.",
     "stopped": "Đã dừng",

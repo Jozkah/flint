@@ -21,7 +21,15 @@
     "alwaysAllow": "Toujours autoriser",
     "approvalNeeded": "Approbation requise",
     "permissionDetails": "Détails de l’autorisation",
-    "moreOptions": "Plus d’options"
+    "moreOptions": "Plus d’options",
+    "denyWithReason": "Refuser avec un motif",
+    "denyReasonLabel": "Pourquoi refusez-vous ceci ?",
+    "denyReasonPlaceholder": "Dites à l'agent quoi faire à la place",
+    "denyAndSend": "Refuser et envoyer",
+    "editCommand": "Modifier la commande",
+    "editCommandLabel": "Commande à exécuter",
+    "editCommandHint": "Modifiez la commande, puis choisissez Autoriser une fois pour exécuter votre version.",
+    "editCommandNote": "Autoriser une fois exécute votre commande modifiée. Aucune autorisation permanente n'est conservée pour elle."
   },
   "toolCall": {
     "awaitingApproval": "En attente d'approbation : {{tool}}",

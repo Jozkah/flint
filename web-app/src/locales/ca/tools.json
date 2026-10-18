@@ -21,7 +21,15 @@
     "alwaysAllow": "Permet sempre",
     "approvalNeeded": "Cal aprovació",
     "permissionDetails": "Detalls del permís",
-    "moreOptions": "Més opcions"
+    "moreOptions": "Més opcions",
+    "denyWithReason": "Denega amb un motiu",
+    "denyReasonLabel": "Per què ho denegues?",
+    "denyReasonPlaceholder": "Digues a l'agent què ha de fer en lloc d'això",
+    "denyAndSend": "Denega i envia",
+    "editCommand": "Edita l'ordre",
+    "editCommandLabel": "Ordre que s'executarà",
+    "editCommandHint": "Canvia l'ordre i tria Permet un cop per executar la teva versió.",
+    "editCommandNote": "Permet un cop executa l'ordre editada. No es conserva cap permís permanent per a ella."
   },
   "toolCall": {
     "awaitingApproval": "Esperant aprovació: {{tool}}",

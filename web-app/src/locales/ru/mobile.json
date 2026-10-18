@@ -405,7 +405,8 @@
     "mode": {
       "roundRobin": "По кругу",
       "userSelected": "Выбираете вы",
-      "moderatorSelected": "Выбирает модератор"
+      "moderatorSelected": "Выбирает модератор",
+      "compare": "Сравнить модели"
     },
     "untitled": "Комната без названия",
     "menu": "Меню комнаты",
