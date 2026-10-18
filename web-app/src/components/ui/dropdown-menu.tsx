@@ -3,6 +3,7 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { POPUP_COLLISION_PADDING } from "@/components/ui/popup-edge"
 
 /**
  * The submenus of one menu level take turns: opening one closes its sibling.
@@ -48,6 +49,8 @@ function DropdownMenuTrigger({
 function DropdownMenuContent({
   className,
   sideOffset = 4,
+  collisionPadding = POPUP_COLLISION_PADDING,
+  sticky = "partial",
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
   return (
@@ -55,8 +58,10 @@ function DropdownMenuContent({
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
+        sticky={sticky}
         className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-120 z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-xl p-1 shadow-pop",
+          "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-120 z-50 max-h-(--radix-dropdown-menu-content-available-height) max-w-[calc(100vw-24px)] min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-xl p-1 shadow-pop",
           className
         )}
         {...props}
@@ -263,6 +268,7 @@ function DropdownMenuSubTrigger({
 
 function DropdownMenuSubContent({
   className,
+  collisionPadding = POPUP_COLLISION_PADDING,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
   // Portalled like the top-level content: rendered inside it, the parent's
@@ -271,8 +277,9 @@ function DropdownMenuSubContent({
     <DropdownMenuPrimitive.Portal>
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
+      collisionPadding={collisionPadding}
       className={cn(
-        "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-120 z-50 min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-xl p-1 shadow-pop",
+        "bg-popover text-popover-foreground data-[state=open]:animate-dd-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[.98] data-[state=closed]:duration-120 z-50 max-h-(--radix-dropdown-menu-content-available-height) max-w-[calc(100vw-24px)] min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-xl p-1 shadow-pop",
         className
       )}
       {...props}

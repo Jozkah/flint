@@ -3,6 +3,7 @@ import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import { useReducedMotion } from 'motion/react'
 
 import { cn } from '@/lib/utils'
+import { TOOLTIP_COLLISION_PADDING } from '@/components/ui/popup-edge'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
 // Warm tooltips: the first one waits, the neighbours that follow open at once
@@ -107,6 +108,7 @@ function TooltipTrigger({
 function TooltipContent({
   className,
   sideOffset = 0,
+  collisionPadding = TOOLTIP_COLLISION_PADDING,
   children,
   showArrow = true,
   ref,
@@ -204,8 +206,9 @@ function TooltipContent({
         ref={setRefs}
         data-slot="tooltip-content"
         sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
         className={cn(
-          'bg-primary text-on-grad flint-tip z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md px-2 py-1.5 text-xs leading-none font-medium text-balance',
+          'bg-primary text-on-grad flint-tip z-50 w-fit max-w-[calc(100vw-16px)] origin-(--radix-tooltip-content-transform-origin) rounded-md px-2 py-1.5 text-xs leading-none font-medium text-balance',
           className
         )}
         {...props}
