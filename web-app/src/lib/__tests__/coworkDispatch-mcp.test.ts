@@ -4,6 +4,7 @@ const h = vi.hoisted(() => ({
   executeAgentTool: vi.fn(),
   callTool: vi.fn(),
   allowOnceForServer: vi.fn(),
+  cancelToolCall: vi.fn(async () => {}),
   disabled: [] as string[],
 }))
 vi.mock('@/lib/agentTools', () => ({
@@ -15,6 +16,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
     mcp: () => ({
       callTool: h.callTool,
       allowOnceForServer: h.allowOnceForServer,
+      cancelToolCall: h.cancelToolCall,
     }),
   }),
 }))
@@ -74,6 +76,28 @@ describe('an MCP tool called from Cowork', () => {
     )
     expect(out).toEqual({ output: 'int main()' })
     expect(h.executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it('Stop mid-call cancels the call at the server at once, with its token (M-011)', async () => {
+    let started!: () => void
+    const running = new Promise<void>((r) => (started = r))
+    h.callTool.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          started()
+          // The backend answers once the cancel reaches it.
+          h.cancelToolCall.mockImplementation(async () => resolve({ error: 'cancelled', content: [] }))
+        })
+    )
+    const ac = new AbortController()
+    const out = dispatchCoworkTool(call, ctx({ onApproveMcp: async () => true }), ac.signal)
+    await running
+    expect(h.cancelToolCall).not.toHaveBeenCalled()
+    ac.abort()
+    await out
+    const token = h.callTool.mock.calls[0][0].cancellationToken
+    expect(token).toMatch(/^tool_call_/)
+    expect(h.cancelToolCall).toHaveBeenCalledWith(token)
   })
 
   // Pins the Ask-mode contract: the prompt is put up, and nothing reaches the

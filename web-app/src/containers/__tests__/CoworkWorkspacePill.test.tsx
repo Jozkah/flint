@@ -37,6 +37,26 @@ describe('CoworkWorkspacePill', () => {
     ).toBeGreaterThan(0)
   })
 
+  it('does not call an editable folder read-only in its label (D4)', () => {
+    render(
+      <CoworkWorkspacePill folder="/home/u/p" access="edit-folder" onAttach={vi.fn()} onDetach={vi.fn()} />
+    )
+    expect(screen.getByRole('button', { name: /a11yWithFolderEditable/ })).toBeInTheDocument()
+  })
+
+  it('does not promise read-only before a folder is attached in an edit mode (C-010)', async () => {
+    const { unmount } = render(
+      <CoworkWorkspacePill folder={null} access="edit-folder" onAttach={vi.fn()} onDetach={vi.fn()} />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /a11yNoFolder/ }))
+    expect(screen.getByText('common:workspace.footnoteEmptyEdit')).toBeInTheDocument()
+    expect(screen.queryByText('common:workspace.footnoteEmpty')).toBeNull()
+    unmount()
+    render(<CoworkWorkspacePill folder={null} onAttach={vi.fn()} onDetach={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /a11yNoFolder/ }))
+    expect(screen.getByText('common:workspace.footnoteEmpty')).toBeInTheDocument()
+  })
+
   // The honesty requirement: whenever a folder is attached, the popover must
   // name the direction and mark the folder read-only. A regression here would
   // have the UI implying the agent edits the user's project.

@@ -55,13 +55,14 @@ describe('dispatchCoworkTool with a nudge', () => {
   })
   const read = (id: string) => ({ toolCallId: id, toolName: 'read', input: { path: 'a' } })
 
-  it('appends the hint to the result of the call that reaches the streak, once', async () => {
+  it('gives the hint beside the result of the call that reaches the streak, once, never inside it', async () => {
     const c = ctx({ nudge: new DelegationNudge(() => true) })
     const outs = []
-    for (let i = 0; i < NUDGE_AFTER + 2; i += 1) outs.push((await dispatchCoworkTool(read(`c${i}`), c)).output)
-    expect(outs.filter((o) => o.includes(NUDGE_TEXT))).toHaveLength(1)
-    expect(outs[NUDGE_AFTER - 1]).toBe(`file body\n\n[${NUDGE_TEXT}]`)
-    expect(outs[0]).toBe('file body')
+    for (let i = 0; i < NUDGE_AFTER + 2; i += 1) outs.push(await dispatchCoworkTool(read(`c${i}`), c))
+    // The tool output stays exactly what the file holds.
+    expect(outs.every((o) => o.output === 'file body')).toBe(true)
+    expect(outs.filter((o) => o.note === NUDGE_TEXT)).toHaveLength(1)
+    expect(outs[NUDGE_AFTER - 1].note).toBe(NUDGE_TEXT)
   })
 
   it('adds nothing for a dispatcher with no nudge (a subagent)', async () => {

@@ -511,8 +511,29 @@ function MCPServersDesktop() {
       const wasActive = !!mcpServers[editingKey]?.active
       // If server name changed, rename it while preserving position
       if (editingKey !== name) {
-        await toggleServer(editingKey, false)
+        // Stopped without a save of the old name: a save still in flight
+        // could land after the rename and bring the old entry back.
+        if (wasActive) {
+          await serviceHub
+            .mcp()
+            .deactivateMCPServer(editingKey)
+            .catch((error) => console.error('Error deactivating server:', error))
+        }
+        // One backend step moves the stored entry, secrets included, to the
+        // new name and drops the old one; only then is the edited (masked)
+        // config saved and started under the new name, so its hidden values
+        // are restored from the moved entry (BUG-081).
+        try {
+          await serviceHub.mcp().renameMCPServer(editingKey, name)
+        } catch (error) {
+          setErrorMessage({
+            message: error instanceof Error ? error.message : String(error),
+            subtitle: t('mcp-servers:checkParams'),
+          })
+          return
+        }
         renameServer(editingKey, name, { ...config, active: wasActive })
+        await syncServers()
         if (wasActive) await toggleServer(name, true, config)
         // Grants never follow a rename: the approval was for the old name,
         // and its OAuth tokens may belong to an endpoint the edit changed.
@@ -945,6 +966,8 @@ function MCPServersDesktop() {
   const settingsRows = (
     <>
       <CardItem
+        // Several of these descriptions carry warnings: shown in full.
+        wrapDescription
         anchor="settings-mcp-servers-allow-permissions"
         title={t('mcp-servers:allowPermissions')}
         description={t('mcp-servers:allowPermissionsDesc')}
@@ -958,6 +981,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-tool-call-timeout"
         title={t('mcp-servers:runtimeSettings.toolCallTimeout')}
         description={t('mcp-servers:runtimeSettings.toolCallTimeoutDesc')}
@@ -976,6 +1000,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-idle-shutdown"
         title={t('mcp-servers:runtimeSettings.idleShutdown')}
         description={t('mcp-servers:runtimeSettings.idleShutdownDesc')}
@@ -990,6 +1015,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-max-tool-output"
         title={t('mcp-servers:runtimeSettings.maxToolOutputChars')}
         description={t('mcp-servers:runtimeSettings.maxToolOutputCharsDesc')}
@@ -1008,6 +1034,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-smart-tool-routing"
         title={t('mcp-servers:runtimeSettings.smartToolRouting')}
         description={t('mcp-servers:runtimeSettings.smartToolRoutingDesc')}
@@ -1033,6 +1060,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-lightweight-router"
         title={t('mcp-servers:runtimeSettings.useLightweightRouterModel')}
         description={t(
@@ -1060,6 +1088,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-generate-descriptions"
         title={t('mcp-servers:describe.settingTitle')}
         description={t('mcp-servers:describe.settingDesc')}
@@ -1075,6 +1104,7 @@ function MCPServersDesktop() {
         }
       />
       <CardItem
+        wrapDescription
         anchor="settings-mcp-servers-router-model"
         title={t('mcp-servers:runtimeSettings.routerModel')}
         description={t('mcp-servers:runtimeSettings.routerModelDesc')}
@@ -1152,7 +1182,7 @@ function MCPServersDesktop() {
                     alt="Flint"
                     className="size-3 object-contain"
                   />
-                  <span>Official</span>
+                  <span>{t('uiLeftovers:official')}</span>
                 </Chip>
               )}
             </span>
@@ -1477,7 +1507,7 @@ function MCPServersDesktop() {
           <Chip mono className="h-5 shrink-0 uppercase">
             {config.type || 'stdio'}
           </Chip>
-          {config.official && <Chip className="h-5 shrink-0">Official</Chip>}
+          {config.official && <Chip className="h-5 shrink-0">{t('uiLeftovers:official')}</Chip>}
         </span>
         <span className="hidden min-w-0 shrink-0 text-xs @min-[40rem]:block">
           <McpServerStatus

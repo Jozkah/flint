@@ -36,6 +36,8 @@ pub const MAX_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 const KEEP_SETTLED_SECS: u64 = 7 * 24 * 60 * 60;
 const MAX_RECORDS: usize = 200;
 const SUMMARY_CHARS: usize = 300;
+/// The most of a call's content (a diff, the arguments) kept for the listing.
+const DETAIL_CHARS: usize = 4000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -48,6 +50,8 @@ pub enum DeferStatus {
     Denied,
     /// Not answered (or not spent) in time.
     Expired,
+    /// Allowed, but the file it was about changed before the answer was spent.
+    Stale,
     /// A checkpoint restore made the question moot.
     Void,
     /// Spent: the resumed run has seen the answer.
@@ -75,10 +79,31 @@ pub struct Deferred {
     pub summary: String,
     /// `approval_digest(tool, args)` of the call that was asked about.
     pub args_digest: String,
+    /// What the call would do in full: the diff of a write or edit, otherwise
+    /// its arguments. Bounded and redacted; the digest binds the real thing.
+    #[serde(default)]
+    pub detail: String,
+    /// The file the call changes and its stamp when the question was asked.
+    /// An allow is only spent while the file is still that file.
+    #[serde(default)]
+    pub base: Option<FileBase>,
     pub status: DeferStatus,
     pub created_at: u64,
     pub expires_at: u64,
     pub answered_at: Option<u64>,
+}
+
+/// A target file and its stamp ([`file_stamp`]) at defer time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileBase {
+    pub path: String,
+    pub stamp: String,
+}
+
+/// The stamp of `path` as it is now: content hash, or `absent`.
+pub fn file_stamp(path: &Path) -> String {
+    crate::patch::BaseStamp::of(std::fs::read(path).ok().as_deref()).hex()
 }
 
 /// The question to record.
@@ -89,6 +114,10 @@ pub struct NewDeferred<'a> {
     pub kind: &'a str,
     pub summary: &'a str,
     pub args_digest: &'a str,
+    /// The call's content for the person deciding (see [`Deferred::detail`]).
+    pub detail: &'a str,
+    /// The file the call changes, stamped now.
+    pub base_file: Option<&'a Path>,
 }
 
 /// What the gate finds when it asks whether this call was answered earlier.
@@ -104,6 +133,9 @@ pub enum Redeem {
     Denied(Deferred),
     /// The answer (or the wait) ran out; refused, and spent.
     Expired(Deferred),
+    /// Allowed, but the target file changed since the question was asked;
+    /// refused, and spent, so the run proposes the change afresh.
+    Stale(Deferred),
 }
 
 static LOCK: Mutex<()> = Mutex::new(());
@@ -171,6 +203,17 @@ fn clip(text: &str) -> String {
     }
 }
 
+/// The detail as kept: secrets redacted, at most [`DETAIL_CHARS`].
+fn bound_detail(text: &str) -> String {
+    let redacted = crate::secrets::redact_secrets(text);
+    if redacted.chars().count() <= DETAIL_CHARS {
+        redacted
+    } else {
+        let cut: String = redacted.chars().take(DETAIL_CHARS).collect();
+        format!("{cut}\n... (cut)")
+    }
+}
+
 fn clamp_ttl(ttl_secs: u64) -> u64 {
     if ttl_secs == 0 {
         DEFAULT_TTL_SECS
@@ -212,6 +255,11 @@ pub fn defer_at(
         kind: new.kind.to_string(),
         summary: clip(new.summary),
         args_digest: new.args_digest.to_string(),
+        detail: bound_detail(new.detail),
+        base: new.base_file.map(|p| FileBase {
+            path: p.to_string_lossy().into_owned(),
+            stamp: file_stamp(p),
+        }),
         status: DeferStatus::Pending,
         created_at: now,
         expires_at: now.saturating_add(clamp_ttl(ttl_secs)),
@@ -269,6 +317,7 @@ pub fn answer_at(data_folder: &Path, id: &str, allow: bool, now: u64) -> Result<
         DeferStatus::Void => Err(format!("{id} was voided by a checkpoint restore; the run must ask again")),
         DeferStatus::Allowed | DeferStatus::Denied => Err(format!("{id} was already answered")),
         DeferStatus::Consumed => Err(format!("{id} was already applied")),
+        DeferStatus::Stale => Err(format!("{id} is about a file that changed since; the run must ask again")),
     };
     // The expiry sweep is saved either way, so a refused late answer leaves the
     // record saying why.
@@ -335,8 +384,19 @@ pub fn redeem_at(
     let result = match entry.status {
         DeferStatus::Pending => return Redeem::Pending(seen),
         DeferStatus::Allowed => {
-            entry.status = DeferStatus::Consumed;
-            Redeem::Allowed(seen)
+            // The answer was about the file as it was when asked: a file that
+            // moved on since would be overwritten unreviewed.
+            let moved = seen
+                .base
+                .as_ref()
+                .is_some_and(|b| file_stamp(Path::new(&b.path)) != b.stamp);
+            if moved {
+                entry.status = DeferStatus::Stale;
+                Redeem::Stale(seen)
+            } else {
+                entry.status = DeferStatus::Consumed;
+                Redeem::Allowed(seen)
+            }
         }
         DeferStatus::Denied => {
             entry.status = DeferStatus::Consumed;
@@ -452,6 +512,8 @@ mod tests {
             kind: "exec",
             summary: "make deploy",
             args_digest: digest,
+            detail: "",
+            base_file: None,
         }
     }
 
@@ -603,6 +665,57 @@ mod tests {
         .unwrap();
         assert!(!d.summary.contains('\n'));
         assert!(d.summary.chars().count() <= SUMMARY_CHARS + 3);
+    }
+
+    #[test]
+    fn the_listing_carries_the_content_bounded_and_redacted() {
+        let f = fx();
+        let body = format!("+ token = \"ghp_{}\"\n{}", "a".repeat(36), "+x\n".repeat(5000));
+        let d = defer_at(
+            &f.data,
+            NewDeferred { tool: "write", detail: &body, ..ask(&f, "s1", "d1") },
+            TTL,
+            T0,
+        )
+        .unwrap();
+        let listed = &list_at(&f.data, None, false, T0 + 1)[0];
+        assert_eq!(listed.detail, d.detail);
+        assert!(listed.detail.starts_with("+ token"));
+        assert!(!listed.detail.contains(&"a".repeat(36)), "{}", &listed.detail[..80]);
+        assert!(listed.detail.chars().count() <= DETAIL_CHARS + 20);
+        assert!(listed.detail.ends_with("(cut)"));
+    }
+
+    #[test]
+    fn an_allow_for_a_file_that_changed_since_is_refused_not_applied() {
+        let f = fx();
+        let file = f.project.join("a.txt");
+        std::fs::write(&file, "one").unwrap();
+        let d = defer_at(
+            &f.data,
+            NewDeferred { tool: "write", base_file: Some(&file), ..ask(&f, "s1", "d1") },
+            TTL,
+            T0,
+        )
+        .unwrap();
+        answer_at(&f.data, &d.id, true, T0 + 1).unwrap();
+        std::fs::write(&file, "two").unwrap();
+        assert!(matches!(redeem_at(&f.data, &f.project, "s1", "write", "d1", T0 + 2), Redeem::Stale(_)));
+        // Spent: the re-proposed call is asked about afresh.
+        assert_eq!(redeem_at(&f.data, &f.project, "s1", "write", "d1", T0 + 3), Redeem::None);
+        assert_eq!(list_at(&f.data, None, true, T0 + 3)[0].status, DeferStatus::Stale);
+
+        // Unchanged (or still absent) file: the allow is spent as usual.
+        let fresh = f.project.join("b.txt");
+        let d = defer_at(
+            &f.data,
+            NewDeferred { tool: "write", base_file: Some(&fresh), ..ask(&f, "s1", "d2") },
+            TTL,
+            T0,
+        )
+        .unwrap();
+        answer_at(&f.data, &d.id, true, T0 + 1).unwrap();
+        assert!(matches!(redeem_at(&f.data, &f.project, "s1", "write", "d2", T0 + 2), Redeem::Allowed(_)));
     }
 
     #[test]

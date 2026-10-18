@@ -311,7 +311,7 @@ vi.mock('@/constants/providers', () => ({
 }))
 
 vi.mock('@/constants/routes', () => ({
-  route: { hub: { index: '/hub' } },
+  route: { hub: { index: '/hub' }, settings: { providers: '/settings/providers' } },
 }))
 
 vi.mock('@/hooks/useModelProvider', () => {
@@ -500,6 +500,10 @@ describe('ProviderDetail route', () => {
       expect(cells[2]).toHaveAttribute('data-testid', 'model-capabilities-cell')
       expect(cells[2].className).toMatch(/@max-\[880px\]:empty:hidden/)
       expect(cells[5].querySelector('[data-testid^="model-status-"]')).not.toBeNull()
+      // C099: at 520px the pill was cut mid-word ("Available · not loade").
+      const pill = cells[5].querySelector('[data-testid^="model-status-"]')!
+      expect(pill.className).toMatch(/max-w-full/)
+      expect(pill.querySelector('.truncate')).not.toBeNull()
     })
 
     it('shows the quant as a chip and cuts the file name in the middle', () => {
@@ -514,8 +518,10 @@ describe('ProviderDetail route', () => {
         'IQ4_XS'
       )
       const line = row.querySelector('[data-testid="model-secondary-line"]')!
-      // head shrinks (CSS ellipsis), tail span always stays
-      expect(line.children.length).toBe(2)
+      // full name for readers, then the head (CSS ellipsis) and the tail
+      // that always stays, drawn from attributes
+      expect(line.children.length).toBe(3)
+      expect(line.children[2]!.getAttribute('data-text')!.endsWith('IQ4_XS')).toBe(true)
       expect(line.textContent!.endsWith('IQ4_XS')).toBe(true)
       expect(line).toHaveAttribute('title', expect.stringContaining(id))
     })
@@ -538,9 +544,9 @@ describe('ProviderDetail route', () => {
       it('pages a long list and filters it by name', () => {
         h.openaiProvider.models = many(120)
         renderComponent()
-        expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(50)
+        expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(12)
         fireEvent.click(screen.getByText('providers:showMoreModels'))
-        expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(100)
+        expect(screen.getAllByTestId(/^edit-model-/)).toHaveLength(24)
         fireEvent.change(screen.getByRole('textbox', { name: /filterModels/ }), {
           target: { value: 'model-11' },
         })
@@ -1032,6 +1038,23 @@ describe('ProviderDetail route', () => {
       h.params.providerName = 'custom-llm'
     }
 
+    it('labels a LAN endpoint as on your network, not remote (T7-115)', () => {
+      setupCustomProvider()
+      h.providerMap['custom-llm'].base_url = 'http://192.168.1.20:8559/v1'
+      renderComponent()
+      expect(screen.getByTestId('provider-reach-note').textContent).toBe(
+        'engine:provider.networkNote'
+      )
+    })
+
+    it('labels a hosted endpoint as remote', () => {
+      setupCustomProvider()
+      renderComponent()
+      expect(screen.getByTestId('provider-reach-note').textContent).toBe(
+        'engine:provider.remoteNote'
+      )
+    })
+
     it('for a non-predefined provider, only the base-url dynamic control renders (api-key input is hidden)', () => {
       setupCustomProvider()
       renderComponent()
@@ -1048,6 +1071,20 @@ describe('ProviderDetail route', () => {
         'custom-llm',
         expect.objectContaining({ base_url: 'new-value' })
       )
+    })
+
+    it('shows the engine settings localized, with an info tip and the per-model link', () => {
+      h.params.providerName = 'llamacpp'
+      renderComponent()
+      // The test translator echoes keys: the title came from engineSettings.
+      expect(screen.getByText('engineSettings:ctx_size.title')).toBeInTheDocument()
+      expect(screen.getByTestId('engine-setting-info-ctx_size')).toHaveAttribute(
+        'aria-label',
+        'engineSettings:_ui.moreInfo'
+      )
+      expect(
+        screen.getByText('engineSettings:_ui.perModelSettings').closest('a')
+      ).toHaveAttribute('href', '/settings/providers')
     })
 
     it('for llamacpp, a setting change stops only its models, once typing pauses', async () => {

@@ -432,9 +432,23 @@ async fn new_session(cwd: &str, session_id: &str) -> Result<Session, String> {
 
 /// Serve ACP until stdin closes.
 pub async fn serve() -> Result<(), String> {
-    let mut input = input_lines();
+    let input = input_lines();
     let (out, writer_rx) = mpsc::channel::<Value>(OUTPUT_CAPACITY);
     let writer = output_lines(writer_rx);
+    serve_loop(input, out, |cwd, session_id| async move { new_session(&cwd, &session_id).await }).await?;
+    writer.join().map_err(|_| "ACP output writer panicked".to_owned())?;
+    Ok(())
+}
+
+/// The ACP message loop. `init` builds a session; it runs alongside the loop (it can take up to
+/// the MCP wait), so cancels and permission answers for a running turn are still handled meanwhile.
+async fn serve_loop<F, Fut>(mut input: mpsc::Receiver<(Vec<u8>, bool)>, out: mpsc::Sender<Value>, init: F) -> Result<(), String>
+where
+    F: Fn(String, String) -> Fut,
+    Fut: std::future::Future<Output = Result<Session, String>>,
+{
+    use futures_util::StreamExt;
+    let mut inits = futures_util::stream::FuturesUnordered::new();
     let mut sessions = HashMap::<String, Session>::new();
     let mut active: Option<ActiveTurn> = None;
     let mut pending = HashMap::<u64, PendingPermission>::new();
@@ -452,14 +466,8 @@ pub async fn serve() -> Result<(), String> {
                     Incoming::Reply(record) => send(&out, record).await?,
                     Incoming::Ignore => {}
                     Incoming::NewSession { id, session_id, cwd } => {
-                        let reply = match new_session(&cwd, &session_id).await {
-                            Ok(session) => {
-                                sessions.insert(session_id.clone(), session);
-                                response(&id, json!({"sessionId":session_id}))
-                            }
-                            Err(message) => error(&id, -32602, &message),
-                        };
-                        send(&out, reply).await?;
+                        let pending_init = init(cwd, session_id.clone());
+                        inits.push(async move { (id, session_id, pending_init.await) });
                     }
                     Incoming::Prompt { id, session_id, text } => {
                         let reply = if active.is_some() {
@@ -501,6 +509,7 @@ pub async fn serve() -> Result<(), String> {
                 };
                 match message {
                     TurnMessage::Event(event) => {
+                        let event = *event;
                         let turn = active.as_mut().expect("active");
                         let prompt = match &event {
                             StreamEvent::PermissionRequest { .. } => Some(event.clone()),
@@ -532,6 +541,16 @@ pub async fn serve() -> Result<(), String> {
                     }
                 }
             }
+            Some((id, session_id, result)) = inits.next(), if !inits.is_empty() => {
+                let reply = match result {
+                    Ok(session) => {
+                        sessions.insert(session_id.clone(), session);
+                        response(&id, json!({"sessionId":session_id}))
+                    }
+                    Err(message) => error(&id, -32602, &message),
+                };
+                send(&out, reply).await?;
+            }
             _ = tick.tick(), if !pending.is_empty() => {
                 let now = Instant::now();
                 let expired: Vec<u64> = pending.iter().filter(|(_, w)| w.deadline <= now).map(|(id, _)| *id).collect();
@@ -553,8 +572,6 @@ pub async fn serve() -> Result<(), String> {
         turn.task.runner.abort();
         let _ = finish(&mut sessions, turn, Err("client gone".to_owned()), true, &out).await;
     }
-    drop(out);
-    writer.join().map_err(|_| "ACP output writer panicked".to_owned())?;
     Ok(())
 }
 
@@ -581,6 +598,27 @@ mod tests {
             json!({"image":false,"audio":false,"embeddedContext":false})
         );
         assert_eq!(result["authMethods"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn the_loop_keeps_answering_while_a_session_is_being_created() {
+        let (in_tx, in_rx) = mpsc::channel(8);
+        let (out_tx, mut out_rx) = mpsc::channel(8);
+        let started = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = started.clone();
+        let task = tokio::spawn(serve_loop(in_rx, out_tx, move |_, _| {
+            flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            std::future::pending::<Result<Session, String>>()
+        }));
+        let line = |s: &str| (s.as_bytes().to_vec(), false);
+        in_tx.send(line(r#"{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":".","mcpServers":[]}}"#)).await.unwrap();
+        in_tx.send(line(r#"{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"s"}}"#)).await.unwrap();
+        in_tx.send(line(r#"{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":1}}"#)).await.unwrap();
+        let got = tokio::time::timeout(Duration::from_secs(5), out_rx.recv()).await.expect("loop blocked on session/new").unwrap();
+        assert_eq!(got["id"], 2);
+        assert!(started.load(std::sync::atomic::Ordering::SeqCst));
+        drop(in_tx);
+        tokio::time::timeout(Duration::from_secs(5), task).await.expect("loop did not stop").unwrap().unwrap();
     }
 
     #[test]

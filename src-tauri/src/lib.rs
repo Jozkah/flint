@@ -343,6 +343,7 @@ macro_rules! invoke_commands_with_extras {
         core::mcp::commands::restart_mcp_servers,
         core::mcp::commands::get_connected_servers,
         core::mcp::commands::save_mcp_configs,
+        core::mcp::commands::rename_mcp_server,
         core::mcp::commands::get_mcp_configs,
         core::mcp::commands::activate_mcp_server,
         core::mcp::commands::deactivate_mcp_server,
@@ -382,6 +383,8 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_workspace_patch,
         core::rooms::commands::room_workspace_reset,
         core::rooms::commands::room_workspace_apply,
+        core::rooms::commands::room_workspace_apply_preview,
+        core::rooms::commands::room_workspace_undo_apply,
         core::rooms::commands::room_workspace_remove,
         // Archive (delete moves here first)
         core::archive::commands::archive_list,
@@ -847,6 +850,11 @@ pub fn build_app() -> tauri::App {
             // A marker left by the previous run means it did not shut down
             // cleanly; say so in the log, once, so a crash report has a lead.
             let data_folder = get_jan_data_folder_path(app.handle().clone());
+            // Engine add-ons (the CUDA pack) live in the data folder, so a test
+            // instance with its own folder never touches the user's.
+            if let Some(llama) = app.try_state::<std::sync::Arc<tauri_plugin_llamacpp::LlamacppState>>() {
+                let _ = llama.addon_root.set(data_folder.join("engine-addons"));
+            }
             tauri_plugin_agent_tools::tools::computer::set_active_exclusions(
                 tauri_plugin_agent_tools::tools::computer::load_exclusions(&data_folder),
             );
@@ -879,6 +887,9 @@ pub fn build_app() -> tauri::App {
             tauri_plugin_agent_tools::folder_trust::set_store(
                 get_jan_data_folder_path(app.handle().clone()).join("trusted-folders.json"),
             );
+            // A fresh install has nothing from before trust existed: close the
+            // one-time migration now so no folder attached later is grandfathered.
+            tauri_plugin_agent_tools::folder_trust::close_migration_if_fresh(&data_folder);
             // Toolchain folders the user let the Windows sandbox use are
             // recorded beside the app's settings.
             tauri_plugin_agent_tools::tools::toolchain_grants::set_store(
@@ -947,6 +958,10 @@ pub fn build_app() -> tauri::App {
             if let Err(e) = app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)
+                    // keyring logs three Debug lines per credential lookup
+                    // (~490 lines, 78 KB on one startup), all also emitted to
+                    // the webview.
+                    .level_for("keyring", log::LevelFilter::Info)
                     // The plugin defaults to a 40 KB cap and KeepOne, which
                     // deletes the previous app.log on each rotation. At Debug
                     // level startup alone crosses 40 KB in ~30s, so a model
@@ -1015,6 +1030,7 @@ pub fn build_app() -> tauri::App {
                     core::window_state::restore_and_show(&window, &data_folder);
                 }
                 core::window_state::install(&window, data_folder);
+                core::webview_paint::install_repaint_nudge(&window);
                 suppress_beforeunload_dialog(&window);
             }
             #[cfg(all(

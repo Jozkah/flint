@@ -16,6 +16,18 @@ pub const MASK: &str = "\u{2022}\u{2022}\u{2022}\u{2022}";
 /// The per-server maps whose values can be credentials.
 const SECRET_BEARING_FIELDS: [&str; 2] = ["env", "headers"];
 
+/// The fields that decide where a server's secrets are sent. A stored secret
+/// is only put back into a payload server whose endpoint is unchanged: a
+/// webview that points a server somewhere else must not take its secrets along.
+const ENDPOINT_FIELDS: [&str; 4] = ["type", "url", "command", "args"];
+
+/// Does `sent` still point at the same endpoint as the stored `real` copy?
+fn same_endpoint(sent: &Map<String, Value>, real: &Value) -> bool {
+    ENDPOINT_FIELDS
+        .iter()
+        .all(|f| sent.get(*f) == real.get(*f))
+}
+
 /// Substrings that mark a key as holding a secret. `key` also covers
 /// `*_KEY`, `x-api-key` and the like; `auth` covers `Authorization`,
 /// `Proxy-Authorization` and `X-Auth-*`.
@@ -107,6 +119,10 @@ pub fn redact_mcp_config(config: &Value) -> Value {
 /// `config` is the whole server list, so a rename is visible: when exactly one
 /// stored server left the payload and exactly one payload server is new, the
 /// new one is that server renamed and its masks are restored from it.
+///
+/// Either way a secret is only restored when the payload server's `type`,
+/// `url`, `command` and `args` all equal the stored copy's; otherwise the mask
+/// stays (and [`strip_unrestored_masks`] drops it) so the user re-enters it.
 pub fn restore_masked_secrets(config: &mut Value, real_servers: &Map<String, Value>) {
     restore_masks(config, real_servers, true);
 }
@@ -136,7 +152,8 @@ fn restore_masks(config: &mut Value, real_servers: &Map<String, Value>, full_lis
         let real = real_servers.get(name).or(renamed_from
             .as_ref()
             .filter(|(new, _)| new == name)
-            .map(|(_, old)| *old));
+            .map(|(_, old)| *old))
+            .filter(|real| same_endpoint(server, real));
         for field in SECRET_BEARING_FIELDS {
             let Some(Value::Object(map)) = server.get_mut(field) else {
                 continue;
@@ -409,6 +426,59 @@ mod tests {
         assert_eq!(dropped, vec!["github/env/GH_TOKEN".to_string()]);
         assert!(!sent.to_string().contains(MASK));
         assert_eq!(sent["mcpServers"]["github"]["env"]["API_KEY"], "k-real");
+    }
+
+    #[test]
+    fn a_changed_endpoint_does_not_take_the_stored_secret_along() {
+        let disk = config();
+        let disk_servers = disk["mcpServers"].as_object().unwrap().clone();
+        for (server, field, value) in [
+            ("remote", "url", json!("https://evil.example/mcp")),
+            ("remote", "type", json!("sse")),
+            ("github", "command", json!("node")),
+            ("github", "args", json!(["evil.js"])),
+        ] {
+            let mut sent = redact_mcp_config(&disk);
+            sent["mcpServers"][server][field] = value;
+            restore_masked_secrets(&mut sent, &disk_servers);
+            let dropped = strip_unrestored_masks(&mut sent);
+            assert!(!dropped.is_empty(), "{server}.{field}");
+            let text = sent.to_string();
+            for secret in ["ghp_real", "k-real", "Bearer abc", "xyz", "sid=1"] {
+                if text.contains(secret) {
+                    // Only the untouched server may keep its own secrets.
+                    let other = if server == "remote" { "github" } else { "remote" };
+                    assert!(sent["mcpServers"][other].to_string().contains(secret), "{server}.{field} leaked {secret}");
+                    assert!(!sent["mcpServers"][server].to_string().contains(secret), "{server}.{field} leaked {secret}");
+                }
+            }
+            assert!(!text.contains(MASK));
+        }
+    }
+
+    #[test]
+    fn activating_a_server_with_a_changed_endpoint_is_refused() {
+        let disk = config();
+        let disk_servers = disk["mcpServers"].as_object().unwrap().clone();
+        let mut sent = redact_mcp_config(&disk)["mcpServers"]["remote"].clone();
+        sent["url"] = json!("https://evil.example/mcp");
+        let err = restore_server_config("remote", &mut sent, &disk_servers).unwrap_err();
+        assert!(err.contains("re-enter"));
+        assert!(!sent.to_string().contains("Bearer abc"));
+    }
+
+    #[test]
+    fn delete_one_and_add_another_does_not_hand_over_secrets() {
+        let disk = config();
+        let disk_servers = disk["mcpServers"].as_object().unwrap().clone();
+        let mut sent = redact_mcp_config(&disk);
+        let mut gh = sent["mcpServers"].as_object_mut().unwrap().remove("github").unwrap();
+        gh["command"] = json!("attacker");
+        sent["mcpServers"]["other"] = gh;
+        restore_masked_secrets(&mut sent, &disk_servers);
+        strip_unrestored_masks(&mut sent);
+        assert!(!sent.to_string().contains("ghp_real"));
+        assert!(!sent.to_string().contains("k-real"));
     }
 
     #[test]

@@ -411,6 +411,37 @@ async fn an_allow_given_later_runs_the_same_call_once() {
 }
 
 #[tokio::test]
+async fn a_deferred_write_lists_its_content_not_just_the_path() {
+    if has_a_terminal() {
+        return;
+    }
+    let (_root, data, invoker, _rx, _registry) = deferring();
+    invoke_within(&invoker, &[write_to("c1", "other.txt", "rm -rf the payload line")]).await;
+    let record = &deferred::list(&data, None, false)[0];
+    assert!(record.detail.contains("rm -rf the payload line"), "{}", record.detail);
+    assert!(record.base.is_some());
+}
+
+#[tokio::test]
+async fn an_allow_for_a_file_changed_after_the_question_is_refused_and_writes_nothing() {
+    if has_a_terminal() {
+        return;
+    }
+    let (root, data, invoker, _rx, _registry) = deferring();
+    std::fs::write(root.join("other.txt"), "original").unwrap();
+    invoke_within(&invoker, &[write_to("c1", "other.txt", "hello")]).await;
+    deferred::answer(&data, &pending_id(&data), true).unwrap();
+    // Someone edits the file after the answer, before the run resumes.
+    std::fs::write(root.join("other.txt"), "edited meanwhile").unwrap();
+    let out = invoke_within(&invoker, &[write_to("c2", "other.txt", "hello")]).await;
+    assert!(out[0].content.contains("changed by something else"), "{}", out[0].content);
+    assert_eq!(std::fs::read_to_string(root.join("other.txt")).unwrap(), "edited meanwhile");
+    // The re-proposal is asked about afresh.
+    let out = invoke_within(&invoker, &[write_to("c3", "other.txt", "hello")]).await;
+    assert!(out[0].content.contains(flow::DEFERRED_MARK), "{}", out[0].content);
+}
+
+#[tokio::test]
 async fn an_allow_does_not_cover_different_arguments() {
     if has_a_terminal() {
         return;
@@ -460,6 +491,8 @@ async fn an_expired_answer_refuses_and_never_approves() {
             kind: "write",
             summary: "write: other.txt",
             args_digest: &digest,
+            detail: "",
+            base_file: None,
         },
         60,
         1_000,

@@ -30,6 +30,7 @@ fn status_word(status: DeferStatus) -> &'static str {
         DeferStatus::Expired => "expired",
         DeferStatus::Void => "void",
         DeferStatus::Consumed => "applied",
+        DeferStatus::Stale => "stale (file changed)",
     }
 }
 
@@ -71,6 +72,12 @@ fn print_one(d: &Deferred) {
         stamp(d.created_at),
         stamp(d.expires_at),
     );
+    // What is being approved in full: the digest binds these arguments.
+    if !d.detail.is_empty() {
+        for line in d.detail.lines() {
+            println!("      | {line}");
+        }
+    }
 }
 
 /// `flint cli approvals allow|deny <id>`. Refused, never granted, when the

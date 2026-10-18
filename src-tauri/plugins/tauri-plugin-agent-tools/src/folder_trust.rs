@@ -51,9 +51,19 @@ fn read(path: &Path) -> Doc {
         .unwrap_or_default()
 }
 
-/// A folder as the list spells it: absolute, forward slashes, no trailing
+/// A folder as the list compares it: absolute, forward slashes, no trailing
 /// slash, lower-cased on Windows where paths ignore case.
 pub fn key(folder: &Path) -> String {
+    fold_case(spelled(folder))
+}
+
+/// Lower-cased on Windows, where paths ignore case; as it is elsewhere.
+fn fold_case(text: String) -> String {
+    if cfg!(windows) { text.to_lowercase() } else { text }
+}
+
+/// A folder as the list stores and shows it: like [`key`], in its own case.
+fn spelled(folder: &Path) -> String {
     let canonical = std::fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
     let mut text = canonical.to_string_lossy().replace('\\', "/");
     if let Some(rest) = text.strip_prefix("//?/") {
@@ -61,9 +71,6 @@ pub fn key(folder: &Path) -> String {
     }
     while text.len() > 1 && text.ends_with('/') {
         text.pop();
-    }
-    if cfg!(windows) {
-        text = text.to_lowercase();
     }
     text
 }
@@ -112,9 +119,10 @@ pub fn is_trusted_in(store: &Path, folder: &Path) -> bool {
     }
     [folder.to_path_buf(), project_root(folder)].iter().any(|candidate| {
         let k = key(candidate);
-        doc.folders
-            .iter()
-            .any(|t| k == *t || k.strip_prefix(t.as_str()).is_some_and(|rest| rest.starts_with('/')))
+        doc.folders.iter().any(|t| {
+            let t = fold_case(t.clone());
+            k == t || k.strip_prefix(t.as_str()).is_some_and(|rest| rest.starts_with('/'))
+        })
     })
 }
 
@@ -122,9 +130,9 @@ pub fn is_trusted_in(store: &Path, folder: &Path) -> bool {
 pub fn trust_in(store: &Path, folder: &Path) -> Result<(), String> {
     let mut doc = read(store);
     let k = key(folder);
-    if !doc.folders.contains(&k) {
-        doc.folders.push(k);
-        doc.folders.sort();
+    if !doc.folders.iter().any(|t| fold_case(t.clone()) == k) {
+        doc.folders.push(spelled(folder));
+        doc.folders.sort_by_key(|t| fold_case(t.clone()));
     }
     doc.version = FILE_VERSION;
     write(store, &doc)
@@ -174,6 +182,57 @@ pub fn grandfather_in(store: &Path, folders: impl IntoIterator<Item = PathBuf>) 
     trusted
 }
 
+/// Whether the data folder already holds the user's history from an earlier
+/// run: a saved chat thread, or a Cowork session in `settings.json`. Read at
+/// startup, before this run can add any.
+pub fn data_folder_has_history(data_folder: &Path) -> bool {
+    let threads = std::fs::read_dir(data_folder.join("threads"))
+        .map(|mut entries| entries.any(|e| e.is_ok()))
+        .unwrap_or(false);
+    if threads {
+        return true;
+    }
+    let Ok(bytes) = std::fs::read(data_folder.join("settings.json")) else {
+        return false;
+    };
+    let Ok(map) = serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(&bytes) else {
+        // A damaged settings file proves nothing either way; keep the migration
+        // open rather than switch off folders an older build already ran.
+        return true;
+    };
+    let Some(serde_json::Value::String(sessions)) = map.get("code-sessions") else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(sessions)
+        .ok()
+        .and_then(|v| v.pointer("/state/sessions").and_then(|s| s.as_array()).map(|s| !s.is_empty()))
+        .unwrap_or(false)
+}
+
+/// Close the one-time migration at startup when this install has no history
+/// from before (a fresh install): nothing ran before trust existed, so no
+/// folder is grandfathered, including folders attached from now on. An install
+/// with history keeps the migration open for the renderer to run it once.
+/// Returns whether the migration was closed now.
+pub fn close_migration_if_fresh_in(store: &Path, data_folder: &Path) -> bool {
+    let marker = migrated_marker(store);
+    if marker.exists() || data_folder_has_history(data_folder) {
+        return false;
+    }
+    if let Some(dir) = marker.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    crate::atomic_file::write_atomic(&marker, b"fresh").is_ok()
+}
+
+/// [`close_migration_if_fresh_in`] on the process-wide list.
+pub fn close_migration_if_fresh(data_folder: &Path) -> bool {
+    match STORE.get() {
+        Some(store) => close_migration_if_fresh_in(store, data_folder),
+        None => false,
+    }
+}
+
 /// [`grandfather_in`] on the process-wide list.
 pub fn grandfather(folders: impl IntoIterator<Item = PathBuf>) -> Vec<String> {
     match STORE.get() {
@@ -202,7 +261,7 @@ pub fn revoke_in(store: &Path, folder: &Path) -> Result<bool, String> {
     let mut doc = read(store);
     let k = key(folder);
     let before = doc.folders.len();
-    doc.folders.retain(|t| *t != k);
+    doc.folders.retain(|t| fold_case(t.clone()) != k);
     let removed = doc.folders.len() != before;
     if removed {
         doc.version = FILE_VERSION;
@@ -449,11 +508,78 @@ mod tests {
     }
 
     #[test]
+    fn a_fresh_install_never_grandfathers_a_folder_attached_later() {
+        // BUG-038: fresh data folder, first boot, no history.
+        let dir = temp();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let store = data.join("trusted-folders.json");
+        assert!(close_migration_if_fresh_in(&store, &data));
+        // The user attaches a repo carrying hooks but does not trust it; a
+        // session now exists in the history.
+        let repo = with_hooks(dir.path(), "repo");
+        std::fs::create_dir_all(data.join("threads").join("t1")).unwrap();
+        // Restart: the startup step and the renderer's migration run again.
+        assert!(!close_migration_if_fresh_in(&store, &data));
+        assert!(grandfather_in(&store, vec![repo.clone()]).is_empty());
+        assert!(!is_trusted_in(&store, &repo));
+    }
+
+    #[test]
+    fn a_legacy_install_still_migrates_once() {
+        let dir = temp();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let sessions = r#"{"state":{"sessions":[{"id":"s","folder":"x"}]},"version":0}"#;
+        let settings = serde_json::json!({ "code-sessions": sessions });
+        std::fs::write(data.join("settings.json"), settings.to_string()).unwrap();
+        let store = data.join("trusted-folders.json");
+        assert!(!close_migration_if_fresh_in(&store, &data), "history: the migration stays open");
+        let repo = with_hooks(dir.path(), "repo");
+        assert_eq!(grandfather_in(&store, vec![repo.clone()]).len(), 1);
+        assert!(is_trusted_in(&store, &repo));
+        let later = with_hooks(dir.path(), "later");
+        assert!(grandfather_in(&store, vec![later.clone()]).is_empty());
+        assert!(!is_trusted_in(&store, &later));
+    }
+
+    #[test]
+    fn empty_sessions_or_no_settings_is_not_history() {
+        let dir = temp();
+        assert!(!data_folder_has_history(dir.path()));
+        let settings = serde_json::json!({ "code-sessions": r#"{"state":{"sessions":[]}}"# });
+        std::fs::write(dir.path().join("settings.json"), settings.to_string()).unwrap();
+        assert!(!data_folder_has_history(dir.path()));
+    }
+
+    #[test]
     fn a_drive_root_or_home_is_too_broad_to_trust() {
         let root = if cfg!(windows) { Path::new("C:\\") } else { Path::new("/") };
         assert!(broad_folder(root).is_some());
         let dir = temp();
         assert!(broad_folder(&dir.path().join("proj")).is_none());
+    }
+
+    #[test]
+    fn the_list_keeps_the_folder_in_its_own_case() {
+        let dir = temp();
+        let store = dir.path().join("trust.json");
+        let project = dir.path().join("MyProject");
+        std::fs::create_dir_all(&project).unwrap();
+        trust_in(&store, &project).unwrap();
+        let listed = list_in(&store);
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].ends_with("/MyProject"), "{listed:?}");
+        assert!(is_trusted_in(&store, &project));
+        // An entry an older build stored lower-cased still counts, and is
+        // not added twice.
+        if cfg!(windows) {
+            std::fs::write(&store, format!(r#"{{"version":1,"folders":["{}"]}}"#, key(&project))).unwrap();
+            assert!(is_trusted_in(&store, &project));
+            trust_in(&store, &project).unwrap();
+            assert_eq!(list_in(&store).len(), 1);
+            assert!(revoke_in(&store, &project).unwrap());
+        }
     }
 
     #[test]

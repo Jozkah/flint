@@ -141,6 +141,19 @@ export function PermissionRequestDetails({
               </dd>
             </>
           )}
+          {request.argumentsSummary && (
+            <>
+              <dt className="text-muted-foreground">
+                {t('permissions:request.arguments')}
+              </dt>
+              <dd
+                data-testid="permission-arguments"
+                className="min-w-0 font-mono text-xs leading-[19px] break-all"
+              >
+                {request.argumentsSummary}
+              </dd>
+            </>
+          )}
           {request.consequences.length > 0 && (
             <>
               <dt className="text-muted-foreground">
@@ -213,6 +226,20 @@ export function PermissionRequestDetails({
             <code>{request.script}</code>
           </pre>
         </div>
+      )}
+
+      {request.argumentsSummary && (
+        <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3">
+          <dt className={cn(LABEL, 'pt-0.5')}>
+            {t('permissions:request.arguments')}
+          </dt>
+          <dd
+            data-testid="permission-arguments"
+            className="min-w-0 break-all font-mono text-xs text-foreground"
+          >
+            {request.argumentsSummary}
+          </dd>
+        </dl>
       )}
 
       {request.consequences.length > 0 && (

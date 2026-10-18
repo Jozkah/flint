@@ -12,6 +12,7 @@ import {
   useToolApprovalRequests,
 } from '@/hooks/useToolApprovalRequests'
 import { deriveToolOutputCap } from '@/lib/context-manager'
+import { callMcpToolCancellable } from '@/lib/mcpCancellable'
 import { destructiveCommandReason } from '@/lib/destructiveCommand'
 import { isReadOnlyCommand } from '@/lib/readOnlyCommand'
 import { normalizeEditInput } from '@/lib/coworkEditInput'
@@ -530,13 +531,18 @@ async function callMcpTool(
     const approvalTicket = await mcp
       .allowOnceForServer(server, toolName, fingerprint)
       .catch(() => undefined)
-    const result = await mcp.callTool({
-      toolName,
-      serverName: server,
-      arguments: (call.input ?? {}) as object,
-      approvalTicket,
-      maxOutputChars: deriveToolOutputCap(undefined),
-    })
+    // Stop reaches the server at once, not at its timeout (M-011).
+    const result = await callMcpToolCancellable(
+      mcp,
+      {
+        toolName,
+        serverName: server,
+        arguments: (call.input ?? {}) as object,
+        approvalTicket,
+        maxOutputChars: deriveToolOutputCap(undefined),
+      },
+      signal
+    )
     const failure = result.error
       ? String(result.error)
       : (result as { isError?: unknown }).isError === true
@@ -552,6 +558,44 @@ async function callMcpTool(
       isError: true,
     }
   }
+}
+
+/**
+ * `host_powershell` with no `cwd` in Review only, where its default folder
+ * (the project) is read-only: refused up front with what would work instead.
+ */
+export function reviewOnlyPowershellRefusal(
+  call: PendingToolCall,
+  ctx: Pick<DispatchContext, 'mode' | 'readOnlyFolder'>
+): ToolOutcome | null {
+  if (call.toolName !== 'host_powershell') return null
+  if (!isReadOnly(ctx.mode) || !ctx.readOnlyFolder) return null
+  const cwd = (call.input as { cwd?: unknown } | null)?.cwd
+  const named = typeof cwd === 'string' ? cwd.trim() : ''
+  const inProject =
+    !named ||
+    named.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '') ===
+      ctx.readOnlyFolder.replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '')
+  if (!inProject) return null
+  return {
+    output:
+      '`host_powershell` was not run: this session is in Review only, so the ' +
+      'project folder is read-only and PowerShell cannot run in it. Set `cwd` ' +
+      'to the session workspace to run it there, or ask the user to switch ' +
+      'the session to Edit.',
+    isError: true,
+  }
+}
+
+/** Calls the user edited before allowing them, by call id: what actually ran. */
+const editedCalls = new Map<string, unknown>()
+
+/** The result the model sees for a call the user edited before it ran. */
+export function withEditNote(ranInput: unknown, output: string): string {
+  const command = (ranInput as { command?: unknown } | null)?.command
+  const what =
+    typeof command === 'string' ? `\`${command}\`` : JSON.stringify(ranInput)
+  return `The user edited the command before allowing it; this ran instead of yours: ${what}\n\n${output}`
 }
 
 /**
@@ -572,9 +616,18 @@ export async function dispatchCoworkTool(
     signal,
     () => boundedToolCall(call, ctx, signal)
   )
-  // A hint rides on the result the model is about to read, so it is read.
+  // The user rewrote the command before allowing it: the row and the model's
+  // copy show what ran, and the result says it was the user's edit.
+  const ranInput = editedCalls.get(call.toolCallId)
+  if (ranInput !== undefined) {
+    editedCalls.delete(call.toolCallId)
+    outcome.ranInput = ranInput
+    outcome.output = withEditNote(ranInput, outcome.output)
+  }
+  // A hint travels beside the result, never inside it: text appended to a
+  // file's content reads as part of the file.
   const hint = ctx.nudge?.observe(call.toolName)
-  if (hint && !outcome.isError) outcome.output = `${outcome.output}\n\n[${hint}]`
+  if (hint && !outcome.isError) outcome.note = hint
   // A pull request the call opened or named is this session's, whatever
   // branch the attached folder has checked out.
   if (!outcome.isError) {
@@ -820,6 +873,12 @@ async function routeCoworkTool(
   // models reach for most often; it is the same request as a one-item
   // `edits` list, so it is sent as that rather than refused.
   if (toolName === 'edit') call = { ...call, input: normalizeEditInput(call.input) }
+
+  // Review only: the project folder is read-only, so PowerShell's default
+  // working folder would be refused after the user allowed it. Say so before
+  // asking, rather than offering an Allow that cannot succeed.
+  const readOnlyCwd = reviewOnlyPowershellRefusal(call, ctx)
+  if (readOnlyCwd) return readOnlyCwd
 
   // Stopping another session: asked every time, in every mode that offers it,
   // whatever grants exist; refused in review mode and where nothing can ask.
@@ -1105,6 +1164,7 @@ async function routeCoworkTool(
       const runsEdited = edited !== undefined && toolName === 'bash'
       if (runsEdited) {
         call = { ...call, input: { ...(call.input as object), ...edited } }
+        editedCalls.set(call.toolCallId, call.input)
       }
       await recordToolActivity({
         ...permission,

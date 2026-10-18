@@ -92,6 +92,8 @@ pub struct OpenAIStreamer {
 	captured_data: StreamerCapturedData,
 	// FLINT PATCH: events produced by one SSE message beyond the first (several tool calls in one chunk).
 	pending: VecDeque<InterStreamEvent>,
+	/// FLINT PATCH: per tool-call index, the argument length the last chunk event carried.
+	emitted_args: Vec<usize>,
 }
 
 impl OpenAIStreamer {
@@ -102,13 +104,23 @@ impl OpenAIStreamer {
 			options: StreamerOptions::new(model_iden, options_set),
 			captured_data: Default::default(),
 			pending: VecDeque::new(),
+			emitted_args: Vec::new(),
 		}
 	}
 
 	/// Captures a single tool call into `captured_data.tool_calls`, merging with existing if needed.
 	/// Returns the (possibly merged) tool call for use in events, or `None` for a call whose
 	/// `index` the stream cannot be trusted with (see [`capture_into`]).
-	fn capture_tool_call(&mut self, index: usize, call_id: String, fn_name: String, arguments: String) -> Option<ToolCall> {
+	///
+	/// FLINT PATCH: `Err` when the call's accumulated arguments would pass
+	/// [`MAX_TOOL_CALL_ARGS`]; the stream then ends with that error.
+	fn capture_tool_call(
+		&mut self,
+		index: usize,
+		call_id: String,
+		fn_name: String,
+		arguments: String,
+	) -> std::result::Result<Option<ToolCall>, String> {
 		let tool_call = ToolCall {
 			call_id,
 			fn_name,
@@ -117,11 +129,11 @@ impl OpenAIStreamer {
 		};
 
 		if !self.options.capture_tool_calls {
-			return Some(tool_call);
+			return Ok(Some(tool_call));
 		}
 
 		let calls = self.captured_data.tool_calls.get_or_insert_with(Vec::new);
-		capture_into(calls, index, tool_call)
+		try_capture(calls, &mut self.emitted_args, index, tool_call)
 	}
 }
 
@@ -131,29 +143,82 @@ impl OpenAIStreamer {
 const MAX_TOOL_CALLS: usize = 256;
 const MAX_INDEX_GAP: usize = 64;
 
-/// Merge `tool_call` into `calls` at `index` (arguments accumulate), or add it. A call whose
-/// index is far past the end, or would take the list over [`MAX_TOOL_CALLS`], is skipped.
-fn capture_into(calls: &mut Vec<ToolCall>, index: usize, tool_call: ToolCall) -> Option<ToolCall> {
+/// FLINT PATCH (local change to the vendored crate): the most argument text one streamed
+/// tool call may accumulate. Past it the stream fails with a clear error instead of growing
+/// without bound on a hostile or broken server.
+const MAX_TOOL_CALL_ARGS: usize = 4 * 1024 * 1024;
+/// FLINT PATCH: below this many argument bytes every chunk is re-emitted; above it a chunk
+/// event (which carries the *accumulated* arguments, a copy) is emitted only once the
+/// arguments grew by a sixteenth since the last one. Emitting a full copy per chunk made a
+/// many-chunk stream quadratic; the authoritative calls come from the stream end anyway.
+const EMIT_EVERY_CHUNK_BELOW: usize = 8 * 1024;
+
+fn too_long(name: &str) -> String {
+	format!(
+		"the tool call {} streamed more than {} MB of arguments; it was dropped and the response stopped",
+		if name.is_empty() { "(unnamed)" } else { name },
+		MAX_TOOL_CALL_ARGS / (1024 * 1024)
+	)
+}
+
+/// Merge `tool_call` into `calls` at `index` (arguments accumulate in place), or add it. A
+/// call whose index is far past the end, or would take the list over [`MAX_TOOL_CALLS`], is
+/// skipped. `Ok(None)` also means "merged, no event this chunk" (see
+/// [`EMIT_EVERY_CHUNK_BELOW`]); `emitted` is the argument length last emitted per index.
+fn try_capture(
+	calls: &mut Vec<ToolCall>,
+	emitted: &mut Vec<usize>,
+	index: usize,
+	tool_call: ToolCall,
+) -> std::result::Result<Option<ToolCall>, String> {
+	if emitted.len() < calls.len() {
+		emitted.resize(calls.len(), 0);
+	}
 	if let Some(existing_call) = calls.get_mut(index) {
-		// Merge with existing: accumulate arguments as strings
-		if let Some(existing_args) = existing_call.fn_arguments.as_str() {
-			let accumulated = format!("{existing_args}{}", tool_call.fn_arguments.as_str().unwrap_or_default());
-			existing_call.fn_arguments = Value::String(accumulated);
+		// Merge with existing: accumulate arguments as strings, in place.
+		let chunk = tool_call.fn_arguments.as_str().unwrap_or_default();
+		if let Value::String(existing_args) = &mut existing_call.fn_arguments {
+			if existing_args.len().saturating_add(chunk.len()) > MAX_TOOL_CALL_ARGS {
+				return Err(too_long(&existing_call.fn_name));
+			}
+			existing_args.push_str(chunk);
 		}
 		// Update call_id and fn_name on first chunk that has them
-		if !tool_call.fn_name.is_empty() {
+		let named = !tool_call.fn_name.is_empty();
+		if named {
 			existing_call.call_id = tool_call.call_id;
 			existing_call.fn_name = tool_call.fn_name;
 		}
-		Some(existing_call.clone())
+		let len = existing_call.fn_arguments.as_str().map_or(0, str::len);
+		let last = emitted[index];
+		let emit = named || len < EMIT_EVERY_CHUNK_BELOW || len.saturating_sub(last) >= len / 16;
+		if emit {
+			emitted[index] = len;
+			Ok(Some(existing_call.clone()))
+		} else {
+			Ok(None)
+		}
 	} else if index > calls.len() + MAX_INDEX_GAP || index >= MAX_TOOL_CALLS {
 		tracing::warn!("skipping tool call with implausible index {index} ({} captured)", calls.len());
-		None
+		Ok(None)
 	} else {
+		let len = tool_call.fn_arguments.as_str().map_or(0, str::len);
+		if len > MAX_TOOL_CALL_ARGS {
+			return Err(too_long(&tool_call.fn_name));
+		}
 		// New tool call - resize to handle potential gaps (though unlikely in streaming)
 		calls.resize(index + 1, tool_call.clone());
-		Some(tool_call)
+		emitted.resize(index + 1, 0);
+		emitted[index] = len;
+		Ok(Some(tool_call))
 	}
+}
+
+/// The capture as the original tests drive it: every call starts from a fresh emit record.
+#[cfg(test)]
+fn capture_into(calls: &mut Vec<ToolCall>, index: usize, tool_call: ToolCall) -> Option<ToolCall> {
+	let mut emitted = vec![0; calls.len()];
+	try_capture(calls, &mut emitted, index, tool_call).ok().flatten()
 }
 
 impl futures::Stream for OpenAIStreamer {
@@ -286,8 +351,13 @@ impl futures::Stream for OpenAIStreamer {
 										let fn_name = function.x_take::<String>("name").unwrap_or_default();
 										let arguments = take_tool_call_arguments(&mut function);
 
-										let tc = self.capture_tool_call(index as usize, call_id, fn_name, arguments);
-										tool_call_events.extend(tc);
+										match self.capture_tool_call(index as usize, call_id, fn_name, arguments) {
+											Ok(tc) => tool_call_events.extend(tc),
+											Err(why) => {
+												self.done = true;
+												return Poll::Ready(Some(Err(Error::Internal(why))));
+											}
+										}
 									}
 								}
 							}
@@ -365,8 +435,16 @@ impl futures::Stream for OpenAIStreamer {
 										let fn_name = function.x_take::<String>("name").unwrap_or_default();
 										let arguments = take_tool_call_arguments(&mut function);
 
-										if let Some(tool_call) = self.capture_tool_call(index as usize, call_id, fn_name, arguments) {
-											self.pending.push_back(InterStreamEvent::ToolCallChunk(tool_call));
+										match self.capture_tool_call(index as usize, call_id, fn_name, arguments) {
+											Ok(Some(tool_call)) => {
+												self.pending.push_back(InterStreamEvent::ToolCallChunk(tool_call));
+											}
+											Ok(None) => {}
+											Err(why) => {
+												self.done = true;
+												self.pending.clear();
+												return Poll::Ready(Some(Err(Error::Internal(why))));
+											}
 										}
 									}
 								}
@@ -489,6 +567,39 @@ mod tests {
 		}
 		assert!(capture_into(&mut calls, MAX_TOOL_CALLS, call("c", "f", "")).is_none());
 		assert_eq!(calls.len(), MAX_TOOL_CALLS);
+	}
+
+	#[test]
+	fn a_many_chunk_hostile_stream_is_capped_and_linear() {
+		let mut calls: Vec<ToolCall> = Vec::new();
+		let mut emitted = Vec::new();
+		assert!(try_capture(&mut calls, &mut emitted, 0, call("id", "write", "{")).unwrap().is_some());
+		let chunk = "x".repeat(16);
+		let mut events = 0usize;
+		let mut err = None;
+		let started = std::time::Instant::now();
+		for _ in 0..(MAX_TOOL_CALL_ARGS / chunk.len() + 10) {
+			match try_capture(&mut calls, &mut emitted, 0, call("", "", &chunk)) {
+				Ok(Some(_)) => events += 1,
+				Ok(None) => {}
+				Err(e) => {
+					err = Some(e);
+					break;
+				}
+			}
+		}
+		let err = err.expect("the cap must stop the stream");
+		assert!(err.contains("write") && err.contains("4 MB"), "{err}");
+		let len = calls[0].fn_arguments.as_str().unwrap().len();
+		assert!(len <= MAX_TOOL_CALL_ARGS && len > MAX_TOOL_CALL_ARGS - 32, "{len}");
+		// Copies of the accumulated arguments stay few, not one per chunk.
+		assert!(events < 2_000, "{events} events");
+		assert!(started.elapsed() < std::time::Duration::from_secs(30));
+		// A single oversized first chunk is refused too.
+		let mut more: Vec<ToolCall> = Vec::new();
+		let huge = "y".repeat(MAX_TOOL_CALL_ARGS + 1);
+		assert!(try_capture(&mut more, &mut Vec::new(), 0, call("id", "f", &huge)).is_err());
+		assert!(more.is_empty());
 	}
 
 	#[test]

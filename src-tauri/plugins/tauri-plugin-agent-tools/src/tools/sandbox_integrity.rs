@@ -11,12 +11,17 @@
 //! 1. `JAN_SANDBOX_HELPER_SHA256` -- a digest pinned by whoever launched the
 //!    process (an installer, a policy script);
 //! 2. a `<helper>.sha256` file next to the helper, as an installer would ship;
-//! 3. otherwise the digest the file had the first time this process looked at
-//!    it, so a helper replaced or patched after the app started is caught
-//!    even where nothing was shipped to compare with.
+//! 3. the digest the file had the first time this process looked at it, so a
+//!    helper replaced or patched after the app started is caught even where
+//!    nothing was shipped to compare with. This baseline is enforced on top of
+//!    1 and 2, not instead of them: whoever can swap the helper can usually
+//!    write a matching `.sha256` next to it too.
 //!
-//! The check is cheap: the digest is recomputed only when the file's length or
-//! modification time changed since the last successful check.
+//! The check is cheap: the full digest is recomputed only when the file's
+//! length, modification time or a hash of its first and last 64 KiB changed
+//! since the last successful check. The probe is there because length and
+//! mtime alone are attacker-controlled: a same-size swap with its mtime reset
+//! would otherwise pass on the cache.
 
 use std::collections::HashMap;
 use std::io::Read;
@@ -33,7 +38,29 @@ pub const PINNED_ENV: &str = "SANDBOX_HELPER_SHA256";
 struct Seen {
     len: u64,
     modified: Option<SystemTime>,
+    probe: String,
     digest: String,
+}
+
+const PROBE_BYTES: u64 = 64 * 1024;
+
+/// SHA-256 of the first and last [`PROBE_BYTES`] of `path` (the whole file
+/// when it is smaller than both together).
+fn probe_digest(path: &Path, len: u64) -> std::io::Result<String> {
+    use std::io::{Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = Vec::new();
+    (&mut file).take(PROBE_BYTES).read_to_end(&mut buf)?;
+    hasher.update(&buf);
+    if len > PROBE_BYTES {
+        let tail_from = len.saturating_sub(PROBE_BYTES).max(PROBE_BYTES);
+        file.seek(SeekFrom::Start(tail_from))?;
+        buf.clear();
+        file.take(PROBE_BYTES).read_to_end(&mut buf)?;
+        hasher.update(&buf);
+    }
+    Ok(hex::encode(hasher.finalize()))
 }
 
 fn state() -> &'static Mutex<HashMap<PathBuf, Seen>> {
@@ -112,13 +139,16 @@ fn check(path: &Path) -> Result<(), String> {
         return Err(format!("the sandbox helper {} is not a file", path.display()));
     }
     let stamp = (meta.len(), meta.modified().ok());
+    let probe = probe_digest(path, stamp.0).map_err(|e| {
+        format!("the sandbox helper {} could not be read to be checked ({e})", path.display())
+    })?;
     let key = path.to_path_buf();
     let known = state().lock().ok().and_then(|s| s.get(&key).cloned());
     let pin = pinned(path)?;
-    // Unchanged on disk since the last pass, and nothing external to compare
-    // with: the earlier verdict stands.
+    // Unchanged on disk since the last pass (length, mtime and the content
+    // probe): the earlier verdict stands.
     if let Some(seen) = &known {
-        if (seen.len, seen.modified) == stamp {
+        if (seen.len, seen.modified) == stamp && seen.probe == probe {
             return match &pin {
                 Some((want, src)) if *want != seen.digest => Err(mismatch(path, want, &seen.digest, src)),
                 _ => Ok(()),
@@ -128,18 +158,23 @@ fn check(path: &Path) -> Result<(), String> {
     let digest = hex_digest(path).map_err(|e| {
         format!("the sandbox helper {} could not be read to be checked ({e})", path.display())
     })?;
-    match (&pin, &known) {
-        (Some((want, src)), _) if *want != digest => return Err(mismatch(path, want, &digest, src)),
-        (None, Some(first)) if first.digest != digest => {
-            return Err(mismatch(path, &first.digest, &digest, "the copy Flint saw when it started"))
+    if let Some((want, src)) = &pin {
+        if *want != digest {
+            return Err(mismatch(path, want, &digest, src));
         }
-        _ => {}
+    }
+    // The first-seen baseline holds whatever else is pinned: a helper swapped
+    // together with a matching `.sha256` is still not the one seen at start.
+    if let Some(first) = &known {
+        if first.digest != digest {
+            return Err(mismatch(path, &first.digest, &digest, "the copy Flint saw when it started"));
+        }
     }
     if let Ok(mut s) = state().lock() {
         // The first sighting is the baseline; later stat changes with the same
         // content refresh the stamp but never the digest.
         let baseline = known.map(|k| k.digest).unwrap_or_else(|| digest.clone());
-        s.insert(key, Seen { len: stamp.0, modified: stamp.1, digest: baseline });
+        s.insert(key, Seen { len: stamp.0, modified: stamp.1, probe, digest: baseline });
     }
     Ok(())
 }
@@ -218,6 +253,43 @@ mod tests {
         std::fs::write(&exe, b"first").unwrap();
         assert!(verify(&exe).is_ok());
         assert_eq!(last_refusal(), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_helper_swapped_together_with_its_sidecar_is_refused() {
+        let dir = scratch("sidecar_swap");
+        let exe = dir.join("helper.exe");
+        std::fs::write(&exe, b"genuine").unwrap();
+        std::fs::write(sidecar(&exe), sha(b"genuine")).unwrap();
+        assert!(verify(&exe).is_ok());
+        std::fs::write(&exe, b"evil-helper").unwrap();
+        std::fs::write(sidecar(&exe), sha(b"evil-helper")).unwrap();
+        let err = verify(&exe).unwrap_err();
+        assert!(err.contains("when it started"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_same_length_swap_with_its_mtime_reset_is_refused() {
+        let dir = scratch("mtime_reset");
+        let exe = dir.join("helper.exe");
+        for (tag, len) in [("small", 100usize), ("large", 300 * 1024)] {
+            let genuine = vec![b'g'; len];
+            std::fs::write(&exe, &genuine).unwrap();
+            let when = std::fs::metadata(&exe).unwrap().modified().unwrap();
+            assert!(verify(&exe).is_ok(), "{tag}");
+            let mut evil = genuine.clone();
+            // A change at the start and at the end, same length.
+            evil[0] = b'E';
+            *evil.last_mut().unwrap() = b'E';
+            std::fs::write(&exe, &evil).unwrap();
+            std::fs::OpenOptions::new().write(true).open(&exe).unwrap().set_modified(when).unwrap();
+            assert_eq!(std::fs::metadata(&exe).unwrap().modified().unwrap(), when);
+            assert!(verify(&exe).is_err(), "{tag}: the cache let a same-stamp swap through");
+            // Fresh state for the next size.
+            state().lock().unwrap().remove(&exe);
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -53,6 +53,9 @@ const LIMIT_KEYS: &[&str] = &[
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
 static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// Removes a room's workspaces (`workspace::remove_all`; tests pass one that fails).
+pub(super) type WorkspaceRemover = fn(&Path, &str) -> Result<(), RoomError>;
+
 fn write_guard() -> MutexGuard<'static, ()> {
     WRITE_LOCK
         .lock()
@@ -1127,11 +1130,21 @@ impl RoomStore {
         }
     }
 
+    /// Remove the room's workspaces. A failure (an open file in a worktree on
+    /// Windows) is logged, not fatal: the room is still deleted or archived and
+    /// the leftovers are only scratch checkouts.
+    fn clear_workspaces(&self, room_id: &str, remove: WorkspaceRemover) {
+        if let Err(e) = remove(&self.root, room_id) {
+            log::warn!("room {room_id}: workspaces not fully removed: {}", e.message);
+        }
+    }
+
     pub fn delete(&self, room_id: &str) -> Result<(), RoomError> {
+        self.delete_with(room_id, super::workspace::remove_all)
+    }
+
+    pub(super) fn delete_with(&self, room_id: &str, remove: WorkspaceRemover) -> Result<(), RoomError> {
         let dir = self.room_dir(room_id)?;
-        // Unregister worktrees before the directory goes, so the repository
-        // is not left claiming checkouts that no longer exist.
-        super::workspace::remove_all(&self.root, room_id)?;
         let _guard = write_guard();
         match fs::symlink_metadata(&dir) {
             Ok(meta) if meta.is_dir() => {}
@@ -1154,6 +1167,9 @@ impl RoomStore {
                 ))
             }
         }
+        // Unregister worktrees before the directory goes, so the repository
+        // is not left claiming checkouts that no longer exist.
+        self.clear_workspaces(room_id, remove);
         fs::remove_dir_all(&dir)
             .map_err(|e| RoomError::new(RoomErrorCode::Io, format!("delete room {room_id}: {e}")))
     }
@@ -1162,10 +1178,11 @@ impl RoomStore {
     /// data folder the archive lives under. Refuses what `delete` refuses (a
     /// missing room, a link standing in for the directory).
     pub fn archive(&self, data: &Path, room_id: &str) -> Result<(), RoomError> {
+        self.archive_with(data, room_id, super::workspace::remove_all)
+    }
+
+    pub(super) fn archive_with(&self, data: &Path, room_id: &str, remove: WorkspaceRemover) -> Result<(), RoomError> {
         let dir = self.room_dir(room_id)?;
-        // A moved worktree would break its repository's registration; the
-        // workspaces are scratch state, so they are removed, not archived.
-        super::workspace::remove_all(&self.root, room_id)?;
         let _guard = write_guard();
         match fs::symlink_metadata(&dir) {
             Ok(meta) if meta.is_dir() => {}
@@ -1188,6 +1205,9 @@ impl RoomStore {
                 ))
             }
         }
+        // A moved worktree would break its repository's registration; the
+        // workspaces are scratch state, so they are removed, not archived.
+        self.clear_workspaces(room_id, remove);
         let title = read_room_file(&dir.join(ROOM_FILE))
             .map(|room| room.title)
             .unwrap_or_default();

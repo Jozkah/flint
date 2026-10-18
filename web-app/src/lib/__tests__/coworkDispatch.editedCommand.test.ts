@@ -7,6 +7,7 @@ const { previewAgentChange } = vi.hoisted(() => ({
 vi.mock('@/lib/agentTools', () => ({ executeAgentTool, previewAgentChange }))
 
 import { dispatchCoworkTool } from '../coworkDispatch'
+import { assistantMessageFor, turnsFor } from '../coworkRunner'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import type { CoworkMode } from '../coworkMode'
 
@@ -49,6 +50,44 @@ describe('dispatchCoworkTool and the approval card', () => {
       timeout: 5,
     })
     expect(useToolApprovalRequests.getState().editedInputs.e1).toBeUndefined()
+  })
+
+  it('shows the edited command in the row and tells the model it was edited (BUG-042)', async () => {
+    const call = {
+      toolCallId: 'e2',
+      toolName: 'bash',
+      input: { command: 'echo D042 > out.txt' },
+    }
+    const out = await dispatchCoworkTool(
+      call,
+      ctx(async () => {
+        useToolApprovalRequests.setState({
+          editedInputs: { e2: { command: 'echo D042EDITED > out.txt' } },
+        })
+        return true
+      })
+    )
+    expect(out.ranInput).toEqual({ command: 'echo D042EDITED > out.txt' })
+    expect(out.output).toContain('The user edited the command')
+    expect(out.output).toContain('echo D042EDITED > out.txt')
+    expect(out.output).toContain('ok')
+    const step = { text: '', toolCalls: [call] } as never
+    const outcomes = new Map([['e2', out]])
+    const [turn] = turnsFor(step, outcomes)
+    expect(turn.args).toEqual({ command: 'echo D042EDITED > out.txt' })
+    const message = assistantMessageFor('m', step, outcomes) as unknown as {
+      parts: { input: unknown }[]
+    }
+    expect(message.parts[0].input).toEqual({ command: 'echo D042EDITED > out.txt' })
+  })
+
+  it('leaves an unedited call as the model sent it', async () => {
+    const out = await dispatchCoworkTool(
+      { toolCallId: 'e3', toolName: 'bash', input: { command: 'echo hi' } },
+      ctx(async () => true)
+    )
+    expect(out.ranInput).toBeUndefined()
+    expect(out.output).not.toContain('edited')
   })
 
   it('tells the model the reason given with a deny, and forgets it', async () => {

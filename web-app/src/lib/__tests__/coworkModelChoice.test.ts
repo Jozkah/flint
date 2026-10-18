@@ -29,6 +29,41 @@ describe('the model a Cowork session sends with', () => {
     expect(r.unavailable).toEqual({ provider: 'removed', id: 'qwen3.8-27b' })
   })
 
+  it("never sends a session with no model on a keyless remote picker model", () => {
+    const keyless = [
+      {
+        provider: 'openai',
+        active: true,
+        models: [gpt],
+        base_url: 'https://api.openai.com/v1',
+        api_key: '',
+      },
+    ]
+    const r = resolveCoworkModel(undefined, {
+      selectedProvider: 'openai',
+      selectedModel: gpt,
+      providers: keyless,
+    })
+    expect(r.model).toBeNull()
+    expect(r.choice).toBeNull()
+    expect(r.save).toBe(false)
+    expect(r.needsKey).toBe('openai')
+    // With a key it is used as before.
+    const keyed = resolveCoworkModel(undefined, {
+      selectedProvider: 'openai',
+      selectedModel: gpt,
+      providers: [{ ...keyless[0], api_key: 'sk-test' }],
+    })
+    expect(keyed.model).toBe(gpt)
+    // A local endpoint needs no key.
+    const local = resolveCoworkModel(undefined, {
+      selectedProvider: 'openai',
+      selectedModel: gpt,
+      providers: [{ ...keyless[0], base_url: 'http://127.0.0.1:8080/v1' }],
+    })
+    expect(local.model).toBe(gpt)
+  })
+
   it('reports the saved model as unavailable when nothing can stand in', () => {
     const r = resolveCoworkModel({ provider: 'off', id: 'gone' }, emptyPicker)
     expect(r.model).toBeNull()

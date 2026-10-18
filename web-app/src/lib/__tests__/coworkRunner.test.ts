@@ -215,6 +215,23 @@ describe('steering a running turn (janhq/jan#8864)', () => {
     expect(first).toHaveLength(1)
   })
 
+  it('sends a harness note as its own labelled message, never inside the tool result', async () => {
+    const d = deps(
+      [toolStep('read'), textStep('done')],
+      vi.fn(async (): Promise<ToolOutcome> => ({ output: 'file body', note: 'Delegate it.' }))
+    )
+    await runTurn({
+      messages: [user('go')],
+      signal: new AbortController().signal,
+      deps: d,
+    } as never)
+    const second = (d.sendStep.mock.calls[1] as unknown as [UIMessage[]])[0]
+    expect(second.map((m) => m.role)).toEqual(['user', 'assistant', 'user'])
+    expect(JSON.stringify(second[1])).not.toContain('Delegate it.')
+    expect(JSON.stringify(second[1])).toContain('file body')
+    expect(userText(second[2])).toMatch(/^Note from Flint .*not part of any tool result.*Delegate it\.$/)
+  })
+
   it('skips remaining tool calls when steering arrives during a tool batch', async () => {
     let waiting = false
     const dispatch = vi.fn(async () => {

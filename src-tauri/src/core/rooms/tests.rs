@@ -872,3 +872,22 @@ fn clearing_the_journal_keeps_workspaces_and_delete_removes_them() {
     store.delete("r1").unwrap();
     assert!(!std::path::Path::new(&ws.path).exists());
 }
+
+fn failing_remover(_: &std::path::Path, _: &str) -> Result<(), RoomError> {
+    Err(RoomError::new(RoomErrorCode::Io, "remove workspaces: file in use".to_string()))
+}
+
+#[test]
+fn a_workspace_that_cannot_be_removed_does_not_block_delete_or_archive() {
+    let (dir, store) = new_store();
+    store.save(room("r1"), 1).unwrap();
+    store.delete_with("r1", failing_remover).unwrap();
+    assert_eq!(store.get("r1").unwrap_err().code, RoomErrorCode::NotFound);
+
+    store.save(room("r2"), 1).unwrap();
+    store.archive_with(dir.path(), "r2", failing_remover).unwrap();
+    assert!(store.list().unwrap().is_empty());
+
+    // A missing room is still refused, whatever the remover would do.
+    assert_eq!(store.delete_with("nope", failing_remover).unwrap_err().code, RoomErrorCode::NotFound);
+}

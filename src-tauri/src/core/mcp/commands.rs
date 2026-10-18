@@ -1543,8 +1543,14 @@ pub async fn save_mcp_configs<R: Runtime>(
     }
     // Never store the placeholder as a secret (a renamed key, or a server
     // with nothing stored to restore from): drop it so the user re-enters it.
-    for entry in super::redact::strip_unrestored_masks(&mut config_value) {
+    // That includes a secret whose server now points at another endpoint
+    // (type/url/command/args changed): it is never carried along.
+    let dropped = super::redact::strip_unrestored_masks(&mut config_value);
+    for entry in &dropped {
         log::warn!("save mcp configs: dropped hidden value with no stored secret: {entry}");
+    }
+    if !dropped.is_empty() {
+        let _ = app.emit("mcp-secrets-need-reentry", json!({ "entries": dropped }));
     }
     // The desktop's belief is its own payload; the next save diffs against it.
     remember_desktop_view(
@@ -1563,6 +1569,102 @@ pub async fn save_mcp_configs<R: Runtime>(
     }
 
     Ok(())
+}
+
+/// Rename `old` to `new` in a server list, keeping its stored config (real
+/// secrets included) and its place. Refuses a missing `old` or a taken `new`.
+pub(super) fn rename_in_servers(servers: &Map<String, Value>, old: &str, new: &str) -> Result<Map<String, Value>, String> {
+    let new = new.trim();
+    if new.is_empty() {
+        return Err("the new server name is empty".to_string());
+    }
+    if !servers.contains_key(old) {
+        return Err(format!("no MCP server named \"{old}\""));
+    }
+    if old != new && servers.contains_key(new) {
+        return Err(format!("an MCP server named \"{new}\" already exists"));
+    }
+    Ok(servers
+        .iter()
+        .map(|(name, value)| (if name == old { new.to_string() } else { name.clone() }, value.clone()))
+        .collect())
+}
+
+/// Rename a server on disk in one step (BUG-081): the stored config moves to
+/// the new name with its secrets, and the old entry is gone. The desktop's
+/// merge base moves with it, so the next save is not read as "the old server
+/// was changed elsewhere" (which kept it as a duplicate).
+#[tauri::command]
+pub async fn rename_mcp_server<R: Runtime>(
+    app: AppHandle<R>,
+    old_name: String,
+    new_name: String,
+) -> Result<(), String> {
+    let mut path = get_jan_data_folder_path(app.clone());
+    path.push("mcp_config.json");
+    let text = fs::read_to_string(&path).map_err(|e| format!("could not read the MCP config: {e}"))?;
+    let mut config: Value = serde_json::from_str(&text).map_err(|e| format!("the MCP config is not valid JSON: {e}"))?;
+    let servers = config
+        .get("mcpServers")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let renamed = rename_in_servers(&servers, &old_name, &new_name)?;
+    config["mcpServers"] = Value::Object(renamed);
+    let serialized =
+        serde_json::to_string_pretty(&config).map_err(|e| format!("Failed to serialize MCP config: {e}"))?;
+    write_file_atomically(&path, serialized.as_bytes())?;
+    if let Ok(mut views) = desktop_views().lock() {
+        if let Some(view) = views.get(&path).cloned() {
+            if let Ok(moved) = rename_in_servers(&view, &old_name, &new_name) {
+                views.insert(path.clone(), moved);
+            }
+        }
+    }
+    log::info!("renamed MCP server {old_name:?} to {new_name:?}");
+    Ok(())
+}
+
+#[cfg(test)]
+mod rename_tests {
+    use super::{merge_mcp_servers, rename_in_servers};
+    use crate::core::mcp::redact::{redact_mcp_servers, restore_masked_secrets, restore_server_config};
+    use serde_json::{json, Map, Value};
+
+    fn map(v: Value) -> Map<String, Value> {
+        v.as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn a_rename_keeps_the_secret_and_leaves_no_duplicate() {
+        let disk = map(json!({"dtest": {"command": "node", "env": {"D_SECRET": "real"}}, "other": {"command": "x"}}));
+        let base = redact_mcp_servers(&disk);
+        // The rename lands on disk and in the merge base in one step.
+        let disk = rename_in_servers(&disk, "dtest", "dtest2").unwrap();
+        let base = rename_in_servers(&base, "dtest", "dtest2").unwrap();
+        assert!(!disk.contains_key("dtest"));
+        assert_eq!(disk["dtest2"]["env"]["D_SECRET"], "real");
+        // The renderer then saves its list, with the secret still masked.
+        let ours = base.clone();
+        let merged = merge_mcp_servers(&base, &ours, &disk);
+        let mut payload = json!({"mcpServers": merged});
+        restore_masked_secrets(&mut payload, &disk);
+        let saved = payload["mcpServers"].as_object().unwrap();
+        assert_eq!(saved.len(), 2, "no duplicate: {saved:?}");
+        assert_eq!(saved["dtest2"]["env"]["D_SECRET"], "real");
+        // And starting it under the new name finds the stored secret.
+        let mut launch = base["dtest2"].clone();
+        restore_server_config("dtest2", &mut launch, &disk).unwrap();
+        assert_eq!(launch["env"]["D_SECRET"], "real");
+    }
+
+    #[test]
+    fn a_rename_onto_a_taken_or_missing_name_is_refused() {
+        let disk = map(json!({"a": {}, "b": {}}));
+        assert!(rename_in_servers(&disk, "a", "b").is_err());
+        assert!(rename_in_servers(&disk, "zz", "c").is_err());
+        assert!(rename_in_servers(&disk, "a", "  ").is_err());
+    }
 }
 
 #[cfg(test)]

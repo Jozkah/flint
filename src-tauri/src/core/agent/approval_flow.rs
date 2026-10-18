@@ -167,6 +167,14 @@ pub(crate) fn deferred_text(tool: &str, id: &str, summary: &str) -> String {
     )
 }
 
+pub(crate) fn stale_text(tool: &str, id: &str) -> String {
+    format!(
+        "ERROR: tool {tool} was not run: {id} was allowed, but the file it changes was changed \
+         by something else after the question was asked, so the answer does not cover it and \
+         nothing was written. Read the file again and propose the change against what is there now."
+    )
+}
+
 pub(crate) fn still_pending_text(tool: &str, id: &str) -> String {
     format!(
         "ERROR: tool {tool} was not run: {DEFERRED_MARK} and {id} has not been answered yet. \

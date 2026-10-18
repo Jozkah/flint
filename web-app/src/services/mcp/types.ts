@@ -105,6 +105,11 @@ export interface MCPTrustReport {
 
 export interface MCPService {
   updateMCPConfig(configs: string): Promise<void>
+  /**
+   * Rename a stored server in one backend step, carrying its secrets over and
+   * dropping the old entry. `false` when this backend has no such step.
+   */
+  renameMCPServer(oldName: string, newName: string): Promise<boolean>
   restartMCPServers(): Promise<void>
   getMCPConfig(): Promise<MCPConfig>
   getTools(options?: ListToolsOptions): Promise<MCPTool[]>

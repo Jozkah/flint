@@ -163,6 +163,14 @@ export function ApprovalRulesCard() {
                   <p className="font-mono text-xs break-words text-foreground">
                     {item.summary}
                   </p>
+                  {item.detail ? (
+                    <pre
+                      className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono text-[11px] text-muted-foreground"
+                      data-testid="deferred-approval-detail"
+                    >
+                      {item.detail}
+                    </pre>
+                  ) : null}
                   <p className="break-words text-xs text-muted-foreground">
                     {t(`permissions:deferred.status.${item.status}`)}
                     {item.session

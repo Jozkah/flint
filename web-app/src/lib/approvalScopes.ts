@@ -35,6 +35,7 @@ export type DeferredStatus =
   | 'expired'
   | 'void'
   | 'consumed'
+  | 'stale'
 
 export type DeferredApproval = {
   id: string
@@ -43,6 +44,8 @@ export type DeferredApproval = {
   tool: string
   kind: string
   summary: string
+  /** The full change (diff or arguments), bounded and redacted. */
+  detail?: string
   argsDigest: string
   status: DeferredStatus
   createdAt: number

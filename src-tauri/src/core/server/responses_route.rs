@@ -406,14 +406,7 @@ impl StreamMapper {
         }
         let Ok(chunk) = serde_json::from_str::<Value>(data) else { return out };
         if let Some(err) = chunk.get("error").filter(|e| !e.is_null()) {
-            self.start(&mut out);
-            self.finished = true;
-            let message = err["message"].as_str().unwrap_or("the model call failed").to_string();
-            let mut resp = self.snapshot("failed", vec![], None, None);
-            resp["error"] = json!({ "code": err["code"].as_str().unwrap_or("server_error"), "message": message });
-            out.push(sse("error", json!({ "code": err["code"], "message": message, "param": null }), &mut self.seq));
-            out.push(sse("response.failed", json!({ "response": resp }), &mut self.seq));
-            return out;
+            return self.fail(&err["code"], err["message"].as_str().unwrap_or("the model call failed"));
         }
         self.start(&mut out);
         if let Some(m) = chunk["model"].as_str().filter(|m| !m.is_empty()) {
@@ -487,6 +480,21 @@ impl StreamMapper {
         out
     }
 
+    /// The response failed: an `error` event and `response.failed`, never `response.completed`.
+    pub fn fail(&mut self, code: &Value, message: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.finished {
+            return out;
+        }
+        self.start(&mut out);
+        self.finished = true;
+        let mut resp = self.snapshot("failed", vec![], None, None);
+        resp["error"] = json!({ "code": code.as_str().unwrap_or("server_error"), "message": message });
+        out.push(sse("error", json!({ "code": code, "message": message, "param": null }), &mut self.seq));
+        out.push(sse("response.failed", json!({ "response": resp }), &mut self.seq));
+        out
+    }
+
     /// The end of the chat stream: close what is open and complete the response.
     pub fn finish(&mut self) -> Vec<String> {
         let mut out = Vec::new();
@@ -538,6 +546,19 @@ pub async fn handle(body: &[u8], headers: &hyper::HeaderMap, url: &str, client: 
     let Ok(req) = serde_json::from_slice::<Value>(body) else {
         return error(StatusCode::BAD_REQUEST, "the request body is not valid JSON", "invalid_request_error", "invalid_json");
     };
+    // A missing model is a missing parameter, not an unsupported one, and
+    // names it the way OpenAI does so clients can point at the field.
+    if req.is_object() && req.get("model").and_then(Value::as_str).is_none_or(|m| m.trim().is_empty()) {
+        return json_body(
+            StatusCode::BAD_REQUEST,
+            json!({ "error": {
+                "message": "`model` is required",
+                "type": "invalid_request_error",
+                "param": "model",
+                "code": "missing_required_parameter",
+            } }),
+        );
+    }
     let chat = match request_to_chat(&req) {
         Ok(c) => c,
         Err(Unsupported(why)) => return error(StatusCode::BAD_REQUEST, &why, "invalid_request_error", "unsupported_parameter"),
@@ -567,40 +588,55 @@ pub async fn handle(body: &[u8], headers: &hyper::HeaderMap, url: &str, client: 
         };
     }
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Frame<Bytes>, Infallible>>(32);
-    tokio::spawn(async move {
-        let mut mapper = StreamMapper::new(&req);
-        let mut buf: Vec<u8> = Vec::new();
-        let mut bytes = upstream.bytes_stream();
-        let send = |events: Vec<String>| {
-            let tx = tx.clone();
-            async move {
-                for e in events {
-                    if tx.send(Ok(Frame::data(Bytes::from(e)))).await.is_err() {
-                        return false;
-                    }
-                }
-                true
-            }
-        };
-        while let Some(chunk) = bytes.next().await {
-            let Ok(chunk) = chunk else { break };
-            buf.extend_from_slice(&chunk);
-            while let Some((end, skip)) = event_end(&buf) {
-                let raw: Vec<u8> = buf.drain(..end + skip).collect();
-                let event = String::from_utf8_lossy(&raw[..end]).into_owned();
-                let data: Vec<&str> = event.lines().filter_map(|l| l.strip_prefix("data:")).map(str::trim_start).collect();
-                if !data.is_empty() && !send(mapper.feed(&data.join("\n"))).await {
-                    return;
-                }
-            }
-        }
-        let _ = send(mapper.finish()).await;
-    });
+    tokio::spawn(pump(req, upstream.bytes_stream(), tx));
     Handled {
         status: StatusCode::OK,
         content_type: "text/event-stream",
         body: BodyExt::boxed(StreamBody::new(tokio_stream::wrappers::ReceiverStream::new(rx))),
     }
+}
+
+/// Maps the upstream chat stream onto Responses events. A transport error mid-stream fails the
+/// response instead of completing it with whatever arrived so far.
+async fn pump<S, E>(req: Value, bytes: S, tx: tokio::sync::mpsc::Sender<Result<Frame<Bytes>, Infallible>>)
+where
+    S: futures_util::Stream<Item = Result<Bytes, E>>,
+    E: std::fmt::Display,
+{
+    let mut bytes = std::pin::pin!(bytes);
+    let mut mapper = StreamMapper::new(&req);
+    let mut buf: Vec<u8> = Vec::new();
+    let send = |events: Vec<String>| {
+        let tx = tx.clone();
+        async move {
+            for e in events {
+                if tx.send(Ok(Frame::data(Bytes::from(e)))).await.is_err() {
+                    return false;
+                }
+            }
+            true
+        }
+    };
+    while let Some(chunk) = bytes.next().await {
+        let chunk = match chunk {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = send(mapper.fail(&json!("upstream_stream_error"), &format!("the chat stream broke off: {e}"))).await;
+                return;
+            }
+        };
+        buf.extend_from_slice(&chunk);
+        while let Some((end, skip)) = event_end(&buf) {
+            let raw: Vec<u8> = buf.drain(..end + skip).collect();
+            let event = String::from_utf8_lossy(&raw[..end]).into_owned();
+            let data: Vec<&str> = event.lines().filter_map(|l| l.strip_prefix("data:")).map(str::trim_start).collect();
+            if !data.is_empty() && !send(mapper.feed(&data.join("
+"))).await {
+                return;
+            }
+        }
+    }
+    let _ = send(mapper.finish()).await;
 }
 
 /// Where the first complete SSE event in `buf` ends, and how many separator bytes follow.
@@ -773,6 +809,28 @@ mod tests {
         assert!(f.feed("[DONE]").is_empty());
     }
 
+    #[tokio::test]
+    async fn a_stream_that_dies_midway_fails_instead_of_completing() {
+        let chunks: Vec<Result<Bytes, String>> = vec![
+            Ok(Bytes::from_static(b"data: {\"choices\":[{\"delta\":{\"content\":\"par\"}}]}
+
+")),
+            Err("connection reset".to_string()),
+        ];
+        let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+        pump(json!({ "model": "m" }), futures_util::stream::iter(chunks), tx).await;
+        let mut raw = Vec::new();
+        while let Some(Ok(f)) = rx.recv().await {
+            raw.push(String::from_utf8(f.into_data().unwrap().to_vec()).unwrap());
+        }
+        let ev = events(&raw);
+        let names: Vec<&str> = ev.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(!names.contains(&"response.completed"), "{names:?}");
+        assert_eq!(names[names.len() - 2], "error");
+        assert_eq!(ev.last().unwrap().0, "response.failed");
+        assert!(ev.last().unwrap().1["response"]["error"]["message"].as_str().unwrap().contains("connection reset"));
+    }
+
     #[test]
     fn sse_events_are_found_across_both_line_endings() {
         assert_eq!(event_end(b"data: 1\n\ndata: 2"), Some((7, 2)));
@@ -865,7 +923,11 @@ mod tests {
         let (url, _seen) = stub_chat("application/json", "{}".to_string());
         let (status, text) = collect(handle(br#"{"input":"x"}"#, &hyper::HeaderMap::new(), &url, &reqwest::Client::new()).await).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(text.contains("`model` is required") && text.contains("unsupported_parameter"), "{text}");
+        let err: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(err["error"]["code"], "missing_required_parameter", "{text}");
+        assert_eq!(err["error"]["param"], "model", "{text}");
+        assert_eq!(err["error"]["type"], "invalid_request_error", "{text}");
+        assert_eq!(err["error"]["message"], "`model` is required", "{text}");
         let (status, text) = collect(handle(b"not json", &hyper::HeaderMap::new(), &url, &reqwest::Client::new()).await).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(text.contains("invalid_json"), "{text}");

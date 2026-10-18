@@ -2,7 +2,9 @@
 import { syncListedModels } from '@/lib/providerModelSync'
 import { listedCapabilities } from '@/lib/listedCapabilities'
 import { CardItem } from '@/containers/Card'
-import { classifyModelLocation } from '@/lib/modelLocation'
+import { classifyModelLocation, endpointHost } from '@/lib/modelLocation'
+import { useProviderLocations } from '@/hooks/useEndpointLocations'
+import { endpointScope } from '@/lib/endpointDiagnostics'
 import { providerKeyStatus } from '@/lib/providerKeyStatus'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import {
@@ -19,6 +21,10 @@ import { createFileRoute, Link, useParams } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { DynamicControllerSetting } from '@/containers/dynamicControllerSetting'
+import {
+  CONTEXT_SIZE_MIN,
+  CONTEXT_SIZE_STEPS,
+} from '@/lib/steppedValue'
 import { RenderMarkdown } from '@/containers/RenderMarkdown'
 import { DialogEditModel } from '@/containers/dialogs/EditModel'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
@@ -95,9 +101,15 @@ import {
 } from '@/containers/SettingsPageHeader'
 import { Chip } from '@/components/ui/chip'
 import { MiddleText } from '@/components/ui/middle-text'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  ENGINE_SETTINGS_WITH_INFO,
+  localizeEngineSetting,
+} from '@/lib/engineSettingsText'
 import { disambiguateModels, parseModelName } from '@/lib/modelDisplayName'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { EngineAddonFrame } from '@/containers/EngineAddon'
 import {
   CapabilityChips,
   EnginePage,
@@ -109,7 +121,12 @@ import {
 import { BrandMark } from '@/containers/engine/BrandMark'
 import { LiveChart } from '@/containers/engine/LiveChart'
 import { modelLogo, providerLogo } from '@/lib/brandLogos'
-import { formatTps, recentSpeeds } from '@/lib/engineModels'
+import { effectiveContextLength, formatTps, recentSpeeds } from '@/lib/engineModels'
+import { providerSettingAnchor } from '@/lib/settingsSearch'
+import {
+  contextColumn,
+  useLoadedContextWindows,
+} from '@/hooks/useLoadedContextWindows'
 import {
   startOfToday,
   useEngineActivity,
@@ -146,7 +163,7 @@ const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: stri
 
 // Remote lists longer than this get a filter box; rows render this many at a time.
 const MODEL_FILTER_MIN = 20
-const MODEL_PAGE_SIZE = 50
+const MODEL_PAGE_SIZE = 12
 
 export const Route = createFileRoute('/settings/providers/$providerName')({
   component: ProviderDetail,
@@ -226,6 +243,22 @@ function ProviderDetail() {
   const isLlamacpp = provider?.provider === 'llamacpp'
   const isEngineProvider =
     provider?.provider === 'llamacpp' || provider?.provider === 'mlx'
+  // Where this provider's requests go, decided the way the chat details decide
+  // it, so a LAN server is not "remote" here and "on this device" there (T7-115).
+  const locateProvider = useProviderLocations(
+    provider ? [provider] : [],
+    (name) => name === 'llamacpp' || name === 'mlx'
+  )
+  const providerLocation = provider ? locateProvider(provider) : 'unknown'
+  const reachNote = isEngineProvider
+    ? t('engine:providers.onDevice')
+    : providerLocation === 'local'
+      ? endpointScope(provider?.base_url) === 'loopback'
+        ? t('engine:providers.onDevice')
+        : t('engine:provider.networkNote', { host: endpointHost(provider?.base_url) ?? '' })
+      : providerLocation === 'remote'
+        ? t('engine:provider.remoteNote')
+        : t('engine:provider.reachUnknownNote')
   // An engine setting change restarts that engine's models, once typing
   // pauses; a remote provider's settings never touch loaded local models.
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -626,6 +659,9 @@ function ProviderDetail() {
       settings: newSettings,
       api_key: nextPrimary,
       api_key_fallbacks: nextFallbacks,
+      // Built-in providers start switched off; giving one its first key is
+      // the user asking to use it.
+      ...(nextPrimary && !prevPrimary ? { active: true } : {}),
     })
     // Clearing the key is an explicit user action: purge the keyring secret so
     // it isn't re-seeded into memory on the next launch. (register handles the
@@ -1030,13 +1066,23 @@ function ProviderDetail() {
         live={status === 'loading' || status === 'loaded'}
         data-testid={`model-status-${modelId}`}
         data-status={status}
+        // A narrow column ends the label in an ellipsis (C099).
+        className="min-w-0 max-w-full shrink"
+        title={t(modelStatusLabelKey(status, provider?.provider))}
       >
-        {t(modelStatusLabelKey(status))}
+        <span className="min-w-0 truncate">
+          {t(modelStatusLabelKey(status, provider?.provider))}
+        </span>
       </Chip>
     )
   }
 
   /** One model as a row in the models table. */
+  const loadedWindows = useLoadedContextWindows(
+    isEngineProvider ? provider?.provider : undefined,
+    activeModels
+  )
+
   const renderModelRow = (
     model: Model,
     key: string,
@@ -1048,7 +1094,9 @@ function ProviderDetail() {
     }
   ) => {
     const file = localFiles[model.id]
-    const contextLength = contextLengthOf(model)
+    // What the model runs with, not "auto" when it inherits the Default
+    // context size (C046).
+    const contextLength = effectiveContextLength(model, provider)
     const displayName = getModelDisplayName(model)
     const secondaryLine = isEngineProvider
       ? (file?.fileName ?? model.id)
@@ -1178,9 +1226,27 @@ function ProviderDetail() {
             <span className="tabular-nums text-fg-2">
               {file?.sizeBytes ? formatBytes(file.sizeBytes) : '—'}
             </span>
-            <span className="tabular-nums text-fg-2">
-              {contextLength ? contextLength.toLocaleString() : '—'}
-            </span>
+            {(() => {
+              const ctx = contextColumn(
+                loadedWindows[model.id],
+                contextLength,
+                t
+              )
+              return (
+                <span
+                  className="flex min-w-0 flex-col leading-tight tabular-nums text-fg-2"
+                  title={ctx.title}
+                  data-testid={`model-ctx-${model.id}`}
+                >
+                  <span className="truncate">{ctx.value}</span>
+                  {ctx.note && (
+                    <span className="truncate text-[10px] text-muted-foreground">
+                      {ctx.note}
+                    </span>
+                  )}
+                </span>
+              )
+            })()}
           </>
         )}
         <span
@@ -1283,18 +1349,31 @@ function ProviderDetail() {
       ]
 
   const renderSetting = ({
-    setting,
+    setting: stored,
     settingIndex,
   }: {
     setting: ProviderSetting
     settingIndex: number
   }) => {
+    // The engine's settings are English in the extension: shown localized.
+    const setting = localizeEngineSetting(t, provider?.provider, stored)
+    const withInfo =
+      isEngineProvider && ENGINE_SETTINGS_WITH_INFO.has(setting.key)
     // Use the DynamicController component
     const actionComponent = (
       <div className="mt-1 sm:mt-0">
         <DynamicControllerSetting
           controllerType={setting.controller_type}
-          controllerProps={setting.controller_props}
+          controllerProps={
+            setting.key === 'ctx_size'
+              ? // From Auto, + goes to a usable window, not 1 token.
+                {
+                  ...setting.controller_props,
+                  min: CONTEXT_SIZE_MIN,
+                  steps: CONTEXT_SIZE_STEPS,
+                }
+              : setting.controller_props
+          }
           className={cn(setting.key === 'device' && 'hidden')}
           onChange={(newValue) => {
             if (provider) {
@@ -1317,6 +1396,7 @@ function ProviderDetail() {
               const settingKey = setting.key
               if (settingKey === 'api-key' && typeof newValue === 'string') {
                 updateObj.api_key = newValue
+                if (newValue && !provider?.api_key) updateObj.active = true
               } else if (
                 settingKey === 'base-url' &&
                 typeof newValue === 'string'
@@ -1387,7 +1467,33 @@ function ProviderDetail() {
     return (
       <CardItem
         key={settingIndex}
-        title={setting.title}
+        anchor={providerSettingAnchor(provider?.provider ?? '', setting.key)}
+        title={
+          withInfo ? (
+            <span className="inline-flex items-center gap-1.5">
+              {setting.title}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t('engineSettings:_ui.moreInfo', {
+                      setting: setting.title,
+                    })}
+                    data-testid={`engine-setting-info-${setting.key}`}
+                    className="inline-grid size-5 place-items-center rounded-full text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                  >
+                    <Info className="size-3.5" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  {setting.description}
+                </TooltipContent>
+              </Tooltip>
+            </span>
+          ) : (
+            setting.title
+          )
+        }
         className={cn(setting.key === 'device' && 'hidden')}
         column={
           setting.controller_type === 'input' &&
@@ -1396,6 +1502,7 @@ function ProviderDetail() {
             : false
         }
         description={
+          <>
           <RenderMarkdown
             className="![>p]:text-muted-foreground select-none"
             content={setting.description}
@@ -1414,6 +1521,17 @@ function ProviderDetail() {
               p: ({ ...props }) => <p {...props} className="mb-0!" />,
             }}
           />
+          {setting.key === 'ctx_size' && isEngineProvider && (
+            // Each model can set its own size: the Models page has them.
+            <Link
+              to={route.settings.providers}
+              data-testid="engine-ctx-size-per-model"
+              className="mt-1 inline-block text-xs text-acc-text underline-offset-4 hover:underline"
+            >
+              {t('engineSettings:_ui.perModelSettings')}
+            </Link>
+          )}
+          </>
         }
         actions={actionComponent}
       />
@@ -2096,11 +2214,7 @@ function ProviderDetail() {
                 ) : (
                   <Chip dot>{t('engine:status.off')}</Chip>
                 )}
-                <Chip>
-                  {isEngineProvider
-                    ? t('engine:providers.onDevice')
-                    : t('engine:provider.remoteNote')}
-                </Chip>
+                <Chip data-testid="provider-reach-note">{reachNote}</Chip>
                 <Chip>
                   {t('engine:providers.modelsCount', {
                     count: provider?.models.length ?? 0,
@@ -2226,6 +2340,7 @@ function ProviderDetail() {
             <div className="grid items-stretch gap-4 min-[1000px]:grid-cols-2 [&>*]:min-w-0 [&>*:last-child:nth-child(odd)]:col-span-full">
               {speedFrame}
               {note}
+              {isLlamacpp && <EngineAddonFrame />}
               {settingsFrames}
             </div>
           </>

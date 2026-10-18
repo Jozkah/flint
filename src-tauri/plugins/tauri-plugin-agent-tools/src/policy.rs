@@ -107,6 +107,18 @@ pub fn load_under(
     network_default: Option<bool>,
     org: &crate::org_policy::OrgPolicy,
 ) -> ProjectPolicy {
+    let trusted = project_root.is_none_or(crate::folder_trust::is_trusted);
+    load_under_trust(project_root, network_default, org, trusted)
+}
+
+/// [`load_under`] with the folder's trust given: an untrusted folder's file
+/// may only tighten the policy.
+pub fn load_under_trust(
+    project_root: Option<&Path>,
+    network_default: Option<bool>,
+    org: &crate::org_policy::OrgPolicy,
+    trusted: bool,
+) -> ProjectPolicy {
     let org = org.clone();
     let mut policy = ProjectPolicy::default();
     policy.network.allowed = org.clamp_network(network_default.unwrap_or(true));
@@ -148,7 +160,10 @@ pub fn load_under(
         }
     };
 
-    let tools = parsed.tools;
+    let mut tools = parsed.tools;
+    if !trusted {
+        drop_loosening(&mut tools);
+    }
     let default = tools
         .default
         .as_deref()
@@ -182,6 +197,25 @@ pub fn load_under(
         nul_programs: tools.nul_programs,
         load_error: None,
     }
+}
+
+/// A folder the user has not trusted may tighten the policy but never loosen
+/// it: the keys that would grant more than no file at all are dropped, the same
+/// keys the agent loop drops when it reads the file (`drop_loosening_keys`).
+fn drop_loosening(tools: &mut ToolsSection) {
+    if tools
+        .default
+        .as_deref()
+        .is_some_and(|d| PermissionDefault::from_str_lenient(d) == PermissionDefault::Allow)
+    {
+        tools.default = None;
+    }
+    tools.allow.clear();
+    tools.allow_write.clear();
+    if tools.allow_network == Some(true) {
+        tools.allow_network = None;
+    }
+    tools.nul_programs.clear();
 }
 
 /// Apply the machine's policy to a project that declared none of its own.
@@ -222,6 +256,32 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, config).unwrap();
         root
+    }
+
+    #[test]
+    fn an_untrusted_folder_cannot_loosen_the_policy() {
+        let root = project_with(
+            "[tools]
+default = \"allow\"
+allow = [\"bash\", \"read(C:/outside/**)\"]
+allow_write = [\"C:/outside/**\"]
+allow_network = true
+deny = [\"web_fetch\"]
+",
+        );
+        let org = crate::org_policy::OrgPolicy::default();
+        let trusted = load_under_trust(Some(&root), Some(false), &org, true);
+        assert!(trusted.permissions.is_allowed("bash", &crate::subject::Subject::MainAgent));
+        assert!(!trusted.permissions.sandbox_read_dirs().is_empty());
+        assert!(trusted.network.allowed);
+
+        let untrusted = load_under_trust(Some(&root), Some(false), &org, false);
+        assert_ne!(untrusted.permissions.default_mode(), PermissionDefault::Allow);
+        assert!(!untrusted.permissions.is_allowed("bash", &crate::subject::Subject::MainAgent));
+        assert!(untrusted.permissions.sandbox_read_dirs().is_empty(), "no read roots widened");
+        assert!(!untrusted.network.allowed, "the surface default stands");
+        // Tightening still applies.
+        assert!(untrusted.permissions.is_denied("web_fetch", &crate::subject::Subject::MainAgent));
     }
 
     #[test]

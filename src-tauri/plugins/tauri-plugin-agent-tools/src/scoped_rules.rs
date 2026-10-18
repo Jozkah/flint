@@ -386,6 +386,25 @@ fn is_single_plain_command(command: &str) -> bool {
 }
 
 /// Whether `prefix` is a valid prefix that covers `command`.
+/// Why a `prefix` rule cannot cover `command`, in words that are true of it.
+fn prefix_refusal(prefix: &str, command: &str) -> String {
+    let want: Vec<&str> = prefix.split_whitespace().collect();
+    let have: Vec<&str> = command.split_whitespace().collect();
+    if !is_single_plain_command(command) {
+        return format!("a `{prefix}` rule covers one plain command, and this one chains or redirects");
+    }
+    if have.len() < want.len() || have[..want.len()] != want[..] {
+        return format!("this command does not start with `{prefix}`");
+    }
+    if let Some(flag) = have[want.len()..]
+        .iter()
+        .find(|t| DESTRUCTIVE_FLAGS.contains(&t.to_lowercase().as_str()))
+    {
+        return format!("a `{prefix}` rule cannot cover `{flag}`, which deletes or runs other programs; allow this call once instead");
+    }
+    format!("a `{prefix}` rule cannot cover this command")
+}
+
 fn prefix_covers(prefix: &str, command: &str) -> bool {
     if prefix_problem(prefix).is_some() || !is_single_plain_command(command) {
         return false;
@@ -498,7 +517,7 @@ pub fn validate_choice(
             if tool.capability == Capability::Exec && prefix_covers(&prefix, command) {
                 Ok(ApprovalScope::CommandPrefix { prefix })
             } else {
-                Err(format!("this command does not start with `{prefix}`"))
+                Err(prefix_refusal(&prefix, command))
             }
         }
     }
@@ -998,6 +1017,14 @@ mod tests {
         assert!(!exec_covered("find .", "find . -name x -DELETE"));
         assert!(!exec_covered("find .", "find . -exec rm {} +"));
         assert!(prefix_problem("find . -delete").is_some());
+    }
+
+    #[test]
+    fn a_refused_find_prefix_names_the_destructive_flag_not_the_prefix() {
+        let why = prefix_refusal("find .", "find . -delete");
+        assert!(!why.contains("does not start with"), "{why}");
+        assert!(why.contains("-delete"), "{why}");
+        assert!(prefix_refusal("git status", "cargo test").contains("does not start with"));
     }
 
     #[test]

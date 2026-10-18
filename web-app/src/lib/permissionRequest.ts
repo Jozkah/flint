@@ -94,6 +94,11 @@ export type PermissionRequestDescription = {
   reason?: string
   /** PowerShell script, shown as code instead of crammed into Why. */
   script?: string
+  /**
+   * The arguments on one line (`key=value, ...`), secrets redacted and
+   * truncated, so the call can be judged without opening the details (M-006).
+   */
+  argumentsSummary?: string
   /** Chips such as "Reaches GitHub" or "Destructive". */
   badges?: PermissionBadge[]
   /** The stronger warning shown above the answers for a destructive call. */
@@ -130,6 +135,15 @@ const BROWSER_ACTION_TOOLS = new Set([
   'browser_select',
 ])
 const COMMAND_TOOLS = new Set(['bash', 'shell', 'run_command', 'execute_command'])
+/** Built-in tools that run a program on the host, outside the sandbox. */
+const HOST_COMMAND_TOOLS = new Set([
+  'host_powershell',
+  'host_wsl',
+  'host_ssh',
+  'host_build',
+  'host_package',
+  'host_action',
+])
 const NETWORK_TOOLS = new Set(['web_fetch', 'web_search', 'image_search'])
 const READ_TOOLS = new Set([
   'read',
@@ -576,6 +590,11 @@ function consequencesFor(
       if (toolName === SPEND_PAUSE_TOOL_NAME) {
         return [{ key: 'permissions:consequence.spendPause' }]
       }
+      // Flint's own host tools run programs outside the sandbox: known, not
+      // a mystery tool (D6).
+      if (HOST_COMMAND_TOOLS.has(toolName)) {
+        return [{ key: 'permissions:consequence.command' }]
+      }
       return HELPER_TOOLS.has(toolName)
         ? [{ key: 'permissions:consequence.helper' }]
         : [{ key: 'permissions:consequence.unknown' }]
@@ -725,6 +744,29 @@ function gitExtras(
   }
 }
 
+const MAX_ARGUMENTS_SUMMARY_LENGTH = 200
+
+/** One line of `key=value` pairs, secrets redacted, bounded. Empty when none. */
+export function argumentsSummary(input: unknown): string {
+  if (input === undefined) return ''
+  const parsed = parseToolInput(input)
+  if (typeof parsed === 'string') return sanitizeResource(parsed, MAX_ARGUMENTS_SUMMARY_LENGTH)
+  if (!isPlainObject(parsed)) return ''
+  const clean = sanitizeValue(parsed) as Record<string, unknown>
+  const pairs = Object.entries(clean)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => {
+      let text: string
+      try {
+        text = typeof v === 'string' ? v : (JSON.stringify(v) ?? String(v))
+      } catch {
+        text = String(v)
+      }
+      return `${k}=${text.replace(/\s+/g, ' ').trim()}`
+    })
+  return truncate(pairs.join(', '), MAX_ARGUMENTS_SUMMARY_LENGTH)
+}
+
 function argumentsJson(input: unknown): string {
   if (input === undefined) return ''
   const parsed = parseToolInput(input)
@@ -806,6 +848,10 @@ export function describePermissionRequest(
     resources,
     ...(reason ? { reason } : {}),
     ...(powershell ? { script: truncate(redactSecrets(powershell.trim()), 4000) } : {}),
+    // A script is already shown whole; everything else gets its arguments.
+    ...(!powershell && argumentsSummary(req.input)
+      ? { argumentsSummary: argumentsSummary(req.input) }
+      : {}),
     ...(category === 'git' ? gitExtras(args) : {}),
     ...(serverName && isSelfApprovalTool(toolName)
       ? {

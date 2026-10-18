@@ -459,6 +459,32 @@ type CoworkRunState = {
   clearCodeRun: (sid: string) => void
 }
 
+/**
+ * How each session's last run ended, kept across a reload: a failed run's
+ * notice is the only sign it failed, and it used to vanish with the page.
+ */
+const OUTCOMES_KEY = 'cowork-run-outcomes'
+
+export function loadRunEndings(): Record<string, RunEnding> {
+  try {
+    const raw = localStorage.getItem(OUTCOMES_KEY)
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null
+    return parsed && typeof parsed === 'object'
+      ? (parsed as Record<string, RunEnding>)
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveRunEndings(outcomes: Record<string, RunEnding>) {
+  try {
+    localStorage.setItem(OUTCOMES_KEY, JSON.stringify(outcomes))
+  } catch {
+    // Best effort: the notice still shows until the page reloads.
+  }
+}
+
 export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
   liveTurns: {},
   subagents: {},
@@ -466,7 +492,7 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
   promptSnapshots: {},
   usage: {},
   runs: {},
-  outcomes: {},
+  outcomes: loadRunEndings(),
 
   startRun: (sid, runId) =>
     set((s) => ({
@@ -797,4 +823,9 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
       modelLoadProgress: omitKey(s.modelLoadProgress, sid),
     })),
 }))
+
+// Saved whenever a run ending changes (set, cleared by a new run, forgotten).
+useCoworkRun.subscribe((state, previous) => {
+  if (state.outcomes !== previous.outcomes) saveRunEndings(state.outcomes)
+})
 
